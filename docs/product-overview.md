@@ -28,4 +28,4 @@ Town Crier is a mobile-first application that monitors local authority planning 
 -   **Mobile:** Native iOS app (Swift) for a high-performance, notification-centric user experience.
 -   **API:** .NET 10 backend running on Azure Container Apps, optimized for low-cost, serverless execution.
 -   **Data:** Azure Cosmos DB (Serverless) for storing user preferences and cached planning metadata.
--   **Ingestion:** Webhook-driven ingestion from PlanWire.io, with planning application data pushed to the API in near-real-time as new or updated applications are published.
+-   **Ingestion:** Polling-based ingestion from [PlanIt](https://www.planit.org.uk), with a background service querying for new and updated planning applications on a configurable interval (default: 15 minutes). See [ADR 0006](adr/0006-planit-primary-data-provider.md).

@@ -7,7 +7,9 @@
 
 ## 1. Executive Summary
 
-Town Crier should use **PlanWire.io as the primary data provider**, with **Gov.uk Planning Data as a secondary/supplementary source** and **PlanIt as a tertiary fallback and validation reference**.
+> **Correction (2026-03-16):** This assessment originally recommended PlanWire.io as the primary provider. Following hands-on validation (ADR 0003), PlanWire was found to be a paid wrapper around PlanIt's dataset. [ADR 0006](adr/0006-planit-primary-data-provider.md) switched the primary provider to **PlanIt** (free, polling-based ingestion). The analysis below remains useful as a provider comparison, but the recommendation is superseded.
+
+This assessment originally recommended **PlanWire.io as the primary data provider**, with **Gov.uk Planning Data as a secondary/supplementary source** and **PlanIt as a tertiary fallback and validation reference**. This recommendation has been **superseded by ADR 0006**, which promotes PlanIt to the primary role.
 
 PlanWire.io is a real, operational service with a live website, functional API documentation, signup flow, and code examples. It is the **only provider offering webhook support**, which is critical for Town Crier's push-notification-first architecture. The previous feasibility report's RED rating for the data provider was based on the conclusion that PlanWire.io "does not exist" — this assessment finds that conclusion to be **incorrect**. PlanWire.io exists, is operational, and its documented capabilities align closely with Town Crier's feature plan.
 
@@ -165,7 +167,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Postcode-to-location | Via postcode parameter | Via `pcode` parameter | Via `q` parameter |
 | Multiple zone support | Yes (multiple webhook subscriptions) | Yes (multiple poll queries) | Limited |
 
-**Best fit: PlanWire** — native webhook filtering by postcode prefix means new applications in a watch zone trigger automatic notifications without polling.
+**Selected: PlanIt** — excellent spatial search via `krad` parameter. Multiple zones supported via multiple poll queries. PlanWire's webhook filtering was appealing but not worth the cost given PlanIt is the upstream source.
 
 ### 4.2 Push Notifications (real-time alerting)
 
@@ -175,7 +177,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Status change events | Webhook: `application.updated` | Poll with `changed` filter | No |
 | Latency | Near-real-time (webhook) | 15-30 min (poll interval) | Hours+ (batch updates) |
 
-**Best fit: PlanWire** — webhooks are a fundamental differentiator. Without them, Town Crier must implement a polling service, adding complexity and latency.
+**Selected: PlanIt** — requires a polling service (15–30 min interval), but planning consultation periods are measured in weeks so the latency is acceptable. The polling service is a one-time development cost that eliminates the £29–99/mo PlanWire subscription.
 
 ### 4.3 Backfill (seeding historical data for new zones)
 
@@ -184,7 +186,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Historical spatial query | Yes (`/nearby` with date filters) | Yes (`krad` + `start_date`) | Limited |
 | Bulk retrieval | 100/page | Up to 5,000/page | 500/page |
 
-**Best fit: PlanIt** for bulk backfill (5,000/page vs 100/page), but PlanWire is adequate for the smaller per-zone backfills Town Crier needs.
+**Selected: PlanIt** — 5,000 results/page makes backfill fast and efficient. One-time spatial query per zone creation for paid users.
 
 ### 4.4 Search (full-text application search)
 
@@ -193,7 +195,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Full-text search | Yes (`q` parameter, GIN indexes) | Yes (`search` parameter, quoted phrases, OR, negation) | Basic only |
 | Filter by status/type | Yes | Yes | Limited |
 
-**Best fit: Tie** — both PlanWire and PlanIt offer rich full-text search. PlanIt's search syntax is slightly more advanced (negation, OR operators).
+**Selected: PlanIt** — rich full-text search with quoted phrases, OR, and negation operators. Pro tier passes search queries through to PlanIt.
 
 ### 4.5 Tier Enforcement (API cost management)
 
@@ -203,17 +205,19 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Backfill cost (per zone) | 1 API call (Starter+) | 1 API call (free) | N/A |
 | Search passthrough cost | Counts against daily limit | Rate-limited by IP | Free |
 
-**Best fit: PlanWire** — webhook-driven caching means free-tier users consume zero PlanWire API calls for browse/list. This aligns perfectly with the feature plan's zero-cost free tier strategy.
+**Selected: PlanIt** — polling data is cached in Cosmos DB regardless of tier. Free-tier users read from the shared cache at zero marginal cost. No per-request charges from PlanIt. This aligns with the feature plan's zero-cost free tier strategy.
 
 ---
 
 ## 5. Recommended Data Strategy
 
-### Primary: PlanWire.io
+> **Updated (2026-03-16):** This section originally recommended PlanWire as primary. [ADR 0006](adr/0006-planit-primary-data-provider.md) switched to PlanIt after discovering PlanWire is a paid wrapper over PlanIt's dataset.
 
-**Rationale:** PlanWire is the only provider offering webhooks, which are architecturally critical for Town Crier's push-notification-first design. The webhook-driven model eliminates polling complexity, reduces latency, and enables the zero-cost free tier strategy described in the feature plan. The pricing (£29/mo Starter) is already budgeted.
+### Primary: PlanIt (planit.org.uk)
 
-**Confidence level:** Medium-high. The service exists and its documentation is comprehensive, but the lack of third-party verification is a concern. Mitigate by: (1) signing up for the free tier immediately and testing all endpoints, (2) verifying webhook delivery reliability over a 2-week trial, (3) maintaining the adapter architecture for easy provider substitution.
+**Rationale:** PlanIt is the upstream data source — PlanWire's `raw` field contains PlanIt scraper data, making PlanWire a paid intermediary over free data. PlanIt has wider coverage (417 vs 379 LPAs), larger page sizes (5,000 vs 100/page), no API key management, and zero cost. The trade-off is no webhook support, requiring a polling service — but planning consultation periods are measured in weeks, so 15–30 minute polling latency is acceptable.
+
+**Confidence level:** High. PlanIt is established (years of operation), has downstream consumers (PlanWire itself, the `acton` R package), and was validated via live API calls (see ADR 0006).
 
 ### Secondary: Gov.uk Planning Data
 
@@ -221,90 +225,56 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 
 **Use cases:** Supplementary boundary/designation data, validation of LPA coverage, fallback reference data.
 
-### Tertiary: PlanIt (planit.org.uk)
-
-**Rationale:** PlanIt has the largest historical dataset (~20M applications) and the widest LPA coverage (417 vs 379). It serves as an excellent validation source and fallback if PlanWire experiences issues. Its generous page sizes (5,000/request) make it ideal for one-time bulk operations.
-
-**Use cases:** Data validation/cross-referencing, bulk backfill if PlanWire is slow, fallback provider if PlanWire becomes unavailable, coverage gap filling (38 additional LPAs).
-
 ---
 
 ## 6. Impact on Current Architecture
 
-### PlanWire Confirmed: Feasibility Report RED Rating Should Be Revised to GREEN
+> **Updated (2026-03-16):** PlanIt is now the primary provider per [ADR 0006](adr/0006-planit-primary-data-provider.md). ADR 0003 (PlanWire as primary) is superseded.
 
-The feasibility report (2026-03-16) rated the data provider as RED based on the finding that "PlanWire.io is not a real service." This assessment finds that:
+### Data Provider Rating: GREEN
 
-1. **PlanWire.io has a live website** with functional navigation, pricing page, and documentation
-2. **The API documentation is detailed and internally consistent**, including endpoints, error codes, pagination, webhook configuration, and code examples in multiple languages
-3. **The homepage describes real data sourcing** — daily bulk imports from DLUHC plus council portal scraping
-4. **The service offers a signup flow** with API key generation
+PlanIt was validated via live API calls (see ADR 0006 for full results). All critical endpoints are operational, response times are acceptable, and data quality is confirmed against known planning applications.
 
-**Revised rating: AMBER** (not yet GREEN). While PlanWire appears real, the lack of independent third-party verification means the rating should be upgraded to AMBER pending hands-on validation. It should move to GREEN once the team has:
-- Successfully created a free-tier account and received an API key
-- Made live API calls and verified response data against known planning applications
-- Registered a test webhook and confirmed delivery
-- Verified data freshness (daily updates as claimed)
+### Architecture Changes (from original PlanWire design)
 
-### Architecture Changes Required
+- **Polling service replaces webhook receiver** — a background service in Azure Container Apps polls PlanIt on a configurable interval (default: 15 minutes) using `different_start` date filters for change detection.
+- **ADR 0003 superseded by ADR 0006** — the webhook-driven ingestion model is replaced by polling-based ingestion.
+- **Phase 1 of the feature plan updated** — polling service, change detection, and idempotent upserts instead of webhook receiver and HMAC verification.
 
-**If PlanWire is validated (expected):**
-- **Minimal changes needed.** The current architecture in the feature plan (ADR 0003, Phase 1) was designed around PlanWire and can proceed as-is.
-- The hexagonal architecture's port/adapter pattern should still be implemented to allow provider substitution, but the webhook-driven ingestion model remains viable.
-- ADR 0003 status remains "Accepted."
+### Architecture Additions
 
-**If PlanWire validation fails:**
-- Fall back to the feasibility report's recommended strategy: PlanIt as primary with polling-based ingestion.
-- ADR 0003 would need to be superseded.
-- Phase 1 of the feature plan would need significant revision (polling service instead of webhook receiver).
-
-### Recommended Architecture Additions (regardless of PlanWire outcome)
-
-1. **`IPlanningDataProvider` port interface** — abstract the data provider behind a clean port, as the feasibility report recommends. This is good practice even with a validated primary provider.
+1. **`IPlanningDataProvider` port interface** — abstract the data provider behind a clean port for provider substitution.
 2. **Gov.uk Planning Data adapter** — for supplementary boundary/designation data.
-3. **PlanIt adapter** — for fallback/validation scenarios.
-4. **Health monitoring** — implement PlanWire webhook delivery monitoring and automated alerts if delivery stops.
+3. **Polling health monitoring** — automated alerts if polling fails or data freshness degrades.
 
 ---
 
 ## 7. Cost Comparison
 
-### Monthly Infrastructure + Data Provider Costs
+> **Updated (2026-03-16):** Cost projections updated to reflect PlanIt as primary provider (£0 data provider cost). See [feature plan](feature-plan.md) for the current baseline.
+
+### Monthly Infrastructure Costs (PlanIt as Primary)
 
 | Cost Component | 0-100 users | 100-1,000 users | 1,000-10,000 users |
 |---------------|-------------|-----------------|-------------------|
-| **PlanWire plan** | Free (£0) | Starter (£29/mo) | Growth (£99/mo) |
-| **PlanWire rationale** | 100 req/day sufficient for testing + limited backfill | 1,000 req/day + 5 webhooks covers backfill + search | 10,000 req/day + unlimited webhooks for scale |
-| **PlanIt** | £0 | £0 | £0 |
-| **Gov.uk Planning Data** | £0 | £0 | £0 |
+| **PlanIt data provider** | £0 | £0 | £0 |
 | **Cosmos DB Serverless** | £5-10/mo | £10-25/mo | £25-60/mo |
-| **Azure Container Apps** | £0-5/mo | £5-15/mo | £15-40/mo |
+| **Azure Container Apps** | £5-10/mo | £10-20/mo | £20-50/mo |
 | **Auth0** | £0 | £0 | £0 (under 25K MAU) |
 | **Apple Developer Program** | £6.60/mo | £6.60/mo | £6.60/mo |
-| **Total baseline** | **£12-22/mo** | **£51-76/mo** | **£147-206/mo** |
+| **Total** | **£17-27/mo** | **£27-52/mo** | **£52-117/mo** |
+
+Note: Container Apps costs are slightly higher than the original PlanWire estimate because the polling service runs continuously, whereas webhook ingestion was event-driven. However, this is more than offset by eliminating the £29-99/mo PlanWire subscription.
 
 ### Revenue vs Cost at Each Scale
 
 | Scale | Est. Paying Users (10% conversion) | Est. Monthly Revenue (net of Apple 15%) | Monthly Cost | Net |
 |-------|-------------------------------------|----------------------------------------|-------------|-----|
-| 100 users | 10 (8 Personal + 2 Pro) | £23.70 | ~£17/mo | +£6.70 |
-| 1,000 users | 100 (80 Personal + 20 Pro) | £237 | ~£63/mo | +£174 |
-| 10,000 users | 1,000 (800 Personal + 200 Pro) | £2,370 | ~£176/mo | +£2,194 |
+| 100 users | 10 (8 Personal + 2 Pro) | £23.70 | ~£22/mo | +£1.70 |
+| 1,000 users | 100 (80 Personal + 20 Pro) | £237 | ~£40/mo | +£197 |
+| 10,000 users | 1,000 (800 Personal + 200 Pro) | £2,370 | ~£85/mo | +£2,285 |
 
-**Key insight:** The webhook-driven architecture with PlanWire keeps marginal per-user costs extremely low. Free-tier users generate zero data provider API calls (served from cached webhook data). Paid-tier users only trigger API calls for backfill (one-time) and search (occasional). This means costs scale primarily with infrastructure (Cosmos DB + Container Apps), not with the data provider.
-
-### Comparison: PlanWire Strategy vs Polling-Only Strategy
-
-| Aspect | PlanWire (webhooks) | PlanIt Polling |
-|--------|-------------------|---------------|
-| Data provider cost | £0-299/mo (by plan) | £0 |
-| Polling compute cost | £0 (no polling needed) | £10-50/mo (Container Apps Jobs) |
-| Development complexity | Lower (webhook receiver) | Higher (polling scheduler, change detection, deduplication) |
-| Notification latency | Near-real-time | 15-30 minutes |
-| Free tier viability | Zero marginal cost | Low marginal cost (polling runs regardless) |
-| Total cost (1K users) | ~£63/mo | ~£35-55/mo |
-
-The polling-only strategy is ~£10-30/mo cheaper at the 1,000-user scale, but adds significant development complexity and sacrifices the near-real-time notification experience that differentiates Town Crier from competitors.
+**Key insight:** With PlanIt at £0, costs scale purely with infrastructure (Cosmos DB + Container Apps). Free-tier users generate zero marginal cost — they read from the shared polling cache. Paid-tier users only trigger additional PlanIt calls for backfill (one-time per zone) and full-text search (occasional, Pro tier only). The economics are significantly better than the original PlanWire projections at every scale above 100 users.
 
 ---
 

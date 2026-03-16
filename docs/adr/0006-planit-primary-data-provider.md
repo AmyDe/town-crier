@@ -27,8 +27,10 @@ We will use **PlanIt (planit.org.uk)** as the primary data provider, ingesting p
 ### Polling Design
 
 - A **background service** (hosted in Azure Container Apps) polls PlanIt on a configurable interval (default: 15 minutes).
-- Each poll queries `GET /api/applics/json` filtered by `recently_changed` date to retrieve applications modified since the last successful poll.
-- Results are diffed against existing records in Cosmos DB and upserted. The PlanIt application ID is the idempotency key.
+- Each poll queries `GET /api/applics/json?different_start={last_poll_iso}&pg_sz=5000&sort=-last_different` to retrieve applications whose **content** changed since the last successful poll.
+- Uses `different_start` (not `changed_start`) — the `last_changed` timestamp updates on every scrape cycle (~hourly) even when content is unchanged, while `last_different` only updates when application data actually changes. This avoids unnecessary upserts.
+- The `name` field (`{area_name}/{uid}`, e.g. `Leeds/26/01471/TR`) is the globally unique idempotency key. The `uid` field is unique within an authority but not globally.
+- Results are diffed against existing records in Cosmos DB and upserted.
 - Watch zone matching runs on each upsert, unchanged from the original Phase 1 design.
 
 ### Data Licensing
@@ -65,6 +67,60 @@ PlanIt's API documentation does not explicitly prohibit or permit commercial use
 - Cache aggressively — serve all user-facing reads from Cosmos DB, never proxy PlanIt in real time.
 - **Attribute PlanIt visibly** — see Attribution Requirements below.
 - Contact Andrew Speakman (PlanIt maintainer) once we have a working MVP to introduce the project, confirm acceptable use, and offer a donation or attribution arrangement.
+
+### API Validation Results (2026-03-16)
+
+Live trial calls were made against the PlanIt API to confirm compatibility with the polling design. All critical endpoints are operational.
+
+#### Endpoints Tested
+
+| Test | Query | Result |
+|------|-------|--------|
+| Applications by authority + changed | `?auth=Leeds&changed=1&pg_sz=3` | **Pass** — 1,538 results, 0.55s |
+| Date-range change detection | `?auth=Leeds&changed_start=2026-03-15&changed_end=2026-03-16` | **Pass** — correct filtering, 0.17s |
+| Spatial search (postcode + radius) | `?pcode=LS1+1UR&krad=1&recent=7` | **Pass** — 3 results with `distance` field, 3.6s |
+| Field projection (`select`) | `?select=uid,address,description,app_type,...` | **Pass** — returns only requested fields |
+| Pagination | `?auth=Leeds&changed=1&pg_sz=2&page=2` | **Pass** — `from: 2`, correct offset |
+| Active areas list | `/api/areas/json?area_type=active` | **Pass** — **417 LPAs** confirmed |
+| Areas with field projection | `?select=area_name,long_name,area_type,total` | **Pass** — field names use snake_case |
+
+#### Response Structure (Application Record)
+
+Top-level fields available on every record:
+
+| Field | Example | Notes |
+|-------|---------|-------|
+| `uid` | `26/01471/TR` | Unique within authority |
+| `name` | `Leeds/26/01471/TR` | Globally unique (`{area}/{uid}`) |
+| `address` | `Highgate House Grove Lane...` | Free text |
+| `postcode` | `LS6 2AP` | Extracted postcode |
+| `description` | `T1 lime tree...` | Full description text |
+| `app_type` | `Trees`, `Full`, `Heritage`, `Amendment` | Application category |
+| `app_state` | `Undecided`, `Permitted`, `Refused` | Decision status |
+| `app_size` | `Small`, `Large` | Development scale |
+| `start_date` | `2026-03-13` | Date received/validated |
+| `decided_date` | `null` or `YYYY-MM-DD` | Decision date |
+| `consulted_date` | `null` or `YYYY-MM-DD` | Consultation end date |
+| `area_name` | `Leeds` | Planning authority name |
+| `area_id` | `292` | PlanIt authority ID |
+| `location` | `{"type":"Point","coordinates":[-1.577,53.824]}` | GeoJSON point |
+| `location_x` / `location_y` | `-1.577373` / `53.824035` | Flat lng/lat |
+| `url` | `https://publicaccess.leeds.gov.uk/...` | Council portal deep link |
+| `link` | `https://www.planit.org.uk/planapplic/...` | PlanIt detail page |
+| `last_changed` | `2026-03-16T08:09:03.598` | Updated every scrape cycle |
+| `last_different` | `2026-03-14T11:59:17.642` | Updated only on content change |
+| `last_scraped` | `2026-03-14T11:59:17.642` | Last scrape timestamp |
+| `other_fields` | `{...}` | Semi-structured, council-specific |
+
+The `other_fields` object varies by council/scraper type and may include: `ward_name`, `parish`, `agent_name`, `applicant_name`, `date_received`, `date_validated`, `target_decision_date`, `comment_url`, `docs_url`, `n_documents`, `easting`/`northing`. Treat as semi-structured — do not depend on any field being present.
+
+#### Design Implications
+
+1. **No geocoding needed** — GeoJSON `location` and flat `location_x`/`location_y` are included on most records. Spatial watch-zone matching can use these directly.
+2. **`select` parameter is slower** — queries with field projection took up to 10s vs 0.17–0.55s without. The poller should fetch full records rather than projecting.
+3. **Spatial queries are available but slower** — postcode + radius queries (1.5–3.6s) are useful for initial zone backfill but not for polling. Polling should use date-range filters only.
+4. **5,000 results/page confirmed** — at a 15-minute polling interval, change volumes should be well under this limit. A single request per poll cycle is sufficient.
+5. **`select` field names are snake_case** — the API returns 400 if field names don't match exactly (e.g. `area_name` not `name` on areas). Discovered through trial and error.
 
 ### Provider Abstraction
 

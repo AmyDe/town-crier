@@ -9,55 +9,55 @@
 
 Town Crier proposes a mobile-first app for monitoring UK planning applications with push notifications. The concept is sound and addresses a real gap in the market. The proposed architecture is technically feasible across all components.
 
-> **Correction (2026-03-16):** An earlier version of this report incorrectly stated that PlanWire.io does not exist. A follow-up assessment confirmed PlanWire.io is a real, operational service with a live website, API documentation, and signup flow. See [Data Provider Assessment](data-provider-assessment.md) for the full comparative analysis. The data provider rating has been upgraded from RED to AMBER pending hands-on validation.
+> **Update (2026-03-16):** PlanIt (planit.org.uk) is now the primary data provider, replacing PlanWire.io. PlanWire was found to be a paid wrapper over PlanIt's free dataset. See [ADR 0006](adr/0006-planit-primary-data-provider.md) for the decision rationale.
 
 ### Traffic Light Assessment
 
 | Area | Rating | Summary |
 |------|--------|---------|
-| **Data Provider** | :large_orange_diamond: **AMBER** | PlanWire.io confirmed real. Pending hands-on validation of API, webhooks, and data freshness. See [Data Provider Assessment](data-provider-assessment.md). |
+| **Data Provider** | :green_circle: **GREEN** | PlanIt validated via live API calls. 417 LPAs, free, established service. Polling-based ingestion per [ADR 0006](adr/0006-planit-primary-data-provider.md). |
 | **Azure Architecture** | :green_circle: **GREEN** | Container Apps + Cosmos DB Serverless is cost-effective and technically sound. |
 | **Authentication & Monetisation** | :green_circle: **GREEN** | Auth0 free tier (25K MAU) is confirmed. Subscription model is viable. |
 | **iOS & Geospatial** | :green_circle: **GREEN** | SwiftUI/MVVM-C is mature. Cosmos DB supports native geospatial queries. |
 | **Market & Competition** | :large_orange_diamond: **AMBER** | Real demand exists but free competitors cover basic use cases. Differentiation needed. |
-| **Overall** | :green_circle: **GREEN** | Feasible. Proceed with PlanWire as primary provider; validate with hands-on testing. |
+| **Overall** | :green_circle: **GREEN** | Feasible. PlanIt validated as primary provider. Proceed with polling-based ingestion. |
 
 ---
 
 ## 2. Data Provider Assessment
 
-### PlanWire.io: Confirmed Real (Pending Validation)
+### PlanIt: Primary Provider (Validated)
 
-> **Correction (2026-03-16):** An earlier version of this section incorrectly stated PlanWire.io does not exist. A follow-up investigation confirmed it is a real, operational service. See [Data Provider Assessment](data-provider-assessment.md) for the full analysis.
+**[PlanIt](https://www.planit.org.uk)** is a long-established national aggregator for UK planning applications, built and maintained by Andrew Speakman. It is a free, unauthenticated API serving ~20 million planning applications across 417 LPAs. See [ADR 0006](adr/0006-planit-primary-data-provider.md) for the full decision rationale and API validation results.
 
-**PlanWire.io is a real service** with a live website ([planwire.io](https://planwire.io)), functional API documentation ([planwire.io/docs](https://planwire.io/docs)), and a signup flow with API key generation. Key findings:
+Key findings from live API validation:
 
-- **API documentation** is detailed and internally consistent — endpoints, error codes, pagination, webhook configuration, and code examples in multiple languages
-- **Data sourcing** described as daily bulk imports from the official DLUHC dataset plus direct council portal scraping
-- **379 LPAs** indexed across England, Scotland, Wales, and Northern Ireland
-- **Webhooks** with `application.new` / `application.updated` events and HMAC-SHA256 signatures — the only UK planning data provider offering this
-- **Pricing** matches the feature plan: Free (100 req/day), Starter £29/mo (1,000 req/day, 5 webhooks), Growth £99/mo, Enterprise £299/mo
+- **417 LPAs** across England, Scotland, Wales, and Northern Ireland — widest coverage of any provider
+- **~20 million applications** with GeoJSON location data on 91% of records
+- **Free, unauthenticated API** — no API key, no subscription, no per-request charges
+- **5,000 results/page** — efficient for both polling and backfill
+- **Date-range change detection** via `different_start` parameter — only returns applications whose content actually changed
+- **Spatial search** via postcode + radius — suitable for watch zone backfill
 
-**Risk factors:** No third-party reviews, community mentions, or independent verification found. No published terms of service (404 response). Unknown company entity. These are mitigated by hands-on validation before committing.
+**Risk factors:** Single-maintainer service (bus factor of 1), no published ToS, unpublished rate limits (429 responses). Mitigated by conservative polling, aggressive caching, adapter architecture for provider substitution, and planned outreach to the maintainer.
 
-### Alternative UK Planning Data Providers
+### Other UK Planning Data Providers
 
-A comparative assessment of alternatives is documented in [Data Provider Assessment](data-provider-assessment.md). Summary:
+A comparative assessment is documented in [Data Provider Assessment](data-provider-assessment.md). Summary:
 
 | Provider | Coverage | Webhooks | Pricing | Role |
 |----------|----------|----------|---------|------|
-| **[PlanWire.io](https://planwire.io)** | 379 LPAs (all UK) | Yes | Free–£299/mo | **Primary** |
+| **[PlanIt](https://www.planit.org.uk/)** | 417 LPAs, ~20M applications | No | Free | **Primary** (polling-based ingestion) |
 | **[Gov.uk Planning Data](https://www.planning.data.gov.uk/)** | England only (beta) | No | Free | **Secondary** (supplementary boundary/designation data) |
-| **[PlanIt](https://www.planit.org.uk/)** | 417 LPAs, ~20M applications | No | Free | **Tertiary** (fallback, validation, bulk backfill) |
+| **[PlanWire.io](https://planwire.io)** | 379 LPAs (all UK) | Yes | Free–£299/mo | **Not used** (paid wrapper over PlanIt's dataset) |
 
 ### Recommended Data Strategy
 
-Use **PlanWire.io as the primary provider** — its webhook support is architecturally critical for Town Crier's push-notification-first design and zero-cost free tier strategy. Maintain the adapter-based architecture (`IPlanningDataProvider` port interface) to allow provider substitution:
+Use **PlanIt as the primary provider** with polling-based ingestion. The 15–30 minute polling latency is acceptable for planning applications with week-long consultation periods. Maintain the adapter-based architecture (`IPlanningDataProvider` port interface) to allow provider substitution:
 
-1. **Primary: PlanWire.io** — Webhook-driven ingestion as designed in the feature plan. Validate by signing up for the free tier and testing endpoints, webhooks, and data freshness.
+1. **Primary: PlanIt** — Polling-based ingestion as designed in [ADR 0006](adr/0006-planit-primary-data-provider.md) and the [feature plan](feature-plan.md).
 2. **Secondary: Gov.uk Planning Data** — Supplementary boundary and designation data as the platform matures.
-3. **Tertiary: PlanIt** — Fallback provider, data validation, and bulk backfill (5,000 results/page vs PlanWire's 100/page).
-4. **No architecture change needed** — The proposed webhook ingestion model can proceed as designed.
+3. **Adapter architecture** — enables future provider substitution if needed.
 
 ---
 
@@ -95,14 +95,15 @@ The proposed estimate of **£5-15/month** is realistic for low-to-moderate usage
 
 | Service | Estimated Cost |
 |---------|---------------|
-| PlanWire Starter (webhooks + 1,000 req/day) | £29/mo |
+| ~~PlanWire Starter (webhooks + 1,000 req/day)~~ | ~~£29/mo~~ |
+| PlanIt data provider | £0 |
 | Cosmos DB Serverless | £5–15/mo |
 | Azure Container Apps (consumption) | £0–10/mo |
 | Auth0 | £0 (free tier) |
 | Apple Developer Program | £79/year (~£6.60/mo) |
-| **Total baseline** | **~£41–61/mo** |
+| **Total baseline** | **~£17–32/mo** |
 
-This aligns with the original feature plan estimate of ~£40-55/mo. See [Data Provider Assessment](data-provider-assessment.md) for detailed cost projections at different user scales.
+> **Updated (2026-03-16):** The original estimate of ~£41–61/mo included PlanWire at £29/mo. With the switch to PlanIt (ADR 0006), the data provider cost drops to £0, reducing the baseline to ~£17–32/mo. See [feature plan](feature-plan.md) for current cost projections.
 
 ---
 
@@ -132,7 +133,7 @@ The proposed Auth0 integration is fully feasible as documented.
 | Personal | £1.99/mo | £0.30 | £1.69/mo |
 | Pro | £5.99/mo | £0.90 | £5.09/mo |
 
-**Revised break-even** (at ~£22/mo baseline): ~13 Personal subs or ~5 Pro subs. This is achievable.
+**Revised break-even** (at ~£17–32/mo baseline): ~19 Personal subs or ~6 Pro subs. This is achievable.
 
 ### GDPR Compliance
 
@@ -176,7 +177,7 @@ This eliminates the need for a separate spatial database or PostGIS. Watch zone 
 UK postcodes can be geocoded to lat/lng using:
 - **postcodes.io** — Free, open-source REST API for UK postcode lookups
 - **Ordnance Survey Data Hub** — Official government geospatial data
-- No PlanWire dependency needed for geocoding
+- No external data provider dependency needed for geocoding
 
 ---
 
@@ -217,10 +218,10 @@ UK postcodes can be geocoded to lat/lng using:
 
 | # | Risk | Severity | Likelihood | Mitigation |
 |---|------|----------|------------|------------|
-| 1 | **PlanWire.io unvalidated** — no third-party reviews, no published ToS, unknown company entity | Medium | Medium | Sign up for free tier, validate endpoints/webhooks/data freshness before committing. Maintain adapter architecture for provider substitution. |
-| 2 | **PlanWire.io availability/reliability** — single provider dependency with no published SLA (except Enterprise tier) | Medium | Low | Adapter-based architecture allows fallback to PlanIt. Cache aggressively in Cosmos DB. |
+| 1 | **PlanIt single-maintainer risk** — run by one developer (Andrew Speakman), bus factor of 1 | Medium | Low | Adapter-based architecture (`IPlanningDataProvider`) allows provider substitution. Cache aggressively in Cosmos DB. PlanWire or Gov.uk data as fallback. |
+| 2 | **PlanIt rate limits unpublished** — 429 responses enforced but thresholds unknown | Medium | Medium | Poll conservatively, exponential backoff on 429s, cache all data in Cosmos DB, serve user reads from own cache |
 | 3 | **Planning Alerts (planning.org.uk) as free competitor** | Medium | Certain | Differentiate on mobile UX, push notifications, map experience, and richer filtering |
-| 4 | **LPA coverage gaps** — PlanWire covers 379, PlanIt covers 417 | Low | Low | PlanIt adapter fills 38 LPA gap if needed; Gov.uk data improving |
+| 4 | **PlanIt no published ToS** — API has no explicit terms permitting or prohibiting commercial use | Low | Low | Data is public information under OGL. Poll conservatively, attribute visibly, contact maintainer to confirm acceptable use |
 | 5 | **SwiftData migration complexity** if data model evolves significantly | Low | Medium | Keep on-device schema simple; primary data lives in Cosmos DB |
 | 6 | **Apple App Store rejection** — planning apps are niche; review may question utility | Low | Low | Clear value proposition; strong precedent for location-based alert apps |
 | 7 | **Gov.uk Planning Data API is experimental** — may change or be discontinued | Low | Low | Use as supplementary source, not primary; Gov.uk has strong commitment to open planning data |
@@ -232,12 +233,7 @@ UK postcodes can be geocoded to lat/lng using:
 
 ### Must Do (Critical)
 
-1. **Validate PlanWire.io hands-on** before committing to production use
-   - Sign up for the free tier and obtain an API key
-   - Make live API calls and verify response data against known planning applications
-   - Register a test webhook and confirm delivery with HMAC-SHA256 signature verification
-   - Verify data freshness (daily updates as claimed)
-   - Move data provider rating from AMBER to GREEN once validated
+1. **Implement PlanIt polling service** — background service polling `GET /api/applics/json` with `different_start` date filter on a configurable interval (default: 15 minutes), with rate limit handling and exponential backoff on 429s
 
 2. **Implement `IPlanningDataProvider` port interface** in the application layer to abstract data provider details, enabling provider substitution if needed
 
@@ -245,11 +241,11 @@ UK postcodes can be geocoded to lat/lng using:
 
 3. **Add postcodes.io integration** for postcode-to-lat/lng geocoding (free, open-source)
 
-4. **Add PlanIt adapter** as fallback/validation provider — covers 38 additional LPAs and offers bulk retrieval (5,000/page)
+4. **Add Gov.uk Planning Data adapter** for supplementary boundary and designation data
 
-5. **Add Gov.uk Planning Data adapter** for supplementary boundary and designation data
+5. **Implement polling health monitoring** — automated alerts if polling fails or data freshness degrades
 
-6. **Implement PlanWire webhook health monitoring** — automated alerts if delivery stops, with fallback to PlanIt polling
+6. **Contact PlanIt maintainer** — introduce the project, confirm acceptable use, and offer attribution/donation arrangement
 
 ### Could Change (Optional)
 
@@ -259,19 +255,19 @@ UK postcodes can be geocoded to lat/lng using:
 
 ## 9. Go/No-Go Recommendation
 
-### Verdict: **GO** (with validation gate)
+### Verdict: **GO**
 
-Town Crier is feasible and addresses a genuine market gap. The core technical architecture (.NET 10, Azure Container Apps, Cosmos DB, Auth0, SwiftUI) is sound, cost-effective, and well-chosen. PlanWire.io is confirmed as a real service whose capabilities align with the proposed architecture. The cost base is low enough that break-even requires only ~5-13 paying subscribers.
+Town Crier is feasible and addresses a genuine market gap. The core technical architecture (.NET 10, Azure Container Apps, Cosmos DB, Auth0, SwiftUI) is sound, cost-effective, and well-chosen. PlanIt is the primary data provider (ADR 0006), eliminating the PlanWire subscription cost. The cost base is low enough that break-even requires only ~6-19 paying subscribers.
 
-**Proceed with one validation gate:**
+**Key actions:**
 
-1. **Mandatory (before production):** Validate PlanWire.io hands-on — sign up, test API calls, verify webhook delivery and data freshness. This should take 1-2 days and will move the data provider rating from AMBER to GREEN.
+1. **Build the PlanIt polling service** — the primary development task for Phase 1. Change detection via `different_start`, idempotent upserts, exponential backoff on 429s.
 
-2. **Advisory:** Implement the adapter-based architecture (`IPlanningDataProvider` port) to maintain provider substitution capability, with PlanIt as a ready fallback.
+2. **Implement the adapter-based architecture** (`IPlanningDataProvider` port) to maintain provider substitution capability.
 
-3. **Advisory:** Add postcodes.io integration for UK postcode geocoding.
+3. **Add postcodes.io integration** for UK postcode geocoding.
 
-**The project is viable** with a baseline cost of ~£41-61/month, a clear path to break-even, near-real-time push notifications via PlanWire webhooks, and meaningful differentiation from existing competitors through its native iOS experience.
+**The project is viable** with a baseline cost of ~£17–32/month (updated per ADR 0006), a clear path to break-even, push notifications driven by polling-based ingestion from PlanIt, and meaningful differentiation from existing competitors through its native iOS experience.
 
 See [Data Provider Assessment](data-provider-assessment.md) for the full comparative analysis of PlanWire.io, PlanIt, and Gov.uk Planning Data.
 

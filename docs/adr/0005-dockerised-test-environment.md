@@ -8,14 +8,14 @@ Accepted
 
 ## Context
 
-Integration tests require backing services (mock PlanWire API per ADR 0004, Cosmos DB emulator, and the Town Crier API itself). Manual setup of these services is error-prone and creates onboarding friction. We want a new developer to be able to clone the repo, open it in VSCode, and click "Run All Tests" — with all tests, including integration tests, passing on the first attempt.
+Integration tests require backing services (mock PlanIt API per ADR 0004, Cosmos DB emulator, and the Town Crier API itself). Manual setup of these services is error-prone and creates onboarding friction. We want a new developer to be able to clone the repo, open it in VSCode, and click "Run All Tests" — with all tests, including integration tests, passing on the first attempt.
 
 ## Decision
 
 We will use **Docker Compose** to fully containerise the test environment:
 
 1. **`docker-compose.yml`** at the repository root orchestrates all services needed for integration tests:
-   - Mock PlanWire.io API (ADR 0004)
+   - Mock PlanIt API (ADR 0004)
    - Town Crier API (built from `/api`)
    - Azure Cosmos DB emulator (or compatible substitute)
 

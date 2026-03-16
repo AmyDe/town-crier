@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering real-time push notifications to residents, community groups, and property professionals. It uses PlanWire.io as its external data provider (webhook-driven ingestion of planning data).
+Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006).
 
 ## Monorepo Structure
 
