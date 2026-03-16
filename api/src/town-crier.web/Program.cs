@@ -1,13 +1,16 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
+using TownCrier.Application.UserProfiles;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
+using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Web;
 using TownCrier.Web.Observability;
 using TownCrier.Web.Polling;
@@ -40,9 +43,15 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
 builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
+builder.Services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
+
+builder.Services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+builder.Services.AddTransient<CreateUserProfileCommandHandler>();
+builder.Services.AddTransient<GetUserProfileQueryHandler>();
+builder.Services.AddTransient<UpdateUserProfileCommandHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -91,7 +100,34 @@ v1.MapGet("/geocode/{postcode}", async (string postcode, GeocodePostcodeQueryHan
     }
 });
 
-app.MapGet("/api/me", () => Results.Ok())
-    .RequireAuthorization();
+v1.MapPost("/me", async (ClaimsPrincipal user, CreateUserProfileCommandHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new CreateUserProfileCommand(userId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapGet("/me", async (ClaimsPrincipal user, GetUserProfileQueryHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new GetUserProfileQuery(userId), ct).ConfigureAwait(false);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+v1.MapPatch("/me", async (ClaimsPrincipal user, UpdateUserProfileCommand command, UpdateUserProfileCommandHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var profileCommand = new UpdateUserProfileCommand(userId, command.Postcode, command.PushEnabled);
+
+    try
+    {
+        var result = await handler.HandleAsync(profileCommand, ct).ConfigureAwait(false);
+        return Results.Ok(result);
+    }
+    catch (UserProfileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
 
 await app.RunAsync().ConfigureAwait(false);

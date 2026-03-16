@@ -6,11 +6,21 @@ import TownCrierPresentation
 @main
 struct TownCrierApp: App {
     @StateObject private var coordinator: AppCoordinator
+    @StateObject private var loginViewModel: LoginViewModel
     private let crashReporter: CrashReporter
 
     init() {
         let repository = InMemoryPlanningApplicationRepository()
-        _coordinator = StateObject(wrappedValue: AppCoordinator(repository: repository))
+        let authService = Auth0AuthenticationService()
+
+        let appCoordinator = AppCoordinator(
+            repository: repository,
+            authService: authService
+        )
+        _coordinator = StateObject(wrappedValue: appCoordinator)
+        _loginViewModel = StateObject(
+            wrappedValue: appCoordinator.makeLoginViewModel()
+        )
 
         let reporter = MetricKitCrashReporter()
         reporter.start()
@@ -19,7 +29,11 @@ struct TownCrierApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView(viewModel: coordinator.makeHomeViewModel())
+            if loginViewModel.isAuthenticated {
+                HomeView(viewModel: coordinator.makeHomeViewModel())
+            } else {
+                LoginView(viewModel: loginViewModel)
+            }
         }
     }
 }

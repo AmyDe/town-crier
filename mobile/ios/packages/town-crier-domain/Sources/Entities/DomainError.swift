@@ -6,5 +6,8 @@ public enum DomainError: Error, Equatable, Sendable {
     case invalidCoordinate
     case invalidWatchZoneRadius
     case networkUnavailable
+    case authenticationFailed(String)
+    case sessionExpired
+    case logoutFailed(String)
     case unexpected(String)
 }

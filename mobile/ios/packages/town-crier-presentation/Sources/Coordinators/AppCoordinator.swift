@@ -4,10 +4,21 @@ import TownCrierDomain
 /// Root coordinator managing top-level navigation.
 @MainActor
 public final class AppCoordinator: ObservableObject {
-    private let repository: PlanningApplicationRepository
+    @Published public var detailApplication: PlanningApplication?
 
-    public init(repository: PlanningApplicationRepository) {
+    private let repository: PlanningApplicationRepository
+    private let authService: AuthenticationService
+
+    public init(
+        repository: PlanningApplicationRepository,
+        authService: AuthenticationService
+    ) {
         self.repository = repository
+        self.authService = authService
+    }
+
+    public func makeLoginViewModel() -> LoginViewModel {
+        LoginViewModel(authService: authService)
     }
 
     public func makeHomeViewModel() -> HomeViewModel {
@@ -28,7 +39,23 @@ public final class AppCoordinator: ObservableObject {
         return viewModel
     }
 
+    public func makeApplicationDetailViewModel(
+        application: PlanningApplication
+    ) -> ApplicationDetailViewModel {
+        let viewModel = ApplicationDetailViewModel(application: application)
+        viewModel.onDismiss = { [weak self] in
+            self?.detailApplication = nil
+        }
+        return viewModel
+    }
+
     private func showApplicationDetail(_ id: PlanningApplicationId) {
-        // Navigation to detail screen will be handled by tc-e5r.3
+        Task {
+            do {
+                detailApplication = try await repository.fetchApplication(by: id)
+            } catch {
+                // Detail navigation failed — stay on current screen
+            }
+        }
     }
 }
