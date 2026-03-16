@@ -35,8 +35,8 @@ You may be invoked in two ways:
 ### Spawning Teammates
 
 Use the `Agent` tool to spawn engineer teammates. Always provide:
-- `subagent_type`: the custom agent name (`ios-tdd-worker` or `dotnet-tdd-worker`)
-- `name`: a unique name for this teammate (e.g., `ios-worker-1`, `dotnet-worker-1`)
+- `subagent_type`: the custom agent name (`ios-tdd-worker`, `dotnet-tdd-worker`, `pulumi-infra-worker`, or `github-actions-worker`)
+- `name`: a unique name for this teammate (e.g., `ios-worker-1`, `dotnet-worker-1`, `infra-worker-1`, `cicd-worker-1`)
 - `team_name`: the team name you created with TeamCreate
 - `isolation`: `"worktree"` — gives each worker an isolated copy of the repo automatically
 - `prompt`: the bead ID (the worker will operate in its auto-created worktree)
@@ -90,10 +90,14 @@ For each ready bead, run `bd show <bead-id>` to read its title, description, and
 
 - **iOS/Swift** → assign to `ios-tdd-worker`
 - **.NET/C#** → assign to `dotnet-tdd-worker`
+- **Infrastructure/Pulumi** → assign to `pulumi-infra-worker`
+- **CI/CD/Pipelines** → assign to `github-actions-worker`
 
 Classification heuristics:
 - Beads mentioning Swift, SwiftUI, iOS, mobile, XCTest, ViewModel, Coordinator, or paths under `mobile/ios` → **iOS**
 - Beads mentioning .NET, C#, API, handler, endpoint, Cosmos, TUnit, or paths under `api` → **.NET**
+- Beads mentioning Pulumi, infrastructure, IaC, Azure resources, Container Apps, resource group, managed identity, or paths under `infra` → **Infra**
+- Beads mentioning CI/CD, pipeline, GitHub Actions, workflow, deployment, build automation, or paths under `.github/workflows` → **CI/CD**
 - If ambiguous, read the bead description more carefully via `bd show`. If still unclear, ask the user.
 
 ### Phase 2: Dispatch Workers
@@ -102,8 +106,8 @@ Spawn worker agents for each bead. Use `isolation: "worktree"` — this automati
 
 ```
 Agent:
-  subagent_type: "ios-tdd-worker" (or "dotnet-tdd-worker")
-  name: "ios-worker-1" (or "dotnet-worker-1") — increment the number for each new agent
+  subagent_type: "ios-tdd-worker" | "dotnet-tdd-worker" | "pulumi-infra-worker" | "github-actions-worker"
+  name: "ios-worker-1" | "dotnet-worker-1" | "infra-worker-1" | "cicd-worker-1" — increment for each new agent
   team_name: "<your team name>"
   isolation: "worktree"
   model: "opus"

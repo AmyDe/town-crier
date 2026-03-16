@@ -98,7 +98,7 @@ The proposed estimate of **£5-15/month** is realistic for low-to-moderate usage
 | ~~PlanWire Starter (webhooks + 1,000 req/day)~~ | ~~£29/mo~~ |
 | PlanIt data provider | £0 |
 | Cosmos DB Serverless | £5–15/mo |
-| Azure Container Apps (consumption) | £0–10/mo |
+| Azure Container Apps (consumption) | £5–10/mo |
 | Auth0 | £0 (free tier) |
 | Apple Developer Program | £79/year (~£6.60/mo) |
 | **Total baseline** | **~£17–32/mo** |
@@ -218,7 +218,7 @@ UK postcodes can be geocoded to lat/lng using:
 
 | # | Risk | Severity | Likelihood | Mitigation |
 |---|------|----------|------------|------------|
-| 1 | **PlanIt single-maintainer risk** — run by one developer (Andrew Speakman), bus factor of 1 | Medium | Low | Adapter-based architecture (`IPlanningDataProvider`) allows provider substitution. Cache aggressively in Cosmos DB. PlanWire or Gov.uk data as fallback. |
+| 1 | **PlanIt single-maintainer risk** — run by one developer (Andrew Speakman), bus factor of 1 | Medium | Low | Adapter-based architecture (`IPlanningDataProvider`) allows provider substitution. Cache aggressively in Cosmos DB. Gov.uk Planning Data as supplementary/fallback source. |
 | 2 | **PlanIt rate limits unpublished** — 429 responses enforced but thresholds unknown | Medium | Medium | Poll conservatively, exponential backoff on 429s, cache all data in Cosmos DB, serve user reads from own cache |
 | 3 | **Planning Alerts (planning.org.uk) as free competitor** | Medium | Certain | Differentiate on mobile UX, push notifications, map experience, and richer filtering |
 | 4 | **PlanIt no published ToS** — API has no explicit terms permitting or prohibiting commercial use | Low | Low | Data is public information under OGL. Poll conservatively, attribute visibly, contact maintainer to confirm acceptable use |

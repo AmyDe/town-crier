@@ -9,15 +9,15 @@
 Town Crier uses a **polling service** (not webhooks) to ingest data from PlanIt:
 
 - A background service in Azure Container Apps polls PlanIt on a configurable interval (default: 15 minutes).
-- Each poll queries `GET /api/applics/json` filtered by `recently_changed` to retrieve applications modified since the last successful poll.
-- Results are diffed against Cosmos DB and upserted. The PlanIt application ID is the idempotency key.
+- Each poll queries `GET /api/applics/json` filtered by `different_start` to retrieve applications whose content actually changed since the last successful poll (not `changed_start`, which updates on every scrape cycle even when content is unchanged — see [ADR 0006](adr/0006-planit-primary-data-provider.md)).
+- Results are diffed against Cosmos DB and upserted. The PlanIt `name` field (`{area_name}/{uid}`) is the globally unique idempotency key.
 - 15–30 minute polling latency is acceptable — planning consultation periods are measured in weeks.
 
 ### Available PlanIt Capabilities
 
 | Capability | Endpoint | Notes |
 |-----------|----------|-------|
-| List/filter applications | `GET /api/applics/json` | Filter by authority, postcode, status, type, date range, `recently_changed` |
+| List/filter applications | `GET /api/applics/json` | Filter by authority, postcode, status, type, date range, `different_start`/`changed_start` |
 | Nearby spatial search | `GET /api/applics/json` | lat/lng + radius parameters |
 | Get application by ID | `GET /api/applics/json?uid=` | PlanIt UID lookup |
 | List authorities | `GET /api/authorities/json` | 417 LPAs with metadata |
@@ -120,8 +120,8 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 1.1 | PlanIt polling service | Background service polling `GET /api/applics/json?recently_changed=` on configurable interval (default 15 min), with rate limit handling and exponential backoff on 429s |
-| 1.2 | Application ingestion | Diff polled results against Cosmos DB, idempotent upsert by PlanIt application ID into Applications container |
+| 1.1 | PlanIt polling service | Background service polling `GET /api/applics/json?different_start={last_poll_iso}&pg_sz=5000&sort=-last_different` on configurable interval (default 15 min), with rate limit handling and exponential backoff on 429s |
+| 1.2 | Application ingestion | Diff polled results against Cosmos DB, idempotent upsert by PlanIt `name` field (`{area_name}/{uid}`, globally unique) into Applications container |
 | 1.3 | Watch zone matching | On ingestion, spatial match of application lat/lng against active user watch zones |
 | 1.4 | Polling scope management | Configure polling queries filtered by authority for areas with active users, expanding coverage as user base grows |
 | 1.5 | Backfill (paid users only) | On zone creation for Personal/Pro users, query PlanIt `GET /api/applics/json` with location parameters to seed recent applications |
@@ -171,7 +171,7 @@ The free tier avoids ongoing costs by:
 | Area | Approach |
 |------|----------|
 | API cost management | Cache all polled data in Cosmos DB. Serve browse/list/map/detail from own data. Only call PlanIt for backfill and full-text search |
-| Polling reliability | Idempotent upserts keyed on PlanIt application ID. Track last successful poll timestamp for change detection |
+| Polling reliability | Idempotent upserts keyed on PlanIt `name` field (`{area_name}/{uid}`). Track last successful poll timestamp for change detection |
 | Polling scaling | Start with authority-scoped polls for areas with active users. Broaden coverage as user density grows |
 | Rate limit handling | Respect 429 responses, exponential backoff. PlanIt rate limits are unpublished — poll conservatively |
 | Data freshness | Polling provides 15–30 minute latency, acceptable for planning applications with week-long consultation periods |

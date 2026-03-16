@@ -134,7 +134,7 @@ The `IPlanningDataProvider` port interface remains critical. The adapter-based a
 
 ### What becomes easier
 
-- **Lower baseline cost** — £0 data provider cost vs £29–99/mo for PlanWire. Baseline drops from ~£40–55/mo to ~£15–30/mo.
+- **Lower baseline cost** — £0 data provider cost vs £29–99/mo for PlanWire. Baseline drops from ~£40–55/mo to ~£17–32/mo.
 - **No API key management** — PlanIt requires no authentication. Simpler secrets management, easier contributor onboarding.
 - **Better coverage** — 417 LPAs vs 379. No coverage gaps to fill.
 - **Better backfill** — 5,000 results/page vs PlanWire's 100. One-time zone backfill is faster and cheaper.

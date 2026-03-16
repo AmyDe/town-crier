@@ -1,4 +1,6 @@
-# ADR 0001: Initial Tech Stack Decision
+# 0001. Initial Tech Stack Decision
+
+Date: 2026-03-16
 
 ## Status
 Accepted
@@ -17,7 +19,7 @@ We will use the following technology stack for the initial prototype and develop
 6.  **CI/CD:** **GitHub Actions** for automated building, testing, and deployment.
 7.  **IaC:** **Pulumi** using **.NET 10 (C#)** for infrastructure as code.
 
-## Rationale
+### Rationale
 - **Native Swift (iOS):** Provides the best performance, access to the latest platform APIs, and the most refined user experience for iPhone users.
 - **.NET 10:** Released in November 2025, .NET 10 provides the latest performance enhancements and stability features, making it the ideal choice for building efficient and scalable APIs.
 - **Azure Container Apps (Consumption):** Offers a "scale-to-zero" model with a superior free tier (2M requests/month), ensuring near-zero costs when the application is idle and lower operational costs than Functions.

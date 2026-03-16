@@ -101,8 +101,13 @@ public sealed class DecidePlanningApplicationCommandHandler
 - **Framework:** Use **TUnit** for all testing.
 - **Unit of Work:** **Handlers** (Command/Query) are the primary testable unit in almost all cases.
 - **Workflow:** Strict **Red-Green-Refactor**. Write the test *before* the implementation.
+- **No Mocking Frameworks:** Never add dependencies on mocking libraries (Moq, NSubstitute, FakeItEasy, etc.). They rely on reflection/dynamic proxies which are incompatible with Native AOT, and they encourage testing implementation details rather than behavior.
+- **Test Doubles — Preference Order:**
+    1. **Real implementations** — Use the actual class when feasible (e.g., a real in-memory repository, a real domain service with no external dependencies).
+    2. **Hand-written fakes** — When a real implementation has external dependencies (database, HTTP), create a simple in-memory fake that implements the same Port interface. Fakes live in the test project and use in-memory collections (e.g., `List<T>` or `Dictionary<TKey, TValue>`) to simulate persistence.
+    3. **Hand-written spies** — When you need to verify that an interaction occurred (e.g., an event was published), create a spy that records calls. Keep spies minimal.
 - **Methodology:**
-    - **Setup:** Create test doubles for Port interfaces using manual fakes (in-memory collections behind the interface).
+    - **Setup:** Create test doubles for Port interfaces using the preference order above.
     - **Arrange:** Seed the fake repositories with domain entities built via the **Builder Pattern**.
     - **Act:** Execute the Handler.
     - **Assert:** Verify outcomes by inspecting handler return values, repository state, or domain entity state.

@@ -1,4 +1,6 @@
-# ADR 0003: External Data Provider Selection
+# 0003. External Data Provider Selection
+
+Date: 2026-03-16
 
 ## Status
 Superseded by [0006](0006-planit-primary-data-provider.md)
@@ -9,7 +11,7 @@ The "town-crier" application requires a comprehensive and reliable source of UK 
 ## Decision
 We will use **PlanWire.io** as our primary external data provider for sourcing planning application data across the UK.
 
-## Rationale
+### Rationale
 - **Comprehensive Coverage:** Supports 379 Local Planning Authorities (LPAs) across the UK, providing near-total national coverage from a single integration point.
 - **Webhook Integration:** Offers native webhook support for `application.new` and `application.updated` events. This is critical for our push-notification-first architecture, as it allows for reactive data ingestion rather than expensive polling.
 - **Cost-Effective Scaling:** 
@@ -18,7 +20,7 @@ We will use **PlanWire.io** as our primary external data provider for sourcing p
 - **Rich Data & Search:** Provides normalized JSON data including addresses, geospatial coordinates (lat/lng), descriptions, and status updates, which simplifies our backend logic.
 - **Developer-Friendly:** Standard REST API with HMAC-signed webhooks ensures secure and straightforward integration with our .NET 10 backend.
 
-## Validation (2026-03-16)
+### Validation (2026-03-16)
 
 Live API testing on the free tier confirmed PlanWire.io is a real, operational service returning genuine UK planning data.
 

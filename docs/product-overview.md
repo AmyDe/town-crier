@@ -15,7 +15,7 @@ Town Crier is a mobile-first application that monitors local authority planning 
 
 ## Core Features
 1.  **Watch Zones:** Users define areas of interest by entering a postcode and radius, receiving alerts for planning applications within that zone.
-2.  **Push Notifications:** Instant alerts are sent to the user's iOS device as soon as a new planning application is detected in a followed authority.
+2.  **Push Notifications:** Instant alerts are sent to the user's iOS device as soon as a new planning application is detected within a watch zone.
 3.  **Application Monitoring:** A central feed of all recent applications across followed authorities, with the ability to filter by status or date.
 4.  **Detail Deep-Dive:** View key details of an application, including descriptions, locations, and direct links to the official council portal for formal comments.
 

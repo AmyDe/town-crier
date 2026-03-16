@@ -11,7 +11,7 @@
 
 This assessment originally recommended **PlanWire.io as the primary data provider**, with **Gov.uk Planning Data as a secondary/supplementary source** and **PlanIt as a tertiary fallback and validation reference**. This recommendation has been **superseded by ADR 0006**, which promotes PlanIt to the primary role.
 
-PlanWire.io is a real, operational service with a live website, functional API documentation, signup flow, and code examples. It is the **only provider offering webhook support**, which is critical for Town Crier's push-notification-first architecture. The previous feasibility report's RED rating for the data provider was based on the conclusion that PlanWire.io "does not exist" — this assessment finds that conclusion to be **incorrect**. PlanWire.io exists, is operational, and its documented capabilities align closely with Town Crier's feature plan.
+PlanWire.io is a real, operational service with a live website, functional API documentation, signup flow, and code examples. It is the **only provider offering webhook support**. However, validation revealed that PlanWire is a paid wrapper over PlanIt's dataset, so the webhook convenience does not justify the £29–99/mo subscription cost.
 
 However, PlanWire.io has **no third-party reviews, community mentions, or independent verification** of its claims. This is a risk that must be mitigated through early integration testing and maintaining the adapter-based architecture that allows provider substitution.
 
@@ -142,7 +142,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | **Webhook filtering** | Council, postcode prefix, status, type | N/A | N/A |
 | **Webhook security** | HMAC-SHA256 | N/A | N/A |
 | **Full-text search** | Yes (GIN indexes) | Yes (quoted phrases, OR, negation) | Basic (postcode/UPRN) |
-| **Data freshness** | Daily updates | Unknown (likely daily) | Varies by dataset |
+| **Data freshness** | Daily updates | Hourly scrape cycles (`last_changed`), content-change tracking via `last_different` | Varies by dataset |
 | **Authentication** | API key | None (rate-limited by IP) | None |
 | **Rate limits** | 100-unlimited/day by plan | Enforced, thresholds unpublished | Enforced, thresholds unpublished |
 | **Pricing** | Free-£299/mo | Free (donations welcome) | Free |

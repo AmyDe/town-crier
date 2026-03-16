@@ -1,4 +1,6 @@
-# ADR 0002: Monorepo Directory Structure
+# 0002. Monorepo Directory Structure
+
+Date: 2026-03-16
 
 ## Status
 Accepted
@@ -15,8 +17,8 @@ The project requires a structure to house multiple distinct components (iOS app,
 Located in `/api`, following a **Hexagonal (Ports & Adapters)** pattern:
 - `src/town-crier.domain/`: **Domain Layer (Core)** - Pure business logic, Entities, and Value Objects. No external dependencies.
 - `src/town-crier.application/`: **Application Layer (Ports)** - Use Cases, Command/Query Handlers, and Port interfaces. Lightweight orchestrators that delegate to the Domain.
-- `src/town-crier.infrastructure/`: **Infrastructure Layer (Adapters)** - Implementations of Ports (Repositories, API Clients), and Controllers.
-- `src/town-crier.web/`: **Web/Entry Point** - Program.cs, configuration, and Native AOT bootstrap.
+- `src/town-crier.infrastructure/`: **Infrastructure Layer (Driven Adapters)** - Implementations of outbound Ports (Repositories, API Clients).
+- `src/town-crier.web/`: **Web/Entry Point (Driving Adapter)** - Controllers, Program.cs, configuration, and Native AOT bootstrap.
 - `tests/town-crier.application.tests/`: **Primary Testing Unit** - TUnit tests focusing on Handlers and business behavior.
 
 *Note: While directory names and project files use `town-crier.*` (lowercase), internal C# namespaces should follow standard .NET PascalCase conventions (e.g., `TownCrier.Domain`).*
@@ -39,7 +41,7 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
 - `tests/town-crier.infra.tests/`: Unit tests for infrastructure policies and configurations.
 
 
-## Rationale
+### Rationale
 - **Flat Structure:** Minimizes nesting depth and simplifies navigation for a project with a known, finite set of applications.
 - **Source/Test Separation:** Ensures testability is a first-class concern and keeps production code clean.
 - **Hexagonal Architecture (.NET):** Decouples business logic from external concerns (DB, API), ensuring the Domain remains pure and testable.
