@@ -118,11 +118,13 @@ The free tier avoids ongoing costs by:
 | 0.5 | Auth0 integration | Username/password registration and login, passkeys + TOTP 2FA, Sign in with Apple, JWT validation in API, Auth0 Swift SDK in iOS app |
 | 0.6 | User profile & preferences | Cosmos DB user container storing postcode, watch zone, notification preferences, subscription tier |
 | 0.7 | Cosmos DB data model | Containers: Users, WatchZones, Applications, Notifications. Partition strategy aligned with access patterns. Spatial index policy on Applications container for ST_DISTANCE queries against application lat/lng |
-| 0.8 | App Store Connect setup | Apple Developer Program enrolment, App Store Connect app record, provisioning profiles (development + distribution), TestFlight configuration, bundle identifiers. Required before iOS CI/CD pipeline can archive or distribute |
-| 0.9 | Structured logging & observability | Structured JSON logging via `ILogger` with correlation IDs. Application-level health metrics (request latency, error rates) surfaced in Log Analytics. Lays groundwork for polling health monitoring (1.7) |
+| 0.8 | App Store Connect setup | Apple Developer Program enrolment, App Store Connect app record, provisioning profiles (development + distribution), TestFlight configuration, bundle identifiers. App Store metadata: description, keywords, category (Utilities or Navigation), age rating questionnaire, screenshots for all required device sizes (6.7", 6.5", 5.5"), app preview video (optional). Required before iOS CI/CD pipeline can archive or distribute |
+| 0.9 | Structured logging & observability | Structured JSON logging via `ILogger` with correlation IDs. Application-level health metrics (request latency, error rates) surfaced in Log Analytics. Crash reporting in iOS (consider lightweight solution — e.g., Firebase Crashlytics or native `MetricKit` crash diagnostics). Lays groundwork for polling health monitoring (1.7) |
 | 0.10 | API versioning | URL-path versioning (`/v1/`) from day one. iOS clients in the field cannot be force-updated, so breaking changes require a new version segment. Old versions supported for a minimum deprecation window |
-| 0.11 | StoreKit 2 & subscription management | iOS: StoreKit 2 integration for Personal and Pro auto-renewable subscriptions, transaction listener, entitlement resolution. API: Apple App Store Server Notifications v2 endpoint for real-time subscription lifecycle events (renewal, expiry, refund, grace period). Cosmos DB stores canonical subscription state per user, synced from server notifications. Receipt validation via App Store Server API (not on-device) |
-| 0.12 | Privacy & account management | GDPR compliance: privacy policy (in-app and App Store listing), data export endpoint (`GET /v1/me/data`), account deletion endpoint (`DELETE /v1/me`) that purges user data, watch zones, and device tokens. Account deletion is also an App Store Review requirement. Consent capture for notification permissions and data processing |
+| 0.11 | StoreKit 2 & subscription management | iOS: StoreKit 2 integration for Personal and Pro auto-renewable subscriptions, transaction listener, entitlement resolution, "Restore Purchases" button (App Store requirement), and subscription disclosure UI showing auto-renewal terms, price, and cancellation instructions before purchase (App Store requirement). Optional free trial period (e.g., 7-day Personal trial) to drive conversion. API: Apple App Store Server Notifications v2 endpoint for real-time subscription lifecycle events (renewal, expiry, refund, grace period, billing retry). Cosmos DB stores canonical subscription state per user, synced from server notifications. Receipt validation via App Store Server API (not on-device). User-facing billing state: clear messaging during grace periods and billing retry windows |
+| 0.12 | Privacy & account management | GDPR compliance: privacy policy (in-app and App Store listing), Terms of Service / EULA (custom, covering subscription terms and data usage — Apple provides a default EULA but subscription apps benefit from a custom one), data export endpoint (`GET /v1/me/data`), account deletion endpoint (`DELETE /v1/me`) that purges user data, watch zones, and device tokens. Account deletion is also an App Store Review requirement. Consent capture for notification permissions and data processing |
+| 0.13 | API rate limiting | Per-user request throttling on the Town Crier API using sliding window middleware. Prevents abuse from free-tier clients and protects downstream resources. Separate rate limit tiers aligned with subscription tiers |
+| 0.14 | App Store review preparation | Demo/review account with pre-seeded data so Apple reviewers (based in the US) can exercise all features without needing a real UK postcode. Review notes explaining how to trigger notifications. TestFlight beta testing phase before public submission |
 
 ### Phase 1 — Data Pipeline
 
@@ -135,6 +137,7 @@ The free tier avoids ongoing costs by:
 | 1.5 | Polling scope management | Configure polling queries filtered by authority for areas with active users, expanding coverage as user base grows |
 | 1.6 | Backfill (paid users only) | On zone creation for Personal/Pro users, query PlanIt `GET /api/applics/json` with location parameters to seed recent applications |
 | 1.7 | Polling health monitoring | Automated alerts if polling fails or data freshness degrades beyond configurable thresholds. Track last successful poll timestamp, consecutive failures, and data staleness |
+| 1.8 | Free-tier cold-start seed | On zone creation for free users, seed the map/list with a lightweight snapshot of recent applications already cached in Cosmos DB (no PlanIt API call — query existing data by spatial match). Prevents the empty-screen problem where free users see nothing until the next poll cycle covers their area. Distinct from paid backfill (1.6) which fetches fresh data from PlanIt |
 
 ### Phase 2 — Push Notifications (MVP)
 
@@ -149,13 +152,17 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 3.1 | Map view | MapKit with application pins, colour-coded by status (Pending/Approved/Refused/Withdrawn) |
-| 3.2 | Application detail | Address, description, status, dates, decision, link to council portal for public comments |
-| 3.3 | Application list | Filterable list within watch zone. Free: browse only. Personal+: filter by status/type/date |
-| 3.4 | Watch zone management | Add/edit/delete zones with postcode entry + radius picker + map preview. Free limited to 1 zone |
-| 3.5 | Full-text search | Pro tier only. Pass-through to PlanIt search parameters |
-| 3.6 | Deep links | Tap notification → opens relevant application detail screen |
-| 3.7 | Offline caching | SwiftData local persistence of applications, watch zones, and notification history. App remains browsable without connectivity. Background sync on reconnect. Cache invalidation aligned with polling freshness (15–30 min TTL) |
+| 3.1 | Onboarding flow | First-launch experience: welcome screens explaining the app's value, postcode entry, watch zone creation wizard (radius picker + map preview), notification permission prompt (deferred to this contextual moment, not on first launch). Guides users to a functional state before they hit the main UI |
+| 3.2 | Map view | MapKit with application pins, colour-coded by status (Pending/Approved/Refused/Withdrawn) |
+| 3.3 | Application detail | Address, description, status, dates, decision, link to council portal for public comments |
+| 3.4 | Application list | Filterable list within watch zone. Free: browse only. Personal+: filter by status/type/date |
+| 3.5 | Watch zone management | Add/edit/delete zones with postcode entry + radius picker + map preview. Free limited to 1 zone |
+| 3.6 | Full-text search | Pro tier only. Pass-through to PlanIt search parameters |
+| 3.7 | Deep links | Tap notification → opens relevant application detail screen |
+| 3.8 | Offline caching | SwiftData local persistence of applications, watch zones, and notification history. App remains browsable without connectivity. Background sync on reconnect. Cache invalidation aligned with polling freshness (15–30 min TTL) |
+| 3.9 | Settings & account screen | Centralised settings: account info (email, auth method), notification preferences, subscription management (links to iOS subscription settings), watch zone list, data attribution display (PlanIt, Crown Copyright, OS, OSM — see [Attribution Requirements](#attribution-requirements-mandatory)), privacy policy, Terms of Service, account deletion, app version |
+| 3.10 | Empty & error states | Purposeful empty states for all list/map screens: map with no applications ("Checking for planning applications near you..."), notification feed with no history, search with no results. Error states for connectivity loss (beyond offline caching — explicit "No connection" banner with retry), API errors, and auth session expiry. Loading skeletons for data-fetching screens |
+| 3.11 | Force-update mechanism | On app launch, check minimum supported API version against a server-side config value. If the installed app is below the minimum, show a blocking modal directing users to the App Store. Ties into API versioning (0.10) to safely deprecate old endpoints |
 
 ### Phase 4 — Engagement & Retention
 
@@ -280,6 +287,9 @@ All application secrets live in **GitHub Actions secrets** and are injected into
 | Data freshness | Polling provides 15–30 minute latency, acceptable for planning applications with week-long consultation periods |
 | Tier enforcement | API enforces limits (notification cap, zone count, radius, search access). iOS app shows upgrade prompts at limit boundaries |
 | PlanIt maintainer outreach | Contact Andrew Speakman (PlanIt maintainer) pre-launch to introduce the project, confirm acceptable use, and offer attribution/donation arrangement |
-| API rate limiting | Per-user request throttling on the Town Crier API (e.g., sliding window via middleware). Prevents abuse from free-tier clients and protects downstream resources |
+| API rate limiting | Per-user request throttling (see 0.13). Prevents abuse from free-tier clients and protects downstream resources |
 | Data retention | TTL policy on Applications container for planning applications older than a configurable threshold (e.g., 2 years past decision date). Keeps Cosmos DB storage costs bounded as data accumulates. Archived data available via PlanIt if needed |
-| Privacy / GDPR | Privacy policy published in-app and on App Store listing. Data export and account deletion endpoints (see 0.12). Minimal data collection — no tracking beyond what's needed for core functionality. Cookie-free API (JWT bearer tokens only) |
+| Privacy / GDPR | Privacy policy and Terms of Service published in-app and on App Store listing. Data export and account deletion endpoints (see 0.12). Minimal data collection — no tracking beyond what's needed for core functionality. Cookie-free API (JWT bearer tokens only) |
+| App Store compliance | Subscription disclosure (auto-renewal terms, price, cancellation), Restore Purchases button, account deletion, demo account for Apple reviewers, privacy nutrition labels. See 0.11, 0.12, 0.14 |
+| Cold-start UX | Free users get spatial-matched cached data on zone creation (1.8). Paid users get PlanIt backfill (1.6). No user should see an empty screen after onboarding |
+| Data attribution | PlanIt, Crown Copyright, OS, and OSM attributions displayed in Settings screen (3.9) and on map view. Required by data licensing terms |
