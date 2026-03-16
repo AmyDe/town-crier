@@ -13,4 +13,10 @@ public final class AppCoordinator: ObservableObject {
     public func makeHomeViewModel() -> HomeViewModel {
         HomeViewModel()
     }
+
+    public func makeLegalDocumentViewModel(
+        _ documentType: LegalDocumentType
+    ) -> LegalDocumentViewModel {
+        LegalDocumentViewModel(documentType: documentType)
+    }
 }
