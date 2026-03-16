@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="town-crier.web.tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\town-crier.infrastructure\town-crier.infrastructure.csproj" />
   </ItemGroup>
 
