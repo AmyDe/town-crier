@@ -116,7 +116,7 @@ The `other_fields` object varies by council/scraper type and may include: `ward_
 
 #### Design Implications
 
-1. **No geocoding needed** — GeoJSON `location` and flat `location_x`/`location_y` are included on most records. Spatial watch-zone matching can use these directly.
+1. **No geocoding needed** — GeoJSON `location` and flat `location_x`/`location_y` are included on 91% of records. Spatial watch-zone matching can use these directly.
 2. **`select` parameter is slower** — queries with field projection took up to 10s vs 0.17–0.55s without. The poller should fetch full records rather than projecting.
 3. **Spatial queries are available but slower** — postcode + radius queries (1.5–3.6s) are useful for initial zone backfill but not for polling. Polling should use date-range filters only.
 4. **5,000 results/page confirmed** — at a 15-minute polling interval, change volumes should be well under this limit. A single request per poll cycle is sufficient.

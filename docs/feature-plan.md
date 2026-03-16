@@ -19,8 +19,8 @@ Town Crier uses a **polling service** (not webhooks) to ingest data from PlanIt:
 |-----------|----------|-------|
 | List/filter applications | `GET /api/applics/json` | Filter by authority, postcode, status, type, date range, `different_start`/`changed_start` |
 | Nearby spatial search | `GET /api/applics/json` | lat/lng + radius parameters |
-| Get application by ID | `GET /api/applics/json?uid=` | PlanIt UID lookup |
-| List authorities | `GET /api/authorities/json` | 417 LPAs with metadata |
+| Get application by ID | `GET /planapplic/{id}/json` | PlanIt UID lookup (also available via `GET /api/applics/json?uid=`) |
+| List authorities | `GET /api/areas/json` | 417 LPAs with metadata |
 
 ### PlanIt Pricing
 
@@ -64,7 +64,7 @@ Town Crier must display data attribution in the app and on any public-facing sur
 | **Target user** | Curious resident | Homeowner / engaged local | Property professional / community organiser |
 | Watch zones | 1 | 1 | Unlimited |
 | Radius | 1km | 5km | 10km |
-| Notifications | 5/week (new apps only) | Unlimited new + decisions | Unlimited all events |
+| Notifications | 5/week (new apps only) | Unlimited (new, status changes, decisions) | Unlimited (all events) |
 | Data | Forward-only (no backfill) | Instant backfill of recent history | Instant backfill |
 | Search | Browse cached list | Browse + filter by status/type | Full-text search |
 
@@ -122,9 +122,11 @@ The free tier avoids ongoing costs by:
 |---|---------|---------|
 | 1.1 | PlanIt polling service | Background service polling `GET /api/applics/json?different_start={last_poll_iso}&pg_sz=5000&sort=-last_different` on configurable interval (default 15 min), with rate limit handling and exponential backoff on 429s |
 | 1.2 | Application ingestion | Diff polled results against Cosmos DB, idempotent upsert by PlanIt `name` field (`{area_name}/{uid}`, globally unique) into Applications container |
-| 1.3 | Watch zone matching | On ingestion, spatial match of application lat/lng against active user watch zones |
-| 1.4 | Polling scope management | Configure polling queries filtered by authority for areas with active users, expanding coverage as user base grows |
-| 1.5 | Backfill (paid users only) | On zone creation for Personal/Pro users, query PlanIt `GET /api/applics/json` with location parameters to seed recent applications |
+| 1.3 | Postcode geocoding | Integrate [postcodes.io](https://postcodes.io) to convert user-entered postcodes to lat/lng coordinates for watch zone storage. Required for spatial matching in Cosmos DB (ST_DISTANCE queries against application locations) |
+| 1.4 | Watch zone matching | On ingestion, spatial match of application lat/lng against active user watch zones (stored as geocoded centre point + radius in Cosmos DB) |
+| 1.5 | Polling scope management | Configure polling queries filtered by authority for areas with active users, expanding coverage as user base grows |
+| 1.6 | Backfill (paid users only) | On zone creation for Personal/Pro users, query PlanIt `GET /api/applics/json` with location parameters to seed recent applications |
+| 1.7 | Polling health monitoring | Automated alerts if polling fails or data freshness degrades beyond configurable thresholds. Track last successful poll timestamp, consecutive failures, and data staleness |
 
 ### Phase 2 — Push Notifications (MVP)
 
@@ -154,7 +156,7 @@ The free tier avoids ongoing costs by:
 | 4.2 | Decision alerts | Targeted notification when a bookmarked application gets a decision |
 | 4.3 | Saved applications | Bookmark specific applications for ongoing monitoring (all tiers) |
 | 4.4 | Weekly digest | Push summary: "X new applications near you this week" (Personal+ tier) |
-| 4.5 | Authority directory | Browse/search 417 authorities from cached `GET /api/authorities/json` data |
+| 4.5 | Authority directory | Browse/search 417 authorities from cached `GET /api/areas/json` data |
 
 ### Phase 5 — Growth
 
@@ -163,6 +165,7 @@ The free tier avoids ongoing costs by:
 | 5.1 | Dynamic polling optimisation | Adjust polling frequency and authority scope based on active user distribution to minimise PlanIt API load |
 | 5.2 | Public comments (investigation) | Evaluate: deep links to council portals or selective scraping |
 | 5.3 | Community groups | Shared watch zones for neighbourhood associations, parish councils |
+| 5.4 | Gov.uk Planning Data adapter | Integrate Gov.uk Planning Data as supplementary source for boundary, designation, and conservation area data to enrich application context |
 
 ---
 
@@ -176,3 +179,4 @@ The free tier avoids ongoing costs by:
 | Rate limit handling | Respect 429 responses, exponential backoff. PlanIt rate limits are unpublished — poll conservatively |
 | Data freshness | Polling provides 15–30 minute latency, acceptable for planning applications with week-long consultation periods |
 | Tier enforcement | API enforces limits (notification cap, zone count, radius, search access). iOS app shows upgrade prompts at limit boundaries |
+| PlanIt maintainer outreach | Contact Andrew Speakman (PlanIt maintainer) pre-launch to introduce the project, confirm acceptable use, and offer attribution/donation arrangement |

@@ -13,7 +13,7 @@ This assessment originally recommended **PlanWire.io as the primary data provide
 
 PlanWire.io is a real, operational service with a live website, functional API documentation, signup flow, and code examples. It is the **only provider offering webhook support**. However, validation revealed that PlanWire is a paid wrapper over PlanIt's dataset, so the webhook convenience does not justify the £29–99/mo subscription cost.
 
-However, PlanWire.io has **no third-party reviews, community mentions, or independent verification** of its claims. This is a risk that must be mitigated through early integration testing and maintaining the adapter-based architecture that allows provider substitution.
+PlanWire.io also had **no third-party reviews, community mentions, or independent verification** of its claims, which further supported the decision to go directly to PlanIt.
 
 ---
 
@@ -135,7 +135,7 @@ The Planning Data platform is a government-run service by MHCLG (Ministry of Hou
 | Feature | PlanWire.io | PlanIt (planit.org.uk) | Gov.uk Planning Data |
 |---------|-------------|----------------------|---------------------|
 | **Coverage (LPAs)** | 379 (all UK) | 417 (all UK) | England only |
-| **Total applications** | Not published | ~20 million | N/A (entity-based) |
+| **Total applications** | ~3.8 million (confirmed via API) | ~20 million | N/A (entity-based) |
 | **Application search** | Yes (filter by council, postcode, status, type, date, full-text) | Yes (filter by authority, postcode, radius, date, status, type, full-text) | Limited (entity search, not application-specific) |
 | **Spatial search** | PostGIS radius (1-50km) | Radius (km), bbox, polygon | WKT geometry, DE-9IM relations |
 | **Webhooks** | Yes (`application.new`, `application.updated`) | No | No |
@@ -258,13 +258,13 @@ PlanIt was validated via live API calls (see ADR 0006 for full results). All cri
 | Cost Component | 0-100 users | 100-1,000 users | 1,000-10,000 users |
 |---------------|-------------|-----------------|-------------------|
 | **PlanIt data provider** | £0 | £0 | £0 |
-| **Cosmos DB Serverless** | £5-10/mo | £10-25/mo | £25-60/mo |
+| **Cosmos DB Serverless** | £5-15/mo | £10-25/mo | £25-60/mo |
 | **Azure Container Apps** | £5-10/mo | £10-20/mo | £20-50/mo |
 | **Auth0** | £0 | £0 | £0 (under 25K MAU) |
 | **Apple Developer Program** | £6.60/mo | £6.60/mo | £6.60/mo |
-| **Total** | **£17-27/mo** | **£27-52/mo** | **£52-117/mo** |
+| **Total** | **£17-32/mo** | **£27-52/mo** | **£52-117/mo** |
 
-Note: Container Apps costs are slightly higher than the original PlanWire estimate because the polling service runs continuously, whereas webhook ingestion was event-driven. However, this is more than offset by eliminating the £29-99/mo PlanWire subscription.
+Note: The polling service runs continuously (unlike PlanWire's event-driven webhook model), but this is more than offset by eliminating the £29-99/mo PlanWire subscription.
 
 ### Revenue vs Cost at Each Scale
 
