@@ -2,9 +2,9 @@
 
 ## Data Provider
 
-[Planwire.io](https://planwire.io) — REST API providing UK planning application data across 379 Local Planning Authorities. See [ADR 0003](adr/0003-external-data-provider.md) for selection rationale.
+[PlanWire.io](https://planwire.io) — REST API providing UK planning application data across 379 Local Planning Authorities. See [ADR 0003](adr/0003-external-data-provider.md) for selection rationale.
 
-### Available Planwire Capabilities
+### Available PlanWire Capabilities
 
 | Capability | Endpoint | Notes |
 |-----------|----------|-------|
@@ -17,7 +17,7 @@
 | Webhook filters | — | `councilId`, `postcodePrefix`, `status`, `applicationType` |
 | Webhook security | `X-PlanWire-Signature` | HMAC-SHA256 verification |
 
-### Planwire Pricing
+### PlanWire Pricing
 
 | Plan | Requests/day | Webhooks | Cost |
 |------|-------------|----------|------|
@@ -26,9 +26,9 @@
 | Growth | 10,000 | Unlimited | £99/mo |
 | Enterprise | Unlimited | Unlimited | £299/mo |
 
-### Not Available from Planwire
+### Not Available from PlanWire
 
-- **Public comments / representations** — not exposed via the API. Future options: scrape council portals, deep link to council comment pages, or request from Planwire.
+- **Public comments / representations** — not exposed via the API. Future options: scrape council portals, deep link to council comment pages, or request from PlanWire.
 - **Full application data model** — not fully documented. A live API call is needed to discover all returned fields.
 
 ---
@@ -64,16 +64,16 @@
 
 | Service | Estimated Cost |
 |---------|---------------|
-| Planwire Starter | £29/mo |
+| PlanWire Starter | £29/mo |
 | Cosmos DB Serverless | £5–15/mo |
 | Azure Container Apps (consumption) | £5–10/mo |
 | **Total baseline** | **~£40–55/mo** |
 
 **Marginal cost per tier:**
 
-- **Free users**: ~£0 — served entirely from cached webhook data, no Planwire API calls
-- **Personal users**: ~£0 — same cached data, backfill is a one-time Planwire call per zone
-- **Pro users**: Low — occasional Planwire search calls for full-text search
+- **Free users**: ~£0 — served entirely from cached webhook data, no PlanWire API calls
+- **Personal users**: ~£0 — same cached data, backfill is a one-time PlanWire call per zone
+- **Pro users**: Low — occasional PlanWire search calls for full-text search
 
 **Break-even:** ~25 Personal subs or ~9 Pro subs.
 
@@ -81,10 +81,10 @@
 
 The free tier avoids ongoing costs by:
 
-1. **No backfill** — free users don't trigger Planwire API calls on zone creation. Their map/list populates gradually from incoming webhooks.
+1. **No backfill** — free users don't trigger PlanWire API calls on zone creation. Their map/list populates gradually from incoming webhooks.
 2. **Shared application cache** — all webhook data lands in Cosmos DB regardless of tier. Free users read from the same cache as paid users.
 3. **Notification cap (5/week)** — limits compute, creates natural upgrade motivation ("12 new applications this week — upgrade to see all").
-4. **No full-text search** — avoids Planwire API passthrough calls.
+4. **No full-text search** — avoids PlanWire API passthrough calls.
 
 ### Upgrade Drivers
 
@@ -108,10 +108,10 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 1.1 | Planwire webhook receiver | `POST /api/webhooks/planwire` with HMAC-SHA256 signature verification, idempotent upsert by application ID |
+| 1.1 | PlanWire webhook receiver | `POST /api/webhooks/planwire` with HMAC-SHA256 signature verification, idempotent upsert by application ID |
 | 1.2 | Application ingestion | Parse `application.new` / `application.updated` payloads → upsert into Cosmos DB Applications container |
 | 1.3 | Watch zone matching | On ingestion, spatial match of application lat/lng against active user watch zones |
-| 1.4 | Webhook subscription management | Register Planwire webhooks filtered by postcode prefix for areas with active users |
+| 1.4 | Webhook subscription management | Register PlanWire webhooks filtered by postcode prefix for areas with active users |
 | 1.5 | Backfill (paid users only) | On zone creation for Personal/Pro users, call `GET /v1/applications/nearby` to seed recent applications |
 
 ### Phase 2 — Push Notifications (MVP)
@@ -131,7 +131,7 @@ The free tier avoids ongoing costs by:
 | 3.2 | Application detail | Address, description, status, dates, decision, link to council portal for public comments |
 | 3.3 | Application list | Filterable list within watch zone. Free: browse only. Personal+: filter by status/type/date |
 | 3.4 | Watch zone management | Add/edit/delete zones with postcode entry + radius picker + map preview. Free limited to 1 zone |
-| 3.5 | Full-text search | Pro tier only. Pass-through to Planwire `q` parameter |
+| 3.5 | Full-text search | Pro tier only. Pass-through to PlanWire `q` parameter |
 | 3.6 | Deep links | Tap notification → opens relevant application detail screen |
 
 ### Phase 4 — Engagement & Retention
@@ -148,8 +148,8 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 5.1 | Dynamic webhook management | Register/deregister Planwire webhooks based on active user distribution to optimise API costs |
-| 5.2 | Public comments (investigation) | Evaluate: deep links to council portals, selective scraping, or Planwire feature request |
+| 5.1 | Dynamic webhook management | Register/deregister PlanWire webhooks based on active user distribution to optimise API costs |
+| 5.2 | Public comments (investigation) | Evaluate: deep links to council portals, selective scraping, or PlanWire feature request |
 | 5.3 | Community groups | Shared watch zones for neighbourhood associations, parish councils |
 
 ---
@@ -158,8 +158,8 @@ The free tier avoids ongoing costs by:
 
 | Area | Approach |
 |------|----------|
-| API cost management | Cache all webhook data in Cosmos DB. Serve browse/list/map/detail from own data. Only call Planwire for backfill and full-text search |
-| Webhook reliability | Idempotent upserts keyed on Planwire application ID. Monitor delivery logs via `GET /v1/webhooks/:id/deliveries` |
+| API cost management | Cache all webhook data in Cosmos DB. Serve browse/list/map/detail from own data. Only call PlanWire for backfill and full-text search |
+| Webhook reliability | Idempotent upserts keyed on PlanWire application ID. Monitor delivery logs via `GET /v1/webhooks/:id/deliveries` |
 | Webhook scaling | Start with postcode-prefix-filtered webhooks. Consolidate into broader filters as user density grows in an area |
 | Rate limit handling | Respect 429 responses, exponential backoff, monitor daily quota. Limits reset at midnight UTC |
 | Data freshness | Webhooks provide near-real-time updates. Periodic `nearby` poll as safety net for missed deliveries (paid tiers only) |

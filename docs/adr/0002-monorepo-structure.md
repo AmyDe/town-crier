@@ -15,7 +15,7 @@ The project requires a structure to house multiple distinct components (iOS app,
 Located in `/api`, following a **Hexagonal (Ports & Adapters)** pattern:
 - `src/town-crier.domain/`: **Domain Layer (Core)** - Pure business logic, Entities, and Value Objects. No external dependencies.
 - `src/town-crier.application/`: **Application Layer (Ports)** - Use Cases, Command/Query Handlers, and Port interfaces. Lightweight orchestrators that delegate to the Domain.
-- `src/town-crier.infrastructure/`: **Infrastructure Layer (Adapters)** - Implementations of Ports (Repositories, API Clients), DB Contexts (EF Core), and Controllers.
+- `src/town-crier.infrastructure/`: **Infrastructure Layer (Adapters)** - Implementations of Ports (Repositories, API Clients), and Controllers.
 - `src/town-crier.web/`: **Web/Entry Point** - Program.cs, configuration, and Native AOT bootstrap.
 - `tests/town-crier.application.tests/`: **Primary Testing Unit** - TUnit tests focusing on Handlers and business behavior.
 
@@ -38,9 +38,6 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
 - `src/town-crier.infra/`: Pulumi stacks and resource definitions.
 - `tests/town-crier.infra.tests/`: Unit tests for infrastructure policies and configurations.
 
-Located in `/infra`, utilizing **.NET 10 (C#)**:
-- `src/TownCrier.Infra/`: Pulumi stacks and resource definitions.
-- `tests/TownCrier.Infra.Tests/`: Unit tests for infrastructure policies and configurations.
 
 ## Rationale
 - **Flat Structure:** Minimizes nesting depth and simplifies navigation for a project with a known, finite set of applications.

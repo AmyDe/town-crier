@@ -14,7 +14,7 @@ Local authority planning applications are often buried in difficult-to-navigate 
 Town Crier is a mobile-first application that monitors local authority planning registers and proactively notifies users of new applications in their areas of interest.
 
 ## Core Features
-1.  **Authority Selection:** Users can search for and follow one or more local authorities (councils) they care about.
+1.  **Watch Zones:** Users define areas of interest by entering a postcode and radius, receiving alerts for planning applications within that zone.
 2.  **Push Notifications:** Instant alerts are sent to the user's iOS device as soon as a new planning application is detected in a followed authority.
 3.  **Application Monitoring:** A central feed of all recent applications across followed authorities, with the ability to filter by status or date.
 4.  **Detail Deep-Dive:** View key details of an application, including descriptions, locations, and direct links to the official council portal for formal comments.
@@ -28,4 +28,4 @@ Town Crier is a mobile-first application that monitors local authority planning 
 -   **Mobile:** Native iOS app (Swift) for a high-performance, notification-centric user experience.
 -   **API:** .NET 10 backend running on Azure Container Apps, optimized for low-cost, serverless execution.
 -   **Data:** Azure Cosmos DB (Serverless) for storing user preferences and cached planning metadata.
--   **Ingestion:** Background workers (integrated into the API or as separate containers) that poll or subscribe to local authority planning data sources.
+-   **Ingestion:** Webhook-driven ingestion from PlanWire.io, with planning application data pushed to the API in near-real-time as new or updated applications are published.
