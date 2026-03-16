@@ -1,0 +1,67 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# .NET / Visual Studio / JetBrains
+[Bb]in/
+[Oo]bj/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+.vs/
+.vscode/
+.idea/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+appsettings.Development.json
+appsettings.Local.json
+
+# iOS / Swift / Xcode
+build/
+DerivedData/
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+*.xccheckout
+*.xcscheme
+!default.xcscheme
+*.xsndata
+*.xcuserstate
+*.moved-aside
+*.lock
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Dependency Managers
+Pods/
+Podfile.lock
+Carthage/Build/
+.build/
+
+# Other
+*.log
+.env
+.env.*
+!.env.example
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db

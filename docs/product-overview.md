@@ -1,0 +1,31 @@
+# Town Crier: Product Overview
+
+## Naming Convention
+-   **Product Name:** "Town Crier" (Two words, spaced, title case) - Used for all user-facing labels, documentation titles, and UI strings.
+-   **Code & Filesystem:** `town-crier` (Lowercase, hyphenated) - Used for all directory names, filenames, repository names, and technical identifiers.
+
+## Mission
+Town Crier aims to empower citizens and community groups by providing transparent, real-time access to local planning data. We believe that staying informed about changes to the built environment should be effortless and accessible to everyone.
+
+## The Problem
+Local authority planning applications are often buried in difficult-to-navigate web portals or published in obscure public notices. Residents frequently only learn about significant local developments after the consultation period has closed, missing their opportunity to provide feedback.
+
+## The Solution
+Town Crier is a mobile-first application that monitors local authority planning registers and proactively notifies users of new applications in their areas of interest.
+
+## Core Features
+1.  **Authority Selection:** Users can search for and follow one or more local authorities (councils) they care about.
+2.  **Push Notifications:** Instant alerts are sent to the user's iOS device as soon as a new planning application is detected in a followed authority.
+3.  **Application Monitoring:** A central feed of all recent applications across followed authorities, with the ability to filter by status or date.
+4.  **Detail Deep-Dive:** View key details of an application, including descriptions, locations, and direct links to the official council portal for formal comments.
+
+## Target Audience
+-   **Local Residents:** Who want to know what is being built in their neighborhood.
+-   **Community Groups:** Coordinating responses to large-scale developments.
+-   **Property Professionals:** Tracking market activity and competitor applications.
+
+## High-Level Architecture
+-   **Mobile:** Native iOS app (Swift) for a high-performance, notification-centric user experience.
+-   **API:** .NET 10 backend running on Azure Container Apps, optimized for low-cost, serverless execution.
+-   **Data:** Azure Cosmos DB (Serverless) for storing user preferences and cached planning metadata.
+-   **Ingestion:** Background workers (integrated into the API or as separate containers) that poll or subscribe to local authority planning data sources.

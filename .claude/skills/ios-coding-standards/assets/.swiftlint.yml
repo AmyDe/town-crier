@@ -1,0 +1,66 @@
+opt_in_rules:
+  - all
+
+disabled_rules:
+  - todo
+  - file_header
+  - explicit_acl
+  - explicit_top_level_acl
+  - missing_docs
+  - implicit_return
+  - closure_body_length # Tends to be noisy with SwiftUI
+  - function_body_length # Tends to be noisy with SwiftUI
+  - type_body_length # Tends to be noisy with SwiftUI
+  - trailing_comma
+  - sorted_imports
+  - blanket_disable_command
+  - file_types_order
+  - no_magic_numbers # Too noisy for UI constants
+  - required_deinit
+  - explicit_type_interface # Type inference is preferred in Swift
+  - explicit_enum_raw_value # Not always needed
+  - let_var_whitespace
+
+analyzer_rules:
+  - unused_declaration
+  - unused_import
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - Package.swift
+  - Carthage
+  - Pods
+  - DerivedData
+
+force_cast: error
+force_try: error
+force_unwrapping: error
+
+line_length:
+  warning: 120
+  error: 200
+
+type_name:
+  min_length: 3
+  max_length: 40
+
+identifier_name:
+  min_length:
+    error: 2
+  excluded:
+    - id
+    - x
+    - y
+    - z
+    - i
+    - j
+    - k
+
+nesting:
+  type_level: 4
+
+reporter: "xcode"
