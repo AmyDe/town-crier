@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Pulumi;
 using Pulumi.AzureNative.Resources;
 using Pulumi.AzureNative.OperationalInsights;
@@ -127,6 +128,156 @@ return await Pulumi.Deployment.RunAsync(() =>
         Resource = new SqlDatabaseResourceArgs
         {
             Id = "town-crier",
+        },
+    });
+
+    // Cosmos DB Containers
+
+    // Applications container — partitioned by authority code, spatial index on location
+    var applicationsContainer = new SqlResourceSqlContainer($"container-applications-{env}", new SqlResourceSqlContainerArgs
+    {
+        AccountName = cosmosAccount.Name,
+        ResourceGroupName = resourceGroup.Name,
+        DatabaseName = cosmosDatabase.Name,
+        ContainerName = "Applications",
+        Resource = new SqlContainerResourceArgs
+        {
+            Id = "Applications",
+            PartitionKey = new ContainerPartitionKeyArgs
+            {
+                Paths = new[] { "/authorityCode" },
+                Kind = PartitionKind.Hash,
+            },
+            DefaultTtl = -1, // TTL enabled, per-document control
+            UniqueKeyPolicy = new UniqueKeyPolicyArgs
+            {
+                UniqueKeys = new[]
+                {
+                    new UniqueKeyArgs
+                    {
+                        Paths = new[] { "/planitName" },
+                    },
+                },
+            },
+            IndexingPolicy = new IndexingPolicyArgs
+            {
+                Automatic = true,
+                IndexingMode = IndexingMode.Consistent,
+                IncludedPaths = new[]
+                {
+                    new IncludedPathArgs { Path = "/authorityCode/?" },
+                    new IncludedPathArgs { Path = "/status/?" },
+                    new IncludedPathArgs { Path = "/applicationType/?" },
+                    new IncludedPathArgs { Path = "/decisionDate/?" },
+                    new IncludedPathArgs { Path = "/lastDifferent/?" },
+                },
+                ExcludedPaths = new[]
+                {
+                    new ExcludedPathArgs { Path = "/*" },
+                    new ExcludedPathArgs { Path = "/\"_etag\"/?" },
+                },
+                SpatialIndexes = new[]
+                {
+                    new SpatialSpecArgs
+                    {
+                        Path = "/location/?",
+                        Types = new InputList<Union<string, SpatialType>>
+                        {
+                            SpatialType.Point,
+                        },
+                    },
+                },
+                CompositeIndexes = new InputList<ImmutableArray<CompositePathArgs>>
+                {
+                    ImmutableArray.Create(
+                        new CompositePathArgs { Path = "/authorityCode", Order = CompositePathSortOrder.Ascending },
+                        new CompositePathArgs { Path = "/lastDifferent", Order = CompositePathSortOrder.Descending }
+                    ),
+                },
+            },
+        },
+    });
+
+    // Users container — partitioned by id
+    var usersContainer = new SqlResourceSqlContainer($"container-users-{env}", new SqlResourceSqlContainerArgs
+    {
+        AccountName = cosmosAccount.Name,
+        ResourceGroupName = resourceGroup.Name,
+        DatabaseName = cosmosDatabase.Name,
+        ContainerName = "Users",
+        Resource = new SqlContainerResourceArgs
+        {
+            Id = "Users",
+            PartitionKey = new ContainerPartitionKeyArgs
+            {
+                Paths = new[] { "/id" },
+                Kind = PartitionKind.Hash,
+            },
+        },
+    });
+
+    // WatchZones container — partitioned by userId
+    var watchZonesContainer = new SqlResourceSqlContainer($"container-watchzones-{env}", new SqlResourceSqlContainerArgs
+    {
+        AccountName = cosmosAccount.Name,
+        ResourceGroupName = resourceGroup.Name,
+        DatabaseName = cosmosDatabase.Name,
+        ContainerName = "WatchZones",
+        Resource = new SqlContainerResourceArgs
+        {
+            Id = "WatchZones",
+            PartitionKey = new ContainerPartitionKeyArgs
+            {
+                Paths = new[] { "/userId" },
+                Kind = PartitionKind.Hash,
+            },
+            UniqueKeyPolicy = new UniqueKeyPolicyArgs
+            {
+                UniqueKeys = new[]
+                {
+                    new UniqueKeyArgs
+                    {
+                        Paths = new[] { "/userId", "/name" },
+                    },
+                },
+            },
+        },
+    });
+
+    // Notifications container — partitioned by userId, 90-day TTL
+    var notificationsContainer = new SqlResourceSqlContainer($"container-notifications-{env}", new SqlResourceSqlContainerArgs
+    {
+        AccountName = cosmosAccount.Name,
+        ResourceGroupName = resourceGroup.Name,
+        DatabaseName = cosmosDatabase.Name,
+        ContainerName = "Notifications",
+        Resource = new SqlContainerResourceArgs
+        {
+            Id = "Notifications",
+            PartitionKey = new ContainerPartitionKeyArgs
+            {
+                Paths = new[] { "/userId" },
+                Kind = PartitionKind.Hash,
+            },
+            DefaultTtl = 90 * 24 * 60 * 60, // 90 days in seconds
+        },
+    });
+
+    // Leases container — for change feed processor checkpointing
+    var leasesContainer = new SqlResourceSqlContainer($"container-leases-{env}", new SqlResourceSqlContainerArgs
+    {
+        AccountName = cosmosAccount.Name,
+        ResourceGroupName = resourceGroup.Name,
+        DatabaseName = cosmosDatabase.Name,
+        ContainerName = "Leases",
+        Resource = new SqlContainerResourceArgs
+        {
+            Id = "Leases",
+            PartitionKey = new ContainerPartitionKeyArgs
+            {
+                Paths = new[] { "/id" },
+                Kind = PartitionKind.Hash,
+            },
         },
     });
 
