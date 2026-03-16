@@ -1,7 +1,7 @@
 # ADR 0003: External Data Provider Selection
 
 ## Status
-Accepted
+Superseded by [0006](0006-planit-primary-data-provider.md)
 
 ## Context
 The "town-crier" application requires a comprehensive and reliable source of UK local authority planning application data. Manually scraping 379+ individual council portals is technically complex, resource-intensive, and difficult to maintain over time. We need a provider that offers high coverage, low latency for new applications, and a cost-effective entry point.
