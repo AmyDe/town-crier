@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TownCrier.Application.PlanIt;
@@ -6,9 +8,26 @@ using TownCrier.Domain.PlanningApplications;
 
 namespace TownCrier.Infrastructure.PlanIt;
 
-public sealed class PlanItClient(HttpClient httpClient) : IPlanItClient
+public sealed class PlanItClient : IPlanItClient
 {
     private const int DefaultPageSize = 5000;
+
+    [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]
+    private static readonly Random Jitter = new();
+
+    private readonly HttpClient httpClient;
+    private readonly PlanItRetryOptions retryOptions;
+    private readonly Func<TimeSpan, CancellationToken, Task> delayFunc;
+
+    public PlanItClient(
+        HttpClient httpClient,
+        PlanItRetryOptions? retryOptions = null,
+        Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
+    {
+        this.httpClient = httpClient;
+        this.retryOptions = retryOptions ?? new PlanItRetryOptions();
+        this.delayFunc = delayFunc ?? Task.Delay;
+    }
 
     public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
         DateTimeOffset? differentStart,
@@ -20,7 +39,7 @@ public sealed class PlanItClient(HttpClient httpClient) : IPlanItClient
         do
         {
             var url = new Uri(BuildUrl(differentStart, page), UriKind.Relative);
-            using var response = await httpClient.GetAsync(url, ct).ConfigureAwait(false);
+            using var response = await this.SendWithRetryAsync(url, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var planItResponse = await JsonSerializer.DeserializeAsync(
@@ -88,5 +107,47 @@ public sealed class PlanItClient(HttpClient httpClient) : IPlanItClient
         }
 
         return DateOnly.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
+        {
+            var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
+
+            if (response.StatusCode != (HttpStatusCode)429)
+            {
+                return response;
+            }
+
+            response.Dispose();
+
+            if (attempt == this.retryOptions.MaxRetries)
+            {
+                throw new HttpRequestException(
+                    $"Rate limited by PlanIt API after {this.retryOptions.MaxRetries} retries.",
+                    inner: null,
+                    HttpStatusCode.TooManyRequests);
+            }
+
+            var delay = this.CalculateBackoffDelay(attempt);
+            await this.delayFunc(delay, ct).ConfigureAwait(false);
+        }
+
+        // Unreachable — loop always returns or throws
+        throw new InvalidOperationException();
+    }
+
+    [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]
+    private TimeSpan CalculateBackoffDelay(int attempt)
+    {
+        var baseMs = this.retryOptions.BaseDelay.TotalMilliseconds;
+        var exponentialMs = baseMs * Math.Pow(2, attempt);
+
+        // Add jitter: ±50% of the exponential delay
+        var jitterFactor = 0.5 + Jitter.NextDouble();
+        var delayMs = exponentialMs * jitterFactor;
+
+        return TimeSpan.FromMilliseconds(delayMs);
     }
 }

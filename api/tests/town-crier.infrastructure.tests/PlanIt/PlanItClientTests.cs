@@ -153,13 +153,101 @@ public sealed class PlanItClientTests
         await Assert.That(results).HasCount().EqualTo(0);
     }
 
-    private static PlanItClient CreateClient(FakePlanItHandler handler)
+    [Test]
+    public async Task Should_RetryAndSucceed_When_ApiReturns429ThenSuccess()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
+        var delays = new List<TimeSpan>();
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) }, delays: delays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retries
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // 2 x 429 + 1 success = 3 total requests
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_ApplyExponentialBackoff_When_Retrying429()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 3, SingleRecordResponse);
+        var delays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelay = TimeSpan.FromSeconds(1) };
+        var client = CreateClient(handler, retryOptions: options, delays: delays);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null);
+
+        // Assert — backoff progression: 1s, 2s, 4s (exponential, ignoring jitter for range check)
+        await Assert.That(delays).HasCount().EqualTo(3);
+        await Assert.That(delays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(1500));
+        await Assert.That(delays[1]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(1000))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(3000));
+        await Assert.That(delays[2]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(2000))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(6000));
+    }
+
+    [Test]
+    public async Task Should_ThrowHttpRequestException_When_MaxRetriesExhausted()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitForever("page=1");
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var client = CreateClient(handler, retryOptions: options);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<HttpRequestException>(
+            async () => await ConsumeAsync(client, differentStart: null));
+    }
+
+    [Test]
+    public async Task Should_PropagateNon429Errors_When_ServerReturns500()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+
+        // No response configured → returns 404, which is a non-429 error
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var client = CreateClient(handler, retryOptions: options);
+
+        // Act & Assert — should throw immediately without retrying
+        await Assert.ThrowsAsync<HttpRequestException>(
+            async () => await ConsumeAsync(client, differentStart: null));
+
+        // Only 1 request — no retries for non-429 errors
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
+    }
+
+    private static PlanItClient CreateClient(
+        FakePlanItHandler handler,
+        PlanItRetryOptions? retryOptions = null,
+        List<TimeSpan>? delays = null)
     {
         var httpClient = new HttpClient(handler, disposeHandler: false)
         {
             BaseAddress = new Uri(BaseUrl),
         };
-        return new PlanItClient(httpClient);
+
+        Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
+        if (delays is not null)
+        {
+            delayFunc = (delay, _) =>
+            {
+                delays.Add(delay);
+                return Task.CompletedTask;
+            };
+        }
+
+        return new PlanItClient(httpClient, retryOptions ?? new PlanItRetryOptions(), delayFunc);
     }
 
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(
