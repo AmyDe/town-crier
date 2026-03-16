@@ -1,0 +1,4 @@
+config:
+  azure-native:location: uksouth
+  town-crier:environment: dev
+  town-crier:cosmosConsistencyLevel: Session
