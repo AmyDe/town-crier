@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering real-time push notifications to residents, community groups, and property professionals. It uses Planwire.io as its external data provider (webhook-driven ingestion of planning data).
+Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering real-time push notifications to residents, community groups, and property professionals. It uses PlanWire.io as its external data provider (webhook-driven ingestion of planning data).
 
 ## Monorepo Structure
 
@@ -49,10 +49,11 @@ swift-format format --in-place --recursive .  # Auto-format
 
 ## Coding Standards Skills
 
-This repo has two Claude Code skills that are **auto-triggered** when writing code:
+This repo has Claude Code skills that are **auto-triggered** when writing code:
 
 - `dotnet-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any C# code in `/api`. Covers DDD, CQRS, TUnit testing, Cosmos DB SDK, and Native AOT patterns.
 - `ios-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Swift code in `/mobile/ios`. Covers MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency.
+- `design-language` — Auto-invoked when creating or modifying any UI code, colors, themes, or visual components. Defines the cross-platform design system (colors, typography, spacing, components) with light, dark, and OLED dark theme support.
 
 Skills are defined in `.claude/skills/` as `SKILL.md` files.
 
