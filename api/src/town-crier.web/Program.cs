@@ -1,11 +1,18 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
+using TownCrier.Application.PlanIt;
+using TownCrier.Application.Polling;
 using TownCrier.Infrastructure.Geocoding;
+using TownCrier.Infrastructure.PlanIt;
+using TownCrier.Infrastructure.Polling;
 using TownCrier.Web;
 using TownCrier.Web.Observability;
+using TownCrier.Web.Polling;
 
 var builder = WebApplication.CreateSlimBuilder(args);
+
+builder.Logging.AddJsonConsole();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -20,6 +27,19 @@ builder.Services.AddHttpClient<IPostcodeGeocoder, PostcodesIoGeocoder>(client =>
     client.BaseAddress = new Uri(postcodesIoBaseUrl);
 });
 builder.Services.AddTransient<GeocodePostcodeQueryHandler>();
+
+#pragma warning disable S1075 // Hardcoded URI is a sensible default
+var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
+#pragma warning restore S1075
+builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
+{
+    client.BaseAddress = new Uri(planItBaseUrl);
+});
+var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
+builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddTransient<PollPlanItCommandHandler>();
+builder.Services.AddHostedService<PlanItPollingService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -39,6 +59,7 @@ builder.Services.AddAuthorizationBuilder()
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

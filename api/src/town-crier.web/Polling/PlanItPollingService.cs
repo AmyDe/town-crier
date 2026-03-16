@@ -1,0 +1,69 @@
+using TownCrier.Application.Polling;
+
+namespace TownCrier.Web.Polling;
+
+internal sealed partial class PlanItPollingService : BackgroundService
+{
+    private readonly IServiceScopeFactory scopeFactory;
+    private readonly TimeSpan interval;
+    private readonly ILogger<PlanItPollingService> logger;
+
+    public PlanItPollingService(
+        IServiceScopeFactory scopeFactory,
+        IConfiguration configuration,
+        ILogger<PlanItPollingService> logger)
+    {
+        this.scopeFactory = scopeFactory;
+        this.logger = logger;
+
+        var minutes = configuration.GetValue("Polling:IntervalMinutes", 15);
+        this.interval = TimeSpan.FromMinutes(minutes);
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        LogPollingStarted(this.logger, this.interval.TotalMinutes);
+
+        using var timer = new PeriodicTimer(this.interval);
+
+        while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+        {
+            try
+            {
+                var scope = this.scopeFactory.CreateAsyncScope();
+                await using (scope.ConfigureAwait(false))
+                {
+                    var handler = scope.ServiceProvider.GetRequiredService<PollPlanItCommandHandler>();
+
+                    var result = await handler.HandleAsync(new PollPlanItCommand(), stoppingToken).ConfigureAwait(false);
+
+                    LogPollCycleCompleted(this.logger, result.ApplicationCount);
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+#pragma warning disable CA1031 // Polling loop must not crash on transient errors
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogPollCycleFailed(this.logger, ex);
+            }
+        }
+
+        LogPollingStopped(this.logger);
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PlanIt polling started with interval {IntervalMinutes}m")]
+    private static partial void LogPollingStarted(ILogger logger, double intervalMinutes);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Poll cycle completed: {ApplicationCount} applications fetched")]
+    private static partial void LogPollCycleCompleted(ILogger logger, int applicationCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Poll cycle failed")]
+    private static partial void LogPollCycleFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PlanIt polling stopped")]
+    private static partial void LogPollingStopped(ILogger logger);
+}
