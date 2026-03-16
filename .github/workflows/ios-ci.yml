@@ -1,0 +1,57 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/ios/**"
+      - ".github/workflows/ios-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/ios/**"
+      - ".github/workflows/ios-ci.yml"
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Lint
+        run: swiftlint lint --strict
+        working-directory: mobile/ios
+
+  build-and-test:
+    name: Build & test
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('mobile/ios/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build
+        working-directory: mobile/ios
+
+      - name: Test
+        run: swift test
+        working-directory: mobile/ios
