@@ -1,5 +1,4 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace TownCrier.Web.Tests.Health;
 
@@ -9,7 +8,7 @@ public sealed class HealthEndpointTests
     public async Task Should_ReturnOk_When_HealthCalledAtRootPath()
     {
         // Arrange
-        await using var factory = new WebApplicationFactory<Program>();
+        await using var factory = new TestWebApplicationFactory();
         using var client = factory.CreateClient();
 
         // Act
@@ -23,7 +22,7 @@ public sealed class HealthEndpointTests
     public async Task Should_ReturnOk_When_HealthCalledAtVersionedPath()
     {
         // Arrange
-        await using var factory = new WebApplicationFactory<Program>();
+        await using var factory = new TestWebApplicationFactory();
         using var client = factory.CreateClient();
 
         // Act
@@ -37,7 +36,7 @@ public sealed class HealthEndpointTests
     public async Task Should_ReturnHealthyBody_When_HealthCalledAtVersionedPath()
     {
         // Arrange
-        await using var factory = new WebApplicationFactory<Program>();
+        await using var factory = new TestWebApplicationFactory();
         using var client = factory.CreateClient();
 
         // Act
