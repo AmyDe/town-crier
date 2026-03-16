@@ -18,6 +18,26 @@ Town Crier is a mobile-first application that monitors local authority planning 
 2.  **Push Notifications:** Instant alerts are sent to the user's iOS device as soon as a new planning application is detected within a watch zone.
 3.  **Application Monitoring:** A central feed of all recent applications across followed authorities, with the ability to filter by status or date.
 4.  **Detail Deep-Dive:** View key details of an application, including descriptions, locations, and direct links to the official council portal for formal comments.
+5.  **Search:** Browse, filter, and full-text search across planning applications (capabilities vary by subscription tier).
+6.  **Decision Alerts & Status Timeline:** Track the lifecycle of individual applications from submission through to decision.
+
+## Data Coverage
+Town Crier sources data from [PlanIt](https://www.planit.org.uk), which covers **417 UK Local Planning Authorities**. PlanIt is a free, unauthenticated API, keeping data costs at zero. See [ADR 0006](adr/0006-planit-primary-data-provider.md) for the data provider decision.
+
+## Subscription Tiers
+
+| | **Free** | **Personal** (£1.99/mo) | **Pro** (£5.99/mo) |
+|---|---|---|---|
+| Watch zones | 1 | 1 | Unlimited |
+| Radius | 1 km | 5 km | 10 km |
+| Notifications | 5 per month | Unlimited | Unlimited |
+| Historical data | Forward-only | Instant backfill | Instant backfill |
+| Search | Browse only | Browse + filter | Full-text search |
+
+Subscriptions are managed via StoreKit 2 with a 7-day free trial on the Personal tier. See [ADR 0010](adr/0010-subscription-entitlement-flow.md) for the entitlement flow.
+
+## Authentication
+Users authenticate via [Auth0](https://auth0.com) (managed service), supporting username/password, passkeys, TOTP MFA, and Sign in with Apple — all on Auth0's free tier (25K MAU). See [ADR 0007](adr/0007-auth0-authentication.md).
 
 ## Target Audience
 -   **Local Residents:** Who want to know what is being built in their neighborhood.
@@ -27,5 +47,6 @@ Town Crier is a mobile-first application that monitors local authority planning 
 ## High-Level Architecture
 -   **Mobile:** Native iOS app (Swift) for a high-performance, notification-centric user experience.
 -   **API:** .NET 10 backend running on Azure Container Apps, optimized for low-cost, serverless execution.
--   **Data:** Azure Cosmos DB (Serverless) for storing user preferences and cached planning metadata.
--   **Ingestion:** Polling-based ingestion from [PlanIt](https://www.planit.org.uk), with a background service querying for new and updated planning applications on a configurable interval (default: 15 minutes). See [ADR 0006](adr/0006-planit-primary-data-provider.md).
+-   **Data:** Azure Cosmos DB (Serverless) with four containers — Applications, Users, WatchZones, and Notifications — partitioned for efficient single-partition reads. See [ADR 0008](adr/0008-cosmos-db-data-model.md).
+-   **Ingestion:** Polling-based ingestion from PlanIt on a configurable interval (default: 15 minutes). Application changes trigger notification dispatch via Cosmos DB change feed. See [ADR 0009](adr/0009-notification-delivery-architecture.md).
+-   **Infrastructure:** Pulumi (C#/.NET 10) managing Azure resources; GitHub Actions CI/CD with path-filtered workflows.
