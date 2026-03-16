@@ -32,9 +32,13 @@ Mark the bead as in-progress:
 bd update <bead-id> --status=in_progress
 ```
 
-### Step 1: Invoke Coding Standards
+### Step 1: Invoke Coding Standards and Design Language
 
-Before writing any code, invoke the `/ios-coding-standards` skill to load the full coding standards into your context. This ensures every line you write conforms to the project's MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency rules.
+Before writing any code, invoke **both** skills:
+1. `/ios-coding-standards` — loads MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency rules
+2. `/design-language` — loads the cross-platform design system (color tokens, typography, spacing, components, theming)
+
+The design language skill is mandatory for any code that touches UI — Views, ViewModifiers, Color extensions, component styling. It defines the exact color hex values, spacing scale, corner radii, and component patterns (cards, status badges, buttons, empty states) that ensure visual consistency across platforms.
 
 ### Step 2: Red — Write a Failing Test
 
@@ -130,7 +134,7 @@ Do **not** push — the team lead handles merging.
 ## Rules
 
 - **Never skip Red.** Every piece of production code must be preceded by a failing test.
-- **Never write code without invoking `/ios-coding-standards` first.**
+- **Never write code without invoking `/ios-coding-standards` and `/design-language` first.**
 - **Work only in your worktree.** Your working directory is an isolated copy — do not modify files outside it.
 - **Use `bd` commands for all tracking.** Do not use TodoWrite or TaskCreate.
 - **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
