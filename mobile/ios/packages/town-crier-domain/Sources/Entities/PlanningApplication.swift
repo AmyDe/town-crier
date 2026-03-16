@@ -10,6 +10,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     public let description: String
     public let address: String
     public let location: Coordinate?
+    public let portalUrl: URL?
 
     public init(
         id: PlanningApplicationId,
@@ -19,7 +20,8 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
         receivedDate: Date,
         description: String,
         address: String,
-        location: Coordinate? = nil
+        location: Coordinate? = nil,
+        portalUrl: URL? = nil
     ) {
         self.id = id
         self.reference = reference
@@ -29,6 +31,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
         self.description = description
         self.address = address
         self.location = location
+        self.portalUrl = portalUrl
     }
 
     public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {

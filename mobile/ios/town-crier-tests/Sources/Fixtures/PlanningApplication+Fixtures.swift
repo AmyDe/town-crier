@@ -45,6 +45,18 @@ extension PlanningApplication {
         address: "22 Trumpington Street, Cambridge, CB2 1QA",
         location: try! Coordinate(latitude: 52.1990, longitude: 0.1190)
     )
+
+    static let withPortalUrl = PlanningApplication(
+        id: PlanningApplicationId("APP-005"),
+        reference: ApplicationReference("2026/0042"),
+        authority: LocalAuthority(code: "CAM", name: "Cambridge"),
+        status: .underReview,
+        receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+        description: "Erection of two-storey rear extension",
+        address: "12 Mill Road, Cambridge, CB1 2AD",
+        location: try! Coordinate(latitude: 52.2043, longitude: 0.1243),
+        portalUrl: URL(string: "https://planning.cambridge.gov.uk/2026/0042")
+    )
 }
 
 extension LocalAuthority {
