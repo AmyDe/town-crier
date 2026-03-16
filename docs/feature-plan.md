@@ -111,16 +111,24 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 0.1 | Project scaffolding | .NET 10 API skeleton (hexagonal architecture), iOS app shell (MVVM-C), Pulumi infra baseline, GitHub Actions CI/CD |
-| 0.2 | Auth0 integration | Username/password registration and login, passkeys + TOTP 2FA, Sign in with Apple, JWT validation in API, Auth0 Swift SDK in iOS app |
-| 0.3 | User profile & preferences | Cosmos DB user container storing postcode, watch zone, notification preferences, subscription tier |
-| 0.4 | Cosmos DB data model | Containers: Users, WatchZones, Applications, Notifications. Partition strategy aligned with access patterns |
+| 0.1 | .NET API scaffolding | .NET 10 API skeleton with hexagonal architecture (domain, application, infrastructure, web layers), health endpoint, Dockerfile (Alpine, Native AOT) |
+| 0.2 | iOS app scaffolding | iOS app shell with MVVM-C architecture, SPM package structure (`town-crier-domain`, `town-crier-data`, `town-crier-presentation`) |
+| 0.3 | Infrastructure baseline | Pulumi stacks provisioning core Azure resources (see [Infrastructure](#infrastructure) below) |
+| 0.4 | CI/CD pipelines | GitHub Actions workflows for API, iOS, and infrastructure (see [CI/CD](#cicd) below) |
+| 0.5 | Auth0 integration | Username/password registration and login, passkeys + TOTP 2FA, Sign in with Apple, JWT validation in API, Auth0 Swift SDK in iOS app |
+| 0.6 | User profile & preferences | Cosmos DB user container storing postcode, watch zone, notification preferences, subscription tier |
+| 0.7 | Cosmos DB data model | Containers: Users, WatchZones, Applications, Notifications. Partition strategy aligned with access patterns. Spatial index policy on Applications container for ST_DISTANCE queries against application lat/lng |
+| 0.8 | App Store Connect setup | Apple Developer Program enrolment, App Store Connect app record, provisioning profiles (development + distribution), TestFlight configuration, bundle identifiers. Required before iOS CI/CD pipeline can archive or distribute |
+| 0.9 | Structured logging & observability | Structured JSON logging via `ILogger` with correlation IDs. Application-level health metrics (request latency, error rates) surfaced in Log Analytics. Lays groundwork for polling health monitoring (1.7) |
+| 0.10 | API versioning | URL-path versioning (`/v1/`) from day one. iOS clients in the field cannot be force-updated, so breaking changes require a new version segment. Old versions supported for a minimum deprecation window |
+| 0.11 | StoreKit 2 & subscription management | iOS: StoreKit 2 integration for Personal and Pro auto-renewable subscriptions, transaction listener, entitlement resolution. API: Apple App Store Server Notifications v2 endpoint for real-time subscription lifecycle events (renewal, expiry, refund, grace period). Cosmos DB stores canonical subscription state per user, synced from server notifications. Receipt validation via App Store Server API (not on-device) |
+| 0.12 | Privacy & account management | GDPR compliance: privacy policy (in-app and App Store listing), data export endpoint (`GET /v1/me/data`), account deletion endpoint (`DELETE /v1/me`) that purges user data, watch zones, and device tokens. Account deletion is also an App Store Review requirement. Consent capture for notification permissions and data processing |
 
 ### Phase 1 — Data Pipeline
 
 | # | Feature | Details |
 |---|---------|---------|
-| 1.1 | PlanIt polling service | Background service polling `GET /api/applics/json?different_start={last_poll_iso}&pg_sz=5000&sort=-last_different` on configurable interval (default 15 min), with rate limit handling and exponential backoff on 429s |
+| 1.1 | PlanIt polling service | Background service polling `GET /api/applics/json?different_start={last_poll_iso}&pg_sz=5000&sort=-last_different` on configurable interval (default 15 min), with rate limit handling and exponential backoff on 429s. Handles pagination: if a response returns `pg_sz` results, follow `page` parameter to fetch subsequent pages until exhausted |
 | 1.2 | Application ingestion | Diff polled results against Cosmos DB, idempotent upsert by PlanIt `name` field (`{area_name}/{uid}`, globally unique) into Applications container |
 | 1.3 | Postcode geocoding | Integrate [postcodes.io](https://postcodes.io) to convert user-entered postcodes to lat/lng coordinates for watch zone storage. Required for spatial matching in Cosmos DB (ST_DISTANCE queries against application locations) |
 | 1.4 | Watch zone matching | On ingestion, spatial match of application lat/lng against active user watch zones (stored as geocoded centre point + radius in Cosmos DB) |
@@ -132,7 +140,7 @@ The free tier avoids ongoing costs by:
 
 | # | Feature | Details |
 |---|---------|---------|
-| 2.1 | APNs integration | Device token registration via API, push certificate management |
+| 2.1 | APNs integration | Device token registration via API, push certificate management. Handle token lifecycle: process APNs feedback service responses to remove invalid/expired tokens, re-register on app launch to capture token rotation |
 | 2.2 | Notification dispatch | Watch zone match → queue → push notification. Enforce weekly cap for free tier |
 | 2.3 | Notification history | Stored in Cosmos DB, displayed as in-app feed |
 | 2.4 | Notification preferences | Per-zone toggles: new applications (all tiers), status changes (Personal+), decision updates (Personal+) |
@@ -147,6 +155,7 @@ The free tier avoids ongoing costs by:
 | 3.4 | Watch zone management | Add/edit/delete zones with postcode entry + radius picker + map preview. Free limited to 1 zone |
 | 3.5 | Full-text search | Pro tier only. Pass-through to PlanIt search parameters |
 | 3.6 | Deep links | Tap notification → opens relevant application detail screen |
+| 3.7 | Offline caching | SwiftData local persistence of applications, watch zones, and notification history. App remains browsable without connectivity. Background sync on reconnect. Cache invalidation aligned with polling freshness (15–30 min TTL) |
 
 ### Phase 4 — Engagement & Retention
 
@@ -169,6 +178,97 @@ The free tier avoids ongoing costs by:
 
 ---
 
+## Infrastructure
+
+### Pulumi Stack Structure
+
+Single Pulumi project (`/infra`) with one stack per environment. Start with a single **dev** stack; add **prod** when approaching first release.
+
+| Resource | Purpose |
+|----------|---------|
+| Azure Resource Group | Logical container for all Town Crier resources |
+| Azure Cosmos DB (Serverless) | Account + database + containers (Users, WatchZones, Applications, Notifications) with partition keys |
+| Azure Container Apps Environment | Shared environment with consumption plan |
+| Azure Container App (API) | Runs the .NET API container. Min replicas: 0 (dev), 1 (prod). Health probe on `/health` |
+| Azure Container Registry (ACR) | Stores API Docker images. Basic SKU |
+| Azure Log Analytics Workspace | Backing store for Container Apps logs and metrics |
+
+### State & Secrets
+
+- **Pulumi state:** Pulumi Cloud (free tier, single-user). No self-managed blob backend needed initially.
+- **Application secrets:** Stored in GitHub Actions secrets, injected into Container App secrets at deploy time via Pulumi (`Secret` environment variables) or `az containerapp update --set-env-vars`. No Key Vault — unnecessary for a single service with a single deployment pipeline. Can be introduced later if multiple services need shared secrets or rotation policies.
+- **Pulumi secrets provider:** Default Pulumi Cloud encryption (passphrase-free).
+
+### Auth0
+
+Auth0 resources (tenant, application, API, connections) are configured manually via the Auth0 Dashboard — not managed by Pulumi. The Auth0 domain and client ID are non-secret config values stored in Pulumi stack config. The client secret is stored as a GitHub Actions secret and injected at deploy time.
+
+---
+
+## CI/CD
+
+### Pipeline Overview
+
+All pipelines run in GitHub Actions. Three independent workflows, triggered by path filters:
+
+| Workflow | Trigger paths | Runs on |
+|----------|--------------|---------|
+| `api.yml` | `api/**`, `.github/workflows/api.yml` | PR + push to `main` |
+| `ios.yml` | `mobile/ios/**`, `.github/workflows/ios.yml` | PR + push to `main` |
+| `infra.yml` | `infra/**`, `.github/workflows/infra.yml` | PR + push to `main` |
+
+### API Pipeline (`api.yml`)
+
+| Stage | Trigger | Steps |
+|-------|---------|-------|
+| Build & Test | PR, push to `main` | `dotnet format --verify-no-changes` → `dotnet build` → `dotnet test` |
+| Publish image | Push to `main` only | `docker build` (Alpine, Native AOT) → tag with commit SHA → push to ACR |
+| Deploy | Push to `main` only | Update Container App revision to new image tag via `az containerapp update` |
+
+### iOS Pipeline (`ios.yml`)
+
+| Stage | Trigger | Steps |
+|-------|---------|-------|
+| Build & Test | PR, push to `main` | `swiftlint lint --strict` → `swift build` → `swift test` (or `xcodebuild test`) |
+| Archive & Distribute | Push to `main` only (later: tags) | `xcodebuild archive` → upload to TestFlight via `xcrun altool` or Xcode Cloud |
+
+**Note:** iOS signing uses App Store Connect API key stored as a GitHub Actions secret. No Fastlane — keep dependencies minimal, use `xcodebuild` directly.
+
+### Infrastructure Pipeline (`infra.yml`)
+
+| Stage | Trigger | Steps |
+|-------|---------|-------|
+| Preview | PR | `pulumi preview --stack dev` — posts summary as PR comment |
+| Deploy | Push to `main` | `pulumi up --stack dev --yes` |
+
+### Environment Strategy
+
+- **Dev** — single environment deployed on every push to `main`. Used for development and testing.
+- **Prod** — added later (Phase 2/3 timeframe) as a separate Pulumi stack. Deployed via manual workflow dispatch or release tags.
+
+No staging environment initially — unnecessary overhead for a solo developer. Prod deployment added when there are real users.
+
+### Branch Protection
+
+- `main` branch: require PR with passing checks before merge
+- Required checks: the Build & Test stage of each affected workflow (path-filtered)
+- No required reviewers initially (solo developer)
+
+### Secrets Management
+
+All application secrets live in **GitHub Actions secrets** and are injected into Container App secrets at deploy time. No Key Vault needed initially.
+
+| Secret | GitHub Actions secret | Injected into |
+|--------|----------------------|---------------|
+| Auth0 client secret | `AUTH0_CLIENT_SECRET` | Container App env var |
+| APNs signing key | `APNS_SIGNING_KEY` | Container App env var |
+| Cosmos DB connection string | `COSMOS_CONNECTION_STRING` | Container App env var |
+| ACR credentials | `ACR_USERNAME` / `ACR_PASSWORD` | API workflow (image push) |
+| Pulumi access token | `PULUMI_ACCESS_TOKEN` | Infra workflow |
+| App Store Connect API key | `APP_STORE_CONNECT_KEY` | iOS workflow (TestFlight upload) |
+
+---
+
 ## Cross-Cutting Concerns
 
 | Area | Approach |
@@ -180,3 +280,6 @@ The free tier avoids ongoing costs by:
 | Data freshness | Polling provides 15–30 minute latency, acceptable for planning applications with week-long consultation periods |
 | Tier enforcement | API enforces limits (notification cap, zone count, radius, search access). iOS app shows upgrade prompts at limit boundaries |
 | PlanIt maintainer outreach | Contact Andrew Speakman (PlanIt maintainer) pre-launch to introduce the project, confirm acceptable use, and offer attribution/donation arrangement |
+| API rate limiting | Per-user request throttling on the Town Crier API (e.g., sliding window via middleware). Prevents abuse from free-tier clients and protects downstream resources |
+| Data retention | TTL policy on Applications container for planning applications older than a configurable threshold (e.g., 2 years past decision date). Keeps Cosmos DB storage costs bounded as data accumulates. Archived data available via PlanIt if needed |
+| Privacy / GDPR | Privacy policy published in-app and on App Store listing. Data export and account deletion endpoints (see 0.12). Minimal data collection — no tracking beyond what's needed for core functionality. Cookie-free API (JWT bearer tokens only) |
