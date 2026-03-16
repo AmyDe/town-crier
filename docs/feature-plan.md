@@ -64,7 +64,7 @@ Town Crier must display data attribution in the app and on any public-facing sur
 | **Target user** | Curious resident | Homeowner / engaged local | Property professional / community organiser |
 | Watch zones | 1 | 1 | Unlimited |
 | Radius | 1km | 5km | 10km |
-| Notifications | 5/week (new apps only) | Unlimited (new, status changes, decisions) | Unlimited (all events) |
+| Notifications | 5/month (new apps only) | Unlimited (new, status changes, decisions) | Unlimited (all events) |
 | Data | Forward-only (no backfill) | Instant backfill of recent history | Instant backfill |
 | Search | Browse cached list | Browse + filter by status/type | Full-text search |
 
@@ -95,12 +95,12 @@ The free tier avoids ongoing costs by:
 
 1. **No backfill** — free users don't trigger PlanIt API calls on zone creation. Their map/list populates gradually from polling data.
 2. **Shared application cache** — all polled data lands in Cosmos DB regardless of tier. Free users read from the same cache as paid users.
-3. **Notification cap (5/week)** — limits compute, creates natural upgrade motivation ("12 new applications this week — upgrade to see all").
+3. **Notification cap (5/month)** — limits compute, creates natural upgrade motivation ("You've reached your monthly limit — upgrade to see all").
 4. **No full-text search** — avoids PlanIt API passthrough calls.
 
 ### Upgrade Drivers
 
-- **Free → Personal**: Notification cap. Once a user cares enough to hit 5/week, £1.99 is an impulse purchase. Larger radius is a secondary motivator.
+- **Free → Personal**: Notification cap. Once a user cares enough to hit 5/month, £1.99 is an impulse purchase. Larger radius is a secondary motivator.
 - **Personal → Pro**: Multiple locations. Different use case entirely — landlords with scattered properties, parish councillors covering multiple wards, estate agents watching several postcodes.
 
 ---
@@ -144,7 +144,7 @@ The free tier avoids ongoing costs by:
 | # | Feature | Details |
 |---|---------|---------|
 | 2.1 | APNs integration | Device token registration via API, push certificate management. Handle token lifecycle: process APNs feedback service responses to remove invalid/expired tokens, re-register on app launch to capture token rotation |
-| 2.2 | Notification dispatch | Watch zone match → queue → push notification. Enforce weekly cap for free tier |
+| 2.2 | Notification dispatch | Watch zone match → push notification via Cosmos DB change feed (see [ADR 0009](adr/0009-notification-delivery-architecture.md)). Enforce monthly cap (5/calendar month, resets 1st of each month) for free tier |
 | 2.3 | Notification history | Stored in Cosmos DB, displayed as in-app feed |
 | 2.4 | Notification preferences | Per-zone toggles: new applications (all tiers), status changes (Personal+), decision updates (Personal+) |
 
