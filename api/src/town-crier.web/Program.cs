@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
 using TownCrier.Application.PlanIt;
+using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.PlanIt;
+using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
 using TownCrier.Web;
 using TownCrier.Web.Observability;
@@ -37,6 +39,7 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 });
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
+builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
@@ -59,6 +62,7 @@ builder.Services.AddAuthorizationBuilder()
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ErrorResponseMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

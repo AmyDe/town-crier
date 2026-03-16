@@ -1,4 +1,5 @@
 using TownCrier.Application.PlanIt;
+using TownCrier.Application.PlanningApplications;
 
 namespace TownCrier.Application.Polling;
 
@@ -6,15 +7,18 @@ public sealed class PollPlanItCommandHandler
 {
     private readonly IPlanItClient planItClient;
     private readonly IPollStateStore pollStateStore;
+    private readonly IPlanningApplicationRepository applicationRepository;
     private readonly TimeProvider timeProvider;
 
     public PollPlanItCommandHandler(
         IPlanItClient planItClient,
         IPollStateStore pollStateStore,
+        IPlanningApplicationRepository applicationRepository,
         TimeProvider timeProvider)
     {
         this.planItClient = planItClient;
         this.pollStateStore = pollStateStore;
+        this.applicationRepository = applicationRepository;
         this.timeProvider = timeProvider;
     }
 
@@ -25,6 +29,7 @@ public sealed class PollPlanItCommandHandler
         var count = 0;
         await foreach (var application in this.planItClient.FetchApplicationsAsync(lastPollTime, ct).ConfigureAwait(false))
         {
+            await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
             count++;
         }
 

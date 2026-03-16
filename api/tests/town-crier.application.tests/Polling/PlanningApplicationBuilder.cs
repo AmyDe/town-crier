@@ -10,10 +10,10 @@ internal sealed class PlanningApplicationBuilder
     private readonly string? postcode = "SW1A 1AA";
     private readonly string description = "Test planning application";
     private readonly string appType = "Full";
-    private readonly string appState = "Undecided";
     private readonly DateTimeOffset lastDifferent = DateTimeOffset.UtcNow;
     private string name = "Test Application";
     private string uid = "test-uid-001";
+    private string appState = "Undecided";
 
     public PlanningApplicationBuilder WithUid(string uid)
     {
@@ -24,6 +24,12 @@ internal sealed class PlanningApplicationBuilder
     public PlanningApplicationBuilder WithName(string name)
     {
         this.name = name;
+        return this;
+    }
+
+    public PlanningApplicationBuilder WithAppState(string appState)
+    {
+        this.appState = appState;
         return this;
     }
 

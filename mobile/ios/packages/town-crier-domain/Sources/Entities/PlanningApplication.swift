@@ -1,7 +1,7 @@
 import Foundation
 
 /// A planning application submitted to a local authority.
-public struct PlanningApplication: Equatable, Sendable {
+public struct PlanningApplication: Equatable, Identifiable, Sendable {
     public let id: PlanningApplicationId
     public let reference: ApplicationReference
     public let authority: LocalAuthority
@@ -9,6 +9,7 @@ public struct PlanningApplication: Equatable, Sendable {
     public let receivedDate: Date
     public let description: String
     public let address: String
+    public let location: Coordinate?
 
     public init(
         id: PlanningApplicationId,
@@ -17,7 +18,8 @@ public struct PlanningApplication: Equatable, Sendable {
         status: ApplicationStatus,
         receivedDate: Date,
         description: String,
-        address: String
+        address: String,
+        location: Coordinate? = nil
     ) {
         self.id = id
         self.reference = reference
@@ -26,6 +28,7 @@ public struct PlanningApplication: Equatable, Sendable {
         self.receivedDate = receivedDate
         self.description = description
         self.address = address
+        self.location = location
     }
 
     public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {

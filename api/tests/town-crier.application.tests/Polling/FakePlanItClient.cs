@@ -14,6 +14,11 @@ internal sealed class FakePlanItClient : IPlanItClient
         this.applications.Add(application);
     }
 
+    public void Clear()
+    {
+        this.applications.Clear();
+    }
+
     public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
         DateTimeOffset? differentStart,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)

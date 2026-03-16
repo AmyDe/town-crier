@@ -1,5 +1,6 @@
 import Testing
 import TownCrierDomain
+
 @testable import TownCrierData
 
 @Suite("InMemoryPlanningApplicationRepository")

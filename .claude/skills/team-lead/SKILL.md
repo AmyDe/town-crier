@@ -247,17 +247,24 @@ git worktree prune
 bd close <bead-id>
 ```
 
-### Phase 6: Next Bead or Finish
+### Phase 6: Loop Until No Beads Remain
 
-If there are more ready beads:
-- Go back to **Phase 2** — spawn a **fresh worker** with the next peasant name from the roster (e.g., `eadric`, `godwin`).
-- **Never** reuse a previous worker agent.
-
-If all beads are done:
+After closing a bead, **always** check for more work:
 
 ```bash
-bd dolt push
+bd ready
 ```
+
+Completing and merging a bead may unblock dependent beads that were not previously ready. Keep looping:
+
+1. Run `bd ready` to discover newly-available beads.
+2. If beads are ready → go back to **Phase 2** with a **fresh worker** and the next peasant name from the roster.
+3. If no beads are ready → you are done. Run:
+   ```bash
+   bd dolt push
+   ```
+
+**Never stop early.** Do not finish after a single batch. Continue dispatching, validating, merging, and closing until `bd ready` returns zero beads. The job is not done until every actionable bead has been completed.
 
 Do **not** `git push` unless the user explicitly asks.
 

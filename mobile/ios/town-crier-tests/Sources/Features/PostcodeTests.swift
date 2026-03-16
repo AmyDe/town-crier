@@ -1,4 +1,5 @@
 import Testing
+
 @testable import TownCrierDomain
 
 @Suite("Postcode validation")

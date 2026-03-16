@@ -19,4 +19,16 @@ public final class AppCoordinator: ObservableObject {
     ) -> LegalDocumentViewModel {
         LegalDocumentViewModel(documentType: documentType)
     }
+
+    public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
+        let viewModel = MapViewModel(repository: repository, watchZone: watchZone)
+        viewModel.onApplicationSelected = { [weak self] id in
+            self?.showApplicationDetail(id)
+        }
+        return viewModel
+    }
+
+    private func showApplicationDetail(_ id: PlanningApplicationId) {
+        // Navigation to detail screen will be handled by tc-e5r.3
+    }
 }

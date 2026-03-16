@@ -1,0 +1,34 @@
+import Foundation
+
+/// A circular geographic area that a user monitors for planning applications.
+public struct WatchZone: Equatable, Hashable, Sendable {
+    public let centre: Coordinate
+    public let radiusMetres: Double
+
+    public init(centre: Coordinate, radiusMetres: Double) throws {
+        guard radiusMetres > 0 else {
+            throw DomainError.invalidWatchZoneRadius
+        }
+        self.centre = centre
+        self.radiusMetres = radiusMetres
+    }
+
+    /// Returns true if the given coordinate falls within this watch zone.
+    public func contains(_ coordinate: Coordinate) -> Bool {
+        let distance = haversineDistance(from: centre, to: coordinate)
+        return distance <= radiusMetres
+    }
+
+    private func haversineDistance(from a: Coordinate, to b: Coordinate) -> Double {
+        let earthRadius: Double = 6_371_000
+        let dLat = (b.latitude - a.latitude) * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let lat1 = a.latitude * .pi / 180
+        let lat2 = b.latitude * .pi / 180
+
+        let sinHalfDLat = sin(dLat / 2)
+        let sinHalfDLon = sin(dLon / 2)
+        let h = sinHalfDLat * sinHalfDLat + cos(lat1) * cos(lat2) * sinHalfDLon * sinHalfDLon
+        return 2 * earthRadius * asin(sqrt(h))
+    }
+}
