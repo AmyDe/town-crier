@@ -65,3 +65,6 @@ Carthage/Build/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Beads credential keys
+.beads/.beads-credential-key
