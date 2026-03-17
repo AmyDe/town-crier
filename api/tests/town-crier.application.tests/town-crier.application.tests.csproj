@@ -21,8 +21,7 @@
   <ItemGroup>
     <Compile Remove="Polling\WatchZoneActiveAuthorityProviderTests.cs" />
     <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
-    <Compile Remove="Subscriptions\HandleAppStoreNotificationCommandHandlerTests.cs" />
-    <Compile Remove="Subscriptions\FakeAppStoreNotificationValidator.cs" />
+    <Compile Remove="WatchZones\CreateWatchZoneCommandHandlerTests.cs" />
   </ItemGroup>
 
 </Project>

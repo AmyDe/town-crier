@@ -17,6 +17,7 @@ dotnet_diagnostic.SA1633.severity = none
 dotnet_diagnostic.SA0001.severity = none
 dotnet_diagnostic.SA1600.severity = none
 dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1602.severity = none
 dotnet_diagnostic.SA1200.severity = none
 
 # IL trim/AOT warnings are false positives in dotnet format (source generators handle them at build time)
