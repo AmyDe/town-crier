@@ -9,5 +9,11 @@ public enum DomainError: Error, Equatable, Sendable {
     case authenticationFailed(String)
     case sessionExpired
     case logoutFailed(String)
+    case geocodingFailed(String)
+    case notificationPermissionDenied
+    case purchaseFailed(String)
+    case purchaseCancelled
+    case productNotFound(String)
+    case restoreFailed(String)
     case unexpected(String)
 }

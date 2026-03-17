@@ -8,13 +8,16 @@ public final class AppCoordinator: ObservableObject {
 
     private let repository: PlanningApplicationRepository
     private let authService: AuthenticationService
+    private let subscriptionService: SubscriptionService
 
     public init(
         repository: PlanningApplicationRepository,
-        authService: AuthenticationService
+        authService: AuthenticationService,
+        subscriptionService: SubscriptionService
     ) {
         self.repository = repository
         self.authService = authService
+        self.subscriptionService = subscriptionService
     }
 
     public func makeLoginViewModel() -> LoginViewModel {
@@ -37,6 +40,20 @@ public final class AppCoordinator: ObservableObject {
             self?.showApplicationDetail(id)
         }
         return viewModel
+    }
+
+    public func makeApplicationListViewModel(
+        authority: LocalAuthority
+    ) -> ApplicationListViewModel {
+        let viewModel = ApplicationListViewModel(repository: repository, authority: authority)
+        viewModel.onApplicationSelected = { [weak self] id in
+            self?.showApplicationDetail(id)
+        }
+        return viewModel
+    }
+
+    public func makeSubscriptionViewModel() -> SubscriptionViewModel {
+        SubscriptionViewModel(subscriptionService: subscriptionService)
     }
 
     public func makeApplicationDetailViewModel(

@@ -12,10 +12,12 @@ struct TownCrierApp: App {
     init() {
         let repository = InMemoryPlanningApplicationRepository()
         let authService = Auth0AuthenticationService()
+        let subscriptionService = StoreKitSubscriptionService()
 
         let appCoordinator = AppCoordinator(
             repository: repository,
-            authService: authService
+            authService: authService,
+            subscriptionService: subscriptionService
         )
         _coordinator = StateObject(wrappedValue: appCoordinator)
         _loginViewModel = StateObject(

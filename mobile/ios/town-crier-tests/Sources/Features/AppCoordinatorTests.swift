@@ -10,7 +10,12 @@ struct AppCoordinatorTests {
     private func makeSUT() -> (AppCoordinator, SpyPlanningApplicationRepository) {
         let spy = SpyPlanningApplicationRepository()
         let authSpy = SpyAuthenticationService()
-        let coordinator = AppCoordinator(repository: spy, authService: authSpy)
+        let subscriptionSpy = SpySubscriptionService()
+        let coordinator = AppCoordinator(
+            repository: spy,
+            authService: authSpy,
+            subscriptionService: subscriptionSpy
+        )
         return (coordinator, spy)
     }
 
@@ -32,6 +37,41 @@ struct AppCoordinatorTests {
         vm.dismiss()
 
         #expect(sut.detailApplication == nil)
+    }
+
+    // MARK: - Subscription ViewModel Factory
+
+    @Test func makeSubscriptionViewModel_createsViewModel() {
+        let (sut, _) = makeSUT()
+        let vm = sut.makeSubscriptionViewModel()
+
+        #expect(vm.products.isEmpty)
+        #expect(!vm.isLoading)
+    }
+
+    // MARK: - Application List Factory
+
+    @Test func makeApplicationListViewModel_createsViewModelWithAuthority() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .success([.pendingReview])
+        let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+
+        await vm.loadApplications()
+
+        #expect(spy.fetchApplicationsCalls.first?.code == "CAM")
+    }
+
+    @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationResult = .success(.approved)
+        let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+
+        vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
+
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(sut.detailApplication == .approved)
+        #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
     }
 
     // MARK: - Map selection triggers detail
