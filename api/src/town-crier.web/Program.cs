@@ -3,19 +3,23 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
+using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
 using TownCrier.Application.RateLimiting;
+using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
+using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.RateLimiting;
+using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Web;
@@ -75,6 +79,14 @@ builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
 builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
+
+builder.Services.AddSingleton<INotificationRepository, InMemoryNotificationRepository>();
+builder.Services.AddTransient<GetNotificationsQueryHandler>();
+
+builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();
+builder.Services.AddTransient<SaveApplicationCommandHandler>();
+builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
+builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -212,6 +224,51 @@ v1.MapGet("/search", async (ClaimsPrincipal user, string q, int authorityId, int
     {
         return Results.NotFound();
     }
+});
+
+v1.MapGet("/notifications", async (
+    ClaimsPrincipal user,
+    int? page,
+    int? pageSize,
+    GetNotificationsQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var query = new GetNotificationsQuery(userId, page ?? 1, pageSize ?? 20);
+    var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapPut("/me/saved-applications/{applicationUid}", async (
+    ClaimsPrincipal user,
+    string applicationUid,
+    SaveApplicationCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    await handler.HandleAsync(new SaveApplicationCommand(userId, applicationUid), ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+v1.MapDelete("/me/saved-applications/{applicationUid}", async (
+    ClaimsPrincipal user,
+    string applicationUid,
+    RemoveSavedApplicationCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    await handler.HandleAsync(new RemoveSavedApplicationCommand(userId, applicationUid), ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+v1.MapGet("/me/saved-applications", async (
+    ClaimsPrincipal user,
+    GetSavedApplicationsQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new GetSavedApplicationsQuery(userId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
 });
 
 var api = app.MapGroup("/api");
