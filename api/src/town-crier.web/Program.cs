@@ -5,6 +5,7 @@ using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
+using TownCrier.Application.Groups;
 using TownCrier.Application.Health;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanIt;
@@ -15,11 +16,13 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
+using TownCrier.Infrastructure.Groups;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -119,6 +122,16 @@ builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
 builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
 
 builder.Services.AddTransient<GetDemoAccountQueryHandler>();
+
+builder.Services.AddSingleton<IGroupRepository, InMemoryGroupRepository>();
+builder.Services.AddSingleton<IGroupInvitationRepository, InMemoryGroupInvitationRepository>();
+builder.Services.AddTransient<CreateGroupCommandHandler>();
+builder.Services.AddTransient<GetGroupQueryHandler>();
+builder.Services.AddTransient<GetUserGroupsQueryHandler>();
+builder.Services.AddTransient<InviteMemberCommandHandler>();
+builder.Services.AddTransient<AcceptInvitationCommandHandler>();
+builder.Services.AddTransient<RemoveGroupMemberCommandHandler>();
+builder.Services.AddTransient<DeleteGroupCommandHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -379,6 +392,158 @@ v1.MapPut("/me/watch-zones/{zoneId}/preferences", async (
     catch (InsufficientTierException)
     {
         return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
+    }
+});
+
+// Groups
+v1.MapPost("/groups", async (
+    ClaimsPrincipal user,
+    CreateGroupCommand command,
+    CreateGroupCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var fullCommand = new CreateGroupCommand(
+        userId,
+        command.GroupId,
+        command.Name,
+        command.Latitude,
+        command.Longitude,
+        command.RadiusMetres,
+        command.AuthorityId);
+    var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
+    return Results.Created($"/v1/groups/{result.GroupId}", result);
+});
+
+v1.MapGet("/groups", async (
+    ClaimsPrincipal user,
+    GetUserGroupsQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new GetUserGroupsQuery(userId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapGet("/groups/{groupId}", async (
+    ClaimsPrincipal user,
+    string groupId,
+    GetGroupQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        var result = await handler.HandleAsync(
+            new GetGroupQuery(userId, groupId), ct).ConfigureAwait(false);
+        return Results.Ok(result);
+    }
+    catch (GroupNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
+v1.MapDelete("/groups/{groupId}", async (
+    ClaimsPrincipal user,
+    string groupId,
+    DeleteGroupCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(
+            new DeleteGroupCommand(userId, groupId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (GroupNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (UnauthorizedGroupOperationException)
+    {
+        return Results.Json(new { error = "Only the group owner can delete the group." }, statusCode: 403);
+    }
+});
+
+v1.MapPost("/groups/{groupId}/invitations", async (
+    ClaimsPrincipal user,
+    string groupId,
+    InviteMemberCommand command,
+    InviteMemberCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var fullCommand = new InviteMemberCommand(
+        userId,
+        groupId,
+        command.InvitationId,
+        command.InviteeEmail);
+
+    try
+    {
+        var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
+        return Results.Created($"/v1/groups/{groupId}/invitations/{result.InvitationId}", result);
+    }
+    catch (GroupNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (UnauthorizedGroupOperationException)
+    {
+        return Results.Json(new { error = "Only the group owner can invite members." }, statusCode: 403);
+    }
+});
+
+v1.MapPost("/invitations/{invitationId}/accept", async (
+    ClaimsPrincipal user,
+    string invitationId,
+    AcceptInvitationCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(
+            new AcceptInvitationCommand(userId, invitationId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (GroupNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
+v1.MapDelete("/groups/{groupId}/members/{memberUserId}", async (
+    ClaimsPrincipal user,
+    string groupId,
+    string memberUserId,
+    RemoveGroupMemberCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(
+            new RemoveGroupMemberCommand(userId, groupId, memberUserId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (GroupNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (UnauthorizedGroupOperationException)
+    {
+        return Results.Json(new { error = "Only the group owner can remove members." }, statusCode: 403);
     }
 });
 

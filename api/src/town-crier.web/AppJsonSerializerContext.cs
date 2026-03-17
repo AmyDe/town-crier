@@ -4,6 +4,7 @@ using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
+using TownCrier.Application.Groups;
 using TownCrier.Application.Health;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.SavedApplications;
@@ -12,6 +13,12 @@ using TownCrier.Application.UserProfiles;
 
 namespace TownCrier.Web;
 
+[JsonSerializable(typeof(CreateGroupCommand))]
+[JsonSerializable(typeof(CreateGroupResult))]
+[JsonSerializable(typeof(GetGroupResult))]
+[JsonSerializable(typeof(GetUserGroupsResult))]
+[JsonSerializable(typeof(InviteMemberCommand))]
+[JsonSerializable(typeof(InviteMemberResult))]
 [JsonSerializable(typeof(GetAuthoritiesResult))]
 [JsonSerializable(typeof(GetAuthorityByIdResult))]
 [JsonSerializable(typeof(GetDemoAccountResult))]
