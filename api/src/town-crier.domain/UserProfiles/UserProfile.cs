@@ -6,12 +6,18 @@ public sealed class UserProfile
         string userId,
         string? postcode,
         NotificationPreferences notificationPreferences,
-        SubscriptionTier tier)
+        SubscriptionTier tier,
+        DateTimeOffset? subscriptionExpiry,
+        string? originalTransactionId,
+        DateTimeOffset? gracePeriodExpiry)
     {
         this.UserId = userId;
         this.Postcode = postcode;
         this.NotificationPreferences = notificationPreferences;
         this.Tier = tier;
+        this.SubscriptionExpiry = subscriptionExpiry;
+        this.OriginalTransactionId = originalTransactionId;
+        this.GracePeriodExpiry = gracePeriodExpiry;
     }
 
     public string UserId { get; }
@@ -20,7 +26,13 @@ public sealed class UserProfile
 
     public NotificationPreferences NotificationPreferences { get; private set; }
 
-    public SubscriptionTier Tier { get; }
+    public SubscriptionTier Tier { get; private set; }
+
+    public DateTimeOffset? SubscriptionExpiry { get; private set; }
+
+    public string? OriginalTransactionId { get; private set; }
+
+    public DateTimeOffset? GracePeriodExpiry { get; private set; }
 
     public static UserProfile Register(string userId)
     {
@@ -30,12 +42,51 @@ public sealed class UserProfile
             userId,
             postcode: null,
             notificationPreferences: NotificationPreferences.Default,
-            tier: SubscriptionTier.Free);
+            tier: SubscriptionTier.Free,
+            subscriptionExpiry: null,
+            originalTransactionId: null,
+            gracePeriodExpiry: null);
     }
 
     public void UpdatePreferences(string? postcode, NotificationPreferences notificationPreferences)
     {
         this.Postcode = postcode;
         this.NotificationPreferences = notificationPreferences;
+    }
+
+    public void LinkOriginalTransactionId(string originalTransactionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(originalTransactionId);
+        this.OriginalTransactionId = originalTransactionId;
+    }
+
+    public void ActivateSubscription(SubscriptionTier tier, DateTimeOffset expiresDate)
+    {
+        if (tier == SubscriptionTier.Free)
+        {
+            throw new ArgumentException("Cannot activate a free subscription.", nameof(tier));
+        }
+
+        this.Tier = tier;
+        this.SubscriptionExpiry = expiresDate;
+        this.GracePeriodExpiry = null;
+    }
+
+    public void RenewSubscription(DateTimeOffset newExpiresDate)
+    {
+        this.SubscriptionExpiry = newExpiresDate;
+        this.GracePeriodExpiry = null;
+    }
+
+    public void ExpireSubscription()
+    {
+        this.Tier = SubscriptionTier.Free;
+        this.SubscriptionExpiry = null;
+        this.GracePeriodExpiry = null;
+    }
+
+    public void EnterGracePeriod(DateTimeOffset gracePeriodExpiry)
+    {
+        this.GracePeriodExpiry = gracePeriodExpiry;
     }
 }

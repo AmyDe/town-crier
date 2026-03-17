@@ -11,17 +11,19 @@ internal static class TestJwtToken
 
     internal static RsaSecurityKey SecurityKey { get; } = new(Rsa);
 
-    internal static string Generate(string userId = "auth0|test-user-123")
+    internal static string Generate(string userId = "auth0|test-user-123", IEnumerable<Claim>? claims = null)
     {
         var credentials = new SigningCredentials(SecurityKey, SecurityAlgorithms.RsaSha256);
-        var claims = new[]
+        var allClaims = new List<Claim> { new("sub", userId) };
+        if (claims is not null)
         {
-            new Claim("sub", userId),
-        };
+            allClaims.AddRange(claims);
+        }
+
         var token = new JwtSecurityToken(
             issuer: "https://test.auth0.com/",
             audience: "https://api.towncrier.app",
-            claims: claims,
+            claims: allClaims,
             expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: credentials);
 

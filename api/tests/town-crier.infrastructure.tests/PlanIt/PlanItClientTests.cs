@@ -81,6 +81,22 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_IncludeAuthorityIdInUrl_When_FetchingApplications()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/api/applics/json", EmptyResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+
+        // Assert
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
+        await Assert.That(handler.RequestUrls[0]).Contains("auth=292");
+    }
+
+    [Test]
     public async Task Should_PassDifferentStartParameter_When_Provided()
     {
         // Arrange
@@ -252,10 +268,11 @@ public sealed class PlanItClientTests
 
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(
         PlanItClient client,
-        DateTimeOffset? differentStart)
+        DateTimeOffset? differentStart,
+        int authorityId = 292)
     {
         var results = new List<TownCrier.Domain.PlanningApplications.PlanningApplication>();
-        await foreach (var app in client.FetchApplicationsAsync(differentStart, CancellationToken.None))
+        await foreach (var app in client.FetchApplicationsAsync(authorityId, differentStart, CancellationToken.None))
         {
             results.Add(app);
         }

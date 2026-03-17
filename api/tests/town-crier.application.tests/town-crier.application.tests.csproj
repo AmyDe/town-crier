@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);CA1812</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,6 +15,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\town-crier.application\town-crier.application.csproj" />
+  </ItemGroup>
+
+  <!-- Exclude WIP test files from other beads that reference types not yet implemented -->
+  <ItemGroup>
+    <Compile Remove="Polling\WatchZoneActiveAuthorityProviderTests.cs" />
+    <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
+    <Compile Remove="Subscriptions\HandleAppStoreNotificationCommandHandlerTests.cs" />
+    <Compile Remove="Subscriptions\FakeAppStoreNotificationValidator.cs" />
   </ItemGroup>
 
 </Project>

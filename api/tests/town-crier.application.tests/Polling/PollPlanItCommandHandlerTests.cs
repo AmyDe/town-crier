@@ -287,4 +287,181 @@ public sealed class PollPlanItCommandHandlerTests
         // Assert
         await Assert.That(repository.GetAll()).HasCount().EqualTo(0);
     }
+
+    [Test]
+    public async Task Should_EnqueueNotification_When_ApplicationIsWithinWatchZone()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(5000)
+            .WithAuthorityId(1)
+            .Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-1")
+            .WithAreaId(1)
+            .WithCoordinates(51.5080, -0.1270)
+            .Build());
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), repository, TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, notificationEnqueuer);
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(1);
+        await Assert.That(notificationEnqueuer.Enqueued.First().Application.Uid).IsEqualTo("app-1");
+        await Assert.That(notificationEnqueuer.Enqueued.First().Zone.Id).IsEqualTo("zone-1");
+    }
+
+    [Test]
+    public async Task Should_NotEnqueueNotification_When_ApplicationIsOutsideWatchZone()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(500)
+            .WithAuthorityId(1)
+            .Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        // Application ~50km away in Brighton
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-far")
+            .WithAreaId(1)
+            .WithCoordinates(50.8225, -0.1372)
+            .Build());
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), repository, TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, notificationEnqueuer);
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_NotEnqueueNotification_When_ApplicationHasNoCoordinates()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(5000)
+            .WithAuthorityId(1)
+            .Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        // Application without coordinates
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-no-coords")
+            .WithAreaId(1)
+            .Build());
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), repository, TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, notificationEnqueuer);
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_EnqueueForEachMatchingZone_When_MultipleZonesMatch()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(5000)
+            .WithAuthorityId(1)
+            .Build());
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-2")
+            .WithUserId("user-2")
+            .WithCentre(51.5080, -0.1300)
+            .WithRadiusMetres(3000)
+            .WithAuthorityId(1)
+            .Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-1")
+            .WithAreaId(1)
+            .WithCoordinates(51.5075, -0.1280)
+            .Build());
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), repository, TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, notificationEnqueuer);
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_NotEnqueueNotification_When_NoWatchZonesExist()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-1")
+            .WithAreaId(1)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build());
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), repository, TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, notificationEnqueuer);
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
 }

@@ -23,11 +23,12 @@ dotnet_diagnostic.SA1200.severity = none
 dotnet_diagnostic.IL2026.severity = none
 dotnet_diagnostic.IL3050.severity = none
 
-# Test projects — allow underscores in test method names and public types in exe projects
+# Test projects — allow underscores in test method names, public types in exe projects, and internal test doubles
 [tests/**/*.cs]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1515.severity = none
 dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA1812.severity = none
 csharp_style_var_for_built_in_types = true:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 csharp_style_var_elsewhere = true:suggestion

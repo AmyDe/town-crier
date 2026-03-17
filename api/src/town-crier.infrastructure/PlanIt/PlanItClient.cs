@@ -30,6 +30,7 @@ public sealed class PlanItClient : IPlanItClient
     }
 
     public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
+        int authorityId,
         DateTimeOffset? differentStart,
         [EnumeratorCancellation] CancellationToken ct)
     {
@@ -38,7 +39,7 @@ public sealed class PlanItClient : IPlanItClient
 
         do
         {
-            var url = new Uri(BuildUrl(differentStart, page), UriKind.Relative);
+            var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
             using var response = await this.SendWithRetryAsync(url, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
@@ -64,9 +65,9 @@ public sealed class PlanItClient : IPlanItClient
         while (fetched >= DefaultPageSize);
     }
 
-    private static string BuildUrl(DateTimeOffset? differentStart, int page)
+    private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)
     {
-        var url = $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}";
+        var url = $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}";
 
         if (differentStart.HasValue)
         {
