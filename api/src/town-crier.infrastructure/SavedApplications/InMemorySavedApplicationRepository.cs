@@ -37,5 +37,14 @@ public sealed class InMemorySavedApplicationRepository : ISavedApplicationReposi
         return Task.FromResult(this.store.ContainsKey(key));
     }
 
+    public Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct)
+    {
+        var userIds = this.store.Values
+            .Where(s => s.ApplicationUid == applicationUid)
+            .Select(s => s.UserId)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<string>>(userIds);
+    }
+
     private static string MakeKey(string userId, string applicationUid) => $"{userId}|{applicationUid}";
 }

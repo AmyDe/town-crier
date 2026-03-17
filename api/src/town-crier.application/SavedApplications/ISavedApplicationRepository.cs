@@ -11,4 +11,6 @@ public interface ISavedApplicationRepository
     Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct);
 
     Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct);
+
+    Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct);
 }

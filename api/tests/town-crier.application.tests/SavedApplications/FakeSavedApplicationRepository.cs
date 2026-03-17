@@ -43,4 +43,13 @@ internal sealed class FakeSavedApplicationRepository : ISavedApplicationReposito
         var exists = this.store.Any(s => s.UserId == userId && s.ApplicationUid == applicationUid);
         return Task.FromResult(exists);
     }
+
+    public Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct)
+    {
+        var userIds = this.store
+            .Where(s => s.ApplicationUid == applicationUid)
+            .Select(s => s.UserId)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<string>>(userIds);
+    }
 }
