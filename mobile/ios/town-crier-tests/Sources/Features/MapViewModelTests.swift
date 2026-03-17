@@ -88,6 +88,7 @@ struct MapViewModelTests {
 
     @Test func watchZoneCentre_matchesProvidedZone() throws {
         let zone = try WatchZone(
+            postcode: Postcode("SW1A 1AA"),
             centre: Coordinate(latitude: 51.5, longitude: -0.1),
             radiusMetres: 3000
         )

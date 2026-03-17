@@ -16,6 +16,7 @@ public final class OnboardingViewModel: ObservableObject {
     @Published public var postcodeInput: String = ""
     @Published public private(set) var isLoading = false
     @Published public private(set) var error: DomainError?
+    @Published public private(set) var validatedPostcode: Postcode?
     @Published public private(set) var geocodedCoordinate: Coordinate?
     @Published public var selectedRadiusMetres: Double = 1000
     @Published public private(set) var createdWatchZone: WatchZone?
@@ -85,6 +86,7 @@ public final class OnboardingViewModel: ObservableObject {
         }
 
         do {
+            validatedPostcode = postcode
             geocodedCoordinate = try await geocoder.geocode(postcode)
             currentStep = .radiusPicker
         } catch let domainError as DomainError {
@@ -97,9 +99,9 @@ public final class OnboardingViewModel: ObservableObject {
     }
 
     public func confirmRadius() {
-        guard let coordinate = geocodedCoordinate else { return }
+        guard let coordinate = geocodedCoordinate, let postcode = validatedPostcode else { return }
         do {
-            let zone = try WatchZone(centre: coordinate, radiusMetres: selectedRadiusMetres)
+            let zone = try WatchZone(postcode: postcode, centre: coordinate, radiusMetres: selectedRadiusMetres)
             createdWatchZone = zone
             currentStep = .notificationPermission
         } catch {

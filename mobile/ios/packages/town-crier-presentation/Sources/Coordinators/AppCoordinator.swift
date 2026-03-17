@@ -18,6 +18,7 @@ public final class AppCoordinator: ObservableObject {
     private let onboardingRepository: OnboardingRepository?
     private let notificationService: NotificationService?
     private let appVersionProvider: AppVersionProvider?
+    private let versionConfigService: VersionConfigService?
 
     public init(
         repository: PlanningApplicationRepository,
@@ -27,7 +28,8 @@ public final class AppCoordinator: ObservableObject {
         watchZoneRepository: WatchZoneRepository? = nil,
         onboardingRepository: OnboardingRepository? = nil,
         notificationService: NotificationService? = nil,
-        appVersionProvider: AppVersionProvider? = nil
+        appVersionProvider: AppVersionProvider? = nil,
+        versionConfigService: VersionConfigService? = nil
     ) {
         self.repository = repository
         self.authService = authService
@@ -37,6 +39,7 @@ public final class AppCoordinator: ObservableObject {
         self.onboardingRepository = onboardingRepository
         self.notificationService = notificationService
         self.appVersionProvider = appVersionProvider
+        self.versionConfigService = versionConfigService
     }
 
     public func makeLoginViewModel() -> LoginViewModel {
@@ -101,6 +104,18 @@ public final class AppCoordinator: ObservableObject {
             appVersionProvider: appVersionProvider
         )
         return viewModel
+    }
+
+    public func makeForceUpdateViewModel() -> ForceUpdateViewModel {
+        guard let appVersionProvider = appVersionProvider,
+              let versionConfigService = versionConfigService
+        else {
+            preconditionFailure("Version dependencies not provided to AppCoordinator")
+        }
+        return ForceUpdateViewModel(
+            versionConfigService: versionConfigService,
+            appVersionProvider: appVersionProvider
+        )
     }
 
     public func makeApplicationDetailViewModel(

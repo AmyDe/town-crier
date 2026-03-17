@@ -65,6 +65,39 @@ public sealed class PlanItClient : IPlanItClient
         while (fetched >= DefaultPageSize);
     }
 
+    public async Task<PlanItSearchResult> SearchApplicationsAsync(
+        string searchText,
+        int authorityId,
+        int page,
+        CancellationToken ct)
+    {
+        var url = new Uri(BuildSearchUrl(searchText, authorityId, page), UriKind.Relative);
+        using var response = await this.SendWithRetryAsync(url, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var planItResponse = await JsonSerializer.DeserializeAsync(
+            await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
+            PlanItJsonSerializerContext.Default.PlanItResponse,
+            ct).ConfigureAwait(false);
+
+        if (planItResponse is null)
+        {
+            return new PlanItSearchResult([], 0);
+        }
+
+        var applications = planItResponse.Records
+            .Select(MapToDomain)
+            .ToList();
+
+        return new PlanItSearchResult(applications, planItResponse.Total);
+    }
+
+    private static string BuildSearchUrl(string searchText, int authorityId, int page)
+    {
+        var encodedQuery = Uri.EscapeDataString(searchText);
+        return $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}&q={encodedQuery}";
+    }
+
     private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)
     {
         var url = $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}";

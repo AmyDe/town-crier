@@ -52,4 +52,13 @@ internal sealed class FakePlanItClient : IPlanItClient
 
         await Task.CompletedTask.ConfigureAwait(false);
     }
+
+    public Task<PlanItSearchResult> SearchApplicationsAsync(
+        string searchText,
+        int authorityId,
+        int page,
+        CancellationToken ct)
+    {
+        return Task.FromResult(new PlanItSearchResult([], 0));
+    }
 }

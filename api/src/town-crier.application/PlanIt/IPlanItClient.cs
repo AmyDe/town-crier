@@ -8,4 +8,10 @@ public interface IPlanItClient
         int authorityId,
         DateTimeOffset? differentStart,
         CancellationToken ct);
+
+    Task<PlanItSearchResult> SearchApplicationsAsync(
+        string searchText,
+        int authorityId,
+        int page,
+        CancellationToken ct);
 }
