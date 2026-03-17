@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using TownCrier.Application.Authorities;
+using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
@@ -15,6 +17,7 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
+using TownCrier.Infrastructure.GovUkPlanningData;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -53,6 +56,25 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 {
     client.BaseAddress = new Uri(planItBaseUrl);
 });
+builder.Services.AddSingleton<IAuthorityProvider>(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = factory.CreateClient("PlanItAreas");
+    httpClient.BaseAddress = new Uri(planItBaseUrl);
+    return new CachedPlanItAuthorityProvider(httpClient, sp.GetRequiredService<TimeProvider>());
+});
+builder.Services.AddTransient<GetAuthoritiesQueryHandler>();
+builder.Services.AddTransient<GetAuthorityByIdQueryHandler>();
+
+#pragma warning disable S1075 // Hardcoded URI is a sensible default
+var govUkBaseUrl = builder.Configuration["GovUkPlanningData:BaseUrl"] ?? "https://www.planning.data.gov.uk/";
+#pragma warning restore S1075
+builder.Services.AddHttpClient<IDesignationDataProvider, GovUkPlanningDataClient>(client =>
+{
+    client.BaseAddress = new Uri(govUkBaseUrl);
+});
+builder.Services.AddTransient<GetDesignationContextQueryHandler>();
+
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
 builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
@@ -124,6 +146,35 @@ app.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQ
 var v1 = app.MapGroup("/v1");
 v1.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQuery(), CancellationToken.None))
     .AllowAnonymous();
+
+v1.MapGet("/designations", async (
+    double latitude,
+    double longitude,
+    GetDesignationContextQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var query = new GetDesignationContextQuery(latitude, longitude);
+    var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapGet("/authorities", async (
+    string? search,
+    GetAuthoritiesQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(new GetAuthoritiesQuery(search), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+}).AllowAnonymous();
+
+v1.MapGet("/authorities/{id:int}", async (
+    int id,
+    GetAuthorityByIdQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(new GetAuthorityByIdQuery(id), ct).ConfigureAwait(false);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+}).AllowAnonymous();
 
 v1.MapGet("/geocode/{postcode}", async (string postcode, GeocodePostcodeQueryHandler handler, CancellationToken ct) =>
 {
