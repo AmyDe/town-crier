@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
 using TownCrier.Application.PlanIt;
@@ -8,6 +9,7 @@ using TownCrier.Application.Polling;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -66,6 +68,10 @@ builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();
 builder.Services.AddTransient<ExportUserDataQueryHandler>();
 builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
+
+builder.Services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
+builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
+builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -168,6 +174,21 @@ v1.MapDelete("/me", async (ClaimsPrincipal user, DeleteUserProfileCommandHandler
     {
         return Results.NotFound();
     }
+});
+
+v1.MapPut("/me/device-token", async (ClaimsPrincipal user, RegisterDeviceTokenRequest request, RegisterDeviceTokenCommandHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var command = new RegisterDeviceTokenCommand(userId, request.Token, request.Platform);
+    await handler.HandleAsync(command, ct).ConfigureAwait(false);
+    return Results.NoContent();
+});
+
+v1.MapDelete("/me/device-token/{token}", async (ClaimsPrincipal user, string token, RemoveInvalidDeviceTokenCommandHandler handler, CancellationToken ct) =>
+{
+    var command = new RemoveInvalidDeviceTokenCommand(token);
+    await handler.HandleAsync(command, ct).ConfigureAwait(false);
+    return Results.NoContent();
 });
 
 var api = app.MapGroup("/api");
