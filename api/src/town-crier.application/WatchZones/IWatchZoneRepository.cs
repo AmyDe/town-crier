@@ -4,6 +4,8 @@ namespace TownCrier.Application.WatchZones;
 
 public interface IWatchZoneRepository
 {
+    Task SaveAsync(WatchZone zone, CancellationToken ct);
+
     Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct);
 

@@ -13,6 +13,13 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         this.zones.Add(zone);
     }
 
+    public Task SaveAsync(WatchZone zone, CancellationToken ct)
+    {
+        this.zones.RemoveAll(z => z.Id == zone.Id);
+        this.zones.Add(zone);
+        return Task.CompletedTask;
+    }
+
     public void Remove(string zoneId)
     {
         this.zones.RemoveAll(z => z.Id == zoneId);

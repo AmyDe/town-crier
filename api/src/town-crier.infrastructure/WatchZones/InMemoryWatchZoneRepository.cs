@@ -9,6 +9,13 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
 {
     private readonly ConcurrentDictionary<string, WatchZone> zones = new();
 
+    public Task SaveAsync(WatchZone zone, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        this.zones[zone.Id] = zone;
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {
