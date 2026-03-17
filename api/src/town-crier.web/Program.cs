@@ -12,6 +12,7 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.Notifications;
@@ -73,6 +74,8 @@ builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();
 builder.Services.AddTransient<ExportUserDataQueryHandler>();
 builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
+builder.Services.AddTransient<UpdateZonePreferencesCommandHandler>();
+builder.Services.AddTransient<GetZonePreferencesQueryHandler>();
 
 builder.Services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
@@ -269,6 +272,56 @@ v1.MapGet("/me/saved-applications", async (
     var userId = user.FindFirstValue("sub")!;
     var result = await handler.HandleAsync(new GetSavedApplicationsQuery(userId), ct).ConfigureAwait(false);
     return Results.Ok(result);
+});
+
+v1.MapGet("/me/watch-zones/{zoneId}/preferences", async (
+    ClaimsPrincipal user,
+    string zoneId,
+    GetZonePreferencesQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        var result = await handler.HandleAsync(
+            new GetZonePreferencesQuery(userId, zoneId), ct).ConfigureAwait(false);
+        return Results.Ok(result);
+    }
+    catch (UserProfileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
+v1.MapPut("/me/watch-zones/{zoneId}/preferences", async (
+    ClaimsPrincipal user,
+    string zoneId,
+    UpdateZonePreferencesCommand command,
+    UpdateZonePreferencesCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var fullCommand = new UpdateZonePreferencesCommand(
+        userId,
+        zoneId,
+        command.NewApplications,
+        command.StatusChanges,
+        command.DecisionUpdates);
+
+    try
+    {
+        var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
+        return Results.Ok(result);
+    }
+    catch (UserProfileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+    catch (InsufficientTierException)
+    {
+        return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
+    }
 });
 
 var api = app.MapGroup("/api");

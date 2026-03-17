@@ -2,6 +2,8 @@ namespace TownCrier.Domain.UserProfiles;
 
 public sealed class UserProfile
 {
+    private readonly Dictionary<string, ZoneNotificationPreferences> zonePreferences = [];
+
     private UserProfile(
         string userId,
         string? postcode,
@@ -25,6 +27,8 @@ public sealed class UserProfile
     public string? Postcode { get; private set; }
 
     public NotificationPreferences NotificationPreferences { get; private set; }
+
+    public IReadOnlyDictionary<string, ZoneNotificationPreferences> AllZonePreferences => this.zonePreferences;
 
     public SubscriptionTier Tier { get; private set; }
 
@@ -88,5 +92,26 @@ public sealed class UserProfile
     public void EnterGracePeriod(DateTimeOffset gracePeriodExpiry)
     {
         this.GracePeriodExpiry = gracePeriodExpiry;
+    }
+
+    public ZoneNotificationPreferences GetZonePreferences(string zoneId)
+    {
+        return this.zonePreferences.TryGetValue(zoneId, out var prefs)
+            ? prefs
+            : ZoneNotificationPreferences.Default;
+    }
+
+    public void SetZonePreferences(string zoneId, ZoneNotificationPreferences preferences)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
+        ArgumentNullException.ThrowIfNull(preferences);
+
+        if (this.Tier == SubscriptionTier.Free && (preferences.StatusChanges || preferences.DecisionUpdates))
+        {
+            throw new InsufficientTierException(
+                "Status changes and decision updates require a Pro subscription.");
+        }
+
+        this.zonePreferences[zoneId] = preferences;
     }
 }

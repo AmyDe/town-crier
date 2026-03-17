@@ -73,6 +73,14 @@ public sealed class DispatchNotificationCommandHandler
             return;
         }
 
+        // Check zone-level preferences for new applications
+        var zonePrefs = profile.GetZonePreferences(zone.Id);
+        if (!zonePrefs.NewApplications)
+        {
+            await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
+            return;
+        }
+
         // Check free-tier monthly cap
         if (profile.Tier == SubscriptionTier.Free)
         {

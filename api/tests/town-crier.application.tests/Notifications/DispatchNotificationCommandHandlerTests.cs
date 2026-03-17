@@ -1,10 +1,9 @@
-using Microsoft.Extensions.Time.Testing;
 using TownCrier.Application.Notifications;
-using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
 using TownCrier.Domain.UserProfiles;
+using FakeDeviceRegistrationRepository = TownCrier.Application.Tests.DeviceRegistrations.FakeDeviceRegistrationRepository;
 
 namespace TownCrier.Application.Tests.Notifications;
 
@@ -206,6 +205,60 @@ public sealed class DispatchNotificationCommandHandlerTests
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
         await Assert.That(notificationRepo.All[0].PushSent).IsFalse();
         await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_RecordButNotPush_When_ZoneNewApplicationsDisabled()
+    {
+        // Arrange
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
+        profile.SetZonePreferences(
+            "zone-1",
+            new ZoneNotificationPreferences(
+                NewApplications: false,
+                StatusChanges: false,
+                DecisionUpdates: false));
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
+        await deviceRepo.SaveAsync(device, CancellationToken.None);
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — notification recorded but push not sent
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(notificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_SendPush_When_ZoneNewApplicationsEnabled()
+    {
+        // Arrange
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
+        profile.SetZonePreferences(
+            "zone-1",
+            new ZoneNotificationPreferences(
+                NewApplications: true,
+                StatusChanges: false,
+                DecisionUpdates: false));
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
+        await deviceRepo.SaveAsync(device, CancellationToken.None);
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(notificationRepo.All[0].PushSent).IsTrue();
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
     }
 
     private static (DispatchNotificationCommandHandler Handler,

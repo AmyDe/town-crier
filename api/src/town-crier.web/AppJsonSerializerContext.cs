@@ -21,4 +21,7 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(SearchPlanningApplicationsResult))]
 [JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]
+[JsonSerializable(typeof(UpdateZonePreferencesCommand))]
+[JsonSerializable(typeof(UpdateZonePreferencesResult))]
+[JsonSerializable(typeof(GetZonePreferencesResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;
