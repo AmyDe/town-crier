@@ -11,4 +11,5 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(GetUserProfileResult))]
 [JsonSerializable(typeof(UpdateUserProfileCommand))]
 [JsonSerializable(typeof(UpdateUserProfileResult))]
+[JsonSerializable(typeof(ExportUserDataResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;

@@ -14,10 +14,23 @@ public sealed class InMemoryUserProfileRepository : IUserProfileRepository
         return Task.FromResult(profile);
     }
 
+    public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
+    {
+        var profile = this.store.Values
+            .FirstOrDefault(p => p.OriginalTransactionId == originalTransactionId);
+        return Task.FromResult(profile);
+    }
+
     public Task SaveAsync(UserProfile profile, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(profile);
         this.store[profile.UserId] = profile;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(string userId, CancellationToken ct)
+    {
+        this.store.TryRemove(userId, out _);
         return Task.CompletedTask;
     }
 }

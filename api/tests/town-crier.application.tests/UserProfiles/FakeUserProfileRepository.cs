@@ -15,9 +15,22 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.FromResult(profile);
     }
 
+    public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
+    {
+        var profile = this.store.Values
+            .FirstOrDefault(p => p.OriginalTransactionId == originalTransactionId);
+        return Task.FromResult(profile);
+    }
+
     public Task SaveAsync(UserProfile profile, CancellationToken ct)
     {
         this.store[profile.UserId] = profile;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(string userId, CancellationToken ct)
+    {
+        this.store.Remove(userId);
         return Task.CompletedTask;
     }
 

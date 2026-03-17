@@ -5,15 +5,20 @@ using TownCrier.Application.Health;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
+using TownCrier.Application.RateLimiting;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
+using TownCrier.Infrastructure.RateLimiting;
 using TownCrier.Infrastructure.UserProfiles;
+using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Web;
 using TownCrier.Web.Observability;
 using TownCrier.Web.Polling;
+using TownCrier.Web.RateLimiting;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -44,7 +49,14 @@ var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.C
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
 builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
+builder.Services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();
+builder.Services.AddSingleton<IPollingHealthAlerter, LogPollingHealthAlerter>();
+builder.Services.AddSingleton(new PollingHealthConfig(
+    StalenessThreshold: TimeSpan.FromHours(1),
+    MaxConsecutiveFailures: 5));
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
+builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
 
@@ -52,6 +64,8 @@ builder.Services.AddSingleton<IUserProfileRepository, InMemoryUserProfileReposit
 builder.Services.AddTransient<CreateUserProfileCommandHandler>();
 builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();
+builder.Services.AddTransient<ExportUserDataQueryHandler>();
+builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -68,6 +82,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorizationBuilder()
     .AddFallbackPolicy("Authenticated", policy => policy.RequireAuthenticatedUser());
 
+builder.Services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
+builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection("RateLimiting"));
+
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -75,6 +92,7 @@ app.UseMiddleware<ErrorResponseMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<RateLimitMiddleware>();
 
 app.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQuery(), CancellationToken.None))
     .AllowAnonymous();
@@ -128,6 +146,36 @@ v1.MapPatch("/me", async (ClaimsPrincipal user, UpdateUserProfileCommand command
     {
         return Results.NotFound();
     }
+});
+
+v1.MapGet("/me/data", async (ClaimsPrincipal user, ExportUserDataQueryHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new ExportUserDataQuery(userId), ct).ConfigureAwait(false);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
+
+v1.MapDelete("/me", async (ClaimsPrincipal user, DeleteUserProfileCommandHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(new DeleteUserProfileCommand(userId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (UserProfileNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
+var api = app.MapGroup("/api");
+
+api.MapGet("/me", (ClaimsPrincipal user) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    return Results.Ok(new { userId });
 });
 
 await app.RunAsync().ConfigureAwait(false);
