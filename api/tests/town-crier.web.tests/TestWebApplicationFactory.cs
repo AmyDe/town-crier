@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using TownCrier.Web.Tests.Auth;
 
@@ -20,6 +21,12 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
             {
                 options.Authority = null;
+                options.ConfigurationManager = null;
+                options.Configuration = new OpenIdConnectConfiguration
+                {
+                    Issuer = "https://test.auth0.com/",
+                };
+                options.Configuration.SigningKeys.Add(TestJwtToken.SecurityKey);
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

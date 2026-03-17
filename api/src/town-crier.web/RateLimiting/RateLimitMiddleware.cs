@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using TownCrier.Application.RateLimiting;
 
@@ -8,7 +9,8 @@ internal sealed class RateLimitMiddleware(RequestDelegate next, IRateLimitStore 
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        var userId = context.User.FindFirst("sub")?.Value;
+        var userId = context.User.FindFirst("sub")?.Value
+            ?? context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         // Skip rate limiting for anonymous requests
         if (string.IsNullOrEmpty(userId))
@@ -25,15 +27,21 @@ internal sealed class RateLimitMiddleware(RequestDelegate next, IRateLimitStore 
 
         var result = await store.CheckAndIncrementAsync(userId, limit, config.Window, context.RequestAborted).ConfigureAwait(false);
 
-        context.Response.Headers["X-RateLimit-Limit"] = limit.ToString(CultureInfo.InvariantCulture);
-        context.Response.Headers["X-RateLimit-Remaining"] = result.Remaining.ToString(CultureInfo.InvariantCulture);
-
         if (!result.IsAllowed)
         {
             context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            context.Response.Headers.Append("X-RateLimit-Limit", limit.ToString(CultureInfo.InvariantCulture));
+            context.Response.Headers.Append("X-RateLimit-Remaining", "0");
             context.Response.Headers.RetryAfter = ((int)Math.Ceiling(result.RetryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
             return;
         }
+
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.Append("X-RateLimit-Limit", limit.ToString(CultureInfo.InvariantCulture));
+            context.Response.Headers.Append("X-RateLimit-Remaining", result.Remaining.ToString(CultureInfo.InvariantCulture));
+            return Task.CompletedTask;
+        });
 
         await next(context).ConfigureAwait(false);
     }
