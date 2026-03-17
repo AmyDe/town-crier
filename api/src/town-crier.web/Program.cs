@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
+using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
@@ -116,6 +117,8 @@ builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicat
 builder.Services.AddTransient<SaveApplicationCommandHandler>();
 builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
 builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
+
+builder.Services.AddTransient<GetDemoAccountQueryHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -378,6 +381,14 @@ v1.MapPut("/me/watch-zones/{zoneId}/preferences", async (
         return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
     }
 });
+
+v1.MapGet("/demo-account", async (
+    GetDemoAccountQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(new GetDemoAccountQuery(), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+}).AllowAnonymous();
 
 var api = app.MapGroup("/api");
 

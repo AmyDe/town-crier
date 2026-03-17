@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using TownCrier.Application.Authorities;
+using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
@@ -13,6 +14,7 @@ namespace TownCrier.Web;
 
 [JsonSerializable(typeof(GetAuthoritiesResult))]
 [JsonSerializable(typeof(GetAuthorityByIdResult))]
+[JsonSerializable(typeof(GetDemoAccountResult))]
 [JsonSerializable(typeof(GetDesignationContextResult))]
 [JsonSerializable(typeof(HealthStatus))]
 [JsonSerializable(typeof(GeocodePostcodeResult))]
