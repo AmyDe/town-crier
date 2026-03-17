@@ -7,6 +7,7 @@ internal sealed partial class PlanItPollingService : BackgroundService
     private readonly IServiceScopeFactory scopeFactory;
     private readonly TimeSpan interval;
     private readonly ILogger<PlanItPollingService> logger;
+    private int cycleNumber;
 
     public PlanItPollingService(
         IServiceScopeFactory scopeFactory,
@@ -35,10 +36,12 @@ internal sealed partial class PlanItPollingService : BackgroundService
                 {
                     var handler = scope.ServiceProvider.GetRequiredService<PollPlanItCommandHandler>();
 
-                    var result = await handler.HandleAsync(new PollPlanItCommand(), stoppingToken).ConfigureAwait(false);
+                    var result = await handler.HandleAsync(new PollPlanItCommand(this.cycleNumber), stoppingToken).ConfigureAwait(false);
 
-                    LogPollCycleCompleted(this.logger, result.ApplicationCount);
+                    LogPollCycleCompleted(this.logger, result.ApplicationCount, this.cycleNumber, result.AuthoritiesPolled, result.AuthoritiesSkipped);
                 }
+
+                this.cycleNumber++;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -49,6 +52,7 @@ internal sealed partial class PlanItPollingService : BackgroundService
 #pragma warning restore CA1031
             {
                 LogPollCycleFailed(this.logger, ex);
+                this.cycleNumber++;
             }
         }
 
@@ -58,8 +62,8 @@ internal sealed partial class PlanItPollingService : BackgroundService
     [LoggerMessage(Level = LogLevel.Information, Message = "PlanIt polling started with interval {IntervalMinutes}m")]
     private static partial void LogPollingStarted(ILogger logger, double intervalMinutes);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Poll cycle completed: {ApplicationCount} applications fetched")]
-    private static partial void LogPollCycleCompleted(ILogger logger, int applicationCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Poll cycle {CycleNumber} completed: {ApplicationCount} applications, {AuthoritiesPolled} polled, {AuthoritiesSkipped} skipped")]
+    private static partial void LogPollCycleCompleted(ILogger logger, int applicationCount, int cycleNumber, int authoritiesPolled, int authoritiesSkipped);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Poll cycle failed")]
     private static partial void LogPollCycleFailed(ILogger logger, Exception exception);

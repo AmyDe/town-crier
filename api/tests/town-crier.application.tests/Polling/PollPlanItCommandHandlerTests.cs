@@ -1,4 +1,5 @@
 using TownCrier.Application.Polling;
+using TownCrier.Domain.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
 
@@ -463,5 +464,161 @@ public sealed class PollPlanItCommandHandlerTests
 
         // Assert
         await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_SkipLowPriorityAuthority_When_NotInQualifyingCycle()
+    {
+        // Arrange — authority 100 has 1 zone (Low priority), cycle 1 should skip it
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(5000)
+            .WithAuthorityId(100)
+            .Build());
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+
+        var scheduleConfig = new PollingScheduleConfig(HighThreshold: 5, LowThreshold: 2);
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), new FakePlanningApplicationRepository(), TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, new FakeNotificationEnqueuer(), scheduleConfig);
+
+        // Act — cycle 1 (low priority only polls on cycle 0, 4, 8, ...)
+        var result = await handler.HandleAsync(new PollPlanItCommand(CycleNumber: 1), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.ApplicationCount).IsEqualTo(0);
+        await Assert.That(planItClient.AuthorityIdsRequested).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_PollHighPriorityAuthority_When_AnyCycle()
+    {
+        // Arrange — authority 100 has 10 zones (High priority)
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        for (var i = 0; i < 10; i++)
+        {
+            watchZoneRepository.Add(new WatchZoneBuilder()
+                .WithId($"zone-{i}")
+                .WithUserId($"user-{i}")
+                .WithCentre(51.5074, -0.1278)
+                .WithRadiusMetres(5000)
+                .WithAuthorityId(100)
+                .Build());
+        }
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+
+        var scheduleConfig = new PollingScheduleConfig(HighThreshold: 5, LowThreshold: 2);
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), new FakePlanningApplicationRepository(), TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, new FakeNotificationEnqueuer(), scheduleConfig);
+
+        // Act — cycle 3 (high priority polls every cycle)
+        var result = await handler.HandleAsync(new PollPlanItCommand(CycleNumber: 3), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(100);
+    }
+
+    [Test]
+    public async Task Should_OnlyPollHighPriority_When_OddCycle()
+    {
+        // Arrange — high (100, 10 zones), normal (200, 3 zones), low (300, 1 zone)
+        var watchZoneRepository = new FakeWatchZoneRepository();
+
+        for (var i = 0; i < 10; i++)
+        {
+            watchZoneRepository.Add(new WatchZoneBuilder()
+                .WithId($"zone-high-{i}")
+                .WithUserId($"user-{i}")
+                .WithCentre(51.5074, -0.1278)
+                .WithRadiusMetres(5000)
+                .WithAuthorityId(100)
+                .Build());
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            watchZoneRepository.Add(new WatchZoneBuilder()
+                .WithId($"zone-normal-{i}")
+                .WithUserId($"user-{10 + i}")
+                .WithCentre(52.0, -1.0)
+                .WithRadiusMetres(5000)
+                .WithAuthorityId(200)
+                .Build());
+        }
+
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-low-0")
+            .WithUserId("user-20")
+            .WithCentre(53.0, -2.0)
+            .WithRadiusMetres(5000)
+            .WithAuthorityId(300)
+            .Build());
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-high").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-normal").WithAreaId(200).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-low").WithAreaId(300).Build());
+
+        var scheduleConfig = new PollingScheduleConfig(HighThreshold: 5, LowThreshold: 2);
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), new FakePlanningApplicationRepository(), TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, new FakeNotificationEnqueuer(), scheduleConfig);
+
+        // Act — cycle 1 (only high priority should be polled)
+        var result = await handler.HandleAsync(new PollPlanItCommand(CycleNumber: 1), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(100);
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(200);
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
+    }
+
+    [Test]
+    public async Task Should_IncludePollEfficiency_When_PollCompletes()
+    {
+        // Arrange
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        for (var i = 0; i < 5; i++)
+        {
+            watchZoneRepository.Add(new WatchZoneBuilder()
+                .WithId($"zone-{i}")
+                .WithUserId($"user-{i}")
+                .WithCentre(51.5074, -0.1278)
+                .WithRadiusMetres(5000)
+                .WithAuthorityId(100)
+                .Build());
+        }
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+
+        var scheduleConfig = new PollingScheduleConfig(HighThreshold: 5, LowThreshold: 2);
+        var handler = new PollPlanItCommandHandler(planItClient, new FakePollStateStore(), new FakePlanningApplicationRepository(), TimeProvider.System, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), watchZoneRepository, new FakeNotificationEnqueuer(), scheduleConfig);
+
+        // Act
+        var result = await handler.HandleAsync(new PollPlanItCommand(CycleNumber: 0), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+        await Assert.That(result.AuthoritiesSkipped).IsEqualTo(0);
+        await Assert.That(result.TotalActiveAuthorities).IsEqualTo(1);
     }
 }

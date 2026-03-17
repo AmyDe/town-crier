@@ -35,6 +35,14 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<int>>(authorityIds);
     }
 
+    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
+    {
+        var counts = this.zones
+            .GroupBy(z => z.AuthorityId)
+            .ToDictionary(g => g.Key, g => g.Count());
+        return Task.FromResult(counts);
+    }
+
     public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {

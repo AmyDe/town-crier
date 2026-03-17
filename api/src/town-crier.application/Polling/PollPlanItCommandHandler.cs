@@ -1,6 +1,7 @@
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.Polling;
 
 namespace TownCrier.Application.Polling;
 
@@ -16,6 +17,7 @@ public sealed class PollPlanItCommandHandler
     private readonly PollingHealthConfig healthConfig;
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
+    private readonly PollingScheduleConfig scheduleConfig;
 
     public PollPlanItCommandHandler(
         IPlanItClient planItClient,
@@ -27,7 +29,8 @@ public sealed class PollPlanItCommandHandler
         IPollingHealthAlerter pollingHealthAlerter,
         PollingHealthConfig healthConfig,
         IWatchZoneRepository watchZoneRepository,
-        INotificationEnqueuer notificationEnqueuer)
+        INotificationEnqueuer notificationEnqueuer,
+        PollingScheduleConfig? scheduleConfig = null)
     {
         this.planItClient = planItClient;
         this.pollStateStore = pollStateStore;
@@ -39,6 +42,7 @@ public sealed class PollPlanItCommandHandler
         this.healthConfig = healthConfig;
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
+        this.scheduleConfig = scheduleConfig ?? new PollingScheduleConfig(HighThreshold: 5, LowThreshold: 2);
     }
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
@@ -48,10 +52,21 @@ public sealed class PollPlanItCommandHandler
         var health = await this.pollingHealthStore.GetAsync(ct).ConfigureAwait(false);
         var now = this.timeProvider.GetUtcNow();
 
+        var zoneCounts = await this.watchZoneRepository.GetZoneCountsByAuthorityAsync(ct).ConfigureAwait(false);
+        var schedule = PollingSchedule.Calculate(zoneCounts, this.scheduleConfig);
+
+        var authoritiesToPoll = authorityIds
+            .Where(id => schedule.ShouldPollInCycle(id, command.CycleNumber))
+            .ToList();
+
+        var totalActive = authorityIds.Count;
+        var polled = authoritiesToPoll.Count;
+        var skipped = totalActive - polled;
+
         try
         {
             var count = 0;
-            foreach (var authorityId in authorityIds)
+            foreach (var authorityId in authoritiesToPoll)
             {
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
@@ -76,7 +91,7 @@ public sealed class PollPlanItCommandHandler
             await this.pollingHealthStore.SaveAsync(health, ct).ConfigureAwait(false);
             await this.pollStateStore.SaveLastPollTimeAsync(now, ct).ConfigureAwait(false);
 
-            return new PollPlanItResult(count);
+            return new PollPlanItResult(count, polled, skipped, totalActive);
         }
         catch
         {

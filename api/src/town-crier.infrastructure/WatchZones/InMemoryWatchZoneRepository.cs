@@ -26,6 +26,14 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
     }
 
+    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
+    {
+        var counts = this.zones.Values
+            .GroupBy(z => z.AuthorityId)
+            .ToDictionary(g => g.Key, g => g.Count());
+        return Task.FromResult(counts);
+    }
+
     public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
     {
         var ids = this.zones.Values

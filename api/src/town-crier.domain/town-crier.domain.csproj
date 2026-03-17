@@ -8,11 +8,5 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
-  <!-- Exclude WIP files from other beads that have analyzer violations -->
-  <ItemGroup>
-    <Compile Remove="Polling\PollingSchedule.cs" />
-    <Compile Remove="Polling\PollingScheduleConfig.cs" />
-    <Compile Remove="Polling\PollingPriority.cs" />
-  </ItemGroup>
 
 </Project>

@@ -10,4 +10,6 @@ public interface IWatchZoneRepository
         double latitude, double longitude, CancellationToken ct);
 
     Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct);
+
+    Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct);
 }

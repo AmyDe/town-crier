@@ -14,6 +14,7 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
@@ -87,6 +88,9 @@ builder.Services.AddSingleton(new PollingHealthConfig(
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
 builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
+builder.Services.AddSingleton(new PollingScheduleConfig(
+    HighThreshold: builder.Configuration.GetValue("Polling:HighThreshold", 5),
+    LowThreshold: builder.Configuration.GetValue("Polling:LowThreshold", 2)));
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
 
