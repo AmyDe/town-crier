@@ -2,6 +2,15 @@ import Combine
 import Foundation
 import TownCrierDomain
 
+/// A single display-ready item in the status timeline.
+public struct TimelineItem: Equatable, Sendable {
+    public let label: String
+    public let icon: String
+    public let dateFormatted: String
+    public let isCurrent: Bool
+    public let status: ApplicationStatus
+}
+
 /// ViewModel exposing display-ready properties for a planning application detail screen.
 @MainActor
 public final class ApplicationDetailViewModel: ObservableObject {
@@ -14,12 +23,17 @@ public final class ApplicationDetailViewModel: ObservableObject {
     public let statusIcon: String
     public let status: ApplicationStatus
     public let portalUrl: URL?
+    public let timelineItems: [TimelineItem]
 
     public var onOpenPortal: ((URL) -> Void)?
     public var onDismiss: (() -> Void)?
 
     public var hasPortalUrl: Bool {
         portalUrl != nil
+    }
+
+    public var hasTimeline: Bool {
+        !timelineItems.isEmpty
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -58,6 +72,33 @@ public final class ApplicationDetailViewModel: ObservableObject {
         case .unknown:
             statusLabel = "Unknown"
             statusIcon = "questionmark.circle"
+        }
+
+        let events = application.statusHistory.isEmpty
+            ? [StatusEvent(status: application.status, date: application.receivedDate)]
+            : application.statusHistory.sorted()
+
+        timelineItems = events.enumerated().map { index, event in
+            let isLast = index == events.count - 1
+            let (label, icon) = Self.displayValues(for: event.status)
+            return TimelineItem(
+                label: label,
+                icon: icon,
+                dateFormatted: Self.dateFormatter.string(from: event.date),
+                isCurrent: isLast,
+                status: event.status
+            )
+        }
+    }
+
+    private static func displayValues(for status: ApplicationStatus) -> (label: String, icon: String) {
+        switch status {
+        case .underReview: ("Pending", "clock")
+        case .approved: ("Approved", "checkmark.circle")
+        case .refused: ("Refused", "xmark.circle")
+        case .withdrawn: ("Withdrawn", "arrow.uturn.backward.circle")
+        case .appealed: ("Appealed", "exclamationmark.triangle")
+        case .unknown: ("Unknown", "questionmark.circle")
         }
     }
 

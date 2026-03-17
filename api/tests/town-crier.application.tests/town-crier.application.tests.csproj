@@ -25,6 +25,7 @@
     <Compile Remove="Notifications\DispatchNotificationCommandHandlerTests.cs" />
     <Compile Remove="Notifications\FakeNotificationRepository.cs" />
     <Compile Remove="Notifications\SpyPushNotificationSender.cs" />
+    <Compile Remove="SavedApplications\**" />
   </ItemGroup>
 
 </Project>

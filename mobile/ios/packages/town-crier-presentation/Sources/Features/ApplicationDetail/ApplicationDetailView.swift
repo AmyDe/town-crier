@@ -25,6 +25,16 @@ public struct ApplicationDetailView: View {
 
                 detailCard
 
+                if viewModel.hasTimeline {
+                    VStack(alignment: .leading, spacing: TCSpacing.small) {
+                        Text("Status Timeline")
+                            .font(TCTypography.headline)
+                            .foregroundStyle(Color.tcTextPrimary)
+
+                        StatusTimelineView(items: viewModel.timelineItems)
+                    }
+                }
+
                 if viewModel.hasPortalUrl {
                     portalButton
                 }

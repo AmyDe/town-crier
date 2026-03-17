@@ -7,6 +7,7 @@ using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
 using TownCrier.Application.RateLimiting;
+using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.DeviceRegistrations;
@@ -72,6 +73,8 @@ builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 builder.Services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
+
+builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -189,6 +192,26 @@ v1.MapDelete("/me/device-token/{token}", async (ClaimsPrincipal user, string tok
     var command = new RemoveInvalidDeviceTokenCommand(token);
     await handler.HandleAsync(command, ct).ConfigureAwait(false);
     return Results.NoContent();
+});
+
+v1.MapGet("/search", async (ClaimsPrincipal user, string q, int authorityId, int page, SearchPlanningApplicationsQueryHandler handler, CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var query = new SearchPlanningApplicationsQuery(userId, q, authorityId, page);
+
+    try
+    {
+        var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
+        return Results.Ok(result);
+    }
+    catch (ProTierRequiredException)
+    {
+        return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
+    }
+    catch (UserProfileNotFoundException)
+    {
+        return Results.NotFound();
+    }
 });
 
 var api = app.MapGroup("/api");
