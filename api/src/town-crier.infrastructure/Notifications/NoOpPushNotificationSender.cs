@@ -10,4 +10,9 @@ public sealed class NoOpPushNotificationSender : IPushNotificationSender
     {
         return Task.CompletedTask;
     }
+
+    public Task SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    {
+        return Task.CompletedTask;
+    }
 }

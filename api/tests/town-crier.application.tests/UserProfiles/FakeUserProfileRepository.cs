@@ -15,6 +15,14 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.FromResult(profile);
     }
 
+    public Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
+    {
+        var profiles = this.store.Values
+            .Where(p => p.Tier == tier)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
+    }
+
     public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
     {
         var profile = this.store.Values

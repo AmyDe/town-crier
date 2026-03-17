@@ -8,5 +8,10 @@ public interface INotificationRepository
 
     Task<int> CountByUserInMonthAsync(string userId, int year, int month, CancellationToken ct);
 
+    Task<int> CountByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct);
+
+    Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
+        string userId, int page, int pageSize, CancellationToken ct);
+
     Task SaveAsync(Notification notification, CancellationToken ct);
 }

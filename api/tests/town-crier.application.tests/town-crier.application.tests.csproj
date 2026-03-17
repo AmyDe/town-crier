@@ -23,8 +23,7 @@
     <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
     <Compile Remove="WatchZones\**" />
     <Compile Remove="Notifications\DispatchNotificationCommandHandlerTests.cs" />
-    <Compile Remove="Notifications\FakeNotificationRepository.cs" />
-    <Compile Remove="Notifications\SpyPushNotificationSender.cs" />
+    <Compile Remove="Notifications\GetNotificationsQueryHandlerTests.cs" />
     <Compile Remove="SavedApplications\**" />
   </ItemGroup>
 

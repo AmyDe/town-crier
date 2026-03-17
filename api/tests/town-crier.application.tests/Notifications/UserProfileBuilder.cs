@@ -7,6 +7,7 @@ internal sealed class UserProfileBuilder
     private string userId = "user-1";
     private SubscriptionTier tier = SubscriptionTier.Free;
     private bool pushEnabled = true;
+    private DayOfWeek digestDay = DayOfWeek.Monday;
 
     public UserProfileBuilder WithUserId(string userId)
     {
@@ -26,12 +27,18 @@ internal sealed class UserProfileBuilder
         return this;
     }
 
+    public UserProfileBuilder WithDigestDay(DayOfWeek day)
+    {
+        this.digestDay = day;
+        return this;
+    }
+
     public UserProfile Build()
     {
         var profile = UserProfile.Register(this.userId);
         profile.UpdatePreferences(
             postcode: null,
-            new NotificationPreferences(this.pushEnabled));
+            new NotificationPreferences(this.pushEnabled, this.digestDay));
 
         if (this.tier != SubscriptionTier.Free)
         {

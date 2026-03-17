@@ -6,4 +6,6 @@ namespace TownCrier.Application.Notifications;
 public interface IPushNotificationSender
 {
     Task SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct);
+
+    Task SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct);
 }

@@ -9,6 +9,11 @@ internal sealed class FakeNotificationRepository : INotificationRepository
 
     public IReadOnlyList<Notification> All => this.store;
 
+    public void Seed(Notification notification)
+    {
+        this.store.Add(notification);
+    }
+
     public Task<Notification?> GetByUserAndApplicationAsync(string userId, string applicationName, CancellationToken ct)
     {
         var notification = this.store.Find(
@@ -23,6 +28,31 @@ internal sealed class FakeNotificationRepository : INotificationRepository
             n.CreatedAt.Year == year &&
             n.CreatedAt.Month == month);
         return Task.FromResult(count);
+    }
+
+    public Task<int> CountByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct)
+    {
+        var count = this.store.Count(n =>
+            n.UserId == userId &&
+            n.CreatedAt >= since);
+        return Task.FromResult(count);
+    }
+
+    public Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
+        string userId, int page, int pageSize, CancellationToken ct)
+    {
+        var userNotifications = this.store
+            .Where(n => n.UserId == userId)
+            .OrderByDescending(n => n.CreatedAt)
+            .ToList();
+
+        var total = userNotifications.Count;
+        var items = userNotifications
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return Task.FromResult<(IReadOnlyList<Notification> Items, int Total)>((items, total));
     }
 
     public Task SaveAsync(Notification notification, CancellationToken ct)
