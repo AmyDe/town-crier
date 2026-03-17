@@ -13,4 +13,7 @@ public protocol AuthenticationService: Sendable {
 
     /// Returns the current stored session, or nil if the user is not authenticated.
     func currentSession() async -> AuthSession?
+
+    /// Permanently deletes the user's account and clears the local session.
+    func deleteAccount() async throws
 }

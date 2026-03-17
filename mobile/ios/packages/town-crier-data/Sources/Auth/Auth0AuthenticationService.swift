@@ -52,6 +52,15 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         }
     }
 
+    public func deleteAccount() async throws {
+        do {
+            try await Auth0.webAuth().clearSession()
+            _ = credentialsManager.clear()
+        } catch {
+            throw DomainError.logoutFailed(error.localizedDescription)
+        }
+    }
+
     public func currentSession() async -> AuthSession? {
         guard credentialsManager.hasValid() else {
             return nil

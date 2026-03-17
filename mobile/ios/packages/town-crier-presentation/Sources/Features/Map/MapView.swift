@@ -12,10 +12,28 @@ public struct MapView: View {
 
     public var body: some View {
         ZStack {
-            mapContent
-            if viewModel.isLoading {
-                ProgressView()
-                    .controlSize(.large)
+            if viewModel.isLoading && !viewModel.hasLoaded {
+                mapPlaceholder
+            } else if let error = viewModel.error {
+                ErrorStateView(error: error) {
+                    await viewModel.loadApplications()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.tcBackground)
+            } else if viewModel.isEmpty {
+                EmptyStateView(
+                    icon: "map",
+                    title: "No Applications",
+                    description: "No planning applications found in your watch zone yet. Check back soon."
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.tcBackground)
+            } else {
+                mapContent
+                if viewModel.isLoading {
+                    ProgressView()
+                        .controlSize(.large)
+                }
             }
         }
         .background(Color.tcBackground)
@@ -106,6 +124,15 @@ public struct MapView: View {
         case .withdrawn: return "Withdrawn"
         case .appealed: return "Appealed"
         case .unknown: return "Unknown"
+        }
+    }
+
+    private var mapPlaceholder: some View {
+        ZStack {
+            Color.tcBackground.ignoresSafeArea()
+            MapSkeletonView()
+            ProgressView()
+                .controlSize(.large)
         }
     }
 }

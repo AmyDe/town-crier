@@ -9,4 +9,17 @@ public struct UserProfile: Equatable, Sendable {
         self.email = email
         self.name = name
     }
+
+    /// Derives the authentication method from the userId prefix.
+    public var authMethod: AuthMethod {
+        if userId.hasPrefix("auth0|") {
+            return .emailPassword
+        } else if userId.hasPrefix("google-oauth2|") {
+            return .google
+        } else if userId.hasPrefix("apple|") {
+            return .apple
+        } else {
+            return .unknown
+        }
+    }
 }

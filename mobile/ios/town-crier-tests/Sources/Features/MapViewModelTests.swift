@@ -120,4 +120,75 @@ struct MapViewModelTests {
 
         #expect(sut.selectedApplication == nil)
     }
+
+    // MARK: - Empty State
+
+    @Test func isEmpty_trueWhenNoAnnotationsAfterLoad() async {
+        let (sut, _) = makeSUT(applications: [])
+
+        await sut.loadApplications()
+
+        #expect(sut.isEmpty)
+    }
+
+    @Test func isEmpty_falseWhenAnnotationsExist() async {
+        let (sut, _) = makeSUT(applications: [.pendingReview])
+
+        await sut.loadApplications()
+
+        #expect(!sut.isEmpty)
+    }
+
+    @Test func isEmpty_falseWhileLoading() async {
+        let (sut, _) = makeSUT()
+
+        #expect(!sut.isEmpty)
+    }
+
+    @Test func isEmpty_falseWhenErrorOccurred() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+        await sut.loadApplications()
+
+        #expect(!sut.isEmpty)
+    }
+
+    // MARK: - Error Classification
+
+    @Test func isNetworkError_trueForNetworkUnavailable() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+        await sut.loadApplications()
+
+        #expect(sut.isNetworkError)
+    }
+
+    @Test func isNetworkError_falseForOtherErrors() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
+
+        await sut.loadApplications()
+
+        #expect(!sut.isNetworkError)
+    }
+
+    @Test func isSessionExpired_trueForSessionExpired() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
+
+        await sut.loadApplications()
+
+        #expect(sut.isSessionExpired)
+    }
+
+    @Test func isSessionExpired_falseForOtherErrors() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+        await sut.loadApplications()
+
+        #expect(!sut.isSessionExpired)
+    }
 }

@@ -146,6 +146,44 @@ struct ApplicationListViewModelTests {
         #expect(sut.filteredApplications.isEmpty)
     }
 
+    // MARK: - Error Classification
+
+    @Test func isNetworkError_trueForNetworkUnavailable() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+        await sut.loadApplications()
+
+        #expect(sut.isNetworkError)
+    }
+
+    @Test func isNetworkError_falseForOtherErrors() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
+
+        await sut.loadApplications()
+
+        #expect(!sut.isNetworkError)
+    }
+
+    @Test func isSessionExpired_trueForSessionExpired() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
+
+        await sut.loadApplications()
+
+        #expect(sut.isSessionExpired)
+    }
+
+    @Test func isSessionExpired_falseForOtherErrors() async {
+        let (sut, spy) = makeSUT()
+        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+        await sut.loadApplications()
+
+        #expect(!sut.isSessionExpired)
+    }
+
     // MARK: - Empty State
 
     @Test func isEmpty_trueWhenNoApplicationsLoaded() async {

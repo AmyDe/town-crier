@@ -14,7 +14,11 @@ struct AppCoordinatorTests {
         let coordinator = AppCoordinator(
             repository: spy,
             authService: authSpy,
-            subscriptionService: subscriptionSpy
+            subscriptionService: subscriptionSpy,
+            geocoder: SpyPostcodeGeocoder(),
+            watchZoneRepository: SpyWatchZoneRepository(),
+            onboardingRepository: SpyOnboardingRepository(),
+            notificationService: SpyNotificationService()
         )
         return (coordinator, spy)
     }
@@ -72,6 +76,82 @@ struct AppCoordinatorTests {
 
         #expect(sut.detailApplication == .approved)
         #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    }
+
+    // MARK: - Onboarding ViewModel Factory
+
+    @Test func makeOnboardingViewModel_createsViewModelWithDependencies() {
+        let spy = SpyPlanningApplicationRepository()
+        let authSpy = SpyAuthenticationService()
+        let subscriptionSpy = SpySubscriptionService()
+        let geocoderSpy = SpyPostcodeGeocoder()
+        let zoneRepoSpy = SpyWatchZoneRepository()
+        let onboardingRepoSpy = SpyOnboardingRepository()
+        let notificationSpy = SpyNotificationService()
+        let sut = AppCoordinator(
+            repository: spy,
+            authService: authSpy,
+            subscriptionService: subscriptionSpy,
+            geocoder: geocoderSpy,
+            watchZoneRepository: zoneRepoSpy,
+            onboardingRepository: onboardingRepoSpy,
+            notificationService: notificationSpy
+        )
+
+        let vm = sut.makeOnboardingViewModel()
+
+        #expect(vm.currentStep == .welcome)
+    }
+
+    @Test func makeOnboardingViewModel_completionSetsOnboardingComplete() async throws {
+        let spy = SpyPlanningApplicationRepository()
+        let authSpy = SpyAuthenticationService()
+        let subscriptionSpy = SpySubscriptionService()
+        let geocoderSpy = SpyPostcodeGeocoder()
+        let zoneRepoSpy = SpyWatchZoneRepository()
+        let onboardingRepoSpy = SpyOnboardingRepository()
+        let notificationSpy = SpyNotificationService()
+        let sut = AppCoordinator(
+            repository: spy,
+            authService: authSpy,
+            subscriptionService: subscriptionSpy,
+            geocoder: geocoderSpy,
+            watchZoneRepository: zoneRepoSpy,
+            onboardingRepository: onboardingRepoSpy,
+            notificationService: notificationSpy
+        )
+
+        let vm = sut.makeOnboardingViewModel()
+        vm.advance() // → postcodeEntry
+        vm.postcodeInput = "CB1 2AD"
+        await vm.submitPostcode() // → radiusPicker
+        vm.confirmRadius() // → notificationPermission
+        await vm.skipNotifications()
+
+        #expect(sut.isOnboardingComplete)
+    }
+
+    @Test func isOnboardingComplete_falseByDefault() {
+        let (sut, _) = makeSUT()
+
+        #expect(!sut.isOnboardingComplete)
+    }
+
+    @Test func isOnboardingComplete_trueWhenRepositorySaysComplete() {
+        let spy = SpyPlanningApplicationRepository()
+        let onboardingRepoSpy = SpyOnboardingRepository()
+        onboardingRepoSpy.isOnboardingComplete = true
+        let sut = AppCoordinator(
+            repository: spy,
+            authService: SpyAuthenticationService(),
+            subscriptionService: SpySubscriptionService(),
+            geocoder: SpyPostcodeGeocoder(),
+            watchZoneRepository: SpyWatchZoneRepository(),
+            onboardingRepository: onboardingRepoSpy,
+            notificationService: SpyNotificationService()
+        )
+
+        #expect(sut.isOnboardingComplete)
     }
 
     // MARK: - Map selection triggers detail

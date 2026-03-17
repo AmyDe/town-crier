@@ -8,8 +8,10 @@ public final class ApplicationListViewModel: ObservableObject {
     @Published var selectedStatusFilter: ApplicationStatus?
     @Published private(set) var isLoading = false
     @Published private(set) var error: DomainError?
+    @Published private(set) var dataFreshness: DataFreshness = .fresh
 
-    private let repository: PlanningApplicationRepository
+    private let repository: PlanningApplicationRepository?
+    private let offlineRepository: OfflineAwareRepository?
     private let authority: LocalAuthority
     private let tier: SubscriptionTier
 
@@ -30,12 +32,32 @@ public final class ApplicationListViewModel: ObservableObject {
         filteredApplications.isEmpty && error == nil && !isLoading
     }
 
+    public var isNetworkError: Bool {
+        error == .networkUnavailable
+    }
+
+    public var isSessionExpired: Bool {
+        error == .sessionExpired
+    }
+
     public init(
         repository: PlanningApplicationRepository,
         authority: LocalAuthority,
         tier: SubscriptionTier = .free
     ) {
         self.repository = repository
+        self.offlineRepository = nil
+        self.authority = authority
+        self.tier = tier
+    }
+
+    public init(
+        offlineRepository: OfflineAwareRepository,
+        authority: LocalAuthority,
+        tier: SubscriptionTier = .free
+    ) {
+        self.repository = nil
+        self.offlineRepository = offlineRepository
         self.authority = authority
         self.tier = tier
     }
@@ -44,7 +66,17 @@ public final class ApplicationListViewModel: ObservableObject {
         isLoading = true
         error = nil
         do {
-            let fetched = try await repository.fetchApplications(for: authority)
+            let fetched: [PlanningApplication]
+            if let offlineRepository {
+                let entry = try await offlineRepository.fetchApplications(for: authority)
+                fetched = entry.data
+                dataFreshness = DataFreshness.from(entry)
+            } else if let repository {
+                fetched = try await repository.fetchApplications(for: authority)
+                dataFreshness = .fresh
+            } else {
+                fetched = []
+            }
             applications = fetched.sorted { $0.receivedDate > $1.receivedDate }
         } catch let domainError as DomainError {
             error = domainError

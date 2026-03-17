@@ -6,18 +6,34 @@ import TownCrierDomain
 public final class AppCoordinator: ObservableObject {
     @Published public var detailApplication: PlanningApplication?
 
+    public var isOnboardingComplete: Bool {
+        onboardingRepository?.isOnboardingComplete ?? false
+    }
+
     private let repository: PlanningApplicationRepository
     private let authService: AuthenticationService
     private let subscriptionService: SubscriptionService
+    private let geocoder: PostcodeGeocoder?
+    private let watchZoneRepository: WatchZoneRepository?
+    private let onboardingRepository: OnboardingRepository?
+    private let notificationService: NotificationService?
 
     public init(
         repository: PlanningApplicationRepository,
         authService: AuthenticationService,
-        subscriptionService: SubscriptionService
+        subscriptionService: SubscriptionService,
+        geocoder: PostcodeGeocoder? = nil,
+        watchZoneRepository: WatchZoneRepository? = nil,
+        onboardingRepository: OnboardingRepository? = nil,
+        notificationService: NotificationService? = nil
     ) {
         self.repository = repository
         self.authService = authService
         self.subscriptionService = subscriptionService
+        self.geocoder = geocoder
+        self.watchZoneRepository = watchZoneRepository
+        self.onboardingRepository = onboardingRepository
+        self.notificationService = notificationService
     }
 
     public func makeLoginViewModel() -> LoginViewModel {
@@ -49,6 +65,22 @@ public final class AppCoordinator: ObservableObject {
         viewModel.onApplicationSelected = { [weak self] id in
             self?.showApplicationDetail(id)
         }
+        return viewModel
+    }
+
+    public func makeOnboardingViewModel() -> OnboardingViewModel {
+        guard let geocoder = geocoder, let watchZoneRepository = watchZoneRepository,
+              let onboardingRepository = onboardingRepository,
+              let notificationService = notificationService
+        else {
+            preconditionFailure("Onboarding dependencies not provided to AppCoordinator")
+        }
+        let viewModel = OnboardingViewModel(
+            geocoder: geocoder,
+            watchZoneRepository: watchZoneRepository,
+            onboardingRepository: onboardingRepository,
+            notificationService: notificationService
+        )
         return viewModel
     }
 

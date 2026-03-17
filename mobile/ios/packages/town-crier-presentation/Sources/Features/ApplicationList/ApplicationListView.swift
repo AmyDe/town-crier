@@ -14,11 +14,17 @@ public struct ApplicationListView: View {
             Color.tcBackground.ignoresSafeArea()
 
             if viewModel.isLoading && viewModel.filteredApplications.isEmpty {
-                ProgressView()
+                ListSkeletonView()
             } else if let error = viewModel.error {
-                errorView(error)
+                ErrorStateView(error: error) {
+                    await viewModel.loadApplications()
+                }
             } else if viewModel.isEmpty {
-                emptyState
+                EmptyStateView(
+                    icon: "doc.text.magnifyingglass",
+                    title: "No Applications",
+                    description: "No planning applications found in your watch zone yet."
+                )
             } else {
                 applicationList
             }
@@ -98,42 +104,4 @@ public struct ApplicationListView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: TCSpacing.medium) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(.largeTitle))
-                .foregroundStyle(Color.tcTextTertiary)
-
-            Text("No Applications")
-                .font(TCTypography.headline)
-                .foregroundStyle(Color.tcTextPrimary)
-
-            Text("No planning applications found in your watch zone yet.")
-                .font(TCTypography.body)
-                .foregroundStyle(Color.tcTextSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(TCSpacing.extraLarge)
-    }
-
-    // MARK: - Error View
-
-    private func errorView(_ error: DomainError) -> some View {
-        VStack(spacing: TCSpacing.medium) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(.largeTitle))
-                .foregroundStyle(Color.tcStatusRefused)
-
-            Text("Something went wrong")
-                .font(TCTypography.headline)
-                .foregroundStyle(Color.tcTextPrimary)
-
-            Text("Pull down to try again.")
-                .font(TCTypography.body)
-                .foregroundStyle(Color.tcTextSecondary)
-        }
-        .padding(TCSpacing.extraLarge)
-    }
 }

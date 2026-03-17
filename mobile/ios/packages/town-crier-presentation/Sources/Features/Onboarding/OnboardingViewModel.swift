@@ -2,7 +2,7 @@ import Combine
 import TownCrierDomain
 
 /// Steps in the first-launch onboarding flow.
-public enum OnboardingStep: Equatable, Sendable {
+public enum OnboardingStep: CaseIterable, Equatable, Sendable {
     case welcome
     case postcodeEntry
     case radiusPicker

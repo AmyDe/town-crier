@@ -33,4 +33,12 @@ final class SpyAuthenticationService: AuthenticationService, @unchecked Sendable
         currentSessionCallCount += 1
         return currentSessionResult
     }
+
+    private(set) var deleteAccountCallCount = 0
+    var deleteAccountResult: Result<Void, Error> = .success(())
+
+    func deleteAccount() async throws {
+        deleteAccountCallCount += 1
+        try deleteAccountResult.get()
+    }
 }
