@@ -5,6 +5,7 @@ import TownCrierDomain
 @MainActor
 public final class AppCoordinator: ObservableObject {
     @Published public var detailApplication: PlanningApplication?
+    @Published public var deepLinkError: DomainError?
 
     public var isOnboardingComplete: Bool {
         onboardingRepository?.isOnboardingComplete ?? false
@@ -128,12 +129,22 @@ public final class AppCoordinator: ObservableObject {
         return viewModel
     }
 
+    public func handleDeepLink(_ deepLink: DeepLink) {
+        deepLinkError = nil
+        switch deepLink {
+        case .applicationDetail(let id):
+            showApplicationDetail(id)
+        }
+    }
+
     private func showApplicationDetail(_ id: PlanningApplicationId) {
         Task {
             do {
                 detailApplication = try await repository.fetchApplication(by: id)
+            } catch let domainError as DomainError {
+                deepLinkError = domainError
             } catch {
-                // Detail navigation failed — stay on current screen
+                deepLinkError = .unexpected(error.localizedDescription)
             }
         }
     }

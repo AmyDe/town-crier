@@ -2,6 +2,7 @@ import SwiftUI
 import TownCrierData
 import TownCrierDomain
 import TownCrierPresentation
+import UserNotifications
 
 @main
 struct TownCrierApp: App {
@@ -9,6 +10,7 @@ struct TownCrierApp: App {
     @StateObject private var loginViewModel: LoginViewModel
     @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
     private let crashReporter: CrashReporter
+    private let notificationDelegate: NotificationDelegate
 
     init() {
         let repository = InMemoryPlanningApplicationRepository()
@@ -32,6 +34,10 @@ struct TownCrierApp: App {
             wrappedValue: appCoordinator.makeForceUpdateViewModel()
         )
 
+        let delegate = NotificationDelegate(coordinator: appCoordinator)
+        notificationDelegate = delegate
+        UNUserNotificationCenter.current().delegate = delegate
+
         let reporter = MetricKitCrashReporter()
         reporter.start()
         crashReporter = reporter
@@ -52,6 +58,19 @@ struct TownCrierApp: App {
             }
             .task {
                 await forceUpdateViewModel.checkVersion()
+            }
+            .alert(
+                coordinator.deepLinkError?.userTitle ?? "Error",
+                isPresented: Binding(
+                    get: { coordinator.deepLinkError != nil },
+                    set: { if !$0 { coordinator.deepLinkError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let error = coordinator.deepLinkError {
+                    Text(error.userMessage)
+                }
             }
         }
     }
