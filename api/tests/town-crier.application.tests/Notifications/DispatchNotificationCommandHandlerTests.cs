@@ -16,14 +16,11 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_CreateNotificationRecord_When_ApplicationMatchesWatchZone()
     {
         // Arrange
-        var (handler, notificationRepo, _, _, _) = CreateHandler();
-
-        await SeedUserWithDevice(handler);
-
-        var command = CreateCommand();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
@@ -36,14 +33,11 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_SendPushNotification_When_UserHasRegisteredDevice()
     {
         // Arrange
-        var (handler, _, _, pushSender, _) = CreateHandler();
-
-        await SeedUserWithDevice(handler);
-
-        var command = CreateCommand();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         // Assert
         await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
@@ -55,14 +49,11 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_MarkPushSent_When_NotificationDispatched()
     {
         // Arrange
-        var (handler, notificationRepo, _, _, _) = CreateHandler();
-
-        await SeedUserWithDevice(handler);
-
-        var command = CreateCommand();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         // Assert
         await Assert.That(notificationRepo.All[0].PushSent).IsTrue();
@@ -72,17 +63,16 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotSendDuplicateNotification_When_SameApplicationAndUser()
     {
         // Arrange
-        var (handler, notificationRepo, _, pushSender, _) = CreateHandler();
-
-        await SeedUserWithDevice(handler);
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         var command = CreateCommand();
 
-        // Act — dispatch twice
+        // Act
         await handler.HandleAsync(command, CancellationToken.None);
         await handler.HandleAsync(command, CancellationToken.None);
 
-        // Assert — only one notification created and one push sent
+        // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
         await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
     }
@@ -99,12 +89,10 @@ public sealed class DispatchNotificationCommandHandlerTests
             .Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
-        var command = CreateCommand();
-
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
-        // Assert — notification recorded but no push
+        // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
         await Assert.That(notificationRepo.All[0].PushSent).IsFalse();
         await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
@@ -114,22 +102,18 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_EnforceFreeTierCap_When_FiveNotificationsSentInMonth()
     {
         // Arrange
-        var (handler, notificationRepo, _, pushSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
-        await SeedUserWithDevice(handler);
-
-        // Send 5 notifications (the cap)
         for (var i = 0; i < 5; i++)
         {
-            var cmd = CreateCommand(applicationName: $"app-{i:D3}");
-            await handler.HandleAsync(cmd, CancellationToken.None);
+            await handler.HandleAsync(CreateCommand($"app-{i:D3}"), CancellationToken.None);
         }
 
         // Act — 6th notification
-        var sixthCommand = CreateCommand(applicationName: "app-005");
-        await handler.HandleAsync(sixthCommand, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand("app-005"), CancellationToken.None);
 
-        // Assert — 6th notification recorded but no push sent
+        // Assert — recorded but no push
         await Assert.That(notificationRepo.All).HasCount().EqualTo(6);
         await Assert.That(notificationRepo.All[5].PushSent).IsFalse();
         await Assert.That(pushSender.Sent).HasCount().EqualTo(5);
@@ -150,14 +134,12 @@ public sealed class DispatchNotificationCommandHandlerTests
         var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
         await deviceRepo.SaveAsync(device, CancellationToken.None);
 
-        // Send 10 notifications (well over the free cap)
         for (var i = 0; i < 10; i++)
         {
-            var cmd = CreateCommand(applicationName: $"app-{i:D3}");
-            await handler.HandleAsync(cmd, CancellationToken.None);
+            await handler.HandleAsync(CreateCommand($"app-{i:D3}"), CancellationToken.None);
         }
 
-        // Assert — all 10 have push sent
+        // Assert — all 10 pushed
         await Assert.That(notificationRepo.All).HasCount().EqualTo(10);
         await Assert.That(pushSender.Sent).HasCount().EqualTo(10);
 
@@ -172,15 +154,12 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 28, 10, 0, 0, TimeSpan.Zero));
-        var (handler, notificationRepo, _, pushSender, _) = CreateHandler(timeProvider);
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler(timeProvider);
+        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
-        await SeedUserWithDevice(handler, timeProvider: timeProvider);
-
-        // Exhaust cap in March
         for (var i = 0; i < 5; i++)
         {
-            var cmd = CreateCommand(applicationName: $"march-{i:D3}");
-            await handler.HandleAsync(cmd, CancellationToken.None);
+            await handler.HandleAsync(CreateCommand($"march-{i:D3}"), CancellationToken.None);
         }
 
         await Assert.That(pushSender.Sent).HasCount().EqualTo(5);
@@ -188,9 +167,8 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Advance to April 1st
         timeProvider.SetUtcNow(new DateTimeOffset(2026, 4, 1, 0, 0, 1, TimeSpan.Zero));
 
-        // Act — first notification in April
-        var aprilCommand = CreateCommand(applicationName: "april-001");
-        await handler.HandleAsync(aprilCommand, CancellationToken.None);
+        // Act
+        await handler.HandleAsync(CreateCommand("april-001"), CancellationToken.None);
 
         // Assert — push sent (cap reset)
         await Assert.That(notificationRepo.All).HasCount().EqualTo(6);
@@ -204,10 +182,8 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Arrange — no user profile seeded
         var (handler, notificationRepo, _, pushSender, _) = CreateHandler();
 
-        var command = CreateCommand();
-
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
         // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(0);
@@ -217,18 +193,16 @@ public sealed class DispatchNotificationCommandHandlerTests
     [Test]
     public async Task Should_NotSendPush_When_NoRegisteredDevices()
     {
-        // Arrange — user profile but no device
+        // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
 
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
-        var command = CreateCommand();
-
         // Act
-        await handler.HandleAsync(command, CancellationToken.None);
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
 
-        // Assert — notification created but push not sent
+        // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
         await Assert.That(notificationRepo.All[0].PushSent).IsFalse();
         await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
@@ -252,28 +226,21 @@ public sealed class DispatchNotificationCommandHandlerTests
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
     }
 
-    private static async Task SeedUserWithDevice(
-        DispatchNotificationCommandHandler handler,
-        string userId = "user-1",
-        SubscriptionTier tier = SubscriptionTier.Free,
-        FakeTimeProvider? timeProvider = null)
+    private static async Task SeedFreeUserWithDevice(
+        FakeUserProfileRepository userProfileRepo,
+        FakeDeviceRegistrationRepository deviceRepo,
+        string userId = "user-1")
     {
-        _ = handler; // used to find the tuple members via deconstruction at call site
-
-        var tp = timeProvider ?? new FakeTimeProvider(March2026);
-
         var profile = new UserProfileBuilder()
             .WithUserId(userId)
-            .WithTier(tier)
             .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
-        var device = DeviceRegistration.Create(userId, "device-token-1", DevicePlatform.Ios, tp.GetUtcNow());
-
-        // Access the repos through the handler's tuple return — caller provides them
-        throw new InvalidOperationException("Use the tuple destructuring pattern instead");
+        var device = DeviceRegistration.Create(userId, "device-token-1", DevicePlatform.Ios, March2026);
+        await deviceRepo.SaveAsync(device, CancellationToken.None);
     }
 
-    private static DispatchNotificationCommand CreateCommand(string applicationName = "app-001", string userId = "user-1")
+    private static DispatchNotificationCommand CreateCommand(string applicationName = "app-001")
     {
         var application = new PlanningApplicationBuilder()
             .WithName(applicationName)
@@ -281,7 +248,7 @@ public sealed class DispatchNotificationCommandHandlerTests
             .Build();
 
         var zone = new WatchZoneBuilder()
-            .WithUserId(userId)
+            .WithUserId("user-1")
             .WithId("zone-1")
             .Build();
 

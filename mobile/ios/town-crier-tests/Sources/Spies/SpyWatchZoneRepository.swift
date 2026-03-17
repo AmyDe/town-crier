@@ -10,11 +10,19 @@ final class SpyWatchZoneRepository: WatchZoneRepository, @unchecked Sendable {
         try saveResult.get()
     }
 
-    private(set) var loadActiveCallCount = 0
-    var loadActiveResult: Result<WatchZone?, Error> = .success(nil)
+    private(set) var loadAllCallCount = 0
+    var loadAllResult: Result<[WatchZone], Error> = .success([])
 
-    func loadActive() async throws -> WatchZone? {
-        loadActiveCallCount += 1
-        return try loadActiveResult.get()
+    func loadAll() async throws -> [WatchZone] {
+        loadAllCallCount += 1
+        return try loadAllResult.get()
+    }
+
+    private(set) var deleteCalls: [WatchZoneId] = []
+    var deleteResult: Result<Void, Error> = .success(())
+
+    func delete(_ id: WatchZoneId) async throws {
+        deleteCalls.append(id)
+        try deleteResult.get()
     }
 }

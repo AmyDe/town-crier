@@ -1,14 +1,23 @@
 import Foundation
 
 /// A circular geographic area that a user monitors for planning applications.
-public struct WatchZone: Equatable, Hashable, Sendable {
+public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
+    public let id: WatchZoneId
+    public let postcode: Postcode
     public let centre: Coordinate
     public let radiusMetres: Double
 
-    public init(centre: Coordinate, radiusMetres: Double) throws {
+    public init(
+        id: WatchZoneId = WatchZoneId(),
+        postcode: Postcode,
+        centre: Coordinate,
+        radiusMetres: Double
+    ) throws {
         guard radiusMetres > 0 else {
             throw DomainError.invalidWatchZoneRadius
         }
+        self.id = id
+        self.postcode = postcode
         self.centre = centre
         self.radiusMetres = radiusMetres
     }

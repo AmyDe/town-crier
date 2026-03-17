@@ -6,10 +6,7 @@ import TownCrierDomain
 struct WatchZoneStoreTests {
     @Test func spy_storeAndRetrieve_roundTrips() async throws {
         let spy = SpyWatchZoneStore()
-        let zone = try WatchZone(
-            centre: Coordinate(latitude: 52.2, longitude: 0.12),
-            radiusMetres: 1500
-        )
+        let zone = WatchZone.cambridge
 
         await spy.store([zone])
         let retrieved = await spy.retrieveAll()
@@ -17,6 +14,18 @@ struct WatchZoneStoreTests {
         #expect(retrieved.count == 1)
         #expect(retrieved.first == zone)
         #expect(spy.storeCalls.count == 1)
+    }
+
+    @Test func spy_remove_deletesById() async throws {
+        let spy = SpyWatchZoneStore()
+        await spy.store([.cambridge, .london])
+
+        await spy.remove(WatchZoneId("zone-001"))
+
+        let remaining = await spy.retrieveAll()
+        #expect(remaining.count == 1)
+        #expect(remaining.first == .london)
+        #expect(spy.removeCalls.count == 1)
     }
 }
 

@@ -46,6 +46,36 @@ extension PlanningApplication {
         location: try! Coordinate(latitude: 52.1990, longitude: 0.1190)
     )
 
+    static let approvedWithHistory = PlanningApplication(
+        id: PlanningApplicationId("APP-006"),
+        reference: ApplicationReference("2026/0310"),
+        authority: LocalAuthority(code: "CAM", name: "Cambridge"),
+        status: .approved,
+        receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+        description: "Loft conversion with rear dormer",
+        address: "5 Cherry Hinton Road, Cambridge, CB1 7AA",
+        location: try! Coordinate(latitude: 52.1980, longitude: 0.1350),
+        statusHistory: [
+            StatusEvent(status: .underReview, date: Date(timeIntervalSince1970: 1_700_000_000)),
+            StatusEvent(status: .approved, date: Date(timeIntervalSince1970: 1_700_500_000)),
+        ]
+    )
+
+    static let refusedWithHistory = PlanningApplication(
+        id: PlanningApplicationId("APP-007"),
+        reference: ApplicationReference("2026/0320"),
+        authority: LocalAuthority(code: "CAM", name: "Cambridge"),
+        status: .refused,
+        receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+        description: "Two-storey side extension",
+        address: "10 Grange Road, Cambridge, CB3 9DT",
+        location: try! Coordinate(latitude: 52.2000, longitude: 0.1100),
+        statusHistory: [
+            StatusEvent(status: .underReview, date: Date(timeIntervalSince1970: 1_700_000_000)),
+            StatusEvent(status: .refused, date: Date(timeIntervalSince1970: 1_700_600_000)),
+        ]
+    )
+
     static let withPortalUrl = PlanningApplication(
         id: PlanningApplicationId("APP-005"),
         reference: ApplicationReference("2026/0042"),
@@ -67,9 +97,22 @@ extension Coordinate {
     static let cambridge = try! Coordinate(latitude: 52.2053, longitude: 0.1218)
 }
 
+extension Postcode {
+    static let cambridge = try! Postcode("CB1 2AD")
+}
+
 extension WatchZone {
     static let cambridge = try! WatchZone(
+        id: WatchZoneId("zone-001"),
+        postcode: .cambridge,
         centre: .cambridge,
         radiusMetres: 2000
+    )
+
+    static let london = try! WatchZone(
+        id: WatchZoneId("zone-002"),
+        postcode: try! Postcode("SW1A 1AA"),
+        centre: try! Coordinate(latitude: 51.5014, longitude: -0.1419),
+        radiusMetres: 1500
     )
 }

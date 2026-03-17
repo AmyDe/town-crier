@@ -6,12 +6,24 @@ namespace TownCrier.Application.Tests.Polling;
 internal sealed class FakePlanItClient : IPlanItClient
 {
     private readonly Dictionary<int, List<PlanningApplication>> applicationsByAuthority = [];
+    private readonly List<PlanningApplication> searchResults = [];
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
 
     public List<int> AuthorityIdsRequested { get; } = [];
 
     public Exception? ExceptionToThrow { get; set; }
+
+    public int SearchTotal { get; set; }
+
+    public string? LastSearchText { get; private set; }
+
+    public int? LastAuthorityId { get; private set; }
+
+    public void AddSearchResult(PlanningApplication application)
+    {
+        this.searchResults.Add(application);
+    }
 
     public void Add(int authorityId, PlanningApplication application)
     {
@@ -59,6 +71,8 @@ internal sealed class FakePlanItClient : IPlanItClient
         int page,
         CancellationToken ct)
     {
-        return Task.FromResult(new PlanItSearchResult([], 0));
+        this.LastSearchText = searchText;
+        this.LastAuthorityId = authorityId;
+        return Task.FromResult(new PlanItSearchResult(this.searchResults, this.SearchTotal));
     }
 }
