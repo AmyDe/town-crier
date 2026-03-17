@@ -8,15 +8,18 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
-        planItClient.Add(new PlanningApplicationBuilder().WithUid("app-1").Build());
-        planItClient.Add(new PlanningApplicationBuilder().WithUid("app-2").Build());
-        planItClient.Add(new PlanningApplicationBuilder().WithUid("app-3").Build());
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(1).Build());
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(1).Build());
 
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -26,14 +29,15 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_ReturnZeroCount_When_PlanItReturnsNoApplications()
+    public async Task Should_ReturnZeroCount_When_NoActiveAuthorities()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -43,14 +47,61 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_PassNullDifferentStart_When_NoPreviousPollState()
+    public async Task Should_NotCallPlanItClient_When_NoActiveAuthorities()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(planItClient.AuthorityIdsRequested).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_FetchOnlyForActiveAuthorities_When_MultipleAuthoritiesExist()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+
+        var pollStateStore = new FakePollStateStore();
+        var repository = new FakePlanningApplicationRepository();
+        var timeProvider = TimeProvider.System;
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
+
+        // Act
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(100);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(200);
+    }
+
+    [Test]
+    public async Task Should_PassNullDifferentStart_When_NoPreviousPollState()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var planItClient = new FakePlanItClient();
+        var pollStateStore = new FakePollStateStore();
+        var repository = new FakePlanningApplicationRepository();
+        var timeProvider = TimeProvider.System;
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -63,13 +114,16 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_PassLastPollTime_When_PreviousPollStateExists()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var lastPoll = new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero);
         pollStateStore.SetLastPollTime(lastPoll);
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -82,12 +136,34 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_PersistCurrentTime_When_PollSucceeds()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var fakeTime = new DateTimeOffset(2026, 3, 16, 12, 0, 0, TimeSpan.Zero);
         var fakeTimeProvider = new FakeTimeProvider(fakeTime);
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, fakeTimeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, fakeTimeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+    }
+
+    [Test]
+    public async Task Should_StillPersistTime_When_NoActiveAuthorities()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        var planItClient = new FakePlanItClient();
+        var pollStateStore = new FakePollStateStore();
+        var repository = new FakePlanningApplicationRepository();
+        var fakeTime = new DateTimeOffset(2026, 3, 16, 12, 0, 0, TimeSpan.Zero);
+        var fakeTimeProvider = new FakeTimeProvider(fakeTime);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, fakeTimeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -100,16 +176,19 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_UpsertAllApplications_When_PlanItReturnsResults()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
-        var app1 = new PlanningApplicationBuilder().WithUid("app-1").WithName("Council/app-1").Build();
-        var app2 = new PlanningApplicationBuilder().WithUid("app-2").WithName("Council/app-2").Build();
-        planItClient.Add(app1);
-        planItClient.Add(app2);
+        var app1 = new PlanningApplicationBuilder().WithUid("app-1").WithName("Council/app-1").WithAreaId(1).Build();
+        var app2 = new PlanningApplicationBuilder().WithUid("app-2").WithName("Council/app-2").WithAreaId(1).Build();
+        planItClient.Add(1, app1);
+        planItClient.Add(1, app2);
 
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -124,17 +203,21 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_UpsertIdempotently_When_SameApplicationPolledTwice()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
         var app = new PlanningApplicationBuilder()
             .WithUid("app-1")
             .WithName("Council/app-1")
+            .WithAreaId(1)
             .Build();
-        planItClient.Add(app);
+        planItClient.Add(1, app);
 
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act — poll twice with the same data
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -148,17 +231,21 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_UpdateExistingApplication_When_DataChanges()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
         var original = new PlanningApplicationBuilder()
             .WithUid("app-1")
             .WithName("Council/app-1")
+            .WithAreaId(1)
             .Build();
-        planItClient.Add(original);
+        planItClient.Add(1, original);
 
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // First poll
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -168,9 +255,10 @@ public sealed class PollPlanItCommandHandlerTests
         var updated = new PlanningApplicationBuilder()
             .WithUid("app-1")
             .WithName("Council/app-1")
+            .WithAreaId(1)
             .WithAppState("Decided")
             .Build();
-        planItClient.Add(updated);
+        planItClient.Add(1, updated);
 
         // Act — second poll
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
@@ -184,11 +272,14 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_NotUpsertAnyApplications_When_PlanItReturnsEmpty()
     {
         // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var repository = new FakePlanningApplicationRepository();
         var timeProvider = TimeProvider.System;
-        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider);
+        var handler = new PollPlanItCommandHandler(planItClient, pollStateStore, repository, timeProvider, authorityProvider, new FakePollingHealthStore(), new SpyPollingHealthAlerter(), new PollingHealthConfig(TimeSpan.FromHours(2), 3), new FakeWatchZoneRepository(), new FakeNotificationEnqueuer());
 
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
