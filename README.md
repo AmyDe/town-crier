@@ -15,7 +15,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 ## Repository Structure
 
-```
+```plaintext
 /api          — .NET backend (Hexagonal Architecture / Ports & Adapters)
 /mobile/ios   — Native iOS app (MVVM-C)
 /infra        — Pulumi Infrastructure as Code
