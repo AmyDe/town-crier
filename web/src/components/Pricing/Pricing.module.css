@@ -1,0 +1,108 @@
+.container {
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+  padding: var(--tc-space-xxl) var(--tc-space-md);
+}
+
+.heading {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  text-align: center;
+  margin-bottom: var(--tc-space-xl);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--tc-space-lg);
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+@media (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+    max-width: none;
+  }
+}
+
+.card {
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-lg);
+  box-shadow: var(--tc-shadow-card);
+  position: relative;
+}
+
+.recommended {
+  border-color: var(--tc-amber);
+  box-shadow: 0 0 0 1px var(--tc-amber);
+}
+
+.badge {
+  display: inline-block;
+  background: var(--tc-amber-muted);
+  color: var(--tc-amber);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-semibold);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.tierName {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.price {
+  margin-bottom: var(--tc-space-md);
+}
+
+.priceAmount {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+}
+
+.pricePeriod {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-regular);
+  color: var(--tc-text-secondary);
+}
+
+.trialText {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin-bottom: var(--tc-space-md);
+}
+
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--tc-border);
+  padding-top: var(--tc-space-md);
+}
+
+.featureRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--tc-space-xs) 0;
+}
+
+.featureLabel {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.featureValue {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-primary);
+}
