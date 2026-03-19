@@ -1,0 +1,188 @@
+/* ==========================================================================
+   Town Crier Design Tokens
+   Dark theme is the default. Light theme activates via data-theme attribute
+   or prefers-color-scheme media query for first-visit auto-detection.
+   ========================================================================== */
+
+/* ---------- Dark theme (default) ---------- */
+:root {
+  /* Brand */
+  --tc-amber: #E9A620;
+  --tc-amber-muted: rgba(233, 166, 32, 0.15);
+  --tc-amber-hover: #F0B83A;
+
+  /* Surfaces */
+  --tc-background: #1A1A1E;
+  --tc-surface: #242428;
+  --tc-surface-elevated: #2E2E33;
+
+  /* Text */
+  --tc-text-primary: #F1EFE9;
+  --tc-text-secondary: #9B9590;
+  --tc-text-tertiary: #5C5852;
+  --tc-text-on-accent: #1C1917;
+
+  /* Status */
+  --tc-status-approved: #34C759;
+  --tc-status-refused: #FF453A;
+  --tc-status-pending: #FFB340;
+  --tc-status-withdrawn: #8E8A85;
+  --tc-status-appealed: #A78BFA;
+
+  /* Utility */
+  --tc-border: #3A3A3F;
+  --tc-border-focused: #E9A620;
+  --tc-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Shadows (none in dark mode) */
+  --tc-shadow-card: none;
+  --tc-shadow-elevated: none;
+
+  /* Spacing */
+  --tc-space-xs: 4px;
+  --tc-space-sm: 8px;
+  --tc-space-md: 16px;
+  --tc-space-lg: 24px;
+  --tc-space-xl: 32px;
+  --tc-space-xxl: 48px;
+
+  /* Corner radius */
+  --tc-radius-sm: 8px;
+  --tc-radius-md: 12px;
+  --tc-radius-lg: 16px;
+  --tc-radius-full: 9999px;
+
+  /* Typography — Inter via Google Fonts */
+  --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+
+  --tc-text-display-large: 2rem;
+  --tc-text-display-small: 1.5rem;
+  --tc-text-headline: 1.125rem;
+  --tc-text-body: 1rem;
+  --tc-text-caption: 0.875rem;
+
+  --tc-weight-regular: 400;
+  --tc-weight-medium: 500;
+  --tc-weight-semibold: 600;
+  --tc-weight-bold: 700;
+
+  --tc-leading-tight: 1.2;
+  --tc-leading-snug: 1.25;
+  --tc-leading-normal: 1.3;
+  --tc-leading-relaxed: 1.4;
+
+  /* Animation */
+  --tc-duration-fast: 150ms;
+  --tc-duration-normal: 250ms;
+  --tc-duration-slow: 400ms;
+
+  /* Layout */
+  --tc-content-max-width: 1120px;
+}
+
+/* ---------- Light theme ---------- */
+[data-theme="light"] {
+  /* Brand */
+  --tc-amber: #D4910A;
+  --tc-amber-muted: rgba(212, 145, 10, 0.15);
+  --tc-amber-hover: #B87A08;
+
+  /* Surfaces */
+  --tc-background: #FAF8F5;
+  --tc-surface: #FFFFFF;
+  --tc-surface-elevated: #FFFFFF;
+
+  /* Text */
+  --tc-text-primary: #1C1917;
+  --tc-text-secondary: #6B6560;
+  --tc-text-tertiary: #A39E98;
+  --tc-text-on-accent: #FFFFFF;
+
+  /* Status */
+  --tc-status-approved: #1A7D37;
+  --tc-status-refused: #C42B2B;
+  --tc-status-pending: #C27A0A;
+  --tc-status-withdrawn: #7A7570;
+  --tc-status-appealed: #7C3AED;
+
+  /* Utility */
+  --tc-border: #E8E4DF;
+  --tc-border-focused: #D4910A;
+  --tc-overlay: rgba(0, 0, 0, 0.4);
+
+  /* Shadows (light mode only) */
+  --tc-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --tc-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- OLED Dark theme ---------- */
+[data-theme="oled-dark"] {
+  /* Brand — same as dark */
+  --tc-amber: #E9A620;
+  --tc-amber-muted: rgba(233, 166, 32, 0.15);
+  --tc-amber-hover: #F0B83A;
+
+  /* Surfaces */
+  --tc-background: #000000;
+  --tc-surface: #0A0A0A;
+  --tc-surface-elevated: #161616;
+
+  /* Text — same as dark */
+  --tc-text-primary: #F1EFE9;
+  --tc-text-secondary: #9B9590;
+  --tc-text-tertiary: #5C5852;
+  --tc-text-on-accent: #1C1917;
+
+  /* Status — same as dark */
+  --tc-status-approved: #34C759;
+  --tc-status-refused: #FF453A;
+  --tc-status-pending: #FFB340;
+  --tc-status-withdrawn: #8E8A85;
+  --tc-status-appealed: #A78BFA;
+
+  /* Utility */
+  --tc-border: #1E1E22;
+  --tc-border-focused: #E9A620;
+  --tc-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Shadows (none in OLED mode) */
+  --tc-shadow-card: none;
+  --tc-shadow-elevated: none;
+}
+
+/* ---------- First-visit auto-detection ---------- */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    /* Brand */
+    --tc-amber: #D4910A;
+    --tc-amber-muted: rgba(212, 145, 10, 0.15);
+    --tc-amber-hover: #B87A08;
+
+    /* Surfaces */
+    --tc-background: #FAF8F5;
+    --tc-surface: #FFFFFF;
+    --tc-surface-elevated: #FFFFFF;
+
+    /* Text */
+    --tc-text-primary: #1C1917;
+    --tc-text-secondary: #6B6560;
+    --tc-text-tertiary: #A39E98;
+    --tc-text-on-accent: #FFFFFF;
+
+    /* Status */
+    --tc-status-approved: #1A7D37;
+    --tc-status-refused: #C42B2B;
+    --tc-status-pending: #C27A0A;
+    --tc-status-withdrawn: #7A7570;
+    --tc-status-appealed: #7C3AED;
+
+    /* Utility */
+    --tc-border: #E8E4DF;
+    --tc-border-focused: #D4910A;
+    --tc-overlay: rgba(0, 0, 0, 0.4);
+
+    /* Shadows (light mode only) */
+    --tc-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.05);
+    --tc-shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}

@@ -1,0 +1,126 @@
+/* ==========================================================================
+   Global Styles — CSS Reset + Base Typography
+   Uses design tokens from tokens.css
+   ========================================================================== */
+
+/* ---------- Box-sizing reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* ---------- Reset margins and padding ---------- */
+* {
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- Body ---------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--tc-font-family);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-regular);
+  line-height: var(--tc-leading-relaxed);
+  color: var(--tc-text-primary);
+  background-color: var(--tc-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- Typography ---------- */
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--tc-leading-tight);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+}
+
+h2 {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-semibold);
+}
+
+h3 {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+}
+
+p {
+  line-height: var(--tc-leading-relaxed);
+}
+
+small {
+  font-size: var(--tc-text-caption);
+}
+
+/* ---------- Links ---------- */
+a {
+  color: var(--tc-amber);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--tc-amber-hover);
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+  border-radius: var(--tc-radius-sm);
+}
+
+/* ---------- Buttons ---------- */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+  border-radius: var(--tc-radius-sm);
+}
+
+/* ---------- Images ---------- */
+img, svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* ---------- Lists ---------- */
+ul, ol {
+  list-style: none;
+}
+
+/* ---------- Form elements ---------- */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
