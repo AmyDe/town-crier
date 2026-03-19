@@ -1,0 +1,81 @@
+/* ==========================================================================
+   Hero Section
+   Landing page hero — full-viewport intro with headline, subheading,
+   CTA button, and scroll indicator.
+   ========================================================================== */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  padding: var(--tc-space-xxl) var(--tc-space-md);
+  text-align: center;
+}
+
+.headline {
+  font-size: var(--tc-text-hero);
+  font-weight: var(--tc-weight-bold);
+  line-height: var(--tc-leading-tight);
+  color: var(--tc-text-primary);
+  max-width: 800px;
+  margin-bottom: var(--tc-space-lg);
+}
+
+.subheading {
+  font-size: var(--tc-text-h3);
+  font-weight: var(--tc-weight-regular);
+  line-height: var(--tc-leading-snug);
+  color: var(--tc-text-secondary);
+  max-width: 600px;
+  margin-bottom: var(--tc-space-xl);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  border-radius: var(--tc-radius-md);
+  text-decoration: none;
+  transition: background var(--tc-duration-fast) ease;
+}
+
+.cta:hover {
+  background: var(--tc-amber-hover);
+  color: var(--tc-text-on-accent);
+  text-decoration: none;
+}
+
+.scrollIndicator {
+  margin-top: var(--tc-space-xxl);
+  animation: bounce 2s infinite;
+  color: var(--tc-text-tertiary);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+/* ---------- Responsive: mobile ---------- */
+@media (max-width: 639px) {
+  .headline {
+    font-size: 2rem;
+  }
+}

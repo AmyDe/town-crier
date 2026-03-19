@@ -1,0 +1,84 @@
+/* ==========================================================================
+   Footer — CTA, download, copyright, legal links
+   ========================================================================== */
+
+.footer {
+  border-top: 1px solid var(--tc-border);
+  padding: var(--tc-space-xxl) 0 var(--tc-space-xl);
+}
+
+.container {
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--tc-space-md);
+}
+
+/* ---------- CTA section ---------- */
+.cta {
+  text-align: center;
+  margin-bottom: var(--tc-space-xxl);
+}
+
+.ctaHeading {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin-bottom: var(--tc-space-lg);
+  line-height: var(--tc-leading-snug);
+}
+
+.downloadButton {
+  display: inline-block;
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  font-weight: var(--tc-weight-semibold);
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  border-radius: var(--tc-radius-md);
+  text-decoration: none;
+  min-height: 44px;
+  line-height: 28px;
+  transition: background var(--tc-duration-fast) ease;
+}
+
+.downloadButton:hover {
+  background: var(--tc-amber-hover);
+  color: var(--tc-text-on-accent);
+  text-decoration: none;
+}
+
+/* ---------- Bottom bar: copyright + legal ---------- */
+.bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tc-space-sm);
+}
+
+.copyright {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.legal {
+  display: flex;
+  gap: var(--tc-space-md);
+}
+
+.legalLink {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  text-decoration: none;
+}
+
+.legalLink:hover {
+  color: var(--tc-amber);
+  text-decoration: underline;
+}
+
+/* ---------- Responsive: side-by-side on tablet+ ---------- */
+@media (min-width: 640px) {
+  .bottom {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}

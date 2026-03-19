@@ -7,6 +7,7 @@ using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
 using Pulumi.AzureNative.ContainerRegistry;
+using Pulumi.AzureNative.Web;
 
 return await Pulumi.Deployment.RunAsync(() =>
 {
@@ -338,6 +339,20 @@ return await Pulumi.Deployment.RunAsync(() =>
         Tags = tags,
     });
 
+    // Static Web App (Landing Page)
+    var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
+    {
+        Name = $"swa-town-crier-{env}",
+        ResourceGroupName = resourceGroup.Name,
+        Location = resourceGroup.Location,
+        Sku = new Pulumi.AzureNative.Web.Inputs.SkuDescriptionArgs
+        {
+            Name = "Free",
+            Tier = "Free",
+        },
+        Tags = tags,
+    });
+
     return new Dictionary<string, object?>
     {
         ["resourceGroupName"] = resourceGroup.Name,
@@ -347,5 +362,7 @@ return await Pulumi.Deployment.RunAsync(() =>
         ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
         ["cosmosDatabaseName"] = cosmosDatabase.Name,
         ["logAnalyticsWorkspaceId"] = logAnalytics.Id,
+        ["staticWebAppUrl"] = staticWebApp.DefaultHostname.Apply(hostname => $"https://{hostname}"),
+        ["staticWebAppName"] = staticWebApp.Name,
     };
 });
