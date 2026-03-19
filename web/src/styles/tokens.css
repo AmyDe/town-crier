@@ -55,8 +55,10 @@
   /* Typography — Inter via Google Fonts */
   --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
 
+  --tc-text-hero: 3.5rem;
   --tc-text-display-large: 2rem;
   --tc-text-display-small: 1.5rem;
+  --tc-text-h3: 1.25rem;
   --tc-text-headline: 1.125rem;
   --tc-text-body: 1rem;
   --tc-text-caption: 0.875rem;

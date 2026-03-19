@@ -1,0 +1,124 @@
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: var(--tc-background);
+  border-bottom: 1px solid var(--tc-border);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+}
+
+.logo {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  text-decoration: none;
+}
+
+.logo:hover {
+  color: var(--tc-text-primary);
+  text-decoration: none;
+}
+
+.links {
+  display: none;
+  gap: var(--tc-space-lg);
+}
+
+.links[data-open="true"] {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--tc-background);
+  border-bottom: 1px solid var(--tc-border);
+  padding: var(--tc-space-md);
+  gap: var(--tc-space-md);
+}
+
+.link {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-secondary);
+  text-decoration: none;
+  transition: color var(--tc-duration-fast) ease;
+}
+
+.link:hover {
+  color: var(--tc-text-primary);
+  text-decoration: none;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--tc-space-sm);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--tc-space-md);
+  background-color: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  font-weight: var(--tc-weight-semibold);
+  font-size: var(--tc-text-caption);
+  border-radius: var(--tc-radius-md);
+  text-decoration: none;
+  transition: background-color var(--tc-duration-fast) ease;
+}
+
+.cta:hover {
+  background-color: var(--tc-amber-hover);
+  color: var(--tc-text-on-accent);
+  text-decoration: none;
+}
+
+.hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--tc-radius-md);
+  color: var(--tc-text-primary);
+  transition: background-color var(--tc-duration-fast) ease;
+}
+
+.hamburger:hover {
+  background-color: var(--tc-amber-muted);
+}
+
+/* Tablet and above: show links inline, hide hamburger */
+@media (min-width: 640px) {
+  .links {
+    display: flex;
+    flex-direction: row;
+    position: static;
+    background-color: transparent;
+    border-bottom: none;
+    padding: 0;
+  }
+
+  .links[data-open="true"] {
+    flex-direction: row;
+    position: static;
+    background-color: transparent;
+    border-bottom: none;
+    padding: 0;
+  }
+
+  .hamburger {
+    display: none;
+  }
+}
