@@ -68,3 +68,6 @@ Carthage/Build/
 
 # Beads credential keys
 .beads/.beads-credential-key
+
+# Superpowers brainstorm sessions
+.superpowers/
