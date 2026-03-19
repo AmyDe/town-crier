@@ -47,12 +47,22 @@ swiftlint lint --strict             # Lint
 swift-format format --in-place --recursive .  # Auto-format
 ```
 
+### Web (`/web`)
+
+```bash
+cd web && npm run dev               # Vite dev server with hot reload
+cd web && npm run build             # Production build to /web/dist
+cd web && npx tsc --noEmit          # Type check without emitting
+cd web && npx vitest run            # Run tests (when Vitest is added)
+```
+
 ## Coding Standards Skills
 
 This repo has Claude Code skills that are **auto-triggered** when writing code:
 
 - `dotnet-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any C# code in `/api`. Covers DDD, CQRS, TUnit testing, Cosmos DB SDK, and Native AOT patterns.
 - `ios-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Swift code in `/mobile/ios`. Covers MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency.
+- `react-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any React/TypeScript code in `/web`. Covers feature-sliced clean architecture, CSS Modules with design tokens, hooks-as-ViewModels, Vitest + Testing Library, and domain-layer purity.
 - `design-language` — Auto-invoked when creating or modifying any UI code, colors, themes, or visual components. Defines the cross-platform design system (colors, typography, spacing, components) with light, dark, and OLED dark theme support.
 
 Skills are defined in `.claude/skills/` as `SKILL.md` files.
