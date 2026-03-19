@@ -1,0 +1,48 @@
+/* StatsBar — Three key stats in a horizontal row with top/bottom borders */
+
+.container {
+  border-top: 1px solid var(--tc-border);
+  border-bottom: 1px solid var(--tc-border);
+  padding: var(--tc-space-xl) var(--tc-space-md);
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  gap: var(--tc-space-xl);
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--tc-space-xs);
+}
+
+.value {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-bold);
+  line-height: var(--tc-leading-snug);
+  color: var(--tc-amber);
+}
+
+.label {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-regular);
+  line-height: var(--tc-leading-normal);
+  color: var(--tc-text-secondary);
+}
+
+/* Mobile: tighter gap, smaller value font */
+@media (max-width: 639px) {
+  .row {
+    gap: var(--tc-space-md);
+  }
+
+  .value {
+    font-size: var(--tc-text-headline);
+  }
+}
