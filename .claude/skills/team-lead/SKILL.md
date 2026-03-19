@@ -126,12 +126,14 @@ For each ready bead, run `bd show <bead-id>` to read its title, description, and
 
 - **iOS/Swift** → assign to `ios-tdd-worker`
 - **.NET/C#** → assign to `dotnet-tdd-worker`
+- **React/Web** → assign to `react-tdd-worker`
 - **Infrastructure/Pulumi** → assign to `pulumi-infra-worker`
 - **CI/CD/Pipelines** → assign to `github-actions-worker`
 
 Classification heuristics:
 - Beads mentioning Swift, SwiftUI, iOS, mobile, XCTest, ViewModel, Coordinator, or paths under `mobile/ios` → **iOS**
 - Beads mentioning .NET, C#, API, handler, endpoint, Cosmos, TUnit, or paths under `api` → **.NET**
+- Beads mentioning React, TypeScript, web, landing page, CSS, frontend, Vite, Vitest, component, hook, or paths under `web` → **React/Web**
 - Beads mentioning Pulumi, infrastructure, IaC, Azure resources, Container Apps, resource group, managed identity, or paths under `infra` → **Infra**
 - Beads mentioning CI/CD, pipeline, GitHub Actions, workflow, deployment, build automation, or paths under `.github/workflows` → **CI/CD**
 - If ambiguous, read the bead description more carefully via `bd show`. If still unclear, ask the user.
@@ -142,7 +144,7 @@ Spawn worker agents for each bead. Use `isolation: "worktree"` — this automati
 
 ```
 Agent:
-  subagent_type: "ios-tdd-worker" | "dotnet-tdd-worker" | "pulumi-infra-worker" | "github-actions-worker"
+  subagent_type: "ios-tdd-worker" | "dotnet-tdd-worker" | "react-tdd-worker" | "pulumi-infra-worker" | "github-actions-worker"
   name: "aldric" — next unused peasant name from the roster
   team_name: "town-crier-guild"
   isolation: "worktree"

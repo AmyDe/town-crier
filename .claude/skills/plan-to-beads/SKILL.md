@@ -83,6 +83,7 @@ Use `--priority` to reflect the plan's ordering:
 Use `--labels` to tag beads by tech area so they can be filtered and routed:
 - `api` — .NET backend work
 - `ios` — Swift/iOS app work
+- `web` — React/TypeScript frontend work
 - `infra` — Pulumi, CI/CD, deployment
 - `data` — Cosmos DB schema, data modelling
 
