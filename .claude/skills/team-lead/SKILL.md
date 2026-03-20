@@ -170,131 +170,79 @@ Agent:
 
 **Parallel dispatch:** Spawn all ready workers in a **single message** with multiple Agent tool calls, each with `run_in_background: true`. This runs them concurrently in isolated worktrees while keeping you free to relay decisions. If two beads could touch overlapping files, dispatch them sequentially instead. You are automatically notified when each background agent completes — do not poll.
 
-### Phase 3: Validate
+### Phase 3: React Loop
 
-When a worker's Agent call returns, you receive the worktree path and branch name in the result. Validate via the bead — **not** by reading code or running tests:
+After dispatching workers, you enter the react loop. There is no polling — Claude Code delivers teammate messages and background completion notifications to you automatically. Handle each event as it arrives:
 
-1. **Check bead evidence** — run `bd show <bead-id>` and verify the notes contain:
-   - A "TDD Evidence" section
-   - Final test output showing all tests passing
-   - At least one Red-Green-Refactor cycle documented
+#### Event: DECISION NEEDED from a worker
 
-2. **Check commits exist** on the worktree branch:
+A worker has sent a `SendMessage` containing `DECISION NEEDED [{bead-id}]`. This means the worker is **stopped and waiting** for an answer.
+
+1. Collect all pending `DECISION NEEDED` messages received so far.
+2. Surface them to the human in a **single** `AskUserQuestion` call. For each decision, include:
+   - The worker's name
+   - The bead ID
+   - The worker's full message (verbatim — do not summarize, interpret, or filter)
+3. When the human responds, relay each answer back to the corresponding worker:
+   ```
+   SendMessage(to: "{worker_name}"):
+   DECISION [{bead-id}]
+
+   {human's answer, verbatim}
+   ```
+4. The worker resumes upon receiving the response.
+
+**You are a transparent pipe.** You never answer a decision yourself. Even if the question seems trivial or the answer seems obvious — relay it. The human decides what is trivial, not you.
+
+#### Event: Worker completes (background agent notification)
+
+A worker has finished and the Agent tool has returned its result including the worktree branch name.
+
+1. **Validate** — run `bd show <bead-id>` and verify the notes contain:
+   - A "TDD Evidence" (or "Infrastructure Evidence" or "Pipeline Evidence") section
+   - Final test/build output showing success
+   - At least one Red-Green-Refactor cycle documented (for TDD workers)
+
+2. **Check commits** exist on the worktree branch:
    ```bash
    git log main..<branch-name> --oneline
    ```
 
-3. **Dismiss the worker** — send a shutdown message immediately after validation completes:
-   ```
-   SendMessage:
-     to: "<worker-name>"
-     message: "Your work is complete. Shut down."
-   ```
+3. **If validation passes** — add the branch to the merge queue.
 
-If validation **fails**:
-- **Dismiss the failed worker first** — send the shutdown message before spawning a replacement.
-- Spawn a **new** worker (same type, next name from roster) with guidance to complete the evidence. Pass it the existing worktree branch so it can continue from where the previous worker left off.
-- Do **not** merge or close a bead that fails validation.
+4. **If validation fails** — spawn a **new** remediation worker (same type, next peasant name, `run_in_background: true`) with guidance to complete the evidence. Pass the existing worktree branch.
 
-### Phase 4: Merge Queue
-
-Process completed branches one at a time. Do all clean merges first — each one advances main, which may reduce conflicts for later merges.
-
-For each validated branch:
-
-```bash
-git merge <branch-name> --no-edit
-```
-
-**If the merge succeeds** — clean up:
-
-```bash
-git branch -d <branch-name>
-```
-
-The `isolation: "worktree"` auto-cleans worktree directories. If any linger:
-
-```bash
-git worktree prune
-```
-
-**If the merge has conflicts** — do NOT attempt to resolve them yourself:
-
-1. **Abort the merge immediately:**
+5. **Process the merge queue** when ready. Merge branches one at a time:
    ```bash
-   git merge --abort
+   git merge <branch-name> --no-edit
    ```
 
-2. **Park the branch** — add it to a "needs resolution" list. Move on to the next clean merge.
+   - If clean: `git branch -d <branch-name>` and `git worktree prune`
+   - If conflicts: `git merge --abort`, park the branch. After all clean merges, spawn a conflict resolver agent (same as current Phase 4 logic — `subagent_type: "general-purpose"`, `isolation: "worktree"`, `run_in_background: true`).
 
-3. **After all clean merges are done**, resolve conflicts one at a time. For each parked branch, spawn a conflict resolver agent with `isolation: "worktree"` (so it starts from current main, which includes all clean merges):
-
-   ```
-   Agent:
-     subagent_type: "general-purpose"
-     name: "<next peasant name>" — continue the roster sequence
-     team_name: "town-crier-guild"
-     isolation: "worktree"
-     model: "opus"
-     mode: "bypassPermissions"
-     prompt: |
-       There is a merge conflict between branch `<conflicting-branch>` and main.
-
-       Context on what each side was doing:
-       - Branch `<conflicting-branch>`: <title and summary from bd show>
-       - Main includes recent merges: <list of recently merged bead titles>
-
-       Your job:
-       1. Run `git merge <conflicting-branch> --no-edit` to reproduce the conflict.
-       2. Read the conflicting files and understand both sides.
-       3. Resolve the conflicts, preserving the intent of both sides.
-       4. Run the relevant tests to confirm nothing is broken:
-          - iOS: `cd mobile/ios && swift test`
-          - .NET: `cd api && dotnet test`
-       5. Complete the merge commit.
-
-       Do NOT close any beads. Do NOT push.
-   ```
-
-4. **When the resolver returns**, dismiss it and merge its branch into main (this should be clean since it's based on current main):
-   ```
-   SendMessage:
-     to: "<resolver-name>"
-     message: "Your work is complete. Shut down."
-   ```
+6. **Close the bead:**
    ```bash
-   git merge <resolver-branch> --no-edit
-   git branch -d <resolver-branch>
-   git branch -d <conflicting-branch>
-   git worktree prune
+   bd close <bead-id>
    ```
 
-5. **Resolve conflicts sequentially** — each resolution changes main, so the next resolver needs the updated base.
-
-### Phase 5: Close the Bead
-
-```bash
-bd close <bead-id>
-```
-
-### Phase 6: Loop Until No Beads Remain
-
-After closing a bead, **always** check for more work:
-
-```bash
-bd ready
-```
-
-Completing and merging a bead may unblock dependent beads that were not previously ready. Keep looping:
-
-1. Run `bd ready` to discover newly-available beads.
-2. If beads are ready → go back to **Phase 2** with a **fresh worker** and the next peasant name from the roster.
-3. If no beads are ready → you are done. Run:
+7. **Check for new work:**
    ```bash
-   bd dolt push
+   bd ready
    ```
+   If new beads are ready, dispatch fresh workers (Phase 2) and continue the react loop.
 
-**Never stop early.** Do not finish after a single batch. Continue dispatching, validating, merging, and closing until `bd ready` returns zero beads. The job is not done until every actionable bead has been completed.
+#### Termination
+
+The react loop ends when:
+- All dispatched workers have completed
+- All branches are merged (including conflict resolutions)
+- All beads are closed
+- `bd ready` returns zero beads
+
+When done, sync beads:
+```bash
+bd dolt push
+```
 
 Do **not** `git push` unless the user explicitly asks.
 
