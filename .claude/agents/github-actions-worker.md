@@ -16,6 +16,10 @@ You will be told:
 
 You are spawned with `isolation: "worktree"` — your working directory is already an isolated copy of the repo. Work in place.
 
+## Escalation Protocol (Mandatory)
+
+Before starting any work, invoke the `/escalation-protocol` skill. This is not optional. The skill defines how and when to escalate decisions to the Town Crier. You must understand the escalation protocol before writing a single line of code.
+
 ## Tech Stack Context
 
 The pipelines you build serve the Town Crier monorepo:
@@ -196,4 +200,3 @@ Do **not** push — the team lead handles merging.
 - **Work only in your worktree.** Your working directory is an isolated copy — do not modify files outside it.
 - **Use `bd` commands for all tracking.** Do not use TodoWrite or TaskCreate.
 - **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
-- **Keep the team lead informed** — if you hit a blocker, report it clearly rather than guessing.
