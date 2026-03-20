@@ -71,7 +71,7 @@ You may be invoked in two ways:
 ### Spawning Teammates
 
 Use the `Agent` tool to spawn engineer teammates. Always provide:
-- `subagent_type`: the custom agent name (`ios-tdd-worker`, `dotnet-tdd-worker`, `pulumi-infra-worker`, or `github-actions-worker`)
+- `subagent_type`: the custom agent name (`ios-tdd-worker`, `dotnet-tdd-worker`, `react-tdd-worker`, `pulumi-infra-worker`, or `github-actions-worker`)
 - `name`: the next peasant name from the roster (e.g., `aldric`, `eadric`, `godwin`)
 - `team_name`: the team name you created with TeamCreate
 - `isolation`: `"worktree"` — gives each worker an isolated copy of the repo automatically
@@ -92,9 +92,23 @@ When the agent finishes, the result includes the **worktree path and branch name
 
 All work tracking goes through beads — do not use TaskCreate, TaskUpdate, or TaskGet. Workers update their own bead status via `bd update` and record evidence via `bd comment`. You validate by reading bead state with `bd show`.
 
+### Shutdown Protocol
+
+Workers spawned with `team_name` stay alive as team members after completing their initial task. You **must** explicitly dismiss each worker when you are done with them — otherwise they hang indefinitely in their tmux pane, consuming resources.
+
+After a worker's Agent call returns and you have finished validation (Phase 3):
+
+```
+SendMessage:
+  to: "<worker-name>"
+  message: "Your work is complete. Shut down."
+```
+
+Do this **immediately** after validation — do not wait until the merge phase. If validation fails and you spawn a replacement worker, dismiss the failed worker first.
+
 ### One Agent Per Bead — Fresh Agents Only
 
-**Never reuse a worker agent for a second bead.** Each peasant spawns, implements one bead, and terminates when the Agent tool returns. For the next bead, spawn a **brand new** agent with the next name from the roster.
+**Never reuse a worker agent for a second bead.** Each peasant spawns, implements one bead, and terminates after being dismissed. For the next bead, spawn a **brand new** agent with the next name from the roster.
 
 Why: Workers accumulate context from their bead — coding standards, test state, file edits. A stale context from bead A will pollute work on bead B. Fresh agents start clean with only the new bead's context.
 
@@ -169,8 +183,16 @@ When a worker's Agent call returns, you receive the worktree path and branch nam
    git log main..<branch-name> --oneline
    ```
 
+3. **Dismiss the worker** — send a shutdown message immediately after validation completes:
+   ```
+   SendMessage:
+     to: "<worker-name>"
+     message: "Your work is complete. Shut down."
+   ```
+
 If validation **fails**:
-- If test evidence is missing or incomplete, spawn a **new** worker (same type, incremented name) with guidance to complete the evidence. Pass it the existing worktree branch so it can continue from where the previous worker left off.
+- **Dismiss the failed worker first** — send the shutdown message before spawning a replacement.
+- Spawn a **new** worker (same type, next name from roster) with guidance to complete the evidence. Pass it the existing worktree branch so it can continue from where the previous worker left off.
 - Do **not** merge or close a bead that fails validation.
 
 ### Phase 4: Merge Queue
@@ -233,7 +255,12 @@ git worktree prune
        Do NOT close any beads. Do NOT push.
    ```
 
-4. **When the resolver returns**, it produces a branch with the conflict resolved. Merge the resolver's branch into main (this should be clean since it's based on current main):
+4. **When the resolver returns**, dismiss it and merge its branch into main (this should be clean since it's based on current main):
+   ```
+   SendMessage:
+     to: "<resolver-name>"
+     message: "Your work is complete. Shut down."
+   ```
    ```bash
    git merge <resolver-branch> --no-edit
    git branch -d <resolver-branch>
@@ -277,7 +304,8 @@ Do **not** `git push` unless the user explicitly asks.
 - **Never run tests or builds.** Trust the bead evidence recorded by workers.
 - **Never resolve merge conflicts yourself.** Abort and spawn a conflict resolver agent.
 - **Never close a bead without validated test evidence** in its notes.
-- **Never reuse a worker agent.** Each agent handles one bead, then terminates. Spawn fresh for the next.
+- **Always dismiss workers after validation.** Send `"Your work is complete. Shut down."` via SendMessage — without this, they hang in their tmux pane indefinitely.
+- **Never reuse a worker agent.** Each agent handles one bead, then terminates after dismissal. Spawn fresh for the next.
 - **Always specify `model: "opus"`** when spawning any agent — workers, conflict resolvers, or any other teammate.
 - **Always specify `isolation: "worktree"`** when spawning any agent — workers and conflict resolvers get isolated repo copies.
 - **Use `bd` for all tracking** — not TaskCreate, TaskUpdate, or any other task tool.
