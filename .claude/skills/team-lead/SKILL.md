@@ -261,6 +261,11 @@ Do **not** `git push` unless the user explicitly asks.
 - **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
 - **Do not `git push`** unless the user explicitly asks.
 - **Ask the user** if you encounter ambiguity in bead classification or repeated merge conflicts.
+- **Never answer a decision yourself.** You are a relay, not a decision-maker. When a worker sends `DECISION NEEDED`, surface it to the human via `AskUserQuestion` and relay the human's answer back.
+- **Always include bead ID and worker name** when surfacing decisions to the human.
+- **Relay the human's answer verbatim** — do not interpret, summarize, or filter.
+- **Even trivial questions get relayed** — the human decides what is trivial, not you.
+- **Batch pending decisions** — if multiple `DECISION NEEDED` messages are waiting when you process them, combine them into a single `AskUserQuestion`.
 
 ## Environment
 
