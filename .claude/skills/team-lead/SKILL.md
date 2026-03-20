@@ -164,10 +164,11 @@ Agent:
   isolation: "worktree"
   model: "opus"
   mode: "bypassPermissions"
+  run_in_background: true
   prompt: "Work on bead `<bead-id>`."
 ```
 
-**Parallel dispatch:** If multiple ready beads target different parts of the codebase (e.g., one iOS bead and one .NET bead), spawn all workers in a **single message** with multiple Agent tool calls. This runs them concurrently — each in its own isolated worktree. If two beads could touch overlapping files, dispatch them sequentially instead.
+**Parallel dispatch:** Spawn all ready workers in a **single message** with multiple Agent tool calls, each with `run_in_background: true`. This runs them concurrently in isolated worktrees while keeping you free to relay decisions. If two beads could touch overlapping files, dispatch them sequentially instead. You are automatically notified when each background agent completes — do not poll.
 
 ### Phase 3: Validate
 
