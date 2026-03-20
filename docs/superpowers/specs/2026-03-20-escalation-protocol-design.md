@@ -114,15 +114,23 @@ TDD workflow, evidence recording, commit process, and all other rules remain unc
 
 ### Change 1: Background workers
 
-In Phase 2 (Dispatch Workers), the Agent call template adds `run_in_background: true`. This keeps the Town Crier free to receive and relay messages while workers execute.
+In Phase 2 (Dispatch Workers), the Agent tool call adds `run_in_background: true` (this is a supported parameter of the Agent tool, not the Bash tool). This keeps the Town Crier's main thread free to receive and relay messages while workers execute. The Town Crier is automatically notified when each background agent completes — it does not need to poll.
 
-### Change 2: Interleaved event loop
+### Change 2: Interleaved event loop replaces linear phases
 
-After dispatching workers, the Town Crier handles events as they arrive instead of blocking:
+The current linear workflow (Phase 2 → 3 → 4 → 5 → 6) is restructured. Phase 1 (Setup) stays unchanged. Phases 2-6 are replaced by a single dispatch-and-react loop:
 
-- **`DECISION NEEDED` from a worker**: Collect all pending `DECISION NEEDED` messages. Surface them to the human in a single `AskUserQuestion`, identifying each by bead ID and worker name. When the human responds, relay each answer back to the corresponding worker via `SendMessage(to: "{worker_name}")` with the `DECISION [{bead-id}]` prefix.
-- **Worker completion notification**: Proceed to validation and merge (existing Phase 3-5 logic).
-- **New beads unblocked**: Dispatch fresh workers for newly ready beads.
+**Dispatch**: Spawn all ready workers with `run_in_background: true` in a single message (parallel Agent calls). Track each worker's name, bead ID, and branch in a mental ledger.
+
+**React loop** — after dispatching, the Town Crier reacts to events as they arrive. There is no polling. Claude Code delivers teammate messages and background completion notifications automatically. For each event:
+
+- **`DECISION NEEDED` message from a worker**: Collect all pending `DECISION NEEDED` messages received so far. Surface them to the human in a single `AskUserQuestion` call, identifying each by bead ID and worker name. When the human responds, relay each answer back to the corresponding worker via `SendMessage(to: "{worker_name}")` with the `DECISION [{bead-id}]` prefix. The worker resumes upon receiving the response.
+
+- **Background agent completion notification**: The worker has finished. Run validation (check bead evidence via `bd show`, check commits via `git log`). If valid, add the branch to the merge queue. If invalid, spawn a remediation worker. Process the merge queue using the existing merge logic (clean merges first, park conflicts, resolve conflicts with dedicated agents after all clean merges).
+
+- **Bead closed and `bd ready` returns new beads**: Dispatch fresh workers for newly unblocked beads (again with `run_in_background: true`). Continue the react loop.
+
+**Termination**: The loop ends when all dispatched workers have completed, all branches are merged, all beads are closed, and `bd ready` returns zero beads.
 
 ### Change 3: New relay rules
 
@@ -145,6 +153,10 @@ Added to the Rules section:
 | `.claude/agents/react-tdd-worker.md` | Modify | Add mandatory skill invoke, remove old stub |
 | `.claude/agents/pulumi-infra-worker.md` | Modify | Add mandatory skill invoke, remove old stub |
 | `.claude/agents/github-actions-worker.md` | Modify | Add mandatory skill invoke, remove old stub |
+
+## Pre-existing Fix
+
+The team-lead skill's Phase 2 agent type list (line 74) only lists four worker types. Add `react-tdd-worker` to the list and the classification heuristics.
 
 ## Out of Scope
 
