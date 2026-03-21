@@ -1,11 +1,11 @@
 ---
 name: ship
-description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a squash-merge PR via `gh`, merges it, and cleans up. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
+description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a PR via `gh`, and waits for PR gate checks before merging. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
 ---
 
 # Ship to Main
 
-Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the entire flow: branch, PR, squash-merge, cleanup.
+Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the flow: branch, push, create PR, then ask the user whether to wait for checks or leave the PR open.
 
 ## Workflow
 
@@ -70,20 +70,38 @@ EOF
 
 **PR body:** List each commit as a bullet point under "## Changes".
 
-### Step 6: Merge the PR
+### Step 6: Ask user about merge strategy
+
+**NEVER merge the PR immediately.** The PR gate workflow must pass first. Present the PR URL and ask:
+
+> PR created: <url>
+>
+> The PR gate checks are running. Would you like me to:
+> 1. **Wait** for the checks to pass and then merge
+> 2. **Leave it open** for you to merge later
+
+**If the user chooses to wait:**
+
+Use `gh pr checks --watch` to monitor, then merge when green:
+
+```bash
+gh pr checks <pr-number> --watch --fail-fast
+```
+
+If checks pass, proceed to merge and cleanup (Step 7). If checks fail, report which checks failed, provide the PR URL, and stop — do not retry or force-merge.
+
+**If the user chooses to leave it open:**
+
+Report the PR URL and stop. Do not proceed to Step 7. Do not merge. Do not clean up branches. The skill ends here.
+
+### Step 7: Merge and clean up
+
+Only reach this step if the user chose to wait AND checks passed.
 
 ```bash
 gh pr merge --squash --delete-branch
-```
-
-If merge fails (e.g., required CI checks are pending), tell the user the PR was created, provide the URL, and suggest they merge manually when checks pass. Don't retry in a loop.
-
-### Step 7: Return to main and clean up
-
-```bash
 git checkout main
 git pull origin main
-git branch -d <branch-name>
 ```
 
 ### Step 8: Verify
@@ -98,5 +116,5 @@ Report success with the PR URL.
 
 - **Not on main:** Stop. Tell the user which branch they're on.
 - **Nothing to ship:** Tell the user. Don't create empty PRs.
-- **Merge conflict or CI failure:** Report the PR URL and let the user decide next steps. Don't force-merge or retry.
+- **Checks failed:** Report which checks failed and the PR URL. Do not retry or force-merge.
 - **gh CLI not authenticated:** Tell the user to run `gh auth login`.
