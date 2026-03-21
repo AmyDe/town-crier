@@ -26,8 +26,9 @@ analyzer_rules:
   - unused_import
 
 included:
-  - Sources
-  - Tests
+  - packages
+  - town-crier-app/Sources
+  - town-crier-tests/Sources
 
 excluded:
   - .build
