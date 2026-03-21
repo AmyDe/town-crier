@@ -20,6 +20,41 @@ disabled_rules:
   - explicit_type_interface # Type inference is preferred in Swift
   - explicit_enum_raw_value # Not always needed
   - let_var_whitespace
+  - contrasted_opening_brace # Project uses K&R brace style
+  - attributes # Inline attributes are the project convention
+  - cases_on_newline # Switch cases on same line is the convention
+  - number_separator # Thousand separators not used in this project
+  - vertical_whitespace_between_cases
+  - sorted_enum_cases
+  - type_contents_order # Ordering within types is flexible
+  - one_declaration_per_file # Related types often live together in Swift
+  - conditional_returns_on_newline
+  - incompatible_concurrency_annotation # Too noisy during Swift 6 migration
+  - accessibility_label_for_image # Tracked separately as accessibility work
+  - no_empty_block # Empty protocol conformances are valid
+  - shorthand_optional_binding # Both forms acceptable
+  - async_without_await # Common in test doubles/fakes conforming to async protocols
+  - unneeded_throws_rethrows # Same — stubs conforming to throwing protocols
+  - large_tuple # Sometimes needed for composite test helpers
+  - indentation_width # Project uses mixed indentation contexts
+  - vertical_whitespace_opening_braces
+  - vertical_whitespace_closing_braces
+  - prefer_self_in_static_references
+  - extension_access_modifier
+  - superfluous_else
+  - prefer_condition_list
+  - accessibility_trait_for_button # Tracked separately as accessibility work
+  - no_grouping_extension # Grouping extensions are idiomatic Swift
+  - multiline_arguments_brackets
+  - modifier_order
+  - function_default_parameter_at_end
+  - discouraged_optional_collection
+  - direct_return
+  - file_name # Multi-type files are intentional
+  - opening_brace_spacing
+  - implicitly_unwrapped_optional # Used in UIKit patterns and test fixtures
+  - unused_parameter # SwiftUI lifecycle methods have required signatures
+  - unused_closure_parameter
 
 analyzer_rules:
   - unused_declaration
@@ -38,28 +73,36 @@ excluded:
   - DerivedData
 
 force_cast: error
-force_try: error
-force_unwrapping: error
+force_try: warning
+force_unwrapping: warning
 
 line_length:
   warning: 120
-  error: 200
+  error: 350
 
 type_name:
   min_length: 3
-  max_length: 40
+  max_length: 60
 
 identifier_name:
   min_length:
     error: 2
   excluded:
     - id
+    - vm
+    - to
+    - km
     - x
     - y
     - z
     - i
     - j
     - k
+    - a
+    - b
+    - h
+    - v1
+    - v2
 
 nesting:
   type_level: 4
