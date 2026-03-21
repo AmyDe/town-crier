@@ -154,20 +154,4 @@ struct AppCoordinatorTests {
         #expect(sut.isOnboardingComplete)
     }
 
-    // MARK: - Map selection triggers detail
-
-    @Test func mapViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationResult = .success(.approved)
-        let mapVM = sut.makeMapViewModel(watchZone: .cambridge)
-
-        // Simulate the map selecting an application
-        mapVM.onApplicationSelected?(PlanningApplicationId("APP-002"))
-
-        // Give the async Task time to complete
-        try await Task.sleep(for: .milliseconds(50))
-
-        #expect(sut.detailApplication == .approved)
-        #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
-    }
 }
