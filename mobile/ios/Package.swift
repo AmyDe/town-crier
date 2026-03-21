@@ -35,15 +35,6 @@ let package = Package(
             dependencies: ["TownCrierDomain"],
             path: "packages/town-crier-presentation/Sources"
         ),
-        .executableTarget(
-            name: "TownCrierApp",
-            dependencies: [
-                "TownCrierDomain",
-                "TownCrierData",
-                "TownCrierPresentation",
-            ],
-            path: "town-crier-app/Sources"
-        ),
         .testTarget(
             name: "TownCrierTests",
             dependencies: [

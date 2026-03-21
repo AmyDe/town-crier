@@ -1,22 +1,39 @@
 import Auth0
 import Foundation
+import SimpleKeychain
 import TownCrierDomain
 
 /// Auth0 SDK implementation of the authentication service port.
 /// Handles login via Universal Login, token storage in Keychain,
 /// and session refresh using refresh tokens.
+public struct Auth0Config: Sendable {
+    public let clientId: String
+    public let domain: String
+
+    public init(clientId: String, domain: String) {
+        self.clientId = clientId
+        self.domain = domain
+    }
+}
+
 public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationService, @unchecked Sendable {
+    private let config: Auth0Config
     private let credentialsManager: CredentialsManager
 
-    public init() {
-        let authentication = Auth0.authentication()
-        credentialsManager = CredentialsManager(authentication: authentication)
+    public init(config: Auth0Config) {
+        self.config = config
+        let authentication = Auth0.authentication(
+            clientId: config.clientId,
+            domain: config.domain
+        )
+        let keychain = SimpleKeychain(service: "uk.towncrierapp.auth0")
+        credentialsManager = CredentialsManager(authentication: authentication, storage: keychain)
     }
 
     public func login() async throws -> AuthSession {
         do {
             let credentials = try await Auth0
-                .webAuth()
+                .webAuth(clientId: config.clientId, domain: config.domain)
                 .scope("openid profile email offline_access")
                 .start()
 
@@ -35,7 +52,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
 
     public func logout() async throws {
         do {
-            try await Auth0.webAuth().clearSession()
+            try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
             _ = credentialsManager.clear()
         } catch {
             throw DomainError.logoutFailed(error.localizedDescription)
@@ -54,7 +71,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
 
     public func deleteAccount() async throws {
         do {
-            try await Auth0.webAuth().clearSession()
+            try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
             _ = credentialsManager.clear()
         } catch {
             throw DomainError.logoutFailed(error.localizedDescription)
