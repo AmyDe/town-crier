@@ -1,7 +1,6 @@
 using System.Collections.Immutable;
 using Pulumi;
 using Pulumi.AzureNative.Resources;
-using Pulumi.AzureNative.OperationalInsights;
 using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
@@ -20,48 +19,12 @@ public static class EnvironmentStack
         var acrLoginServer = shared.GetOutput("containerRegistryLoginServer").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
+        var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
 
         // Resource Group
         var resourceGroup = new ResourceGroup($"rg-town-crier-{env}", new ResourceGroupArgs
         {
             ResourceGroupName = $"rg-town-crier-{env}",
-            Tags = tags,
-        });
-
-        // Log Analytics Workspace
-        var logAnalytics = new Workspace($"log-town-crier-{env}", new WorkspaceArgs
-        {
-            WorkspaceName = $"log-town-crier-{env}",
-            ResourceGroupName = resourceGroup.Name,
-            Sku = new Pulumi.AzureNative.OperationalInsights.Inputs.WorkspaceSkuArgs
-            {
-                Name = WorkspaceSkuNameEnum.PerGB2018,
-            },
-            RetentionInDays = 30,
-            Tags = tags,
-        });
-
-        var logAnalyticsSharedKeys = Output.Tuple(resourceGroup.Name, logAnalytics.Name)
-            .Apply(names => GetSharedKeys.InvokeAsync(new GetSharedKeysArgs
-            {
-                ResourceGroupName = names.Item1,
-                WorkspaceName = names.Item2,
-            }));
-
-        // Container Apps Environment
-        var containerAppsEnv = new ManagedEnvironment($"cae-town-crier-{env}", new ManagedEnvironmentArgs
-        {
-            EnvironmentName = $"cae-town-crier-{env}",
-            ResourceGroupName = resourceGroup.Name,
-            AppLogsConfiguration = new AppLogsConfigurationArgs
-            {
-                Destination = "log-analytics",
-                LogAnalyticsConfiguration = new LogAnalyticsConfigurationArgs
-                {
-                    CustomerId = logAnalytics.CustomerId,
-                    SharedKey = logAnalyticsSharedKeys.Apply(keys => keys.PrimarySharedKey ?? ""),
-                },
-            },
             Tags = tags,
         });
 
@@ -266,7 +229,7 @@ public static class EnvironmentStack
         {
             ContainerAppName = $"ca-town-crier-api-{env}",
             ResourceGroupName = resourceGroup.Name,
-            ManagedEnvironmentId = containerAppsEnv.Id,
+            ManagedEnvironmentId = containerAppsEnvironmentId,
             Configuration = new ConfigurationArgs
             {
                 Ingress = new IngressArgs
@@ -338,11 +301,9 @@ public static class EnvironmentStack
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
-            ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["containerAppUrl"] = containerApp.LatestRevisionFqdn.Apply(fqdn => $"https://{fqdn}"),
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["cosmosDatabaseName"] = cosmosDatabase.Name,
-            ["logAnalyticsWorkspaceId"] = logAnalytics.Id,
             ["staticWebAppUrl"] = staticWebApp.DefaultHostname.Apply(hostname => $"https://{hostname}"),
             ["staticWebAppName"] = staticWebApp.Name,
         };

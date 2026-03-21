@@ -3,6 +3,9 @@ using Pulumi.AzureNative.Resources;
 using Pulumi.AzureNative.ContainerRegistry;
 using Pulumi.AzureNative.ManagedIdentity;
 using Pulumi.AzureNative.Authorization;
+using Pulumi.AzureNative.OperationalInsights;
+using Pulumi.AzureNative.App;
+using Pulumi.AzureNative.App.Inputs;
 
 public static class SharedStack
 {
@@ -62,12 +65,50 @@ public static class SharedStack
             PrincipalType = PrincipalType.ServicePrincipal,
         });
 
+        // Log Analytics Workspace (shared across environments)
+        var logAnalytics = new Workspace("log-town-crier-shared", new WorkspaceArgs
+        {
+            WorkspaceName = "log-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            Sku = new Pulumi.AzureNative.OperationalInsights.Inputs.WorkspaceSkuArgs
+            {
+                Name = WorkspaceSkuNameEnum.PerGB2018,
+            },
+            RetentionInDays = 30,
+            Tags = tags,
+        });
+
+        var logAnalyticsSharedKeys = Output.Tuple(resourceGroup.Name, logAnalytics.Name)
+            .Apply(names => GetSharedKeys.InvokeAsync(new GetSharedKeysArgs
+            {
+                ResourceGroupName = names.Item1,
+                WorkspaceName = names.Item2,
+            }));
+
+        // Container Apps Environment (shared across environments)
+        var containerAppsEnv = new ManagedEnvironment("cae-town-crier-shared", new ManagedEnvironmentArgs
+        {
+            EnvironmentName = "cae-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            AppLogsConfiguration = new AppLogsConfigurationArgs
+            {
+                Destination = "log-analytics",
+                LogAnalyticsConfiguration = new LogAnalyticsConfigurationArgs
+                {
+                    CustomerId = logAnalytics.CustomerId,
+                    SharedKey = logAnalyticsSharedKeys.Apply(keys => keys.PrimarySharedKey ?? ""),
+                },
+            },
+            Tags = tags,
+        });
+
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
             ["containerRegistryLoginServer"] = containerRegistry.LoginServer,
             ["acrPullIdentityId"] = acrPullIdentity.Id,
             ["acrPullIdentityClientId"] = acrPullIdentity.ClientId,
+            ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
         };
     }
 }
