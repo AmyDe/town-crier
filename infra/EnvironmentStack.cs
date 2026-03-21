@@ -6,14 +6,20 @@ using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
-using Pulumi.AzureNative.ContainerRegistry;
 using Pulumi.AzureNative.Web;
+using ManagedServiceIdentityType = Pulumi.AzureNative.App.ManagedServiceIdentityType;
 
 public static class EnvironmentStack
 {
     public static Dictionary<string, object?> Run(Config config, string env, InputMap<string> tags)
     {
         var cosmosConsistencyLevel = config.Require("cosmosConsistencyLevel");
+
+        // Shared stack outputs
+        var shared = new StackReference("AmyDe/town-crier/shared");
+        var acrLoginServer = shared.GetOutput("containerRegistryLoginServer").Apply(o => o?.ToString() ?? "");
+        var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
+        var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
 
         // Resource Group
         var resourceGroup = new ResourceGroup($"rg-town-crier-{env}", new ResourceGroupArgs
@@ -58,26 +64,6 @@ public static class EnvironmentStack
             },
             Tags = tags,
         });
-
-        // Azure Container Registry
-        var containerRegistry = new Registry($"acrtowncrier{env}", new RegistryArgs
-        {
-            RegistryName = $"acrtowncrier{env}",
-            ResourceGroupName = resourceGroup.Name,
-            Sku = new Pulumi.AzureNative.ContainerRegistry.Inputs.SkuArgs
-            {
-                Name = SkuName.Basic,
-            },
-            AdminUserEnabled = true,
-            Tags = tags,
-        });
-
-        var acrCredentials = Output.Tuple(resourceGroup.Name, containerRegistry.Name)
-            .Apply(names => ListRegistryCredentials.InvokeAsync(new ListRegistryCredentialsArgs
-            {
-                ResourceGroupName = names.Item1,
-                RegistryName = names.Item2,
-            }));
 
         // Cosmos DB Account (Serverless)
         var cosmosAccount = new DatabaseAccount($"cosmos-town-crier-{env}", new DatabaseAccountArgs
@@ -293,19 +279,17 @@ public static class EnvironmentStack
                 {
                     new RegistryCredentialsArgs
                     {
-                        Server = containerRegistry.LoginServer,
-                        Username = acrCredentials.Apply(c => c.Username ?? ""),
-                        PasswordSecretRef = "acr-password",
+                        Server = acrLoginServer,
+                        Identity = acrPullIdentityId,
                     },
                 },
-                Secrets = new[]
+            },
+            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
+            {
+                Type = ManagedServiceIdentityType.UserAssigned,
+                UserAssignedIdentities = new InputList<string>
                 {
-                    new SecretArgs
-                    {
-                        Name = "acr-password",
-                        Value = acrCredentials.Apply(c =>
-                            c.Passwords.Any() ? c.Passwords[0].Value ?? "" : ""),
-                    },
+                    acrPullIdentityId,
                 },
             },
             Template = new TemplateArgs
@@ -356,7 +340,6 @@ public static class EnvironmentStack
             ["resourceGroupName"] = resourceGroup.Name,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["containerAppUrl"] = containerApp.LatestRevisionFqdn.Apply(fqdn => $"https://{fqdn}"),
-            ["containerRegistryLoginServer"] = containerRegistry.LoginServer,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["cosmosDatabaseName"] = cosmosDatabase.Name,
             ["logAnalyticsWorkspaceId"] = logAnalytics.Id,
