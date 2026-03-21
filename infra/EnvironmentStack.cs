@@ -240,19 +240,6 @@ public static class EnvironmentStack
             },
         });
 
-        // Managed Certificate for API custom domain
-        var apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
-        {
-            EnvironmentName = containerAppsEnvironmentName,
-            ManagedCertificateName = $"cert-api-{env}",
-            ResourceGroupName = sharedResourceGroupName,
-            Properties = new ManagedCertificatePropertiesArgs
-            {
-                SubjectName = apiDomain,
-                DomainControlValidation = "CNAME",
-            },
-        });
-
         // Container App (API) — placeholder image until CI/CD pushes real builds
         var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
         {
@@ -266,13 +253,15 @@ public static class EnvironmentStack
                     External = true,
                     TargetPort = 8080,
                     Transport = IngressTransportMethod.Http,
+                    // Phase 1: register hostname with Disabled binding so the managed
+                    // certificate can be provisioned. Phase 2 (next commit) switches to
+                    // SniEnabled with the certificate ID.
                     CustomDomains = new[]
                     {
                         new CustomDomainArgs
                         {
                             Name = apiDomain,
-                            CertificateId = apiManagedCert.Id,
-                            BindingType = BindingType.SniEnabled,
+                            BindingType = BindingType.Disabled,
                         },
                     },
                 },
@@ -316,6 +305,20 @@ public static class EnvironmentStack
             },
             Tags = tags,
         });
+
+        // Managed Certificate for API custom domain — must be created AFTER the
+        // Container App registers the hostname (Azure requirement).
+        var apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
+        {
+            EnvironmentName = containerAppsEnvironmentName,
+            ManagedCertificateName = $"cert-api-{env}",
+            ResourceGroupName = sharedResourceGroupName,
+            Properties = new ManagedCertificatePropertiesArgs
+            {
+                SubjectName = apiDomain,
+                DomainControlValidation = "CNAME",
+            },
+        }, new CustomResourceOptions { DependsOn = { containerApp } });
 
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
