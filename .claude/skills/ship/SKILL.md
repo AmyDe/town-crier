@@ -72,31 +72,64 @@ EOF
 
 ### Step 6: Ask user about merge strategy
 
-**NEVER merge the PR immediately.** The PR gate workflow must pass first. Present the PR URL and ask:
+**NEVER merge the PR immediately.** The PR gate checks and CodeRabbit review must complete first. Present the PR URL and ask:
 
 > PR created: <url>
 >
-> The PR gate checks are running. Would you like me to:
-> 1. **Wait** for the checks to pass and then merge
+> The PR gate checks and CodeRabbit review are running. Would you like me to:
+> 1. **Wait** for checks and review, then merge
 > 2. **Leave it open** for you to merge later
+
+**If the user chooses to leave it open:**
+
+Report the PR URL and stop. Do not proceed further. Do not merge. Do not clean up branches. The skill ends here.
 
 **If the user chooses to wait:**
 
-Use `gh pr checks --watch` to monitor, then merge when green:
+Proceed to Step 7.
+
+### Step 7: Wait for checks and CodeRabbit review
+
+First, wait for CI checks to pass:
 
 ```bash
 gh pr checks <pr-number> --watch --fail-fast
 ```
 
-If checks pass, proceed to merge and cleanup (Step 7). If checks fail, report which checks failed, provide the PR URL, and stop — do not retry or force-merge.
+If checks fail, report which checks failed, provide the PR URL, and stop — do not retry or force-merge.
 
-**If the user chooses to leave it open:**
+Once checks pass, fetch the CodeRabbit review. CodeRabbit posts a review comment on the PR. Use the GitHub API to read it:
 
-Report the PR URL and stop. Do not proceed to Step 7. Do not merge. Do not clean up branches. The skill ends here.
+```bash
+gh api repos/{owner}/{repo}/pulls/<pr-number>/reviews
+gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
+```
 
-### Step 7: Merge and clean up
+**If CodeRabbit has suggestions or comments:**
 
-Only reach this step if the user chose to wait AND checks passed.
+Summarise the suggestions concisely for the user and ask what they'd like to do:
+
+> CodeRabbit flagged the following:
+> - <brief summary of each suggestion>
+>
+> How would you like to proceed?
+> 1. **Merge anyway** — suggestions are minor or not applicable
+> 2. **Create a bead** — track the suggestions as follow-up work, then merge
+> 3. **Leave the PR open** — review the suggestions yourself first
+
+**CRITICAL: NEVER fix CodeRabbit suggestions within this skill.** Do not edit code, do not push additional commits. This skill ships work — it does not do development. If the user wants fixes, they should do that in a separate session and re-ship.
+
+- If the user chooses **merge anyway**: proceed to Step 8.
+- If the user chooses **create a bead**: create a bead with `bd create` summarising the CodeRabbit suggestions, then proceed to Step 8.
+- If the user chooses **leave it open**: report the PR URL and stop. The skill ends here.
+
+**If CodeRabbit has no suggestions (or approved without comments):**
+
+Proceed directly to Step 8.
+
+### Step 8: Merge and clean up
+
+Only reach this step if the user chose to merge.
 
 ```bash
 gh pr merge --squash --delete-branch
@@ -104,7 +137,7 @@ git checkout main
 git pull origin main
 ```
 
-### Step 8: Verify
+### Step 9: Verify
 
 Run `git status` and `git log --oneline -3` to confirm:
 - On `main`, up to date with origin
