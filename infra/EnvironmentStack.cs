@@ -13,6 +13,8 @@ public static class EnvironmentStack
     public static Dictionary<string, object?> Run(Config config, string env, InputMap<string> tags)
     {
         var cosmosConsistencyLevel = config.Require("cosmosConsistencyLevel");
+        var frontendDomain = config.Require("frontendDomain");
+        var apiDomain = config.Require("apiDomain");
 
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
@@ -20,6 +22,20 @@ public static class EnvironmentStack
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
         var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
+        // Extract the CAE name and resource group from its resource ID to avoid
+        // requiring a shared stack deploy before the env stack can preview.
+        // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
+        var containerAppsEnvironmentName = containerAppsEnvironmentId.Apply(id =>
+        {
+            var segments = id.Split('/');
+            return segments.Length > 0 ? segments[^1] : "";
+        });
+        var sharedResourceGroupName = containerAppsEnvironmentId.Apply(id =>
+        {
+            var segments = id.Split('/');
+            var rgIndex = Array.IndexOf(segments, "resourceGroups");
+            return rgIndex >= 0 && rgIndex + 1 < segments.Length ? segments[rgIndex + 1] : "";
+        });
 
         // Resource Group
         var resourceGroup = new ResourceGroup($"rg-town-crier-{env}", new ResourceGroupArgs
@@ -224,6 +240,19 @@ public static class EnvironmentStack
             },
         });
 
+        // Managed Certificate for API custom domain
+        var apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
+        {
+            EnvironmentName = containerAppsEnvironmentName,
+            ManagedCertificateName = $"cert-api-{env}",
+            ResourceGroupName = sharedResourceGroupName,
+            Properties = new ManagedCertificatePropertiesArgs
+            {
+                SubjectName = apiDomain,
+                DomainControlValidation = "CNAME",
+            },
+        });
+
         // Container App (API) — placeholder image until CI/CD pushes real builds
         var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
         {
@@ -237,6 +266,15 @@ public static class EnvironmentStack
                     External = true,
                     TargetPort = 8080,
                     Transport = IngressTransportMethod.Http,
+                    CustomDomains = new[]
+                    {
+                        new CustomDomainArgs
+                        {
+                            Name = apiDomain,
+                            CertificateId = apiManagedCert.Id,
+                            BindingType = BindingType.SniEnabled,
+                        },
+                    },
                 },
                 Registries = new[]
                 {
@@ -296,6 +334,14 @@ public static class EnvironmentStack
                 OutputLocation = "",
             },
             Tags = tags,
+        });
+
+        // Static Web App Custom Domain
+        var staticWebAppCustomDomain = new StaticSiteCustomDomain($"swa-domain-{env}", new StaticSiteCustomDomainArgs
+        {
+            Name = staticWebApp.Name,
+            DomainName = frontendDomain,
+            ResourceGroupName = resourceGroup.Name,
         });
 
         return new Dictionary<string, object?>
