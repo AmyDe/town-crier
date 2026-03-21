@@ -22,8 +22,20 @@ public static class EnvironmentStack
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
         var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
-        var containerAppsEnvironmentName = shared.GetOutput("containerAppsEnvironmentName").Apply(o => o?.ToString() ?? "");
-        var sharedResourceGroupName = shared.GetOutput("sharedResourceGroupName").Apply(o => o?.ToString() ?? "");
+        // Extract the CAE name and resource group from its resource ID to avoid
+        // requiring a shared stack deploy before the env stack can preview.
+        // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
+        var containerAppsEnvironmentName = containerAppsEnvironmentId.Apply(id =>
+        {
+            var segments = id.Split('/');
+            return segments.Length > 0 ? segments[^1] : "";
+        });
+        var sharedResourceGroupName = containerAppsEnvironmentId.Apply(id =>
+        {
+            var segments = id.Split('/');
+            var rgIndex = Array.IndexOf(segments, "resourceGroups");
+            return rgIndex >= 0 && rgIndex + 1 < segments.Length ? segments[rgIndex + 1] : "";
+        });
 
         // Resource Group
         var resourceGroup = new ResourceGroup($"rg-town-crier-{env}", new ResourceGroupArgs
