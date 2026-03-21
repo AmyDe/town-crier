@@ -25,7 +25,7 @@ internal sealed partial class RequestLoggingMiddleware(RequestDelegate next, ILo
             LogRequestCompleted(
                 logger,
                 context.Request.Method,
-                context.Request.Path,
+                context.Request.Path.Value ?? "/",
                 context.Response.StatusCode,
                 stopwatch.ElapsedMilliseconds);
         }
