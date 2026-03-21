@@ -58,11 +58,7 @@ public final class AppCoordinator: ObservableObject {
     }
 
     public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
-        let viewModel = MapViewModel(repository: repository, watchZone: watchZone)
-        viewModel.onApplicationSelected = { [weak self] id in
-            self?.showApplicationDetail(id)
-        }
-        return viewModel
+        MapViewModel(repository: repository, watchZone: watchZone)
     }
 
     public func makeApplicationListViewModel(

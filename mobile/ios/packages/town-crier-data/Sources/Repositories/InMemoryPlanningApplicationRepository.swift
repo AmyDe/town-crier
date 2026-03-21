@@ -9,7 +9,10 @@ public final class InMemoryPlanningApplicationRepository: PlanningApplicationRep
     }
 
     public func fetchApplications(for authority: LocalAuthority) async throws -> [PlanningApplication] {
-        applications.filter { $0.authority == authority }
+        if authority.code.isEmpty {
+            return applications
+        }
+        return applications.filter { $0.authority == authority }
     }
 
     public func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
