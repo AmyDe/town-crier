@@ -1,6 +1,3 @@
 name: town-crier
-runtime:
-  name: dotnet
-  options:
-    binary: ./bin/Release/net10.0/town-crier.infra
+runtime: dotnet
 description: Town Crier infrastructure - Azure resources for planning application notifications

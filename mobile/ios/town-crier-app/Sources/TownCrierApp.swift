@@ -9,11 +9,20 @@ struct TownCrierApp: App {
     @StateObject private var coordinator: AppCoordinator
     @StateObject private var loginViewModel: LoginViewModel
     @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
+    @StateObject private var settingsViewModel: SettingsViewModel
+    @StateObject private var applicationListViewModel: ApplicationListViewModel
+    @StateObject private var mapViewModel: MapViewModel
     private let crashReporter: CrashReporter
     private let notificationDelegate: NotificationDelegate
 
     init() {
+        #if DEBUG
+        let repository = InMemoryPlanningApplicationRepository(
+            applications: SampleData.applications
+        )
+        #else
         let repository = InMemoryPlanningApplicationRepository()
+        #endif
 
         #if DEBUG
         let auth0Config = Auth0Config(
@@ -40,12 +49,42 @@ struct TownCrierApp: App {
             versionConfigService: versionConfigService
         )
         _coordinator = StateObject(wrappedValue: appCoordinator)
-        _loginViewModel = StateObject(
-            wrappedValue: appCoordinator.makeLoginViewModel()
-        )
+
+        let loginVM = appCoordinator.makeLoginViewModel()
+        _loginViewModel = StateObject(wrappedValue: loginVM)
+
         _forceUpdateViewModel = StateObject(
             wrappedValue: appCoordinator.makeForceUpdateViewModel()
         )
+
+        #if DEBUG
+        let listVM = appCoordinator.makeApplicationListViewModel(
+            authority: SampleData.camden
+        )
+        let mapVM = appCoordinator.makeMapViewModel(watchZone: SampleData.watchZone)
+        #else
+        let listVM = appCoordinator.makeApplicationListViewModel(
+            authority: LocalAuthority(code: "", name: "")
+        )
+        let mapVM = appCoordinator.makeMapViewModel(
+            watchZone: try! WatchZone(
+                postcode: try! Postcode("SW1A 1AA"),
+                centre: try! Coordinate(latitude: 51.5074, longitude: -0.1278),
+                radiusMetres: 1000
+            )
+        )
+        #endif
+
+        _applicationListViewModel = StateObject(wrappedValue: listVM)
+        _mapViewModel = StateObject(wrappedValue: mapVM)
+
+        let settingsVM = appCoordinator.makeSettingsViewModel()
+        settingsVM.onLogout = {
+            Task { @MainActor in
+                await loginVM.logout()
+            }
+        }
+        _settingsViewModel = StateObject(wrappedValue: settingsVM)
 
         let delegate = NotificationDelegate(coordinator: appCoordinator)
         notificationDelegate = delegate
@@ -64,10 +103,13 @@ struct TownCrierApp: App {
                         appStoreURL: URL(string: "https://apps.apple.com/app/town-crier/id000000000")
                     )
                 } else if loginViewModel.isAuthenticated {
-                    HomeView(viewModel: coordinator.makeHomeViewModel())
+                    mainTabView
                 } else {
                     LoginView(viewModel: loginViewModel)
                 }
+            }
+            .onOpenURL { url in
+                AuthCallbackHandler.handle(url: url)
             }
             .task {
                 await forceUpdateViewModel.checkVersion()
@@ -86,5 +128,44 @@ struct TownCrierApp: App {
                 }
             }
         }
+    }
+
+    private var mainTabView: some View {
+        TabView {
+            NavigationStack {
+                ApplicationListView(viewModel: applicationListViewModel)
+            }
+            .sheet(item: $coordinator.detailApplication) { application in
+                NavigationStack {
+                    ApplicationDetailView(
+                        viewModel: coordinator.makeApplicationDetailViewModel(
+                            application: application
+                        )
+                    )
+                }
+            }
+            .tabItem {
+                Label("Applications", systemImage: "doc.text.magnifyingglass")
+            }
+
+            NavigationStack {
+                MapView(viewModel: mapViewModel)
+                    .navigationTitle("Map")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+            }
+            .tabItem {
+                Label("Map", systemImage: "map")
+            }
+
+            NavigationStack {
+                SettingsView(viewModel: settingsViewModel)
+            }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        .tint(Color.tcAmber)
     }
 }

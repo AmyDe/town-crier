@@ -14,7 +14,7 @@ public final class SettingsViewModel: ObservableObject {
     @Published public private(set) var error: DomainError?
     @Published public var isShowingDeleteConfirmation = false
 
-    var onLogout: (() -> Void)?
+    public var onLogout: (() -> Void)?
 
     private let authService: AuthenticationService
     private let subscriptionService: SubscriptionService
