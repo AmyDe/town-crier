@@ -15,11 +15,6 @@ on:
     paths:
       - "infra/**"
       - ".github/workflows/infra-ci.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "infra/**"
-      - ".github/workflows/infra-ci.yml"
 
 concurrency:
   group: infra-ci-${{ github.ref }}
