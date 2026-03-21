@@ -27,22 +27,35 @@ jobs:
       infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            api:
-              - 'api/**'
-              - '.github/workflows/api-ci.yml'
-            ios:
-              - 'mobile/ios/**'
-              - '.github/workflows/ios-ci.yml'
-            web:
-              - 'web/**'
-              - '.github/workflows/web-ci.yml'
-            infra:
-              - 'infra/**'
-              - '.github/workflows/infra-ci.yml'
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          has_api=false
+          has_ios=false
+          has_web=false
+          has_infra=false
+
+          while IFS= read -r file; do
+            case "$file" in
+              api/*|.github/workflows/api-ci.yml) has_api=true ;;
+              mobile/ios/*|.github/workflows/ios-ci.yml) has_ios=true ;;
+              web/*|.github/workflows/web-ci.yml) has_web=true ;;
+              infra/*|.github/workflows/infra-ci.yml) has_infra=true ;;
+            esac
+          done <<< "$CHANGED"
+
+          echo "api=$has_api" >> "$GITHUB_OUTPUT"
+          echo "ios=$has_ios" >> "$GITHUB_OUTPUT"
+          echo "web=$has_web" >> "$GITHUB_OUTPUT"
+          echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
+
+          echo "Results: api=$has_api ios=$has_ios web=$has_web infra=$has_infra"
 
   # ── API ──────────────────────────────────────────────
 

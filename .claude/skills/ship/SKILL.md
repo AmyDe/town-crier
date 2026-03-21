@@ -1,11 +1,11 @@
 ---
 name: ship
-description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a squash-merge PR via `gh`, merges it, and cleans up. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
+description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a PR via `gh`, and waits for PR gate checks before merging. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
 ---
 
 # Ship to Main
 
-Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the entire flow: branch, PR, squash-merge, cleanup.
+Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the flow: branch, push, create PR, then ask the user whether to wait for checks or leave the PR open.
 
 ## Workflow
 
@@ -70,23 +70,74 @@ EOF
 
 **PR body:** List each commit as a bullet point under "## Changes".
 
-### Step 6: Merge the PR
+### Step 6: Ask user about merge strategy
+
+**NEVER merge the PR immediately.** The PR gate checks and CodeRabbit review must complete first. Present the PR URL and ask:
+
+> PR created: <url>
+>
+> The PR gate checks and CodeRabbit review are running. Would you like me to:
+> 1. **Wait** for checks and review, then merge
+> 2. **Leave it open** for you to merge later
+
+**If the user chooses to leave it open:**
+
+Report the PR URL and stop. Do not proceed further. Do not merge. Do not clean up branches. The skill ends here.
+
+**If the user chooses to wait:**
+
+Proceed to Step 7.
+
+### Step 7: Wait for checks and CodeRabbit review
+
+First, wait for CI checks to pass:
+
+```bash
+gh pr checks <pr-number> --watch --fail-fast
+```
+
+If checks fail, report which checks failed, provide the PR URL, and stop — do not retry or force-merge.
+
+Once checks pass, fetch the CodeRabbit review. CodeRabbit posts a review comment on the PR. Use the GitHub API to read it:
+
+```bash
+gh api repos/{owner}/{repo}/pulls/<pr-number>/reviews
+gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
+```
+
+**If CodeRabbit has suggestions or comments:**
+
+Summarise the suggestions concisely for the user and ask what they'd like to do:
+
+> CodeRabbit flagged the following:
+> - <brief summary of each suggestion>
+>
+> How would you like to proceed?
+> 1. **Merge anyway** — suggestions are minor or not applicable
+> 2. **Create a bead** — track the suggestions as follow-up work, then merge
+> 3. **Leave the PR open** — review the suggestions yourself first
+
+**CRITICAL: NEVER fix CodeRabbit suggestions within this skill.** Do not edit code, do not push additional commits. This skill ships work — it does not do development. If the user wants fixes, they should do that in a separate session and re-ship.
+
+- If the user chooses **merge anyway**: proceed to Step 8.
+- If the user chooses **create a bead**: create a bead with `bd create` summarising the CodeRabbit suggestions, then proceed to Step 8.
+- If the user chooses **leave it open**: report the PR URL and stop. The skill ends here.
+
+**If CodeRabbit has no suggestions (or approved without comments):**
+
+Proceed directly to Step 8.
+
+### Step 8: Merge and clean up
+
+Only reach this step if the user chose to merge.
 
 ```bash
 gh pr merge --squash --delete-branch
-```
-
-If merge fails (e.g., required CI checks are pending), tell the user the PR was created, provide the URL, and suggest they merge manually when checks pass. Don't retry in a loop.
-
-### Step 7: Return to main and clean up
-
-```bash
 git checkout main
 git pull origin main
-git branch -d <branch-name>
 ```
 
-### Step 8: Verify
+### Step 9: Verify
 
 Run `git status` and `git log --oneline -3` to confirm:
 - On `main`, up to date with origin
@@ -98,5 +149,5 @@ Report success with the PR URL.
 
 - **Not on main:** Stop. Tell the user which branch they're on.
 - **Nothing to ship:** Tell the user. Don't create empty PRs.
-- **Merge conflict or CI failure:** Report the PR URL and let the user decide next steps. Don't force-merge or retry.
+- **Checks failed:** Report which checks failed and the PR URL. Do not retry or force-merge.
 - **gh CLI not authenticated:** Tell the user to run `gh auth login`.
