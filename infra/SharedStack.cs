@@ -109,6 +109,8 @@ public static class SharedStack
             ["acrPullIdentityId"] = acrPullIdentity.Id,
             ["acrPullIdentityClientId"] = acrPullIdentity.ClientId,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
+            ["containerAppsEnvironmentName"] = containerAppsEnv.Name,
+            ["sharedResourceGroupName"] = resourceGroup.Name,
         };
     }
 }
