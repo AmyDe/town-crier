@@ -6,11 +6,6 @@ on:
     paths:
       - "mobile/ios/**"
       - ".github/workflows/ios-ci.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "mobile/ios/**"
-      - ".github/workflows/ios-ci.yml"
 
 concurrency:
   group: ios-ci-${{ github.ref }}
