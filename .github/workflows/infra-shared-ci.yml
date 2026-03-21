@@ -1,28 +1,28 @@
+# Deploys the shared Pulumi stack (ACR, managed identity).
+# Must complete before infra-ci.yml (dev stack) runs.
+#
 # Requires secrets:
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
 #   AZURE_TENANT_ID        — Azure AD tenant
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
-#
-# Requires vars:
-#   PULUMI_STACK           — Pulumi stack name (e.g., dev)
 
-name: Infrastructure CI
+name: Infrastructure Shared CI
 
 on:
-  workflow_run:
-    workflows: ["Infrastructure Shared CI"]
-    types: [completed]
+  push:
     branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-shared-ci.yml"
 
 concurrency:
-  group: infra-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: infra-shared-ci
+  cancel-in-progress: false
 
 permissions:
   contents: read
   id-token: write
-  pull-requests: write
 
 env:
   DOTNET_NOLOGO: true
@@ -30,8 +30,7 @@ env:
 
 jobs:
   deploy:
-    name: Pulumi up
-    if: github.event.workflow_run.conclusion == 'success'
+    name: Pulumi up (shared)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -60,7 +59,7 @@ jobs:
         uses: pulumi/actions@v6
         with:
           command: up
-          stack-name: ${{ vars.PULUMI_STACK }}
+          stack-name: shared
           work-dir: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}

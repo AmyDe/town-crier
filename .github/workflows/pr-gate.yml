@@ -46,7 +46,7 @@ jobs:
               api/*|.github/workflows/api-ci.yml) has_api=true ;;
               mobile/ios/*|.github/workflows/ios-ci.yml) has_ios=true ;;
               web/*|.github/workflows/web-ci.yml) has_web=true ;;
-              infra/*|.github/workflows/infra-ci.yml) has_infra=true ;;
+              infra/*|.github/workflows/infra-ci.yml|.github/workflows/infra-shared-ci.yml) has_infra=true ;;
             esac
           done <<< "$CHANGED"
 
