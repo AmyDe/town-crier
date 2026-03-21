@@ -344,11 +344,16 @@ return await Pulumi.Deployment.RunAsync(() =>
     {
         Name = $"swa-town-crier-{env}",
         ResourceGroupName = resourceGroup.Name,
-        Location = resourceGroup.Location,
+        Location = "westeurope",
         Sku = new Pulumi.AzureNative.Web.Inputs.SkuDescriptionArgs
         {
             Name = "Free",
             Tier = "Free",
+        },
+        BuildProperties = new Pulumi.AzureNative.Web.Inputs.StaticSiteBuildPropertiesArgs
+        {
+            AppLocation = "/",
+            OutputLocation = "",
         },
         Tags = tags,
     });
