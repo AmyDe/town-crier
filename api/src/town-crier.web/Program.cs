@@ -205,11 +205,11 @@ v1.MapGet("/geocode/{postcode}", async (string postcode, GeocodePostcodeQueryHan
     }
     catch (ArgumentException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return Results.BadRequest(new ApiErrorResponse(ex.Message));
     }
     catch (InvalidOperationException ex)
     {
-        return Results.NotFound(new { error = ex.Message });
+        return Results.NotFound(new ApiErrorResponse(ex.Message));
     }
 });
 
@@ -292,7 +292,7 @@ v1.MapGet("/search", async (ClaimsPrincipal user, string q, int authorityId, int
     }
     catch (ProTierRequiredException)
     {
-        return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
+        return Results.Json(new ApiErrorResponse("This feature requires a Pro subscription."), AppJsonSerializerContext.Default.ApiErrorResponse, statusCode: 403);
     }
     catch (UserProfileNotFoundException)
     {
@@ -391,7 +391,7 @@ v1.MapPut("/me/watch-zones/{zoneId}/preferences", async (
     }
     catch (InsufficientTierException)
     {
-        return Results.Json(new { error = "This feature requires a Pro subscription." }, statusCode: 403);
+        return Results.Json(new ApiErrorResponse("This feature requires a Pro subscription."), AppJsonSerializerContext.Default.ApiErrorResponse, statusCode: 403);
     }
 });
 
@@ -465,7 +465,7 @@ v1.MapDelete("/groups/{groupId}", async (
     }
     catch (UnauthorizedGroupOperationException)
     {
-        return Results.Json(new { error = "Only the group owner can delete the group." }, statusCode: 403);
+        return Results.Json(new ApiErrorResponse("Only the group owner can delete the group."), AppJsonSerializerContext.Default.ApiErrorResponse, statusCode: 403);
     }
 });
 
@@ -494,7 +494,7 @@ v1.MapPost("/groups/{groupId}/invitations", async (
     }
     catch (UnauthorizedGroupOperationException)
     {
-        return Results.Json(new { error = "Only the group owner can invite members." }, statusCode: 403);
+        return Results.Json(new ApiErrorResponse("Only the group owner can invite members."), AppJsonSerializerContext.Default.ApiErrorResponse, statusCode: 403);
     }
 });
 
@@ -514,7 +514,7 @@ v1.MapPost("/invitations/{invitationId}/accept", async (
     }
     catch (InvalidOperationException ex)
     {
-        return Results.BadRequest(new { error = ex.Message });
+        return Results.BadRequest(new ApiErrorResponse(ex.Message));
     }
     catch (GroupNotFoundException)
     {
@@ -543,7 +543,7 @@ v1.MapDelete("/groups/{groupId}/members/{memberUserId}", async (
     }
     catch (UnauthorizedGroupOperationException)
     {
-        return Results.Json(new { error = "Only the group owner can remove members." }, statusCode: 403);
+        return Results.Json(new ApiErrorResponse("Only the group owner can remove members."), AppJsonSerializerContext.Default.ApiErrorResponse, statusCode: 403);
     }
 });
 
@@ -560,7 +560,7 @@ var api = app.MapGroup("/api");
 api.MapGet("/me", (ClaimsPrincipal user) =>
 {
     var userId = user.FindFirstValue("sub")!;
-    return Results.Ok(new { userId });
+    return Results.Ok(new UserIdResponse(userId));
 });
 
 await app.RunAsync().ConfigureAwait(false);
