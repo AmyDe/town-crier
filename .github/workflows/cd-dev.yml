@@ -1,0 +1,268 @@
+# Deploys changed components to the dev environment.
+# Triggered on every push to main (squash merges assumed).
+#
+# Requires secrets:
+#   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
+#   AZURE_TENANT_ID        — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  — Azure subscription
+#   ACR_LOGIN_SERVER       — Azure Container Registry login server
+#   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
+#
+# Requires GitHub Environment:
+#   development            — with OIDC federated credential (environment:development)
+
+name: CD Dev
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ── Change detection ─────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Detect changed paths
+        id: filter
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          has_api=false
+          has_web=false
+          has_infra=false
+
+          # cd-dev.yml triggers all components — check before per-file loop
+          if echo "$CHANGED" | grep -q '.github/workflows/cd-dev.yml'; then
+            has_api=true; has_web=true; has_infra=true
+          fi
+
+          while IFS= read -r file; do
+            case "$file" in
+              api/*) has_api=true ;;
+              web/*) has_web=true ;;
+              infra/*) has_infra=true ;;
+            esac
+          done <<< "$CHANGED"
+
+          echo "api=$has_api" >> "$GITHUB_OUTPUT"
+          echo "web=$has_web" >> "$GITHUB_OUTPUT"
+          echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
+
+          echo "Results: api=$has_api web=$has_web infra=$has_infra"
+
+  # ── Infrastructure: shared stack ─────────────────────
+  infra-shared:
+    name: "Infra: Pulumi up (shared)"
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
+          restore-keys: nuget-infra-${{ runner.os }}-
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: shared
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  # ── Infrastructure: dev stack ────────────────────────
+  infra-dev:
+    name: "Infra: Pulumi up (dev)"
+    needs: [changes, infra-shared]
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    outputs:
+      resource-group: ${{ steps.outputs.outputs.resource-group }}
+      swa-name: ${{ steps.outputs.outputs.swa-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
+          restore-keys: nuget-infra-${{ runner.os }}-
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: dev
+          work-dir: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Extract Pulumi outputs
+        id: outputs
+        working-directory: infra
+        run: |
+          echo "resource-group=$(pulumi stack output resourceGroupName --stack dev)" >> "$GITHUB_OUTPUT"
+          echo "swa-name=$(pulumi stack output staticWebAppName --stack dev)" >> "$GITHUB_OUTPUT"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+  # ── API: build & push image ─────────────────────────
+  api-image:
+    name: "API: Build & push image"
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Build and push image
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
+          docker build -t "$IMAGE" -t "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest" .
+          docker push "$IMAGE"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest"
+        working-directory: api
+
+  # ── API: deploy to dev ──────────────────────────────
+  api-deploy:
+    name: "API: Deploy to dev"
+    needs: [changes, api-image, infra-dev]
+    if: >-
+      !failure() && !cancelled()
+      && needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Container App
+        run: |
+          az containerapp update \
+            --name "ca-town-crier-api-dev" \
+            --resource-group "rg-town-crier-dev" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
+
+  # ── Web: deploy to dev ──────────────────────────────
+  web-deploy:
+    name: "Web: Deploy to dev"
+    needs: [changes, infra-dev]
+    if: >-
+      !failure() && !cancelled()
+      && needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get SWA deployment token
+        id: swa-token
+        run: |
+          TOKEN=$(az staticwebapp secrets list \
+            --name "swa-town-crier-dev" \
+            --query "properties.apiKey" -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: web/dist
+          skip_app_build: true
+          skip_api_build: true
