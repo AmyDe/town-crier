@@ -13,6 +13,8 @@ using TownCrier.Application.UserProfiles;
 
 namespace TownCrier.Web;
 
+[JsonSerializable(typeof(ApiErrorResponse))]
+[JsonSerializable(typeof(UserIdResponse))]
 [JsonSerializable(typeof(CreateGroupCommand))]
 [JsonSerializable(typeof(CreateGroupResult))]
 [JsonSerializable(typeof(GetGroupResult))]
