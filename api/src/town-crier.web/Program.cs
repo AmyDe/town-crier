@@ -1,3 +1,4 @@
+// Trigger cd-dev image build for v0.1.9 prod deployment
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
