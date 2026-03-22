@@ -296,6 +296,12 @@ public static class EnvironmentStack
                 },
             },
             Tags = tags,
+        }, new CustomResourceOptions
+        {
+            // CD pipeline updates the container image via `az containerapp update`.
+            // Without this, every `pulumi up` resets the image to the placeholder,
+            // causing activation failure (quickstart listens on port 80, not 8080).
+            IgnoreChanges = { "template.containers[0].image" },
         });
 
         if (customDomainPhase == 1)
