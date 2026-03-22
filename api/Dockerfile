@@ -1,5 +1,6 @@
 # Town Crier API
 FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
+RUN apk add --no-cache clang build-base zlib-dev
 WORKDIR /src
 
 COPY Directory.Build.props .editorconfig ./
