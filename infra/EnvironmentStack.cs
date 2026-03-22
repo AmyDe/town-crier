@@ -12,12 +12,9 @@ public static class EnvironmentStack
 {
     public static Dictionary<string, object?> Run(Config config, string env, InputMap<string> tags)
     {
-        var cosmosConsistencyLevel = config.Require("cosmosConsistencyLevel");
         var frontendDomain = config.Require("frontendDomain");
         var apiDomain = config.Require("apiDomain");
-        var importExistingCosmos = config.GetBoolean("importExistingCosmos") == true;
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
-        var skipCosmosDb = config.GetBoolean("skipCosmosDb") == true;
 
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
@@ -25,7 +22,9 @@ public static class EnvironmentStack
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
         var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
-        // Extract the CAE name and resource group from its resource ID to avoid
+        var cosmosAccountName = shared.GetOutput("cosmosAccountName").Apply(o => o?.ToString() ?? "");
+        var cosmosAccountEndpoint = shared.GetOutput("cosmosAccountEndpoint").Apply(o => o?.ToString() ?? "");
+        // Extract the CAE name from its resource ID to avoid
         // requiring a shared stack deploy before the env stack can preview.
         // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
         var containerAppsEnvironmentName = containerAppsEnvironmentId.Apply(id =>
@@ -33,12 +32,7 @@ public static class EnvironmentStack
             var segments = id.Split('/');
             return segments.Length > 0 ? segments[^1] : "";
         });
-        var sharedResourceGroupName = containerAppsEnvironmentId.Apply(id =>
-        {
-            var segments = id.Split('/');
-            var rgIndex = Array.IndexOf(segments, "resourceGroups");
-            return rgIndex >= 0 && rgIndex + 1 < segments.Length ? segments[rgIndex + 1] : "";
-        });
+        var sharedResourceGroupName = shared.GetOutput("resourceGroupName").Apply(o => o?.ToString() ?? "");
 
         // Resource Group
         var resourceGroup = new ResourceGroup($"rg-town-crier-{env}", new ResourceGroupArgs
@@ -47,215 +41,167 @@ public static class EnvironmentStack
             Tags = tags,
         });
 
-        // Cosmos DB Account (Serverless)
-        // Can be skipped via config when Azure region capacity is unavailable.
-        DatabaseAccount? cosmosAccount = null;
-        SqlResourceSqlDatabase? cosmosDatabase = null;
-
-        var cosmosImportOpts = importExistingCosmos
-            ? new CustomResourceOptions
-            {
-                ImportId = $"/subscriptions/{Environment.GetEnvironmentVariable("ARM_SUBSCRIPTION_ID")}/resourceGroups/rg-town-crier-{env}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-town-crier-{env}",
-            }
-            : null;
-
-        if (!skipCosmosDb)
+        // Cosmos DB Database (in shared account)
+        var cosmosDatabase = new SqlResourceSqlDatabase($"db-town-crier-{env}", new SqlResourceSqlDatabaseArgs
         {
-            cosmosAccount = new DatabaseAccount($"cosmos-town-crier-{env}", new DatabaseAccountArgs
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = $"town-crier-{env}",
+            Resource = new SqlDatabaseResourceArgs
             {
-                AccountName = $"cosmos-town-crier-{env}",
-                ResourceGroupName = resourceGroup.Name,
-                Kind = DatabaseAccountKind.GlobalDocumentDB,
-                DatabaseAccountOfferType = DatabaseAccountOfferType.Standard,
-                Capabilities = new[]
-                {
-                    new CapabilityArgs { Name = "EnableServerless" },
-                },
-                ConsistencyPolicy = new ConsistencyPolicyArgs
-                {
-                    DefaultConsistencyLevel = cosmosConsistencyLevel switch
-                    {
-                        "Strong" => DefaultConsistencyLevel.Strong,
-                        "BoundedStaleness" => DefaultConsistencyLevel.BoundedStaleness,
-                        "Session" => DefaultConsistencyLevel.Session,
-                        "ConsistentPrefix" => DefaultConsistencyLevel.ConsistentPrefix,
-                        "Eventual" => DefaultConsistencyLevel.Eventual,
-                        _ => DefaultConsistencyLevel.Session,
-                    },
-                },
-                Locations = new[]
-                {
-                    new LocationArgs
-                    {
-                        LocationName = resourceGroup.Location,
-                        FailoverPriority = 0,
-                    },
-                },
-                Tags = tags,
-            }, cosmosImportOpts);
+                Id = $"town-crier-{env}",
+            },
+        });
 
-            // Cosmos DB Database
-            cosmosDatabase = new SqlResourceSqlDatabase($"db-town-crier-{env}", new SqlResourceSqlDatabaseArgs
+        // Cosmos DB Containers
+
+        // Applications container — partitioned by authority code, spatial index on location
+        var applicationsContainer = new SqlResourceSqlContainer($"container-applications-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "Applications",
+            Resource = new SqlContainerResourceArgs
             {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = "town-crier",
-                Resource = new SqlDatabaseResourceArgs
+                Id = "Applications",
+                PartitionKey = new ContainerPartitionKeyArgs
                 {
-                    Id = "town-crier",
+                    Paths = new[] { "/authorityCode" },
+                    Kind = PartitionKind.Hash,
                 },
-            });
-
-            // Cosmos DB Containers
-
-            // Applications container — partitioned by authority code, spatial index on location
-            var applicationsContainer = new SqlResourceSqlContainer($"container-applications-{env}", new SqlResourceSqlContainerArgs
-            {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = cosmosDatabase.Name,
-                ContainerName = "Applications",
-                Resource = new SqlContainerResourceArgs
+                DefaultTtl = -1, // TTL enabled, per-document control
+                UniqueKeyPolicy = new UniqueKeyPolicyArgs
                 {
-                    Id = "Applications",
-                    PartitionKey = new ContainerPartitionKeyArgs
+                    UniqueKeys = new[]
                     {
-                        Paths = new[] { "/authorityCode" },
-                        Kind = PartitionKind.Hash,
-                    },
-                    DefaultTtl = -1, // TTL enabled, per-document control
-                    UniqueKeyPolicy = new UniqueKeyPolicyArgs
-                    {
-                        UniqueKeys = new[]
+                        new UniqueKeyArgs
                         {
-                            new UniqueKeyArgs
+                            Paths = new[] { "/planitName" },
+                        },
+                    },
+                },
+                IndexingPolicy = new IndexingPolicyArgs
+                {
+                    Automatic = true,
+                    IndexingMode = IndexingMode.Consistent,
+                    IncludedPaths = new[]
+                    {
+                        new IncludedPathArgs { Path = "/authorityCode/?" },
+                        new IncludedPathArgs { Path = "/status/?" },
+                        new IncludedPathArgs { Path = "/applicationType/?" },
+                        new IncludedPathArgs { Path = "/decisionDate/?" },
+                        new IncludedPathArgs { Path = "/lastDifferent/?" },
+                    },
+                    ExcludedPaths = new[]
+                    {
+                        new ExcludedPathArgs { Path = "/*" },
+                        new ExcludedPathArgs { Path = "/\"_etag\"/?" },
+                    },
+                    SpatialIndexes = new[]
+                    {
+                        new SpatialSpecArgs
+                        {
+                            Path = "/location/?",
+                            Types = new InputList<Union<string, SpatialType>>
                             {
-                                Paths = new[] { "/planitName" },
+                                SpatialType.Point,
                             },
                         },
                     },
-                    IndexingPolicy = new IndexingPolicyArgs
+                    CompositeIndexes = new InputList<ImmutableArray<CompositePathArgs>>
                     {
-                        Automatic = true,
-                        IndexingMode = IndexingMode.Consistent,
-                        IncludedPaths = new[]
-                        {
-                            new IncludedPathArgs { Path = "/authorityCode/?" },
-                            new IncludedPathArgs { Path = "/status/?" },
-                            new IncludedPathArgs { Path = "/applicationType/?" },
-                            new IncludedPathArgs { Path = "/decisionDate/?" },
-                            new IncludedPathArgs { Path = "/lastDifferent/?" },
-                        },
-                        ExcludedPaths = new[]
-                        {
-                            new ExcludedPathArgs { Path = "/*" },
-                            new ExcludedPathArgs { Path = "/\"_etag\"/?" },
-                        },
-                        SpatialIndexes = new[]
-                        {
-                            new SpatialSpecArgs
-                            {
-                                Path = "/location/?",
-                                Types = new InputList<Union<string, SpatialType>>
-                                {
-                                    SpatialType.Point,
-                                },
-                            },
-                        },
-                        CompositeIndexes = new InputList<ImmutableArray<CompositePathArgs>>
-                        {
-                            ImmutableArray.Create(
-                                new CompositePathArgs { Path = "/authorityCode", Order = CompositePathSortOrder.Ascending },
-                                new CompositePathArgs { Path = "/lastDifferent", Order = CompositePathSortOrder.Descending }
-                            ),
-                        },
+                        ImmutableArray.Create(
+                            new CompositePathArgs { Path = "/authorityCode", Order = CompositePathSortOrder.Ascending },
+                            new CompositePathArgs { Path = "/lastDifferent", Order = CompositePathSortOrder.Descending }
+                        ),
                     },
                 },
-            });
+            },
+        });
 
-            // Users container — partitioned by id
-            var usersContainer = new SqlResourceSqlContainer($"container-users-{env}", new SqlResourceSqlContainerArgs
+        // Users container — partitioned by id
+        var usersContainer = new SqlResourceSqlContainer($"container-users-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "Users",
+            Resource = new SqlContainerResourceArgs
             {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = cosmosDatabase.Name,
-                ContainerName = "Users",
-                Resource = new SqlContainerResourceArgs
+                Id = "Users",
+                PartitionKey = new ContainerPartitionKeyArgs
                 {
-                    Id = "Users",
-                    PartitionKey = new ContainerPartitionKeyArgs
-                    {
-                        Paths = new[] { "/id" },
-                        Kind = PartitionKind.Hash,
-                    },
+                    Paths = new[] { "/id" },
+                    Kind = PartitionKind.Hash,
                 },
-            });
+            },
+        });
 
-            // WatchZones container — partitioned by userId
-            var watchZonesContainer = new SqlResourceSqlContainer($"container-watchzones-{env}", new SqlResourceSqlContainerArgs
+        // WatchZones container — partitioned by userId
+        var watchZonesContainer = new SqlResourceSqlContainer($"container-watchzones-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "WatchZones",
+            Resource = new SqlContainerResourceArgs
             {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = cosmosDatabase.Name,
-                ContainerName = "WatchZones",
-                Resource = new SqlContainerResourceArgs
+                Id = "WatchZones",
+                PartitionKey = new ContainerPartitionKeyArgs
                 {
-                    Id = "WatchZones",
-                    PartitionKey = new ContainerPartitionKeyArgs
+                    Paths = new[] { "/userId" },
+                    Kind = PartitionKind.Hash,
+                },
+                UniqueKeyPolicy = new UniqueKeyPolicyArgs
+                {
+                    UniqueKeys = new[]
                     {
-                        Paths = new[] { "/userId" },
-                        Kind = PartitionKind.Hash,
-                    },
-                    UniqueKeyPolicy = new UniqueKeyPolicyArgs
-                    {
-                        UniqueKeys = new[]
+                        new UniqueKeyArgs
                         {
-                            new UniqueKeyArgs
-                            {
-                                Paths = new[] { "/userId", "/name" },
-                            },
+                            Paths = new[] { "/userId", "/name" },
                         },
                     },
                 },
-            });
+            },
+        });
 
-            // Notifications container — partitioned by userId, 90-day TTL
-            var notificationsContainer = new SqlResourceSqlContainer($"container-notifications-{env}", new SqlResourceSqlContainerArgs
+        // Notifications container — partitioned by userId, 90-day TTL
+        var notificationsContainer = new SqlResourceSqlContainer($"container-notifications-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "Notifications",
+            Resource = new SqlContainerResourceArgs
             {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = cosmosDatabase.Name,
-                ContainerName = "Notifications",
-                Resource = new SqlContainerResourceArgs
+                Id = "Notifications",
+                PartitionKey = new ContainerPartitionKeyArgs
                 {
-                    Id = "Notifications",
-                    PartitionKey = new ContainerPartitionKeyArgs
-                    {
-                        Paths = new[] { "/userId" },
-                        Kind = PartitionKind.Hash,
-                    },
-                    DefaultTtl = 90 * 24 * 60 * 60, // 90 days in seconds
+                    Paths = new[] { "/userId" },
+                    Kind = PartitionKind.Hash,
                 },
-            });
+                DefaultTtl = 90 * 24 * 60 * 60, // 90 days in seconds
+            },
+        });
 
-            // Leases container — for change feed processor checkpointing
-            var leasesContainer = new SqlResourceSqlContainer($"container-leases-{env}", new SqlResourceSqlContainerArgs
+        // Leases container — for change feed processor checkpointing
+        var leasesContainer = new SqlResourceSqlContainer($"container-leases-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "Leases",
+            Resource = new SqlContainerResourceArgs
             {
-                AccountName = cosmosAccount.Name,
-                ResourceGroupName = resourceGroup.Name,
-                DatabaseName = cosmosDatabase.Name,
-                ContainerName = "Leases",
-                Resource = new SqlContainerResourceArgs
+                Id = "Leases",
+                PartitionKey = new ContainerPartitionKeyArgs
                 {
-                    Id = "Leases",
-                    PartitionKey = new ContainerPartitionKeyArgs
-                    {
-                        Paths = new[] { "/id" },
-                        Kind = PartitionKind.Hash,
-                    },
+                    Paths = new[] { "/id" },
+                    Kind = PartitionKind.Hash,
                 },
-            });
-        }
+            },
+        });
 
         // Managed Certificate for API custom domain
         // Phase 1 (first deploy): Container App created first with disabled binding,
@@ -407,8 +353,8 @@ public static class EnvironmentStack
         {
             ["resourceGroupName"] = resourceGroup.Name,
             ["containerAppUrl"] = containerApp.LatestRevisionFqdn.Apply(fqdn => $"https://{fqdn}"),
-            ["cosmosAccountEndpoint"] = cosmosAccount?.DocumentEndpoint,
-            ["cosmosDatabaseName"] = cosmosDatabase?.Name,
+            ["cosmosAccountEndpoint"] = cosmosAccountEndpoint,
+            ["cosmosDatabaseName"] = cosmosDatabase.Name,
             ["staticWebAppUrl"] = staticWebApp.DefaultHostname.Apply(hostname => $"https://{hostname}"),
             ["staticWebAppName"] = staticWebApp.Name,
         };

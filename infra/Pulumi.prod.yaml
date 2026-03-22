@@ -1,7 +1,6 @@
 config:
   azure-native:location: uksouth
   town-crier:environment: prod
-  town-crier:cosmosConsistencyLevel: Session
   town-crier:frontendDomain: towncrierapp.uk
   town-crier:apiDomain: api.towncrierapp.uk
   town-crier:customDomainPhase: "2"

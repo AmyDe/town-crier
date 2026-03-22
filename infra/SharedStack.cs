@@ -6,6 +6,8 @@ using Pulumi.AzureNative.Authorization;
 using Pulumi.AzureNative.OperationalInsights;
 using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
+using Pulumi.AzureNative.CosmosDB;
+using Pulumi.AzureNative.CosmosDB.Inputs;
 
 public static class SharedStack
 {
@@ -102,6 +104,32 @@ public static class SharedStack
             Tags = tags,
         });
 
+        // Cosmos DB Account (shared across environments — serverless)
+        var cosmosAccount = new DatabaseAccount("cosmos-town-crier-shared", new DatabaseAccountArgs
+        {
+            AccountName = "cosmos-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            Kind = DatabaseAccountKind.GlobalDocumentDB,
+            DatabaseAccountOfferType = DatabaseAccountOfferType.Standard,
+            Capabilities = new[]
+            {
+                new CapabilityArgs { Name = "EnableServerless" },
+            },
+            ConsistencyPolicy = new ConsistencyPolicyArgs
+            {
+                DefaultConsistencyLevel = DefaultConsistencyLevel.Session,
+            },
+            Locations = new[]
+            {
+                new LocationArgs
+                {
+                    LocationName = resourceGroup.Location,
+                    FailoverPriority = 0,
+                },
+            },
+            Tags = tags,
+        });
+
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
@@ -109,6 +137,8 @@ public static class SharedStack
             ["acrPullIdentityId"] = acrPullIdentity.Id,
             ["acrPullIdentityClientId"] = acrPullIdentity.ClientId,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
+            ["cosmosAccountName"] = cosmosAccount.Name,
+            ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
         };
     }
 }
