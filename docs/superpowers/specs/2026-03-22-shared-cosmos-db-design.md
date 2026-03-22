@@ -4,7 +4,7 @@ Date: 2026-03-22
 
 ## Problem
 
-Azure limits serverless Cosmos DB accounts per subscription per region. The dev environment already has a serverless account in UK South, so creating a second one for prod fails with `ServiceUnavailable` ("high demand in UK West region"). This blocks prod deployment.
+Azure limits serverless Cosmos DB accounts per subscription per region. The dev environment already has a serverless account in UK South, so creating a second one for prod fails with `ServiceUnavailable`. The error references "UK West region" despite the config targeting `uksouth` — Azure internally routes serverless provisioning across paired regions. This blocks prod deployment.
 
 ## Decision
 
@@ -39,11 +39,14 @@ No config changes to `Pulumi.shared.yaml` required.
 **Add:**
 - `cosmosAccountName` from shared stack via `StackReference` (same pattern as `acrLoginServer`)
 - `cosmosAccountEndpoint` from shared stack
+- `sharedResourceGroupName` from shared stack via `StackReference` — needed because Cosmos databases and containers must be created in the same resource group as the account (`rg-town-crier-shared`), not the per-env resource group. The shared stack already exports `resourceGroupName`; the env stack currently derives it from the CAE resource ID, but should use the direct output for clarity.
 
 **Modify:**
 - Database name changes from `town-crier` to `town-crier-{env}` (both envs share one account, so databases must have distinct names)
-- All container creation stays identical, just references `cosmosAccountName` from shared instead of a locally-created account
+- All `SqlResourceSqlDatabase` and `SqlResourceSqlContainer` resources change their `ResourceGroupName` from `resourceGroup.Name` (per-env) to the shared resource group name
 - `cosmosAccountEndpoint` replaces the local `cosmosAccount.DocumentEndpoint` in stack outputs
+
+**Note on database name:** The API is not yet wired to Cosmos at runtime. When it is, it must read the database name from configuration (e.g., stack output → env var) rather than hardcoding `town-crier`. The stack already exports `cosmosDatabaseName` for this purpose.
 
 ### Config changes
 
@@ -55,26 +58,24 @@ No config changes to `Pulumi.shared.yaml` required.
 
 ### Pulumi state
 
-The existing `cosmos-town-crier-dev` account in the dev stack state needs to be removed. Since there is no data worth preserving, we can either:
-- Let `pulumi up` on the dev stack destroy it (it will see the `DatabaseAccount` resource removed from the code and delete it)
-- The shared stack then creates the new `cosmos-town-crier-shared` account
+**Dev stack:** The existing `cosmos-town-crier-dev` account and its databases/containers are in the dev stack state. Since there is no data worth preserving, Pulumi will delete them when it sees the resources removed from code. The shared stack then creates the new `cosmos-town-crier-shared` account.
 
-The dev stack deploy must run after the shared stack deploy, which is already the case in cd-dev.yml (shared runs first, dev depends on it).
+**Prod stack:** Cosmos was never successfully provisioned in prod (`skipCosmosDb` was always `true`), so there are no Cosmos resources in the prod Pulumi state. No state cleanup needed.
 
 ### Deployment order
 
 1. **Shared stack** deploys first (creates the new Cosmos account)
-2. **Dev stack** deploys second (old Cosmos account gets deleted by Pulumi since it's no longer in code; new database and containers created using shared account)
+2. **Dev stack** deploys second (old Cosmos account deleted by Pulumi; new database and containers created using shared account)
 3. **Prod stack** deploys via tag (creates its database and containers using the shared account)
 
-cd-dev.yml already enforces shared-before-dev ordering. cd-prod.yml does not deploy the shared stack, but it doesn't need to — the shared stack will already have the Cosmos account after the next cd-dev run.
+cd-dev.yml already enforces shared-before-dev ordering. cd-prod.yml does not deploy the shared stack — the shared stack must have been deployed (via a cd-dev run) before a prod tag is cut. This is safe because any push to main that includes infra changes will trigger cd-dev first.
 
 ### What doesn't change
 
 - Container definitions (Applications, Users, WatchZones, Notifications, Leases) and their partition keys, indexes, TTLs, unique constraints
 - Container App, Static Web App, managed certificate resources
-- CI/CD workflow files
-- API application code (connection details come from environment variables at runtime)
+- CI/CD workflow files (cd-dev.yml already deploys shared before dev; cd-prod.yml doesn't need shared since it will exist)
+- API application code (not yet wired to Cosmos; when it is, it reads connection details from env vars)
 
 ## Consequences
 
