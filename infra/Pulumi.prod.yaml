@@ -5,4 +5,3 @@ config:
   town-crier:frontendDomain: towncrierapp.uk
   town-crier:apiDomain: api.towncrierapp.uk
   town-crier:customDomainPhase: "2"
-  town-crier:skipCosmosDb: "true"
