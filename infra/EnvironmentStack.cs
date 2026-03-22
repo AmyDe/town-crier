@@ -15,6 +15,8 @@ public static class EnvironmentStack
         var cosmosConsistencyLevel = config.Require("cosmosConsistencyLevel");
         var frontendDomain = config.Require("frontendDomain");
         var apiDomain = config.Require("apiDomain");
+        var importExistingCosmos = config.GetBoolean("importExistingCosmos") == true;
+        var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
 
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
@@ -45,6 +47,13 @@ public static class EnvironmentStack
         });
 
         // Cosmos DB Account (Serverless)
+        var cosmosImportOpts = importExistingCosmos
+            ? new CustomResourceOptions
+            {
+                ImportId = $"/subscriptions/{Environment.GetEnvironmentVariable("ARM_SUBSCRIPTION_ID")}/resourceGroups/rg-town-crier-{env}/providers/Microsoft.DocumentDB/databaseAccounts/cosmos-town-crier-{env}",
+            }
+            : null;
+
         var cosmosAccount = new DatabaseAccount($"cosmos-town-crier-{env}", new DatabaseAccountArgs
         {
             AccountName = $"cosmos-town-crier-{env}",
@@ -76,7 +85,7 @@ public static class EnvironmentStack
                 },
             },
             Tags = tags,
-        });
+        }, cosmosImportOpts);
 
         // Cosmos DB Database
         var cosmosDatabase = new SqlResourceSqlDatabase($"db-town-crier-{env}", new SqlResourceSqlDatabaseArgs
@@ -241,17 +250,26 @@ public static class EnvironmentStack
         });
 
         // Managed Certificate for API custom domain
-        var apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
+        // Phase 1 (first deploy): Container App created first with disabled binding,
+        //   then cert created with DependsOn so Azure can validate the hostname.
+        // Phase 2 (after cert provisioned): Cert created first, Container App
+        //   binds it with SniEnabled. Set customDomainPhase in Pulumi config.
+        ManagedCertificate? apiManagedCert = null;
+
+        if (customDomainPhase >= 2)
         {
-            EnvironmentName = containerAppsEnvironmentName,
-            ManagedCertificateName = $"cert-api-{env}",
-            ResourceGroupName = sharedResourceGroupName,
-            Properties = new ManagedCertificatePropertiesArgs
+            apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
             {
-                SubjectName = apiDomain,
-                DomainControlValidation = "CNAME",
-            },
-        });
+                EnvironmentName = containerAppsEnvironmentName,
+                ManagedCertificateName = $"cert-api-{env}",
+                ResourceGroupName = sharedResourceGroupName,
+                Properties = new ManagedCertificatePropertiesArgs
+                {
+                    SubjectName = apiDomain,
+                    DomainControlValidation = "CNAME",
+                },
+            });
+        }
 
         // Container App (API) — placeholder image until CI/CD pushes real builds
         var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
@@ -266,15 +284,24 @@ public static class EnvironmentStack
                     External = true,
                     TargetPort = 8080,
                     Transport = IngressTransportMethod.Http,
-                    CustomDomains = new[]
-                    {
-                        new CustomDomainArgs
+                    CustomDomains = customDomainPhase >= 2
+                        ? new[]
                         {
-                            Name = apiDomain,
-                            CertificateId = apiManagedCert.Id,
-                            BindingType = BindingType.SniEnabled,
+                            new CustomDomainArgs
+                            {
+                                Name = apiDomain,
+                                CertificateId = apiManagedCert!.Id,
+                                BindingType = BindingType.SniEnabled,
+                            },
+                        }
+                        : new[]
+                        {
+                            new CustomDomainArgs
+                            {
+                                Name = apiDomain,
+                                BindingType = BindingType.Disabled,
+                            },
                         },
-                    },
                 },
                 Registries = new[]
                 {
@@ -317,6 +344,21 @@ public static class EnvironmentStack
             Tags = tags,
         });
 
+        if (customDomainPhase == 1)
+        {
+            new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
+            {
+                EnvironmentName = containerAppsEnvironmentName,
+                ManagedCertificateName = $"cert-api-{env}",
+                ResourceGroupName = sharedResourceGroupName,
+                Properties = new ManagedCertificatePropertiesArgs
+                {
+                    SubjectName = apiDomain,
+                    DomainControlValidation = "CNAME",
+                },
+            }, new CustomResourceOptions { DependsOn = { containerApp } });
+        }
+
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
         {
@@ -337,12 +379,21 @@ public static class EnvironmentStack
         });
 
         // Static Web App Custom Domain
-        var staticWebAppCustomDomain = new StaticSiteCustomDomain($"swa-domain-{env}", new StaticSiteCustomDomainArgs
+        // Apex domains (no subdomain) require TXT validation; subdomains use default CNAME.
+        var isApexDomain = frontendDomain.Split('.').Length == 2;
+        var swaCustomDomainArgs = new StaticSiteCustomDomainArgs
         {
             Name = staticWebApp.Name,
             DomainName = frontendDomain,
             ResourceGroupName = resourceGroup.Name,
-        });
+        };
+
+        if (isApexDomain)
+        {
+            swaCustomDomainArgs.ValidationMethod = "dns-txt-token";
+        }
+
+        var staticWebAppCustomDomain = new StaticSiteCustomDomain($"swa-domain-{env}", swaCustomDomainArgs);
 
         return new Dictionary<string, object?>
         {

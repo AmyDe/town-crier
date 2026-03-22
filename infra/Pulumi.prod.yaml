@@ -4,3 +4,5 @@ config:
   town-crier:cosmosConsistencyLevel: Session
   town-crier:frontendDomain: towncrierapp.uk
   town-crier:apiDomain: api.towncrierapp.uk
+  town-crier:importExistingCosmos: "true"
+  town-crier:customDomainPhase: "1"
