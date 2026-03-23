@@ -3,6 +3,7 @@ using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
+using TownCrier.Infrastructure.Groups;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.SavedApplications;
@@ -30,4 +31,10 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(UserProfileDocument))]
 [JsonSerializable(typeof(List<UserProfileDocument>))]
 [JsonSerializable(typeof(DecisionAlertDocument))]
+[JsonSerializable(typeof(GroupDocument))]
+[JsonSerializable(typeof(List<GroupDocument>))]
+[JsonSerializable(typeof(GroupMemberDocument))]
+[JsonSerializable(typeof(List<GroupMemberDocument>))]
+[JsonSerializable(typeof(GroupInvitationDocument))]
+[JsonSerializable(typeof(List<GroupInvitationDocument>))]
 internal sealed partial class CosmosJsonSerializerContext : JsonSerializerContext;

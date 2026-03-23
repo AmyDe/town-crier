@@ -131,8 +131,8 @@ builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
 
 builder.Services.AddTransient<GetDemoAccountQueryHandler>();
 
-builder.Services.AddSingleton<IGroupRepository, InMemoryGroupRepository>();
-builder.Services.AddSingleton<IGroupInvitationRepository, InMemoryGroupInvitationRepository>();
+builder.Services.AddSingleton<IGroupRepository, CosmosGroupRepository>();
+builder.Services.AddSingleton<IGroupInvitationRepository, CosmosGroupInvitationRepository>();
 builder.Services.AddTransient<CreateGroupCommandHandler>();
 builder.Services.AddTransient<GetGroupQueryHandler>();
 builder.Services.AddTransient<GetUserGroupsQueryHandler>();
