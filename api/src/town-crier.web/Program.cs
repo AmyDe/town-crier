@@ -116,7 +116,8 @@ builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
 builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
-builder.Services.AddSingleton<INotificationRepository, InMemoryNotificationRepository>();
+builder.Services.AddSingleton<INotificationRepository>(sp =>
+    new CosmosNotificationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<GetNotificationsQueryHandler>();
 
 builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();

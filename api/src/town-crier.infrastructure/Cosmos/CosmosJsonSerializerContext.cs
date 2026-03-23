@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DeviceRegistrations;
+using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.WatchZones;
 
@@ -18,4 +19,6 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(List<WatchZoneDocument>))]
 [JsonSerializable(typeof(AuthorityZoneCountResult))]
 [JsonSerializable(typeof(int))]
+[JsonSerializable(typeof(NotificationDocument))]
+[JsonSerializable(typeof(List<NotificationDocument>))]
 internal sealed partial class CosmosJsonSerializerContext : JsonSerializerContext;
