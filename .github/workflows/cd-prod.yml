@@ -105,27 +105,33 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Check if API image exists
+      - name: Resolve API image tag
         id: check-image
         run: |
           ACR_NAME="${{ secrets.ACR_LOGIN_SERVER }}"
           ACR_NAME="${ACR_NAME%.azurecr.io}"
+          SHA="${{ steps.resolve.outputs.sha }}"
           if az acr manifest show \
             --registry "$ACR_NAME" \
-            --name "town-crier-api:${{ steps.resolve.outputs.sha }}" 2>/dev/null; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
+            --name "town-crier-api:$SHA" 2>/dev/null; then
+            echo "Using exact image for SHA $SHA"
+            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
+          elif az acr manifest show \
+            --registry "$ACR_NAME" \
+            --name "town-crier-api:latest" 2>/dev/null; then
+            echo "No image for SHA $SHA — falling back to latest"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
-            echo "No API image found for SHA ${{ steps.resolve.outputs.sha }} — skipping API deploy"
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::error::No API image found (tried SHA $SHA and latest)"
+            exit 1
           fi
 
-      - name: Promote image to prod
-        if: steps.check-image.outputs.exists == 'true'
+      - name: Deploy API image to prod
         run: |
           az containerapp update \
             --name "ca-town-crier-api-prod" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.resolve.outputs.sha }}"
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}"
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
