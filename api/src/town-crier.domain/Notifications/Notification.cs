@@ -77,4 +77,29 @@ public sealed class Notification
     {
         this.PushSent = true;
     }
+
+    internal static Notification Reconstitute(
+        string id,
+        string userId,
+        string applicationName,
+        string watchZoneId,
+        string applicationAddress,
+        string applicationDescription,
+        string applicationType,
+        int authorityId,
+        bool pushSent,
+        DateTimeOffset createdAt)
+    {
+        return new Notification(
+            id,
+            userId,
+            applicationName,
+            watchZoneId,
+            applicationAddress,
+            applicationDescription,
+            applicationType,
+            authorityId,
+            pushSent,
+            createdAt);
+    }
 }

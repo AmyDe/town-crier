@@ -8,5 +8,9 @@
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="town-crier.infrastructure" />
+    <InternalsVisibleTo Include="town-crier.infrastructure.tests" />
+  </ItemGroup>
 
 </Project>
