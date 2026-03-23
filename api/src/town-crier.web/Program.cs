@@ -20,6 +20,7 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -40,6 +41,7 @@ using TownCrier.Web.RateLimiting;
 var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Logging.AddJsonConsole();
+builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -117,7 +119,7 @@ builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 builder.Services.AddSingleton<INotificationRepository, InMemoryNotificationRepository>();
 builder.Services.AddTransient<GetNotificationsQueryHandler>();
 
-builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();
+builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
 builder.Services.AddTransient<SaveApplicationCommandHandler>();
 builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
 builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
