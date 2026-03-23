@@ -24,17 +24,10 @@ struct TownCrierApp: App {
         let repository = InMemoryPlanningApplicationRepository()
         #endif
 
-        #if DEBUG
         let auth0Config = Auth0Config(
             clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
             domain: "towncrierapp.uk.auth0.com"
         )
-        #else
-        let auth0Config = Auth0Config(
-            clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
-            domain: "towncrierapp.uk.auth0.com"
-        )
-        #endif
 
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
