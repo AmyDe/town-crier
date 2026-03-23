@@ -120,7 +120,7 @@ builder.Services.AddSingleton<INotificationRepository>(sp =>
     new CosmosNotificationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<GetNotificationsQueryHandler>();
 
-builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();
+builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
 builder.Services.AddTransient<SaveApplicationCommandHandler>();
 builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
 builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
