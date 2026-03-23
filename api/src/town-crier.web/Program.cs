@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
-
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
@@ -20,6 +19,7 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -40,6 +40,7 @@ using TownCrier.Web.RateLimiting;
 var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Logging.AddJsonConsole();
+builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -91,7 +92,7 @@ builder.Services.AddSingleton(new PollingHealthConfig(
     StalenessThreshold: TimeSpan.FromHours(1),
     MaxConsecutiveFailures: 5));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
+builder.Services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
 builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
 builder.Services.AddSingleton(new PollingScheduleConfig(
     HighThreshold: builder.Configuration.GetValue("Polling:HighThreshold", 5),
@@ -108,7 +109,8 @@ builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 builder.Services.AddTransient<UpdateZonePreferencesCommandHandler>();
 builder.Services.AddTransient<GetZonePreferencesQueryHandler>();
 
-builder.Services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
+builder.Services.AddSingleton<IDeviceRegistrationRepository>(sp =>
+    new CosmosDeviceRegistrationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
