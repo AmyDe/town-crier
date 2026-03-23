@@ -20,6 +20,7 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -38,6 +39,8 @@ using TownCrier.Web.Polling;
 using TownCrier.Web.RateLimiting;
 
 var builder = WebApplication.CreateSlimBuilder(args);
+
+builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Logging.AddJsonConsole();
 
@@ -99,7 +102,7 @@ builder.Services.AddSingleton(new PollingScheduleConfig(
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
 
-builder.Services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddTransient<CreateUserProfileCommandHandler>();
 builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();

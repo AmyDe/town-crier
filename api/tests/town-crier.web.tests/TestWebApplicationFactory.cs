@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using TownCrier.Application.UserProfiles;
+using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests;
@@ -15,9 +17,12 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseSetting("Auth0:Domain", "test.auth0.com");
         builder.UseSetting("Auth0:Audience", "https://api.towncrier.app");
+        builder.UseSetting("ConnectionStrings:CosmosDb", "AccountEndpoint=https://localhost:8081/;AccountKey=dGVzdA==");
 
         builder.ConfigureTestServices(services =>
         {
+            services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
             {
                 options.Authority = null;
