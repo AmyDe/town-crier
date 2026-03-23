@@ -22,7 +22,6 @@
     <Compile Remove="Polling\WatchZoneActiveAuthorityProviderTests.cs" />
     <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
     <Compile Remove="Polling\PollingScheduleTests.cs" />
-    <Compile Remove="WatchZones\**" />
     <Compile Remove="Notifications\GetNotificationsQueryHandlerTests.cs" />
     <Compile Remove="SavedApplications\**" />
     <Compile Remove="DecisionAlerts\**" />
