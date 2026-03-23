@@ -3,3 +3,5 @@ config:
   town-crier:environment: dev
   town-crier:frontendDomain: dev.towncrierapp.uk
   town-crier:apiDomain: api-dev.towncrierapp.uk
+  town-crier:auth0Domain: towncrierapp.uk.auth0.com
+  town-crier:auth0Audience: https://api-dev.towncrierapp.uk

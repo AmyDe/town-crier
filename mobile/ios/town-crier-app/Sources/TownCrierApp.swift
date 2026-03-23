@@ -26,13 +26,13 @@ struct TownCrierApp: App {
 
         #if DEBUG
         let auth0Config = Auth0Config(
-            clientId: "6fJtwrskZKwWkJsmfNiJNN7vZdsZ374b",
-            domain: "dev-4z121ifjj10rzg3x.uk.auth0.com"
+            clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
+            domain: "towncrierapp.uk.auth0.com"
         )
         #else
         let auth0Config = Auth0Config(
-            clientId: "PROD_CLIENT_ID",
-            domain: "PROD_DOMAIN.auth0.com"
+            clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
+            domain: "towncrierapp.uk.auth0.com"
         )
         #endif
 

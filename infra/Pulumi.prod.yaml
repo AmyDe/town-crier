@@ -3,4 +3,6 @@ config:
   town-crier:environment: prod
   town-crier:frontendDomain: towncrierapp.uk
   town-crier:apiDomain: api.towncrierapp.uk
+  town-crier:auth0Domain: towncrierapp.uk.auth0.com
+  town-crier:auth0Audience: https://api.towncrierapp.uk
   town-crier:customDomainPhase: "2"
