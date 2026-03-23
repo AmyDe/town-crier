@@ -96,4 +96,19 @@ public sealed class Group
     {
         return this.members.Exists(m => m.UserId == userId);
     }
+
+    internal static Group Reconstitute(
+        string id,
+        string name,
+        string ownerId,
+        Coordinates centre,
+        double radiusMetres,
+        int authorityId,
+        DateTimeOffset createdAt,
+        IEnumerable<GroupMember> members)
+    {
+        var group = new Group(id, name, ownerId, centre, radiusMetres, authorityId, createdAt);
+        group.members.AddRange(members);
+        return group;
+    }
 }

@@ -24,4 +24,9 @@ public sealed class GroupMember
     {
         return new GroupMember(userId, GroupRole.Member, now);
     }
+
+    internal static GroupMember Reconstitute(string userId, GroupRole role, DateTimeOffset joinedAt)
+    {
+        return new GroupMember(userId, role, joinedAt);
+    }
 }

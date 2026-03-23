@@ -20,6 +20,7 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -124,8 +125,10 @@ builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
 
 builder.Services.AddTransient<GetDemoAccountQueryHandler>();
 
-builder.Services.AddSingleton<IGroupRepository, InMemoryGroupRepository>();
-builder.Services.AddSingleton<IGroupInvitationRepository, InMemoryGroupInvitationRepository>();
+builder.Services.AddCosmosClient(builder.Configuration);
+
+builder.Services.AddSingleton<IGroupRepository, CosmosGroupRepository>();
+builder.Services.AddSingleton<IGroupInvitationRepository, CosmosGroupInvitationRepository>();
 builder.Services.AddTransient<CreateGroupCommandHandler>();
 builder.Services.AddTransient<GetGroupQueryHandler>();
 builder.Services.AddTransient<GetUserGroupsQueryHandler>();
