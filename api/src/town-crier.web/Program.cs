@@ -84,7 +84,8 @@ builder.Services.AddTransient<GetDesignationContextQueryHandler>();
 
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
-builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
+builder.Services.AddCosmosClient(builder.Configuration);
+builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
 builder.Services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();
 builder.Services.AddSingleton<IPollingHealthAlerter, LogPollingHealthAlerter>();
