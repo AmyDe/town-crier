@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
+using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
@@ -20,6 +21,7 @@ using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -38,8 +40,6 @@ using TownCrier.Web.Polling;
 using TownCrier.Web.RateLimiting;
 
 var builder = WebApplication.CreateSlimBuilder(args);
-
-builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Logging.AddJsonConsole();
 builder.Services.AddCosmosClient(builder.Configuration);
@@ -84,9 +84,10 @@ builder.Services.AddHttpClient<IDesignationDataProvider, GovUkPlanningDataClient
 });
 builder.Services.AddTransient<GetDesignationContextQueryHandler>();
 
+builder.Services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
+
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
-builder.Services.AddCosmosClient(builder.Configuration);
 builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
 builder.Services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();

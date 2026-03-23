@@ -65,4 +65,25 @@ public sealed class DecisionAlert
     {
         this.PushSent = true;
     }
+
+    internal static DecisionAlert Reconstitute(
+        string id,
+        string userId,
+        string applicationUid,
+        string applicationName,
+        string applicationAddress,
+        string decision,
+        bool pushSent,
+        DateTimeOffset createdAt)
+    {
+        return new DecisionAlert(
+            id,
+            userId,
+            applicationUid,
+            applicationName,
+            applicationAddress,
+            decision,
+            pushSent,
+            createdAt);
+    }
 }
