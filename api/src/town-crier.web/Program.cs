@@ -39,6 +39,8 @@ using TownCrier.Web.RateLimiting;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
+builder.Services.AddCosmosClient(builder.Configuration);
+
 builder.Logging.AddJsonConsole();
 builder.Services.AddCosmosClient(builder.Configuration);
 
@@ -101,7 +103,7 @@ builder.Services.AddSingleton(new PollingScheduleConfig(
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
 
-builder.Services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddTransient<CreateUserProfileCommandHandler>();
 builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();

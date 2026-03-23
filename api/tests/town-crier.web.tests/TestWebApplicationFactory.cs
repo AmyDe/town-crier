@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
+using TownCrier.Application.UserProfiles;
+using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests;
@@ -21,6 +23,8 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
             {
                 options.Authority = null;
