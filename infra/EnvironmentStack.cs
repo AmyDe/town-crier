@@ -14,6 +14,8 @@ public static class EnvironmentStack
     {
         var frontendDomain = config.Require("frontendDomain");
         var apiDomain = config.Require("apiDomain");
+        var auth0Domain = config.Require("auth0Domain");
+        var auth0Audience = config.Require("auth0Audience");
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
 
         // Shared stack outputs
@@ -286,6 +288,11 @@ public static class EnvironmentStack
                         {
                             Cpu = 0.25,
                             Memory = "0.5Gi",
+                        },
+                        Env = new[]
+                        {
+                            new EnvironmentVarArgs { Name = "Auth0__Domain", Value = auth0Domain },
+                            new EnvironmentVarArgs { Name = "Auth0__Audience", Value = auth0Audience },
                         },
                     },
                 },
