@@ -34,11 +34,14 @@ struct TownCrierApp: App {
         let appVersionProvider = BundleAppVersionProvider()
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
 
         let appCoordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            geocoder: geocoder,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )

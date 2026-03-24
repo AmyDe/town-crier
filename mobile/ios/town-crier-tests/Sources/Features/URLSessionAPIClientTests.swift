@@ -14,26 +14,6 @@ private struct TestBody: Codable, Sendable {
     let title: String
 }
 
-/// Stub transport that records requests and returns preconfigured responses.
-private final class StubHTTPTransport: HTTPTransport, @unchecked Sendable {
-    var responses: [(Data, URLResponse)] = []
-    private var callIndex = 0
-    private(set) var requests: [URLRequest] = []
-
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        requests.append(request)
-        guard callIndex < responses.count else {
-            throw URLError(.badServerResponse)
-        }
-        let response = responses[callIndex]
-        callIndex += 1
-        return response
-    }
-}
-
-private func httpResponse(url: URL, statusCode: Int) -> HTTPURLResponse {
-    HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
-}
 
 // MARK: - Tests
 

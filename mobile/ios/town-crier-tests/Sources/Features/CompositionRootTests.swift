@@ -22,11 +22,14 @@ struct CompositionRootTests {
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let onboardingRepository = UserDefaultsOnboardingRepository()
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
 
         let coordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            geocoder: geocoder,
             onboardingRepository: onboardingRepository,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
@@ -58,11 +61,14 @@ struct CompositionRootTests {
 
     private func makeCoordinator() -> AppCoordinator {
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         return AppCoordinator(
             repository: InMemoryPlanningApplicationRepository(),
-            authService: Auth0AuthenticationService(config: auth0Config),
+            authService: authService,
             subscriptionService: StoreKitSubscriptionService(),
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
             onboardingRepository: UserDefaultsOnboardingRepository(),
             appVersionProvider: BundleAppVersionProvider(),
             versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
