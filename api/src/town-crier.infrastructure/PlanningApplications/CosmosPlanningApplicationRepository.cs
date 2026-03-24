@@ -27,16 +27,23 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
     }
 
     public async Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
-        double latitude, double longitude, double radiusMetres, CancellationToken ct)
+        string authorityCode, double latitude, double longitude, double radiusMetres, CancellationToken ct)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(authorityCode);
+
         var query = new QueryDefinition(
             "SELECT * FROM c WHERE ST_DISTANCE(c.location, {\"type\": \"Point\", \"coordinates\": [@lng, @lat]}) <= @radius")
             .WithParameter("@lng", longitude)
             .WithParameter("@lat", latitude)
             .WithParameter("@radius", radiusMetres);
 
+        var requestOptions = new QueryRequestOptions
+        {
+            PartitionKey = new PartitionKey(authorityCode),
+        };
+
         var results = new List<PlanningApplication>();
-        using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query);
+        using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query, requestOptions: requestOptions);
 
         while (iterator.HasMoreResults)
         {

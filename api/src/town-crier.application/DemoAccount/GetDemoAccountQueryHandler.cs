@@ -50,8 +50,9 @@ public sealed class GetDemoAccountQueryHandler
             await this.SeedDemoApplicationsAsync(ct).ConfigureAwait(false);
         }
 
+        var authorityCode = DemoAuthorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var applications = await this.planningApplicationRepository.FindNearbyAsync(
-            DemoLatitude, DemoLongitude, DemoRadiusMetres, ct).ConfigureAwait(false);
+            authorityCode, DemoLatitude, DemoLongitude, DemoRadiusMetres, ct).ConfigureAwait(false);
 
         var watchZoneResult = new DemoWatchZoneResult(
             DemoZoneId, DemoAuthorityName, DemoLatitude, DemoLongitude, DemoRadiusMetres);

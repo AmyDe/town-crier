@@ -59,8 +59,9 @@ public sealed class CreateWatchZoneCommandHandler
             }
         }
 
+        var authorityCode = command.AuthorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var nearbyApplications = await this.planningApplicationRepository.FindNearbyAsync(
-            command.Latitude, command.Longitude, command.RadiusMetres, ct).ConfigureAwait(false);
+            authorityCode, command.Latitude, command.Longitude, command.RadiusMetres, ct).ConfigureAwait(false);
 
         return new CreateWatchZoneResult(nearbyApplications);
     }

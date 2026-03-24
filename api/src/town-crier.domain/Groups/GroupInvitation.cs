@@ -47,10 +47,14 @@ public sealed class GroupInvitation
         ArgumentException.ThrowIfNullOrWhiteSpace(inviteeEmail);
         ArgumentException.ThrowIfNullOrWhiteSpace(invitedByUserId);
 
+#pragma warning disable CA1308 // Emails are normalized to lowercase per industry convention (RFC 5321)
+        var normalizedEmail = inviteeEmail.Trim().ToLowerInvariant();
+#pragma warning restore CA1308
+
         return new GroupInvitation(
             id,
             groupId,
-            inviteeEmail,
+            normalizedEmail,
             invitedByUserId,
             InvitationStatus.Pending,
             now,

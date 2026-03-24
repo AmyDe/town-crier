@@ -35,6 +35,66 @@ public sealed class InviteMemberCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_NormalizeEmail_When_InviteeEmailHasMixedCase()
+    {
+        // Arrange
+        var group = new GroupBuilder()
+            .WithId("group-1")
+            .WithOwnerId("owner-1")
+            .Build();
+        var groupRepo = new FakeGroupRepository();
+        await groupRepo.SaveAsync(group, CancellationToken.None);
+        var invitationRepo = new FakeGroupInvitationRepository();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero));
+        var handler = new InviteMemberCommandHandler(groupRepo, invitationRepo, timeProvider);
+
+        var command = new InviteMemberCommand(
+            RequestingUserId: "owner-1",
+            GroupId: "group-1",
+            InvitationId: "invite-1",
+            InviteeEmail: "  Neighbour@Example.COM  ");
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — email should be trimmed and lowercased
+        await Assert.That(result.InviteeEmail).IsEqualTo("neighbour@example.com");
+
+        var saved = await invitationRepo.GetByIdAsync("invite-1", CancellationToken.None);
+        await Assert.That(saved!.InviteeEmail).IsEqualTo("neighbour@example.com");
+    }
+
+    [Test]
+    public async Task Should_FindInvitationByEmail_When_QueryEmailDiffersInCase()
+    {
+        // Arrange
+        var group = new GroupBuilder()
+            .WithId("group-1")
+            .WithOwnerId("owner-1")
+            .Build();
+        var groupRepo = new FakeGroupRepository();
+        await groupRepo.SaveAsync(group, CancellationToken.None);
+        var invitationRepo = new FakeGroupInvitationRepository();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero));
+        var handler = new InviteMemberCommandHandler(groupRepo, invitationRepo, timeProvider);
+
+        // Create invitation with normalized email (domain normalizes it)
+        var command = new InviteMemberCommand(
+            RequestingUserId: "owner-1",
+            GroupId: "group-1",
+            InvitationId: "invite-1",
+            InviteeEmail: "Test@Example.COM");
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Act — query with different casing
+        var results = await invitationRepo.GetPendingByEmailAsync("TEST@EXAMPLE.COM", CancellationToken.None);
+
+        // Assert
+        await Assert.That(results).HasCount().EqualTo(1);
+        await Assert.That(results[0].InviteeEmail).IsEqualTo("test@example.com");
+    }
+
+    [Test]
     public async Task Should_ThrowUnauthorized_When_NonOwnerInvites()
     {
         // Arrange

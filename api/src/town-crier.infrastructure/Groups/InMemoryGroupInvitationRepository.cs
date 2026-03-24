@@ -31,8 +31,15 @@ public sealed class InMemoryGroupInvitationRepository : IGroupInvitationReposito
 
     public Task<IReadOnlyList<GroupInvitation>> GetPendingByEmailAsync(string email, CancellationToken ct)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+#pragma warning disable CA1308 // Emails are normalized to lowercase per industry convention
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+#pragma warning restore CA1308
+
         var results = this.store.Values
-            .Where(i => i.InviteeEmail == email && i.Status == InvitationStatus.Pending)
+            .Where(i => i.InviteeEmail.Equals(normalizedEmail, StringComparison.OrdinalIgnoreCase)
+                && i.Status == InvitationStatus.Pending)
             .ToList();
         return Task.FromResult<IReadOnlyList<GroupInvitation>>(results);
     }

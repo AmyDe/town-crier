@@ -70,6 +70,9 @@ Carthage/Build/
 # Beads credential keys
 .beads/.beads-credential-key
 
+# Beads runtime artifacts
+.beads/interactions.jsonl
+
 # Superpowers brainstorm sessions
 .superpowers/
 

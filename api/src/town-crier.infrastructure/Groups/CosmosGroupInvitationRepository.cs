@@ -18,7 +18,7 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
     {
         var query = new QueryDefinition(
             "SELECT * FROM c WHERE c.id = @id AND c.type = 'invitation'")
-            .WithParameter("@id", invitationId);
+            .WithParameter("@id", GroupInvitationDocument.ToDocumentId(invitationId));
 
         using var iterator = this.container.GetItemQueryIterator<GroupInvitationDocument>(
             query,
@@ -57,9 +57,15 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
 
     public async Task<IReadOnlyList<GroupInvitation>> GetPendingByEmailAsync(string email, CancellationToken ct)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+#pragma warning disable CA1308 // Emails are normalized to lowercase per industry convention
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+#pragma warning restore CA1308
+
         var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.type = 'invitation' AND c.inviteeEmail = @email AND c.status = 'Pending'")
-            .WithParameter("@email", email);
+            "SELECT * FROM c WHERE c.type = 'invitation' AND LOWER(c.inviteeEmail) = @email AND c.status = 'Pending'")
+            .WithParameter("@email", normalizedEmail);
 
         return await this.QueryInvitationsAsync(query, ct).ConfigureAwait(false);
     }
