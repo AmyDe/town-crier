@@ -22,14 +22,14 @@ public sealed class SystemTextJsonCosmosSerializer : CosmosSerializer
 
         using (stream)
         {
-            return JsonSerializer.Deserialize<T>(stream, this.options)!;
+            return (T)JsonSerializer.Deserialize(stream, this.options.GetTypeInfo(typeof(T)))!;
         }
     }
 
     public override Stream ToStream<T>(T input)
     {
         var stream = new MemoryStream();
-        JsonSerializer.Serialize(stream, input, this.options);
+        JsonSerializer.Serialize(stream, input, this.options.GetTypeInfo(typeof(T)));
         stream.Position = 0;
         return stream;
     }
