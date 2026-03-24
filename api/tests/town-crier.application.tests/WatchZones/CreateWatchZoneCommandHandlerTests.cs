@@ -135,6 +135,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
 
         var nearbyApp = new PlanningApplicationBuilder()
             .WithName("nearby-app")
+            .WithAreaId(42)
             .WithCoordinates(51.5080, -0.1280)
             .Build();
         await this.planningApplicationRepository.UpsertAsync(nearbyApp, CancellationToken.None);
@@ -210,6 +211,37 @@ public sealed class CreateWatchZoneCommandHandlerTests
 
         // Assert
         await Assert.That(result.NearbyApplications).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_ReturnOnlyMatchingAuthorityApplications_When_CreatingWatchZone()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var matchingApp = new PlanningApplicationBuilder()
+            .WithName("matching-app")
+            .WithAreaId(42)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+        var differentAuthorityApp = new PlanningApplicationBuilder()
+            .WithName("other-authority-app")
+            .WithAreaId(99)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+        await this.planningApplicationRepository.UpsertAsync(matchingApp, CancellationToken.None);
+        await this.planningApplicationRepository.UpsertAsync(differentAuthorityApp, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — only the matching authority's app should be returned
+        await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
+        await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("matching-app");
     }
 
     [Test]

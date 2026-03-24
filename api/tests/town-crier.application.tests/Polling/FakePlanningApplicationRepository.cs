@@ -22,10 +22,11 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
     }
 
     public Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
-        double latitude, double longitude, double radiusMetres, CancellationToken ct)
+        string authorityCode, double latitude, double longitude, double radiusMetres, CancellationToken ct)
     {
         var nearby = this.store.Values
-            .Where(a => a.Latitude.HasValue && a.Longitude.HasValue
+            .Where(a => a.AreaId.ToString(System.Globalization.CultureInfo.InvariantCulture) == authorityCode
+                && a.Latitude.HasValue && a.Longitude.HasValue
                 && DistanceMetres(latitude, longitude, a.Latitude.Value, a.Longitude.Value) <= radiusMetres)
             .ToList();
         return Task.FromResult<IReadOnlyCollection<PlanningApplication>>(nearby);

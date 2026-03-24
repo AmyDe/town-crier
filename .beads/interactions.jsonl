@@ -4,3 +4,8 @@
 {"id":"int-bae48b35","kind":"field_change","created_at":"2026-03-23T18:53:55.017302Z","actor":"AmeDe","issue_id":"tc-60b.8","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-bad67a7a","kind":"field_change","created_at":"2026-03-23T18:53:55.086201Z","actor":"AmeDe","issue_id":"tc-60b.9","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-0676479c","kind":"field_change","created_at":"2026-03-23T18:53:55.154212Z","actor":"AmeDe","issue_id":"tc-60b.10","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
+{"id":"int-a83badd0","kind":"field_change","created_at":"2026-03-24T09:24:44.968128Z","actor":"AmeDe","issue_id":"tc-iff","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
+{"id":"int-96be23d5","kind":"field_change","created_at":"2026-03-24T09:24:49.635683Z","actor":"AmeDe","issue_id":"tc-369","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
+{"id":"int-f07fcf0b","kind":"field_change","created_at":"2026-03-24T09:24:51.313931Z","actor":"AmeDe","issue_id":"tc-13s","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
+{"id":"int-917686c9","kind":"field_change","created_at":"2026-03-24T09:24:51.950089Z","actor":"AmeDe","issue_id":"tc-8lw","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
+{"id":"int-10bca315","kind":"field_change","created_at":"2026-03-24T09:24:59.719569Z","actor":"AmeDe","issue_id":"tc-w53","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}

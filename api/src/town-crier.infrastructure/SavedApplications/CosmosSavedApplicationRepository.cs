@@ -83,10 +83,10 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
 
     public async Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT c.userId FROM c WHERE c.applicationUid = @applicationUid")
+        var query = new QueryDefinition("SELECT VALUE c.userId FROM c WHERE c.applicationUid = @applicationUid")
             .WithParameter("@applicationUid", applicationUid);
 
-        using var iterator = this.container.GetItemQueryIterator<SavedApplicationDocument>(
+        using var iterator = this.container.GetItemQueryIterator<string>(
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = null });
 
@@ -95,7 +95,7 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
         while (iterator.HasMoreResults)
         {
             var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            userIds.AddRange(response.Select(doc => doc.UserId));
+            userIds.AddRange(response);
         }
 
         return userIds;

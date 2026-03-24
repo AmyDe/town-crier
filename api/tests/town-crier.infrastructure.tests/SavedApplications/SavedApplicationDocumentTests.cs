@@ -93,4 +93,44 @@ public sealed class SavedApplicationDocumentTests
         await Assert.That(deserialized.ApplicationUid).IsEqualTo(original.ApplicationUid);
         await Assert.That(deserialized.SavedAt).IsEqualTo(original.SavedAt);
     }
+
+    [Test]
+    public async Task Should_FailDeserialization_When_PartialProjectionMissesRequiredFields()
+    {
+        // Arrange — SELECT c.userId returns {"userId":"auth0|user-1"} which is missing
+        // the required Id, ApplicationUid, and SavedAt fields on SavedApplicationDocument.
+        // This documents why the repository must use SELECT VALUE with GetItemQueryIterator<string>.
+        var partialJson = """{"userId":"auth0|user-1"}"""u8.ToArray();
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
+
+        // Act & Assert — deserializing a partial document into SavedApplicationDocument throws
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<SavedApplicationDocument>(
+            (ReadOnlySpan<byte>)partialJson, jsonOptions));
+    }
+
+    [Test]
+    public async Task Should_DeserializeStringValue_When_UsingSelectValueProjection()
+    {
+        // Arrange — SELECT VALUE c.userId returns a bare JSON string, not a document.
+        // The Cosmos serializer context must support string deserialization for this to work.
+        var jsonOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
+
+        var serializer = new SystemTextJsonCosmosSerializer(jsonOptions);
+        var userId = "auth0|user-1";
+
+        // Act
+        using var stream = serializer.ToStream(userId);
+        var deserialized = serializer.FromStream<string>(stream);
+
+        // Assert
+        await Assert.That(deserialized).IsEqualTo(userId);
+    }
 }
