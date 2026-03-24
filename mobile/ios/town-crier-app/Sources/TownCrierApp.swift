@@ -30,6 +30,7 @@ struct TownCrierApp: App {
         let repository = APIPlanningApplicationRepository(apiClient: apiClient)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
         let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
+        let onboardingRepository = UserDefaultsOnboardingRepository()
 
         let appCoordinator = AppCoordinator(
             repository: repository,
@@ -37,6 +38,7 @@ struct TownCrierApp: App {
             subscriptionService: subscriptionService,
             geocoder: geocoder,
             watchZoneRepository: watchZoneRepository,
+            onboardingRepository: onboardingRepository,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )

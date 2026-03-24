@@ -52,6 +52,33 @@ struct CompositionRootTests {
         #expect(!forceUpdateViewModel.requiresUpdate)
     }
 
+    @Test func coordinatorReportsOnboardingStateFromConcreteRepository() {
+        let suiteName = "test-onboarding-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: "isOnboardingComplete")
+        let onboardingRepo = UserDefaultsOnboardingRepository(defaults: defaults)
+
+        let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+
+        let coordinator = AppCoordinator(
+            repository: APIPlanningApplicationRepository(apiClient: apiClient),
+            authService: authService,
+            subscriptionService: StoreKitSubscriptionService(),
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+            watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+            onboardingRepository: onboardingRepo,
+            appVersionProvider: BundleAppVersionProvider(),
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+        )
+
+        #expect(coordinator.isOnboardingComplete)
+    }
+
     @Test func metricKitCrashReporterInitialises() {
         let reporter = MetricKitCrashReporter()
         reporter.start()
