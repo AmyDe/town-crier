@@ -35,11 +35,19 @@ struct TownCrierApp: App {
             permissionProvider: UNNotificationPermissionProvider(),
             apiService: APINotificationService(apiClient: apiClient)
         )
+        let connectivityMonitor = NWPathConnectivityMonitor()
+        let cacheStore = InMemoryApplicationCacheStore()
+        let offlineRepository = OfflineAwareRepository(
+            remote: repository,
+            cache: cacheStore,
+            connectivity: connectivityMonitor
+        )
 
         let appCoordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            offlineRepository: offlineRepository,
             geocoder: geocoder,
             watchZoneRepository: watchZoneRepository,
             onboardingRepository: onboardingRepository,

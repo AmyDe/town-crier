@@ -84,6 +84,34 @@ struct CompositionRootTests {
         #expect(coordinator.isOnboardingComplete)
     }
 
+    @Test func offlineAwareRepositoryWiresWithConcreteTypes() throws {
+        let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
+        let apiBaseURL = try #require(URL(string: "https://api.towncrierapp.uk"))
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
+        let connectivity = NWPathConnectivityMonitor()
+        let cache = InMemoryApplicationCacheStore()
+        let offlineRepository = OfflineAwareRepository(
+            remote: repository,
+            cache: cache,
+            connectivity: connectivity
+        )
+
+        let coordinator = AppCoordinator(
+            repository: repository,
+            authService: authService,
+            subscriptionService: StoreKitSubscriptionService(),
+            offlineRepository: offlineRepository,
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+            onboardingRepository: UserDefaultsOnboardingRepository(),
+            appVersionProvider: BundleAppVersionProvider(),
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+        )
+
+        #expect(coordinator.detailApplication == nil)
+    }
+
     @Test func metricKitCrashReporterInitialises() {
         let reporter = MetricKitCrashReporter()
         reporter.start()

@@ -18,6 +18,7 @@ public final class AppCoordinator: ObservableObject {
     private let watchZoneRepository: WatchZoneRepository?
     private let onboardingRepository: OnboardingRepository?
     private let notificationService: NotificationService?
+    private let offlineRepository: OfflineAwareRepository?
     private let appVersionProvider: AppVersionProvider?
     private let versionConfigService: VersionConfigService?
 
@@ -25,6 +26,7 @@ public final class AppCoordinator: ObservableObject {
         repository: PlanningApplicationRepository,
         authService: AuthenticationService,
         subscriptionService: SubscriptionService,
+        offlineRepository: OfflineAwareRepository? = nil,
         geocoder: PostcodeGeocoder? = nil,
         watchZoneRepository: WatchZoneRepository? = nil,
         onboardingRepository: OnboardingRepository? = nil,
@@ -35,6 +37,7 @@ public final class AppCoordinator: ObservableObject {
         self.repository = repository
         self.authService = authService
         self.subscriptionService = subscriptionService
+        self.offlineRepository = offlineRepository
         self.geocoder = geocoder
         self.watchZoneRepository = watchZoneRepository
         self.onboardingRepository = onboardingRepository
@@ -58,13 +61,21 @@ public final class AppCoordinator: ObservableObject {
     }
 
     public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
-        MapViewModel(repository: repository, watchZone: watchZone)
+        if let offlineRepository {
+            return MapViewModel(offlineRepository: offlineRepository, watchZone: watchZone)
+        }
+        return MapViewModel(repository: repository, watchZone: watchZone)
     }
 
     public func makeApplicationListViewModel(
         authority: LocalAuthority
     ) -> ApplicationListViewModel {
-        let viewModel = ApplicationListViewModel(repository: repository, authority: authority)
+        let viewModel: ApplicationListViewModel
+        if let offlineRepository {
+            viewModel = ApplicationListViewModel(offlineRepository: offlineRepository, authority: authority)
+        } else {
+            viewModel = ApplicationListViewModel(repository: repository, authority: authority)
+        }
         viewModel.onApplicationSelected = { [weak self] id in
             self?.showApplicationDetail(id)
         }
