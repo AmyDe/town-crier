@@ -1,16 +1,24 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **bd** (beads) for issue tracking. Run `bd prime` at the start of every session to load workflow context.
 
 ## Quick Reference
 
 ```bash
+bd prime              # Load workflow context (run at session start)
 bd ready              # Find available work
 bd show <id>          # View issue details
+bd create --title="..." --description="..." --type=task|bug|feature --priority=2  # Create issue BEFORE writing code
 bd update <id> --claim  # Claim work atomically
 bd close <id>         # Complete work
 bd dolt push          # Push beads data to remote
 ```
+
+## Rules
+
+- **Create a beads issue before writing code** — every code change must trace to an issue
+- **Do NOT use `bd edit`** — it opens an interactive editor that blocks agents
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
 
 ## Non-Interactive Shell Commands
 
