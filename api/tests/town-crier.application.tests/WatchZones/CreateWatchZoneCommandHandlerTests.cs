@@ -9,6 +9,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
 {
     private static readonly DateTimeOffset FixedNow = new(2026, 3, 17, 12, 0, 0, TimeSpan.Zero);
 
+    private readonly FakeAuthorityResolver authorityResolver = new();
     private readonly FakePlanItClient planItClient = new();
     private readonly FakePlanningApplicationRepository planningApplicationRepository = new();
     private readonly FakeUserProfileRepository userProfileRepository = new();
@@ -263,6 +264,72 @@ public sealed class CreateWatchZoneCommandHandlerTests
             () => handler.HandleAsync(command, CancellationToken.None));
     }
 
+    [Test]
+    public async Task Should_ResolveAuthorityFromCoordinates_When_AuthorityIdNotProvided()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        this.authorityResolver.Add(51.5074, -0.1278, 42);
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-1",
+            Name: "My Zone",
+            Latitude: 51.5074,
+            Longitude: -0.1278,
+            RadiusMetres: 5000);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(1);
+        await Assert.That(zones.First().AuthorityId).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task Should_NotCallAuthorityResolver_When_AuthorityIdProvided()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(this.authorityResolver.CallCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_ThrowInvalidOperation_When_AuthorityCannotBeResolved()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        // No authority resolver mapping configured — resolution will fail
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-1",
+            Name: "My Zone",
+            Latitude: 99.0,
+            Longitude: 99.0,
+            RadiusMetres: 5000);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
     private static CreateWatchZoneCommand CreateCommand(string userId = "user-1")
     {
         return new CreateWatchZoneCommand(
@@ -282,6 +349,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
             this.userProfileRepository,
             this.planItClient,
             this.planningApplicationRepository,
+            this.authorityResolver,
             new FakeTimeProvider(FixedNow));
     }
 }

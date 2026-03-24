@@ -7,4 +7,4 @@ public sealed record CreateWatchZoneCommand(
     double Latitude,
     double Longitude,
     double RadiusMetres,
-    int AuthorityId);
+    int? AuthorityId = null);

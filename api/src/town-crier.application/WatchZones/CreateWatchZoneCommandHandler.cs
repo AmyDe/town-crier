@@ -1,3 +1,4 @@
+using TownCrier.Application.Authorities;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
@@ -11,6 +12,7 @@ public sealed class CreateWatchZoneCommandHandler
 {
     private static readonly TimeSpan BackfillWindow = TimeSpan.FromDays(90);
 
+    private readonly IAuthorityResolver authorityResolver;
     private readonly IPlanItClient planItClient;
     private readonly IPlanningApplicationRepository planningApplicationRepository;
     private readonly TimeProvider timeProvider;
@@ -22,12 +24,14 @@ public sealed class CreateWatchZoneCommandHandler
         IUserProfileRepository userProfileRepository,
         IPlanItClient planItClient,
         IPlanningApplicationRepository planningApplicationRepository,
+        IAuthorityResolver authorityResolver,
         TimeProvider timeProvider)
     {
         this.watchZoneRepository = watchZoneRepository;
         this.userProfileRepository = userProfileRepository;
         this.planItClient = planItClient;
         this.planningApplicationRepository = planningApplicationRepository;
+        this.authorityResolver = authorityResolver;
         this.timeProvider = timeProvider;
     }
 
@@ -38,13 +42,16 @@ public sealed class CreateWatchZoneCommandHandler
         var profile = await this.userProfileRepository.GetByUserIdAsync(command.UserId, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"User profile not found: {command.UserId}");
 
+        var authorityId = command.AuthorityId
+            ?? await this.authorityResolver.ResolveFromCoordinatesAsync(command.Latitude, command.Longitude, ct).ConfigureAwait(false);
+
         var zone = new WatchZone(
             command.ZoneId,
             command.UserId,
             command.Name,
             new Coordinates(command.Latitude, command.Longitude),
             command.RadiusMetres,
-            command.AuthorityId);
+            authorityId);
 
         await this.watchZoneRepository.SaveAsync(zone, ct).ConfigureAwait(false);
 
@@ -53,13 +60,13 @@ public sealed class CreateWatchZoneCommandHandler
             var backfillSince = this.timeProvider.GetUtcNow() - BackfillWindow;
 
             await foreach (var application in this.planItClient.FetchApplicationsAsync(
-                command.AuthorityId, backfillSince, ct).ConfigureAwait(false))
+                authorityId, backfillSince, ct).ConfigureAwait(false))
             {
                 await this.planningApplicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
             }
         }
 
-        var authorityCode = command.AuthorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var authorityCode = authorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var nearbyApplications = await this.planningApplicationRepository.FindNearbyAsync(
             authorityCode, command.Latitude, command.Longitude, command.RadiusMetres, ct).ConfigureAwait(false);
 

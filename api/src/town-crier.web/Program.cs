@@ -58,6 +58,13 @@ builder.Services.AddHttpClient<IPostcodeGeocoder, PostcodesIoGeocoder>(client =>
     client.BaseAddress = new Uri(postcodesIoBaseUrl);
 });
 builder.Services.AddTransient<GeocodePostcodeQueryHandler>();
+builder.Services.AddSingleton<IAuthorityResolver>(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = factory.CreateClient("PostcodesIoResolver");
+    httpClient.BaseAddress = new Uri(postcodesIoBaseUrl);
+    return new PostcodesIoAuthorityResolver(httpClient, sp.GetRequiredService<IAuthorityProvider>());
+});
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
 var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
