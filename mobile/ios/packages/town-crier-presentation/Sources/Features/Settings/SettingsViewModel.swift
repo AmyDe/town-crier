@@ -19,15 +19,18 @@ public final class SettingsViewModel: ObservableObject {
     private let authService: AuthenticationService
     private let subscriptionService: SubscriptionService
     private let appVersionProvider: AppVersionProvider
+    private let notificationService: NotificationService
 
     public init(
         authService: AuthenticationService,
         subscriptionService: SubscriptionService,
-        appVersionProvider: AppVersionProvider
+        appVersionProvider: AppVersionProvider,
+        notificationService: NotificationService
     ) {
         self.authService = authService
         self.subscriptionService = subscriptionService
         self.appVersionProvider = appVersionProvider
+        self.notificationService = notificationService
     }
 
     public var appVersion: String {
@@ -81,6 +84,7 @@ public final class SettingsViewModel: ObservableObject {
     public func logout() async {
         error = nil
         do {
+            try? await notificationService.removeDeviceToken()
             try await authService.logout()
             clearSession()
             onLogout?()
@@ -103,6 +107,7 @@ public final class SettingsViewModel: ObservableObject {
         isShowingDeleteConfirmation = false
         error = nil
         do {
+            try? await notificationService.removeDeviceToken()
             try await authService.deleteAccount()
             clearSession()
             onLogout?()

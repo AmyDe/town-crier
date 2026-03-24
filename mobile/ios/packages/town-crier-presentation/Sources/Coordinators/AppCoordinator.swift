@@ -92,13 +92,16 @@ public final class AppCoordinator: ObservableObject {
     }
 
     public func makeSettingsViewModel() -> SettingsViewModel {
-        guard let appVersionProvider = appVersionProvider else {
-            preconditionFailure("AppVersionProvider not provided to AppCoordinator")
+        guard let appVersionProvider = appVersionProvider,
+              let notificationService = notificationService
+        else {
+            preconditionFailure("AppVersionProvider or NotificationService not provided to AppCoordinator")
         }
         let viewModel = SettingsViewModel(
             authService: authService,
             subscriptionService: subscriptionService,
-            appVersionProvider: appVersionProvider
+            appVersionProvider: appVersionProvider,
+            notificationService: notificationService
         )
         return viewModel
     }
