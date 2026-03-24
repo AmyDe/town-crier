@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import TownCrierData
 import TownCrierDomain
@@ -18,12 +19,15 @@ struct CompositionRootTests {
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
-        let versionConfigService = StubVersionConfigService()
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
+        let onboardingRepository = UserDefaultsOnboardingRepository()
 
         let coordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            onboardingRepository: onboardingRepository,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )
@@ -54,12 +58,14 @@ struct CompositionRootTests {
 
     private func makeCoordinator() -> AppCoordinator {
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         return AppCoordinator(
             repository: InMemoryPlanningApplicationRepository(),
             authService: Auth0AuthenticationService(config: auth0Config),
             subscriptionService: StoreKitSubscriptionService(),
+            onboardingRepository: UserDefaultsOnboardingRepository(),
             appVersionProvider: BundleAppVersionProvider(),
-            versionConfigService: StubVersionConfigService()
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
         )
     }
 }

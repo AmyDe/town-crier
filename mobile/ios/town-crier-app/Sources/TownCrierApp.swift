@@ -32,7 +32,8 @@ struct TownCrierApp: App {
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
-        let versionConfigService = StubVersionConfigService()
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
 
         let appCoordinator = AppCoordinator(
             repository: repository,
