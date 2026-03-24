@@ -4,6 +4,8 @@ namespace TownCrier.Infrastructure.Groups;
 
 internal sealed class GroupInvitationDocument
 {
+    private const string IdPrefix = "inv:";
+
     public required string Id { get; init; }
 
     public required string Type { get; init; }
@@ -22,13 +24,15 @@ internal sealed class GroupInvitationDocument
 
     public required DateTimeOffset ExpiresAt { get; init; }
 
+    public static string ToDocumentId(string domainId) => IdPrefix + domainId;
+
     public static GroupInvitationDocument FromDomain(GroupInvitation invitation)
     {
         ArgumentNullException.ThrowIfNull(invitation);
 
         return new GroupInvitationDocument
         {
-            Id = invitation.Id,
+            Id = ToDocumentId(invitation.Id),
             Type = "invitation",
             OwnerId = invitation.InvitedByUserId,
             GroupId = invitation.GroupId,
@@ -42,9 +46,13 @@ internal sealed class GroupInvitationDocument
 
     public GroupInvitation ToDomain()
     {
+        var domainId = this.Id.StartsWith(IdPrefix, StringComparison.Ordinal)
+            ? this.Id[IdPrefix.Length..]
+            : this.Id;
+
         var status = Enum.Parse<InvitationStatus>(this.Status);
         return GroupInvitation.Reconstitute(
-            this.Id,
+            domainId,
             this.GroupId,
             this.InviteeEmail,
             this.InvitedByUserId,

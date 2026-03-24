@@ -70,6 +70,45 @@ public sealed class GroupInvitationDocumentTests
     }
 
     [Test]
+    public async Task Should_PrefixDocumentId_When_MappingFromDomain()
+    {
+        // Arrange
+        var invitation = GroupInvitation.Create(
+            "invite-1",
+            "group-1",
+            "jane@example.com",
+            "owner-1",
+            new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero),
+            TimeSpan.FromDays(7));
+
+        // Act
+        var document = GroupInvitationDocument.FromDomain(invitation);
+
+        // Assert
+        await Assert.That(document.Id).IsEqualTo("inv:invite-1");
+    }
+
+    [Test]
+    public async Task Should_StripDocumentIdPrefix_When_MappingToDomain()
+    {
+        // Arrange
+        var invitation = GroupInvitation.Create(
+            "invite-1",
+            "group-1",
+            "jane@example.com",
+            "owner-1",
+            new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero),
+            TimeSpan.FromDays(7));
+        var document = GroupInvitationDocument.FromDomain(invitation);
+
+        // Act
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.Id).IsEqualTo("invite-1");
+    }
+
+    [Test]
     public async Task Should_PreserveAcceptedStatus_When_MappingAfterAcceptance()
     {
         // Arrange
