@@ -24,12 +24,15 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
             query,
             requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        if (iterator.HasMoreResults)
+        while (iterator.HasMoreResults)
         {
             var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
             var document = response.FirstOrDefault();
 
-            return document?.ToDomain();
+            if (document is not null)
+            {
+                return document.ToDomain();
+            }
         }
 
         return null;
