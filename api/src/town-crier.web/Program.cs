@@ -112,6 +112,9 @@ builder.Services.AddTransient<ExportUserDataQueryHandler>();
 builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 builder.Services.AddTransient<UpdateZonePreferencesCommandHandler>();
 builder.Services.AddTransient<GetZonePreferencesQueryHandler>();
+builder.Services.AddTransient<CreateWatchZoneCommandHandler>();
+builder.Services.AddTransient<ListWatchZonesQueryHandler>();
+builder.Services.AddTransient<DeleteWatchZoneCommandHandler>();
 
 builder.Services.AddSingleton<IDeviceRegistrationRepository>(sp =>
     new CosmosDeviceRegistrationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
@@ -373,6 +376,55 @@ v1.MapGet("/me/saved-applications", async (
     var userId = user.FindFirstValue("sub")!;
     var result = await handler.HandleAsync(new GetSavedApplicationsQuery(userId), ct).ConfigureAwait(false);
     return Results.Ok(result);
+});
+
+v1.MapPost("/me/watch-zones", async (
+    ClaimsPrincipal user,
+    CreateWatchZoneCommand command,
+    CreateWatchZoneCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var fullCommand = new CreateWatchZoneCommand(
+        userId,
+        command.ZoneId,
+        command.Name,
+        command.Latitude,
+        command.Longitude,
+        command.RadiusMetres,
+        command.AuthorityId);
+    var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
+    return Results.Created($"/v1/me/watch-zones/{command.ZoneId}", result);
+});
+
+v1.MapGet("/me/watch-zones", async (
+    ClaimsPrincipal user,
+    ListWatchZonesQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new ListWatchZonesQuery(userId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapDelete("/me/watch-zones/{zoneId}", async (
+    ClaimsPrincipal user,
+    string zoneId,
+    DeleteWatchZoneCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(
+            new DeleteWatchZoneCommand(userId, zoneId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (WatchZoneNotFoundException)
+    {
+        return Results.NotFound();
+    }
 });
 
 v1.MapGet("/me/watch-zones/{zoneId}/preferences", async (

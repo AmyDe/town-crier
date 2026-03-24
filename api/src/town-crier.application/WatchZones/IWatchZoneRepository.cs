@@ -6,6 +6,10 @@ public interface IWatchZoneRepository
 {
     Task SaveAsync(WatchZone zone, CancellationToken ct);
 
+    Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct);
+
+    Task DeleteAsync(string userId, string zoneId, CancellationToken ct);
+
     Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct);
 

@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.WatchZones;
@@ -23,6 +24,46 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             document,
             new PartitionKey(document.UserId),
             cancellationToken: ct).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
+            .WithParameter("@userId", userId);
+
+        using var iterator = this.container.GetItemQueryIterator<WatchZoneDocument>(
+            query,
+            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
+
+        var results = new List<WatchZone>();
+
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
+            results.AddRange(response.Select(doc => doc.ToDomain()));
+        }
+
+        return results;
+    }
+
+    public async Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
+
+        try
+        {
+            await this.container.DeleteItemAsync<WatchZoneDocument>(
+                zoneId,
+                new PartitionKey(userId),
+                cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new WatchZoneNotFoundException();
+        }
     }
 
     public async Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
