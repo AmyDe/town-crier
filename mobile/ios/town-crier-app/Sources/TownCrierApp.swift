@@ -36,12 +36,14 @@ struct TownCrierApp: App {
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+        let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
 
         let appCoordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
             geocoder: geocoder,
+            watchZoneRepository: watchZoneRepository,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )
