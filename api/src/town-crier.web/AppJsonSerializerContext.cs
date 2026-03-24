@@ -11,6 +11,7 @@ using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.VersionConfig;
 using TownCrier.Application.WatchZones;
 
 namespace TownCrier.Web;
@@ -47,4 +48,5 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(UpdateZonePreferencesCommand))]
 [JsonSerializable(typeof(UpdateZonePreferencesResult))]
 [JsonSerializable(typeof(GetZonePreferencesResult))]
+[JsonSerializable(typeof(GetVersionConfigResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;

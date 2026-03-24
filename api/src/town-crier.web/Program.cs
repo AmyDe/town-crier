@@ -16,6 +16,7 @@ using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.VersionConfig;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
@@ -178,6 +179,9 @@ app.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQ
 
 var v1 = app.MapGroup("/v1");
 v1.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQuery(), CancellationToken.None))
+    .AllowAnonymous();
+
+v1.MapGet("/version-config", () => GetVersionConfigQueryHandler.HandleAsync(new GetVersionConfigQuery(), CancellationToken.None))
     .AllowAnonymous();
 
 v1.MapGet("/designations", async (
