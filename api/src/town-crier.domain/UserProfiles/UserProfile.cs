@@ -114,4 +114,31 @@ public sealed class UserProfile
 
         this.zonePreferences[zoneId] = preferences;
     }
+
+    internal static UserProfile Reconstitute(
+        string userId,
+        string? postcode,
+        NotificationPreferences notificationPreferences,
+        Dictionary<string, ZoneNotificationPreferences> zonePreferences,
+        SubscriptionTier tier,
+        DateTimeOffset? subscriptionExpiry,
+        string? originalTransactionId,
+        DateTimeOffset? gracePeriodExpiry)
+    {
+        var profile = new UserProfile(
+            userId,
+            postcode,
+            notificationPreferences,
+            tier,
+            subscriptionExpiry,
+            originalTransactionId,
+            gracePeriodExpiry);
+
+        foreach (var (zoneId, prefs) in zonePreferences)
+        {
+            profile.zonePreferences[zoneId] = prefs;
+        }
+
+        return profile;
+    }
 }

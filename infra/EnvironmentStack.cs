@@ -205,6 +205,78 @@ public static class EnvironmentStack
             },
         });
 
+        // DeviceRegistrations container — partitioned by userId
+        var deviceRegistrationsContainer = new SqlResourceSqlContainer($"container-deviceregistrations-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "DeviceRegistrations",
+            Resource = new SqlContainerResourceArgs
+            {
+                Id = "DeviceRegistrations",
+                PartitionKey = new ContainerPartitionKeyArgs
+                {
+                    Paths = new[] { "/userId" },
+                    Kind = PartitionKind.Hash,
+                },
+            },
+        });
+
+        // SavedApplications container — partitioned by userId
+        var savedApplicationsContainer = new SqlResourceSqlContainer($"container-savedapplications-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "SavedApplications",
+            Resource = new SqlContainerResourceArgs
+            {
+                Id = "SavedApplications",
+                PartitionKey = new ContainerPartitionKeyArgs
+                {
+                    Paths = new[] { "/userId" },
+                    Kind = PartitionKind.Hash,
+                },
+            },
+        });
+
+        // Groups container — partitioned by ownerId
+        var groupsContainer = new SqlResourceSqlContainer($"container-groups-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "Groups",
+            Resource = new SqlContainerResourceArgs
+            {
+                Id = "Groups",
+                PartitionKey = new ContainerPartitionKeyArgs
+                {
+                    Paths = new[] { "/ownerId" },
+                    Kind = PartitionKind.Hash,
+                },
+            },
+        });
+
+        // DecisionAlerts container — partitioned by userId
+        var decisionAlertsContainer = new SqlResourceSqlContainer($"container-decisionalerts-{env}", new SqlResourceSqlContainerArgs
+        {
+            AccountName = cosmosAccountName,
+            ResourceGroupName = sharedResourceGroupName,
+            DatabaseName = cosmosDatabase.Name,
+            ContainerName = "DecisionAlerts",
+            Resource = new SqlContainerResourceArgs
+            {
+                Id = "DecisionAlerts",
+                PartitionKey = new ContainerPartitionKeyArgs
+                {
+                    Paths = new[] { "/userId" },
+                    Kind = PartitionKind.Hash,
+                },
+            },
+        });
+
         // Managed Certificate for API custom domain
         // Phase 1 (first deploy): Container App created first with disabled binding,
         //   then cert created with DependsOn so Azure can validate the hostname.

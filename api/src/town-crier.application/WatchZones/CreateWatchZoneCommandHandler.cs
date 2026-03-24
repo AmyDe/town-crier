@@ -41,6 +41,7 @@ public sealed class CreateWatchZoneCommandHandler
         var zone = new WatchZone(
             command.ZoneId,
             command.UserId,
+            command.Name,
             new Coordinates(command.Latitude, command.Longitude),
             command.RadiusMetres,
             command.AuthorityId);

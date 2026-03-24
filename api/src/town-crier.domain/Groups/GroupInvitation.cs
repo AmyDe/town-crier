@@ -81,4 +81,16 @@ public sealed class GroupInvitation
 
         this.Status = InvitationStatus.Declined;
     }
+
+    internal static GroupInvitation Reconstitute(
+        string id,
+        string groupId,
+        string inviteeEmail,
+        string invitedByUserId,
+        InvitationStatus status,
+        DateTimeOffset createdAt,
+        DateTimeOffset expiresAt)
+    {
+        return new GroupInvitation(id, groupId, inviteeEmail, invitedByUserId, status, createdAt, expiresAt);
+    }
 }

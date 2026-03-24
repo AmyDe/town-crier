@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
-
+using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
@@ -20,6 +20,8 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -40,6 +42,7 @@ using TownCrier.Web.RateLimiting;
 var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Logging.AddJsonConsole();
+builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -81,9 +84,11 @@ builder.Services.AddHttpClient<IDesignationDataProvider, GovUkPlanningDataClient
 });
 builder.Services.AddTransient<GetDesignationContextQueryHandler>();
 
+builder.Services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
+
 var pollStateFilePath = builder.Configuration["Polling:StateFilePath"] ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
 builder.Services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
-builder.Services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
+builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
 builder.Services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();
 builder.Services.AddSingleton<IPollingHealthAlerter, LogPollingHealthAlerter>();
@@ -91,7 +96,7 @@ builder.Services.AddSingleton(new PollingHealthConfig(
     StalenessThreshold: TimeSpan.FromHours(1),
     MaxConsecutiveFailures: 5));
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
+builder.Services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
 builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
 builder.Services.AddSingleton(new PollingScheduleConfig(
     HighThreshold: builder.Configuration.GetValue("Polling:HighThreshold", 5),
@@ -99,7 +104,7 @@ builder.Services.AddSingleton(new PollingScheduleConfig(
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddHostedService<PlanItPollingService>();
 
-builder.Services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
+builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddTransient<CreateUserProfileCommandHandler>();
 builder.Services.AddTransient<GetUserProfileQueryHandler>();
 builder.Services.AddTransient<UpdateUserProfileCommandHandler>();
@@ -108,24 +113,26 @@ builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 builder.Services.AddTransient<UpdateZonePreferencesCommandHandler>();
 builder.Services.AddTransient<GetZonePreferencesQueryHandler>();
 
-builder.Services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
+builder.Services.AddSingleton<IDeviceRegistrationRepository>(sp =>
+    new CosmosDeviceRegistrationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
 builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
-builder.Services.AddSingleton<INotificationRepository, InMemoryNotificationRepository>();
+builder.Services.AddSingleton<INotificationRepository>(sp =>
+    new CosmosNotificationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<GetNotificationsQueryHandler>();
 
-builder.Services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();
+builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
 builder.Services.AddTransient<SaveApplicationCommandHandler>();
 builder.Services.AddTransient<RemoveSavedApplicationCommandHandler>();
 builder.Services.AddTransient<GetSavedApplicationsQueryHandler>();
 
 builder.Services.AddTransient<GetDemoAccountQueryHandler>();
 
-builder.Services.AddSingleton<IGroupRepository, InMemoryGroupRepository>();
-builder.Services.AddSingleton<IGroupInvitationRepository, InMemoryGroupInvitationRepository>();
+builder.Services.AddSingleton<IGroupRepository, CosmosGroupRepository>();
+builder.Services.AddSingleton<IGroupInvitationRepository, CosmosGroupInvitationRepository>();
 builder.Services.AddTransient<CreateGroupCommandHandler>();
 builder.Services.AddTransient<GetGroupQueryHandler>();
 builder.Services.AddTransient<GetUserGroupsQueryHandler>();

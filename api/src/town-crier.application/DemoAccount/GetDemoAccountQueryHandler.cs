@@ -44,7 +44,7 @@ public sealed class GetDemoAccountQueryHandler
             profile.ActivateSubscription(SubscriptionTier.Pro, DateTimeOffset.UtcNow.AddYears(10));
             await this.userProfileRepository.SaveAsync(profile, ct).ConfigureAwait(false);
 
-            var zone = new WatchZone(DemoZoneId, DemoUserId, new Coordinates(DemoLatitude, DemoLongitude), DemoRadiusMetres, DemoAuthorityId);
+            var zone = new WatchZone(DemoZoneId, DemoUserId, "Westminster Demo Zone", new Coordinates(DemoLatitude, DemoLongitude), DemoRadiusMetres, DemoAuthorityId);
             await this.watchZoneRepository.SaveAsync(zone, ct).ConfigureAwait(false);
 
             await this.SeedDemoApplicationsAsync(ct).ConfigureAwait(false);

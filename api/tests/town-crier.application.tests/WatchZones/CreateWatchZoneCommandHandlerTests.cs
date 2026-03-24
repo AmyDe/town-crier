@@ -32,6 +32,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await Assert.That(zones).HasCount().EqualTo(1);
         await Assert.That(zones.First().UserId).IsEqualTo("user-1");
         await Assert.That(zones.First().AuthorityId).IsEqualTo(42);
+        await Assert.That(zones.First().Name).IsEqualTo("My Zone");
     }
 
     [Test]
@@ -219,6 +220,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         var command = new CreateWatchZoneCommand(
             UserId: "nonexistent-user",
             ZoneId: "zone-1",
+            Name: "My Zone",
             Latitude: 51.5074,
             Longitude: -0.1278,
             RadiusMetres: 5000,
@@ -234,6 +236,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         return new CreateWatchZoneCommand(
             UserId: userId,
             ZoneId: "zone-1",
+            Name: "My Zone",
             Latitude: 51.5074,
             Longitude: -0.1278,
             RadiusMetres: 5000,
