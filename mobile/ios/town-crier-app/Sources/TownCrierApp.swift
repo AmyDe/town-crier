@@ -32,7 +32,7 @@ struct TownCrierApp: App {
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
-        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let apiBaseURL = APIEnvironment.current.baseURL
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
