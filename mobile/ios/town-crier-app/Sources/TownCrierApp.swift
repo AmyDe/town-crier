@@ -16,14 +16,6 @@ struct TownCrierApp: App {
     private let notificationDelegate: NotificationDelegate
 
     init() {
-        #if DEBUG
-        let repository = InMemoryPlanningApplicationRepository(
-            applications: SampleData.applications
-        )
-        #else
-        let repository = InMemoryPlanningApplicationRepository()
-        #endif
-
         let auth0Config = Auth0Config(
             clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
             domain: "towncrierapp.uk.auth0.com"
@@ -35,6 +27,7 @@ struct TownCrierApp: App {
         let apiBaseURL = APIEnvironment.current.baseURL
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
         let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
 

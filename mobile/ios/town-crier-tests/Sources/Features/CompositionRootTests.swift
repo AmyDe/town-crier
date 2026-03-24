@@ -14,7 +14,6 @@ import TownCrierDomain
 struct CompositionRootTests {
 
     @Test func allConcreteDependenciesInitialise() {
-        let repository = InMemoryPlanningApplicationRepository()
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
@@ -23,6 +22,7 @@ struct CompositionRootTests {
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let onboardingRepository = UserDefaultsOnboardingRepository()
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
 
         let coordinator = AppCoordinator(
@@ -65,7 +65,7 @@ struct CompositionRootTests {
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         return AppCoordinator(
-            repository: InMemoryPlanningApplicationRepository(),
+            repository: APIPlanningApplicationRepository(apiClient: apiClient),
             authService: authService,
             subscriptionService: StoreKitSubscriptionService(),
             geocoder: APIPostcodeGeocoder(apiClient: apiClient),
