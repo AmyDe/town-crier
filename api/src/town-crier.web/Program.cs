@@ -118,6 +118,8 @@ builder.Services.AddSingleton<IDeviceRegistrationRepository>(sp =>
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
+builder.Services.AddTransient<GetApplicationByUidQueryHandler>();
+builder.Services.AddTransient<GetApplicationsByAuthorityQueryHandler>();
 builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
 builder.Services.AddSingleton<INotificationRepository>(sp =>
@@ -203,6 +205,26 @@ v1.MapGet("/authorities/{id:int}", async (
     var result = await handler.HandleAsync(new GetAuthorityByIdQuery(id), ct).ConfigureAwait(false);
     return result is null ? Results.NotFound() : Results.Ok(result);
 }).AllowAnonymous();
+
+v1.MapGet("/applications", async (
+    int authorityId,
+    GetApplicationsByAuthorityQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(
+        new GetApplicationsByAuthorityQuery(authorityId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapGet("/applications/{uid}", async (
+    string uid,
+    GetApplicationByUidQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(
+        new GetApplicationByUidQuery(uid), ct).ConfigureAwait(false);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
 
 v1.MapGet("/geocode/{postcode}", async (string postcode, GeocodePostcodeQueryHandler handler, CancellationToken ct) =>
 {

@@ -7,6 +7,7 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Groups;
 using TownCrier.Application.Health;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
@@ -34,6 +35,8 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(ExportUserDataResult))]
 [JsonSerializable(typeof(RegisterDeviceTokenRequest))]
 [JsonSerializable(typeof(RemoveInvalidDeviceTokenRequest))]
+[JsonSerializable(typeof(PlanningApplicationResult))]
+[JsonSerializable(typeof(IReadOnlyList<PlanningApplicationResult>))]
 [JsonSerializable(typeof(SearchPlanningApplicationsResult))]
 [JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]

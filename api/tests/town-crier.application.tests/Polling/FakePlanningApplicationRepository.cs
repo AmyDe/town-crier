@@ -21,6 +21,18 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
         return Task.CompletedTask;
     }
 
+    public Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    {
+        var app = this.store.Values.FirstOrDefault(a => a.Uid == uid);
+        return Task.FromResult(app);
+    }
+
+    public Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
+    {
+        var apps = this.store.Values.Where(a => a.AreaId == authorityId).ToList();
+        return Task.FromResult<IReadOnlyCollection<PlanningApplication>>(apps);
+    }
+
     public Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
         string authorityCode, double latitude, double longitude, double radiusMetres, CancellationToken ct)
     {
