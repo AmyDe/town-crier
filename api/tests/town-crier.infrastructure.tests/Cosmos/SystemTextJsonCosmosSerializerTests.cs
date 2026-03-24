@@ -69,6 +69,24 @@ public sealed class SystemTextJsonCosmosSerializerTests
     }
 
     [Test]
+    public async Task Should_ReturnReadableStream_When_DeserializingAsStream()
+    {
+        // Arrange
+        var original = new Coordinates(51.5074, -0.1278);
+        var inputStream = this.serializer.ToStream(original);
+
+        // Act
+        var resultStream = this.serializer.FromStream<Stream>(inputStream);
+
+        // Assert — stream must not be disposed and must be readable
+        await Assert.That(resultStream.CanRead).IsTrue();
+
+        using var reader = new StreamReader(resultStream);
+        var json = await reader.ReadToEndAsync();
+        await Assert.That(json).Contains("\"latitude\"");
+    }
+
+    [Test]
     public async Task Should_UseCamelCasePropertyNames_When_Serializing()
     {
         // Arrange

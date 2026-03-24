@@ -15,13 +15,13 @@ public sealed class SystemTextJsonCosmosSerializer : CosmosSerializer
 
     public override T FromStream<T>(Stream stream)
     {
+        if (typeof(Stream).IsAssignableFrom(typeof(T)))
+        {
+            return (T)(object)stream;
+        }
+
         using (stream)
         {
-            if (typeof(Stream).IsAssignableFrom(typeof(T)))
-            {
-                return (T)(object)stream;
-            }
-
             return JsonSerializer.Deserialize<T>(stream, this.options)!;
         }
     }
