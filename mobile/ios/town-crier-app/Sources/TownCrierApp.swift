@@ -31,6 +31,10 @@ struct TownCrierApp: App {
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
         let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
         let onboardingRepository = UserDefaultsOnboardingRepository()
+        let notificationService = CompositeNotificationService(
+            permissionProvider: UNNotificationPermissionProvider(),
+            apiService: APINotificationService(apiClient: apiClient)
+        )
 
         let appCoordinator = AppCoordinator(
             repository: repository,
@@ -39,6 +43,7 @@ struct TownCrierApp: App {
             geocoder: geocoder,
             watchZoneRepository: watchZoneRepository,
             onboardingRepository: onboardingRepository,
+            notificationService: notificationService,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )

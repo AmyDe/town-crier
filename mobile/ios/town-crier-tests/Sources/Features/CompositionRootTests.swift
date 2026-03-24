@@ -24,6 +24,10 @@ struct CompositionRootTests {
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         let repository = APIPlanningApplicationRepository(apiClient: apiClient)
         let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+        let notificationService = CompositeNotificationService(
+            permissionProvider: SpyNotificationPermissionProvider(),
+            apiService: APINotificationService(apiClient: apiClient)
+        )
 
         let coordinator = AppCoordinator(
             repository: repository,
@@ -31,6 +35,7 @@ struct CompositionRootTests {
             subscriptionService: subscriptionService,
             geocoder: geocoder,
             onboardingRepository: onboardingRepository,
+            notificationService: notificationService,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )
