@@ -17,6 +17,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */mobile/ios/*.swift ]] || exit 0; lint=$(cd mobile/ios && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint \"$f\" --quiet 2>/dev/null | grep \"^$f:\"); [ -z \"$lint\" ] && exit 0; jq -n --arg ctx \"SwiftLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Running SwiftLint..."
+          }
+        ]
+      }
     ]
   }
 }

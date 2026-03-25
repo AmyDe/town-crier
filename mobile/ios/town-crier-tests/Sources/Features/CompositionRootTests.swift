@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import TownCrierData
 import TownCrierDomain
@@ -13,17 +14,29 @@ import TownCrierDomain
 struct CompositionRootTests {
 
     @Test func allConcreteDependenciesInitialise() {
-        let repository = InMemoryPlanningApplicationRepository()
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
-        let versionConfigService = StubVersionConfigService()
+        // swiftlint:disable:next force_unwrapping
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
+        let onboardingRepository = UserDefaultsOnboardingRepository()
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
+        let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+        let notificationService = CompositeNotificationService(
+            permissionProvider: SpyNotificationPermissionProvider(),
+            apiService: APINotificationService(apiClient: apiClient)
+        )
 
         let coordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            geocoder: geocoder,
+            onboardingRepository: onboardingRepository,
+            notificationService: notificationService,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )
@@ -45,6 +58,63 @@ struct CompositionRootTests {
         #expect(!forceUpdateViewModel.requiresUpdate)
     }
 
+    @Test func coordinatorReportsOnboardingStateFromConcreteRepository() {
+        let suiteName = "test-onboarding-\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: "isOnboardingComplete")
+        let onboardingRepo = UserDefaultsOnboardingRepository(defaults: defaults)
+
+        let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
+        // swiftlint:disable:next force_unwrapping
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+
+        let coordinator = AppCoordinator(
+            repository: APIPlanningApplicationRepository(apiClient: apiClient),
+            authService: authService,
+            subscriptionService: StoreKitSubscriptionService(),
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+            watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+            onboardingRepository: onboardingRepo,
+            appVersionProvider: BundleAppVersionProvider(),
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+        )
+
+        #expect(coordinator.isOnboardingComplete)
+    }
+
+    @Test func offlineAwareRepositoryWiresWithConcreteTypes() throws {
+        let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
+        let apiBaseURL = try #require(URL(string: "https://api.towncrierapp.uk"))
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
+        let connectivity = NWPathConnectivityMonitor()
+        let cache = InMemoryApplicationCacheStore()
+        let offlineRepository = OfflineAwareRepository(
+            remote: repository,
+            cache: cache,
+            connectivity: connectivity
+        )
+
+        let coordinator = AppCoordinator(
+            repository: repository,
+            authService: authService,
+            subscriptionService: StoreKitSubscriptionService(),
+            offlineRepository: offlineRepository,
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+            onboardingRepository: UserDefaultsOnboardingRepository(),
+            appVersionProvider: BundleAppVersionProvider(),
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+        )
+
+        #expect(coordinator.detailApplication == nil)
+    }
+
     @Test func metricKitCrashReporterInitialises() {
         let reporter = MetricKitCrashReporter()
         reporter.start()
@@ -54,12 +124,18 @@ struct CompositionRootTests {
 
     private func makeCoordinator() -> AppCoordinator {
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
+        let authService = Auth0AuthenticationService(config: auth0Config)
+        // swiftlint:disable:next force_unwrapping
+        let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         return AppCoordinator(
-            repository: InMemoryPlanningApplicationRepository(),
-            authService: Auth0AuthenticationService(config: auth0Config),
+            repository: APIPlanningApplicationRepository(apiClient: apiClient),
+            authService: authService,
             subscriptionService: StoreKitSubscriptionService(),
+            geocoder: APIPostcodeGeocoder(apiClient: apiClient),
+            onboardingRepository: UserDefaultsOnboardingRepository(),
             appVersionProvider: BundleAppVersionProvider(),
-            versionConfigService: StubVersionConfigService()
+            versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
         )
     }
 }

@@ -93,12 +93,18 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
     private static func displayValues(for status: ApplicationStatus) -> (label: String, icon: String) {
         switch status {
-        case .underReview: ("Pending", "clock")
-        case .approved: ("Approved", "checkmark.circle")
-        case .refused: ("Refused", "xmark.circle")
-        case .withdrawn: ("Withdrawn", "arrow.uturn.backward.circle")
-        case .appealed: ("Appealed", "exclamationmark.triangle")
-        case .unknown: ("Unknown", "questionmark.circle")
+        case .underReview:
+            ("Pending", "clock")
+        case .approved:
+            ("Approved", "checkmark.circle")
+        case .refused:
+            ("Refused", "xmark.circle")
+        case .withdrawn:
+            ("Withdrawn", "arrow.uturn.backward.circle")
+        case .appealed:
+            ("Appealed", "exclamationmark.triangle")
+        case .unknown:
+            ("Unknown", "questionmark.circle")
         }
     }
 

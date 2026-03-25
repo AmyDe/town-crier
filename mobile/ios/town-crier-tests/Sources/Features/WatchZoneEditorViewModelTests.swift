@@ -165,9 +165,9 @@ struct WatchZoneEditorEditTests {
         #expect(saved?.id == WatchZoneId("zone-001"))
     }
 
-    @Test func submitPostcode_updatesCoordinateForNewPostcode() async {
+    @Test func submitPostcode_updatesCoordinateForNewPostcode() async throws {
         sut.postcodeInput = "SW1A 1AA"
-        let london = try! Coordinate(latitude: 51.5014, longitude: -0.1419)
+        let london = try Coordinate(latitude: 51.5014, longitude: -0.1419)
         spyGeocoder.geocodeResult = .success(london)
 
         await sut.submitPostcode()

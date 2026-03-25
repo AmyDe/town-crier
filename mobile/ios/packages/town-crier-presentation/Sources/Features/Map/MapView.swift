@@ -107,23 +107,35 @@ public struct MapView: View {
 
     private func pinColor(for status: StatusColor) -> Color {
         switch status {
-        case .pending: return .tcStatusPending
-        case .approved: return .tcStatusApproved
-        case .refused: return .tcStatusRefused
-        case .withdrawn: return .tcStatusWithdrawn
-        case .appealed: return .tcStatusAppealed
-        case .unknown: return .tcTextTertiary
+        case .pending:
+            return .tcStatusPending
+        case .approved:
+            return .tcStatusApproved
+        case .refused:
+            return .tcStatusRefused
+        case .withdrawn:
+            return .tcStatusWithdrawn
+        case .appealed:
+            return .tcStatusAppealed
+        case .unknown:
+            return .tcTextTertiary
         }
     }
 
     private func statusLabel(for status: StatusColor) -> String {
         switch status {
-        case .pending: return "Pending"
-        case .approved: return "Approved"
-        case .refused: return "Refused"
-        case .withdrawn: return "Withdrawn"
-        case .appealed: return "Appealed"
-        case .unknown: return "Unknown"
+        case .pending:
+            return "Pending"
+        case .approved:
+            return "Approved"
+        case .refused:
+            return "Refused"
+        case .withdrawn:
+            return "Withdrawn"
+        case .appealed:
+            return "Appealed"
+        case .unknown:
+            return "Unknown"
         }
     }
 

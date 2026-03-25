@@ -16,6 +16,7 @@ using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.VersionConfig;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Groups;
 using TownCrier.Domain.Polling;
@@ -57,6 +58,13 @@ builder.Services.AddHttpClient<IPostcodeGeocoder, PostcodesIoGeocoder>(client =>
     client.BaseAddress = new Uri(postcodesIoBaseUrl);
 });
 builder.Services.AddTransient<GeocodePostcodeQueryHandler>();
+builder.Services.AddSingleton<IAuthorityResolver>(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = factory.CreateClient("PostcodesIoResolver");
+    httpClient.BaseAddress = new Uri(postcodesIoBaseUrl);
+    return new PostcodesIoAuthorityResolver(httpClient, sp.GetRequiredService<IAuthorityProvider>());
+});
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
 var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
@@ -112,12 +120,17 @@ builder.Services.AddTransient<ExportUserDataQueryHandler>();
 builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
 builder.Services.AddTransient<UpdateZonePreferencesCommandHandler>();
 builder.Services.AddTransient<GetZonePreferencesQueryHandler>();
+builder.Services.AddTransient<CreateWatchZoneCommandHandler>();
+builder.Services.AddTransient<ListWatchZonesQueryHandler>();
+builder.Services.AddTransient<DeleteWatchZoneCommandHandler>();
 
 builder.Services.AddSingleton<IDeviceRegistrationRepository>(sp =>
     new CosmosDeviceRegistrationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
 builder.Services.AddTransient<RegisterDeviceTokenCommandHandler>();
 builder.Services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
+builder.Services.AddTransient<GetApplicationByUidQueryHandler>();
+builder.Services.AddTransient<GetApplicationsByAuthorityQueryHandler>();
 builder.Services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
 builder.Services.AddSingleton<INotificationRepository>(sp =>
@@ -175,6 +188,9 @@ var v1 = app.MapGroup("/v1");
 v1.MapGet("/health", () => CheckHealthQueryHandler.HandleAsync(new CheckHealthQuery(), CancellationToken.None))
     .AllowAnonymous();
 
+v1.MapGet("/version-config", () => GetVersionConfigQueryHandler.HandleAsync(new GetVersionConfigQuery(), CancellationToken.None))
+    .AllowAnonymous();
+
 v1.MapGet("/designations", async (
     double latitude,
     double longitude,
@@ -203,6 +219,26 @@ v1.MapGet("/authorities/{id:int}", async (
     var result = await handler.HandleAsync(new GetAuthorityByIdQuery(id), ct).ConfigureAwait(false);
     return result is null ? Results.NotFound() : Results.Ok(result);
 }).AllowAnonymous();
+
+v1.MapGet("/applications", async (
+    int authorityId,
+    GetApplicationsByAuthorityQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(
+        new GetApplicationsByAuthorityQuery(authorityId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapGet("/applications/{uid}", async (
+    string uid,
+    GetApplicationByUidQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var result = await handler.HandleAsync(
+        new GetApplicationByUidQuery(uid), ct).ConfigureAwait(false);
+    return result is null ? Results.NotFound() : Results.Ok(result);
+});
 
 v1.MapGet("/geocode/{postcode}", async (string postcode, GeocodePostcodeQueryHandler handler, CancellationToken ct) =>
 {
@@ -351,6 +387,55 @@ v1.MapGet("/me/saved-applications", async (
     var userId = user.FindFirstValue("sub")!;
     var result = await handler.HandleAsync(new GetSavedApplicationsQuery(userId), ct).ConfigureAwait(false);
     return Results.Ok(result);
+});
+
+v1.MapPost("/me/watch-zones", async (
+    ClaimsPrincipal user,
+    CreateWatchZoneCommand command,
+    CreateWatchZoneCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var fullCommand = new CreateWatchZoneCommand(
+        userId,
+        command.ZoneId,
+        command.Name,
+        command.Latitude,
+        command.Longitude,
+        command.RadiusMetres,
+        command.AuthorityId);
+    var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
+    return Results.Created($"/v1/me/watch-zones/{command.ZoneId}", result);
+});
+
+v1.MapGet("/me/watch-zones", async (
+    ClaimsPrincipal user,
+    ListWatchZonesQueryHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+    var result = await handler.HandleAsync(new ListWatchZonesQuery(userId), ct).ConfigureAwait(false);
+    return Results.Ok(result);
+});
+
+v1.MapDelete("/me/watch-zones/{zoneId}", async (
+    ClaimsPrincipal user,
+    string zoneId,
+    DeleteWatchZoneCommandHandler handler,
+    CancellationToken ct) =>
+{
+    var userId = user.FindFirstValue("sub")!;
+
+    try
+    {
+        await handler.HandleAsync(
+            new DeleteWatchZoneCommand(userId, zoneId), ct).ConfigureAwait(false);
+        return Results.NoContent();
+    }
+    catch (WatchZoneNotFoundException)
+    {
+        return Results.NotFound();
+    }
 });
 
 v1.MapGet("/me/watch-zones/{zoneId}/preferences", async (

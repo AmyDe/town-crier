@@ -32,12 +32,18 @@ public struct MapAnnotationItem: Identifiable, Sendable {
 
     private static func color(for status: ApplicationStatus) -> StatusColor {
         switch status {
-        case .underReview: return .pending
-        case .approved: return .approved
-        case .refused: return .refused
-        case .withdrawn: return .withdrawn
-        case .appealed: return .appealed
-        case .unknown: return .unknown
+        case .underReview:
+            return .pending
+        case .approved:
+            return .approved
+        case .refused:
+            return .refused
+        case .withdrawn:
+            return .withdrawn
+        case .appealed:
+            return .appealed
+        case .unknown:
+            return .unknown
         }
     }
 }

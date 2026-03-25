@@ -25,6 +25,23 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         this.zones.RemoveAll(z => z.Id == zoneId);
     }
 
+    public Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var matching = this.zones.Where(z => z.UserId == userId).ToList();
+        return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
+    }
+
+    public Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        var removed = this.zones.RemoveAll(z => z.Id == zoneId && z.UserId == userId);
+        if (removed == 0)
+        {
+            throw new WatchZoneNotFoundException();
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
     {
         var authorityIds = this.zones

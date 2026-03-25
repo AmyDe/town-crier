@@ -1,6 +1,8 @@
 import Foundation
 import TownCrierDomain
 
+// swiftlint:disable force_try
+
 extension PlanningApplication {
     static let pendingReview = PlanningApplication(
         id: PlanningApplicationId("APP-001"),

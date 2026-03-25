@@ -16,14 +16,6 @@ struct TownCrierApp: App {
     private let notificationDelegate: NotificationDelegate
 
     init() {
-        #if DEBUG
-        let repository = InMemoryPlanningApplicationRepository(
-            applications: SampleData.applications
-        )
-        #else
-        let repository = InMemoryPlanningApplicationRepository()
-        #endif
-
         let auth0Config = Auth0Config(
             clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
             domain: "towncrierapp.uk.auth0.com"
@@ -32,12 +24,34 @@ struct TownCrierApp: App {
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
-        let versionConfigService = StubVersionConfigService()
+        let apiBaseURL = APIEnvironment.current.baseURL
+        let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
+        let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+        let repository = APIPlanningApplicationRepository(apiClient: apiClient)
+        let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+        let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
+        let onboardingRepository = UserDefaultsOnboardingRepository()
+        let notificationService = CompositeNotificationService(
+            permissionProvider: UNNotificationPermissionProvider(),
+            apiService: APINotificationService(apiClient: apiClient)
+        )
+        let connectivityMonitor = NWPathConnectivityMonitor()
+        let cacheStore = InMemoryApplicationCacheStore()
+        let offlineRepository = OfflineAwareRepository(
+            remote: repository,
+            cache: cacheStore,
+            connectivity: connectivityMonitor
+        )
 
         let appCoordinator = AppCoordinator(
             repository: repository,
             authService: authService,
             subscriptionService: subscriptionService,
+            offlineRepository: offlineRepository,
+            geocoder: geocoder,
+            watchZoneRepository: watchZoneRepository,
+            onboardingRepository: onboardingRepository,
+            notificationService: notificationService,
             appVersionProvider: appVersionProvider,
             versionConfigService: versionConfigService
         )
@@ -59,6 +73,7 @@ struct TownCrierApp: App {
         let listVM = appCoordinator.makeApplicationListViewModel(
             authority: LocalAuthority(code: "", name: "")
         )
+        // swiftlint:disable force_try
         let mapVM = appCoordinator.makeMapViewModel(
             watchZone: try! WatchZone(
                 postcode: try! Postcode("SW1A 1AA"),
@@ -66,6 +81,7 @@ struct TownCrierApp: App {
                 radiusMetres: 1000
             )
         )
+        // swiftlint:enable force_try
         #endif
 
         _applicationListViewModel = StateObject(wrappedValue: listVM)

@@ -10,6 +10,7 @@ enum SampleData {
         let now = Date()
 
         func daysAgo(_ days: Int) -> Date {
+            // swiftlint:disable:next force_unwrapping
             calendar.date(byAdding: .day, value: -days, to: now)!
         }
 
@@ -34,6 +35,7 @@ enum SampleData {
                 authority: camden,
                 status: .approved,
                 receivedDate: daysAgo(45),
+                // swiftlint:disable:next line_length
                 description: "Change of use from retail (Class E) to restaurant (Sui Generis) with extraction flue to rear",
                 address: "87 Kentish Town Road, London NW1 8NY",
                 location: try? Coordinate(latitude: 51.5475, longitude: -0.1420),
@@ -78,6 +80,7 @@ enum SampleData {
                 authority: camden,
                 status: .approved,
                 receivedDate: daysAgo(60),
+                // swiftlint:disable:next line_length
                 description: "Listed building consent for internal alterations including removal of non-original partition walls and installation of new kitchen",
                 address: "12 Church Row, Hampstead, London NW3 6UP",
                 location: try? Coordinate(latitude: 51.5575, longitude: -0.1775),
@@ -122,6 +125,7 @@ enum SampleData {
                 authority: camden,
                 status: .underReview,
                 receivedDate: daysAgo(2),
+                // swiftlint:disable:next line_length
                 description: "Construction of basement level beneath existing garden for use as home gym and cinema room",
                 address: "8 Nassington Road, London NW3 2TY",
                 location: try? Coordinate(latitude: 51.5635, longitude: -0.1540),
@@ -134,9 +138,12 @@ enum SampleData {
     }()
 
     static let watchZone: WatchZone = {
+        // swiftlint:disable force_try
         let centre = try! Coordinate(latitude: 51.5550, longitude: -0.1450)
         let postcode = try! Postcode("NW5 1SU")
-        return try! WatchZone(postcode: postcode, centre: centre, radiusMetres: 2000)
+        let zone = try! WatchZone(postcode: postcode, centre: centre, radiusMetres: 2000)
+        // swiftlint:enable force_try
+        return zone
     }()
 }
 #endif

@@ -7,9 +7,12 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Groups;
 using TownCrier.Application.Health;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.VersionConfig;
+using TownCrier.Application.WatchZones;
 
 namespace TownCrier.Web;
 
@@ -34,10 +37,16 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(ExportUserDataResult))]
 [JsonSerializable(typeof(RegisterDeviceTokenRequest))]
 [JsonSerializable(typeof(RemoveInvalidDeviceTokenRequest))]
+[JsonSerializable(typeof(PlanningApplicationResult))]
+[JsonSerializable(typeof(IReadOnlyList<PlanningApplicationResult>))]
 [JsonSerializable(typeof(SearchPlanningApplicationsResult))]
 [JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]
+[JsonSerializable(typeof(CreateWatchZoneCommand))]
+[JsonSerializable(typeof(CreateWatchZoneResult))]
+[JsonSerializable(typeof(ListWatchZonesResult))]
 [JsonSerializable(typeof(UpdateZonePreferencesCommand))]
 [JsonSerializable(typeof(UpdateZonePreferencesResult))]
 [JsonSerializable(typeof(GetZonePreferencesResult))]
+[JsonSerializable(typeof(GetVersionConfigResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;

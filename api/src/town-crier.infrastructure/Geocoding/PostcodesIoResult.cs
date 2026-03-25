@@ -12,4 +12,7 @@ internal sealed class PostcodesIoResult
 
     [JsonPropertyName("longitude")]
     public double Longitude { get; set; }
+
+    [JsonPropertyName("admin_district")]
+    public string? AdminDistrict { get; set; }
 }

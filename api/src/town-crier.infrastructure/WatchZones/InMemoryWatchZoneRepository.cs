@@ -16,6 +16,24 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var matching = this.zones.Values.Where(z => z.UserId == userId).ToList();
+        return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
+    }
+
+    public Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        var key = this.zones.Keys.FirstOrDefault(k => this.zones[k].Id == zoneId && this.zones[k].UserId == userId);
+        if (key is null)
+        {
+            throw new WatchZoneNotFoundException();
+        }
+
+        this.zones.TryRemove(key, out _);
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {

@@ -12,7 +12,10 @@ struct SettingsViewModelTests {
         entitlement: SubscriptionEntitlement? = nil,
         version: String = "1.0.0",
         buildNumber: String = "42"
-    ) -> (SettingsViewModel, SpyAuthenticationService, SpySubscriptionService, SpyAppVersionProvider) {
+    ) -> (
+        SettingsViewModel, SpyAuthenticationService, SpySubscriptionService,
+        SpyAppVersionProvider, SpyNotificationService
+    ) {
         let authSpy = SpyAuthenticationService()
         authSpy.currentSessionResult = session
         let subscriptionSpy = SpySubscriptionService()
@@ -20,18 +23,20 @@ struct SettingsViewModelTests {
         let versionProvider = SpyAppVersionProvider()
         versionProvider.version = version
         versionProvider.buildNumber = buildNumber
+        let notificationSpy = SpyNotificationService()
         let vm = SettingsViewModel(
             authService: authSpy,
             subscriptionService: subscriptionSpy,
-            appVersionProvider: versionProvider
+            appVersionProvider: versionProvider,
+            notificationService: notificationSpy
         )
-        return (vm, authSpy, subscriptionSpy, versionProvider)
+        return (vm, authSpy, subscriptionSpy, versionProvider, notificationSpy)
     }
 
     // MARK: - Loading
 
     @Test func load_populatesUserEmailFromSession() async {
-        let (sut, _, _, _) = makeSUT(session: .valid)
+        let (sut, _, _, _, _) = makeSUT(session: .valid)
 
         await sut.load()
 
@@ -39,7 +44,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_populatesUserNameFromSession() async {
-        let (sut, _, _, _) = makeSUT(session: .valid)
+        let (sut, _, _, _, _) = makeSUT(session: .valid)
 
         await sut.load()
 
@@ -47,7 +52,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_populatesAuthMethodFromSession() async {
-        let (sut, _, _, _) = makeSUT(session: .valid)
+        let (sut, _, _, _, _) = makeSUT(session: .valid)
 
         await sut.load()
 
@@ -55,7 +60,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_noSession_leavesUserFieldsNil() async {
-        let (sut, _, _, _) = makeSUT(session: nil)
+        let (sut, _, _, _, _) = makeSUT(session: nil)
 
         await sut.load()
 
@@ -65,7 +70,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_populatesSubscriptionTier() async {
-        let (sut, _, _, _) = makeSUT(entitlement: .personalActive)
+        let (sut, _, _, _, _) = makeSUT(entitlement: .personalActive)
 
         await sut.load()
 
@@ -73,7 +78,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_noEntitlement_showsFreeTier() async {
-        let (sut, _, _, _) = makeSUT(entitlement: nil)
+        let (sut, _, _, _, _) = makeSUT(entitlement: nil)
 
         await sut.load()
 
@@ -81,7 +86,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func load_trialEntitlement_showsTrialFlag() async {
-        let (sut, _, _, _) = makeSUT(entitlement: .personalTrial)
+        let (sut, _, _, _, _) = makeSUT(entitlement: .personalTrial)
 
         await sut.load()
 
@@ -91,7 +96,7 @@ struct SettingsViewModelTests {
     // MARK: - App Version
 
     @Test func appVersion_returnsVersionFromProvider() {
-        let (sut, _, _, _) = makeSUT(version: "2.1.0", buildNumber: "99")
+        let (sut, _, _, _, _) = makeSUT(version: "2.1.0", buildNumber: "99")
 
         #expect(sut.appVersion == "2.1.0 (99)")
     }
@@ -99,7 +104,7 @@ struct SettingsViewModelTests {
     // MARK: - Logout
 
     @Test func logout_callsAuthService() async {
-        let (sut, authSpy, _, _) = makeSUT()
+        let (sut, authSpy, _, _, _) = makeSUT()
 
         await sut.logout()
 
@@ -107,7 +112,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func logout_clearsSession() async {
-        let (sut, _, _, _) = makeSUT()
+        let (sut, _, _, _, _) = makeSUT()
         await sut.load()
         #expect(sut.userEmail != nil)
 
@@ -118,7 +123,7 @@ struct SettingsViewModelTests {
 
     @Test func logout_notifiesCoordinator() async {
         var logoutCalled = false
-        let (sut, _, _, _) = makeSUT()
+        let (sut, _, _, _, _) = makeSUT()
         sut.onLogout = { logoutCalled = true }
 
         await sut.logout()
@@ -127,7 +132,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func logout_setsErrorOnFailure() async {
-        let (sut, authSpy, _, _) = makeSUT()
+        let (sut, authSpy, _, _, _) = makeSUT()
         authSpy.logoutResult = .failure(DomainError.logoutFailed("network"))
 
         await sut.logout()
@@ -138,7 +143,7 @@ struct SettingsViewModelTests {
     // MARK: - Account Deletion
 
     @Test func deleteAccount_requiresConfirmation() async {
-        let (sut, authSpy, _, _) = makeSUT()
+        let (sut, authSpy, _, _, _) = makeSUT()
 
         #expect(!sut.isShowingDeleteConfirmation)
 
@@ -149,7 +154,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func confirmDeleteAccount_callsAuthService() async {
-        let (sut, authSpy, _, _) = makeSUT()
+        let (sut, authSpy, _, _, _) = makeSUT()
         sut.requestAccountDeletion()
 
         await sut.confirmDeleteAccount()
@@ -159,7 +164,7 @@ struct SettingsViewModelTests {
 
     @Test func confirmDeleteAccount_clearsSessionAndNotifies() async {
         var logoutCalled = false
-        let (sut, _, _, _) = makeSUT()
+        let (sut, _, _, _, _) = makeSUT()
         sut.onLogout = { logoutCalled = true }
         await sut.load()
         sut.requestAccountDeletion()
@@ -171,7 +176,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func confirmDeleteAccount_setsErrorOnFailure() async {
-        let (sut, authSpy, _, _) = makeSUT()
+        let (sut, authSpy, _, _, _) = makeSUT()
         authSpy.deleteAccountResult = .failure(DomainError.unexpected("deletion failed"))
         sut.requestAccountDeletion()
 
@@ -181,7 +186,7 @@ struct SettingsViewModelTests {
     }
 
     @Test func cancelDeletion_dismissesConfirmation() {
-        let (sut, _, _, _) = makeSUT()
+        let (sut, _, _, _, _) = makeSUT()
         sut.requestAccountDeletion()
         #expect(sut.isShowingDeleteConfirmation)
 
@@ -190,10 +195,41 @@ struct SettingsViewModelTests {
         #expect(!sut.isShowingDeleteConfirmation)
     }
 
+    // MARK: - Device Token Removal on Logout
+
+    @Test func logout_callsRemoveDeviceToken() async {
+        let (sut, _, _, _, notificationSpy) = makeSUT()
+
+        await sut.logout()
+
+        #expect(notificationSpy.removeDeviceTokenCallCount == 1)
+    }
+
+    @Test func logout_succeedsWhenDeviceTokenRemovalFails() async {
+        var logoutCalled = false
+        let (sut, _, _, _, notificationSpy) = makeSUT()
+        notificationSpy.removeDeviceTokenResult = .failure(DomainError.networkUnavailable)
+        sut.onLogout = { logoutCalled = true }
+
+        await sut.logout()
+
+        #expect(logoutCalled)
+        #expect(sut.error == nil)
+    }
+
+    @Test func confirmDeleteAccount_callsRemoveDeviceToken() async {
+        let (sut, _, _, _, notificationSpy) = makeSUT()
+        sut.requestAccountDeletion()
+
+        await sut.confirmDeleteAccount()
+
+        #expect(notificationSpy.removeDeviceTokenCallCount == 1)
+    }
+
     // MARK: - Attribution
 
     @Test func attributionItems_containsExpectedSources() {
-        let (sut, _, _, _) = makeSUT()
+        let (sut, _, _, _, _) = makeSUT()
 
         let items = sut.attributionItems
         #expect(items.count == 4)
