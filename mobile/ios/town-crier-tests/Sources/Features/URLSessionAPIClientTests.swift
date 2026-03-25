@@ -19,7 +19,7 @@ private struct TestBody: Codable, Sendable {
 @Suite("URLSessionAPIClient")
 struct URLSessionAPIClientTests {
     // swiftlint:disable:next force_unwrapping
-    private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
+    private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
 
     // MARK: - Authenticated requests
 
@@ -45,7 +45,7 @@ struct URLSessionAPIClientTests {
         #expect(transport.requests.count == 1)
         let request = transport.requests[0]
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
-        #expect(request.url?.absoluteString == "https://api.dev.towncrierapp.uk/applications")
+        #expect(request.url?.absoluteString == "https://api-dev.towncrierapp.uk/applications")
         #expect(request.httpMethod == "GET")
     }
 

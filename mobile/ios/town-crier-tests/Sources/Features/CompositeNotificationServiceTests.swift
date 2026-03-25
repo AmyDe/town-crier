@@ -5,7 +5,7 @@ import TownCrierDomain
 
 @Suite("CompositeNotificationService")
 struct CompositeNotificationServiceTests {
-    private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")
+    private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")
 
     private func makeSUT() throws -> (
         CompositeNotificationService, SpyNotificationPermissionProvider, StubHTTPTransport

@@ -6,7 +6,7 @@ import TownCrierDomain
 @Suite("APINotificationService")
 struct APINotificationServiceTests {
     // swiftlint:disable:next force_unwrapping
-    private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
+    private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
 
     private func makeTransport(
         statusCode: Int = 204,

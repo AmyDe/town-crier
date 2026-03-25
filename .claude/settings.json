@@ -14,6 +14,12 @@
             "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+push' && { branch=$(git rev-parse --abbrev-ref HEAD); if [ \"$branch\" = \"main\" ]; then echo '{\"decision\":\"block\",\"reason\":\"You are on the main branch. Do NOT push directly to main. Instead: 1) Create a new feature branch with git checkout -b <descriptive-branch-name>, 2) Push that branch with git push -u origin <branch-name>, 3) Create a PR using gh pr create.\"}'; fi; } || true",
             "timeout": 10,
             "statusMessage": "Checking branch protection..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] && exit 0; lint=$(cd \"$root/mobile/ios\" && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2>/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] && exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
+            "timeout": 30,
+            "statusMessage": "SwiftLint pre-commit check..."
           }
         ]
       }
