@@ -5,7 +5,7 @@ description: Automate the push-to-main flow when you have local commits and/or u
 
 # Ship to Main
 
-Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the flow: branch, push, create PR, then ask the user whether to wait for checks or leave the PR open.
+Route local work on `main` through a PR, because direct pushes to main are blocked by branch protection and a local pre-push hook. This skill handles the flow: branch, push, create PR, wait for checks, and merge — fully hands-off by default.
 
 ## Workflow
 
@@ -70,23 +70,17 @@ EOF
 
 **PR body:** List each commit as a bullet point under "## Changes".
 
-### Step 6: Ask user about merge strategy
+### Step 6: Default to wait mode
 
-**NEVER merge the PR immediately.** The PR gate checks and CodeRabbit review must complete first. Present the PR URL and ask:
+**NEVER merge the PR immediately.** The PR gate checks and CodeRabbit review must complete first.
+
+**Default behavior:** Report the PR URL and proceed straight to Step 7 (wait for checks, then merge). Do not ask — just do it. The user expects to walk away after typing "ship it".
 
 > PR created: <url>
 >
-> The PR gate checks and CodeRabbit review are running. Would you like me to:
-> 1. **Wait** for checks and review, then merge
-> 2. **Leave it open** for you to merge later
+> Waiting for checks and CodeRabbit review before merging...
 
-**If the user chooses to leave it open:**
-
-Report the PR URL and stop. Do not proceed further. Do not merge. Do not clean up branches. The skill ends here.
-
-**If the user chooses to wait:**
-
-Proceed to Step 7.
+**Exception:** If the user explicitly says "leave it open", "don't merge", or similar — report the PR URL and stop. Do not proceed further. Do not merge. Do not clean up branches. The skill ends here.
 
 ### Step 7: Wait for checks and CodeRabbit review
 
@@ -107,29 +101,20 @@ gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
 
 **If CodeRabbit has suggestions or comments:**
 
-Summarise the suggestions concisely for the user and ask what they'd like to do:
+**Default behavior:** Create a bead tracking the suggestions, then proceed to merge. Do not ask — the user expects hands-off operation. Summarise what CodeRabbit flagged in the output so the user sees it when they return:
 
-> CodeRabbit flagged the following:
+> CodeRabbit flagged the following (tracked in bead <id>):
 > - <brief summary of each suggestion>
 >
-> How would you like to proceed?
-> 1. **Merge anyway** — suggestions are minor or not applicable
-> 2. **Create a bead** — track the suggestions as follow-up work, then merge
-> 3. **Leave the PR open** — review the suggestions yourself first
+> Merging...
 
-**CRITICAL: NEVER fix CodeRabbit suggestions within this skill.** Do not edit code, do not push additional commits. This skill ships work — it does not do development. If the user wants fixes, they should do that in a separate session and re-ship.
-
-- If the user chooses **merge anyway**: proceed to Step 8.
-- If the user chooses **create a bead**: create a bead with `bd create` summarising the CodeRabbit suggestions, then proceed to Step 8.
-- If the user chooses **leave it open**: report the PR URL and stop. The skill ends here.
+**CRITICAL: NEVER fix CodeRabbit suggestions within this skill.** Do not edit code, do not push additional commits. This skill ships work — it does not do development.
 
 **If CodeRabbit has no suggestions (or approved without comments):**
 
 Proceed directly to Step 8.
 
 ### Step 8: Merge and clean up
-
-Only reach this step if the user chose to merge.
 
 ```bash
 gh pr merge --squash --delete-branch
