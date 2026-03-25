@@ -5,7 +5,7 @@ public enum APIEnvironment: Equatable, Sendable {
     case production
 
     // swiftlint:disable:next force_unwrapping
-    private static let developmentURL = URL(string: "https://api.dev.towncrierapp.uk")!
+    private static let developmentURL = URL(string: "https://api-dev.towncrierapp.uk")!
     // swiftlint:disable:next force_unwrapping
     private static let productionURL = URL(string: "https://api.towncrierapp.uk")!
 
