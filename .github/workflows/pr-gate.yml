@@ -134,6 +134,9 @@ jobs:
           path: mobile/ios/.build
           key: spm-${{ runner.os }}-${{ hashFiles('mobile/ios/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
+      - run: brew install xcodegen
+      - run: xcodegen generate
+        working-directory: mobile/ios
       - run: >
           xcodebuild build
           -project TownCrier.xcodeproj
