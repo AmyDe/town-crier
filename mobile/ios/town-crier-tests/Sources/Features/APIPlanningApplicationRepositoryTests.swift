@@ -9,6 +9,7 @@ struct APIPlanningApplicationRepositoryTests {
 
     // MARK: - Helpers
 
+    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
 
     private func makeSUT(
@@ -27,6 +28,7 @@ struct APIPlanningApplicationRepositoryTests {
         return (sut, authService, transport)
     }
 
+    // swiftlint:disable force_unwrapping
     private func httpResponse(statusCode: Int) -> HTTPURLResponse {
         HTTPURLResponse(
             url: baseURL,
@@ -35,6 +37,7 @@ struct APIPlanningApplicationRepositoryTests {
             headerFields: nil
         )!
     }
+    // swiftlint:enable force_unwrapping
 
     // MARK: - fetchApplications
 
@@ -51,7 +54,7 @@ struct APIPlanningApplicationRepositoryTests {
         #expect(transport.requests.count == 1)
         let request = transport.requests[0]
         #expect(request.httpMethod == "GET")
-        let url = request.url!
+        let url = try #require(request.url)
         #expect(url.path().contains("/v1/applications"))
         #expect(url.query()?.contains("authorityId=123") == true)
     }

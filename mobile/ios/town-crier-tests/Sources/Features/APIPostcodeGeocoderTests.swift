@@ -9,6 +9,7 @@ struct APIPostcodeGeocoderTests {
 
     // MARK: - Helpers
 
+    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
 
     private func makeSUT(
@@ -27,6 +28,7 @@ struct APIPostcodeGeocoderTests {
         return (sut, authService, transport)
     }
 
+    // swiftlint:disable force_unwrapping
     private func httpResponse(statusCode: Int) -> HTTPURLResponse {
         HTTPURLResponse(
             url: baseURL,
@@ -35,6 +37,7 @@ struct APIPostcodeGeocoderTests {
             headerFields: nil
         )!
     }
+    // swiftlint:enable force_unwrapping
 
     // MARK: - Success
 

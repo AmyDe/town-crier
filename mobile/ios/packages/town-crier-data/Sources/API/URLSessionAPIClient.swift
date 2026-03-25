@@ -72,10 +72,12 @@ public final class URLSessionAPIClient: Sendable {
         _ endpoint: APIEndpoint,
         accessToken: String
     ) throws -> URLRequest {
-        var components = URLComponents(
+        guard var components = URLComponents(
             url: baseURL.appendingPathComponent(endpoint.path),
             resolvingAgainstBaseURL: false
-        )!
+        ) else {
+            throw APIError.serverError(statusCode: 0, message: "Invalid URL components")
+        }
         if let queryItems = endpoint.queryItems, !queryItems.isEmpty {
             components.queryItems = queryItems
         }

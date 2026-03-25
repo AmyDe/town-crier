@@ -68,12 +68,22 @@ public final class SubscriptionViewModel: ObservableObject {
 
     /// Returns subscription disclosure text for App Store compliance.
     public func subscriptionDisclosure(for product: SubscriptionProduct) -> String {
-        var disclosure =
-            "Your subscription will automatically renew at \(product.displayPrice)/month unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store settings."
+        var disclosure = """
+            Your subscription will automatically renew at \
+            \(product.displayPrice)/month unless cancelled at least \
+            24 hours before the end of the current period. You can \
+            manage or cancel your subscription in your App Store settings.
+            """
 
         if product.hasFreeTrial {
-            disclosure =
-                "Start with a \(product.trialDays)-day free trial. After the trial, your subscription will automatically renew at \(product.displayPrice)/month unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store settings."
+            disclosure = """
+                Start with a \(product.trialDays)-day free trial. \
+                After the trial, your subscription will automatically \
+                renew at \(product.displayPrice)/month unless cancelled \
+                at least 24 hours before the end of the current period. \
+                You can manage or cancel your subscription in your \
+                App Store settings.
+                """
         }
 
         return disclosure

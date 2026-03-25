@@ -12,7 +12,10 @@ struct SettingsViewModelTests {
         entitlement: SubscriptionEntitlement? = nil,
         version: String = "1.0.0",
         buildNumber: String = "42"
-    ) -> (SettingsViewModel, SpyAuthenticationService, SpySubscriptionService, SpyAppVersionProvider, SpyNotificationService) {
+    ) -> (
+        SettingsViewModel, SpyAuthenticationService, SpySubscriptionService,
+        SpyAppVersionProvider, SpyNotificationService
+    ) {
         let authSpy = SpyAuthenticationService()
         authSpy.currentSessionResult = session
         let subscriptionSpy = SpySubscriptionService()

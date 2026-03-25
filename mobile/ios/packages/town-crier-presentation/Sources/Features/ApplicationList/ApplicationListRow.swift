@@ -53,34 +53,52 @@ struct ApplicationListRow: View {
 
     private var statusLabel: String {
         switch application.status {
-        case .underReview: "Pending"
-        case .approved: "Approved"
-        case .refused: "Refused"
-        case .withdrawn: "Withdrawn"
-        case .appealed: "Appealed"
-        case .unknown: "Unknown"
+        case .underReview:
+            "Pending"
+        case .approved:
+            "Approved"
+        case .refused:
+            "Refused"
+        case .withdrawn:
+            "Withdrawn"
+        case .appealed:
+            "Appealed"
+        case .unknown:
+            "Unknown"
         }
     }
 
     private var statusIcon: String {
         switch application.status {
-        case .underReview: "clock"
-        case .approved: "checkmark.circle"
-        case .refused: "xmark.circle"
-        case .withdrawn: "arrow.uturn.backward.circle"
-        case .appealed: "exclamationmark.triangle"
-        case .unknown: "questionmark.circle"
+        case .underReview:
+            "clock"
+        case .approved:
+            "checkmark.circle"
+        case .refused:
+            "xmark.circle"
+        case .withdrawn:
+            "arrow.uturn.backward.circle"
+        case .appealed:
+            "exclamationmark.triangle"
+        case .unknown:
+            "questionmark.circle"
         }
     }
 
     private var statusColor: Color {
         switch application.status {
-        case .underReview: .tcStatusPending
-        case .approved: .tcStatusApproved
-        case .refused: .tcStatusRefused
-        case .withdrawn: .tcStatusWithdrawn
-        case .appealed: .tcStatusAppealed
-        case .unknown: .tcTextTertiary
+        case .underReview:
+            .tcStatusPending
+        case .approved:
+            .tcStatusApproved
+        case .refused:
+            .tcStatusRefused
+        case .withdrawn:
+            .tcStatusWithdrawn
+        case .appealed:
+            .tcStatusAppealed
+        case .unknown:
+            .tcTextTertiary
         }
     }
 }

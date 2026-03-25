@@ -21,5 +21,6 @@ final class StubHTTPTransport: HTTPTransport, @unchecked Sendable {
 }
 
 func httpResponse(url: URL, statusCode: Int) -> HTTPURLResponse {
+    // swiftlint:disable:next force_unwrapping
     HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
 }

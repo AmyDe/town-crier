@@ -7,7 +7,12 @@ public struct APIEndpoint: Sendable {
     public let body: (any Encodable & Sendable)?
     public let queryItems: [URLQueryItem]?
 
-    public init(method: HTTPMethod, path: String, body: (any Encodable & Sendable)? = nil, queryItems: [URLQueryItem]? = nil) {
+    public init(
+        method: HTTPMethod,
+        path: String,
+        body: (any Encodable & Sendable)? = nil,
+        queryItems: [URLQueryItem]? = nil
+    ) {
         self.method = method
         self.path = path
         self.body = body

@@ -18,6 +18,7 @@ struct CompositionRootTests {
         let authService = Auth0AuthenticationService(config: auth0Config)
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
+        // swiftlint:disable:next force_unwrapping
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
         let onboardingRepository = UserDefaultsOnboardingRepository()
@@ -59,6 +60,7 @@ struct CompositionRootTests {
 
     @Test func coordinatorReportsOnboardingStateFromConcreteRepository() {
         let suiteName = "test-onboarding-\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
@@ -67,6 +69,7 @@ struct CompositionRootTests {
 
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
         let authService = Auth0AuthenticationService(config: auth0Config)
+        // swiftlint:disable:next force_unwrapping
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
 
@@ -122,6 +125,7 @@ struct CompositionRootTests {
     private func makeCoordinator() -> AppCoordinator {
         let auth0Config = Auth0Config(clientId: "test-client-id", domain: "test.uk.auth0.com")
         let authService = Auth0AuthenticationService(config: auth0Config)
+        // swiftlint:disable:next force_unwrapping
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         return AppCoordinator(

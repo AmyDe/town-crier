@@ -73,6 +73,7 @@ struct TownCrierApp: App {
         let listVM = appCoordinator.makeApplicationListViewModel(
             authority: LocalAuthority(code: "", name: "")
         )
+        // swiftlint:disable force_try
         let mapVM = appCoordinator.makeMapViewModel(
             watchZone: try! WatchZone(
                 postcode: try! Postcode("SW1A 1AA"),
@@ -80,6 +81,7 @@ struct TownCrierApp: App {
                 radiusMetres: 1000
             )
         )
+        // swiftlint:enable force_try
         #endif
 
         _applicationListViewModel = StateObject(wrappedValue: listVM)

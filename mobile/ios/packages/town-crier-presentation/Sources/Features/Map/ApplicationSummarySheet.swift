@@ -49,34 +49,52 @@ struct ApplicationSummarySheet: View {
 
     private var statusColor: Color {
         switch application.status {
-        case .underReview: return .tcStatusPending
-        case .approved: return .tcStatusApproved
-        case .refused: return .tcStatusRefused
-        case .withdrawn: return .tcStatusWithdrawn
-        case .appealed: return .tcStatusAppealed
-        case .unknown: return .tcTextTertiary
+        case .underReview:
+            return .tcStatusPending
+        case .approved:
+            return .tcStatusApproved
+        case .refused:
+            return .tcStatusRefused
+        case .withdrawn:
+            return .tcStatusWithdrawn
+        case .appealed:
+            return .tcStatusAppealed
+        case .unknown:
+            return .tcTextTertiary
         }
     }
 
     private var statusLabel: String {
         switch application.status {
-        case .underReview: return "Pending"
-        case .approved: return "Approved"
-        case .refused: return "Refused"
-        case .withdrawn: return "Withdrawn"
-        case .appealed: return "Appealed"
-        case .unknown: return "Unknown"
+        case .underReview:
+            return "Pending"
+        case .approved:
+            return "Approved"
+        case .refused:
+            return "Refused"
+        case .withdrawn:
+            return "Withdrawn"
+        case .appealed:
+            return "Appealed"
+        case .unknown:
+            return "Unknown"
         }
     }
 
     private var statusIcon: String {
         switch application.status {
-        case .underReview: return "clock"
-        case .approved: return "checkmark.circle"
-        case .refused: return "xmark.circle"
-        case .withdrawn: return "arrow.uturn.backward.circle"
-        case .appealed: return "exclamationmark.triangle"
-        case .unknown: return "questionmark.circle"
+        case .underReview:
+            return "clock"
+        case .approved:
+            return "checkmark.circle"
+        case .refused:
+            return "xmark.circle"
+        case .withdrawn:
+            return "arrow.uturn.backward.circle"
+        case .appealed:
+            return "exclamationmark.triangle"
+        case .unknown:
+            return "questionmark.circle"
         }
     }
 }

@@ -9,6 +9,7 @@ struct APIWatchZoneRepositoryTests {
 
     // MARK: - Helpers
 
+    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
 
     private func makeSUT(
@@ -27,6 +28,7 @@ struct APIWatchZoneRepositoryTests {
         return (sut, authService, transport)
     }
 
+    // swiftlint:disable force_unwrapping
     private func httpResponse(statusCode: Int) -> HTTPURLResponse {
         HTTPURLResponse(
             url: baseURL,
@@ -35,6 +37,7 @@ struct APIWatchZoneRepositoryTests {
             headerFields: nil
         )!
     }
+    // swiftlint:enable force_unwrapping
 
     // MARK: - save
 
@@ -53,7 +56,7 @@ struct APIWatchZoneRepositoryTests {
         #expect(request.url?.path().contains("/v1/me/watch-zones") == true)
 
         let body = try #require(request.httpBody)
-        let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["zoneId"] as? String == "zone-001")
         #expect(json["name"] as? String == "CB1 2AD")
         #expect(json["latitude"] as? Double == 52.2053)

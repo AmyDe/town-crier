@@ -5,6 +5,7 @@ import TownCrierDomain
 
 @Suite("APINotificationService")
 struct APINotificationServiceTests {
+    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
 
     private func makeTransport(
@@ -64,7 +65,7 @@ struct APINotificationServiceTests {
         try await sut.registerDeviceToken("stored-token-123")
         try await sut.removeDeviceToken()
 
-        let removeRequest = transport.requests.last!
+        let removeRequest = try #require(transport.requests.last)
         #expect(removeRequest.httpMethod == "DELETE")
         #expect(removeRequest.url?.path().contains("stored-token-123") == true)
     }
@@ -83,7 +84,7 @@ struct APINotificationServiceTests {
         try await sut.registerDeviceToken("token-to-remove")
         try await sut.removeDeviceToken()
 
-        let request = transport.requests.last!
+        let request = try #require(transport.requests.last)
         #expect(request.httpMethod == "DELETE")
         #expect(request.url?.path().contains("v1/me/device-token/token-to-remove") == true)
     }
@@ -97,4 +98,3 @@ struct APINotificationServiceTests {
         #expect(transport.requests.isEmpty)
     }
 }
-

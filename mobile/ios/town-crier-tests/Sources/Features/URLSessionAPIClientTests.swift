@@ -14,11 +14,11 @@ private struct TestBody: Codable, Sendable {
     let title: String
 }
 
-
 // MARK: - Tests
 
 @Suite("URLSessionAPIClient")
 struct URLSessionAPIClientTests {
+    // swiftlint:disable:next force_unwrapping
     private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
 
     // MARK: - Authenticated requests
@@ -290,7 +290,7 @@ struct URLSessionAPIClientTests {
         let _: TestResponse = try await sut.request(endpoint)
 
         let url = try #require(transport.requests[0].url)
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let queryItems = try #require(components.queryItems)
         #expect(queryItems.contains(URLQueryItem(name: "authority", value: "camden")))
         #expect(queryItems.contains(URLQueryItem(name: "status", value: "pending")))
