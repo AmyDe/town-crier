@@ -8,7 +8,7 @@ struct APIEnvironmentTests {
     @Test func development_baseURL_pointsToDevDomain() {
         let sut = APIEnvironment.development
 
-        #expect(sut.baseURL.absoluteString == "https://api.dev.towncrierapp.uk")
+        #expect(sut.baseURL.absoluteString == "https://api-dev.towncrierapp.uk")
     }
 
     @Test func production_baseURL_pointsToProductionDomain() {
