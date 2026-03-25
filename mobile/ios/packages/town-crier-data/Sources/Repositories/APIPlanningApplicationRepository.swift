@@ -85,12 +85,18 @@ struct PlanningApplicationDTO: Decodable, Sendable {
 
     private func mapAppState(_ state: String) -> ApplicationStatus {
         switch state {
-        case "Under Review": return .underReview
-        case "Approved": return .approved
-        case "Refused": return .refused
-        case "Withdrawn": return .withdrawn
-        case "Appealed": return .appealed
-        default: return .unknown
+        case "Under Review":
+            return .underReview
+        case "Approved":
+            return .approved
+        case "Refused":
+            return .refused
+        case "Withdrawn":
+            return .withdrawn
+        case "Appealed":
+            return .appealed
+        default:
+            return .unknown
         }
     }
 
@@ -112,10 +118,14 @@ struct PlanningApplicationDTO: Decodable, Sendable {
         if let decidedDateString = decidedDate, let decidedDate = parseDate(decidedDateString) {
             let decidedStatus: ApplicationStatus
             switch status {
-            case .approved: decidedStatus = .approved
-            case .refused: decidedStatus = .refused
-            case .withdrawn: decidedStatus = .withdrawn
-            default: decidedStatus = status
+            case .approved:
+                decidedStatus = .approved
+            case .refused:
+                decidedStatus = .refused
+            case .withdrawn:
+                decidedStatus = .withdrawn
+            default:
+                decidedStatus = status
             }
             if decidedStatus != .underReview {
                 history.append(StatusEvent(status: decidedStatus, date: decidedDate))

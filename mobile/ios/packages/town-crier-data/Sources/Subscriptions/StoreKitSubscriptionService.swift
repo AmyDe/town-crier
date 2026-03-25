@@ -88,9 +88,11 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
             if let transaction = try? checkVerification(result) {
                 let ent = entitlement(from: transaction)
                 if ent.isActive {
-                    if latestEntitlement == nil
-                        || tierOrder(ent.tier) > tierOrder(latestEntitlement!.tier)
-                    {
+                    if let current = latestEntitlement {
+                        if tierOrder(ent.tier) > tierOrder(current.tier) {
+                            latestEntitlement = ent
+                        }
+                    } else {
                         latestEntitlement = ent
                     }
                 }
@@ -141,9 +143,12 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
     private func tierOrder(_ tier: SubscriptionTier) -> Int {
         switch tier {
-        case .free: return 0
-        case .personal: return 1
-        case .pro: return 2
+        case .free:
+            return 0
+        case .personal:
+            return 1
+        case .pro:
+            return 2
         }
     }
 }
