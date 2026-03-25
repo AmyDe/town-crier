@@ -6,7 +6,7 @@ import TownCrierDomain
 @Suite("APIVersionConfigService")
 struct APIVersionConfigServiceTests {
     // swiftlint:disable:next force_unwrapping
-    private let baseURL = URL(string: "https://api.dev.towncrierapp.uk")!
+    private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
 
     @Test("Sends GET request to /v1/version-config")
     func sendsGetToCorrectPath() async throws {
