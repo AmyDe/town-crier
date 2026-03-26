@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,11 +11,21 @@ public static class CosmosServiceExtensions
     {
         services.AddSingleton(_ =>
         {
-            var connectionString = configuration.GetConnectionString("CosmosDb")
-                ?? throw new InvalidOperationException(
-                    "Cosmos DB connection string is required. Set 'ConnectionStrings:CosmosDb' in configuration.");
+            var accountEndpoint = configuration["Cosmos:AccountEndpoint"];
+            if (!string.IsNullOrWhiteSpace(accountEndpoint))
+            {
+                return CosmosClientFactory.Create(accountEndpoint, new DefaultAzureCredential());
+            }
 
-            return CosmosClientFactory.Create(connectionString);
+            var connectionString = configuration.GetConnectionString("CosmosDb");
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                return CosmosClientFactory.Create(connectionString);
+            }
+
+            throw new InvalidOperationException(
+                "Cosmos DB is not configured. Set 'Cosmos:AccountEndpoint' (managed identity) "
+                + "or 'ConnectionStrings:CosmosDb' (connection string).");
         });
 
         return services;

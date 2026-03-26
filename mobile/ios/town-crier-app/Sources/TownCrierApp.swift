@@ -18,7 +18,8 @@ struct TownCrierApp: App {
     init() {
         let auth0Config = Auth0Config(
             clientId: "a9O67fPgvXtqiWqwowhYjK0tvHF4hCMZ",
-            domain: "towncrierapp.uk.auth0.com"
+            domain: "towncrierapp.uk.auth0.com",
+            audience: APIEnvironment.current.baseURL.absoluteString
         )
 
         let authService = Auth0AuthenticationService(config: auth0Config)
