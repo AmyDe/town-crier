@@ -104,6 +104,14 @@ public static class SharedStack
             Tags = tags,
         });
 
+        // User-assigned managed identity for Cosmos DB data access
+        var cosmosDataIdentity = new UserAssignedIdentity("id-town-crier-cosmos-data", new UserAssignedIdentityArgs
+        {
+            ResourceName = "id-town-crier-cosmos-data",
+            ResourceGroupName = resourceGroup.Name,
+            Tags = tags,
+        });
+
         // Cosmos DB Account (shared across environments — serverless)
         var cosmosAccount = new DatabaseAccount("cosmos-town-crier-shared", new DatabaseAccountArgs
         {
@@ -130,12 +138,28 @@ public static class SharedStack
             Tags = tags,
         });
 
+        // Cosmos DB Built-in Data Contributor role — allows CRUD on documents.
+        // Role definition ID is well-known: 00000000-0000-0000-0000-000000000002.
+        // Scoped to the Cosmos account; environment-level isolation is via database name.
+        var cosmosRoleAssignment = new SqlResourceSqlRoleAssignment("cosmos-data-role", new SqlResourceSqlRoleAssignmentArgs
+        {
+            AccountName = cosmosAccount.Name,
+            ResourceGroupName = resourceGroup.Name,
+            RoleAssignmentId = "a3e0b382-7e3a-4b2d-9c4f-1a2b3c4d5e6f",
+            RoleDefinitionId = cosmosAccount.Id.Apply(id =>
+                $"{id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"),
+            Scope = cosmosAccount.Id,
+            PrincipalId = cosmosDataIdentity.PrincipalId,
+        });
+
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
             ["containerRegistryLoginServer"] = containerRegistry.LoginServer,
             ["acrPullIdentityId"] = acrPullIdentity.Id,
             ["acrPullIdentityClientId"] = acrPullIdentity.ClientId,
+            ["cosmosDataIdentityId"] = cosmosDataIdentity.Id,
+            ["cosmosDataIdentityClientId"] = cosmosDataIdentity.ClientId,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,

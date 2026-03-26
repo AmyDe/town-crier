@@ -24,6 +24,8 @@ public static class EnvironmentStack
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
         var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
+        var cosmosDataIdentityId = shared.GetOutput("cosmosDataIdentityId").Apply(o => o?.ToString() ?? "");
+        var cosmosDataIdentityClientId = shared.GetOutput("cosmosDataIdentityClientId").Apply(o => o?.ToString() ?? "");
         var cosmosAccountName = shared.GetOutput("cosmosAccountName").Apply(o => o?.ToString() ?? "");
         var cosmosAccountEndpoint = shared.GetOutput("cosmosAccountEndpoint").Apply(o => o?.ToString() ?? "");
         // Extract the CAE name from its resource ID to avoid
@@ -346,6 +348,7 @@ public static class EnvironmentStack
                 UserAssignedIdentities = new InputList<string>
                 {
                     acrPullIdentityId,
+                    cosmosDataIdentityId,
                 },
             },
             Template = new TemplateArgs
@@ -365,6 +368,8 @@ public static class EnvironmentStack
                         {
                             new EnvironmentVarArgs { Name = "Auth0__Domain", Value = auth0Domain },
                             new EnvironmentVarArgs { Name = "Auth0__Audience", Value = auth0Audience },
+                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
+                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
                         },
                     },
                 },

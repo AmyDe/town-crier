@@ -9,10 +9,12 @@ import TownCrierDomain
 public struct Auth0Config: Sendable {
     public let clientId: String
     public let domain: String
+    public let audience: String
 
-    public init(clientId: String, domain: String) {
+    public init(clientId: String, domain: String, audience: String) {
         self.clientId = clientId
         self.domain = domain
+        self.audience = audience
     }
 }
 
@@ -35,6 +37,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
             let credentials = try await Auth0
                 .webAuth(clientId: config.clientId, domain: config.domain)
                 .scope("openid profile email offline_access")
+                .audience(config.audience)
                 .start()
 
             _ = credentialsManager.store(credentials: credentials)
