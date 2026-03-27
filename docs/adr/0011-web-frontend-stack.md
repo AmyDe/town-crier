@@ -36,3 +36,16 @@ No SSR framework (Next.js, Remix) is used. The landing page is a pure client-sid
 - **Simpler:** CSS Modules with design tokens ensure visual consistency with the iOS app without introducing a component library dependency (e.g., Chakra, MUI).
 - **Harder:** No SSR means the landing page relies on client-side rendering. If SEO or first-contentful-paint becomes critical, we would need to revisit this (e.g., adopt Vite SSG plugin or migrate to a framework with SSR support).
 - **Harder:** Adding a second language ecosystem (Node.js/TypeScript) to the monorepo increases CI complexity and onboarding surface area.
+
+## Amendments
+
+### 2026-03-27
+The web frontend has evolved from a landing page and marketing site into a **full authenticated application** with feature parity approaching the iOS app. The core technology choices (React 19, TypeScript 5.9, Vite 8, CSS Modules, Vitest) remain unchanged. The following additions reflect the expanded scope:
+
+- Added: **React Router DOM** v7.13.2 for client-side routing. 17 routes spanning public pages (landing, legal, callback), onboarding, and authenticated features (dashboard, applications, watch zones, groups, notifications, search, saved applications, settings, map).
+- Added: **@auth0/auth0-react** v2.16.0 for authentication. Integrates with the same Auth0 tenant as the iOS app (see [ADR 0007](0007-auth0-authentication.md)). Route protection via `AuthGuard` and `OnboardingGate` components.
+- Added: **TanStack React Query** v5.95.2 for server state management and data fetching. Currently used selectively (saved applications) alongside manual `useState`/`useEffect` patterns in other features.
+- Added: **Leaflet** v1.9.4 for interactive maps (watch zone visualisation, application pins). Map components are integrated into watch zone and application detail features.
+- Added: **Port/Adapter architecture** in the web layer. Domain ports (interfaces) defined in `src/domain/ports/`, with API adapters composing typed API modules. Components receive repositories as props for testability ("Connected" components create adapters; presentational components receive them).
+- Added: **Branded types** (`ApplicationUid`, `WatchZoneId`, `GroupId`, etc.) and **union types** (instead of enums, respecting `erasableSyntaxOnly`) for type-safe domain modelling in TypeScript.
+- Updated: The web frontend is no longer just a public-facing landing page. It serves as the primary web client for authenticated users, with 14 implemented feature modules.
