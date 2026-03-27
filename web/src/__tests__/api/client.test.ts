@@ -51,10 +51,9 @@ describe('createApiClient', () => {
   });
 
   it('sends DELETE request and handles 204 No Content', async () => {
-    const fakeFetch = async (_input: RequestInfo | URL, _init?: RequestInit) => {
-      return new Response(null, { status: 204 });
-    };
-    const api = createApiClient(baseUrl, getToken, fakeFetch as typeof globalThis.fetch);
+    const fakeFetch = (async () =>
+      new Response(null, { status: 204 })) as typeof globalThis.fetch;
+    const api = createApiClient(baseUrl, getToken, fakeFetch);
 
     const result = await api.delete('/items/1');
 

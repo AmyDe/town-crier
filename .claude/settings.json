@@ -15,6 +15,12 @@
             "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] && exit 0; lint=$(cd \"$root/mobile/ios\" && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2>/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] && exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
             "timeout": 30,
             "statusMessage": "SwiftLint pre-commit check..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | { read -r cmd; echo \"$cmd\" | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.ts' '*.tsx' '*.css' 2>/dev/null | grep '^web/src/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] && exit 0; lint=$(cd \"$root/web\" && npx eslint --no-warn-ignored $staged 2>/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+error' | head -20); [ -z \"$lint\" ] && exit 0; jq -n --arg reason \"ESLint errors in staged web files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'; }",
+            "timeout": 30,
+            "statusMessage": "ESLint pre-commit check..."
           }
         ]
       }
@@ -28,6 +34,12 @@
             "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */mobile/ios/*.swift ]] || exit 0; lint=$(cd mobile/ios && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint \"$f\" --quiet 2>/dev/null | grep \"^$f:\"); [ -z \"$lint\" ] && exit 0; jq -n --arg ctx \"SwiftLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
             "timeout": 30,
             "statusMessage": "Running SwiftLint..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */web/src/*.ts ]] || [[ \"$f\" == */web/src/*.tsx ]] || [[ \"$f\" == */web/src/*.css ]] || exit 0; root=$(git rev-parse --show-toplevel); lint=$(cd \"$root/web\" && npx eslint --no-warn-ignored \"$f\" 2>/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+(error|warning)' | head -20); [ -z \"$lint\" ] && exit 0; jq -n --arg ctx \"ESLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Running ESLint..."
           }
         ]
       }

@@ -43,8 +43,25 @@ export function useNotifications(repository: NotificationRepository) {
   }, [repository]);
 
   useEffect(() => {
-    loadPage(state.page);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    repository.list(1, PAGE_SIZE).then(result => {
+      if (!cancelled) {
+        setState({
+          notifications: result.notifications,
+          total: result.total,
+          page: result.page,
+          isLoading: false,
+          error: null,
+        });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'An error occurred';
+        setState(prev => ({ ...prev, isLoading: false, error: message }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [repository]);
 
   const totalPages = state.total > 0 ? Math.ceil(state.total / PAGE_SIZE) : 0;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import type { DesignationContext } from '../../domain/types';
 import type { DesignationRepository } from '../../domain/ports/designation-repository';
 
@@ -21,25 +21,21 @@ export function useDesignations(
     error: null,
   });
 
-  const fetchDesignations = useCallback(async () => {
-    if (latitude === null || longitude === null) {
-      return;
-    }
-    setState({ designations: null, isLoading: true, error: null });
-    try {
-      const designations = await repository.fetchDesignations(latitude, longitude);
-      setState({ designations, isLoading: false, error: null });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      setState({ designations: null, isLoading: false, error: message });
-    }
-  }, [repository, latitude, longitude]);
-
   useEffect(() => {
-    if (hasCoordinates) {
-      fetchDesignations();
-    }
-  }, [hasCoordinates, fetchDesignations]);
+    if (!hasCoordinates) return;
+    let cancelled = false;
+    repository.fetchDesignations(latitude!, longitude!).then(designations => {
+      if (!cancelled) {
+        setState({ designations, isLoading: false, error: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        setState({ designations: null, isLoading: false, error: message });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [hasCoordinates, repository, latitude, longitude]);
 
   return state;
 }

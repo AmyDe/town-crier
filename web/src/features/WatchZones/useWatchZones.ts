@@ -27,8 +27,19 @@ export function useWatchZones(repository: WatchZoneRepository) {
   }, [repository]);
 
   useEffect(() => {
-    loadZones();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    repository.list().then(zones => {
+      if (!cancelled) {
+        setState({ zones, isLoading: false, error: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'An error occurred';
+        setState(prev => ({ ...prev, isLoading: false, error: message }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [repository]);
 
   const deleteZone = useCallback(async (zoneId: string) => {
     try {

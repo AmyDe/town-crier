@@ -14,7 +14,7 @@ function stubMatchMedia(): void {
     removeEventListener: () => {},
     dispatchEvent: () => false,
   };
-  window.matchMedia = (_query: string) => mediaQueryList;
+  window.matchMedia = (() => mediaQueryList) as typeof window.matchMedia;
 }
 
 function renderLandingPage() {

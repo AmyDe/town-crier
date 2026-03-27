@@ -33,13 +33,14 @@ export function useAuthoritySearch(port: AuthoritySearchPort) {
     }
 
     if (state.query.length < MIN_QUERY_LENGTH) {
-      setState((prev) => ({ ...prev, results: [], isSearching: false }));
-      return;
+      timerRef.current = setTimeout(() => {
+        setState((prev) => ({ ...prev, results: [], isSearching: false }));
+      }, 0);
+      return () => { clearTimeout(timerRef.current); };
     }
 
-    setState((prev) => ({ ...prev, isSearching: true }));
-
     timerRef.current = setTimeout(async () => {
+      setState((prev) => ({ ...prev, isSearching: true }));
       try {
         const result = await port.search(state.query);
         setState((prev) => ({

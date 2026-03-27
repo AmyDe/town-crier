@@ -29,8 +29,19 @@ export function useZonePreferences(repository: WatchZoneRepository, zoneId: stri
   }, [repository, zoneId]);
 
   useEffect(() => {
-    loadPreferences();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    repository.getPreferences(zoneId).then(preferences => {
+      if (!cancelled) {
+        setState({ preferences, isLoading: false, isSaving: false, error: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'An error occurred';
+        setState(prev => ({ ...prev, isLoading: false, error: message }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [repository, zoneId]);
 
   const updatePreferences = useCallback(async (data: UpdateZonePreferencesRequest) => {
     setState(prev => ({ ...prev, isSaving: true, error: null }));

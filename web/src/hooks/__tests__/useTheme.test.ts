@@ -16,7 +16,7 @@ function stubMatchMedia(prefersDark: boolean): void {
     dispatchEvent: () => false,
   };
 
-  window.matchMedia = (_query: string) => mediaQueryList;
+  window.matchMedia = (() => mediaQueryList) as typeof window.matchMedia;
 }
 
 describe('useTheme', () => {

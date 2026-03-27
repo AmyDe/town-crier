@@ -29,8 +29,19 @@ export function useGroupDetail(repository: GroupsRepository, groupId: GroupId) {
   }, [repository, groupId]);
 
   useEffect(() => {
-    void loadGroup();
-  }, [loadGroup]);
+    let cancelled = false;
+    repository.getGroup(groupId).then(group => {
+      if (!cancelled) {
+        setState({ group, isLoading: false, error: null, actionError: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'Failed to load group';
+        setState({ group: null, isLoading: false, error: message, actionError: null });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [repository, groupId]);
 
   const inviteMember = useCallback(
     async (email: string) => {

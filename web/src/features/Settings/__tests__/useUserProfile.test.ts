@@ -2,7 +2,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useUserProfile } from '../useUserProfile';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
-import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';
+import { proUserProfile } from './fixtures/user-profile.fixtures';
 
 describe('useUserProfile', () => {
   let spy: SpySettingsRepository;

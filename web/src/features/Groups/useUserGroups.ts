@@ -27,8 +27,19 @@ export function useUserGroups(repository: GroupsRepository) {
   }, [repository]);
 
   useEffect(() => {
-    void loadGroups();
-  }, [loadGroups]);
+    let cancelled = false;
+    repository.listGroups().then(groups => {
+      if (!cancelled) {
+        setState({ groups, isLoading: false, error: null });
+      }
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        const message = err instanceof Error ? err.message : 'Failed to load groups';
+        setState({ groups: [], isLoading: false, error: message });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [repository]);
 
   return { ...state, refresh: loadGroups };
 }

@@ -36,8 +36,27 @@ export function useDashboard(port: DashboardPort) {
   }, [port]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const zones = await port.fetchWatchZones();
+        const uniqueAuthorityIds = [...new Set(zones.map(z => z.authorityId))];
+        const applicationsByAuthority = await Promise.all(
+          uniqueAuthorityIds.map(id => port.fetchRecentApplications(id)),
+        );
+        const recentApplications = applicationsByAuthority.flat();
+        if (!cancelled) {
+          setState({ zones, recentApplications, isLoading: false, error: null });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Failed to load dashboard';
+          setState(prev => ({ ...prev, isLoading: false, error: message }));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [port]);
 
   return { ...state, refresh: load };
 }
