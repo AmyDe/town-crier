@@ -10,6 +10,8 @@ import { ConnectedApplicationsPage } from './features/Applications/ConnectedAppl
 import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
 import { WiredNotificationsPage } from './features/Notifications/WiredNotificationsPage';
 import { WiredSettingsPage } from './features/Settings/WiredSettingsPage';
+import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
+import { ConnectedApplicationDetailPage } from './features/ApplicationDetail/ConnectedApplicationDetailPage';
 
 export function AppRoutes() {
   return (
@@ -26,9 +28,10 @@ export function AppRoutes() {
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<ConnectedApplicationsPage />} />
+            <Route path="/applications/:uid" element={<ConnectedApplicationDetailPage />} />
             <Route path="/watch-zones" element={<PlaceholderPage title="Watch Zones" />} />
             <Route path="/map" element={<PlaceholderPage title="Map" />} />
-            <Route path="/search" element={<PlaceholderPage title="Search" />} />
+            <Route path="/search" element={<ConnectedSearchPage />} />
             <Route path="/saved" element={<PlaceholderPage title="Saved" />} />
             <Route path="/groups" element={<PlaceholderPage title="Groups" />} />
             <Route path="/notifications" element={<WiredNotificationsPage />} />
