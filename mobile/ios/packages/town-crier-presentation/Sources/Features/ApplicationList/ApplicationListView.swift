@@ -36,11 +36,9 @@ public struct ApplicationListView: View {
         .task {
             await viewModel.loadApplications()
         }
-        #if os(iOS)
         .refreshable {
             await viewModel.loadApplications()
         }
-        #endif
     }
 
     // MARK: - Application List

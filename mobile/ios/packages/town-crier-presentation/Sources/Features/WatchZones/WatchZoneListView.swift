@@ -1,4 +1,3 @@
-#if os(iOS)
 import MapKit
 import SwiftUI
 import TownCrierDomain
@@ -139,4 +138,3 @@ private struct ZoneMapPreview: View {
         )
     }
 }
-#endif
