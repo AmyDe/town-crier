@@ -1,0 +1,95 @@
+.container {
+  padding: var(--tc-space-lg) var(--tc-space-md);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-lg) 0;
+}
+
+.stepLabel {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-secondary);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.stepTitle {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-md) 0;
+}
+
+.nameInput {
+  width: 100%;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+  font-family: var(--tc-font-family);
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.nameInput:focus {
+  outline: none;
+  border-color: var(--tc-border-focused);
+}
+
+.submitButton {
+  display: block;
+  width: 100%;
+  margin-top: var(--tc-space-md);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  font-family: var(--tc-font-family);
+  cursor: pointer;
+  min-height: 44px;
+  transition: background var(--tc-duration-fast);
+}
+
+.submitButton:hover:not(:disabled) {
+  background: var(--tc-amber-hover);
+}
+
+.submitButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.error {
+  margin-top: var(--tc-space-sm);
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-caption);
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  margin-bottom: var(--tc-space-lg);
+  padding: var(--tc-space-xs) 0;
+  background: none;
+  border: none;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-caption);
+  font-family: var(--tc-font-family);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.backButton:hover {
+  color: var(--tc-text-primary);
+}

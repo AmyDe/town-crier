@@ -1,0 +1,87 @@
+.container {
+  position: relative;
+}
+
+.input {
+  width: 100%;
+  height: 44px;
+  padding: 0 var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+  font-family: var(--tc-font-family);
+  transition: border-color var(--tc-duration-fast);
+}
+
+.input::placeholder {
+  color: var(--tc-text-tertiary);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--tc-border-focused);
+}
+
+.loading {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: var(--tc-space-xs) 0 0;
+  padding: var(--tc-space-xs) 0;
+  list-style: none;
+  background: var(--tc-surface-elevated);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  box-shadow: var(--tc-shadow-elevated);
+  z-index: 10;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.option {
+  margin: 0;
+  padding: 0;
+}
+
+.optionButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--tc-duration-fast);
+}
+
+.optionButton:hover {
+  background: var(--tc-amber-muted);
+}
+
+.optionButton:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: -2px;
+}
+
+.authorityName {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+}
+
+.areaType {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  flex-shrink: 0;
+  margin-left: var(--tc-space-sm);
+}

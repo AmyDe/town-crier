@@ -36,6 +36,7 @@ appsettings.Local.json
 # iOS / Swift / Xcode
 build/
 DerivedData/
+.derivedData/
 *.xcodeproj
 *.xcworkspace
 !default.xcworkspace

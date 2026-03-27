@@ -1,0 +1,16 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--tc-space-xxl) var(--tc-space-md);
+}
+
+.title {
+  font-size: var(--tc-text-display-large);
+  color: var(--tc-text-primary);
+  margin-bottom: var(--tc-space-lg);
+}
+
+.description {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+}

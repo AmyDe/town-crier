@@ -1,0 +1,199 @@
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-body);
+}
+
+.header {
+  margin-bottom: var(--tc-space-lg);
+}
+
+.topRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tc-space-md);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.reference {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.address {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-sm) 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  white-space: nowrap;
+}
+
+.statusUndecided {
+  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
+  color: var(--tc-status-pending);
+}
+
+.statusApproved {
+  background: color-mix(in srgb, var(--tc-status-approved) 15%, transparent);
+  color: var(--tc-status-approved);
+}
+
+.statusRefused {
+  background: color-mix(in srgb, var(--tc-status-refused) 15%, transparent);
+  color: var(--tc-status-refused);
+}
+
+.statusWithdrawn {
+  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  color: var(--tc-status-withdrawn);
+}
+
+.statusAppealed {
+  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
+  color: var(--tc-status-appealed);
+}
+
+.statusNotAvailable {
+  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  color: var(--tc-status-withdrawn);
+}
+
+.section {
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-md);
+  margin-bottom: var(--tc-space-md);
+}
+
+.sectionTitle {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-sm) 0;
+}
+
+.description {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  line-height: var(--tc-leading-relaxed);
+  margin: 0;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--tc-space-sm) var(--tc-space-md);
+}
+
+@media (max-width: 480px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detailLabel {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0 0 2px 0;
+}
+
+.detailValue {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  font-weight: var(--tc-weight-medium);
+  margin: 0;
+}
+
+.designationList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-xs);
+}
+
+.designationItem {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--tc-space-sm);
+  flex-wrap: wrap;
+}
+
+.saveButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  cursor: pointer;
+  border: 1px solid var(--tc-border);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  min-height: 44px;
+}
+
+.saveButton:hover {
+  border-color: var(--tc-amber);
+}
+
+.saved {
+  background: color-mix(in srgb, var(--tc-amber) 15%, transparent);
+  border-color: var(--tc-amber);
+  color: var(--tc-amber);
+}
+
+.portalLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.portalLink:hover {
+  opacity: 0.9;
+}

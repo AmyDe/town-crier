@@ -248,7 +248,11 @@ A worker has finished and the Agent tool has returned its result including the w
    - If clean: `git branch -d <branch-name>` and `git worktree prune`
    - If conflicts: `git merge --abort`, park the branch. After all clean merges, spawn a conflict resolver agent (same as current Phase 4 logic — `subagent_type: "general-purpose"`, `isolation: "worktree"`, `run_in_background: true`).
 
-6. **Close the bead** by invoking `/beads:close <bead-id>`.
+6. **Close the bead** by invoking `/beads:close <bead-id>`, then **sync immediately**:
+   ```bash
+   bd dolt push
+   ```
+   This ensures bead state is persisted to the remote after every close — not just at the end of the session. If agents crash, context compacts, or the session ends unexpectedly, no bead progress is lost.
 
 7. **Check for new work** by invoking `/beads:ready`. If new beads are ready, dispatch fresh workers (Phase 2) and continue the react loop.
 
@@ -280,6 +284,7 @@ Do **not** `git push` unless the user explicitly asks.
 - **Always specify `model: "opus[1m]"`** when spawning any agent — workers, conflict resolvers, or any other teammate. The `[1m]` suffix forces the 1M context window, which workers need to hold coding standards, bead context, and test output simultaneously.
 - **Always specify `isolation: "worktree"`** when spawning any agent — workers and conflict resolvers get isolated repo copies.
 - **Use `/beads:*` skills for all tracking** — not TaskCreate, TaskUpdate, or any other task tool. Invoke `/beads:show`, `/beads:update`, `/beads:close`, `/beads:ready`, and `/beads:comments` via the Skill tool.
+- **Always `bd dolt push` after closing a bead.** Bead state must be synced to the remote immediately — not batched until session end. Crashes, compaction, and session drops are common; un-synced closes are lost closes.
 - **Do not `git push`** unless the user explicitly asks.
 - **Ask the user** if you encounter ambiguity in bead classification or repeated merge conflicts.
 - **Never answer a decision yourself.** You are a relay, not a decision-maker. When a worker sends `DECISION NEEDED`, surface it to the human via `AskUserQuestion` and relay the human's answer back.

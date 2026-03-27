@@ -12,6 +12,7 @@ public struct Auth0Config: Sendable {
     public let audience: String
 
     public init(clientId: String, domain: String, audience: String) {
+        precondition(!audience.isEmpty, "Auth0Config.audience must not be empty")
         self.clientId = clientId
         self.domain = domain
         self.audience = audience

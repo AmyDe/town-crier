@@ -1,0 +1,76 @@
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+}
+
+.header {
+  margin-bottom: var(--tc-space-lg);
+}
+
+.backLink {
+  color: var(--tc-amber);
+  text-decoration: none;
+  font-weight: var(--tc-font-semibold);
+  font-size: var(--tc-text-caption);
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.zoneInfo {
+  margin-bottom: var(--tc-space-lg);
+}
+
+.title {
+  font-size: var(--tc-text-h2);
+  font-weight: var(--tc-font-bold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs) 0;
+}
+
+.radius {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  margin: 0;
+}
+
+.loading {
+  color: var(--tc-text-secondary);
+}
+
+.error {
+  color: var(--tc-status-refused);
+}
+
+.preferencesSection {
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-lg);
+}
+
+.sectionTitle {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-font-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-md) 0;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--tc-space-sm);
+  padding: var(--tc-space-sm) 0;
+  cursor: pointer;
+}
+
+.toggle + .toggle {
+  border-top: 1px solid var(--tc-border);
+}
+
+.toggleLabel {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+}

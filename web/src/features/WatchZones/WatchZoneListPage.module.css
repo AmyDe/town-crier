@@ -1,0 +1,135 @@
+.container {
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--tc-space-lg);
+}
+
+.title {
+  font-size: var(--tc-text-h2);
+  font-weight: var(--tc-font-bold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.createButton {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border-radius: var(--tc-radius-md);
+  font-weight: var(--tc-font-semibold);
+  text-decoration: none;
+  transition: background var(--tc-duration-fast);
+}
+
+.createButton:hover {
+  background: var(--tc-amber-hover);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--tc-space-md);
+}
+
+.card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-md);
+  box-shadow: var(--tc-shadow-card);
+}
+
+.cardContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.zoneName {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-font-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs) 0;
+}
+
+.zoneRadius {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0;
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--tc-space-sm);
+  align-items: center;
+}
+
+.editLink {
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  color: var(--tc-amber);
+  font-weight: var(--tc-font-semibold);
+  font-size: var(--tc-text-caption);
+  text-decoration: none;
+  border-radius: var(--tc-radius-sm);
+  transition: background var(--tc-duration-fast);
+}
+
+.editLink:hover {
+  background: var(--tc-amber-muted);
+}
+
+.deleteButton {
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  color: var(--tc-status-refused);
+  font-weight: var(--tc-font-semibold);
+  font-size: var(--tc-text-caption);
+  background: none;
+  border: none;
+  border-radius: var(--tc-radius-sm);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast);
+}
+
+.deleteButton:hover {
+  background: rgba(196, 43, 43, 0.1);
+}
+
+.error {
+  color: var(--tc-status-refused);
+  text-align: center;
+}
+
+.emptyAction {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--tc-space-md);
+}
+
+.createLink {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border-radius: var(--tc-radius-md);
+  font-weight: var(--tc-font-semibold);
+  text-decoration: none;
+  transition: background var(--tc-duration-fast);
+}
+
+.createLink:hover {
+  background: var(--tc-amber-hover);
+}

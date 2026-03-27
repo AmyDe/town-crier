@@ -1,0 +1,106 @@
+.card {
+  display: block;
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-md);
+  box-shadow: var(--tc-shadow-card);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--tc-duration-fast) ease;
+}
+
+.card:hover {
+  border-color: var(--tc-amber);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.reference {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  line-height: var(--tc-leading-normal);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  line-height: var(--tc-leading-normal);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.statusUndecided {
+  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
+  color: var(--tc-status-pending);
+}
+
+.statusApproved {
+  background: color-mix(in srgb, var(--tc-status-approved) 15%, transparent);
+  color: var(--tc-status-approved);
+}
+
+.statusRefused {
+  background: color-mix(in srgb, var(--tc-status-refused) 15%, transparent);
+  color: var(--tc-status-refused);
+}
+
+.statusWithdrawn {
+  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  color: var(--tc-status-withdrawn);
+}
+
+.statusAppealed {
+  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
+  color: var(--tc-status-appealed);
+}
+
+.statusDefault {
+  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
+  color: var(--tc-text-secondary);
+}
+
+.address {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs);
+}
+
+.description {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-relaxed);
+  margin: 0 0 var(--tc-space-sm);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tc-space-xs) var(--tc-space-md);
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+}

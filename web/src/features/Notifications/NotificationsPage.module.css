@@ -1,0 +1,93 @@
+.container {
+  padding: var(--tc-space-lg) var(--tc-space-md);
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+}
+
+.heading {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-lg);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-sm);
+}
+
+.item {
+  display: block;
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-md);
+  box-shadow: var(--tc-shadow-card);
+}
+
+.itemHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-xs);
+}
+
+.appName {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.typeBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  background: var(--tc-amber-muted);
+  color: var(--tc-amber);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.address {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs);
+}
+
+.description {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-relaxed);
+  margin: 0 0 var(--tc-space-sm);
+}
+
+.timestamp {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.error {
+  padding: var(--tc-space-md);
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-body);
+}
+
+.loading {
+  padding: var(--tc-space-xxl) var(--tc-space-md);
+  text-align: center;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
+.paginationWrapper {
+  margin-top: var(--tc-space-lg);
+}
