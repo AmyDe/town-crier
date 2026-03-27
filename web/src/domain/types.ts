@@ -164,6 +164,7 @@ export interface PlanningApplicationSummary {
 export interface SavedApplication {
   readonly applicationUid: ApplicationUid;
   readonly savedAt: string;
+  readonly application: PlanningApplicationSummary;
 }
 
 // ---------------------------------------------------------------------------
