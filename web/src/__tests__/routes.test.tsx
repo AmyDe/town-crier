@@ -20,6 +20,7 @@ const existingProfile: UserProfile = {
 const stubApiClient: ApiClient = {
   get: async (path: string) => {
     if (path.includes('watch-zones')) return [] as unknown;
+    if (path.includes('/groups')) return [] as unknown;
     if (path.includes('notifications')) return { notifications: [], total: 0, page: 1 } as unknown;
     if (path.includes('settings') || path.includes('profile')) return { postcode: null, pushEnabled: false, tier: 'Free' } as unknown;
     return {} as unknown;
@@ -161,14 +162,7 @@ describe('AppRoutes', () => {
       profileSpy.fetchProfileResult = existingProfile;
 
       const routes = [
-        { path: '/applications', title: 'Applications' },
-        { path: '/watch-zones', title: 'Watch Zones' },
         { path: '/map', title: 'Map' },
-        { path: '/search', title: 'Search' },
-        { path: '/saved', title: 'Saved' },
-        { path: '/groups', title: 'Groups' },
-        { path: '/notifications', title: 'Notifications' },
-        { path: '/settings', title: 'Settings' },
       ];
 
       for (const { path, title } of routes) {

@@ -1,0 +1,85 @@
+import { Link } from 'react-router-dom';
+import type { WatchZoneSummary } from '../../domain/types';
+import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
+import { useZonePreferences } from './useZonePreferences';
+import styles from './WatchZoneEditPage.module.css';
+
+interface Props {
+  repository: WatchZoneRepository;
+  zone: WatchZoneSummary;
+}
+
+function formatRadius(metres: number): string {
+  return `${metres / 1000} km radius`;
+}
+
+export function WatchZoneEditPage({ repository, zone }: Props) {
+  const { preferences, isLoading, error, updatePreferences } = useZonePreferences(
+    repository,
+    zone.id,
+  );
+
+  function handleToggle(field: 'newApplications' | 'statusChanges' | 'decisionUpdates') {
+    if (!preferences) return;
+    updatePreferences({
+      newApplications: field === 'newApplications' ? !preferences.newApplications : preferences.newApplications,
+      statusChanges: field === 'statusChanges' ? !preferences.statusChanges : preferences.statusChanges,
+      decisionUpdates: field === 'decisionUpdates' ? !preferences.decisionUpdates : preferences.decisionUpdates,
+    });
+  }
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <Link to="/watch-zones" className={styles.backLink}>
+          Back to Watch Zones
+        </Link>
+      </div>
+
+      <div className={styles.zoneInfo}>
+        <h1 className={styles.title}>{zone.name}</h1>
+        <p className={styles.radius}>{formatRadius(zone.radiusMetres)}</p>
+      </div>
+
+      {isLoading && <p className={styles.loading}>Loading...</p>}
+
+      {error && <p className={styles.error}>{error}</p>}
+
+      {preferences && (
+        <section className={styles.preferencesSection}>
+          <h2 className={styles.sectionTitle}>Notification Preferences</h2>
+
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={preferences.newApplications}
+              onChange={() => handleToggle('newApplications')}
+              aria-label="New applications"
+            />
+            <span className={styles.toggleLabel}>New applications</span>
+          </label>
+
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={preferences.statusChanges}
+              onChange={() => handleToggle('statusChanges')}
+              aria-label="Status changes"
+            />
+            <span className={styles.toggleLabel}>Status changes</span>
+          </label>
+
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={preferences.decisionUpdates}
+              onChange={() => handleToggle('decisionUpdates')}
+              aria-label="Decision updates"
+            />
+            <span className={styles.toggleLabel}>Decision updates</span>
+          </label>
+        </section>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,103 @@
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--tc-space-lg);
+}
+
+.title {
+  font-size: var(--tc-text-h2);
+  font-weight: var(--tc-font-bold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.cancelLink {
+  color: var(--tc-text-secondary);
+  text-decoration: none;
+  font-size: var(--tc-text-body);
+}
+
+.cancelLink:hover {
+  color: var(--tc-text-primary);
+}
+
+.section {
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-lg);
+}
+
+.instruction {
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-md) 0;
+}
+
+.field {
+  margin-bottom: var(--tc-space-md);
+}
+
+.label {
+  display: block;
+  font-weight: var(--tc-font-semibold);
+  color: var(--tc-text-primary);
+  margin-bottom: var(--tc-space-xs);
+  font-size: var(--tc-text-body);
+}
+
+.input {
+  width: 100%;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  background: var(--tc-background);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+  box-sizing: border-box;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--tc-border-focused);
+  box-shadow: 0 0 0 2px var(--tc-amber-muted);
+}
+
+.error {
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-caption);
+  margin: var(--tc-space-sm) 0 0 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--tc-space-lg);
+}
+
+.saveButton {
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-weight: var(--tc-font-semibold);
+  font-size: var(--tc-text-body);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast);
+}
+
+.saveButton:hover {
+  background: var(--tc-amber-hover);
+}
+
+.saveButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

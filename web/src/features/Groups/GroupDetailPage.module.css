@@ -1,0 +1,182 @@
+.container {
+  padding: var(--tc-space-lg) var(--tc-space-md);
+  max-width: var(--tc-content-max-width);
+  margin: 0 auto;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  margin-bottom: var(--tc-space-lg);
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-caption);
+  text-decoration: none;
+  min-height: 44px;
+}
+
+.backLink:hover {
+  color: var(--tc-text-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--tc-space-lg);
+}
+
+.title {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.deleteButton {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: none;
+  border: 1px solid var(--tc-status-refused);
+  border-radius: var(--tc-radius-md);
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-semibold);
+  font-family: var(--tc-font-family);
+  cursor: pointer;
+  min-height: 44px;
+  transition: background var(--tc-duration-fast);
+}
+
+.deleteButton:hover {
+  background: var(--tc-status-refused);
+  color: var(--tc-text-on-accent);
+}
+
+.section {
+  margin-bottom: var(--tc-space-xl);
+}
+
+.sectionTitle {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-md) 0;
+}
+
+.memberList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border-bottom: 1px solid var(--tc-border);
+}
+
+.memberRow:last-child {
+  border-bottom: none;
+}
+
+.memberInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--tc-space-sm);
+}
+
+.memberId {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+}
+
+.roleBadge {
+  display: inline-block;
+  padding: 2px var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  background: var(--tc-amber-muted);
+  color: var(--tc-amber);
+}
+
+.removeButton {
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  background: none;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-caption);
+  font-family: var(--tc-font-family);
+  cursor: pointer;
+  min-height: 36px;
+  transition: border-color var(--tc-duration-fast), color var(--tc-duration-fast);
+}
+
+.removeButton:hover {
+  border-color: var(--tc-status-refused);
+  color: var(--tc-status-refused);
+}
+
+.inviteForm {
+  display: flex;
+  gap: var(--tc-space-sm);
+}
+
+.inviteInput {
+  flex: 1;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+  font-family: var(--tc-font-family);
+  min-height: 44px;
+}
+
+.inviteInput:focus {
+  outline: none;
+  border-color: var(--tc-border-focused);
+}
+
+.inviteButton {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  font-family: var(--tc-font-family);
+  cursor: pointer;
+  min-height: 44px;
+  white-space: nowrap;
+  transition: background var(--tc-duration-fast);
+}
+
+.inviteButton:hover {
+  background: var(--tc-amber-hover);
+}
+
+.actionError {
+  margin-top: var(--tc-space-sm);
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-caption);
+}
+
+.loading {
+  text-align: center;
+  padding: var(--tc-space-xxl);
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
+.error {
+  text-align: center;
+  padding: var(--tc-space-xl);
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-body);
+}
