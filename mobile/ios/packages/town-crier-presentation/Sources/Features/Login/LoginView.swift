@@ -51,28 +51,14 @@ public struct LoginView: View {
     }
 
     private var loginButton: some View {
-        Button {
+        PrimaryButton(
+            "Sign in",
+            isLoading: viewModel.isLoading
+        ) {
             Task {
                 await viewModel.login()
             }
-        } label: {
-            Group {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .tint(Color.tcTextOnAccent)
-                } else {
-                    Text("Sign in")
-                        .font(TCTypography.bodyEmphasis)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(Color.tcAmber)
-        .foregroundStyle(Color.tcTextOnAccent)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
-        .disabled(viewModel.isLoading)
     }
 
     private func errorMessage(_ error: DomainError) -> some View {

@@ -107,21 +107,15 @@ public struct ApplicationDetailView: View {
     // MARK: - Portal Button
 
     private var portalButton: some View {
-        Button {
-            showingSafari = true
-        } label: {
-            HStack {
-                Image(systemName: "safari")
-                Text("View on Council Portal")
-                    .font(TCTypography.bodyEmphasis)
+        PrimaryButton(
+            action: { showingSafari = true },
+            label: {
+                HStack {
+                    Image(systemName: "safari")
+                    Text("View on Council Portal")
+                }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(Color.tcAmber)
-        .foregroundStyle(Color.tcTextOnAccent)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+        )
     }
 
     // MARK: - Status Color
