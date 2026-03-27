@@ -6,6 +6,9 @@ import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
 import { PlaceholderPage } from './features/placeholder/PlaceholderPage';
+import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
+import { WiredNotificationsPage } from './features/Notifications/WiredNotificationsPage';
+import { WiredSettingsPage } from './features/Settings/WiredSettingsPage';
 
 export function AppRoutes() {
   return (
@@ -20,15 +23,15 @@ export function AppRoutes() {
         <Route path="/onboarding" element={<PlaceholderPage title="Onboarding" />} />
         <Route element={<OnboardingGate />}>
           <Route element={<AppShell />}>
-            <Route path="/dashboard" element={<PlaceholderPage title="Dashboard" />} />
+            <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<PlaceholderPage title="Applications" />} />
             <Route path="/watch-zones" element={<PlaceholderPage title="Watch Zones" />} />
             <Route path="/map" element={<PlaceholderPage title="Map" />} />
             <Route path="/search" element={<PlaceholderPage title="Search" />} />
             <Route path="/saved" element={<PlaceholderPage title="Saved" />} />
             <Route path="/groups" element={<PlaceholderPage title="Groups" />} />
-            <Route path="/notifications" element={<PlaceholderPage title="Notifications" />} />
-            <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="/notifications" element={<WiredNotificationsPage />} />
+            <Route path="/settings" element={<WiredSettingsPage />} />
           </Route>
         </Route>
       </Route>
