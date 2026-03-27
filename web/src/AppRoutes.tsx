@@ -6,6 +6,7 @@ import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
 import { PlaceholderPage } from './features/placeholder/PlaceholderPage';
+import { ConnectedApplicationsPage } from './features/Applications/ConnectedApplicationsPage';
 import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
 import { WiredNotificationsPage } from './features/Notifications/WiredNotificationsPage';
 import { WiredSettingsPage } from './features/Settings/WiredSettingsPage';
@@ -24,7 +25,7 @@ export function AppRoutes() {
         <Route element={<OnboardingGate />}>
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
-            <Route path="/applications" element={<PlaceholderPage title="Applications" />} />
+            <Route path="/applications" element={<ConnectedApplicationsPage />} />
             <Route path="/watch-zones" element={<PlaceholderPage title="Watch Zones" />} />
             <Route path="/map" element={<PlaceholderPage title="Map" />} />
             <Route path="/search" element={<PlaceholderPage title="Search" />} />

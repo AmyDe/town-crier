@@ -3,9 +3,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthContext } from '../auth/auth-context';
 import { ProfileRepositoryContext } from '../auth/profile-context';
+import { ApiClientContext } from '../api/useApiClient';
 import { SpyAuthPort } from '../auth/__tests__/spies/spy-auth-port';
 import { SpyProfileRepository } from '../auth/__tests__/spies/spy-profile-repository';
 import { AppRoutes } from '../AppRoutes';
+import type { ApiClient } from '../api/client';
 import type { UserProfile } from '../domain/types';
 
 const existingProfile: UserProfile = {
@@ -13,6 +15,19 @@ const existingProfile: UserProfile = {
   postcode: 'CB1 2AD',
   pushEnabled: false,
   tier: 'Free',
+};
+
+const stubApiClient: ApiClient = {
+  get: async (path: string) => {
+    if (path.includes('watch-zones')) return [] as unknown;
+    if (path.includes('notifications')) return { notifications: [], total: 0, page: 1 } as unknown;
+    if (path.includes('settings') || path.includes('profile')) return { postcode: null, pushEnabled: false, tier: 'Free' } as unknown;
+    return {} as unknown;
+  },
+  post: async () => ({}),
+  put: async () => {},
+  patch: async () => ({}),
+  delete: async () => {},
 };
 
 function stubMatchMedia(): void {
@@ -43,7 +58,9 @@ function renderRoutes({ route = '/', authSpy, profileSpy }: RenderOptions = {}) 
     <MemoryRouter initialEntries={[route]}>
       <AuthContext.Provider value={auth}>
         <ProfileRepositoryContext.Provider value={profile}>
-          <AppRoutes />
+          <ApiClientContext.Provider value={stubApiClient}>
+            <AppRoutes />
+          </ApiClientContext.Provider>
         </ProfileRepositoryContext.Provider>
       </AuthContext.Provider>
     </MemoryRouter>,
