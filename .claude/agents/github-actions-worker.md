@@ -35,17 +35,9 @@ The pipelines you build serve the Town Crier monorepo:
 
 ### Step 0: Context
 
-```bash
-bd show <bead-id>
-```
+Invoke `/beads:show <bead-id>` to read the bead's title, description, and any notes/design fields. Understand **what** pipeline needs to be created or changed and **why**.
 
-Read the bead's title, description, and any notes/design fields to understand **what** pipeline needs to be created or changed and **why**.
-
-Mark the bead as in-progress:
-
-```bash
-bd update <bead-id> --status=in_progress
-```
+Mark the bead as in-progress by invoking `/beads:update <bead-id> --status=in_progress`.
 
 ### Step 1: Understand Current State
 
@@ -147,33 +139,15 @@ Verify the workflow file is well-formed by checking for common mistakes:
 
 ### Step 5: Record Evidence on the Bead
 
-After validation, update the bead with evidence:
+After validation, record evidence on the bead. Invoke `/beads:comments add <bead-id>` with a comment containing:
 
-```bash
-bd comment <bead-id> "$(cat <<'EOF'
-## Pipeline Evidence
-
-### Workflow Files
-- `.github/workflows/<file>.yml`: <description>
-
-### Validation
-<paste YAML validation output or actionlint output>
-
-### Triggers
-- <event>: <when it fires>
-
-### Jobs
-- <job-name>: <what it does>
-
-### Required Secrets/Vars
-- `secrets.NAME`: <purpose>
-- `vars.NAME`: <purpose>
-
-### Path Filters
-- <paths covered>
-EOF
-)"
-```
+- A `## Pipeline Evidence` heading
+- `### Workflow Files` — list of files created/modified
+- `### Validation` — YAML validation or actionlint output
+- `### Triggers` — events and when they fire
+- `### Jobs` — job names and what they do
+- `### Required Secrets/Vars` — secrets and vars with purpose
+- `### Path Filters` — paths covered
 
 ### Step 6: Commit
 
@@ -198,5 +172,4 @@ Do **not** push — the team lead handles merging.
 - **Always set explicit `permissions`** — principle of least privilege.
 - **Use path filters** in this monorepo to avoid wasted CI minutes.
 - **Work only in your worktree.** Your working directory is an isolated copy — do not modify files outside it.
-- **Use `bd` commands for all tracking.** Do not use TodoWrite or TaskCreate.
-- **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
+- **Use `/beads:*` skills for all tracking.** Do not use TodoWrite or TaskCreate. Invoke skills like `/beads:show`, `/beads:update`, `/beads:comments`, and `/beads:close` instead of raw `bd` CLI commands.
