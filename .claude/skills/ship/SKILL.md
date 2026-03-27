@@ -122,9 +122,15 @@ git checkout main
 git pull origin main
 ```
 
-### Step 9: Verify
+### Step 9: Sync beads and verify
 
-Run `git status` and `git log --oneline -3` to confirm:
+Push beads data to the Dolt remote — this is separate from git and must happen after every merge:
+
+```bash
+bd dolt push
+```
+
+Then run `git status` and `git log --oneline -3` to confirm:
 - On `main`, up to date with origin
 - The squash-merged commit is visible
 
