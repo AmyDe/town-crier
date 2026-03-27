@@ -1,0 +1,97 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--tc-space-lg);
+  background: var(--tc-background);
+}
+
+.card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-lg);
+  padding: var(--tc-space-xl);
+  box-shadow: var(--tc-shadow-card);
+}
+
+.heading {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  text-align: center;
+  margin: 0 0 var(--tc-space-sm);
+}
+
+.description {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  text-align: center;
+  margin: 0 0 var(--tc-space-xl);
+  line-height: var(--tc-leading-relaxed);
+}
+
+.stepLabel {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-md);
+}
+
+.primaryButton {
+  display: block;
+  width: 100%;
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  min-height: 44px;
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast);
+}
+
+.primaryButton:hover {
+  background: var(--tc-amber-hover);
+}
+
+.primaryButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-caption);
+  text-align: center;
+  margin: var(--tc-space-md) 0 0;
+}
+
+.confirmDetails {
+  background: var(--tc-surface-elevated);
+  border-radius: var(--tc-radius-sm);
+  padding: var(--tc-space-md);
+  margin-bottom: var(--tc-space-lg);
+}
+
+.confirmRow {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--tc-space-xs) 0;
+}
+
+.confirmLabel {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+}
+
+.confirmValue {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+}
