@@ -2,7 +2,6 @@ import Testing
 @testable import TownCrierPresentation
 
 @Suite("LegalDocumentViewModel")
-@MainActor
 struct LegalDocumentViewModelTests {
     @Test func init_privacyPolicy_setsTitle() {
         let sut = LegalDocumentViewModel(documentType: .privacyPolicy)
