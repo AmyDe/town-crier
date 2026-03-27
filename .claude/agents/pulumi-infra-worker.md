@@ -34,17 +34,9 @@ Before starting any work, invoke the `/escalation-protocol` skill. This is not o
 
 ### Step 0: Context
 
-```bash
-bd show <bead-id>
-```
+Invoke `/beads:show <bead-id>` to read the bead's title, description, and any notes/design fields. Understand **what** infrastructure needs to be created or changed and **why**.
 
-Read the bead's title, description, and any notes/design fields to understand **what** infrastructure needs to be created or changed and **why**.
-
-Mark the bead as in-progress:
-
-```bash
-bd update <bead-id> --status=in_progress
-```
+Mark the bead as in-progress by invoking `/beads:update <bead-id> --status=in_progress`.
 
 ### Step 1: Understand Current State
 
@@ -120,26 +112,12 @@ Fix any warnings or formatting issues. Treat warnings as errors.
 
 ### Step 6: Record Evidence on the Bead
 
-After the build/preview succeeds, update the bead with evidence:
+After the build/preview succeeds, record evidence on the bead. Invoke `/beads:comments add <bead-id>` with a comment containing:
 
-```bash
-bd comment <bead-id> "$(cat <<'EOF'
-## Infrastructure Evidence
-
-Build/preview output:
-
-<paste dotnet build or pulumi preview output here>
-
-### Changes Made
-- <resource 1>: <what was added/changed>
-- <resource 2>: <what was added/changed>
-...
-
-### Configuration
-- <any new Pulumi config values required>
-EOF
-)"
-```
+- A `## Infrastructure Evidence` heading
+- The `dotnet build` or `pulumi preview` output
+- A `### Changes Made` section listing each resource added/changed
+- A `### Configuration` section listing any new Pulumi config values required
 
 ### Step 7: Commit
 
@@ -165,5 +143,4 @@ Do **not** run `pulumi up` — infrastructure deployment is a separate, controll
 - **Use `Pulumi.AzureNative`** — not the classic provider.
 - **All code must be Native AOT-compatible** — no reflection, no dynamic assembly loading.
 - **Work only in your worktree.** Your working directory is an isolated copy — do not modify files outside it.
-- **Use `bd` commands for all tracking.** Do not use TodoWrite or TaskCreate.
-- **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
+- **Use `/beads:*` skills for all tracking.** Do not use TodoWrite or TaskCreate. Invoke skills like `/beads:show`, `/beads:update`, `/beads:comments`, and `/beads:close` instead of raw `bd` CLI commands.

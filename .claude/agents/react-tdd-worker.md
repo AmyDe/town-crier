@@ -24,17 +24,9 @@ Before starting any work, invoke the `/escalation-protocol` skill. This is not o
 
 ### Step 0: Context
 
-```bash
-bd show <bead-id>
-```
+Invoke `/beads:show <bead-id>` to read the bead's title, description, and any notes/design fields. Understand **what** needs to be built and **why**.
 
-Read the bead's title, description, and any notes/design fields to understand **what** needs to be built and **why**.
-
-Mark the bead as in-progress:
-
-```bash
-bd update <bead-id> --status=in_progress
-```
+Mark the bead as in-progress by invoking `/beads:update <bead-id> --status=in_progress`.
 
 ### Step 1: Invoke Coding Standards and Design Language
 
@@ -101,23 +93,11 @@ Fix any type errors, warnings, or build issues.
 
 ### Step 7: Record Evidence on the Bead
 
-After all tests pass, update the bead with evidence. Include the **final test run output** showing all tests passing:
+After all tests pass, record evidence on the bead. Invoke `/beads:comments add <bead-id>` with a comment containing:
 
-```bash
-bd comment <bead-id> "$(cat <<'EOF'
-## TDD Evidence
-
-All tests passing:
-
-<paste final vitest run output here>
-
-### Red-Green-Refactor Cycles
-- Cycle 1: <test name> — <what it verified>
-- Cycle 2: <test name> — <what it verified>
-...
-EOF
-)"
-```
+- A `## TDD Evidence` heading
+- The final `vitest run` output showing all tests passing
+- A `### Red-Green-Refactor Cycles` section listing each cycle (test name and what it verified)
 
 ### Step 8: Commit
 
@@ -143,5 +123,4 @@ Do **not** push — the team lead handles merging.
 - **No `any`.** Use `unknown` and narrow with type guards.
 - **No inline styles.** All visual values come from CSS Modules referencing design tokens.
 - **Work only in your worktree.** Your working directory is an isolated copy — do not modify files outside it.
-- **Use `bd` commands for all tracking.** Do not use TodoWrite or TaskCreate.
-- **Do not use `bd edit`** — it opens an interactive editor. Use `bd update` with inline flags.
+- **Use `/beads:*` skills for all tracking.** Do not use TodoWrite or TaskCreate. Invoke skills like `/beads:show`, `/beads:update`, `/beads:comments`, and `/beads:close` instead of raw `bd` CLI commands.
