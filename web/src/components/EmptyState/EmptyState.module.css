@@ -1,0 +1,53 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--tc-space-xxl) var(--tc-space-md);
+  gap: var(--tc-space-sm);
+}
+
+.icon {
+  font-size: 3rem;
+  color: var(--tc-text-tertiary);
+  line-height: 1;
+}
+
+.title {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.message {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-relaxed);
+  max-width: 320px;
+  margin: 0;
+}
+
+.action {
+  margin-top: var(--tc-space-sm);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast) ease;
+  min-height: 44px;
+}
+
+.action:hover {
+  background: var(--tc-amber-hover);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}

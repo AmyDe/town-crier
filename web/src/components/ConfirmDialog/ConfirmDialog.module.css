@@ -1,0 +1,83 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--tc-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--tc-space-md);
+}
+
+.dialog {
+  background: var(--tc-surface-elevated);
+  border-radius: var(--tc-radius-lg);
+  padding: var(--tc-space-lg);
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--tc-shadow-elevated);
+}
+
+.title {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-sm);
+}
+
+.message {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  line-height: var(--tc-leading-relaxed);
+  margin: 0 0 var(--tc-space-lg);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--tc-space-sm);
+}
+
+.cancelButton {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-primary);
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color var(--tc-duration-fast) ease;
+}
+
+.cancelButton:hover {
+  border-color: var(--tc-amber);
+}
+
+.cancelButton:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.confirmButton {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-status-refused);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-semibold);
+  color: #ffffff;
+  cursor: pointer;
+  min-height: 44px;
+  transition: opacity var(--tc-duration-fast) ease;
+}
+
+.confirmButton:hover {
+  opacity: 0.9;
+}
+
+.confirmButton:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
