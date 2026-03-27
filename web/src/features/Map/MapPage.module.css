@@ -1,0 +1,82 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.heading {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin: 0;
+  padding: var(--tc-space-md);
+}
+
+.mapWrapper {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-body);
+  padding: var(--tc-space-md);
+}
+
+.popupName {
+  font-weight: var(--tc-weight-semibold);
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs) 0;
+}
+
+.popupAddress {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-xs) 0;
+}
+
+.popupDescription {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-sm) 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.popupLink {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-amber);
+  text-decoration: none;
+}
+
+.popupLink:hover {
+  text-decoration: underline;
+}
+
+.popupStatus {
+  display: inline-block;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  margin-bottom: var(--tc-space-sm);
+}

@@ -5,7 +5,7 @@ import { LegalPage } from './features/legal/LegalPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
-import { PlaceholderPage } from './features/placeholder/PlaceholderPage';
+import { ConnectedMapPage } from './features/Map/ConnectedMapPage';
 import { ConnectedOnboardingPage } from './features/onboarding/ConnectedOnboardingPage';
 import { ConnectedApplicationsPage } from './features/Applications/ConnectedApplicationsPage';
 import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
@@ -41,7 +41,7 @@ export function AppRoutes() {
             <Route path="/watch-zones" element={<WiredWatchZoneListPage />} />
             <Route path="/watch-zones/new" element={<WiredWatchZoneCreatePage />} />
             <Route path="/watch-zones/:zoneId" element={<WiredWatchZoneEditPage />} />
-            <Route path="/map" element={<PlaceholderPage title="Map" />} />
+            <Route path="/map" element={<ConnectedMapPage />} />
             <Route path="/search" element={<ConnectedSearchPage />} />
             <Route path="/saved" element={<WiredSavedApplicationsPage />} />
             <Route path="/groups" element={<WiredGroupsListPage />} />
