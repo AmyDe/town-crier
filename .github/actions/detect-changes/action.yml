@@ -1,0 +1,117 @@
+# Composite action: Monorepo change detection
+# Compares HEAD against a base ref to detect which components changed.
+# Used by both cd-dev (HEAD~1) and pr-gate (origin/<base-branch>).
+
+name: Detect Changes
+description: Detect which monorepo components have changed files
+
+inputs:
+  base-ref:
+    description: >
+      Git ref to diff against. Examples: "HEAD~1" for push workflows,
+      "origin/main" for PR workflows.
+    required: true
+  trigger-all-paths:
+    description: >
+      Newline-separated list of file paths that, when changed, mark ALL
+      components as changed (api, ios, web, infra).
+    required: false
+    default: ""
+  trigger-server-paths:
+    description: >
+      Newline-separated list of file paths that, when changed, mark only
+      server-side components as changed (api, web, infra — not ios).
+    required: false
+    default: ""
+  trigger-infra-paths:
+    description: >
+      Newline-separated list of file paths that, when changed, mark only
+      infra as changed.
+    required: false
+    default: ""
+  include-ios:
+    description: Whether to detect iOS changes (set to "false" for CD workflows that do not deploy iOS)
+    required: false
+    default: "true"
+
+outputs:
+  api:
+    description: "'true' if api/ files changed"
+    value: ${{ steps.filter.outputs.api }}
+  web:
+    description: "'true' if web/ files changed"
+    value: ${{ steps.filter.outputs.web }}
+  infra:
+    description: "'true' if infra/ files changed"
+    value: ${{ steps.filter.outputs.infra }}
+  ios:
+    description: "'true' if mobile/ios/ files changed (only when include-ios is true)"
+    value: ${{ steps.filter.outputs.ios }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect changed paths
+      id: filter
+      shell: bash
+      run: |
+        CHANGED=$(git diff --name-only ${{ inputs.base-ref }}...HEAD 2>/dev/null \
+                  || git diff --name-only ${{ inputs.base-ref }} HEAD)
+        echo "Changed files:"
+        echo "$CHANGED"
+
+        has_api=false
+        has_ios=false
+        has_web=false
+        has_infra=false
+
+        # Helper: check if any path in a list appears in the changed files
+        check_paths() {
+          local paths="$1"
+          if [ -n "$paths" ]; then
+            while IFS= read -r pattern; do
+              [ -z "$pattern" ] && continue
+              if echo "$CHANGED" | grep -qF "$pattern"; then
+                return 0
+              fi
+            done <<< "$paths"
+          fi
+          return 1
+        }
+
+        # trigger-all-paths: sets every component (api, ios, web, infra)
+        if check_paths "${{ inputs.trigger-all-paths }}"; then
+          has_api=true; has_ios=true; has_web=true; has_infra=true
+        fi
+
+        # trigger-server-paths: sets server-side components (api, web, infra)
+        if check_paths "${{ inputs.trigger-server-paths }}"; then
+          has_api=true; has_web=true; has_infra=true
+        fi
+
+        # trigger-infra-paths: sets only infra
+        if check_paths "${{ inputs.trigger-infra-paths }}"; then
+          has_infra=true
+        fi
+
+        # Per-file component detection
+        while IFS= read -r file; do
+          case "$file" in
+            api/*) has_api=true ;;
+            mobile/ios/*) has_ios=true ;;
+            web/*) has_web=true ;;
+            infra/*) has_infra=true ;;
+          esac
+        done <<< "$CHANGED"
+
+        # If iOS detection is disabled, force false
+        if [ "${{ inputs.include-ios }}" != "true" ]; then
+          has_ios=false
+        fi
+
+        echo "api=$has_api" >> "$GITHUB_OUTPUT"
+        echo "ios=$has_ios" >> "$GITHUB_OUTPUT"
+        echo "web=$has_web" >> "$GITHUB_OUTPUT"
+        echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
+
+        echo "Results: api=$has_api ios=$has_ios web=$has_web infra=$has_infra"
