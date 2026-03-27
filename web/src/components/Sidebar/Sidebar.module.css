@@ -1,0 +1,54 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  height: 100%;
+  background: var(--tc-surface);
+  border-right: 1px solid var(--tc-border);
+  padding: var(--tc-space-md);
+  overflow-y: auto;
+}
+
+.appName {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-amber);
+  text-decoration: none;
+  padding: var(--tc-space-sm) var(--tc-space-sm);
+  margin-bottom: var(--tc-space-md);
+}
+
+.appName:hover {
+  text-decoration: none;
+  color: var(--tc-amber-hover);
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-xs);
+}
+
+.navLink {
+  display: block;
+  padding: var(--tc-space-sm) var(--tc-space-sm);
+  border-radius: var(--tc-radius-sm);
+  color: var(--tc-text-secondary);
+  text-decoration: none;
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  transition: background-color var(--tc-duration-fast),
+    color var(--tc-duration-fast);
+}
+
+.navLink:hover {
+  background: var(--tc-amber-muted);
+  color: var(--tc-text-primary);
+  text-decoration: none;
+}
+
+.active {
+  background: var(--tc-amber-muted);
+  color: var(--tc-amber);
+  font-weight: var(--tc-weight-semibold);
+}
