@@ -28,21 +28,15 @@ public struct ErrorStateView: View {
                 .multilineTextAlignment(.center)
 
             if error.isRetryable, let retryAction {
-                Button {
+                PrimaryButton {
                     Task { await retryAction() }
                 } label: {
                     HStack(spacing: TCSpacing.extraSmall) {
                         Image(systemName: "arrow.clockwise")
                         Text("Try Again")
-                            .font(TCTypography.bodyEmphasis)
                     }
-                    .frame(height: 44)
-                    .padding(.horizontal, TCSpacing.medium)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.tcAmber)
-                .foregroundStyle(Color.tcTextOnAccent)
-                .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+                .padding(.horizontal, TCSpacing.medium)
             }
         }
         .padding(TCSpacing.extraLarge)
