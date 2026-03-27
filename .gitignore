@@ -57,6 +57,7 @@ Pods/
 Podfile.lock
 Carthage/Build/
 .build/
+node_modules/
 
 # Other
 *.log
