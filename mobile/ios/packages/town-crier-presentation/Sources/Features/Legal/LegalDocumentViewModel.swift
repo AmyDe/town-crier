@@ -1,12 +1,9 @@
-import Combine
-
 /// ViewModel for displaying a legal document (privacy policy or terms of service).
-@MainActor
-public final class LegalDocumentViewModel: ObservableObject {
-    @Published private(set) var title: String
-    @Published private(set) var lastUpdated: String
-    @Published private(set) var sections: [LegalDocumentSection]
-
+/// All properties are static after initialisation, so this is a plain value type.
+public struct LegalDocumentViewModel: Sendable {
+    public let title: String
+    public let lastUpdated: String
+    public let sections: [LegalDocumentSection]
     public let documentType: LegalDocumentType
 
     public init(documentType: LegalDocumentType) {

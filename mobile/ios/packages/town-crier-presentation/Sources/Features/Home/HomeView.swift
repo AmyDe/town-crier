@@ -2,10 +2,10 @@ import SwiftUI
 
 /// Placeholder home screen displaying the app title and tagline.
 public struct HomeView: View {
-    @StateObject private var viewModel: HomeViewModel
+    private let viewModel: HomeViewModel
 
     public init(viewModel: HomeViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+        self.viewModel = viewModel
     }
 
     public var body: some View {

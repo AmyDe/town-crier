@@ -3,10 +3,10 @@ import SwiftUI
 /// Displays a legal document (privacy policy or terms of service) with
 /// a scrollable list of titled sections.
 public struct LegalDocumentView: View {
-    @StateObject private var viewModel: LegalDocumentViewModel
+    private let viewModel: LegalDocumentViewModel
 
     public init(viewModel: LegalDocumentViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+        self.viewModel = viewModel
     }
 
     public var body: some View {
