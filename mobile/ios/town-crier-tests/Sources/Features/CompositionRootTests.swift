@@ -14,12 +14,7 @@ import TownCrierDomain
 struct CompositionRootTests {
 
     @Test func allConcreteDependenciesInitialise() {
-        let auth0Config = Auth0Config(
-            clientId: "test-client-id",
-            domain: "test.uk.auth0.com",
-            audience: "https://api-test.example.com"
-        )
-        let authService = Auth0AuthenticationService(config: auth0Config)
+        let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
         let subscriptionService = StoreKitSubscriptionService()
         let appVersionProvider = BundleAppVersionProvider()
         // swiftlint:disable:next force_unwrapping
@@ -71,12 +66,7 @@ struct CompositionRootTests {
         defaults.set(true, forKey: "isOnboardingComplete")
         let onboardingRepo = UserDefaultsOnboardingRepository(defaults: defaults)
 
-        let auth0Config = Auth0Config(
-            clientId: "test-client-id",
-            domain: "test.uk.auth0.com",
-            audience: "https://api-test.example.com"
-        )
-        let authService = Auth0AuthenticationService(config: auth0Config)
+        let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
         // swiftlint:disable:next force_unwrapping
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
@@ -96,12 +86,7 @@ struct CompositionRootTests {
     }
 
     @Test func offlineAwareRepositoryWiresWithConcreteTypes() throws {
-        let auth0Config = Auth0Config(
-            clientId: "test-client-id",
-            domain: "test.uk.auth0.com",
-            audience: "https://api-test.example.com"
-        )
-        let authService = Auth0AuthenticationService(config: auth0Config)
+        let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
         let apiBaseURL = try #require(URL(string: "https://api.towncrierapp.uk"))
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
         let repository = APIPlanningApplicationRepository(apiClient: apiClient)
@@ -132,15 +117,24 @@ struct CompositionRootTests {
         reporter.start()
     }
 
+    @Test func auth0ConfigStoresAudience() {
+        let config = makeTestAuth0Config()
+
+        #expect(config.audience == "https://api-test.example.com")
+    }
+
     // MARK: - Helpers
 
-    private func makeCoordinator() -> AppCoordinator {
-        let auth0Config = Auth0Config(
+    private func makeTestAuth0Config() -> Auth0Config {
+        Auth0Config(
             clientId: "test-client-id",
             domain: "test.uk.auth0.com",
             audience: "https://api-test.example.com"
         )
-        let authService = Auth0AuthenticationService(config: auth0Config)
+    }
+
+    private func makeCoordinator() -> AppCoordinator {
+        let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
         // swiftlint:disable:next force_unwrapping
         let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
         let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
