@@ -53,26 +53,8 @@ public final class ApplicationDetailViewModel: ObservableObject {
         status = application.status
         portalUrl = application.portalUrl
 
-        switch application.status {
-        case .underReview:
-            statusLabel = "Pending"
-            statusIcon = "clock"
-        case .approved:
-            statusLabel = "Approved"
-            statusIcon = "checkmark.circle"
-        case .refused:
-            statusLabel = "Refused"
-            statusIcon = "xmark.circle"
-        case .withdrawn:
-            statusLabel = "Withdrawn"
-            statusIcon = "arrow.uturn.backward.circle"
-        case .appealed:
-            statusLabel = "Appealed"
-            statusIcon = "exclamationmark.triangle"
-        case .unknown:
-            statusLabel = "Unknown"
-            statusIcon = "questionmark.circle"
-        }
+        statusLabel = application.status.displayLabel
+        statusIcon = application.status.displayIcon
 
         let events = application.statusHistory.isEmpty
             ? [StatusEvent(status: application.status, date: application.receivedDate)]
@@ -80,31 +62,13 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
         timelineItems = events.enumerated().map { index, event in
             let isLast = index == events.count - 1
-            let (label, icon) = Self.displayValues(for: event.status)
             return TimelineItem(
-                label: label,
-                icon: icon,
+                label: event.status.displayLabel,
+                icon: event.status.displayIcon,
                 dateFormatted: Self.dateFormatter.string(from: event.date),
                 isCurrent: isLast,
                 status: event.status
             )
-        }
-    }
-
-    private static func displayValues(for status: ApplicationStatus) -> (label: String, icon: String) {
-        switch status {
-        case .underReview:
-            ("Pending", "clock")
-        case .approved:
-            ("Approved", "checkmark.circle")
-        case .refused:
-            ("Refused", "xmark.circle")
-        case .withdrawn:
-            ("Withdrawn", "arrow.uturn.backward.circle")
-        case .appealed:
-            ("Appealed", "exclamationmark.triangle")
-        case .unknown:
-            ("Unknown", "questionmark.circle")
         }
     }
 

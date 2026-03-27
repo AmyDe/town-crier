@@ -127,20 +127,7 @@ public struct ApplicationDetailView: View {
     // MARK: - Status Color
 
     private var statusColor: Color {
-        switch viewModel.status {
-        case .underReview:
-            return .tcStatusPending
-        case .approved:
-            return .tcStatusApproved
-        case .refused:
-            return .tcStatusRefused
-        case .withdrawn:
-            return .tcStatusWithdrawn
-        case .appealed:
-            return .tcStatusAppealed
-        case .unknown:
-            return .tcTextTertiary
-        }
+        viewModel.status.displayColor
     }
 }
 
