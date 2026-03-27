@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { App } from '../App';
+import { LandingPage } from '../features/LandingPage/LandingPage';
 
 function stubMatchMedia(prefersDark: boolean): void {
   const mediaQueryList: MediaQueryList = {
@@ -17,7 +18,15 @@ function stubMatchMedia(prefersDark: boolean): void {
   window.matchMedia = (_query: string) => mediaQueryList;
 }
 
-describe('App', () => {
+function renderLandingPage() {
+  return render(
+    <MemoryRouter>
+      <LandingPage />
+    </MemoryRouter>,
+  );
+}
+
+describe('LandingPage (formerly App)', () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
@@ -25,7 +34,7 @@ describe('App', () => {
   });
 
   it('renders the primary navigation bar', () => {
-    render(<App />);
+    renderLandingPage();
 
     const navs = screen.getAllByRole('navigation');
     const primaryNav = navs.find((nav) => !nav.getAttribute('aria-label'));
@@ -33,25 +42,25 @@ describe('App', () => {
   });
 
   it('renders a hero banner', () => {
-    render(<App />);
+    renderLandingPage();
 
     expect(screen.getByRole('banner')).toBeInTheDocument();
   });
 
   it('renders a main content area', () => {
-    render(<App />);
+    renderLandingPage();
 
     expect(screen.getByRole('main')).toBeInTheDocument();
   });
 
   it('renders a footer', () => {
-    render(<App />);
+    renderLandingPage();
 
     expect(screen.getByRole('contentinfo')).toBeInTheDocument();
   });
 
   it('renders all landing page sections inside main', () => {
-    render(<App />);
+    renderLandingPage();
 
     const main = screen.getByRole('main');
 
@@ -63,7 +72,7 @@ describe('App', () => {
   });
 
   it('renders sections in correct order within main', () => {
-    render(<App />);
+    renderLandingPage();
 
     const main = screen.getByRole('main');
     const sectionIds = Array.from(main.querySelectorAll('section'))
@@ -79,7 +88,7 @@ describe('App', () => {
   });
 
   it('has anchor target ids matching navbar links', () => {
-    render(<App />);
+    renderLandingPage();
 
     expect(document.getElementById('how-it-works')).toBeInTheDocument();
     expect(document.getElementById('pricing')).toBeInTheDocument();
@@ -88,7 +97,7 @@ describe('App', () => {
 
   it('theme toggle switches data-theme attribute', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderLandingPage();
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
 
@@ -99,7 +108,7 @@ describe('App', () => {
   });
 
   it('navbar is before main in DOM order', () => {
-    render(<App />);
+    renderLandingPage();
 
     const navs = screen.getAllByRole('navigation');
     const primaryNav = navs[0]!;
@@ -110,7 +119,7 @@ describe('App', () => {
   });
 
   it('footer is after main in DOM order', () => {
-    render(<App />);
+    renderLandingPage();
 
     const main = screen.getByRole('main');
     const footer = screen.getByRole('contentinfo');
