@@ -12,6 +12,14 @@ import { WiredNotificationsPage } from './features/Notifications/WiredNotificati
 import { WiredSettingsPage } from './features/Settings/WiredSettingsPage';
 import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
 import { ConnectedApplicationDetailPage } from './features/ApplicationDetail/ConnectedApplicationDetailPage';
+import { WiredWatchZoneListPage } from './features/WatchZones/WiredWatchZoneListPage';
+import { WiredWatchZoneCreatePage } from './features/WatchZones/WiredWatchZoneCreatePage';
+import { WiredWatchZoneEditPage } from './features/WatchZones/WiredWatchZoneEditPage';
+import { WiredGroupsListPage } from './features/Groups/WiredGroupsListPage';
+import { WiredGroupCreatePage } from './features/Groups/WiredGroupCreatePage';
+import { WiredGroupDetailPage } from './features/Groups/WiredGroupDetailPage';
+import { WiredAcceptInvitationPage } from './features/Groups/WiredAcceptInvitationPage';
+import { WiredSavedApplicationsPage } from './features/SavedApplications/WiredSavedApplicationsPage';
 
 export function AppRoutes() {
   return (
@@ -29,11 +37,16 @@ export function AppRoutes() {
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<ConnectedApplicationsPage />} />
             <Route path="/applications/:uid" element={<ConnectedApplicationDetailPage />} />
-            <Route path="/watch-zones" element={<PlaceholderPage title="Watch Zones" />} />
+            <Route path="/watch-zones" element={<WiredWatchZoneListPage />} />
+            <Route path="/watch-zones/new" element={<WiredWatchZoneCreatePage />} />
+            <Route path="/watch-zones/:zoneId" element={<WiredWatchZoneEditPage />} />
             <Route path="/map" element={<PlaceholderPage title="Map" />} />
             <Route path="/search" element={<ConnectedSearchPage />} />
-            <Route path="/saved" element={<PlaceholderPage title="Saved" />} />
-            <Route path="/groups" element={<PlaceholderPage title="Groups" />} />
+            <Route path="/saved" element={<WiredSavedApplicationsPage />} />
+            <Route path="/groups" element={<WiredGroupsListPage />} />
+            <Route path="/groups/new" element={<WiredGroupCreatePage />} />
+            <Route path="/groups/:groupId" element={<WiredGroupDetailPage />} />
+            <Route path="/invitations/:invitationId/accept" element={<WiredAcceptInvitationPage />} />
             <Route path="/notifications" element={<WiredNotificationsPage />} />
             <Route path="/settings" element={<WiredSettingsPage />} />
           </Route>
