@@ -76,3 +76,18 @@ The Applications container change feed is consumed by the notification processor
 - **Spatial queries on Applications are cross-partition.** Acceptable because spatial matching runs in a background change feed processor, not in user-facing request paths. Users browse applications via pre-matched results in their notification feed or zone-scoped list (which queries by authority code partition).
 - **Separate WatchZones container** means the notification processor can query all active zones without loading user profile data. Adds one container to manage but keeps concerns cleanly separated.
 - **TTL on Applications** means very old applications disappear from the local cache. This is acceptable — PlanIt retains historical data and the app is focused on recent/active applications.
+
+## Amendments
+
+### 2026-03-27
+- Added containers to reflect features implemented since the original data model:
+
+| Container | Partition Key | Rationale |
+|-----------|--------------|-----------|
+| `DeviceRegistrations` | `/userId` | APNs device tokens per user, supporting multiple devices per platform. Queried when dispatching push notifications |
+| `SavedApplications` | `/userId` | User-bookmarked planning applications. Always queried per-user for the saved applications list |
+| `Groups` | `/ownerId` | Community groups with shared watch zones. Owner-scoped queries for group management |
+| `GroupInvitations` | `/groupId` | Pending/accepted/declined invitations to join a group. Group-scoped for invitation management, with cross-partition query by invitee email on acceptance |
+| `DecisionAlerts` | `/userId` | Alerts triggered when a watched application receives a decision. Per-user feed similar to Notifications |
+
+- Total containers: 10 (original 5 + 5 new). The `Leases` container for change feed checkpointing remains as documented.

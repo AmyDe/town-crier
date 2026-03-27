@@ -58,3 +58,9 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
     - `api/`: Source code for the .NET 10 backend API (including Dockerfile).
     - `infra/`: Pulumi infrastructure code (C#/.NET 10).
 - Project templates (sln, xcodeproj) must be configured to respect these internal structures.
+
+## Amendments
+
+### 2026-03-27
+- Updated: iOS test framework changed from XCTest to **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect()`). The `swift-testing` package (v0.99.0) is declared as an SPM dependency. Test doubles follow a spy/stub pattern with async support.
+- Updated: iOS data layer does not use **SwiftData**. Persistence uses `UserDefaults` for onboarding state and an `Actor`-based in-memory cache (`InMemoryApplicationCacheStore`) with TTL for offline support. No on-device database is currently in use.

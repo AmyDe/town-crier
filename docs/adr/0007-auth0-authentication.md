@@ -116,3 +116,9 @@ At Town Crier's projected growth rate, the 25K MAU ceiling is unlikely to be rea
 - **Free tier dependency** — if Auth0 changes pricing or removes free tier features, we must migrate or pay. Mitigated by low switching cost on the API side (standard JWT) and moderate cost on the iOS side (swap Auth0.swift for another SDK).
 - **Limited customisation on free plan** — no custom domains, limited Actions/Rules, basic email templates. Acceptable for MVP; revisit if branding requirements increase.
 - **No SLA on free tier** — Auth0 outages would prevent login. Mitigated by refresh token rotation (existing sessions survive short outages) and by the fact that planning data viewing could be made available without authentication in a degraded mode.
+
+## Amendments
+
+### 2026-03-27
+- Updated: Auth0 uses a **custom domain** (`towncrierapp.uk.auth0.com`) rather than separate default tenants (`town-crier-dev.auth0.com` / `town-crier-prod.auth0.com`). Dev and prod environments are differentiated by **API audience** (`https://api-dev.towncrierapp.uk` vs `https://api.towncrierapp.uk`), not by tenant.
+- Added: **Town Crier Web** application (type: SPA) registered in Auth0, using `@auth0/auth0-react` v2.16.0. The web app uses the same Auth0 domain and differentiates environments via audience. Auth integration follows a port/adapter pattern (`Auth0AuthAdapter` implements `AuthPort`) with `AuthGuard` and `OnboardingGate` route protection components.
