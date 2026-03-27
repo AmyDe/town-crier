@@ -96,47 +96,13 @@ public struct MapView: View {
     private func pinView(for annotation: MapAnnotationItem) -> some View {
         Image(systemName: "mappin.circle.fill")
             .font(.system(.title2))
-            .foregroundStyle(pinColor(for: annotation.statusColor))
+            .foregroundStyle(annotation.status.displayColor)
             .background(
                 Circle()
                     .fill(Color.tcSurface)
                     .frame(width: 20, height: 20)
             )
-            .accessibilityLabel("\(annotation.title), \(statusLabel(for: annotation.statusColor))")
-    }
-
-    private func pinColor(for status: StatusColor) -> Color {
-        switch status {
-        case .pending:
-            return .tcStatusPending
-        case .approved:
-            return .tcStatusApproved
-        case .refused:
-            return .tcStatusRefused
-        case .withdrawn:
-            return .tcStatusWithdrawn
-        case .appealed:
-            return .tcStatusAppealed
-        case .unknown:
-            return .tcTextTertiary
-        }
-    }
-
-    private func statusLabel(for status: StatusColor) -> String {
-        switch status {
-        case .pending:
-            return "Pending"
-        case .approved:
-            return "Approved"
-        case .refused:
-            return "Refused"
-        case .withdrawn:
-            return "Withdrawn"
-        case .appealed:
-            return "Appealed"
-        case .unknown:
-            return "Unknown"
-        }
+            .accessibilityLabel("\(annotation.title), \(annotation.status.displayLabel)")
     }
 
     private var mapPlaceholder: some View {

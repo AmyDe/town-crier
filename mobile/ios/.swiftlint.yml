@@ -55,6 +55,7 @@ disabled_rules:
   - implicitly_unwrapped_optional # Used in UIKit patterns and test fixtures
   - unused_parameter # SwiftUI lifecycle methods have required signatures
   - unused_closure_parameter
+  - prefer_nimble # Project uses XCTest, not Nimble
 
 analyzer_rules:
   - unused_declaration

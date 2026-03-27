@@ -48,7 +48,7 @@ struct MapViewModelTests {
 
     // MARK: - Annotations
 
-    @Test func annotations_haveCorrectStatusColor() async {
+    @Test func annotations_haveCorrectStatus() async {
         let apps: [PlanningApplication] = [.pendingReview, .approved, .refused, .withdrawn]
         let (sut, _) = makeSUT(applications: apps)
 
@@ -59,10 +59,10 @@ struct MapViewModelTests {
         let refused = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
         let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
 
-        #expect(pending?.statusColor == .pending)
-        #expect(approved?.statusColor == .approved)
-        #expect(refused?.statusColor == .refused)
-        #expect(withdrawn?.statusColor == .withdrawn)
+        #expect(pending?.status == .underReview)
+        #expect(approved?.status == .approved)
+        #expect(refused?.status == .refused)
+        #expect(withdrawn?.status == .withdrawn)
     }
 
     @Test func annotations_onlyIncludeApplicationsWithLocations() async {

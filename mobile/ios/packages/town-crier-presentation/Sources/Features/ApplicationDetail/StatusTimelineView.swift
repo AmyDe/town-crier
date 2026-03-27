@@ -62,19 +62,6 @@ struct StatusTimelineView: View {
     // MARK: - Color
 
     private func statusColor(for status: ApplicationStatus) -> Color {
-        switch status {
-        case .underReview:
-            .tcStatusPending
-        case .approved:
-            .tcStatusApproved
-        case .refused:
-            .tcStatusRefused
-        case .withdrawn:
-            .tcStatusWithdrawn
-        case .appealed:
-            .tcStatusAppealed
-        case .unknown:
-            .tcTextTertiary
-        }
+        status.displayColor
     }
 }
