@@ -194,17 +194,7 @@ public static class EnvironmentStack
 
         if (customDomainPhase >= 2)
         {
-            apiManagedCert = new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
-            {
-                EnvironmentName = containerAppsEnvironmentName,
-                ManagedCertificateName = $"cert-api-{env}",
-                ResourceGroupName = sharedResourceGroupName,
-                Properties = new ManagedCertificatePropertiesArgs
-                {
-                    SubjectName = apiDomain,
-                    DomainControlValidation = "CNAME",
-                },
-            });
+            apiManagedCert = CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain);
         }
 
         // Container App (API) — placeholder image until CI/CD pushes real builds
@@ -296,17 +286,8 @@ public static class EnvironmentStack
 
         if (customDomainPhase == 1)
         {
-            new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
-            {
-                EnvironmentName = containerAppsEnvironmentName,
-                ManagedCertificateName = $"cert-api-{env}",
-                ResourceGroupName = sharedResourceGroupName,
-                Properties = new ManagedCertificatePropertiesArgs
-                {
-                    SubjectName = apiDomain,
-                    DomainControlValidation = "CNAME",
-                },
-            }, new CustomResourceOptions { DependsOn = { containerApp } });
+            CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain,
+                new CustomResourceOptions { DependsOn = { containerApp } });
         }
 
         // Static Web App (Landing Page)
@@ -354,5 +335,25 @@ public static class EnvironmentStack
             ["staticWebAppUrl"] = staticWebApp.DefaultHostname.Apply(hostname => $"https://{hostname}"),
             ["staticWebAppName"] = staticWebApp.Name,
         };
+    }
+
+    private static ManagedCertificate CreateApiManagedCertificate(
+        string env,
+        Output<string> environmentName,
+        Output<string> resourceGroupName,
+        string subjectName,
+        CustomResourceOptions? options = null)
+    {
+        return new ManagedCertificate($"cert-api-{env}", new ManagedCertificateArgs
+        {
+            EnvironmentName = environmentName,
+            ManagedCertificateName = $"cert-api-{env}",
+            ResourceGroupName = resourceGroupName,
+            Properties = new ManagedCertificatePropertiesArgs
+            {
+                SubjectName = subjectName,
+                DomainControlValidation = "CNAME",
+            },
+        }, options);
     }
 }
