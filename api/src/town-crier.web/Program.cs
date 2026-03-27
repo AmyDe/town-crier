@@ -43,6 +43,19 @@ using TownCrier.Web.RateLimiting;
 var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Logging.AddJsonConsole();
+
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:5173"];
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 builder.Services.AddCosmosClient(builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -174,6 +187,7 @@ builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection("R
 
 var app = builder.Build();
 
+app.UseCors();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ErrorResponseMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
