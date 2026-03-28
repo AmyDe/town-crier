@@ -7,6 +7,7 @@ public sealed class CosmosContainerNamesTests
     [Test]
     public async Task Should_ExposeDatabaseName_AsConstant()
     {
-        await Assert.That(CosmosContainerNames.DatabaseName).IsEqualTo("town-crier");
+        string databaseName = CosmosContainerNames.DatabaseName;
+        await Assert.That(databaseName).IsEqualTo("town-crier");
     }
 }
