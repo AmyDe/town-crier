@@ -19,18 +19,9 @@ struct NotificationPermissionStepView: View {
                 .foregroundStyle(Color.tcTextSecondary)
                 .multilineTextAlignment(.center)
 
-            Button {
+            PrimaryButton("Enable Notifications") {
                 Task { await viewModel.requestNotificationPermission() }
-            } label: {
-                Text("Enable Notifications")
-                    .font(TCTypography.bodyEmphasis)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.tcAmber)
-            .foregroundStyle(Color.tcTextOnAccent)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
 
             Button {
                 Task { await viewModel.skipNotifications() }

@@ -28,24 +28,15 @@ struct PostcodeEntryStepView: View {
                     .foregroundStyle(Color.tcStatusRefused)
             }
 
-            Button {
+            PrimaryButton {
                 Task { await viewModel.submitPostcode() }
             } label: {
                 if viewModel.isLoading {
                     ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
                 } else {
                     Text("Continue")
-                        .font(TCTypography.bodyEmphasis)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.tcAmber)
-            .foregroundStyle(Color.tcTextOnAccent)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
             .disabled(viewModel.postcodeInput.isEmpty || viewModel.isLoading)
 
             Button("Back") {

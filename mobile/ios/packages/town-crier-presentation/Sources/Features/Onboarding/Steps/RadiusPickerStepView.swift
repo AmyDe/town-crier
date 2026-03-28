@@ -48,18 +48,9 @@ struct RadiusPickerStepView: View {
                 }
             }
 
-            Button {
+            PrimaryButton("Continue") {
                 viewModel.confirmRadius()
-            } label: {
-                Text("Continue")
-                    .font(TCTypography.bodyEmphasis)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.tcAmber)
-            .foregroundStyle(Color.tcTextOnAccent)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
 
             Button("Back") {
                 viewModel.goBack()

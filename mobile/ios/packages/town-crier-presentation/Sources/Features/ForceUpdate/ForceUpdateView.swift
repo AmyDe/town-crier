@@ -3,6 +3,8 @@ import SwiftUI
 /// Blocking full-screen modal shown when the app version is below
 /// the server-defined minimum. Cannot be dismissed by the user.
 public struct ForceUpdateView: View {
+    @Environment(\.openURL) private var openURL
+
     private let appStoreURL: URL?
 
     public init(appStoreURL: URL? = nil) {
@@ -27,16 +29,9 @@ public struct ForceUpdateView: View {
                 .multilineTextAlignment(.center)
 
             if let appStoreURL {
-                Link(destination: appStoreURL) {
-                    Text("Update Now")
-                        .font(TCTypography.bodyEmphasis)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+                PrimaryButton("Update Now") {
+                    openURL(appStoreURL)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.tcAmber)
-                .foregroundStyle(Color.tcTextOnAccent)
-                .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
             }
 
             Spacer()
