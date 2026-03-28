@@ -8,6 +8,7 @@ function renderWithAuth(authOverrides: Partial<AuthPort> = {}) {
   const auth: AuthPort = {
     isAuthenticated: false,
     isLoading: false,
+    error: undefined,
     loginWithRedirect: vi.fn(),
     ...authOverrides,
   };
@@ -18,6 +19,7 @@ function renderWithAuth(authOverrides: Partial<AuthPort> = {}) {
         <Routes>
           <Route path="/callback" element={<CallbackPage />} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
+          <Route path="/" element={<div>Landing</div>} />
         </Routes>
       </MemoryRouter>
     </AuthProvider>,
@@ -25,8 +27,8 @@ function renderWithAuth(authOverrides: Partial<AuthPort> = {}) {
 }
 
 describe('CallbackPage', () => {
-  it('redirects to /dashboard when auth is not loading', () => {
-    renderWithAuth({ isLoading: false });
+  it('redirects to /dashboard when authenticated', () => {
+    renderWithAuth({ isAuthenticated: true, isLoading: false });
 
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
@@ -35,5 +37,21 @@ describe('CallbackPage', () => {
     const { container } = renderWithAuth({ isLoading: true });
 
     expect(container.innerHTML).toBe('');
+  });
+
+  it('redirects to landing page when not authenticated', () => {
+    renderWithAuth({ isAuthenticated: false, isLoading: false });
+
+    expect(screen.getByText('Landing')).toBeInTheDocument();
+  });
+
+  it('redirects to landing page on auth error', () => {
+    renderWithAuth({
+      isAuthenticated: false,
+      isLoading: false,
+      error: new Error('callback_failed'),
+    });
+
+    expect(screen.getByText('Landing')).toBeInTheDocument();
   });
 });

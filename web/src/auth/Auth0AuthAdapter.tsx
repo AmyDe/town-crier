@@ -9,15 +9,16 @@ interface Props {
 }
 
 export function Auth0AuthAdapter({ children }: Props) {
-  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
+  const { isAuthenticated, isLoading, loginWithRedirect, error } = useAuth0();
 
   const auth: AuthPort = useMemo(
     () => ({
       isAuthenticated,
       isLoading,
+      error,
       loginWithRedirect: () => loginWithRedirect(),
     }),
-    [isAuthenticated, isLoading, loginWithRedirect],
+    [isAuthenticated, isLoading, error, loginWithRedirect],
   );
 
   return (
