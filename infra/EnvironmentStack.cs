@@ -266,6 +266,7 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "Auth0__Audience", Value = auth0Audience },
                             new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
                             new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+                            new EnvironmentVarArgs { Name = "Cors__AllowedOrigins__0", Value = $"https://{frontendDomain}" },
                         },
                     },
                 },
