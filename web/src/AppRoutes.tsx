@@ -8,18 +8,18 @@ import { AppShell } from './components/AppShell/AppShell';
 import { ConnectedOnboardingPage } from './features/onboarding/ConnectedOnboardingPage';
 import { ConnectedApplicationsPage } from './features/Applications/ConnectedApplicationsPage';
 import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
-import { WiredNotificationsPage } from './features/Notifications/WiredNotificationsPage';
-import { WiredSettingsPage } from './features/Settings/WiredSettingsPage';
+import { ConnectedNotificationsPage } from './features/Notifications/ConnectedNotificationsPage';
+import { ConnectedSettingsPage } from './features/Settings/ConnectedSettingsPage';
 import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
 import { ConnectedApplicationDetailPage } from './features/ApplicationDetail/ConnectedApplicationDetailPage';
-import { WiredWatchZoneListPage } from './features/WatchZones/WiredWatchZoneListPage';
-import { WiredWatchZoneCreatePage } from './features/WatchZones/WiredWatchZoneCreatePage';
-import { WiredWatchZoneEditPage } from './features/WatchZones/WiredWatchZoneEditPage';
-import { WiredGroupsListPage } from './features/Groups/WiredGroupsListPage';
-import { WiredGroupCreatePage } from './features/Groups/WiredGroupCreatePage';
-import { WiredGroupDetailPage } from './features/Groups/WiredGroupDetailPage';
-import { WiredAcceptInvitationPage } from './features/Groups/WiredAcceptInvitationPage';
-import { WiredSavedApplicationsPage } from './features/SavedApplications/WiredSavedApplicationsPage';
+import { ConnectedWatchZoneListPage } from './features/WatchZones/ConnectedWatchZoneListPage';
+import { ConnectedWatchZoneCreatePage } from './features/WatchZones/ConnectedWatchZoneCreatePage';
+import { ConnectedWatchZoneEditPage } from './features/WatchZones/ConnectedWatchZoneEditPage';
+import { ConnectedGroupsListPage } from './features/Groups/ConnectedGroupsListPage';
+import { ConnectedGroupCreatePage } from './features/Groups/ConnectedGroupCreatePage';
+import { ConnectedGroupDetailPage } from './features/Groups/ConnectedGroupDetailPage';
+import { ConnectedAcceptInvitationPage } from './features/Groups/ConnectedAcceptInvitationPage';
+import { ConnectedSavedApplicationsPage } from './features/SavedApplications/ConnectedSavedApplicationsPage';
 import { ConnectedMapPage } from './features/Map/ConnectedMapPage';
 
 export function AppRoutes() {
@@ -38,18 +38,18 @@ export function AppRoutes() {
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<ConnectedApplicationsPage />} />
             <Route path="/applications/:uid" element={<ConnectedApplicationDetailPage />} />
-            <Route path="/watch-zones" element={<WiredWatchZoneListPage />} />
-            <Route path="/watch-zones/new" element={<WiredWatchZoneCreatePage />} />
-            <Route path="/watch-zones/:zoneId" element={<WiredWatchZoneEditPage />} />
+            <Route path="/watch-zones" element={<ConnectedWatchZoneListPage />} />
+            <Route path="/watch-zones/new" element={<ConnectedWatchZoneCreatePage />} />
+            <Route path="/watch-zones/:zoneId" element={<ConnectedWatchZoneEditPage />} />
             <Route path="/map" element={<ConnectedMapPage />} />
             <Route path="/search" element={<ConnectedSearchPage />} />
-            <Route path="/saved" element={<WiredSavedApplicationsPage />} />
-            <Route path="/groups" element={<WiredGroupsListPage />} />
-            <Route path="/groups/new" element={<WiredGroupCreatePage />} />
-            <Route path="/groups/:groupId" element={<WiredGroupDetailPage />} />
-            <Route path="/invitations/:invitationId/accept" element={<WiredAcceptInvitationPage />} />
-            <Route path="/notifications" element={<WiredNotificationsPage />} />
-            <Route path="/settings" element={<WiredSettingsPage />} />
+            <Route path="/saved" element={<ConnectedSavedApplicationsPage />} />
+            <Route path="/groups" element={<ConnectedGroupsListPage />} />
+            <Route path="/groups/new" element={<ConnectedGroupCreatePage />} />
+            <Route path="/groups/:groupId" element={<ConnectedGroupDetailPage />} />
+            <Route path="/invitations/:invitationId/accept" element={<ConnectedAcceptInvitationPage />} />
+            <Route path="/notifications" element={<ConnectedNotificationsPage />} />
+            <Route path="/settings" element={<ConnectedSettingsPage />} />
           </Route>
         </Route>
       </Route>

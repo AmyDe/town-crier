@@ -5,7 +5,7 @@ import { asInvitationId } from '../../domain/types';
 import { ApiGroupsRepository } from './ApiGroupsRepository';
 import { AcceptInvitationPage } from './AcceptInvitationPage';
 
-export function WiredAcceptInvitationPage() {
+export function ConnectedAcceptInvitationPage() {
   const client = useApiClient();
   const { invitationId } = useParams<{ invitationId: string }>();
 

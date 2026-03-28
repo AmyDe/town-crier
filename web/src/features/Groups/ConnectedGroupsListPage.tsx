@@ -4,7 +4,7 @@ import { useApiClient } from '../../api/useApiClient';
 import { ApiGroupsRepository } from './ApiGroupsRepository';
 import { GroupsListPage } from './GroupsListPage';
 
-export function WiredGroupsListPage() {
+export function ConnectedGroupsListPage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const repository = useMemo(() => new ApiGroupsRepository(client), [client]);

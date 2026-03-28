@@ -5,7 +5,7 @@ import { ApiWatchZoneRepository } from './ApiWatchZoneRepository';
 import { useWatchZones } from './useWatchZones';
 import { WatchZoneEditPage } from './WatchZoneEditPage';
 
-export function WiredWatchZoneEditPage() {
+export function ConnectedWatchZoneEditPage() {
   const { zoneId } = useParams<{ zoneId: string }>();
   const client = useApiClient();
   const repository = useMemo(() => new ApiWatchZoneRepository(client), [client]);

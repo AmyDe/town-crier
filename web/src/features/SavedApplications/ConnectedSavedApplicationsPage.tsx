@@ -3,7 +3,7 @@ import { useApiClient } from '../../api/useApiClient';
 import { ApiSavedApplicationRepository } from './ApiSavedApplicationRepository';
 import { SavedApplicationsPage } from './SavedApplicationsPage';
 
-export function WiredSavedApplicationsPage() {
+export function ConnectedSavedApplicationsPage() {
   const client = useApiClient();
   const repository = useMemo(() => new ApiSavedApplicationRepository(client), [client]);
 

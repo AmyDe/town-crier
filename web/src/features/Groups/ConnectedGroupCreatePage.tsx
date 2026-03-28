@@ -7,7 +7,7 @@ import type { AuthoritySearchPort } from '../../domain/ports/authority-search-po
 import { ApiGroupsRepository } from './ApiGroupsRepository';
 import { GroupCreatePage } from './GroupCreatePage';
 
-export function WiredGroupCreatePage() {
+export function ConnectedGroupCreatePage() {
   const client = useApiClient();
 
   const repository = useMemo(() => new ApiGroupsRepository(client), [client]);

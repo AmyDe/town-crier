@@ -6,7 +6,7 @@ import { asGroupId } from '../../domain/types';
 import { ApiGroupsRepository } from './ApiGroupsRepository';
 import { GroupDetailPage } from './GroupDetailPage';
 
-export function WiredGroupDetailPage() {
+export function ConnectedGroupDetailPage() {
   const client = useApiClient();
   const { groupId } = useParams<{ groupId: string }>();
   const { user } = useAuth0();
