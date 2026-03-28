@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Domain.SavedApplications;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.SavedApplications;
 
@@ -52,15 +53,7 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
 
-        var results = new List<SavedApplication>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            results.AddRange(response.Select(doc => doc.ToDomain()));
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct)
@@ -90,14 +83,6 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = null });
 
-        var userIds = new List<string>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            userIds.AddRange(response);
-        }
-
-        return userIds;
+        return await iterator.CollectAsync(ct).ConfigureAwait(false);
     }
 }

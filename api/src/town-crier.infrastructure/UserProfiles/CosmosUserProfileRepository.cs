@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.UserProfiles;
 
@@ -37,16 +38,9 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         var queryDefinition = new QueryDefinition("SELECT * FROM c WHERE c.tier = @tier")
             .WithParameter("@tier", tier.ToString());
 
-        var results = new List<UserProfile>();
-
         using var iterator = this.container.GetItemQueryIterator<UserProfileDocument>(queryDefinition);
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            results.AddRange(response.Select(doc => doc.ToDomain()));
-        }
 
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<UserProfile?> GetByOriginalTransactionIdAsync(
@@ -58,17 +52,8 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
             .WithParameter("@txnId", originalTransactionId);
 
         using var iterator = this.container.GetItemQueryIterator<UserProfileDocument>(queryDefinition);
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            if (document is not null)
-            {
-                return document.ToDomain();
-            }
-        }
 
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task SaveAsync(UserProfile profile, CancellationToken ct)

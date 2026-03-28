@@ -1,7 +1,7 @@
-using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Domain.PlanningApplications;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.PlanningApplications;
 
@@ -35,17 +35,7 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
 
         using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            if (document is not null)
-            {
-                return document.ToDomain();
-            }
-        }
-
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
@@ -58,19 +48,9 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
             PartitionKey = new PartitionKey(authorityCode),
         };
 
-        var results = new List<PlanningApplication>();
         using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query, requestOptions: requestOptions);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            foreach (var document in response)
-            {
-                results.Add(document.ToDomain());
-            }
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
@@ -89,18 +69,8 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
             PartitionKey = new PartitionKey(authorityCode),
         };
 
-        var results = new List<PlanningApplication>();
         using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query, requestOptions: requestOptions);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            foreach (var document in response)
-            {
-                results.Add(document.ToDomain());
-            }
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 }

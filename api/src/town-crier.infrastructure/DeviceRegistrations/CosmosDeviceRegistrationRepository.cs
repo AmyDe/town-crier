@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Domain.DeviceRegistrations;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.DeviceRegistrations;
 
@@ -24,18 +25,7 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
             query,
             requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-
-            if (document is not null)
-            {
-                return document.ToDomain();
-            }
-        }
-
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<DeviceRegistration>> GetByUserIdAsync(string userId, CancellationToken ct)
@@ -50,19 +40,7 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
                 PartitionKey = new PartitionKey(userId),
             });
 
-        var results = new List<DeviceRegistration>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-
-            foreach (var document in response)
-            {
-                results.Add(document.ToDomain());
-            }
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task SaveAsync(DeviceRegistration registration, CancellationToken ct)
@@ -86,23 +64,20 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
 
         using var iterator = this.container.GetItemQueryIterator<DeviceRegistrationDocument>(query);
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
+        var documents = await iterator.CollectAsync(ct).ConfigureAwait(false);
 
-            foreach (var document in response)
+        foreach (var document in documents)
+        {
+            try
             {
-                try
-                {
-                    await this.container.DeleteItemAsync<DeviceRegistrationDocument>(
-                        document.Id,
-                        new PartitionKey(document.UserId),
-                        cancellationToken: ct).ConfigureAwait(false);
-                }
-                catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-                {
-                    // Already deleted — idempotent
-                }
+                await this.container.DeleteItemAsync<DeviceRegistrationDocument>(
+                    document.Id,
+                    new PartitionKey(document.UserId),
+                    cancellationToken: ct).ConfigureAwait(false);
+            }
+            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Already deleted — idempotent
             }
         }
     }

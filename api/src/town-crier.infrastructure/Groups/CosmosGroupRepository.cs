@@ -1,6 +1,7 @@
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.Groups;
 using TownCrier.Domain.Groups;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Groups;
 
@@ -24,17 +25,7 @@ public sealed class CosmosGroupRepository : IGroupRepository
             query,
             requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            if (document is not null)
-            {
-                return document.ToDomain();
-            }
-        }
-
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task SaveAsync(Group group, CancellationToken ct)
@@ -56,18 +47,13 @@ public sealed class CosmosGroupRepository : IGroupRepository
             query,
             requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        while (iterator.HasMoreResults)
+        var document = await iterator.FirstOrDefaultAsync(doc => doc, ct).ConfigureAwait(false);
+        if (document is not null)
         {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            if (document is not null)
-            {
-                await this.container.DeleteItemAsync<GroupDocument>(
-                    document.Id,
-                    new PartitionKey(document.OwnerId),
-                    cancellationToken: ct).ConfigureAwait(false);
-                return;
-            }
+            await this.container.DeleteItemAsync<GroupDocument>(
+                document.Id,
+                new PartitionKey(document.OwnerId),
+                cancellationToken: ct).ConfigureAwait(false);
         }
     }
 
@@ -79,16 +65,6 @@ public sealed class CosmosGroupRepository : IGroupRepository
 
         using var iterator = this.container.GetItemQueryIterator<GroupDocument>(query);
 
-        var groups = new List<Group>();
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            foreach (var document in response)
-            {
-                groups.Add(document.ToDomain());
-            }
-        }
-
-        return groups;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 }
