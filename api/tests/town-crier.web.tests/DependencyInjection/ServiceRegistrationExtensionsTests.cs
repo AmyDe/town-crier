@@ -5,10 +5,10 @@ using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Groups;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
+using TownCrier.Application.Polling;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Domain.Polling;
 using TownCrier.Web.Extensions;
 
 namespace TownCrier.Web.Tests.DependencyInjection;
