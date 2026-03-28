@@ -17,7 +17,7 @@ interface StaticWebAppConfig {
 }
 
 function loadConfig(): StaticWebAppConfig {
-  const configPath = resolve(__dirname, '../../staticwebapp.config.json');
+  const configPath = resolve(__dirname, '../../public/staticwebapp.config.json');
   const raw = readFileSync(configPath, 'utf-8');
   return JSON.parse(raw) as StaticWebAppConfig;
 }
