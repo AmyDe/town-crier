@@ -46,4 +46,26 @@ internal static class CosmosQueryExtensions
 
         return results;
     }
+
+    /// <summary>
+    /// Returns the first item from the iterator after applying <paramref name="map"/>,
+    /// or <c>default</c> if no items are returned. Stops iterating after the first match.
+    /// </summary>
+    public static async Task<TResult?> FirstOrDefaultAsync<TDocument, TResult>(
+        this FeedIterator<TDocument> iterator,
+        Func<TDocument, TResult> map,
+        CancellationToken ct)
+    {
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
+            var document = response.FirstOrDefault();
+            if (document is not null)
+            {
+                return map(document);
+            }
+        }
+
+        return default;
+    }
 }
