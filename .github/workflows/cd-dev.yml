@@ -94,7 +94,7 @@ jobs:
           key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
           restore-keys: nuget-infra-${{ runner.os }}-
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -136,7 +136,7 @@ jobs:
           key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
           restore-keys: nuget-infra-${{ runner.os }}-
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -174,7 +174,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -202,7 +202,7 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -247,7 +247,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
