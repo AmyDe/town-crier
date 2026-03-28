@@ -2,13 +2,13 @@
 # Triggered by pushing a semver tag (e.g., v1.0.0).
 #
 # Requires repo-level secrets:
-#   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
-#   AZURE_TENANT_ID        — Azure AD tenant
-#   AZURE_SUBSCRIPTION_ID  — Azure subscription
-#   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
+#   AZURE_CLIENT_ID        -- OIDC federated credential for Azure login
+#   AZURE_TENANT_ID        -- Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  -- Azure subscription
+#   PULUMI_ACCESS_TOKEN    -- Pulumi Cloud access token
 #
 # Requires GitHub Environment:
-#   production             — with OIDC federated credential (environment:production)
+#   production             -- with OIDC federated credential (environment:production)
 
 name: CD Production
 
@@ -30,7 +30,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  # ── Infrastructure ────────────────────────────────────
+  # -- Infrastructure --------------------------------------------------
   infra:
     name: Deploy infrastructure
     runs-on: ubuntu-latest
@@ -42,19 +42,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
+      - uses: ./.github/actions/setup-dotnet-infra
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-
-      - name: Login to Azure
-        uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -82,7 +72,7 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-  # ── API ───────────────────────────────────────────────
+  # -- API -------------------------------------------------------------
   api:
     name: Deploy API
     needs: infra
@@ -98,8 +88,7 @@ jobs:
         id: resolve
         run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
 
-      - name: Login to Azure
-        uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -119,7 +108,7 @@ jobs:
           elif az acr manifest show \
             --registry "$ACR_NAME" \
             --name "town-crier-api:latest" 2>/dev/null; then
-            echo "No image for SHA $SHA — falling back to latest"
+            echo "No image for SHA $SHA -- falling back to latest"
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
             echo "::error::No API image found (tried SHA $SHA and latest)"
@@ -135,7 +124,7 @@ jobs:
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
-  # ── Web ───────────────────────────────────────────────
+  # -- Web -------------------------------------------------------------
   web:
     name: Deploy web
     needs: infra
@@ -159,8 +148,7 @@ jobs:
         run: npm run build
         working-directory: web
 
-      - name: Login to Azure
-        uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

@@ -1,0 +1,142 @@
+# Detects which monorepo components changed between two git refs.
+# Supports both push (HEAD~1..HEAD) and pull_request (origin/base..HEAD) modes.
+#
+# Callers specify which workflow files trigger which components via
+# the trigger-* inputs (comma-separated workflow basenames).
+#
+# Usage (cd-dev, push to main):
+#   - uses: ./.github/actions/detect-changes
+#     with:
+#       base-ref: HEAD~1
+#       compare-ref: HEAD
+#       fetch-depth: 2
+#       detect-ios: "false"
+#       trigger-all: cd-dev.yml
+#
+# Usage (pr-gate, pull request):
+#   - uses: ./.github/actions/detect-changes
+#     with:
+#       base-ref: origin/${{ github.base_ref }}
+#       compare-ref: HEAD
+#       fetch-depth: 0
+#       detect-ios: "true"
+#       trigger-all: pr-gate.yml
+#       trigger-server: cd-dev.yml
+#       trigger-infra: cd-prod.yml
+
+name: Detect Changes
+description: Detect which monorepo components have changed
+
+inputs:
+  base-ref:
+    description: Git ref to diff from (e.g., HEAD~1 or origin/main)
+    required: true
+  compare-ref:
+    description: Git ref to diff to (e.g., HEAD)
+    required: true
+    default: HEAD
+  fetch-depth:
+    description: Git fetch depth for checkout (2 for push, 0 for PR)
+    required: true
+    default: "2"
+  detect-ios:
+    description: Whether to detect iOS changes (true/false)
+    required: false
+    default: "false"
+  trigger-all:
+    description: >-
+      Comma-separated workflow filenames that trigger all components
+      when changed (e.g., "pr-gate.yml,cd-dev.yml")
+    required: false
+    default: ""
+  trigger-server:
+    description: >-
+      Comma-separated workflow filenames that trigger server components
+      (api, web, infra) when changed
+    required: false
+    default: ""
+  trigger-infra:
+    description: >-
+      Comma-separated workflow filenames that trigger only infra
+      when changed
+    required: false
+    default: ""
+
+outputs:
+  api:
+    description: Whether API changed (true/false)
+    value: ${{ steps.filter.outputs.api }}
+  ios:
+    description: Whether iOS changed (true/false)
+    value: ${{ steps.filter.outputs.ios }}
+  web:
+    description: Whether web changed (true/false)
+    value: ${{ steps.filter.outputs.web }}
+  infra:
+    description: Whether infra changed (true/false)
+    value: ${{ steps.filter.outputs.infra }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Detect changed paths
+      id: filter
+      shell: bash
+      run: |
+        CHANGED=$(git diff --name-only ${{ inputs.base-ref }}...${{ inputs.compare-ref }})
+        echo "Changed files:"
+        echo "$CHANGED"
+
+        has_api=false
+        has_ios=false
+        has_web=false
+        has_infra=false
+
+        # Check workflow file triggers
+        IFS=',' read -ra ALL_TRIGGERS <<< "${{ inputs.trigger-all }}"
+        for wf in "${ALL_TRIGGERS[@]}"; do
+          wf=$(echo "$wf" | xargs)
+          if [ -n "$wf" ] && echo "$CHANGED" | grep -q ".github/workflows/$wf"; then
+            has_api=true; has_web=true; has_infra=true
+            if [ "${{ inputs.detect-ios }}" = "true" ]; then
+              has_ios=true
+            fi
+          fi
+        done
+
+        IFS=',' read -ra SERVER_TRIGGERS <<< "${{ inputs.trigger-server }}"
+        for wf in "${SERVER_TRIGGERS[@]}"; do
+          wf=$(echo "$wf" | xargs)
+          if [ -n "$wf" ] && echo "$CHANGED" | grep -q ".github/workflows/$wf"; then
+            has_api=true; has_web=true; has_infra=true
+          fi
+        done
+
+        IFS=',' read -ra INFRA_TRIGGERS <<< "${{ inputs.trigger-infra }}"
+        for wf in "${INFRA_TRIGGERS[@]}"; do
+          wf=$(echo "$wf" | xargs)
+          if [ -n "$wf" ] && echo "$CHANGED" | grep -q ".github/workflows/$wf"; then
+            has_infra=true
+          fi
+        done
+
+        # Check per-file path triggers
+        while IFS= read -r file; do
+          case "$file" in
+            api/*) has_api=true ;;
+            mobile/ios/*) if [ "${{ inputs.detect-ios }}" = "true" ]; then has_ios=true; fi ;;
+            web/*) has_web=true ;;
+            infra/*) has_infra=true ;;
+          esac
+        done <<< "$CHANGED"
+
+        echo "api=$has_api" >> "$GITHUB_OUTPUT"
+        echo "ios=$has_ios" >> "$GITHUB_OUTPUT"
+        echo "web=$has_web" >> "$GITHUB_OUTPUT"
+        echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
+
+        echo "Results: api=$has_api ios=$has_ios web=$has_web infra=$has_infra"

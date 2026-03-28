@@ -1,0 +1,23 @@
+# Sets up .NET SDK (from global.json) and caches NuGet packages for infra projects.
+# Used by infra jobs across cd-dev, cd-prod, and pr-gate workflows.
+#
+# Usage:
+#   - uses: ./.github/actions/setup-dotnet-infra
+
+name: Setup .NET for Infra
+description: Install .NET SDK from global.json and cache NuGet packages for infra builds
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: api/global.json
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
+        restore-keys: nuget-infra-${{ runner.os }}-

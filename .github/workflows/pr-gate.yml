@@ -21,54 +21,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      ios: ${{ steps.filter.outputs.ios }}
-      web: ${{ steps.filter.outputs.web }}
-      infra: ${{ steps.filter.outputs.infra }}
+      api: ${{ steps.detect.outputs.api }}
+      ios: ${{ steps.detect.outputs.ios }}
+      web: ${{ steps.detect.outputs.web }}
+      infra: ${{ steps.detect.outputs.infra }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Detect changes
+        id: detect
+        uses: ./.github/actions/detect-changes
         with:
-          fetch-depth: 0
-      - name: Detect changed paths
-        id: filter
-        run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          echo "Changed files:"
-          echo "$CHANGED"
+          base-ref: origin/${{ github.base_ref }}
+          compare-ref: HEAD
+          fetch-depth: "0"
+          detect-ios: "true"
+          trigger-all: pr-gate.yml
+          trigger-server: cd-dev.yml
+          trigger-infra: cd-prod.yml
 
-          has_api=false
-          has_ios=false
-          has_web=false
-          has_infra=false
-
-          # Shared workflow files trigger multiple components — check before per-file loop
-          if echo "$CHANGED" | grep -q '.github/workflows/pr-gate.yml'; then
-            has_api=true; has_ios=true; has_web=true; has_infra=true
-          fi
-          if echo "$CHANGED" | grep -q '.github/workflows/cd-dev.yml'; then
-            has_api=true; has_web=true; has_infra=true
-          fi
-          if echo "$CHANGED" | grep -q '.github/workflows/cd-prod.yml'; then
-            has_infra=true
-          fi
-
-          while IFS= read -r file; do
-            case "$file" in
-              api/*) has_api=true ;;
-              mobile/ios/*) has_ios=true ;;
-              web/*) has_web=true ;;
-              infra/*) has_infra=true ;;
-            esac
-          done <<< "$CHANGED"
-
-          echo "api=$has_api" >> "$GITHUB_OUTPUT"
-          echo "ios=$has_ios" >> "$GITHUB_OUTPUT"
-          echo "web=$has_web" >> "$GITHUB_OUTPUT"
-          echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
-
-          echo "Results: api=$has_api ios=$has_ios web=$has_web infra=$has_infra"
-
-  # ── API ──────────────────────────────────────────────
+  # -- API -------------------------------------------------------------
 
   api-format:
     name: "API: Format"
@@ -107,7 +77,7 @@ jobs:
       - run: dotnet test --no-build --configuration Release
         working-directory: api
 
-  # ── iOS ──────────────────────────────────────────────
+  # -- iOS -------------------------------------------------------------
 
   ios-lint:
     name: "iOS: SwiftLint"
@@ -149,7 +119,7 @@ jobs:
       - run: swift test
         working-directory: mobile/ios
 
-  # ── Web ──────────────────────────────────────────────
+  # -- Web -------------------------------------------------------------
 
   web-lint:
     name: "Web: Lint"
@@ -191,7 +161,7 @@ jobs:
       - run: npm run build
         working-directory: web
 
-  # ── Infrastructure ───────────────────────────────────
+  # -- Infrastructure --------------------------------------------------
 
   infra-preview:
     name: "Infra: Pulumi preview"
@@ -205,19 +175,15 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-      - uses: azure/login@v2
+
+      - uses: ./.github/actions/setup-dotnet-infra
+
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - uses: pulumi/actions@v6
         with:
           command: preview
@@ -231,7 +197,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-  # ── Gate (sole required status check) ────────────────
+  # -- Gate (sole required status check) -------------------------------
 
   gate:
     name: PR Gate

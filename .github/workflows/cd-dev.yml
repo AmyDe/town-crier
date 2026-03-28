@@ -2,14 +2,14 @@
 # Triggered on every push to main (squash merges assumed).
 #
 # Requires secrets:
-#   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
-#   AZURE_TENANT_ID        — Azure AD tenant
-#   AZURE_SUBSCRIPTION_ID  — Azure subscription
-#   ACR_LOGIN_SERVER       — Azure Container Registry login server
-#   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
+#   AZURE_CLIENT_ID        -- OIDC federated credential for Azure login
+#   AZURE_TENANT_ID        -- Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  -- Azure subscription
+#   ACR_LOGIN_SERVER       -- Azure Container Registry login server
+#   PULUMI_ACCESS_TOKEN    -- Pulumi Cloud access token
 #
 # Requires GitHub Environment:
-#   development            — with OIDC federated credential (environment:development)
+#   development            -- with OIDC federated credential (environment:development)
 
 name: CD Dev
 
@@ -30,50 +30,27 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  # ── Change detection ─────────────────────────────────
+  # -- Change detection -----------------------------------------------
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      web: ${{ steps.filter.outputs.web }}
-      infra: ${{ steps.filter.outputs.infra }}
+      api: ${{ steps.detect.outputs.api }}
+      web: ${{ steps.detect.outputs.web }}
+      infra: ${{ steps.detect.outputs.infra }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Detect changes
+        id: detect
+        uses: ./.github/actions/detect-changes
         with:
-          fetch-depth: 2
-      - name: Detect changed paths
-        id: filter
-        run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files:"
-          echo "$CHANGED"
+          base-ref: HEAD~1
+          compare-ref: HEAD
+          fetch-depth: "2"
+          detect-ios: "false"
+          trigger-all: cd-dev.yml
 
-          has_api=false
-          has_web=false
-          has_infra=false
-
-          # cd-dev.yml triggers all components — check before per-file loop
-          if echo "$CHANGED" | grep -q '.github/workflows/cd-dev.yml'; then
-            has_api=true; has_web=true; has_infra=true
-          fi
-
-          while IFS= read -r file; do
-            case "$file" in
-              api/*) has_api=true ;;
-              web/*) has_web=true ;;
-              infra/*) has_infra=true ;;
-            esac
-          done <<< "$CHANGED"
-
-          echo "api=$has_api" >> "$GITHUB_OUTPUT"
-          echo "web=$has_web" >> "$GITHUB_OUTPUT"
-          echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
-
-          echo "Results: api=$has_api web=$has_web infra=$has_infra"
-
-  # ── Infrastructure: shared stack ─────────────────────
+  # -- Infrastructure: shared stack ------------------------------------
   infra-shared:
     name: "Infra: Pulumi up (shared)"
     needs: changes
@@ -84,17 +61,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
+      - uses: ./.github/actions/setup-dotnet-infra
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -112,7 +81,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-  # ── Infrastructure: dev stack ────────────────────────
+  # -- Infrastructure: dev stack ---------------------------------------
   infra-dev:
     name: "Infra: Pulumi up (dev)"
     needs: [changes, infra-shared]
@@ -126,17 +95,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
+      - uses: ./.github/actions/setup-dotnet-infra
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -163,7 +124,7 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-  # ── API: build & push image ─────────────────────────
+  # -- API: build & push image ----------------------------------------
   api-image:
     name: "API: Build & push image"
     needs: changes
@@ -174,7 +135,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -191,7 +152,7 @@ jobs:
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest"
         working-directory: api
 
-  # ── API: deploy to dev ──────────────────────────────
+  # -- API: deploy to dev ----------------------------------------------
   api-deploy:
     name: "API: Deploy to dev"
     needs: [changes, api-image, infra-dev]
@@ -202,7 +163,9 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: azure/login@v2
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -215,7 +178,7 @@ jobs:
             --resource-group "rg-town-crier-dev" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
 
-  # ── Web: deploy to dev ──────────────────────────────
+  # -- Web: deploy to dev ----------------------------------------------
   web-deploy:
     name: "Web: Deploy to dev"
     needs: [changes, infra-dev]
@@ -247,7 +210,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
