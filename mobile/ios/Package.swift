@@ -14,7 +14,6 @@ let package = Package(
         .library(name: "TownCrierPresentation", targets: ["TownCrierPresentation"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-testing.git", from: "0.12.0"),
         .package(url: "https://github.com/auth0/Auth0.swift.git", from: "2.0.0"),
     ],
     targets: [
@@ -41,7 +40,6 @@ let package = Package(
                 "TownCrierDomain",
                 "TownCrierData",
                 "TownCrierPresentation",
-                .product(name: "Testing", package: "swift-testing"),
             ],
             path: "town-crier-tests/Sources"
         ),
