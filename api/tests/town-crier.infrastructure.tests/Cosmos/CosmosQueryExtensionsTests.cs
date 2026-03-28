@@ -88,4 +88,64 @@ public sealed class CosmosQueryExtensionsTests
         // Assert
         await Assert.That(result).IsEqualTo("ALPHA");
     }
+
+    [Test]
+    public async Task Should_ReturnNull_When_NoResultsForFirstOrDefault()
+    {
+        // Arrange — empty iterator
+        using var iterator = new FakeFeedIterator<string>(Array.Empty<IReadOnlyList<string>>());
+
+        // Act
+        var result = await iterator.FirstOrDefaultAsync(s => s.ToUpperInvariant(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
+
+    [Test]
+    public async Task Should_ReturnFirstMappedItem_When_SpreadAcrossMultiplePages()
+    {
+        // Arrange — first page is empty, second page has data
+        // This simulates an edge case where Cosmos returns an empty page
+        // before a page with actual results
+        var pages = new IReadOnlyList<string>[]
+        {
+            Array.Empty<string>(),
+            new[] { "found-it" },
+        };
+        using var iterator = new FakeFeedIterator<string>(pages);
+
+        // Act
+        var result = await iterator.FirstOrDefaultAsync(s => s.ToUpperInvariant(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsEqualTo("FOUND-IT");
+    }
+
+    [Test]
+    public async Task Should_ReturnScalarValue_When_QueryReturnsValue()
+    {
+        // Arrange — simulates SELECT VALUE COUNT(1) FROM c which returns a single int
+        var pages = new[] { new[] { 42 } };
+        using var iterator = new FakeFeedIterator<int>(pages);
+
+        // Act
+        var result = await iterator.ScalarAsync(CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task Should_ReturnDefault_When_ScalarQueryReturnsNoResults()
+    {
+        // Arrange
+        using var iterator = new FakeFeedIterator<int>(Array.Empty<IReadOnlyList<int>>());
+
+        // Act
+        var result = await iterator.ScalarAsync(CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsEqualTo(0);
+    }
 }
