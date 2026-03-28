@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.DecisionAlerts;
 using TownCrier.Domain.DecisionAlerts;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.DecisionAlerts;
 
@@ -12,7 +13,7 @@ public sealed class CosmosDecisionAlertRepository : IDecisionAlertRepository
     public CosmosDecisionAlertRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "DecisionAlerts");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.DecisionAlerts);
     }
 
     public async Task<DecisionAlert?> GetByUserAndApplicationAsync(

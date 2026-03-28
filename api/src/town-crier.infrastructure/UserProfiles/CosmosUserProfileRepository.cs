@@ -13,7 +13,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
     public CosmosUserProfileRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "Users");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Users);
     }
 
     public async Task<UserProfile?> GetByUserIdAsync(string userId, CancellationToken ct)

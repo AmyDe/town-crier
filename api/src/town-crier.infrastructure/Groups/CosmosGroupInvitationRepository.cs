@@ -12,7 +12,7 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
     public CosmosGroupInvitationRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "groups");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Groups);
     }
 
     public async Task<GroupInvitation?> GetByIdAsync(string invitationId, CancellationToken ct)
