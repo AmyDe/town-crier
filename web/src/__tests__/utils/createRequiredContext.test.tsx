@@ -23,4 +23,12 @@ describe('createRequiredContext', () => {
 
     expect(result.current).toBe('hello');
   });
+
+  it('uses the context name in the error message', () => {
+    const [, useAuth] = createRequiredContext<{ token: string }>('Auth');
+
+    expect(() => {
+      renderHook(() => useAuth());
+    }).toThrow('useAuth must be used within a Auth.Provider');
+  });
 });
