@@ -13,7 +13,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
     public CosmosWatchZoneRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "WatchZones");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.WatchZones);
     }
 
     public async Task SaveAsync(WatchZone zone, CancellationToken ct)

@@ -12,7 +12,7 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
     public CosmosPlanningApplicationRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "Applications");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Applications);
     }
 
     public async Task UpsertAsync(PlanningApplication application, CancellationToken ct)

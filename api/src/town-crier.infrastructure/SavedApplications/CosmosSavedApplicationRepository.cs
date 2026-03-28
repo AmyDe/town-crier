@@ -13,7 +13,7 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
     public CosmosSavedApplicationRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "SavedApplications");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.SavedApplications);
     }
 
     public async Task SaveAsync(SavedApplication savedApplication, CancellationToken ct)

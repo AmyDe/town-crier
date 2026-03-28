@@ -12,7 +12,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
     public CosmosNotificationRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "notifications");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Notifications);
     }
 
     public async Task<Notification?> GetByUserAndApplicationAsync(

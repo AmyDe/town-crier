@@ -13,7 +13,7 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
     public CosmosDeviceRegistrationRepository(CosmosClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer("town-crier", "DeviceRegistrations");
+        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.DeviceRegistrations);
     }
 
     public async Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
