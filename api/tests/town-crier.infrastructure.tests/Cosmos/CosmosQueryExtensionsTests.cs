@@ -74,4 +74,18 @@ public sealed class CosmosQueryExtensionsTests
         await Assert.That(results[1]).IsEqualTo(20);
         await Assert.That(results[2]).IsEqualTo(30);
     }
+
+    [Test]
+    public async Task Should_ReturnFirstMappedItem_When_ResultExists()
+    {
+        // Arrange
+        var pages = new[] { new[] { "alpha", "bravo" } };
+        using var iterator = new FakeFeedIterator<string>(pages);
+
+        // Act
+        var result = await iterator.FirstOrDefaultAsync(s => s.ToUpperInvariant(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsEqualTo("ALPHA");
+    }
 }
