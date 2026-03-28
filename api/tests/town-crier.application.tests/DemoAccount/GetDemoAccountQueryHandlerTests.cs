@@ -78,8 +78,26 @@ public sealed class GetDemoAccountQueryHandlerTests
         // Act
         var result = await handler.HandleAsync(new GetDemoAccountQuery(), CancellationToken.None);
 
-        // Assert — should have seeded applications
-        await Assert.That(result.Applications.Count).IsGreaterThanOrEqualTo(3);
+        // Assert — should seed exactly the number of applications defined in DemoSeedData
+        var expectedCount = DemoSeedData.CreateApplications(DateTimeOffset.UtcNow).Count;
+        await Assert.That(result.Applications.Count).IsEqualTo(expectedCount);
+    }
+
+    [Test]
+    public async Task Should_UseAuthorityFromSeedData_When_CreatingWatchZone()
+    {
+        // Arrange
+        var userProfileRepository = new FakeUserProfileRepository();
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        var planningApplicationRepository = new FakePlanningApplicationRepository();
+        var handler = new GetDemoAccountQueryHandler(
+            userProfileRepository, watchZoneRepository, planningApplicationRepository);
+
+        // Act
+        var result = await handler.HandleAsync(new GetDemoAccountQuery(), CancellationToken.None);
+
+        // Assert — watch zone authority name should match the DemoSeedData constant
+        await Assert.That(result.WatchZone.AuthorityName).IsEqualTo(DemoSeedData.AuthorityName);
     }
 
     [Test]
