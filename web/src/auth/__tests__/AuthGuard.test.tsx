@@ -50,4 +50,15 @@ describe('AuthGuard', () => {
     });
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
+
+  it('does not call loginWithRedirect when there is an auth error', () => {
+    const spy = new SpyAuthPort();
+    spy.isAuthenticated = false;
+    spy.isLoading = false;
+    spy.error = new Error('callback_failed');
+
+    renderWithAuth(spy);
+
+    expect(spy.loginWithRedirectCalls).toBe(0);
+  });
 });

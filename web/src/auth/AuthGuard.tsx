@@ -3,13 +3,13 @@ import { Outlet } from 'react-router-dom';
 import { useAuth } from './auth-context.ts';
 
 export function AuthGuard() {
-  const { isAuthenticated, isLoading, loginWithRedirect } = useAuth();
+  const { isAuthenticated, isLoading, error, loginWithRedirect } = useAuth();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoading && !isAuthenticated && !error) {
       void loginWithRedirect();
     }
-  }, [isLoading, isAuthenticated, loginWithRedirect]);
+  }, [isLoading, isAuthenticated, error, loginWithRedirect]);
 
   if (isLoading || !isAuthenticated) {
     return null;
