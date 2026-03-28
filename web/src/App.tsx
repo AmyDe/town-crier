@@ -19,6 +19,8 @@ export function App() {
         redirect_uri: `${window.location.origin}/callback`,
         audience: authConfig.audience,
       }}
+      useRefreshTokens
+      cacheLocation="localstorage"
     >
       <QueryClientProvider client={queryClient}>
         <Auth0AuthAdapter>
