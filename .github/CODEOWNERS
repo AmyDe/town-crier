@@ -1,0 +1,3 @@
+# Default code owners — any 2 approvals satisfy the required-reviews gate.
+# GitHub resolves these as: human (AmyDe), Copilot, CodeRabbit.
+* @AmyDe @copilot @coderabbitai
