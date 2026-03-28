@@ -51,27 +51,18 @@ public struct LoginView: View {
     }
 
     private var loginButton: some View {
-        Button {
+        PrimaryButton {
             Task {
                 await viewModel.login()
             }
         } label: {
-            Group {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .tint(Color.tcTextOnAccent)
-                } else {
-                    Text("Sign in")
-                        .font(TCTypography.bodyEmphasis)
-                }
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(Color.tcTextOnAccent)
+            } else {
+                Text("Sign in")
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(Color.tcAmber)
-        .foregroundStyle(Color.tcTextOnAccent)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
         .disabled(viewModel.isLoading)
     }
 

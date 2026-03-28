@@ -39,16 +39,8 @@ public struct EmptyStateView: View {
                 .multilineTextAlignment(.center)
 
             if let actionLabel, let action {
-                Button(action: action) {
-                    Text(actionLabel)
-                        .font(TCTypography.bodyEmphasis)
-                        .frame(height: 44)
-                        .padding(.horizontal, TCSpacing.medium)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.tcAmber)
-                .foregroundStyle(Color.tcTextOnAccent)
-                .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+                PrimaryButton(actionLabel, action: action)
+                    .padding(.horizontal, TCSpacing.medium)
             }
         }
         .padding(TCSpacing.extraLarge)

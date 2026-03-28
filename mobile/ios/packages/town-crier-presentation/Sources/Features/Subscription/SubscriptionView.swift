@@ -107,24 +107,16 @@ public struct SubscriptionView: View {
     }
 
     private func purchaseButton(for product: SubscriptionProduct) -> some View {
-        Button {
+        PrimaryButton {
             Task { await viewModel.purchase(productId: product.id) }
         } label: {
-            Group {
-                if viewModel.isPurchasing {
-                    ProgressView()
-                        .tint(Color.tcTextOnAccent)
-                } else {
-                    Text(product.hasFreeTrial ? "Start Free Trial" : "Subscribe")
-                        .font(TCTypography.bodyEmphasis)
-                }
+            if viewModel.isPurchasing {
+                ProgressView()
+                    .tint(Color.tcTextOnAccent)
+            } else {
+                Text(product.hasFreeTrial ? "Start Free Trial" : "Subscribe")
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
         }
-        .foregroundStyle(Color.tcTextOnAccent)
-        .background(Color.tcAmber)
-        .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
         .disabled(viewModel.isPurchasing)
     }
 
@@ -179,17 +171,9 @@ public struct SubscriptionView: View {
                 .foregroundStyle(Color.tcTextSecondary)
                 .multilineTextAlignment(.center)
 
-            Button {
+            PrimaryButton("Try Again") {
                 Task { await viewModel.loadProducts() }
-            } label: {
-                Text("Try Again")
-                    .font(TCTypography.bodyEmphasis)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
             }
-            .foregroundStyle(Color.tcTextOnAccent)
-            .background(Color.tcAmber)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
         }
         .padding(.top, TCSpacing.large)
     }
