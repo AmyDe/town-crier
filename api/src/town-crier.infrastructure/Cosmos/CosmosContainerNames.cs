@@ -7,4 +7,13 @@ namespace TownCrier.Infrastructure.Cosmos;
 public static class CosmosContainerNames
 {
     public const string DatabaseName = "town-crier";
+
+    public const string Users = "Users";
+    public const string Groups = "groups";
+    public const string Notifications = "notifications";
+    public const string DeviceRegistrations = "DeviceRegistrations";
+    public const string DecisionAlerts = "DecisionAlerts";
+    public const string SavedApplications = "SavedApplications";
+    public const string WatchZones = "WatchZones";
+    public const string Applications = "Applications";
 }
