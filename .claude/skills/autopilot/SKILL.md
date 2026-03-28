@@ -27,18 +27,22 @@ Invoke `/beads:ready` to find beads with no blockers.
 
 **No beads ready?** Report `Autopilot: no ready beads — idle` and return.
 
-**Beads available?** Pick the **first** one (highest priority). Invoke `/beads:show <bead-id>` to read its full context — title, description, notes, design, and any comments from previous autopilot attempts.
+**Beads available?** Walk the list from highest priority to lowest, selecting the first bead that passes all filters below. For each candidate, invoke `/beads:show <bead-id>` and apply these filters in order:
 
-### Retry Guard
+### Filter: Skip Epics
+
+If the bead's type is `epic`, skip it — epics are containers, not implementable units. Continue to the next candidate.
+
+### Filter: Retry Guard
 
 If the bead's notes already contain **two or more** `Autopilot:` failure entries (from prior failed PR attempts), this bead has been tried and failed repeatedly. Do **not** retry it — instead:
 
 1. Invoke `/beads:update <bead-id> --notes="Autopilot: flagged for human review after repeated failures"`.
-2. Report `Autopilot: <bead-id> flagged for human review (repeated failures)` and return.
+2. Skip to the next candidate.
 
 This prevents infinite retry loops. A human needs to look at it.
 
-## Phase 2: Classify and Dispatch
+### Filter: Classify Worker Type
 
 Determine the worker type from the bead's description and any labels:
 
@@ -50,7 +54,15 @@ Determine the worker type from the bead's description and any labels:
 | Pulumi, infrastructure, IaC, Azure, Container Apps, resource group, `infra` paths | `pulumi-infra-worker` |
 | CI/CD, pipeline, GitHub Actions, workflow, deployment, `.github/workflows` paths | `github-actions-worker` |
 
-**Ambiguous?** Read the description carefully. If still unclear, skip this bead — report `Autopilot: skipped <bead-id> — could not classify worker type` and return. Do not guess.
+Read the description carefully. If the bead cannot be mapped to any worker (e.g., manual tasks like App Store setup, or genuinely ambiguous), skip it and continue to the next candidate. Do not guess.
+
+### No Candidate Found
+
+If every ready bead was filtered out, report `Autopilot: no dispatchable beads — <N> ready but all filtered (epics, retry-limited, or unclassifiable)` and return.
+
+## Phase 2: Dispatch
+
+You now have a selected bead and its worker type from the filters above.
 
 Mark the bead in-progress:
 
