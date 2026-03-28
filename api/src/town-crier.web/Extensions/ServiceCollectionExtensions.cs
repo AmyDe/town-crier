@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
@@ -156,6 +157,27 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<AcceptInvitationCommandHandler>();
         services.AddTransient<RemoveGroupMemberCommandHandler>();
         services.AddTransient<DeleteGroupCommandHandler>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddAuthenticationServices(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                var domain = configuration["Auth0:Domain"]
+                    ?? throw new InvalidOperationException("Auth0:Domain configuration is required.");
+                var audience = configuration["Auth0:Audience"]
+                    ?? throw new InvalidOperationException("Auth0:Audience configuration is required.");
+
+                options.Authority = $"https://{domain}/";
+                options.Audience = audience;
+            });
+
+        services.AddAuthorizationBuilder()
+            .AddFallbackPolicy("Authenticated", policy => policy.RequireAuthenticatedUser());
 
         return services;
     }
