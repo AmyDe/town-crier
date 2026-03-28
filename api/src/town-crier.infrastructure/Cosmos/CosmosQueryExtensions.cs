@@ -27,4 +27,23 @@ internal static class CosmosQueryExtensions
 
         return results;
     }
+
+    /// <summary>
+    /// Drains all pages from the iterator and returns the raw items as a list (no mapping).
+    /// Useful when the query already returns the desired type (e.g. scalar projections).
+    /// </summary>
+    public static async Task<List<T>> CollectAsync<T>(
+        this FeedIterator<T> iterator,
+        CancellationToken ct)
+    {
+        var results = new List<T>();
+
+        while (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
+            results.AddRange(response);
+        }
+
+        return results;
+    }
 }
