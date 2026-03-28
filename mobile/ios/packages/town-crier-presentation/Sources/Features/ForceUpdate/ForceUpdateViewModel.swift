@@ -7,6 +7,7 @@ import TownCrierDomain
 public final class ForceUpdateViewModel: ObservableObject {
     @Published public private(set) var requiresUpdate = false
     @Published public private(set) var isChecking = false
+
     private let versionConfigService: VersionConfigService
     private let appVersionProvider: AppVersionProvider
 

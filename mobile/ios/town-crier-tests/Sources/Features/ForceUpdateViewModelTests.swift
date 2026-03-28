@@ -119,5 +119,4 @@ struct ForceUpdateViewModelTests {
         // After completion, isChecking should be false
         #expect(!sut.isChecking)
     }
-
 }
