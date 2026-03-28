@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TownCrier.Application.Authorities;
@@ -90,5 +91,26 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<CreateGroupCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetGroupQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<PollPlanItCommandHandler>()).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_ConfigureAuthentication_When_AddAuthenticationServicesCalled()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth0:Domain"] = "test.auth0.com",
+                ["Auth0:Audience"] = "https://api.towncrier.app",
+            })
+            .Build();
+
+        // Act
+        services.AddAuthenticationServices(configuration);
+
+        // Assert — verify authentication and authorization are registered
+        var provider = services.BuildServiceProvider();
+        await Assert.That(provider.GetService<IAuthenticationService>()).IsNotNull();
     }
 }
