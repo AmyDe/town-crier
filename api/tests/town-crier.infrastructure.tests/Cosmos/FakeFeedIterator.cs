@@ -6,6 +6,7 @@ namespace TownCrier.Infrastructure.Tests.Cosmos;
 /// A hand-written fake for <see cref="FeedIterator{T}"/> that returns
 /// pre-configured pages of results, simulating Cosmos DB paging behavior.
 /// </summary>
+/// <typeparam name="T">The item type returned per page.</typeparam>
 internal sealed class FakeFeedIterator<T> : FeedIterator<T>
 {
     private readonly Queue<FakeFeedResponse<T>> pages;

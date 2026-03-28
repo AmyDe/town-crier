@@ -12,6 +12,12 @@ internal static class CosmosQueryExtensions
     /// Drains all pages from the iterator, applying <paramref name="map"/> to each item,
     /// and returns the collected results as a list.
     /// </summary>
+    /// <typeparam name="TDocument">The document type returned by Cosmos DB.</typeparam>
+    /// <typeparam name="TResult">The mapped result type.</typeparam>
+    /// <param name="iterator">The feed iterator to drain.</param>
+    /// <param name="map">A function to transform each document into the result type.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A list of all mapped results from all pages.</returns>
     public static async Task<List<TResult>> CollectAsync<TDocument, TResult>(
         this FeedIterator<TDocument> iterator,
         Func<TDocument, TResult> map,
@@ -32,6 +38,10 @@ internal static class CosmosQueryExtensions
     /// Drains all pages from the iterator and returns the raw items as a list (no mapping).
     /// Useful when the query already returns the desired type (e.g. scalar projections).
     /// </summary>
+    /// <typeparam name="T">The item type returned by Cosmos DB.</typeparam>
+    /// <param name="iterator">The feed iterator to drain.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A list of all raw items from all pages.</returns>
     public static async Task<List<T>> CollectAsync<T>(
         this FeedIterator<T> iterator,
         CancellationToken ct)
@@ -51,6 +61,12 @@ internal static class CosmosQueryExtensions
     /// Returns the first item from the iterator after applying <paramref name="map"/>,
     /// or <c>default</c> if no items are returned. Stops iterating after the first match.
     /// </summary>
+    /// <typeparam name="TDocument">The document type returned by Cosmos DB.</typeparam>
+    /// <typeparam name="TResult">The mapped result type.</typeparam>
+    /// <param name="iterator">The feed iterator to drain.</param>
+    /// <param name="map">A function to transform the first document into the result type.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The first mapped item, or <c>default</c> if no items exist.</returns>
     public static async Task<TResult?> FirstOrDefaultAsync<TDocument, TResult>(
         this FeedIterator<TDocument> iterator,
         Func<TDocument, TResult> map,
@@ -73,6 +89,10 @@ internal static class CosmosQueryExtensions
     /// Returns the first scalar value from the iterator, or <c>default(T)</c> if empty.
     /// Designed for <c>SELECT VALUE COUNT(1)</c> style queries that return a single value.
     /// </summary>
+    /// <typeparam name="T">The scalar type returned by the query.</typeparam>
+    /// <param name="iterator">The feed iterator to drain.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The first scalar value, or <c>default(T)</c> if empty.</returns>
     public static async Task<T> ScalarAsync<T>(
         this FeedIterator<T> iterator,
         CancellationToken ct)

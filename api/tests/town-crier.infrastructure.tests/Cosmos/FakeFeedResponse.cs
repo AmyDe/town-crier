@@ -6,6 +6,7 @@ namespace TownCrier.Infrastructure.Tests.Cosmos;
 /// <summary>
 /// A hand-written fake for <see cref="FeedResponse{T}"/> that wraps a list of items.
 /// </summary>
+/// <typeparam name="T">The item type contained in the response.</typeparam>
 internal sealed class FakeFeedResponse<T> : FeedResponse<T>
 {
     private readonly IReadOnlyList<T> items;
