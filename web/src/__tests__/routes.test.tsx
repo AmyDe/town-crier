@@ -150,7 +150,7 @@ describe('AppRoutes', () => {
       renderRoutes({ route: '/dashboard', authSpy, profileSpy });
 
       await waitFor(() => {
-        expect(screen.getByText('Onboarding')).toBeInTheDocument();
+        expect(screen.getByText('Welcome to Town Crier')).toBeInTheDocument();
       });
     });
 
