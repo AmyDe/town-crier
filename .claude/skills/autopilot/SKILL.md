@@ -70,7 +70,17 @@ Mark the bead in-progress:
 /beads:update <bead-id> --status=in_progress
 ```
 
-Dispatch the worker:
+Determine the worker's allowed path scope:
+
+| Worker | Allowed Path |
+|--------|-------------|
+| `dotnet-tdd-worker` | `api/` |
+| `ios-tdd-worker` | `mobile/ios/` |
+| `react-tdd-worker` | `web/` |
+| `pulumi-infra-worker` | `infra/` |
+| `github-actions-worker` | `.github/workflows/`, `.github/actions/` |
+
+Dispatch the worker with the critical requirements reinforced in the prompt:
 
 ```
 Agent({
@@ -81,7 +91,7 @@ Agent({
   "model": "opus",
   "mode": "bypassPermissions",
   "run_in_background": true,
-  "prompt": "Work on bead `<bead-id>`."
+  "prompt": "Work on bead `<bead-id>`.\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop"
 })
 ```
 
@@ -93,25 +103,71 @@ The Agent result includes the **worktree path and branch name** if the worker ma
 
 **No changes reported?** The worker failed silently. Jump to [Failure Recovery](#failure-recovery).
 
-### Evidence Check
+### Audit Checklist
 
-Invoke `/beads:show <bead-id>` and read the comments. The worker must have recorded:
+Run every check below. If **any** check fails, jump to [Failure Recovery](#failure-recovery) with a specific description of what was missing.
 
-| Worker Type | Required Evidence |
-|-------------|-------------------|
-| TDD workers (dotnet, ios, react) | `## TDD Evidence` section, final test output showing success, at least one Red-Green-Refactor cycle |
-| Infra worker | `## Infrastructure Evidence` section, build/preview output |
-| CI/CD worker | `## Pipeline Evidence` section, YAML validation output |
-
-Also verify commits exist on the branch:
+#### Check 1: Commits Exist
 
 ```bash
 git log main..<branch-name> --oneline
 ```
 
-**Evidence missing or no commits?** Jump to [Failure Recovery](#failure-recovery).
+If no commits, fail with: "no commits on branch."
 
-**Evidence valid and commits present?** Continue to Phase 4.
+#### Check 2: Evidence Comments Exist
+
+Invoke `/beads:show <bead-id>` and read the comments. Count the evidence comments recorded by the worker.
+
+**For TDD workers (dotnet, ios, react):**
+- Count comments containing `— Red` (failing test output)
+- Count comments containing `— Green` (passing test output)
+- There must be **at least one Red comment and at least one Green comment** — a single summary with no per-cycle evidence is not sufficient
+- There must be a **summary comment** containing `## TDD Summary` with final test output
+
+If Red comments = 0, fail with: "no Red phase evidence found — worker may not have followed TDD."
+If Green comments = 0, fail with: "no Green phase evidence found."
+If summary is missing, fail with: "no TDD Summary comment found."
+
+**For infra worker:**
+- There must be at least one comment containing `## Infrastructure Change`
+- There must be a summary comment containing `## Infrastructure Summary`
+
+**For CI/CD worker:**
+- There must be at least one comment containing `## Pipeline Change`
+- There must be a summary comment containing `## Pipeline Summary`
+
+#### Check 3: Commit Count Plausibility
+
+For TDD workers, count commits on the branch and count Red-Green pairs in comments:
+
+```bash
+git log main..<branch-name> --oneline | wc -l
+```
+
+There should be at least 2 commits (one Red, one Green). If there's only 1 commit, fail with: "only 1 commit found — TDD requires at least one Red and one Green commit."
+
+#### Check 4: Scope Verification
+
+Check that all changed files fall within the worker's allowed path boundary:
+
+```bash
+git diff main..<branch-name> --name-only
+```
+
+| Worker | Allowed Paths |
+|--------|--------------|
+| `dotnet-tdd-worker` | `api/` |
+| `ios-tdd-worker` | `mobile/ios/` |
+| `react-tdd-worker` | `web/` |
+| `pulumi-infra-worker` | `infra/` |
+| `github-actions-worker` | `.github/` |
+
+If any files fall outside the allowed paths, fail with: "files modified outside scope: `<list of offending files>`."
+
+#### All Checks Pass
+
+Continue to Phase 4.
 
 ## Phase 4: Create Pull Request
 
