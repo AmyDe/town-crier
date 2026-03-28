@@ -45,8 +45,11 @@ describe('MapPage', () => {
       </MemoryRouter>,
     );
 
+    await waitFor(() => {
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    });
+
     expect(screen.getByRole('heading', { name: 'Map' })).toBeInTheDocument();
-    expect(screen.getByTestId('map-container')).toBeInTheDocument();
   });
 
   it('renders loading state initially', () => {
