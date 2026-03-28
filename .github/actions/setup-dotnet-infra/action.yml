@@ -1,0 +1,17 @@
+# Sets up .NET SDK (from global.json) and restores NuGet cache for infra projects.
+# Used by infra jobs that need dotnet + Pulumi.
+name: Setup .NET + NuGet cache (infra)
+description: Install .NET SDK from global.json and cache NuGet packages for infra
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: api/global.json
+
+    - uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
+        restore-keys: nuget-infra-${{ runner.os }}-

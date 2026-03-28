@@ -36,42 +36,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      web: ${{ steps.filter.outputs.web }}
-      infra: ${{ steps.filter.outputs.infra }}
+      api: ${{ steps.detect.outputs.api }}
+      web: ${{ steps.detect.outputs.web }}
+      infra: ${{ steps.detect.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Detect changed paths
-        id: filter
-        run: |
-          CHANGED=$(git diff --name-only HEAD~1 HEAD)
-          echo "Changed files:"
-          echo "$CHANGED"
 
-          has_api=false
-          has_web=false
-          has_infra=false
-
-          # cd-dev.yml triggers all components — check before per-file loop
-          if echo "$CHANGED" | grep -q '.github/workflows/cd-dev.yml'; then
-            has_api=true; has_web=true; has_infra=true
-          fi
-
-          while IFS= read -r file; do
-            case "$file" in
-              api/*) has_api=true ;;
-              web/*) has_web=true ;;
-              infra/*) has_infra=true ;;
-            esac
-          done <<< "$CHANGED"
-
-          echo "api=$has_api" >> "$GITHUB_OUTPUT"
-          echo "web=$has_web" >> "$GITHUB_OUTPUT"
-          echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
-
-          echo "Results: api=$has_api web=$has_web infra=$has_infra"
+      - uses: ./.github/actions/detect-changes
+        id: detect
+        with:
+          mode: push
+          detect-ios: "false"
+          trigger-server-paths: .github/workflows/cd-dev.yml
 
   # ── Infrastructure: shared stack ─────────────────────
   infra-shared:
@@ -84,17 +62,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
+      - uses: ./.github/actions/setup-dotnet-infra
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -126,17 +96,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
+      - uses: ./.github/actions/setup-dotnet-infra
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
-
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -174,7 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -202,7 +164,9 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: azure/login@v2
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -247,7 +211,7 @@ jobs:
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
 
-      - uses: azure/login@v2
+      - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

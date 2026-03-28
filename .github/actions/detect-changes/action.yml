@@ -1,0 +1,124 @@
+# Detects which monorepo components changed, using git diff.
+# Supports both push (HEAD~1) and pull_request (origin/base...HEAD) modes.
+#
+# Callers configure which workflow files trigger which component categories
+# via the trigger-all-paths, trigger-server-paths, and trigger-infra-paths inputs.
+name: Detect monorepo changes
+description: Detect which components changed in a monorepo push or PR
+
+inputs:
+  mode:
+    description: "'push' compares HEAD~1..HEAD; 'pr' compares origin/<base>...HEAD"
+    required: true
+  base-ref:
+    description: "Base branch for PR mode (e.g., github.base_ref). Ignored in push mode."
+    required: false
+    default: main
+  detect-ios:
+    description: "Whether to detect iOS changes (set 'false' for CD workflows that skip iOS)"
+    required: false
+    default: "true"
+  trigger-all-paths:
+    description: "Glob patterns (one per line) that trigger ALL components when changed"
+    required: false
+    default: ""
+  trigger-server-paths:
+    description: "Glob patterns (one per line) that trigger server components (api, web, infra)"
+    required: false
+    default: ""
+  trigger-infra-paths:
+    description: "Glob patterns (one per line) that trigger only infra"
+    required: false
+    default: ""
+
+outputs:
+  api:
+    description: "'true' if API changed"
+    value: ${{ steps.filter.outputs.api }}
+  ios:
+    description: "'true' if iOS changed (always 'false' when detect-ios is 'false')"
+    value: ${{ steps.filter.outputs.ios }}
+  web:
+    description: "'true' if web changed"
+    value: ${{ steps.filter.outputs.web }}
+  infra:
+    description: "'true' if infra changed"
+    value: ${{ steps.filter.outputs.infra }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect changed paths
+      id: filter
+      shell: bash
+      run: |
+        if [ "${{ inputs.mode }}" = "push" ]; then
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+        else
+          CHANGED=$(git diff --name-only origin/${{ inputs.base-ref }}...HEAD)
+        fi
+
+        echo "Changed files:"
+        echo "$CHANGED"
+
+        has_api=false
+        has_ios=false
+        has_web=false
+        has_infra=false
+
+        # Check trigger-all-paths patterns
+        ALL_PATTERNS="${{ inputs.trigger-all-paths }}"
+        if [ -n "$ALL_PATTERNS" ]; then
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            if echo "$CHANGED" | grep -q "$pattern"; then
+              has_api=true; has_web=true; has_infra=true
+              if [ "${{ inputs.detect-ios }}" = "true" ]; then
+                has_ios=true
+              fi
+            fi
+          done <<< "$ALL_PATTERNS"
+        fi
+
+        # Check trigger-server-paths patterns (api, web, infra — no ios)
+        SERVER_PATTERNS="${{ inputs.trigger-server-paths }}"
+        if [ -n "$SERVER_PATTERNS" ]; then
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            if echo "$CHANGED" | grep -q "$pattern"; then
+              has_api=true; has_web=true; has_infra=true
+            fi
+          done <<< "$SERVER_PATTERNS"
+        fi
+
+        # Check trigger-infra-paths patterns (infra only)
+        INFRA_PATTERNS="${{ inputs.trigger-infra-paths }}"
+        if [ -n "$INFRA_PATTERNS" ]; then
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            if echo "$CHANGED" | grep -q "$pattern"; then
+              has_infra=true
+            fi
+          done <<< "$INFRA_PATTERNS"
+        fi
+
+        # Per-file component detection
+        while IFS= read -r file; do
+          case "$file" in
+            api/*) has_api=true ;;
+            mobile/ios/*)
+              if [ "${{ inputs.detect-ios }}" = "true" ]; then
+                has_ios=true
+              fi
+              ;;
+            web/*) has_web=true ;;
+            infra/*) has_infra=true ;;
+          esac
+        done <<< "$CHANGED"
+
+        echo "api=$has_api" >> "$GITHUB_OUTPUT"
+        echo "ios=$has_ios" >> "$GITHUB_OUTPUT"
+        echo "web=$has_web" >> "$GITHUB_OUTPUT"
+        echo "infra=$has_infra" >> "$GITHUB_OUTPUT"
+
+        echo "Results: api=$has_api ios=$has_ios web=$has_web infra=$has_infra"

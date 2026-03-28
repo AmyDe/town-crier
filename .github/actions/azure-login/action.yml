@@ -1,0 +1,24 @@
+# Wraps azure/login@v2 with OIDC federated credentials.
+# Keeps the three secret inputs in one place so callers pass them once.
+name: Azure Login (OIDC)
+description: Login to Azure using OIDC federated credentials
+
+inputs:
+  client-id:
+    description: Azure AD application (client) ID
+    required: true
+  tenant-id:
+    description: Azure AD tenant ID
+    required: true
+  subscription-id:
+    description: Azure subscription ID
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: azure/login@v2
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
