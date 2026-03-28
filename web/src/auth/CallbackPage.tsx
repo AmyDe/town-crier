@@ -8,6 +8,10 @@ export function CallbackPage() {
     return null;
   }
 
+  if (error) {
+    console.error('[Auth0 callback failed]', error.message, error);
+  }
+
   if (error || !isAuthenticated) {
     return <Navigate to="/" replace />;
   }
