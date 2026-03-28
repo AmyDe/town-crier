@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useApiClient } from '../api/useApiClient';
 import { userProfileApi } from '../api/userProfile';
-import { ProfileRepositoryContext } from './profile-context';
+import { ProfileRepositoryProvider as ProfileRepoProvider } from './profile-context';
 import type { ProfileRepository } from '../domain/ports/profile-repository';
 import type { UserProfile } from '../domain/types';
 import { ApiRequestError } from '../api/client';
@@ -31,8 +31,8 @@ export function ProfileRepositoryProvider({ children }: Props) {
   }, [client]);
 
   return (
-    <ProfileRepositoryContext.Provider value={repository}>
+    <ProfileRepoProvider value={repository}>
       {children}
-    </ProfileRepositoryContext.Provider>
+    </ProfileRepoProvider>
   );
 }

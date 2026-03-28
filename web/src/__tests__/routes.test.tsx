@@ -1,9 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AuthContext } from '../auth/auth-context';
-import { ProfileRepositoryContext } from '../auth/profile-context';
-import { ApiClientContext } from '../api/useApiClient';
+import { AuthProvider } from '../auth/auth-context';
+import { ProfileRepositoryProvider } from '../auth/profile-context';
+import { ApiClientProvider } from '../api/useApiClient';
 import { SpyAuthPort } from '../auth/__tests__/spies/spy-auth-port';
 import { SpyProfileRepository } from '../auth/__tests__/spies/spy-profile-repository';
 import { AppRoutes } from '../AppRoutes';
@@ -57,13 +57,13 @@ function renderRoutes({ route = '/', authSpy, profileSpy }: RenderOptions = {}) 
 
   return render(
     <MemoryRouter initialEntries={[route]}>
-      <AuthContext.Provider value={auth}>
-        <ProfileRepositoryContext.Provider value={profile}>
-          <ApiClientContext.Provider value={stubApiClient}>
+      <AuthProvider value={auth}>
+        <ProfileRepositoryProvider value={profile}>
+          <ApiClientProvider value={stubApiClient}>
             <AppRoutes />
-          </ApiClientContext.Provider>
-        </ProfileRepositoryContext.Provider>
-      </AuthContext.Provider>
+          </ApiClientProvider>
+        </ProfileRepositoryProvider>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }

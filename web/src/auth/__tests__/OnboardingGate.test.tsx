@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { ProfileRepositoryContext } from '../profile-context.ts';
+import { ProfileRepositoryProvider } from '../profile-context.ts';
 import { OnboardingGate } from '../OnboardingGate.tsx';
 import { SpyProfileRepository } from './spies/spy-profile-repository.ts';
 import type { UserProfile } from '../../domain/types.ts';
@@ -15,14 +15,14 @@ const existingProfile: UserProfile = {
 function renderWithProfile(spy: SpyProfileRepository) {
   return render(
     <MemoryRouter initialEntries={['/app']}>
-      <ProfileRepositoryContext.Provider value={spy}>
+      <ProfileRepositoryProvider value={spy}>
         <Routes>
           <Route element={<OnboardingGate />}>
             <Route path="/app" element={<div>Dashboard</div>} />
           </Route>
           <Route path="/onboarding" element={<div>Onboarding</div>} />
         </Routes>
-      </ProfileRepositoryContext.Provider>
+      </ProfileRepositoryProvider>
     </MemoryRouter>,
   );
 }

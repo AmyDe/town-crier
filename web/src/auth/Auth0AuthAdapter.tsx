@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { AuthContext } from './auth-context';
+import { AuthProvider } from './auth-context';
 import type { AuthPort } from '../domain/ports/auth-port';
 
 interface Props {
@@ -21,8 +21,8 @@ export function Auth0AuthAdapter({ children }: Props) {
   );
 
   return (
-    <AuthContext.Provider value={auth}>
+    <AuthProvider value={auth}>
       {children}
-    </AuthContext.Provider>
+    </AuthProvider>
   );
 }
