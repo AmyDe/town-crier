@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { createApiClient } from './client';
-import { ApiClientContext } from './useApiClient';
+import { ApiClientProvider as ApiClientCtxProvider } from './useApiClient';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string || 'http://localhost:5000';
 
@@ -19,8 +19,8 @@ export function ApiClientProvider({ children }: Props) {
   );
 
   return (
-    <ApiClientContext.Provider value={client}>
+    <ApiClientCtxProvider value={client}>
       {children}
-    </ApiClientContext.Provider>
+    </ApiClientCtxProvider>
   );
 }

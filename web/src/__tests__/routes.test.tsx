@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthProvider } from '../auth/auth-context';
 import { ProfileRepositoryProvider } from '../auth/profile-context';
-import { ApiClientContext } from '../api/useApiClient';
+import { ApiClientProvider } from '../api/useApiClient';
 import { SpyAuthPort } from '../auth/__tests__/spies/spy-auth-port';
 import { SpyProfileRepository } from '../auth/__tests__/spies/spy-profile-repository';
 import { AppRoutes } from '../AppRoutes';
@@ -59,9 +59,9 @@ function renderRoutes({ route = '/', authSpy, profileSpy }: RenderOptions = {}) 
     <MemoryRouter initialEntries={[route]}>
       <AuthProvider value={auth}>
         <ProfileRepositoryProvider value={profile}>
-          <ApiClientContext.Provider value={stubApiClient}>
+          <ApiClientProvider value={stubApiClient}>
             <AppRoutes />
-          </ApiClientContext.Provider>
+          </ApiClientProvider>
         </ProfileRepositoryProvider>
       </AuthProvider>
     </MemoryRouter>,

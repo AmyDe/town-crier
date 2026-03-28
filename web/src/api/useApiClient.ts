@@ -1,12 +1,4 @@
-import { createContext, useContext } from 'react';
 import type { ApiClient } from './client';
+import { createRequiredContext } from '../utils/createRequiredContext.ts';
 
-export const ApiClientContext = createContext<ApiClient | null>(null);
-
-export function useApiClient(): ApiClient {
-  const client = useContext(ApiClientContext);
-  if (!client) {
-    throw new Error('useApiClient must be used within an ApiClientProvider');
-  }
-  return client;
-}
+export const [ApiClientProvider, useApiClient] = createRequiredContext<ApiClient>('ApiClient');
