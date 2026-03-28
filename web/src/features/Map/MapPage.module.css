@@ -1,0 +1,62 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--tc-space-md);
+  gap: var(--tc-space-md);
+}
+
+.heading {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.mapWrapper {
+  flex: 1;
+  min-height: 400px;
+  border-radius: var(--tc-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--tc-border);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--tc-status-refused);
+  font-size: var(--tc-text-body);
+}
+
+.popupDescription {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs) 0;
+}
+
+.popupAddress {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-sm) 0;
+}
+
+.popupLink {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-amber);
+  text-decoration: none;
+}
+
+.popupLink:hover {
+  text-decoration: underline;
+}
