@@ -5,7 +5,6 @@ import { LegalPage } from './features/legal/LegalPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
-import { PlaceholderPage } from './features/placeholder/PlaceholderPage';
 import { ConnectedOnboardingPage } from './features/onboarding/ConnectedOnboardingPage';
 import { ConnectedApplicationsPage } from './features/Applications/ConnectedApplicationsPage';
 import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
@@ -21,6 +20,7 @@ import { WiredGroupCreatePage } from './features/Groups/WiredGroupCreatePage';
 import { WiredGroupDetailPage } from './features/Groups/WiredGroupDetailPage';
 import { WiredAcceptInvitationPage } from './features/Groups/WiredAcceptInvitationPage';
 import { WiredSavedApplicationsPage } from './features/SavedApplications/WiredSavedApplicationsPage';
+import { ConnectedMapPage } from './features/Map/ConnectedMapPage';
 
 export function AppRoutes() {
   return (
@@ -41,7 +41,7 @@ export function AppRoutes() {
             <Route path="/watch-zones" element={<WiredWatchZoneListPage />} />
             <Route path="/watch-zones/new" element={<WiredWatchZoneCreatePage />} />
             <Route path="/watch-zones/:zoneId" element={<WiredWatchZoneEditPage />} />
-            <Route path="/map" element={<PlaceholderPage title="Map" />} />
+            <Route path="/map" element={<ConnectedMapPage />} />
             <Route path="/search" element={<ConnectedSearchPage />} />
             <Route path="/saved" element={<WiredSavedApplicationsPage />} />
             <Route path="/groups" element={<WiredGroupsListPage />} />
