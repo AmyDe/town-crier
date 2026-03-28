@@ -16,6 +16,7 @@ name: CD Dev
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: cd-dev
