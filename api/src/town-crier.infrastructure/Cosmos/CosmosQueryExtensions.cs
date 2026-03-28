@@ -68,4 +68,21 @@ internal static class CosmosQueryExtensions
 
         return default;
     }
+
+    /// <summary>
+    /// Returns the first scalar value from the iterator, or <c>default(T)</c> if empty.
+    /// Designed for <c>SELECT VALUE COUNT(1)</c> style queries that return a single value.
+    /// </summary>
+    public static async Task<T> ScalarAsync<T>(
+        this FeedIterator<T> iterator,
+        CancellationToken ct)
+    {
+        if (iterator.HasMoreResults)
+        {
+            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
+            return response.FirstOrDefault()!;
+        }
+
+        return default!;
+    }
 }
