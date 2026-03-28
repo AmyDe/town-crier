@@ -1,0 +1,111 @@
+# Monorepo change detection for push and pull_request events.
+# Outputs boolean flags for each component category that changed.
+#
+# Modes:
+#   push — compares HEAD~1..HEAD (squash-merge assumed)
+#   pr   — compares origin/<base-ref>...HEAD
+#
+# Trigger files:
+#   Workflow files (e.g., cd-dev.yml, pr-gate.yml) can force categories
+#   to true when they themselves change. Pass trigger-files as a
+#   newline-separated list of "file:cat1,cat2" pairs.
+name: Detect Changes
+description: Monorepo change detection with push/pr modes
+
+inputs:
+  mode:
+    description: "Detection mode: 'push' (HEAD~1..HEAD) or 'pr' (origin/base...HEAD)"
+    required: true
+  base-ref:
+    description: "Base branch for PR mode (e.g., github.base_ref). Ignored in push mode."
+    required: false
+    default: ""
+  categories:
+    description: "Comma-separated list of categories to detect (e.g., api,web,infra,ios)"
+    required: true
+  trigger-files:
+    description: |
+      Newline-separated list of workflow files that force categories when changed.
+      Format: "path:cat1,cat2,..." per line.
+      Example:
+        .github/workflows/pr-gate.yml:api,ios,web,infra
+        .github/workflows/cd-dev.yml:api,web,infra
+    required: false
+    default: ""
+
+outputs:
+  api:
+    description: "true if api/ changed"
+    value: ${{ steps.detect.outputs.api }}
+  ios:
+    description: "true if mobile/ios/ changed"
+    value: ${{ steps.detect.outputs.ios }}
+  web:
+    description: "true if web/ changed"
+    value: ${{ steps.detect.outputs.web }}
+  infra:
+    description: "true if infra/ changed"
+    value: ${{ steps.detect.outputs.infra }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect changed paths
+      id: detect
+      shell: bash
+      run: |
+        # Determine changed files based on mode
+        if [[ "${{ inputs.mode }}" == "push" ]]; then
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+        elif [[ "${{ inputs.mode }}" == "pr" ]]; then
+          CHANGED=$(git diff --name-only origin/${{ inputs.base-ref }}...HEAD)
+        else
+          echo "::error::Unknown mode '${{ inputs.mode }}'. Use 'push' or 'pr'."
+          exit 1
+        fi
+
+        echo "Changed files:"
+        echo "$CHANGED"
+
+        # Initialise all requested categories to false
+        IFS=',' read -ra CATS <<< "${{ inputs.categories }}"
+        declare -A flags
+        for cat in "${CATS[@]}"; do
+          flags["$cat"]=false
+        done
+
+        # Process trigger files — workflow files that force categories
+        TRIGGER_FILES="${{ inputs.trigger-files }}"
+        if [[ -n "$TRIGGER_FILES" ]]; then
+          while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            trigger_path="${line%%:*}"
+            trigger_cats="${line#*:}"
+            if echo "$CHANGED" | grep -q "$trigger_path"; then
+              IFS=',' read -ra tcats <<< "$trigger_cats"
+              for tc in "${tcats[@]}"; do
+                if [[ -v "flags[$tc]" ]]; then
+                  flags["$tc"]=true
+                fi
+              done
+            fi
+          done <<< "$TRIGGER_FILES"
+        fi
+
+        # Map file paths to categories
+        while IFS= read -r file; do
+          [[ -z "$file" ]] && continue
+          case "$file" in
+            api/*) [[ -v "flags[api]" ]] && flags[api]=true ;;
+            mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
+            web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
+            infra/*) [[ -v "flags[infra]" ]] && flags[infra]=true ;;
+          esac
+        done <<< "$CHANGED"
+
+        # Write outputs
+        for cat in "${CATS[@]}"; do
+          echo "${cat}=${flags[$cat]}" >> "$GITHUB_OUTPUT"
+        done
+
+        echo "Results: $(for cat in "${CATS[@]}"; do echo -n "${cat}=${flags[$cat]} "; done)"
