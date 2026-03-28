@@ -1,0 +1,21 @@
+# Composite action: Setup .NET + NuGet cache for infrastructure projects
+# Wraps actions/setup-dotnet@v4 with api/global.json and NuGet cache
+# keyed to infra/**/*.csproj — used by all Pulumi jobs.
+
+name: Setup .NET for Infrastructure
+description: Install .NET SDK and restore NuGet cache for infra projects
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: api/global.json
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
+        restore-keys: nuget-infra-${{ runner.os }}-

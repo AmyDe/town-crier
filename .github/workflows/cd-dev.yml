@@ -84,15 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
+      - uses: ./.github/actions/setup-dotnet-infra
 
       - uses: ./.github/actions/azure-login
         with:
@@ -126,15 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: api/global.json
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}
-          restore-keys: nuget-infra-${{ runner.os }}-
+      - uses: ./.github/actions/setup-dotnet-infra
 
       - uses: ./.github/actions/azure-login
         with:
