@@ -64,3 +64,6 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
 ### 2026-03-27
 - Updated: iOS test framework changed from XCTest to **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect()`). The `swift-testing` package (v0.99.0) is declared as an SPM dependency. Test doubles follow a spy/stub pattern with async support.
 - Updated: iOS data layer does not use **SwiftData**. Persistence uses `UserDefaults` for onboarding state and an `Actor`-based in-memory cache (`InMemoryApplicationCacheStore`) with TTL for offline support. No on-device database is currently in use.
+
+### 2026-03-28
+- Added: **`/web`** directory for the React + TypeScript web frontend (see [ADR 0011](0011-web-frontend-stack.md) for technology choices). Internal structure follows a feature-sliced layout with `src/` containing domain ports, API adapters, features, components, and hooks. Tests are colocated in `__tests__/` directories within each feature. Build tooling (Vite, ESLint, TypeScript) configured at the `/web` root.
