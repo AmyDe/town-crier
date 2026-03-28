@@ -6,7 +6,7 @@ import { ApiWatchZoneRepository } from './ApiWatchZoneRepository';
 import type { GeocodingPort } from '../../domain/ports/geocoding-port';
 import { WatchZoneCreatePage } from './WatchZoneCreatePage';
 
-export function WiredWatchZoneCreatePage() {
+export function ConnectedWatchZoneCreatePage() {
   const client = useApiClient();
   const navigate = useNavigate();
   const repository = useMemo(() => new ApiWatchZoneRepository(client), [client]);
