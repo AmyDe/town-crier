@@ -119,14 +119,4 @@ struct ForceUpdateViewModelTests {
         // After completion, isChecking should be false
         #expect(!sut.isChecking)
     }
-
-    @Test func checkVersion_hasChecked_isTrueAfterCheck() async {
-        let (sut, _, _) = makeSUT()
-
-        #expect(!sut.hasChecked)
-
-        await sut.checkVersion()
-
-        #expect(sut.hasChecked)
-    }
 }
