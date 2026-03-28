@@ -1,19 +1,19 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { AuthContext } from '../auth-context.ts';
+import { AuthProvider } from '../auth-context.ts';
 import { AuthGuard } from '../AuthGuard.tsx';
 import { SpyAuthPort } from './spies/spy-auth-port.ts';
 
 function renderWithAuth(spy: SpyAuthPort) {
   return render(
     <MemoryRouter initialEntries={['/protected']}>
-      <AuthContext.Provider value={spy}>
+      <AuthProvider value={spy}>
         <Routes>
           <Route element={<AuthGuard />}>
             <Route path="/protected" element={<div>Protected Content</div>} />
           </Route>
         </Routes>
-      </AuthContext.Provider>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }

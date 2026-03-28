@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AuthContext } from '../auth/auth-context';
+import { AuthProvider } from '../auth/auth-context';
 import { ProfileRepositoryContext } from '../auth/profile-context';
 import { ApiClientContext } from '../api/useApiClient';
 import { SpyAuthPort } from '../auth/__tests__/spies/spy-auth-port';
@@ -57,13 +57,13 @@ function renderRoutes({ route = '/', authSpy, profileSpy }: RenderOptions = {}) 
 
   return render(
     <MemoryRouter initialEntries={[route]}>
-      <AuthContext.Provider value={auth}>
+      <AuthProvider value={auth}>
         <ProfileRepositoryContext.Provider value={profile}>
           <ApiClientContext.Provider value={stubApiClient}>
             <AppRoutes />
           </ApiClientContext.Provider>
         </ProfileRepositoryContext.Provider>
-      </AuthContext.Provider>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }
