@@ -20,16 +20,7 @@ struct WelcomeStepView: View {
                 .foregroundStyle(Color.tcTextSecondary)
                 .multilineTextAlignment(.center)
 
-            Button(action: onContinue) {
-                Text("Get Started")
-                    .font(TCTypography.bodyEmphasis)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.tcAmber)
-            .foregroundStyle(Color.tcTextOnAccent)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+            PrimaryButton("Get Started", action: onContinue)
         }
         .padding(TCSpacing.extraLarge)
     }
