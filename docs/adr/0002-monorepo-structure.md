@@ -62,7 +62,7 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
 ## Amendments
 
 ### 2026-03-27
-- Updated: iOS test framework changed from XCTest to **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect()`). The `swift-testing` package (v0.99.0) is declared as an SPM dependency. Test doubles follow a spy/stub pattern with async support.
+- Updated: iOS test framework changed from XCTest to **Swift Testing** (`import Testing`, `@Suite`, `@Test`, `#expect()`). Test doubles follow a spy/stub pattern with async support. Swift Testing is included natively in the Swift 6.1+ toolchain — no explicit SPM dependency required.
 - Updated: iOS data layer does not use **SwiftData**. Persistence uses `UserDefaults` for onboarding state and an `Actor`-based in-memory cache (`InMemoryApplicationCacheStore`) with TTL for offline support. No on-device database is currently in use.
 
 ### 2026-03-28
