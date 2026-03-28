@@ -1,7 +1,7 @@
-using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.Notifications;
 using TownCrier.Domain.Notifications;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Notifications;
 
@@ -30,14 +30,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
                 PartitionKey = new PartitionKey(userId),
             });
 
-        if (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            return document?.ToDomain();
-        }
-
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<int> CountByUserInMonthAsync(
@@ -59,13 +52,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
                 PartitionKey = new PartitionKey(userId),
             });
 
-        if (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            return response.FirstOrDefault();
-        }
-
-        return 0;
+        return await iterator.ScalarAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<int> CountByUserSinceAsync(
@@ -83,13 +70,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
                 PartitionKey = new PartitionKey(userId),
             });
 
-        if (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            return response.FirstOrDefault();
-        }
-
-        return 0;
+        return await iterator.ScalarAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
@@ -100,7 +81,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId")
             .WithParameter("@userId", userId);
 
-        int total = 0;
+        int total;
         using (var countIterator = this.container.GetItemQueryIterator<int>(
             countQuery,
             requestOptions: new QueryRequestOptions
@@ -108,11 +89,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
                 PartitionKey = new PartitionKey(userId),
             }))
         {
-            if (countIterator.HasMoreResults)
-            {
-                var countResponse = await countIterator.ReadNextAsync(ct).ConfigureAwait(false);
-                total = countResponse.FirstOrDefault();
-            }
+            total = await countIterator.ScalarAsync(ct).ConfigureAwait(false);
         }
 
         if (total == 0)
@@ -128,7 +105,6 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             .WithParameter("@offset", offset)
             .WithParameter("@limit", pageSize);
 
-        var items = new List<Notification>();
         using var itemsIterator = this.container.GetItemQueryIterator<NotificationDocument>(
             itemsQuery,
             requestOptions: new QueryRequestOptions
@@ -136,11 +112,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
                 PartitionKey = new PartitionKey(userId),
             });
 
-        while (itemsIterator.HasMoreResults)
-        {
-            var response = await itemsIterator.ReadNextAsync(ct).ConfigureAwait(false);
-            items.AddRange(response.Select(doc => doc.ToDomain()));
-        }
+        var items = await itemsIterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
 
         return (items, total);
     }

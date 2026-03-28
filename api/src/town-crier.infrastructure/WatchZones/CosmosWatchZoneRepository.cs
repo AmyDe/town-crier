@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.WatchZones;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.WatchZones;
 
@@ -37,15 +38,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
 
-        var results = new List<WatchZone>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            results.AddRange(response.Select(doc => doc.ToDomain()));
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
@@ -79,15 +72,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = null });
 
-        var results = new List<WatchZone>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            results.AddRange(response.Select(doc => doc.ToDomain()));
-        }
-
-        return results;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
@@ -98,15 +83,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = null });
 
-        var results = new List<int>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            results.AddRange(response);
-        }
-
-        return results;
+        return await iterator.CollectAsync(ct).ConfigureAwait(false);
     }
 
     public async Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
@@ -118,18 +95,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             query,
             requestOptions: new QueryRequestOptions { PartitionKey = null });
 
-        var results = new Dictionary<int, int>();
-
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-
-            foreach (var item in response)
-            {
-                results[item.AuthorityId] = item.ZoneCount;
-            }
-        }
-
-        return results;
+        var items = await iterator.CollectAsync(ct).ConfigureAwait(false);
+        return items.ToDictionary(item => item.AuthorityId, item => item.ZoneCount);
     }
 }

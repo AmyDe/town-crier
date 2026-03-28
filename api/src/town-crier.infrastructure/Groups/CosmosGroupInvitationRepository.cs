@@ -1,6 +1,7 @@
 using Microsoft.Azure.Cosmos;
 using TownCrier.Application.Groups;
 using TownCrier.Domain.Groups;
+using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Groups;
 
@@ -24,17 +25,7 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
             query,
             requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            var document = response.FirstOrDefault();
-            if (document is not null)
-            {
-                return document.ToDomain();
-            }
-        }
-
-        return null;
+        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task SaveAsync(GroupInvitation invitation, CancellationToken ct)
@@ -52,7 +43,9 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
             "SELECT * FROM c WHERE c.type = 'invitation' AND c.groupId = @groupId AND c.status = 'Pending'")
             .WithParameter("@groupId", groupId);
 
-        return await this.QueryInvitationsAsync(query, ct).ConfigureAwait(false);
+        using var iterator = this.container.GetItemQueryIterator<GroupInvitationDocument>(query);
+
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<GroupInvitation>> GetPendingByEmailAsync(string email, CancellationToken ct)
@@ -67,25 +60,8 @@ public sealed class CosmosGroupInvitationRepository : IGroupInvitationRepository
             "SELECT * FROM c WHERE c.type = 'invitation' AND LOWER(c.inviteeEmail) = @email AND c.status = 'Pending'")
             .WithParameter("@email", normalizedEmail);
 
-        return await this.QueryInvitationsAsync(query, ct).ConfigureAwait(false);
-    }
-
-    private async Task<IReadOnlyList<GroupInvitation>> QueryInvitationsAsync(
-        QueryDefinition query,
-        CancellationToken ct)
-    {
         using var iterator = this.container.GetItemQueryIterator<GroupInvitationDocument>(query);
 
-        var invitations = new List<GroupInvitation>();
-        while (iterator.HasMoreResults)
-        {
-            var response = await iterator.ReadNextAsync(ct).ConfigureAwait(false);
-            foreach (var document in response)
-            {
-                invitations.Add(document.ToDomain());
-            }
-        }
-
-        return invitations;
+        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
     }
 }
