@@ -1,5 +1,6 @@
 using TownCrier.Application.Authorities;
 using TownCrier.Application.DecisionAlerts;
+using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
@@ -10,6 +11,7 @@ using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
+using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Polling;
@@ -106,6 +108,54 @@ internal static class ServiceCollectionExtensions
         {
             client.BaseAddress = new Uri(govUkBaseUrl);
         });
+
+        return services;
+    }
+
+    public static IServiceCollection AddApplicationServices(
+        this IServiceCollection services)
+    {
+        services.AddTransient<GeocodePostcodeQueryHandler>();
+        services.AddTransient<GetAuthoritiesQueryHandler>();
+        services.AddTransient<GetAuthorityByIdQueryHandler>();
+        services.AddTransient<GetDesignationContextQueryHandler>();
+
+        services.AddTransient<PollPlanItCommandHandler>();
+
+        services.AddTransient<CreateUserProfileCommandHandler>();
+        services.AddTransient<GetUserProfileQueryHandler>();
+        services.AddTransient<UpdateUserProfileCommandHandler>();
+        services.AddTransient<ExportUserDataQueryHandler>();
+        services.AddTransient<DeleteUserProfileCommandHandler>();
+        services.AddTransient<UpdateZonePreferencesCommandHandler>();
+        services.AddTransient<GetZonePreferencesQueryHandler>();
+
+        services.AddTransient<CreateWatchZoneCommandHandler>();
+        services.AddTransient<ListWatchZonesQueryHandler>();
+        services.AddTransient<DeleteWatchZoneCommandHandler>();
+
+        services.AddTransient<RegisterDeviceTokenCommandHandler>();
+        services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
+
+        services.AddTransient<GetApplicationByUidQueryHandler>();
+        services.AddTransient<GetApplicationsByAuthorityQueryHandler>();
+        services.AddTransient<SearchPlanningApplicationsQueryHandler>();
+
+        services.AddTransient<GetNotificationsQueryHandler>();
+
+        services.AddTransient<SaveApplicationCommandHandler>();
+        services.AddTransient<RemoveSavedApplicationCommandHandler>();
+        services.AddTransient<GetSavedApplicationsQueryHandler>();
+
+        services.AddTransient<GetDemoAccountQueryHandler>();
+
+        services.AddTransient<CreateGroupCommandHandler>();
+        services.AddTransient<GetGroupQueryHandler>();
+        services.AddTransient<GetUserGroupsQueryHandler>();
+        services.AddTransient<InviteMemberCommandHandler>();
+        services.AddTransient<AcceptInvitationCommandHandler>();
+        services.AddTransient<RemoveGroupMemberCommandHandler>();
+        services.AddTransient<DeleteGroupCommandHandler>();
 
         return services;
     }
