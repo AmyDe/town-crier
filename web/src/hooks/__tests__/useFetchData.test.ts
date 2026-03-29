@@ -101,4 +101,31 @@ describe('useFetchData', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
   });
+
+  it('refetches when deps change', async () => {
+    let callCount = 0;
+    const fetcher = async () => {
+      callCount += 1;
+      return `result-${callCount}`;
+    };
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useFetchData(fetcher, [id]),
+      { initialProps: { id: 'a' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.data).toBe('result-1');
+
+    rerender({ id: 'b' });
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('result-2');
+    });
+
+    expect(result.current.isLoading).toBe(false);
+  });
 });
