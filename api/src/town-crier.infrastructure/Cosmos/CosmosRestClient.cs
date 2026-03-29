@@ -75,13 +75,24 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         response.EnsureSuccessStatusCode();
     }
 
-    public Task DeleteDocumentAsync(
+    public async Task DeleteDocumentAsync(
         string collection,
         string id,
         string partitionKey,
         CancellationToken ct)
     {
-        throw new NotImplementedException();
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{id}";
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/{resourceLink}");
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return; // Idempotent delete
+        }
+
+        response.EnsureSuccessStatusCode();
     }
 
     public Task<List<T>> QueryAsync<T>(
