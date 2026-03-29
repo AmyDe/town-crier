@@ -10,13 +10,20 @@ interface FetchDataResult<T> extends FetchDataState<T> {
   refresh: () => void;
 }
 
+interface FetchDataOptions {
+  enabled?: boolean;
+}
+
 export function useFetchData<T>(
   fetcher: () => Promise<T>,
   deps: DependencyList,
+  options?: FetchDataOptions,
 ): FetchDataResult<T> {
+  const enabled = options?.enabled ?? true;
+
   const [state, setState] = useState<FetchDataState<T>>({
     data: null,
-    isLoading: true,
+    isLoading: enabled,
     error: null,
   });
 
@@ -33,6 +40,7 @@ export function useFetchData<T>(
   }, deps);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -49,7 +57,7 @@ export function useFetchData<T>(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [enabled, ...deps]);
 
   return { ...state, refresh: load };
 }
