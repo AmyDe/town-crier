@@ -30,4 +30,24 @@ public sealed class CosmosServiceRegistrationTests
         await Assert.That(options.AccountEndpoint).IsEqualTo("https://test-account.documents.azure.com:443");
         await Assert.That(options.DatabaseName).IsEqualTo("town-crier");
     }
+
+    [Test]
+    public async Task Should_RegisterCosmosAuthProviderAsSingleton_When_AddCosmosRestClientCalled()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(ValidCosmosConfig)
+            .Build();
+        var services = new ServiceCollection();
+
+        // Act
+        services.AddCosmosRestClient(config);
+        using var provider = services.BuildServiceProvider();
+
+        // Assert
+        var authProvider1 = provider.GetRequiredService<CosmosAuthProvider>();
+        var authProvider2 = provider.GetRequiredService<CosmosAuthProvider>();
+        await Assert.That(authProvider1).IsNotNull();
+        await Assert.That(authProvider1).IsSameReferenceAs(authProvider2);
+    }
 }
