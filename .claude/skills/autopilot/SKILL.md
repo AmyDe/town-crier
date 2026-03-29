@@ -120,7 +120,14 @@ Determine the worker's allowed path scope (this table is the single source of tr
 | `pulumi-infra-worker` | `infra/` |
 | `github-actions-worker` | `.github/workflows/`, `.github/actions/` |
 
-Dispatch the worker:
+Resolve the main repo's beads directory for the worker. The worktree won't have `.beads/` — workers need `BEADS_DIR` set so `bd` finds the shared database:
+
+```bash
+beads_dir=$(bd where 2>/dev/null | head -1)
+# e.g. /Users/christy/Dev/town-crier/.beads
+```
+
+Dispatch the worker with `BEADS_DIR` in the prompt:
 
 ```
 Agent({
@@ -131,7 +138,7 @@ Agent({
   "model": "opus",
   "mode": "bypassPermissions",
   "run_in_background": true,
-  "prompt": "Work on bead `<bead-id>`.\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop"
+  "prompt": "Work on bead `<bead-id>`.\n\nWorktree beads setup — run this FIRST, before any bd command:\n```bash\nexport BEADS_DIR=\"<beads_dir>\"\n```\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop\n- NEVER run `bd init`, `bd init --force`, or `bd doctor --fix` — these destroy the shared beads database. If bd commands fail, add a bead comment describing the error and continue with code work."
 })
 ```
 
