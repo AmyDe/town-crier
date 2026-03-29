@@ -84,6 +84,27 @@ public sealed class CosmosRestClientTests
         await Assert.That(exception).IsNotNull();
     }
 
+    [Test]
+    public async Task Should_SetUpsertHeader_When_UpsertingDocument()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK);
+
+        await client.UpsertDocumentAsync(
+            "Users",
+            new TestDocument { Id = "doc1", Name = "Test" },
+            "doc1",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Post);
+        await Assert.That(request.RequestUri!.AbsolutePath)
+            .IsEqualTo("/dbs/test-db/colls/Users/docs");
+        await Assert.That(request.Headers.GetValues("x-ms-documentdb-is-upsert").First())
+            .IsEqualTo("True");
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
