@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a PR via `gh`, and waits for PR gate checks before merging. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
+description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a PR via `gh`, enables auto-merge, then watches for Copilot and CodeRabbit approvals — addressing their feedback if needed. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
 ---
 
 # Ship to Main
@@ -70,56 +70,98 @@ EOF
 
 **PR body:** List each commit as a bullet point under "## Changes".
 
-### Step 6: Default to wait mode
+### Step 6: Enable auto-merge and start watching
 
-**NEVER merge the PR immediately.** The PR gate checks and CodeRabbit review must complete first.
+The PR will auto-merge via branch protection once both **Copilot** and **CodeRabbit** approve. Enable auto-merge so it triggers the moment approvals land:
 
-**Default behavior:** Report the PR URL and proceed straight to Step 7 (wait for checks, then merge). Do not ask — just do it. The user expects to walk away after typing "ship it".
+```bash
+gh pr merge <pr-number> --squash --delete-branch --auto
+```
+
+**Default behavior:** Report the PR URL and proceed straight to Step 7 (watch for reviews). Do not ask — just do it. The user expects to walk away after typing "ship it".
 
 > PR created: <url>
 >
-> Waiting for checks and CodeRabbit review before merging...
+> Auto-merge enabled. Watching for Copilot and CodeRabbit reviews...
 
-**Exception:** If the user explicitly says "leave it open", "don't merge", or similar — report the PR URL and stop. Do not proceed further. Do not merge. Do not clean up branches. The skill ends here.
+**Exception:** If the user explicitly says "leave it open", "don't merge", or similar — report the PR URL and stop. Do not enable auto-merge. The skill ends here.
 
-### Step 7: Wait for checks and CodeRabbit review
+### Step 7: Watch for reviewer feedback
 
-First, wait for CI checks to pass:
+Poll for reviews from both Copilot and CodeRabbit. These are the two required reviewers — the PR cannot merge until both approve.
 
-```bash
-gh pr checks <pr-number> --watch --fail-fast
-```
-
-If checks fail, report which checks failed, provide the PR URL, and stop — do not retry or force-merge.
-
-Once checks pass, fetch the CodeRabbit review. CodeRabbit posts a review comment on the PR. Use the GitHub API to read it:
+**Poll loop** (repeat every 30 seconds, up to 10 minutes):
 
 ```bash
 gh api repos/{owner}/{repo}/pulls/<pr-number>/reviews
 gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
 ```
 
-**If CodeRabbit has suggestions or comments:**
+Track the state of each reviewer:
 
-**Default behavior:** Create a bead tracking the suggestions, then proceed to merge. Do not ask — the user expects hands-off operation. Summarise what CodeRabbit flagged in the output so the user sees it when they return:
+| Reviewer | Identified by | Approval signal |
+|----------|--------------|-----------------|
+| Copilot | `user.login` is `"copilot-pull-request-reviewer[bot]"` or contains `"copilot"` | Review with `state: "APPROVED"` |
+| CodeRabbit | `user.login` is `"coderabbitai[bot]"` or contains `"coderabbit"` | Review with `state: "APPROVED"` |
 
-> CodeRabbit flagged the following (tracked in bead <id>):
-> - <brief summary of each suggestion>
->
-> Merging...
+**On each poll iteration:**
 
-**CRITICAL: NEVER fix CodeRabbit suggestions within this skill.** Do not edit code, do not push additional commits. This skill ships work — it does not do development.
+1. Fetch reviews and comments.
+2. Check if both reviewers have approved → if yes, proceed to Step 8 (the auto-merge will handle the actual merge).
+3. Check if either reviewer left non-approval feedback (comments, change requests, or suggestions). If so, enter the **feedback loop** below.
+4. If neither condition, continue polling.
 
-**If CodeRabbit has no suggestions (or approved without comments):**
+**Timeout:** If 10 minutes pass without both approvals and no feedback to act on, report the current state and the PR URL, then stop. The auto-merge will still trigger when approvals arrive — no work is lost.
 
-Proceed directly to Step 8.
+### Step 7a: Feedback loop — respond to reviewer comments
 
-### Step 8: Merge and clean up
+If Copilot or CodeRabbit leaves comments or requests changes instead of approving:
+
+1. **Read the feedback carefully.** Fetch full comment bodies:
+   ```bash
+   gh api repos/{owner}/{repo}/pulls/<pr-number>/comments
+   gh api repos/{owner}/{repo}/pulls/<pr-number>/reviews
+   ```
+
+2. **Assess each comment:**
+   - **Actionable code suggestion** (e.g., "add null check", "rename variable", "simplify this expression"): Fix it. These are small, mechanical changes — apply them directly.
+   - **Style/formatting nit:** Fix it.
+   - **Substantive design concern** (e.g., "this approach has a race condition", "consider a different pattern"): Create a bead to track it, do NOT fix it in this PR. Summarise it for the user.
+   - **Informational only / praise** (e.g., "LGTM with minor note", summary comments): No action needed.
+
+3. **For actionable fixes:** Make the change, commit with a message like `fix: address <reviewer> feedback — <brief description>`, and push:
+   ```bash
+   git add <files>
+   git commit -m "fix: address <reviewer> feedback — <brief description>"
+   git push
+   ```
+   This will re-trigger the reviewers. Return to the poll loop in Step 7.
+
+4. **For substantive concerns tracked as beads:** Report them:
+   > <Reviewer> flagged the following (tracked in bead <id>):
+   > - <brief summary of each concern>
+
+5. **Limit:** Make at most **3 rounds** of fixes per reviewer. If a reviewer still hasn't approved after 3 rounds of addressing their feedback, report the situation and the PR URL, then stop. The auto-merge remains enabled — the user can take over manually.
+
+### Step 8: Confirm merge and clean up
+
+Once both reviewers approve, auto-merge will squash-merge the PR. Wait for it:
 
 ```bash
-gh pr merge --squash --delete-branch
+# Confirm the PR merged (poll briefly if needed)
+gh pr view <pr-number> --json state -q '.state'
+```
+
+Once state is `"MERGED"`:
+
+```bash
 git checkout main
 git pull origin main
+```
+
+If the branch wasn't deleted automatically:
+```bash
+git branch -d <branch-name>
 ```
 
 ### Step 9: Sync beads and verify
@@ -141,4 +183,6 @@ Report success with the PR URL.
 - **Not on main:** Stop. Tell the user which branch they're on.
 - **Nothing to ship:** Tell the user. Don't create empty PRs.
 - **Checks failed:** Report which checks failed and the PR URL. Do not retry or force-merge.
+- **Reviewer won't approve after 3 rounds:** Report the outstanding feedback, the PR URL, and stop. Auto-merge remains enabled.
+- **Timeout (10 min no approvals):** Report status and PR URL. Auto-merge remains enabled — no work lost.
 - **gh CLI not authenticated:** Tell the user to run `gh auth login`.
