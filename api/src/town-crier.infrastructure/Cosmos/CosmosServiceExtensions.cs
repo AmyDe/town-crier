@@ -50,6 +50,10 @@ public static class CosmosServiceExtensions
 
         services.AddSingleton(options);
 
+#pragma warning disable CA2000 // DI container owns the lifetime and will dispose on shutdown
+        services.AddSingleton(new CosmosAuthProvider(new DefaultAzureCredential()));
+#pragma warning restore CA2000
+
         return services;
     }
 }
