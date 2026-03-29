@@ -36,20 +36,12 @@ public final class ApplicationDetailViewModel: ObservableObject {
         !timelineItems.isEmpty
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM yyyy"
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
     public init(application: PlanningApplication) {
         description = application.description
         address = application.address
         reference = application.reference.value
         authorityName = application.authority.name
-        receivedDateFormatted = Self.dateFormatter.string(from: application.receivedDate)
+        receivedDateFormatted = application.receivedDate.formattedForDisplay
         status = application.status
         portalUrl = application.portalUrl
 
@@ -65,7 +57,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
             return TimelineItem(
                 label: event.status.displayLabel,
                 icon: event.status.displayIcon,
-                dateFormatted: Self.dateFormatter.string(from: event.date),
+                dateFormatted: event.date.formattedForDisplay,
                 isCurrent: isLast,
                 status: event.status
             )
