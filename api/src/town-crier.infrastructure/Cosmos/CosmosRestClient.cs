@@ -95,7 +95,7 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         response.EnsureSuccessStatusCode();
     }
 
-    public Task<List<T>> QueryAsync<T>(
+    public async Task<List<T>> QueryAsync<T>(
         string collection,
         string sql,
         IReadOnlyList<QueryParameter>? parameters,
@@ -103,10 +103,45 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
-        throw new NotImplementedException();
+        var results = new List<T>();
+        string? continuation = null;
+
+        do
+        {
+            using var request = this.BuildQueryRequest(collection, sql, parameters);
+            await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+            AddQueryHeaders(request, partitionKey);
+
+            if (continuation is not null)
+            {
+                request.Headers.TryAddWithoutValidation("x-ms-continuation", continuation);
+            }
+
+            using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            await using (stream.ConfigureAwait(false))
+            {
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                    .ConfigureAwait(false);
+
+                foreach (var element in doc.RootElement.GetProperty("Documents").EnumerateArray())
+                {
+                    results.Add(element.Deserialize(typeInfo)!);
+                }
+            }
+
+            continuation = response.Headers.TryGetValues("x-ms-continuation", out var values)
+                ? values.FirstOrDefault()
+                : null;
+        }
+        while (continuation is not null);
+
+        return results;
     }
 
-    public Task<T> ScalarQueryAsync<T>(
+    public async Task<T> ScalarQueryAsync<T>(
         string collection,
         string sql,
         IReadOnlyList<QueryParameter>? parameters,
@@ -114,7 +149,41 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
-        throw new NotImplementedException();
+        var results = await this.QueryAsync(collection, sql, parameters, partitionKey, typeInfo, ct)
+            .ConfigureAwait(false);
+        return results.FirstOrDefault()!;
+    }
+
+    private static void AddQueryHeaders(HttpRequestMessage request, string? partitionKey)
+    {
+        request.Headers.TryAddWithoutValidation("x-ms-documentdb-isquery", "True");
+
+        if (partitionKey is null)
+        {
+            request.Headers.TryAddWithoutValidation(
+                "x-ms-documentdb-query-enablecrosspartition",
+                "True");
+        }
+    }
+
+    private HttpRequestMessage BuildQueryRequest(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters)
+    {
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
+
+        var queryParameters = parameters?.Select(p =>
+            new CosmosQueryParameter(p.Name, p.Value)).ToList();
+        var body = new CosmosQueryBody(sql, queryParameters);
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody),
+            Encoding.UTF8,
+            "application/query+json");
+
+        return request;
     }
 
     private async Task AddHeadersAsync(

@@ -37,4 +37,6 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(List<GroupMemberDocument>))]
 [JsonSerializable(typeof(GroupInvitationDocument))]
 [JsonSerializable(typeof(List<GroupInvitationDocument>))]
+[JsonSerializable(typeof(CosmosQueryBody))]
+[JsonSerializable(typeof(string))]
 internal sealed partial class CosmosJsonSerializerContext : JsonSerializerContext;
