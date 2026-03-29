@@ -3,6 +3,7 @@ using System.Text;
 
 namespace TownCrier.Infrastructure.Tests.Cosmos;
 
+#pragma warning disable CA2000 // Responses are owned by callers via SendAsync
 internal sealed class StubHttpHandler : HttpMessageHandler
 {
     private readonly Queue<HttpResponseMessage> responses = new();
@@ -41,3 +42,4 @@ internal sealed class StubHttpHandler : HttpMessageHandler
             : new HttpResponseMessage(HttpStatusCode.InternalServerError));
     }
 }
+#pragma warning restore CA2000

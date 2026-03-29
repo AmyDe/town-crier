@@ -10,7 +10,3 @@ public sealed class TestDocument
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 }
-
-[JsonSerializable(typeof(TestDocument))]
-[JsonSerializable(typeof(int))]
-internal sealed partial class TestSerializerContext : JsonSerializerContext;

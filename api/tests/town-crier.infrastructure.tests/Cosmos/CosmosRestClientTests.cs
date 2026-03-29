@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Tests.Cosmos;
 
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "HttpClient lifetime managed by test")]
 public sealed class CosmosRestClientTests
 {
     private const string AccountEndpoint = "https://test-account.documents.azure.com:443";
