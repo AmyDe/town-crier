@@ -50,4 +50,25 @@ public sealed class CosmosServiceRegistrationTests
         await Assert.That(authProvider1).IsNotNull();
         await Assert.That(authProvider1).IsSameReferenceAs(authProvider2);
     }
+
+    [Test]
+    public async Task Should_RegisterNamedHttpClient_When_AddCosmosRestClientCalled()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(ValidCosmosConfig)
+            .Build();
+        var services = new ServiceCollection();
+
+        // Act
+        services.AddCosmosRestClient(config);
+        using var provider = services.BuildServiceProvider();
+
+        // Assert
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+        using var httpClient = factory.CreateClient("CosmosRest");
+        await Assert.That(httpClient).IsNotNull();
+        await Assert.That(httpClient.BaseAddress!.ToString())
+            .IsEqualTo("https://test-account.documents.azure.com:443/");
+    }
 }
