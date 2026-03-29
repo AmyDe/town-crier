@@ -102,6 +102,28 @@ describe('useFetchData', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('skips fetch when enabled is false', async () => {
+    let callCount = 0;
+    const fetcher = async () => {
+      callCount += 1;
+      return 'data';
+    };
+
+    const { result } = renderHook(() =>
+      useFetchData(fetcher, [], { enabled: false }),
+    );
+
+    // Should not be loading and should not have fetched
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBeNull();
+
+    // Give time for any async work to complete
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(callCount).toBe(0);
+  });
+
   it('refetches when deps change', async () => {
     let callCount = 0;
     const fetcher = async () => {
