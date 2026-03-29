@@ -151,7 +151,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
     {
         var results = await this.QueryAsync(collection, sql, parameters, partitionKey, typeInfo, ct)
             .ConfigureAwait(false);
-        return results.FirstOrDefault()!;
+        return results.Count > 0
+            ? results[0]
+            : throw new InvalidOperationException("Query returned no results.");
     }
 
     private static void AddQueryHeaders(HttpRequestMessage request, string? partitionKey)
