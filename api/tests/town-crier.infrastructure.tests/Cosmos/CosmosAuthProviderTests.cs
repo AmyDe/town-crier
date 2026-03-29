@@ -12,6 +12,6 @@ public sealed class CosmosAuthProviderTests
 
         var header = await provider.GetAuthorizationHeaderAsync(CancellationToken.None);
 
-        await Assert.That(header).IsEqualTo("type%3daad%26ver%3d1.0%26sig%3dtest-token-123");
+        await Assert.That(header).IsEqualTo("type%3Daad%26ver%3D1.0%26sig%3Dtest-token-123");
     }
 }
