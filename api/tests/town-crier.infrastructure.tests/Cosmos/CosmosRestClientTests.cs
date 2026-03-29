@@ -141,6 +141,69 @@ public sealed class CosmosRestClientTests
             .IsEqualTo("application/query+json");
     }
 
+    [Test]
+    public async Task Should_DrainContinuationPages_When_QueryHasContinuation()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d1","name":"A"}],"_count":1}""",
+            [new("x-ms-continuation", "page2-token")]);
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d2","name":"B"}],"_count":1}""");
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT * FROM c",
+            null,
+            "pk1",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(results).HasCount().EqualTo(2);
+        await Assert.That(results[0].Id).IsEqualTo("d1");
+        await Assert.That(results[1].Id).IsEqualTo("d2");
+    }
+
+    [Test]
+    public async Task Should_SetCrossPartitionHeader_When_NoPartitionKey()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK, """{"Documents":[],"_count":0}""");
+
+        await client.QueryAsync(
+            "Users",
+            "SELECT * FROM c",
+            null,
+            null,
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Headers.Contains("x-ms-documentdb-partitionkey")).IsFalse();
+        await Assert.That(
+            request.Headers.GetValues("x-ms-documentdb-query-enablecrosspartition").First())
+            .IsEqualTo("True");
+    }
+
+    [Test]
+    public async Task Should_ReturnFirstValue_When_ScalarQuery()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK, """{"Documents":[42],"_count":1}""");
+
+        var result = await client.ScalarQueryAsync(
+            "Users",
+            "SELECT VALUE COUNT(1) FROM c",
+            null,
+            "pk1",
+            TestSerializerContext.Default.Int32,
+            CancellationToken.None);
+
+        await Assert.That(result).IsEqualTo(42);
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
