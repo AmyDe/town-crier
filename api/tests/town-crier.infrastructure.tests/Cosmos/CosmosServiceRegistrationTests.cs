@@ -91,4 +91,40 @@ public sealed class CosmosServiceRegistrationTests
         await Assert.That(client1).IsNotNull();
         await Assert.That(client1).IsSameReferenceAs(client2);
     }
+
+    [Test]
+    public async Task Should_ThrowInvalidOperationException_When_AccountEndpointMissing()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cosmos:DatabaseName"] = "town-crier",
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        // Act & Assert
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => services.AddCosmosRestClient(config));
+        await Assert.That(exception.Message).Contains("AccountEndpoint");
+    }
+
+    [Test]
+    public async Task Should_ThrowInvalidOperationException_When_DatabaseNameMissing()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cosmos:AccountEndpoint"] = "https://test.documents.azure.com:443",
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        // Act & Assert
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => services.AddCosmosRestClient(config));
+        await Assert.That(exception.Message).Contains("DatabaseName");
+    }
 }
