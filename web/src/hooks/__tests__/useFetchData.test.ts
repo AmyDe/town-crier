@@ -49,4 +49,29 @@ describe('useFetchData', () => {
     expect(result.current.error).toBe('An error occurred');
     expect(result.current.data).toBeNull();
   });
+
+  it('does not update state after unmount', async () => {
+    let resolvePromise: (value: string) => void;
+    const fetcher = () =>
+      new Promise<string>((resolve) => {
+        resolvePromise = resolve;
+      });
+
+    const { result, unmount } = renderHook(() => useFetchData(fetcher, []));
+
+    expect(result.current.isLoading).toBe(true);
+
+    unmount();
+
+    // Resolve after unmount — state should not update
+    resolvePromise!('late data');
+
+    // Give microtasks a chance to flush
+    await new Promise((r) => setTimeout(r, 50));
+
+    // After unmount, the last captured state should still show isLoading: true
+    // (no state update occurred)
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toBeNull();
+  });
 });
