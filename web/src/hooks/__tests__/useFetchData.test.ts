@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useFetchData } from '../useFetchData';
 
@@ -73,5 +73,32 @@ describe('useFetchData', () => {
     // (no state update occurred)
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeNull();
+  });
+
+  it('refresh re-fetches and updates data', async () => {
+    let callCount = 0;
+    const fetcher = async () => {
+      callCount += 1;
+      return { count: callCount };
+    };
+
+    const { result } = renderHook(() => useFetchData(fetcher, []));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.data).toEqual({ count: 1 });
+
+    await act(async () => {
+      result.current.refresh();
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual({ count: 2 });
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 });
