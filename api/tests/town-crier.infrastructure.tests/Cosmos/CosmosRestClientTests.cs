@@ -105,6 +105,20 @@ public sealed class CosmosRestClientTests
             .IsEqualTo("True");
     }
 
+    [Test]
+    public async Task Should_SilentlySucceed_When_DeleteReturns404()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        // Should not throw
+        await client.DeleteDocumentAsync("Users", "doc1", "doc1", CancellationToken.None);
+
+        await Assert.That(handler.SentRequests[0].Method).IsEqualTo(HttpMethod.Delete);
+        await Assert.That(handler.SentRequests[0].RequestUri!.AbsolutePath)
+            .IsEqualTo("/dbs/test-db/colls/Users/docs/doc1");
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
