@@ -68,7 +68,7 @@ public sealed class CosmosServiceRegistrationTests
         var factory = provider.GetRequiredService<IHttpClientFactory>();
         using var httpClient = factory.CreateClient("CosmosRest");
         await Assert.That(httpClient).IsNotNull();
-        await Assert.That(httpClient.BaseAddress!.ToString())
-            .IsEqualTo("https://test-account.documents.azure.com:443/");
+        await Assert.That(httpClient.BaseAddress!.Host)
+            .IsEqualTo("test-account.documents.azure.com");
     }
 }

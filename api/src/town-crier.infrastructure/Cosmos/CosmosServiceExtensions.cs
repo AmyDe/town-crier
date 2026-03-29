@@ -1,7 +1,10 @@
+using System.Net;
 using Azure.Identity;
 using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
@@ -53,6 +56,26 @@ public static class CosmosServiceExtensions
 #pragma warning disable CA2000 // DI container owns the lifetime and will dispose on shutdown
         services.AddSingleton(new CosmosAuthProvider(new DefaultAzureCredential()));
 #pragma warning restore CA2000
+
+        services.AddHttpClient("CosmosRest", client =>
+        {
+            client.BaseAddress = new Uri(accountEndpoint);
+        })
+        .AddResilienceHandler("CosmosRetry", builder =>
+        {
+            builder.AddRetry(new HttpRetryStrategyOptions
+            {
+                MaxRetryAttempts = 5,
+                BackoffType = DelayBackoffType.Exponential,
+                Delay = TimeSpan.FromMilliseconds(500),
+                ShouldHandle = args => ValueTask.FromResult(
+                    args.Outcome.Result?.StatusCode is
+                        HttpStatusCode.TooManyRequests or // 429
+                        HttpStatusCode.RequestTimeout or // 408
+                        HttpStatusCode.ServiceUnavailable or // 503
+                        (HttpStatusCode)449), // 449 Retry With
+            });
+        });
 
         return services;
     }
