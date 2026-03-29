@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
@@ -53,14 +54,25 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
     }
 
-    public Task UpsertDocumentAsync<T>(
+    public async Task UpsertDocumentAsync<T>(
         string collection,
         T document,
         string partitionKey,
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
-        throw new NotImplementedException();
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+        request.Headers.TryAddWithoutValidation("x-ms-documentdb-is-upsert", "True");
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(document, typeInfo),
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
     }
 
     public Task DeleteDocumentAsync(
