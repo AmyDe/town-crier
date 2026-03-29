@@ -8,7 +8,7 @@ public sealed class CosmosAuthProviderTests
     public async Task Should_ReturnEntraIdFormat_When_GettingAuthorizationHeader()
     {
         var credential = new StubTokenCredential("test-token-123");
-        var provider = new CosmosAuthProvider(credential);
+        using var provider = new CosmosAuthProvider(credential);
 
         var header = await provider.GetAuthorizationHeaderAsync(CancellationToken.None);
 
@@ -19,7 +19,7 @@ public sealed class CosmosAuthProviderTests
     public async Task Should_CacheToken_When_NotExpired()
     {
         var credential = new StubTokenCredential("token-1");
-        var provider = new CosmosAuthProvider(credential);
+        using var provider = new CosmosAuthProvider(credential);
 
         var first = await provider.GetAuthorizationHeaderAsync(CancellationToken.None);
         credential.NextToken = "token-2";
@@ -33,7 +33,7 @@ public sealed class CosmosAuthProviderTests
     public async Task Should_RefreshToken_When_Expired()
     {
         var credential = new StubTokenCredential("token-1", expiresInMinutes: 0);
-        var provider = new CosmosAuthProvider(credential);
+        using var provider = new CosmosAuthProvider(credential);
 
         var first = await provider.GetAuthorizationHeaderAsync(CancellationToken.None);
         credential.NextToken = "token-2";

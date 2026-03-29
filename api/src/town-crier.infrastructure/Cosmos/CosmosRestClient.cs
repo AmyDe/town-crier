@@ -200,9 +200,11 @@ internal sealed class CosmosRestClient : ICosmosRestClient
 
         if (partitionKey is not null)
         {
+            var escapedKey = JsonSerializer.Serialize(
+                partitionKey, CosmosJsonSerializerContext.Default.String);
             request.Headers.TryAddWithoutValidation(
                 "x-ms-documentdb-partitionkey",
-                $"[\"{partitionKey}\"]");
+                $"[{escapedKey}]");
         }
     }
 }

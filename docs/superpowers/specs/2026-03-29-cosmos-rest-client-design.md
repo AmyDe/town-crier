@@ -162,7 +162,7 @@ Returned as `x-ms-continuation` response header. The client loops until no conti
 }
 ```
 
-`CosmosQueryBody` and `CosmosQueryParameterBody` registered in the serializer context. Parameter values use `JsonSerializer.SerializeToNode()` with type info.
+`CosmosQueryBody` and `CosmosQueryParameter` registered in the serializer context. Parameter values are serialized with `JsonSerializer.Serialize()` via the source-generated context.
 
 ## Resilience (Polly)
 

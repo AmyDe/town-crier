@@ -118,7 +118,7 @@ In `api/src/town-crier.web/town-crier.web.csproj`, remove the `<NoWarn>` line an
 
 - [ ] **Step 3: Verify restore succeeds**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet restore`
+Run: `cd api && dotnet restore`
 
 Expected: Restore succeeds. Build will fail at this point (existing code still references `Microsoft.Azure.Cosmos` types) — that's expected and will be fixed in subsequent tasks.
 
@@ -259,7 +259,7 @@ public sealed class CosmosAuthProviderTests
 
 - [ ] **Step 4: Run tests — verify they fail**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosAuthProviderTests" --no-restore`
+Run: `cd api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosAuthProviderTests" --no-restore`
 
 Expected: Compilation error — `CosmosAuthProvider` does not exist yet.
 
@@ -301,7 +301,7 @@ internal sealed class CosmosAuthProvider
 
 - [ ] **Step 6: Run tests — verify they pass**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosAuthProviderTests"`
+Run: `cd api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosAuthProviderTests"`
 
 Expected: 3 tests pass.
 
@@ -639,7 +639,7 @@ internal sealed partial class TestSerializerContext : JsonSerializerContext;
 
 - [ ] **Step 4: Run tests — verify they fail**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosRestClientTests" --no-restore`
+Run: `cd api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosRestClientTests" --no-restore`
 
 Expected: Compilation error — `CosmosRestClient` does not exist yet.
 
@@ -828,7 +828,7 @@ public sealed class CosmosRestClient : ICosmosRestClient
 
 - [ ] **Step 6: Run tests — verify they pass**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosRestClientTests"`
+Run: `cd api && dotnet test tests/town-crier.infrastructure.tests --filter "CosmosRestClientTests"`
 
 Expected: All 9 tests pass.
 
@@ -1127,7 +1127,7 @@ public sealed class CosmosDecisionAlertRepository : IDecisionAlertRepository
 
 - [ ] **Step 3: Verify build compiles (these two repos)**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet build src/town-crier.infrastructure --no-restore 2>&1 | head -20`
+Run: `cd api && dotnet build src/town-crier.infrastructure --no-restore 2>&1 | head -20`
 
 Expected: Compilation errors from the other 7 repositories (still referencing `Microsoft.Azure.Cosmos`), but these two files should compile cleanly.
 
@@ -1767,7 +1767,7 @@ git commit -m "feat: migrate Group, GroupInvitation, and SavedApplication repos 
 
 - [ ] **Step 1: Full build**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet build`
+Run: `cd api && dotnet build`
 
 Expected: Build succeeds with zero errors and zero AOT/trimming warnings (IL2104, IL3053, IL3000 should no longer appear).
 
@@ -1775,7 +1775,7 @@ If there are compilation errors, fix them — they'll be from typos or missed im
 
 - [ ] **Step 2: Run all tests**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet test`
+Run: `cd api && dotnet test`
 
 Expected: All tests pass. The handler-level tests use `InMemory*Repository` implementations and should be unaffected. The new `CosmosRestClientTests` and `CosmosAuthProviderTests` should pass. The deleted test files (SDK helpers) should no longer be referenced.
 
@@ -1786,19 +1786,19 @@ If tests fail, diagnose and fix. Common issues:
 
 - [ ] **Step 3: Verify no SDK references remain**
 
-Run: `cd /Users/christy/Dev/town-crier/api && grep -r "Microsoft.Azure.Cosmos" --include="*.cs" --include="*.csproj" src/`
+Run: `cd api && grep -r "Microsoft.Azure.Cosmos" --include="*.cs" --include="*.csproj" src/`
 
 Expected: Zero matches. All SDK references should be gone.
 
 - [ ] **Step 4: Verify no Newtonsoft references remain**
 
-Run: `cd /Users/christy/Dev/town-crier/api && grep -r "Newtonsoft" --include="*.cs" --include="*.csproj" src/`
+Run: `cd api && grep -r "Newtonsoft" --include="*.cs" --include="*.csproj" src/`
 
 Expected: Zero matches.
 
 - [ ] **Step 5: Check for trimming warnings**
 
-Run: `cd /Users/christy/Dev/town-crier/api && dotnet publish src/town-crier.web -c Release 2>&1 | grep -i "IL[0-9]"`
+Run: `cd api && dotnet publish src/town-crier.web -c Release 2>&1 | grep -i "IL[0-9]"`
 
 Expected: Zero trimming warnings. If any appear, they're from our code (not the SDK) and need fixing.
 
@@ -1860,13 +1860,13 @@ git commit -m "chore: add Cosmos REST client config to dev settings"
 
 - [ ] **Step 1: Check if infra sets a connection string env var**
 
-Run: `cd /Users/christy/Dev/town-crier && grep -n "ConnectionStrings\|CosmosDb" infra/*.cs`
+Run: `grep -n "ConnectionStrings\|CosmosDb" infra/*.cs`
 
 Expected: No matches for connection string config. The infra already uses `Cosmos__AccountEndpoint` env var. If any connection string references exist, remove them.
 
 - [ ] **Step 2: Verify Cosmos__AccountEndpoint is set in container app config**
 
-Run: `cd /Users/christy/Dev/town-crier && grep -n "Cosmos__AccountEndpoint\|Cosmos__DatabaseName" infra/*.cs`
+Run: `grep -n "Cosmos__AccountEndpoint\|Cosmos__DatabaseName" infra/*.cs`
 
 Expected: `Cosmos__AccountEndpoint` is set. If `Cosmos__DatabaseName` is not set, it will fall back to the constant in `CosmosContainerNames.DatabaseName` ("town-crier"). Add it if the per-environment database name differs (e.g., "town-crier-dev" vs "town-crier").
 
