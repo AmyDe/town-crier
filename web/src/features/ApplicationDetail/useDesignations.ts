@@ -9,22 +9,11 @@ export function useDesignations(
 ) {
   const hasCoordinates = latitude !== null && longitude !== null;
 
-  const fetchResult = useFetchData<DesignationContext>(
+  const { data: designations, isLoading, error } = useFetchData<DesignationContext>(
     () => repository.fetchDesignations(latitude!, longitude!),
     [repository, latitude, longitude],
+    { enabled: hasCoordinates },
   );
 
-  if (!hasCoordinates) {
-    return {
-      designations: null as DesignationContext | null,
-      isLoading: false,
-      error: null as string | null,
-    };
-  }
-
-  return {
-    designations: fetchResult.data,
-    isLoading: fetchResult.isLoading,
-    error: fetchResult.error,
-  };
+  return { designations, isLoading, error };
 }

@@ -1,60 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { WatchZoneSummary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
-
-interface WatchZonesState {
-  zones: readonly WatchZoneSummary[];
-  isLoading: boolean;
-  error: string | null;
-}
+import { useFetchData } from '../../hooks/useFetchData';
 
 export function useWatchZones(repository: WatchZoneRepository) {
-  const [state, setState] = useState<WatchZonesState>({
-    zones: [],
-    isLoading: true,
-    error: null,
-  });
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const loadZones = useCallback(async () => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    try {
-      const zones = await repository.list();
-      setState({ zones, isLoading: false, error: null });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
-      setState(prev => ({ ...prev, isLoading: false, error: message }));
-    }
-  }, [repository]);
-
-  useEffect(() => {
-    let cancelled = false;
-    repository.list().then(zones => {
-      if (!cancelled) {
-        setState({ zones, isLoading: false, error: null });
-      }
-    }).catch((err: unknown) => {
-      if (!cancelled) {
-        const message = err instanceof Error ? err.message : 'An error occurred';
-        setState(prev => ({ ...prev, isLoading: false, error: message }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [repository]);
+  const { data: zones, isLoading, error: fetchError, refresh } = useFetchData<readonly WatchZoneSummary[]>(
+    () => repository.list(),
+    [repository],
+  );
 
   const deleteZone = useCallback(async (zoneId: string) => {
     try {
       await repository.delete(zoneId);
-      await loadZones();
+      refresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred';
-      setState(prev => ({ ...prev, error: message }));
+      setActionError(message);
     }
-  }, [repository, loadZones]);
+  }, [repository, refresh]);
 
   return {
-    zones: state.zones,
-    isLoading: state.isLoading,
-    error: state.error,
+    zones: zones ?? [],
+    isLoading,
+    error: actionError ?? fetchError,
     deleteZone,
   };
 }
