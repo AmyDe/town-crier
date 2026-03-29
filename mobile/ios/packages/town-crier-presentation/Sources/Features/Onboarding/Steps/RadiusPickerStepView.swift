@@ -23,7 +23,7 @@ struct RadiusPickerStepView: View {
                         viewModel.selectedRadiusMetres = radius
                     } label: {
                         HStack {
-                            Text(radiusLabel(radius))
+                            Text(formatRadius(radius))
                                 .font(TCTypography.bodyEmphasis)
                             Spacer()
                             if viewModel.selectedRadiusMetres == radius {
@@ -61,10 +61,4 @@ struct RadiusPickerStepView: View {
         .padding(TCSpacing.extraLarge)
     }
 
-    private func radiusLabel(_ metres: Double) -> String {
-        if metres >= 1000 {
-            return "\(Int(metres / 1000)) km"
-        }
-        return "\(Int(metres)) m"
-    }
 }

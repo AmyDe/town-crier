@@ -76,7 +76,7 @@ public struct WatchZoneEditorView: View {
         Section("Radius") {
             Picker("Radius", selection: $viewModel.selectedRadiusMetres) {
                 ForEach(viewModel.availableRadiusOptions, id: \.self) { option in
-                    Text(radiusLabel(option)).tag(option)
+                    Text(formatRadius(option)).tag(option)
                 }
             }
             .pickerStyle(.segmented)
@@ -116,15 +116,6 @@ public struct WatchZoneEditorView: View {
         }
     }
 
-    private func radiusLabel(_ metres: Double) -> String {
-        if metres >= 1000 {
-            let km = metres / 1000
-            return km.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(km)) km"
-                : String(format: "%.1f km", km)
-        }
-        return "\(Int(metres)) m"
-    }
 }
 
 /// Larger map preview for the editor screen.

@@ -86,7 +86,7 @@ private struct WatchZoneRow: View {
             VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
                 Text(zone.postcode.value)
                     .font(.system(.headline).weight(.semibold))
-                Text(radiusLabel(zone.radiusMetres))
+                Text(formatRadius(zone.radiusMetres))
                     .font(.system(.caption))
                     .foregroundStyle(Color.tcTextSecondary)
             }
@@ -100,15 +100,6 @@ private struct WatchZoneRow: View {
         .padding(.vertical, TCSpacing.extraSmall)
     }
 
-    private func radiusLabel(_ metres: Double) -> String {
-        if metres >= 1000 {
-            let km = metres / 1000
-            return km.truncatingRemainder(dividingBy: 1) == 0
-                ? "\(Int(km)) km radius"
-                : String(format: "%.1f km radius", km)
-        }
-        return "\(Int(metres)) m radius"
-    }
 }
 
 /// A small non-interactive map preview showing the zone circle.
