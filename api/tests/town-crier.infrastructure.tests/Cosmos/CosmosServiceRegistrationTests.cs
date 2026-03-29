@@ -71,4 +71,24 @@ public sealed class CosmosServiceRegistrationTests
         await Assert.That(httpClient.BaseAddress!.Host)
             .IsEqualTo("test-account.documents.azure.com");
     }
+
+    [Test]
+    public async Task Should_RegisterICosmosRestClientAsSingleton_When_AddCosmosRestClientCalled()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(ValidCosmosConfig)
+            .Build();
+        var services = new ServiceCollection();
+
+        // Act
+        services.AddCosmosRestClient(config);
+        using var provider = services.BuildServiceProvider();
+
+        // Assert
+        var client1 = provider.GetRequiredService<ICosmosRestClient>();
+        var client2 = provider.GetRequiredService<ICosmosRestClient>();
+        await Assert.That(client1).IsNotNull();
+        await Assert.That(client1).IsSameReferenceAs(client2);
+    }
 }
