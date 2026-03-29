@@ -77,6 +77,15 @@ public static class CosmosServiceExtensions
             });
         });
 
+        services.AddSingleton<ICosmosRestClient>(sp =>
+        {
+            var factory = sp.GetRequiredService<IHttpClientFactory>();
+            var httpClient = factory.CreateClient("CosmosRest");
+            var auth = sp.GetRequiredService<CosmosAuthProvider>();
+            var opts = sp.GetRequiredService<CosmosRestOptions>();
+            return new CosmosRestClient(httpClient, auth, opts);
+        });
+
         return services;
     }
 }
