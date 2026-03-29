@@ -14,6 +14,10 @@ interface FetchDataOptions {
   enabled?: boolean;
 }
 
+function extractErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'An error occurred';
+}
+
 export function useFetchData<T>(
   fetcher: () => Promise<T>,
   deps: DependencyList,
@@ -33,8 +37,7 @@ export function useFetchData<T>(
       const data = await fetcher();
       setState({ data, isLoading: false, error: null });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
-      setState(prev => ({ ...prev, isLoading: false, error: message }));
+      setState(prev => ({ ...prev, isLoading: false, error: extractErrorMessage(err) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -50,8 +53,7 @@ export function useFetchData<T>(
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'An error occurred';
-          setState(prev => ({ ...prev, isLoading: false, error: message }));
+          setState(prev => ({ ...prev, isLoading: false, error: extractErrorMessage(err) }));
         }
       }
     })();
