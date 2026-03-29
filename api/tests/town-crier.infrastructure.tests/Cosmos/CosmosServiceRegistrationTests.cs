@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Tests.Cosmos;
@@ -27,7 +26,7 @@ public sealed class CosmosServiceRegistrationTests
         using var provider = services.BuildServiceProvider();
 
         // Assert
-        var options = provider.GetRequiredService<IOptions<CosmosRestOptions>>().Value;
+        var options = provider.GetRequiredService<CosmosRestOptions>();
         await Assert.That(options.AccountEndpoint).IsEqualTo("https://test-account.documents.azure.com:443");
         await Assert.That(options.DatabaseName).IsEqualTo("town-crier");
     }

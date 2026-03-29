@@ -30,4 +30,26 @@ public static class CosmosServiceExtensions
 
         return services;
     }
+
+    public static IServiceCollection AddCosmosRestClient(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var cosmosSection = configuration.GetSection("Cosmos");
+        var accountEndpoint = cosmosSection["AccountEndpoint"]
+            ?? throw new InvalidOperationException("Cosmos:AccountEndpoint configuration is required.");
+        var databaseName = cosmosSection["DatabaseName"]
+            ?? throw new InvalidOperationException("Cosmos:DatabaseName configuration is required.");
+
+        var options = new CosmosRestOptions
+        {
+            AccountEndpoint = accountEndpoint,
+            DatabaseName = databaseName,
+        };
+
+        services.AddSingleton(options);
+
+        return services;
+    }
 }
