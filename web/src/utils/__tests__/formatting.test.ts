@@ -28,4 +28,16 @@ describe('statusClassName', () => {
     expect(statusClassName('Appealed', fakeStyles)).toBe('statusAppealed_abc123');
     expect(statusClassName('Not Available', fakeStyles)).toBe('statusNotAvailable_abc123');
   });
+
+  it('returns the statusDefault class for an unknown status', () => {
+    expect(statusClassName('SomeUnknownStatus', fakeStyles)).toBe('statusDefault_abc123');
+  });
+
+  it('returns an empty string when unknown status and no statusDefault in styles', () => {
+    const stylesWithoutDefault: Record<string, string> = {
+      statusUndecided: 'statusUndecided_abc123',
+    };
+
+    expect(statusClassName('SomeUnknownStatus', stylesWithoutDefault)).toBe('');
+  });
 });
