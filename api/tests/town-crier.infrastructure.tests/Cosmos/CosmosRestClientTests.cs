@@ -119,6 +119,28 @@ public sealed class CosmosRestClientTests
             .IsEqualTo("/dbs/test-db/colls/Users/docs/doc1");
     }
 
+    [Test]
+    public async Task Should_SetQueryHeaders_When_Querying()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK, """{"Documents":[],"_count":0}""");
+
+        await client.QueryAsync(
+            "Users",
+            "SELECT * FROM c",
+            null,
+            "pk1",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Post);
+        await Assert.That(request.Headers.GetValues("x-ms-documentdb-isquery").First())
+            .IsEqualTo("True");
+        await Assert.That(request.Content!.Headers.ContentType!.MediaType)
+            .IsEqualTo("application/query+json");
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
