@@ -86,6 +86,11 @@ public static class CosmosServiceExtensions
             return new CosmosRestClient(httpClient, auth, opts);
         });
 
+        // Backward compat: existing repos still depend on CosmosClient via SDK.
+        // Remove once all repos are migrated to ICosmosRestClient (tc-pgp.3).
+        services.AddSingleton(_ =>
+            CosmosClientFactory.Create(accountEndpoint, new DefaultAzureCredential()));
+
         return services;
     }
 }
