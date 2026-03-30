@@ -8,7 +8,19 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context)
     {
-        await next(context).ConfigureAwait(false);
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Global error handler must catch all exceptions
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = 500;
+            }
+        }
 
         if (context.Response.StatusCode >= 400
             && !context.Response.HasStarted

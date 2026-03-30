@@ -12,6 +12,7 @@ using TownCrier.Infrastructure.WatchZones;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(Coordinates))]
 [JsonSerializable(typeof(NotificationPreferences))]
 [JsonSerializable(typeof(ZoneNotificationPreferences))]
