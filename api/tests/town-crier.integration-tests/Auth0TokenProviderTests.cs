@@ -116,6 +116,43 @@ public sealed class Auth0TokenProviderTests
         }
     }
 
+    [Test]
+    public async Task Should_SendRequestToCorrectAuth0Url()
+    {
+        // Arrange
+        SetAllRequiredEnvVars();
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+
+        Uri? capturedUri = null;
+        using var handler = new FakeHttpMessageHandler(request =>
+        {
+            capturedUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        });
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+
+        try
+        {
+            // Act
+            await Auth0TokenProvider.AcquireTokenAsync(client);
+
+            // Assert
+            await Assert.That(capturedUri).IsNotNull();
+            await Assert.That(capturedUri!.ToString()).IsEqualTo("https://test.auth0.com/oauth/token");
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
+    }
+
     private static void SetAllRequiredEnvVars()
     {
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_API_BASE_URL", "https://test.example.com");
