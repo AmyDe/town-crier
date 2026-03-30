@@ -171,6 +171,7 @@ internal static class ServiceCollectionExtensions
 
                 options.Authority = $"https://{domain}/";
                 options.Audience = audience;
+                options.MapInboundClaims = false;
             });
 
         services.AddAuthorizationBuilder()
