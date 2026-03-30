@@ -1,5 +1,3 @@
-using System.Net;
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Domain.DeviceRegistrations;
 using TownCrier.Infrastructure.Cosmos;
@@ -8,39 +6,38 @@ namespace TownCrier.Infrastructure.DeviceRegistrations;
 
 public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosDeviceRegistrationRepository(CosmosClient client)
+    public CosmosDeviceRegistrationRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.DeviceRegistrations);
+        this.client = client;
     }
 
     public async Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.token = @token")
-            .WithParameter("@token", token);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DeviceRegistrations,
+            "SELECT * FROM c WHERE c.token = @token",
+            [new QueryParameter("@token", token)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<DeviceRegistrationDocument>(
-            query,
-            requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
-
-        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
     public async Task<IReadOnlyList<DeviceRegistration>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
-            .WithParameter("@userId", userId);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DeviceRegistrations,
+            "SELECT * FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<DeviceRegistrationDocument>(
-            query,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            });
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task SaveAsync(DeviceRegistration registration, CancellationToken ct)
@@ -49,36 +46,33 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
 
         var document = DeviceRegistrationDocument.FromDomain(registration);
 
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.DeviceRegistrations,
             document,
-            new PartitionKey(document.UserId),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.UserId,
+            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            ct).ConfigureAwait(false);
     }
 
     public async Task DeleteByTokenAsync(string token, CancellationToken ct)
     {
         // Token is not the partition key, so we must find the document first
         // to get the userId (partition key) needed for deletion.
-        var query = new QueryDefinition("SELECT c.id, c.userId FROM c WHERE c.token = @token")
-            .WithParameter("@token", token);
-
-        using var iterator = this.container.GetItemQueryIterator<DeviceRegistrationDocument>(query);
-
-        var documents = await iterator.CollectAsync(ct).ConfigureAwait(false);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DeviceRegistrations,
+            "SELECT c.id, c.userId FROM c WHERE c.token = @token",
+            [new QueryParameter("@token", token)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            ct).ConfigureAwait(false);
 
         foreach (var document in documents)
         {
-            try
-            {
-                await this.container.DeleteItemAsync<DeviceRegistrationDocument>(
-                    document.Id,
-                    new PartitionKey(document.UserId),
-                    cancellationToken: ct).ConfigureAwait(false);
-            }
-            catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                // Already deleted — idempotent
-            }
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.DeviceRegistrations,
+                document.Id,
+                document.UserId,
+                ct).ConfigureAwait(false);
         }
     }
 }

@@ -1,6 +1,5 @@
 using System.Net;
 using Azure.Identity;
-using Microsoft.Azure.Cosmos;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
@@ -61,11 +60,6 @@ public static class CosmosServiceExtensions
             var opts = sp.GetRequiredService<CosmosRestOptions>();
             return new CosmosRestClient(httpClient, auth, opts);
         });
-
-        // Backward compat: existing repos still depend on CosmosClient via SDK.
-        // Remove once all repos are migrated to ICosmosRestClient (tc-pgp.3).
-        services.AddSingleton(_ =>
-            CosmosClientFactory.Create(accountEndpoint, new DefaultAzureCredential()));
 
         return services;
     }

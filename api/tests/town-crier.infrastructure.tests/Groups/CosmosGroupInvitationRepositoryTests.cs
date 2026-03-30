@@ -13,8 +13,12 @@ public sealed class CosmosGroupInvitationRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosGroupInvitationRepository(client);
         var invitation = GroupInvitation.Create(
-            "inv-1", "group-1", "user@example.com", "user-1",
-            DateTimeOffset.UtcNow, TimeSpan.FromDays(7));
+            "inv-1",
+            "group-1",
+            "user@example.com",
+            "user-1",
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromDays(7));
 
         // Act
         await repo.SaveAsync(invitation, CancellationToken.None);
@@ -46,8 +50,12 @@ public sealed class CosmosGroupInvitationRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosGroupInvitationRepository(client);
         var invitation = GroupInvitation.Create(
-            "inv-1", "group-1", "user@example.com", "user-1",
-            DateTimeOffset.UtcNow, TimeSpan.FromDays(7));
+            "inv-1",
+            "group-1",
+            "user@example.com",
+            "user-1",
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromDays(7));
         await repo.SaveAsync(invitation, CancellationToken.None);
 
         // Act -- fake returns all docs in collection
@@ -64,8 +72,12 @@ public sealed class CosmosGroupInvitationRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosGroupInvitationRepository(client);
         var invitation = GroupInvitation.Create(
-            "inv-1", "group-1", "user@example.com", "user-1",
-            DateTimeOffset.UtcNow, TimeSpan.FromDays(7));
+            "inv-1",
+            "group-1",
+            "user@example.com",
+            "user-1",
+            DateTimeOffset.UtcNow,
+            TimeSpan.FromDays(7));
         await repo.SaveAsync(invitation, CancellationToken.None);
 
         // Act

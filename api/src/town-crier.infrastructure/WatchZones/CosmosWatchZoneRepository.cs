@@ -1,5 +1,3 @@
-using System.Net;
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.WatchZones;
 using TownCrier.Infrastructure.Cosmos;
@@ -8,12 +6,12 @@ namespace TownCrier.Infrastructure.WatchZones;
 
 public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosWatchZoneRepository(CosmosClient client)
+    public CosmosWatchZoneRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.WatchZones);
+        this.client = client;
     }
 
     public async Task SaveAsync(WatchZone zone, CancellationToken ct)
@@ -21,24 +19,27 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
         ArgumentNullException.ThrowIfNull(zone);
 
         var document = WatchZoneDocument.FromDomain(zone);
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.WatchZones,
             document,
-            new PartitionKey(document.UserId),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.UserId,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
-            .WithParameter("@userId", userId);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.WatchZones,
+            "SELECT * FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<WatchZoneDocument>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
@@ -46,56 +47,66 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
 
-        try
-        {
-            await this.container.DeleteItemAsync<WatchZoneDocument>(
-                zoneId,
-                new PartitionKey(userId),
-                cancellationToken: ct).ConfigureAwait(false);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        // Read first to preserve WatchZoneNotFoundException semantics,
+        // since REST DeleteDocumentAsync is idempotent (no 404 error).
+        var existing = await this.client.ReadDocumentAsync(
+            CosmosContainerNames.WatchZones,
+            zoneId,
+            userId,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
+
+        if (existing is null)
         {
             throw new WatchZoneNotFoundException();
         }
+
+        await this.client.DeleteDocumentAsync(
+            CosmosContainerNames.WatchZones,
+            zoneId,
+            userId,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {
-        var query = new QueryDefinition(
+        const string sql =
             "SELECT * FROM c WHERE ST_DISTANCE({'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
-            "{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres")
-            .WithParameter("@latitude", latitude)
-            .WithParameter("@longitude", longitude);
+            "{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres";
 
-        using var iterator = this.container.GetItemQueryIterator<WatchZoneDocument>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = null });
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.WatchZones,
+            sql,
+            [new QueryParameter("@latitude", latitude), new QueryParameter("@longitude", longitude)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
 
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT DISTINCT VALUE c.authorityId FROM c");
-
-        using var iterator = this.container.GetItemQueryIterator<int>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = null });
-
-        return await iterator.CollectAsync(ct).ConfigureAwait(false);
+        return await this.client.QueryAsync(
+            CosmosContainerNames.WatchZones,
+            "SELECT DISTINCT VALUE c.authorityId FROM c",
+            parameters: null,
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
     {
-        var query = new QueryDefinition(
-            "SELECT c.authorityId, COUNT(1) AS zoneCount FROM c GROUP BY c.authorityId");
+        var items = await this.client.QueryAsync(
+            CosmosContainerNames.WatchZones,
+            "SELECT c.authorityId, COUNT(1) AS zoneCount FROM c GROUP BY c.authorityId",
+            parameters: null,
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.AuthorityZoneCountResult,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<AuthorityZoneCountResult>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = null });
-
-        var items = await iterator.CollectAsync(ct).ConfigureAwait(false);
         return items.ToDictionary(item => item.AuthorityId, item => item.ZoneCount);
     }
 }

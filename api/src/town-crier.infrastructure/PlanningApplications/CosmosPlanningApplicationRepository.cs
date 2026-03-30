@@ -1,4 +1,3 @@
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Infrastructure.Cosmos;
@@ -7,12 +6,12 @@ namespace TownCrier.Infrastructure.PlanningApplications;
 
 public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosPlanningApplicationRepository(CosmosClient client)
+    public CosmosPlanningApplicationRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Applications);
+        this.client = client;
     }
 
     public async Task UpsertAsync(PlanningApplication application, CancellationToken ct)
@@ -20,37 +19,42 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
         ArgumentNullException.ThrowIfNull(application);
 
         var document = PlanningApplicationDocument.FromDomain(application);
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.Applications,
             document,
-            new PartitionKey(document.AuthorityCode),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.AuthorityCode,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uid);
 
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.Uid = @uid")
-            .WithParameter("@uid", uid);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Applications,
+            "SELECT * FROM c WHERE c.Uid = @uid",
+            [new QueryParameter("@uid", uid)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query);
-
-        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
     public async Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
     {
         var authorityCode = authorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        var query = new QueryDefinition("SELECT * FROM c");
-        var requestOptions = new QueryRequestOptions
-        {
-            PartitionKey = new PartitionKey(authorityCode),
-        };
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Applications,
+            "SELECT * FROM c",
+            parameters: null,
+            authorityCode,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query, requestOptions: requestOptions);
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
@@ -58,19 +62,22 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(authorityCode);
 
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE ST_DISTANCE(c.location, {\"type\": \"Point\", \"coordinates\": [@lng, @lat]}) <= @radius")
-            .WithParameter("@lng", longitude)
-            .WithParameter("@lat", latitude)
-            .WithParameter("@radius", radiusMetres);
+        const string sql =
+            "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
+            "{\"type\": \"Point\", \"coordinates\": [@lng, @lat]}) <= @radius";
 
-        var requestOptions = new QueryRequestOptions
-        {
-            PartitionKey = new PartitionKey(authorityCode),
-        };
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Applications,
+            sql,
+            [
+                new QueryParameter("@lng", longitude),
+                new QueryParameter("@lat", latitude),
+                new QueryParameter("@radius", radiusMetres),
+            ],
+            authorityCode,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<PlanningApplicationDocument>(query, requestOptions: requestOptions);
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 }

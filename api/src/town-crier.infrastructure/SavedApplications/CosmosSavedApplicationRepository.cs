@@ -1,5 +1,3 @@
-using System.Net;
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Domain.SavedApplications;
 using TownCrier.Infrastructure.Cosmos;
@@ -8,12 +6,12 @@ namespace TownCrier.Infrastructure.SavedApplications;
 
 public sealed class CosmosSavedApplicationRepository : ISavedApplicationRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosSavedApplicationRepository(CosmosClient client)
+    public CosmosSavedApplicationRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.SavedApplications);
+        this.client = client;
     }
 
     public async Task SaveAsync(SavedApplication savedApplication, CancellationToken ct)
@@ -21,68 +19,60 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
         ArgumentNullException.ThrowIfNull(savedApplication);
 
         var document = SavedApplicationDocument.FromDomain(savedApplication);
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.SavedApplications,
             document,
-            new PartitionKey(document.UserId),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.UserId,
+            CosmosJsonSerializerContext.Default.SavedApplicationDocument,
+            ct).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string userId, string applicationUid, CancellationToken ct)
     {
         var id = SavedApplicationDocument.MakeId(userId, applicationUid);
 
-        try
-        {
-            await this.container.DeleteItemAsync<SavedApplicationDocument>(
-                id,
-                new PartitionKey(userId),
-                cancellationToken: ct).ConfigureAwait(false);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-        {
-            // Idempotent delete — item already removed
-        }
+        await this.client.DeleteDocumentAsync(
+            CosmosContainerNames.SavedApplications,
+            id,
+            userId,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT * FROM c WHERE c.userId = @userId")
-            .WithParameter("@userId", userId);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.SavedApplications,
+            "SELECT * FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.SavedApplicationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<SavedApplicationDocument>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct)
     {
         var id = SavedApplicationDocument.MakeId(userId, applicationUid);
 
-        try
-        {
-            await this.container.ReadItemAsync<SavedApplicationDocument>(
-                id,
-                new PartitionKey(userId),
-                cancellationToken: ct).ConfigureAwait(false);
-            return true;
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-        {
-            return false;
-        }
+        var document = await this.client.ReadDocumentAsync(
+            CosmosContainerNames.SavedApplications,
+            id,
+            userId,
+            CosmosJsonSerializerContext.Default.SavedApplicationDocument,
+            ct).ConfigureAwait(false);
+
+        return document is not null;
     }
 
     public async Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct)
     {
-        var query = new QueryDefinition("SELECT VALUE c.userId FROM c WHERE c.applicationUid = @applicationUid")
-            .WithParameter("@applicationUid", applicationUid);
-
-        using var iterator = this.container.GetItemQueryIterator<string>(
-            query,
-            requestOptions: new QueryRequestOptions { PartitionKey = null });
-
-        return await iterator.CollectAsync(ct).ConfigureAwait(false);
+        return await this.client.QueryAsync(
+            CosmosContainerNames.SavedApplications,
+            "SELECT VALUE c.userId FROM c WHERE c.applicationUid = @applicationUid",
+            [new QueryParameter("@applicationUid", applicationUid)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.String,
+            ct).ConfigureAwait(false);
     }
 }
