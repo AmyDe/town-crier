@@ -55,7 +55,7 @@ for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}'
     echo "$uncommitted"
   fi
   echo "Autopilot: removing orphaned worktree $wt"
-  git worktree remove --force "$wt" 2>/dev/null
+  bd worktree remove "$wt" --force 2>/dev/null || git worktree remove --force "$wt" 2>/dev/null
 done
 git worktree prune
 ```
@@ -118,25 +118,28 @@ Determine the worker's allowed path scope (this table is the single source of tr
 | `pulumi-infra-worker` | `infra/` |
 | `github-actions-worker` | `.github/workflows/`, `.github/actions/` |
 
-Resolve the main repo's beads directory for the worker. The worktree won't have `.beads/` — workers need `BEADS_DIR` set so `bd` finds the shared database:
+Create a worktree using `bd worktree create`, which sets up a `.beads/redirect` file so `bd` commands in the worktree transparently use the main repo's database — no environment variables needed:
 
 ```bash
-beads_dir=$(bd where 2>/dev/null | head -1)
-# e.g. /Users/christy/Dev/town-crier/.beads
+worktree_name="autopilot-<bead-id>"
+worktree_branch="autopilot/<bead-id>"
+bd worktree create ".claude/worktrees/$worktree_name" --branch "$worktree_branch"
+worktree_path="$(pwd)/.claude/worktrees/$worktree_name"
 ```
 
-Dispatch the worker with `BEADS_DIR` in the prompt:
+Store `worktree_path` and `worktree_branch` — you need them for validation, merge, and cleanup.
+
+Dispatch the worker into the pre-created worktree (no `isolation` — the worktree already exists):
 
 ```
 Agent({
   "subagent_type": "<worker-type>",
   "name": "autopilot-worker",
   "description": "Implement bead <bead-id>",
-  "isolation": "worktree",
   "model": "opus",
   "mode": "bypassPermissions",
   "run_in_background": true,
-  "prompt": "Work on bead `<bead-id>`.\n\nWorktree beads setup — run this FIRST, before any bd command:\n```bash\nexport BEADS_DIR=\"<beads_dir>\"\n```\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop\n- NEVER run `bd init`, `bd init --force`, or `bd doctor --fix` — these destroy the shared beads database. If bd commands fail, add a bead comment describing the error and continue with code work."
+  "prompt": "Work on bead `<bead-id>`.\n\nYou are working in a pre-created worktree at `<worktree_path>`. All your commands must run from this directory — prefix every Bash call with `cd <worktree_path> &&`.\n\nThe worktree has beads configured via redirect — `bd` commands work automatically, no setup needed.\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop\n- NEVER run `bd init`, `bd init --force`, or `bd doctor --fix` — these destroy the shared beads database. If bd commands fail, add a bead comment describing the error and continue with code work."
 })
 ```
 
@@ -144,9 +147,9 @@ You are notified automatically when the worker completes — do not poll.
 
 ## Phase 3: Validate Evidence
 
-The Agent result includes the **worktree path and branch name** if the worker made changes. **Store both** — you need them for merge and cleanup.
+You already know the `worktree_path` and `worktree_branch` from Phase 2 (created before dispatch).
 
-**No changes reported?** The worker failed silently. Jump to [Failure](#failure).
+**Worker reported no changes?** Check whether the worktree branch has commits anyway (`git log main..<worktree_branch>`). If truly empty, jump to [Failure](#failure).
 
 ### Audit Checklist
 
@@ -230,7 +233,7 @@ Close the bead:
 Clean up the worktree:
 
 ```bash
-git worktree remove --force <worktree-path>
+bd worktree remove <worktree-path> --force
 git worktree prune
 ```
 
@@ -270,7 +273,7 @@ Used when the worker fails, evidence validation fails, or merge fails. **One str
 2. Clean up the worktree (if one exists):
 
 ```bash
-git worktree remove --force <worktree-path> 2>/dev/null
+bd worktree remove <worktree-path> --force 2>/dev/null || git worktree remove --force <worktree-path> 2>/dev/null
 git worktree prune
 ```
 
@@ -293,7 +296,7 @@ The bead will not appear in `bd ready` again. The user reviews blocked beads in 
 - **One strike.** If a bead fails for any reason, mark it blocked immediately. No retries.
 - **Always use `--append-notes`** when adding failure context — never `--notes`, which overwrites.
 - **Always `bd dolt push` after any bead state change.**
-- **Always clean up.** Remove worktrees with `git worktree remove --force <path>` and prune.
+- **Always clean up.** Remove worktrees with `bd worktree remove <path> --force` and prune.
 - **Return fast when idle.** No beads = return immediately.
 - **Fail safe.** Unexpected errors → mark bead blocked → clean up → return.
 - **Use `/beads:*` skills for all tracking.** No TodoWrite, no TaskCreate.
