@@ -6,14 +6,11 @@ public sealed class ApiClientFixtureTests
     public async Task Should_ThrowInvalidOperationException_When_FixtureNotInitialized()
     {
         // Arrange
-        var fixture = new ApiClientFixture();
+        await using var fixture = new ApiClientFixture();
 
-        // Act
-        var act = () => fixture.Client;
-
-        // Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => Task.FromResult(act()));
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(
+            () => _ = fixture.Client);
     }
 
     [Test]
