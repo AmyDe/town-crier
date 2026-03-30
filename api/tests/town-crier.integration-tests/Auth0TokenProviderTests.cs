@@ -14,31 +14,37 @@ public sealed class Auth0TokenProviderTests
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", "test-secret");
 
         Dictionary<string, string>? capturedPayload = null;
-        var handler = new FakeHttpMessageHandler(async request =>
+        using var handler = new FakeHttpMessageHandler(async request =>
         {
             var content = await request.Content!.ReadAsStringAsync();
             capturedPayload = JsonSerializer.Deserialize<Dictionary<string, string>>(content);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("""{"access_token":"fake-token"}""",
-                    System.Text.Encoding.UTF8, "application/json"),
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
             };
         });
 
-        using var client = new HttpClient(handler);
+        using var client = new HttpClient(handler, disposeHandler: false);
 
-        // Act
-        var token = await Auth0TokenProvider.AcquireTokenAsync(client);
+        try
+        {
+            // Act
+            var token = await Auth0TokenProvider.AcquireTokenAsync(client);
 
-        // Assert
-        await Assert.That(token).IsEqualTo("fake-token");
-        await Assert.That(capturedPayload).IsNotNull();
-        await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsTrue();
-        await Assert.That(capturedPayload["client_secret"]).IsEqualTo("test-secret");
-        await Assert.That(capturedPayload["grant_type"]).IsEqualTo("password");
-
-        // Cleanup
-        CleanupEnvVars();
+            // Assert
+            await Assert.That(token).IsEqualTo("fake-token");
+            await Assert.That(capturedPayload).IsNotNull();
+            await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsTrue();
+            await Assert.That(capturedPayload["client_secret"]).IsEqualTo("test-secret");
+            await Assert.That(capturedPayload["grant_type"]).IsEqualTo("password");
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
     }
 
     [Test]
@@ -49,29 +55,35 @@ public sealed class Auth0TokenProviderTests
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
 
         Dictionary<string, string>? capturedPayload = null;
-        var handler = new FakeHttpMessageHandler(async request =>
+        using var handler = new FakeHttpMessageHandler(async request =>
         {
             var content = await request.Content!.ReadAsStringAsync();
             capturedPayload = JsonSerializer.Deserialize<Dictionary<string, string>>(content);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("""{"access_token":"fake-token"}""",
-                    System.Text.Encoding.UTF8, "application/json"),
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
             };
         });
 
-        using var client = new HttpClient(handler);
+        using var client = new HttpClient(handler, disposeHandler: false);
 
-        // Act
-        var token = await Auth0TokenProvider.AcquireTokenAsync(client);
+        try
+        {
+            // Act
+            var token = await Auth0TokenProvider.AcquireTokenAsync(client);
 
-        // Assert
-        await Assert.That(token).IsEqualTo("fake-token");
-        await Assert.That(capturedPayload).IsNotNull();
-        await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsFalse();
-
-        // Cleanup
-        CleanupEnvVars();
+            // Assert
+            await Assert.That(token).IsEqualTo("fake-token");
+            await Assert.That(capturedPayload).IsNotNull();
+            await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsFalse();
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
     }
 
     [Test]
@@ -81,21 +93,27 @@ public sealed class Auth0TokenProviderTests
         SetAllRequiredEnvVars();
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
 
-        var handler = new FakeHttpMessageHandler(_ =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        using var handler = new FakeHttpMessageHandler(
+            _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)
             {
-                Content = new StringContent("""{"error":"invalid_grant"}""",
-                    System.Text.Encoding.UTF8, "application/json"),
+                Content = new StringContent(
+                    """{"error":"invalid_grant"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
             }));
 
-        using var client = new HttpClient(handler);
+        using var client = new HttpClient(handler, disposeHandler: false);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => Auth0TokenProvider.AcquireTokenAsync(client));
-
-        // Cleanup
-        CleanupEnvVars();
+        try
+        {
+            // Act & Assert
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Auth0TokenProvider.AcquireTokenAsync(client));
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
     }
 
     private static void SetAllRequiredEnvVars()
