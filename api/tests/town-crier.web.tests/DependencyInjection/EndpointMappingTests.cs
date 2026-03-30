@@ -25,7 +25,7 @@ public sealed class EndpointMappingTests
     }
 
     [Test]
-    [Arguments("/v1/me", "GET")]
+    [Arguments("/v1/me", "POST")]
     [Arguments("/api/me", "GET")]
     public async Task Should_MapAuthenticatedEndpoints_When_MapAllEndpointsCalled(string path, string method)
     {
