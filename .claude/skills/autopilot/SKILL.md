@@ -21,17 +21,15 @@ The autopilot always works on a branch — never directly on main. All worker ou
 
 ### If on `main`
 
-Create or resume a session branch:
+Create a new session branch with an ISO 8601 timestamp (colons removed for branch-name compatibility):
 
 ```bash
 git pull --rebase
-if git show-ref --verify --quiet refs/heads/autopilot/<date>; then
-  git checkout autopilot/<date>
-  git pull --rebase origin main
-else
-  git checkout -b autopilot/<date>    # e.g. autopilot/2026-03-29
-fi
+branch_name="autopilot/$(date -u +%Y-%m-%dT%H%M%SZ)"   # e.g. autopilot/2026-03-29T210435Z
+git checkout -b "$branch_name"
 ```
+
+Every autopilot invocation gets a fresh branch — never reuse an existing one.
 
 ### If already on a branch
 
@@ -254,7 +252,7 @@ Report with the tally:
 
 ```
 Autopilot: merged <bead-id> — <title>
-Session: <merged_count> commits, <blocked_count> blocked | <remaining> beads remaining | branch: autopilot/<date>
+Session: <merged_count> commits, <blocked_count> blocked | <remaining> beads remaining | branch: <current-branch>
 ```
 
 If `remaining` is 0, add: `All beads closed. Run /ship to PR and merge the session branch.`
