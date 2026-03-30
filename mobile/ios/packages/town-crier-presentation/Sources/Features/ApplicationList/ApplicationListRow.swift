@@ -5,20 +5,12 @@ import TownCrierDomain
 struct ApplicationListRow: View {
     let application: PlanningApplication
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM yyyy"
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
     var body: some View {
         VStack(alignment: .leading, spacing: TCSpacing.small) {
             HStack {
                 statusBadge
                 Spacer()
-                Text(Self.dateFormatter.string(from: application.receivedDate))
+                Text(application.receivedDate.formattedForDisplay)
                     .font(TCTypography.caption)
                     .foregroundStyle(Color.tcTextSecondary)
             }

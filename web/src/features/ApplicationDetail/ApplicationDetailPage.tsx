@@ -3,6 +3,7 @@ import { asApplicationUid } from '../../domain/types';
 import type { ApplicationRepository } from '../../domain/ports/application-repository';
 import type { DesignationRepository } from '../../domain/ports/designation-repository';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
+import { formatDate, statusClassName } from '../../utils/formatting';
 import { useApplication } from './useApplication';
 import { useDesignations } from './useDesignations';
 import { useSavedApplication } from './useSavedApplication';
@@ -12,34 +13,6 @@ interface Props {
   applicationRepository: ApplicationRepository;
   designationRepository: DesignationRepository;
   savedApplicationRepository: SavedApplicationRepository;
-}
-
-function statusClassName(appState: string): string {
-  switch (appState) {
-    case 'Undecided':
-      return styles.statusUndecided ?? '';
-    case 'Approved':
-      return styles.statusApproved ?? '';
-    case 'Refused':
-      return styles.statusRefused ?? '';
-    case 'Withdrawn':
-      return styles.statusWithdrawn ?? '';
-    case 'Appealed':
-      return styles.statusAppealed ?? '';
-    case 'Not Available':
-      return styles.statusNotAvailable ?? '';
-    default:
-      return '';
-  }
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 export function ApplicationDetailPage({
@@ -82,7 +55,7 @@ export function ApplicationDetailPage({
         <div className={styles.topRow}>
           <h1 className={styles.reference}>{application.name}</h1>
           <span
-            className={`${styles.badge ?? ''} ${statusClassName(application.appState)}`}
+            className={`${styles.badge ?? ''} ${statusClassName(application.appState, styles)}`}
             role="status"
           >
             {application.appState}

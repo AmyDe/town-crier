@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { PlanningApplicationSummary } from '../../domain/types';
+import { formatDate, statusClassName } from '../../utils/formatting';
 import styles from './ApplicationCard.module.css';
 
 interface Props {
@@ -8,23 +9,6 @@ interface Props {
 
 const MAX_DESCRIPTION_LENGTH = 120;
 
-function statusClassName(appState: string): string {
-  switch (appState) {
-    case 'Undecided':
-      return styles.statusUndecided ?? '';
-    case 'Approved':
-      return styles.statusApproved ?? '';
-    case 'Refused':
-      return styles.statusRefused ?? '';
-    case 'Withdrawn':
-      return styles.statusWithdrawn ?? '';
-    case 'Appealed':
-      return styles.statusAppealed ?? '';
-    default:
-      return styles.statusDefault ?? '';
-  }
-}
-
 function truncate(text: string, maxLength: number): string {
   if (text.length <= maxLength) {
     return text;
@@ -32,17 +16,8 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + '...';
 }
 
-function formatDate(isoDate: string): string {
-  const date = new Date(isoDate);
-  return date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 export function ApplicationCard({ application }: Props) {
-  const statusClass = statusClassName(application.appState);
+  const statusClass = statusClassName(application.appState, styles);
 
   return (
     <Link

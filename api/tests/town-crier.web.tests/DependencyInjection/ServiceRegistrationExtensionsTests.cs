@@ -15,22 +15,26 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Web.Extensions;
 
 namespace TownCrier.Web.Tests.DependencyInjection;
 
 public sealed class ServiceRegistrationExtensionsTests
 {
+    private static readonly Dictionary<string, string?> CosmosRestConfig = new()
+    {
+        ["Cosmos:AccountEndpoint"] = "https://test-account.documents.azure.com:443",
+        ["Cosmos:DatabaseName"] = "town-crier",
+    };
+
     [Test]
     public async Task Should_RegisterInfrastructureServices_When_AddInfrastructureServicesCalled()
     {
         // Arrange
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:CosmosDb"] = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
-            })
+            .AddInMemoryCollection(CosmosRestConfig)
             .Build();
 
         // Act
@@ -38,6 +42,7 @@ public sealed class ServiceRegistrationExtensionsTests
 
         // Assert — verify key infrastructure registrations exist
         var provider = services.BuildServiceProvider();
+        await Assert.That(provider.GetService<ICosmosRestClient>()).IsNotNull();
         await Assert.That(provider.GetService<IPlanningApplicationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IUserProfileRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IWatchZoneRepository>()).IsNotNull();
@@ -56,10 +61,7 @@ public sealed class ServiceRegistrationExtensionsTests
         // Arrange
         var services = new ServiceCollection();
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:CosmosDb"] = "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==",
-            })
+            .AddInMemoryCollection(CosmosRestConfig)
             .Build();
 
         // Infrastructure services needed as dependencies for handlers

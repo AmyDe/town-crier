@@ -38,7 +38,7 @@ internal static class ServiceCollectionExtensions
     public static IServiceCollection AddInfrastructureServices(
         this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddCosmosClient(configuration);
+        services.AddCosmosRestClient(configuration);
 
         services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
         services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
@@ -47,11 +47,8 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IGroupRepository, CosmosGroupRepository>();
         services.AddSingleton<IGroupInvitationRepository, CosmosGroupInvitationRepository>();
         services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
-
-        services.AddSingleton<IDeviceRegistrationRepository>(sp =>
-            new CosmosDeviceRegistrationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
-        services.AddSingleton<INotificationRepository>(sp =>
-            new CosmosNotificationRepository(sp.GetRequiredService<Microsoft.Azure.Cosmos.CosmosClient>()));
+        services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
+        services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 
         var pollStateFilePath = configuration["Polling:StateFilePath"]
             ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");

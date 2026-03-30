@@ -32,9 +32,8 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting("Auth0:Domain", "test.auth0.com");
         builder.UseSetting("Auth0:Audience", "https://api.towncrier.app");
         builder.UseSetting("Cors:AllowedOrigins:0", "http://localhost:5173");
-        builder.UseSetting(
-            "ConnectionStrings:CosmosDb",
-            "AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==");
+        builder.UseSetting("Cosmos:AccountEndpoint", "https://test-account.documents.azure.com:443");
+        builder.UseSetting("Cosmos:DatabaseName", "town-crier");
 
         builder.ConfigureTestServices(services =>
         {
