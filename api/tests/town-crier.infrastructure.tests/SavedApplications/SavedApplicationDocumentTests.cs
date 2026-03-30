@@ -68,7 +68,7 @@ public sealed class SavedApplicationDocumentTests
     }
 
     [Test]
-    public async Task Should_RoundTripThroughJsonSerialization_When_UsingCosmosSerializer()
+    public async Task Should_RoundTripThroughJsonSerialization_When_SerializedWithSourceGenerators()
     {
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
@@ -81,11 +81,9 @@ public sealed class SavedApplicationDocumentTests
         };
         jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
 
-        var serializer = new SystemTextJsonCosmosSerializer(jsonOptions);
-
         // Act
-        using var stream = serializer.ToStream(original);
-        var deserialized = serializer.FromStream<SavedApplicationDocument>(stream);
+        var json = JsonSerializer.Serialize(original, jsonOptions);
+        var deserialized = JsonSerializer.Deserialize<SavedApplicationDocument>(json, jsonOptions)!;
 
         // Assert
         await Assert.That(deserialized.Id).IsEqualTo(original.Id);
@@ -116,19 +114,18 @@ public sealed class SavedApplicationDocumentTests
     public async Task Should_DeserializeStringValue_When_UsingSelectValueProjection()
     {
         // Arrange — SELECT VALUE c.userId returns a bare JSON string, not a document.
-        // The Cosmos serializer context must support string deserialization for this to work.
+        // The serializer context must support string deserialization for this to work.
         var jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         };
         jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
 
-        var serializer = new SystemTextJsonCosmosSerializer(jsonOptions);
         var userId = "auth0|user-1";
 
         // Act
-        using var stream = serializer.ToStream(userId);
-        var deserialized = serializer.FromStream<string>(stream);
+        var json = JsonSerializer.Serialize(userId, jsonOptions);
+        var deserialized = JsonSerializer.Deserialize<string>(json, jsonOptions)!;
 
         // Assert
         await Assert.That(deserialized).IsEqualTo(userId);

@@ -7,11 +7,6 @@
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
     <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.Http.Generated</InterceptorsNamespaces>
-    <!-- Suppress AOT/trim warnings from Cosmos SDK v3 and its transitive dependencies
-         (Newtonsoft.Json, System.Configuration.ConfigurationManager). The SDK is not yet
-         AOT-annotated (see https://github.com/Azure/azure-cosmos-dotnet-v3/issues/4458).
-         Our own code uses STJ source generators and is fully AOT-safe. -->
-    <NoWarn>$(NoWarn);IL2104;IL3053;IL3000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

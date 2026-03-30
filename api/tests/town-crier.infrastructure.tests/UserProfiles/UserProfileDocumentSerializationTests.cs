@@ -7,16 +7,15 @@ namespace TownCrier.Infrastructure.Tests.UserProfiles;
 
 public sealed class UserProfileDocumentSerializationTests
 {
-    private readonly SystemTextJsonCosmosSerializer serializer;
+    private readonly JsonSerializerOptions jsonOptions;
 
     public UserProfileDocumentSerializationTests()
     {
-        var options = new JsonSerializerOptions
+        this.jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         };
-        options.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
-        this.serializer = new SystemTextJsonCosmosSerializer(options);
+        this.jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
     }
 
     [Test]
@@ -31,8 +30,8 @@ public sealed class UserProfileDocumentSerializationTests
         var original = UserProfileDocument.FromDomain(profile);
 
         // Act
-        using var stream = this.serializer.ToStream(original);
-        var deserialized = this.serializer.FromStream<UserProfileDocument>(stream);
+        var json = JsonSerializer.Serialize(original, this.jsonOptions);
+        var deserialized = JsonSerializer.Deserialize<UserProfileDocument>(json, this.jsonOptions)!;
 
         // Assert
         await Assert.That(deserialized.Id).IsEqualTo(original.Id);
@@ -54,9 +53,7 @@ public sealed class UserProfileDocumentSerializationTests
         var document = UserProfileDocument.FromDomain(profile);
 
         // Act
-        using var stream = this.serializer.ToStream(document);
-        using var reader = new StreamReader(stream);
-        var json = await reader.ReadToEndAsync();
+        var json = JsonSerializer.Serialize(document, this.jsonOptions);
 
         // Assert
         await Assert.That(json).Contains("\"id\"");
