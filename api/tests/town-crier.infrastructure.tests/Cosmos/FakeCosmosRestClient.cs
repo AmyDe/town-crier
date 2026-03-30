@@ -1,0 +1,140 @@
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+using TownCrier.Infrastructure.Cosmos;
+
+namespace TownCrier.Infrastructure.Tests.Cosmos;
+
+/// <summary>
+/// In-memory fake of <see cref="ICosmosRestClient"/> for testing Cosmos repository adapters.
+/// Stores documents as raw JSON strings keyed by (collection, id, partitionKey).
+/// </summary>
+internal sealed class FakeCosmosRestClient : ICosmosRestClient
+{
+    private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> store = new();
+
+    public Task<T?> ReadDocumentAsync<T>(
+        string collection,
+        string id,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        if (this.store.TryGetValue((collection, id, partitionKey), out var json))
+        {
+            var result = JsonSerializer.Deserialize(json, typeInfo);
+            return Task.FromResult(result);
+        }
+
+        return Task.FromResult(default(T));
+    }
+
+    public Task UpsertDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(document, typeInfo);
+
+        // Extract id from the serialized JSON to use as the key
+        using var doc = JsonDocument.Parse(json);
+        var id = ExtractId(doc);
+
+        this.store[(collection, id, partitionKey)] = json;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteDocumentAsync(
+        string collection,
+        string id,
+        string partitionKey,
+        CancellationToken ct)
+    {
+        // Idempotent — no error if not found (matches REST API behavior)
+        this.store.Remove((collection, id, partitionKey));
+        return Task.CompletedTask;
+    }
+
+    public Task<List<T>> QueryAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        string? partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        // Return all documents in the collection, optionally filtered by partition key.
+        // The fake does not parse SQL — tests must set up data so that
+        // "return everything matching the partition" is a valid approximation.
+        var results = new List<T>();
+
+        foreach (var ((c, _, pk), json) in this.store)
+        {
+            if (c != collection)
+            {
+                continue;
+            }
+
+            if (partitionKey is not null && pk != partitionKey)
+            {
+                continue;
+            }
+
+            var item = JsonSerializer.Deserialize(json, typeInfo);
+            if (item is not null)
+            {
+                results.Add(item);
+            }
+        }
+
+        return Task.FromResult(results);
+    }
+
+    public Task<T> ScalarQueryAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        string? partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        // For scalar queries (COUNT etc.), return the count of matching documents
+        // wrapped as the requested type. This works for int counts.
+        var count = 0;
+
+        foreach (var ((c, _, pk), _) in this.store)
+        {
+            if (c != collection)
+            {
+                continue;
+            }
+
+            if (partitionKey is not null && pk != partitionKey)
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        // Convert count to T (works for int, long, etc.)
+        var result = (T)(object)count;
+        return Task.FromResult(result);
+    }
+
+    private static string ExtractId(JsonDocument doc)
+    {
+        if (doc.RootElement.TryGetProperty("id", out var idProp))
+        {
+            return idProp.GetString()!;
+        }
+
+        if (doc.RootElement.TryGetProperty("Id", out var idProp2))
+        {
+            return idProp2.GetString()!;
+        }
+
+        throw new InvalidOperationException("Document must have an 'id' or 'Id' property.");
+    }
+}

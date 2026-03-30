@@ -1,5 +1,3 @@
-using System.Net;
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.Cosmos;
@@ -8,52 +6,52 @@ namespace TownCrier.Infrastructure.UserProfiles;
 
 public sealed class CosmosUserProfileRepository : IUserProfileRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosUserProfileRepository(CosmosClient client)
+    public CosmosUserProfileRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Users);
+        this.client = client;
     }
 
     public async Task<UserProfile?> GetByUserIdAsync(string userId, CancellationToken ct)
     {
-        try
-        {
-            var response = await this.container.ReadItemAsync<UserProfileDocument>(
-                userId,
-                new PartitionKey(userId),
-                cancellationToken: ct).ConfigureAwait(false);
+        var document = await this.client.ReadDocumentAsync(
+            CosmosContainerNames.Users,
+            userId,
+            userId,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
 
-            return response.Resource.ToDomain();
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
+        return document?.ToDomain();
     }
 
     public async Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
     {
-        var queryDefinition = new QueryDefinition("SELECT * FROM c WHERE c.tier = @tier")
-            .WithParameter("@tier", tier.ToString());
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Users,
+            "SELECT * FROM c WHERE c.tier = @tier",
+            [new QueryParameter("@tier", tier.ToString())],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<UserProfileDocument>(queryDefinition);
-
-        return await iterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.ConvertAll(doc => doc.ToDomain());
     }
 
     public async Task<UserProfile?> GetByOriginalTransactionIdAsync(
         string originalTransactionId,
         CancellationToken ct)
     {
-        var queryDefinition = new QueryDefinition(
-            "SELECT * FROM c WHERE c.originalTransactionId = @txnId")
-            .WithParameter("@txnId", originalTransactionId);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Users,
+            "SELECT * FROM c WHERE c.originalTransactionId = @txnId",
+            [new QueryParameter("@txnId", originalTransactionId)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<UserProfileDocument>(queryDefinition);
-
-        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
     public async Task SaveAsync(UserProfile profile, CancellationToken ct)
@@ -61,24 +59,20 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         ArgumentNullException.ThrowIfNull(profile);
 
         var document = UserProfileDocument.FromDomain(profile);
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.Users,
             document,
-            new PartitionKey(document.Id),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.Id,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string userId, CancellationToken ct)
     {
-        try
-        {
-            await this.container.DeleteItemAsync<UserProfileDocument>(
-                userId,
-                new PartitionKey(userId),
-                cancellationToken: ct).ConfigureAwait(false);
-        }
-        catch (CosmosException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-        {
-            // Idempotent delete — already gone
-        }
+        await this.client.DeleteDocumentAsync(
+            CosmosContainerNames.Users,
+            userId,
+            userId,
+            ct).ConfigureAwait(false);
     }
 }

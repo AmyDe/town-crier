@@ -1,4 +1,3 @@
-using Microsoft.Azure.Cosmos;
 using TownCrier.Application.Notifications;
 using TownCrier.Domain.Notifications;
 using TownCrier.Infrastructure.Cosmos;
@@ -7,30 +6,26 @@ namespace TownCrier.Infrastructure.Notifications;
 
 public sealed class CosmosNotificationRepository : INotificationRepository
 {
-    private readonly Container container;
+    private readonly ICosmosRestClient client;
 
-    public CosmosNotificationRepository(CosmosClient client)
+    public CosmosNotificationRepository(ICosmosRestClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        this.container = client.GetContainer(CosmosContainerNames.DatabaseName, CosmosContainerNames.Notifications);
+        this.client = client;
     }
 
     public async Task<Notification?> GetByUserAndApplicationAsync(
         string userId, string applicationName, CancellationToken ct)
     {
-        var query = new QueryDefinition(
-            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationName = @appName")
-            .WithParameter("@userId", userId)
-            .WithParameter("@appName", applicationName);
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationName = @appName",
+            [new QueryParameter("@userId", userId), new QueryParameter("@appName", applicationName)],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
 
-        using var iterator = this.container.GetItemQueryIterator<NotificationDocument>(
-            query,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            });
-
-        return await iterator.FirstOrDefaultAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
     public async Task<int> CountByUserInMonthAsync(
@@ -39,80 +34,64 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero);
         var startOfNextMonth = startOfMonth.AddMonths(1);
 
-        var query = new QueryDefinition(
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt >= @start AND c.createdAt < @end")
-            .WithParameter("@userId", userId)
-            .WithParameter("@start", startOfMonth)
-            .WithParameter("@end", startOfNextMonth);
-
-        using var iterator = this.container.GetItemQueryIterator<int>(
-            query,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            });
-
-        return await iterator.ScalarAsync(ct).ConfigureAwait(false);
+        return await this.client.ScalarQueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt >= @start AND c.createdAt < @end",
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@start", startOfMonth),
+                new QueryParameter("@end", startOfNextMonth),
+            ],
+            userId,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<int> CountByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {
-        var query = new QueryDefinition(
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt >= @since")
-            .WithParameter("@userId", userId)
-            .WithParameter("@since", since);
-
-        using var iterator = this.container.GetItemQueryIterator<int>(
-            query,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            });
-
-        return await iterator.ScalarAsync(ct).ConfigureAwait(false);
+        return await this.client.ScalarQueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt >= @since",
+            [new QueryParameter("@userId", userId), new QueryParameter("@since", since)],
+            userId,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
     }
 
     public async Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
         string userId, int page, int pageSize, CancellationToken ct)
     {
         // Count total notifications for this user
-        var countQuery = new QueryDefinition(
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId")
-            .WithParameter("@userId", userId);
-
-        int total;
-        using (var countIterator = this.container.GetItemQueryIterator<int>(
-            countQuery,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            }))
-        {
-            total = await countIterator.ScalarAsync(ct).ConfigureAwait(false);
-        }
+        var total = await this.client.ScalarQueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
 
         if (total == 0)
         {
             return (Array.Empty<Notification>(), 0);
         }
 
-        // Fetch page — reverse-chronological by _ts
+        // Fetch page -- reverse-chronological by _ts
         var offset = (page - 1) * pageSize;
-        var itemsQuery = new QueryDefinition(
-            "SELECT * FROM c WHERE c.userId = @userId ORDER BY c._ts DESC OFFSET @offset LIMIT @limit")
-            .WithParameter("@userId", userId)
-            .WithParameter("@offset", offset)
-            .WithParameter("@limit", pageSize);
 
-        using var itemsIterator = this.container.GetItemQueryIterator<NotificationDocument>(
-            itemsQuery,
-            requestOptions: new QueryRequestOptions
-            {
-                PartitionKey = new PartitionKey(userId),
-            });
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT * FROM c WHERE c.userId = @userId ORDER BY c._ts DESC OFFSET @offset LIMIT @limit",
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@offset", offset),
+                new QueryParameter("@limit", pageSize),
+            ],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
 
-        var items = await itemsIterator.CollectAsync(doc => doc.ToDomain(), ct).ConfigureAwait(false);
+        var items = documents.ConvertAll(doc => doc.ToDomain());
 
         return (items, total);
     }
@@ -122,9 +101,11 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         ArgumentNullException.ThrowIfNull(notification);
         var document = NotificationDocument.FromDomain(notification);
 
-        await this.container.UpsertItemAsync(
+        await this.client.UpsertDocumentAsync(
+            CosmosContainerNames.Notifications,
             document,
-            new PartitionKey(document.UserId),
-            cancellationToken: ct).ConfigureAwait(false);
+            document.UserId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
     }
 }
