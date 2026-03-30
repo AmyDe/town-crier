@@ -34,7 +34,8 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
-        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{id}";
+        var encodedId = Uri.EscapeDataString(id);
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
@@ -81,7 +82,8 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         string partitionKey,
         CancellationToken ct)
     {
-        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{id}";
+        var encodedId = Uri.EscapeDataString(id);
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"/{resourceLink}");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
