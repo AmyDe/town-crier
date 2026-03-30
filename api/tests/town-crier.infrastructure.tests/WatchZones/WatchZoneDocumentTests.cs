@@ -48,7 +48,7 @@ public sealed class WatchZoneDocumentTests
     }
 
     [Test]
-    public async Task Should_RoundTripThroughJsonSerialization_When_UsingCosmosSerializer()
+    public async Task Should_RoundTripThroughJsonSerialization_When_SerializedWithSourceGenerators()
     {
         // Arrange
         var original = WatchZoneDocument.FromDomain(
@@ -60,11 +60,9 @@ public sealed class WatchZoneDocumentTests
         };
         jsonOptions.TypeInfoResolverChain.Add(CosmosJsonSerializerContext.Default);
 
-        var serializer = new SystemTextJsonCosmosSerializer(jsonOptions);
-
         // Act
-        using var stream = serializer.ToStream(original);
-        var deserialized = serializer.FromStream<WatchZoneDocument>(stream);
+        var json = JsonSerializer.Serialize(original, jsonOptions);
+        var deserialized = JsonSerializer.Deserialize<WatchZoneDocument>(json, jsonOptions)!;
 
         // Assert
         await Assert.That(deserialized.Id).IsEqualTo(original.Id);
