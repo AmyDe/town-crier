@@ -46,4 +46,37 @@ public sealed class IntegrationTestConfigTests
             Environment.SetEnvironmentVariable("INTEGRATION_TEST_PASSWORD", null);
         }
     }
+
+    [Test]
+    public async Task Should_ReturnNull_When_OptionalClientSecretNotSet()
+    {
+        // Arrange -- ensure the optional env var is not set
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+
+        // Act
+        var result = IntegrationTestConfig.Auth0ClientSecret;
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
+
+    [Test]
+    public async Task Should_ReturnValue_When_OptionalClientSecretIsSet()
+    {
+        // Arrange
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", "my-secret");
+
+        try
+        {
+            // Act
+            var result = IntegrationTestConfig.Auth0ClientSecret;
+
+            // Assert
+            await Assert.That(result).IsEqualTo("my-secret");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+        }
+    }
 }
