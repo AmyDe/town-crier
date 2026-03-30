@@ -144,12 +144,15 @@ jobs:
         working-directory: api
 
   # ── API: deploy to dev ──────────────────────────────
+  # Runs when API code changed (new image) OR when infra changed (Pulumi may
+  # reset the container image to the placeholder — re-deploy the latest tag to
+  # recover).
   api-deploy:
     name: "API: Deploy to dev"
     needs: [changes, api-image, infra-dev]
     if: >-
       !failure() && !cancelled()
-      && needs.changes.outputs.api == 'true'
+      && (needs.changes.outputs.api == 'true' || needs.changes.outputs.infra == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -164,10 +167,15 @@ jobs:
 
       - name: Deploy to Container App
         run: |
+          if [ "${{ needs.changes.outputs.api }}" = "true" ]; then
+            TAG="${{ github.sha }}"
+          else
+            TAG="latest"
+          fi
           az containerapp update \
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${TAG}"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
