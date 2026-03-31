@@ -10,8 +10,6 @@ public sealed class WatchZoneTests
     private static readonly JsonSerializerOptions CamelCaseOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-        AllowAnonymousTypes = true,
     };
 
     [Test]
