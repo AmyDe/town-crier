@@ -191,8 +191,12 @@ jobs:
         with:
           global-json-file: api/global.json
 
+      - name: Build integration tests
+        run: dotnet build tests/town-crier.integration-tests --configuration Release
+        working-directory: api
+
       - name: Run integration tests
-        run: dotnet test tests/town-crier.integration-tests --configuration Release
+        run: ./tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests
         working-directory: api
         env:
           INTEGRATION_TEST_API_BASE_URL: ${{ needs.api-staging.outputs.staging-url }}
