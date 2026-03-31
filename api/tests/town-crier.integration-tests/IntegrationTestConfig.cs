@@ -61,7 +61,7 @@ internal static class IntegrationTestConfig
                 continue;
             }
 
-            var eqIndex = trimmed.IndexOf('=');
+            var eqIndex = trimmed.IndexOf('=', StringComparison.Ordinal);
             if (eqIndex > 0)
             {
                 var key = trimmed[..eqIndex];
