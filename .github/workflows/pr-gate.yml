@@ -92,7 +92,11 @@ jobs:
         working-directory: api
       - run: dotnet build --no-restore --configuration Release
         working-directory: api
-      - run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName!~TownCrier.IntegrationTests"
+      - name: Run unit tests
+        run: |
+          dotnet test tests/town-crier.application.tests --no-build --configuration Release
+          dotnet test tests/town-crier.web.tests --no-build --configuration Release
+          dotnet test tests/town-crier.infrastructure.tests --no-build --configuration Release
         working-directory: api
 
   # ── API: staging deploy ─────────────────────────────
