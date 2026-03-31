@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -198,10 +199,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             ?? [];
         var body = new CosmosQueryBody(sql, queryParameters);
 
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody),
-            Encoding.UTF8,
-            "application/query+json");
+        var json = JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody);
+        request.Content = new StringContent(json, Encoding.UTF8);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/query+json");
 
         return request;
     }
