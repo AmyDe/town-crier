@@ -210,9 +210,11 @@ jobs:
           INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
           INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
         run: |
-          echo "Shell env check:"
+          echo "=== Shell env check ==="
           printenv | grep INTEGRATION_TEST_ | sed 's/=.*/=<set>/'
-          echo "Running via dotnet exec:"
+          echo "=== Python env check ==="
+          python3 -c "import os; [print(f'  {k}=<set>') for k in sorted(os.environ) if k.startswith('INTEGRATION')]"
+          echo "=== .NET env check ==="
           dotnet exec tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests.dll
 
       - name: Login to Azure for cleanup
