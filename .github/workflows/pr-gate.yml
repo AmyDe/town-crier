@@ -221,10 +221,18 @@ jobs:
 
       - name: Shift traffic to new revision
         run: |
-          az containerapp ingress traffic set \
+          MODE=$(az containerapp show \
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
-            --revision-weight "${{ needs.api-staging.outputs.new-revision }}=100"
+            --query "properties.configuration.activeRevisionsMode" -o tsv)
+          if [ "$MODE" = "Single" ]; then
+            echo "Single-revision mode — traffic already routes to the latest revision"
+          else
+            az containerapp ingress traffic set \
+              --name ca-town-crier-api-dev \
+              --resource-group rg-town-crier-dev \
+              --revision-weight "${{ needs.api-staging.outputs.new-revision }}=100"
+          fi
 
   # ── iOS ──────────────────────────────────────────────
 
