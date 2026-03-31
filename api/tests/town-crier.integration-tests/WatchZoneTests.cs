@@ -40,6 +40,12 @@ public sealed class WatchZoneTests
             .ConfigureAwait(false);
 
         // Assert -- create returns 201
+        if (createResponse.StatusCode != HttpStatusCode.Created)
+        {
+            var errorBody = await createResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+            Console.WriteLine($"Watch zone creation failed: {createResponse.StatusCode} — {errorBody}");
+        }
+
         await Assert.That(createResponse.StatusCode).IsEqualTo(HttpStatusCode.Created);
 
         // Act -- list watch zones
