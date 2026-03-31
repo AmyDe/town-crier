@@ -4,7 +4,7 @@ Date: 2026-03-16
 
 ## Status
 
-Accepted
+Superseded by [0016](0016-test-infrastructure-strategy.md)
 
 ## Context
 
