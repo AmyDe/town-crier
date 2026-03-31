@@ -2,6 +2,8 @@ namespace TownCrier.IntegrationTests;
 
 internal static class IntegrationTestConfig
 {
+    private static readonly Dictionary<string, string> FileOverrides = LoadEnvFile();
+
     public static string ApiBaseUrl =>
         GetRequired("INTEGRATION_TEST_API_BASE_URL");
 
@@ -12,7 +14,7 @@ internal static class IntegrationTestConfig
         GetRequired("INTEGRATION_TEST_AUTH0_CLIENT_ID");
 
     public static string? Auth0ClientSecret =>
-        Environment.GetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET");
+        GetValue("INTEGRATION_TEST_AUTH0_CLIENT_SECRET");
 
     public static string Auth0Audience =>
         GetRequired("INTEGRATION_TEST_AUTH0_AUDIENCE");
@@ -23,8 +25,51 @@ internal static class IntegrationTestConfig
     public static string Password =>
         GetRequired("INTEGRATION_TEST_PASSWORD");
 
-    private static string GetRequired(string name) =>
+    internal static string? GetValue(string name) =>
         Environment.GetEnvironmentVariable(name)
+        ?? (FileOverrides.TryGetValue(name, out var value) ? value : null);
+
+    private static string GetRequired(string name) =>
+        GetValue(name)
             ?? throw new InvalidOperationException(
                 $"Required environment variable '{name}' is not set.");
+
+    /// <summary>
+    /// Loads env vars from a .env file as a fallback for environments where
+    /// .NET does not inherit process environment variables (observed with
+    /// .NET 10 on GitHub Actions runners).
+    /// </summary>
+    private static Dictionary<string, string> LoadEnvFile()
+    {
+        var result = new Dictionary<string, string>();
+        var envFile = Path.Combine(AppContext.BaseDirectory, ".env");
+        if (!File.Exists(envFile))
+        {
+            envFile = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+        }
+
+        if (!File.Exists(envFile))
+        {
+            return result;
+        }
+
+        foreach (var line in File.ReadAllLines(envFile))
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            var eqIndex = trimmed.IndexOf('=');
+            if (eqIndex > 0)
+            {
+                var key = trimmed[..eqIndex];
+                var val = trimmed[(eqIndex + 1)..];
+                result[key] = val;
+            }
+        }
+
+        return result;
+    }
 }
