@@ -1,3 +1,17 @@
+# Requires secrets:
+#   AZURE_CLIENT_ID              — OIDC federated credential for Azure login
+#   AZURE_TENANT_ID              — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID        — Azure subscription
+#   ACR_LOGIN_SERVER             — Azure Container Registry login server
+#   AUTH0_CLIENT_SECRET          — Auth0 client secret (if required by SPA app)
+#   INTEGRATION_TEST_USERNAME    — Auth0 test user email
+#   INTEGRATION_TEST_PASSWORD    — Auth0 test user password
+#
+# Requires variables:
+#   VITE_AUTH0_DOMAIN            — Auth0 domain
+#   VITE_AUTH0_CLIENT_ID         — Auth0 client ID
+#   VITE_AUTH0_AUDIENCE          — Auth0 API audience
+
 name: PR Gate
 
 on:
@@ -10,6 +24,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   DOTNET_NOLOGO: true
@@ -77,8 +92,163 @@ jobs:
         working-directory: api
       - run: dotnet build --no-restore --configuration Release
         working-directory: api
-      - run: dotnet test --no-build --configuration Release
+      - run: dotnet test --no-build --configuration Release --filter "FullyQualifiedName!~TownCrier.IntegrationTests"
         working-directory: api
+
+  # ── API: staging deploy ─────────────────────────────
+
+  api-staging:
+    name: "API: Deploy staging revision"
+    needs: [changes, api-build-test]
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    outputs:
+      staging-url: ${{ steps.staging-url.outputs.url }}
+      new-revision: ${{ steps.deploy.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Build and push image
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.event.pull_request.head.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+        working-directory: api
+
+      - name: Get current active revision
+        id: current
+        run: |
+          CURRENT=$(az containerapp ingress traffic show \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
+          echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy staging revision
+        id: deploy
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          az containerapp update \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.event.pull_request.head.sha }}" \
+            --revision-suffix "pr${SHORT_SHA}"
+          echo "revision=ca-town-crier-api-dev--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Pin traffic to current revision
+        run: |
+          if [ -n "${{ steps.current.outputs.revision }}" ]; then
+            az containerapp ingress traffic set \
+              --name ca-town-crier-api-dev \
+              --resource-group rg-town-crier-dev \
+              --revision-weight "${{ steps.current.outputs.revision }}=100"
+          fi
+
+      - name: Label staging revision
+        run: |
+          az containerapp revision label add \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --revision "${{ steps.deploy.outputs.revision }}" \
+            --label staging --yes
+
+      - name: Get staging URL
+        id: staging-url
+        run: |
+          APP_FQDN=$(az containerapp show \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "url=https://staging---${APP_FQDN}" >> "$GITHUB_OUTPUT"
+
+  # ── API: integration tests ──────────────────────────
+
+  api-integration-test:
+    name: "API: Integration tests"
+    needs: [api-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+
+      - name: Run integration tests
+        run: dotnet test tests/town-crier.integration-tests --configuration Release
+        working-directory: api
+        env:
+          INTEGRATION_TEST_API_BASE_URL: ${{ needs.api-staging.outputs.staging-url }}
+          INTEGRATION_TEST_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+          INTEGRATION_TEST_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          INTEGRATION_TEST_AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
+          INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
+
+      - name: Login to Azure for cleanup
+        if: failure()
+        uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Cleanup staging on failure
+        if: failure()
+        run: |
+          az containerapp revision label remove \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --label staging --yes || true
+          az containerapp revision deactivate \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --revision "${{ needs.api-staging.outputs.new-revision }}" || true
+
+  # ── API: promote staging to live ────────────────────
+
+  api-promote:
+    name: "API: Promote staging"
+    needs: [api-staging, api-integration-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Shift traffic to new revision
+        run: |
+          az containerapp ingress traffic set \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --revision-weight "${{ needs.api-staging.outputs.new-revision }}=100"
+
+      - name: Remove staging label
+        run: |
+          az containerapp revision label remove \
+            --name ca-town-crier-api-dev \
+            --resource-group rg-town-crier-dev \
+            --label staging --yes || true
 
   # ── iOS ──────────────────────────────────────────────
 
@@ -204,7 +374,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [api-format, api-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [api-format, api-build-test, api-staging, api-integration-test, api-promote, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -214,6 +384,9 @@ jobs:
           results=(
             "${{ needs.api-format.result }}"
             "${{ needs.api-build-test.result }}"
+            "${{ needs.api-staging.result }}"
+            "${{ needs.api-integration-test.result }}"
+            "${{ needs.api-promote.result }}"
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
             "${{ needs.web-lint.result }}"
