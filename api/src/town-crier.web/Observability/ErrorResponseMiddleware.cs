@@ -13,9 +13,10 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
             await next(context).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Global error handler must catch all exceptions
-        catch (Exception)
+        catch (Exception ex)
 #pragma warning restore CA1031
         {
+            context.Items["ErrorDetail"] = ex.Message;
             if (!context.Response.HasStarted)
             {
                 context.Response.StatusCode = 500;
@@ -30,10 +31,15 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
                 ?? context.Response.Headers[CorrelationIdHeader].FirstOrDefault()
                 ?? string.Empty;
 
+            var detail = context.Items.TryGetValue("ErrorDetail", out var detailObj)
+                ? detailObj as string
+                : null;
+
             var errorBody = new ErrorResponse(
                 context.Response.StatusCode,
                 GetReasonPhrase(context.Response.StatusCode),
-                correlationId);
+                correlationId,
+                detail);
 
             context.Response.ContentType = "application/json";
             await JsonSerializer.SerializeAsync(

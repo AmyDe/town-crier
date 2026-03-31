@@ -120,7 +120,7 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             }
 
             using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
 
             var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             await using (stream.ConfigureAwait(false))
@@ -168,6 +168,21 @@ internal sealed class CosmosRestClient : ICosmosRestClient
                 "x-ms-documentdb-query-enablecrosspartition",
                 "True");
         }
+    }
+
+    private static async Task ThrowOnCosmosErrorAsync(
+        HttpResponseMessage response,
+        string sql,
+        CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        throw new HttpRequestException(
+            $"Cosmos DB query failed ({(int)response.StatusCode}): {body} | SQL: {sql}");
     }
 
     private HttpRequestMessage BuildQueryRequest(
