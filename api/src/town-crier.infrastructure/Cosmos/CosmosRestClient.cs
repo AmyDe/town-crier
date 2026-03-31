@@ -179,7 +179,8 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
 
         var queryParameters = parameters?.Select(p =>
-            new CosmosQueryParameter(p.Name, p.Value)).ToList();
+            new CosmosQueryParameter(p.Name, p.Value)).ToList()
+            ?? [];
         var body = new CosmosQueryBody(sql, queryParameters);
 
         request.Content = new StringContent(
