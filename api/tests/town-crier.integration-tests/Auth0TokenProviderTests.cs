@@ -1,0 +1,188 @@
+using System.Net;
+using System.Text.Json;
+
+namespace TownCrier.IntegrationTests;
+
+[NotInParallel]
+public sealed class Auth0TokenProviderTests
+{
+    [Before(Test)]
+    public void ClearFileOverrides()
+    {
+        IntegrationTestConfig.ResetFileOverrides();
+    }
+
+    [After(Test)]
+    public void RestoreFileOverrides()
+    {
+        IntegrationTestConfig.RestoreFileOverrides();
+    }
+
+    [Test]
+    public async Task Should_IncludeClientSecret_When_ClientSecretProvided()
+    {
+        // Arrange
+        SetAllRequiredEnvVars();
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", "test-secret");
+
+        Dictionary<string, string>? capturedPayload = null;
+        using var handler = new FakeHttpMessageHandler(async request =>
+        {
+            var content = await request.Content!.ReadAsStringAsync();
+            capturedPayload = JsonSerializer.Deserialize<Dictionary<string, string>>(content);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            };
+        });
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+
+        try
+        {
+            // Act
+            var token = await Auth0TokenProvider.AcquireTokenAsync(client);
+
+            // Assert
+            await Assert.That(token).IsEqualTo("fake-token");
+            await Assert.That(capturedPayload).IsNotNull();
+            await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsTrue();
+            await Assert.That(capturedPayload["client_secret"]).IsEqualTo("test-secret");
+            await Assert.That(capturedPayload["grant_type"]).IsEqualTo("password");
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
+    }
+
+    [Test]
+    public async Task Should_ExcludeClientSecret_When_ClientSecretNotProvided()
+    {
+        // Arrange
+        SetAllRequiredEnvVars();
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+
+        Dictionary<string, string>? capturedPayload = null;
+        using var handler = new FakeHttpMessageHandler(async request =>
+        {
+            var content = await request.Content!.ReadAsStringAsync();
+            capturedPayload = JsonSerializer.Deserialize<Dictionary<string, string>>(content);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            };
+        });
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+
+        try
+        {
+            // Act
+            var token = await Auth0TokenProvider.AcquireTokenAsync(client);
+
+            // Assert
+            await Assert.That(token).IsEqualTo("fake-token");
+            await Assert.That(capturedPayload).IsNotNull();
+            await Assert.That(capturedPayload!.ContainsKey("client_secret")).IsFalse();
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
+    }
+
+    [Test]
+    public async Task Should_ThrowInvalidOperationException_When_Auth0ReturnsError()
+    {
+        // Arrange
+        SetAllRequiredEnvVars();
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+
+        using var handler = new FakeHttpMessageHandler(
+            _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = new StringContent(
+                    """{"error":"invalid_grant"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            }));
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+
+        try
+        {
+            // Act & Assert
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => Auth0TokenProvider.AcquireTokenAsync(client));
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
+    }
+
+    [Test]
+    public async Task Should_SendRequestToCorrectAuth0Url()
+    {
+        // Arrange
+        SetAllRequiredEnvVars();
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+
+        Uri? capturedUri = null;
+        using var handler = new FakeHttpMessageHandler(request =>
+        {
+            capturedUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"fake-token"}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        });
+
+        using var client = new HttpClient(handler, disposeHandler: false);
+
+        try
+        {
+            // Act
+            await Auth0TokenProvider.AcquireTokenAsync(client);
+
+            // Assert
+            await Assert.That(capturedUri).IsNotNull();
+            await Assert.That(capturedUri!.ToString()).IsEqualTo("https://test.auth0.com/oauth/token");
+        }
+        finally
+        {
+            CleanupEnvVars();
+        }
+    }
+
+    private static void SetAllRequiredEnvVars()
+    {
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_API_BASE_URL", "https://test.example.com");
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_DOMAIN", "test.auth0.com");
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_ID", "test-client-id");
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_AUDIENCE", "https://api.test.com");
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_USERNAME", "user@test.com");
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_PASSWORD", "test-password");
+    }
+
+    private static void CleanupEnvVars()
+    {
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_API_BASE_URL", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_DOMAIN", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_ID", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_AUDIENCE", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_USERNAME", null);
+        Environment.SetEnvironmentVariable("INTEGRATION_TEST_PASSWORD", null);
+    }
+}

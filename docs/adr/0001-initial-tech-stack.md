@@ -38,3 +38,8 @@ We will use the following technology stack for the initial prototype and develop
 - Data access uses the Cosmos DB SDK directly — repository implementations handle document serialization and partition key strategies behind application-layer port interfaces.
 - Containerization (Docker) will be required for the backend deployment.
 - Pulumi state management and GitHub Actions secrets will need to be securely configured.
+
+## Amendments
+
+### 2026-03-31
+- Updated: Data access changed from the **Microsoft.Azure.Cosmos SDK** to a **custom Cosmos DB REST client** (`CosmosRestClient`). The custom client talks directly to the Cosmos DB REST API (version `2018-12-31`) using `Azure.Identity` (`DefaultAzureCredential`) for authentication and `System.Text.Json` source-generated serialization. The `Microsoft.Azure.Cosmos` NuGet package is no longer referenced — the only Azure package is `Azure.Identity 1.19.0`. HTTP resilience (retry with exponential backoff for 429/408/503/449) is handled via `Microsoft.Extensions.Http.Resilience`. This gives full Native AOT compatibility without depending on the SDK's internal serialization or reflection paths, and keeps the dependency tree minimal.

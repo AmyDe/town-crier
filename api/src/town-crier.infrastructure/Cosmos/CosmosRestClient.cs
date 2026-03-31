@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -120,7 +121,7 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             }
 
             using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
 
             var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             await using (stream.ConfigureAwait(false))
@@ -170,6 +171,21 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
     }
 
+    private static async Task ThrowOnCosmosErrorAsync(
+        HttpResponseMessage response,
+        string sql,
+        CancellationToken ct)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        throw new HttpRequestException(
+            $"Cosmos DB query failed ({(int)response.StatusCode}): {body} | SQL: {sql}");
+    }
+
     private HttpRequestMessage BuildQueryRequest(
         string collection,
         string sql,
@@ -179,13 +195,13 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
 
         var queryParameters = parameters?.Select(p =>
-            new CosmosQueryParameter(p.Name, p.Value)).ToList();
+            new CosmosQueryParameter(p.Name, p.Value)).ToList()
+            ?? [];
         var body = new CosmosQueryBody(sql, queryParameters);
 
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody),
-            Encoding.UTF8,
-            "application/query+json");
+        var json = JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody);
+        request.Content = new StringContent(json, Encoding.UTF8);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/query+json");
 
         return request;
     }

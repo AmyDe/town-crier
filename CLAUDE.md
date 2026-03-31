@@ -108,6 +108,22 @@ Use **beads** (`bd`) for ALL task and issue tracking. Do NOT use TodoWrite, Task
 - Beads data is stored in a Dolt database at `.beads/dolt/` with a remote pointing to this GitHub repo (stored on `refs/dolt/data`, invisible to normal Git operations)
 - Run `bd dolt push` to sync beads data to GitHub — this is separate from `git push`
 
+## CLI-First Policy
+
+ALWAYS use installed CLI tools to complete tasks before asking the user to do something manually. Do not suggest the user run commands, visit web consoles, or perform manual steps when a CLI tool can accomplish the same thing.
+
+### Installed CLI tools
+
+| Tool | CLI | Use for |
+|------|-----|---------|
+| GitHub | `gh` | Repos, PRs, issues, releases, Actions, etc. |
+| Azure | `az` | Resource management, deployments, configuration |
+| Auth0 | `auth0` | Tenant management, apps, APIs, rules, users |
+| Cloudflare | `cloudflared` | Tunnels, DNS, access, routing |
+| Pulumi | `pulumi` | Infrastructure provisioning, stack management, config |
+
+When a task involves any of these services, use the corresponding CLI directly. If a command fails or requires interactive auth, only then ask the user to intervene.
+
 ## Shell Commands — Non-Interactive Mode
 
 Always use non-interactive flags with file operations to avoid hanging on confirmation prompts (some systems alias `cp`, `mv`, `rm` to include `-i`):

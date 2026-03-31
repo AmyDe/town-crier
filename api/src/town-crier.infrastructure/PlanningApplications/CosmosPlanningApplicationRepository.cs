@@ -1,3 +1,4 @@
+using System.Globalization;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Infrastructure.Cosmos;
@@ -62,18 +63,18 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(authorityCode);
 
-        const string sql =
-            "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
-            "{\"type\": \"Point\", \"coordinates\": [@lng, @lat]}) <= @radius";
+        var lng = longitude.ToString(CultureInfo.InvariantCulture);
+        var lat = latitude.ToString(CultureInfo.InvariantCulture);
+        var rad = radiusMetres.ToString(CultureInfo.InvariantCulture);
+
+        var sql =
+            $"SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
+            $"{{\"type\": \"Point\", \"coordinates\": [{lng}, {lat}]}}) <= {rad}";
 
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Applications,
             sql,
-            [
-                new QueryParameter("@lng", longitude),
-                new QueryParameter("@lat", latitude),
-                new QueryParameter("@radius", radiusMetres),
-            ],
+            parameters: null,
             authorityCode,
             CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
             ct).ConfigureAwait(false);

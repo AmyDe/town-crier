@@ -137,7 +137,7 @@ public sealed class CosmosRestClientTests
         await Assert.That(request.Method).IsEqualTo(HttpMethod.Post);
         await Assert.That(request.Headers.GetValues("x-ms-documentdb-isquery").First())
             .IsEqualTo("True");
-        await Assert.That(request.Content!.Headers.ContentType!.MediaType)
+        await Assert.That(request.Content!.Headers.ContentType!.ToString())
             .IsEqualTo("application/query+json");
     }
 

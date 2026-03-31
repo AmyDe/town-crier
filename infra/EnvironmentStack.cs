@@ -205,6 +205,7 @@ public static class EnvironmentStack
             ManagedEnvironmentId = containerAppsEnvironmentId,
             Configuration = new ConfigurationArgs
             {
+                ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
                 Ingress = new IngressArgs
                 {
                     External = true,
@@ -283,7 +284,9 @@ public static class EnvironmentStack
             // CD pipeline updates the container image via `az containerapp update`.
             // Without this, every `pulumi up` resets the image to the placeholder,
             // causing activation failure (quickstart listens on port 80, not 8080).
-            IgnoreChanges = { "template.containers[0].image" },
+            // Traffic weights are managed by CI (staging revisions with 0% traffic),
+            // so Pulumi must not reset them on the next `pulumi up`.
+            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic" },
         });
 
         if (customDomainPhase == 1)

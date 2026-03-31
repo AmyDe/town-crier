@@ -72,3 +72,10 @@ The React SPA is deployed to **Azure Static Web Apps** using the official `Azure
 - **Tag-based release gating** — production deploys require human intent (creating a tag), preventing accidental releases from fast-forwarded merges.
 - **Single required check simplifies branch protection** — the `gate` job aggregates all components, so adding a new component doesn't require updating GitHub branch protection rules.
 - **iOS builds run on macOS runners** — GitHub's macOS runners are slower and more expensive than Linux. The component-aware detection mitigates this by only running iOS checks when `/mobile/ios` changes.
+
+## Amendments
+
+### 2026-03-31
+- Added: **API staging deployment in PR gate.** The PR gate now deploys the API to the dev Container App as a staging revision (labelled `pr{SHORT_SHA}`) with 0% traffic, runs **integration tests** against the staging URL using Auth0 test credentials, and on success **promotes** the staging revision to 100% traffic. Failed staging revisions are automatically deactivated and cleaned up. This validates the full API deployment and authentication flow before merge, not just unit tests.
+- Added: **Auto-merge workflow** (`auto-merge.yml`). Triggers on `pull_request` opened/ready_for_review events and enables squash auto-merge. Combined with CODEOWNERS requiring 2 approvals from `@AmyDe`, `@copilot`, and `@coderabbitai`, this enables hands-off merge after automated review approval.
+- Updated: API quality gates table now includes staging deployment, integration tests, and promotion as PR checks in addition to format, build, and unit test.
