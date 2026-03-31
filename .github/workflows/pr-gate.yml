@@ -250,9 +250,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
-          path: |
-            mobile/ios/.build
-            mobile/ios/.derivedData
+          path: mobile/ios/.build
           key: ios-${{ runner.os }}-${{ hashFiles('mobile/ios/Package.resolved') }}
           restore-keys: ios-${{ runner.os }}-
       - run: brew install xcodegen
