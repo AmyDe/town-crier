@@ -14,14 +14,15 @@ public sealed class HealthTests
         };
 
         // Warm up — staging revision may need a cold-start window
-        HttpResponseMessage? response = null;
-        for (var i = 0; i < 5; i++)
+        const int maxAttempts = 5;
+        HttpResponseMessage response = null!;
+        for (var i = 0; i < maxAttempts; i++)
         {
             response = await client
                 .GetAsync(new Uri("/v1/health", UriKind.Relative))
                 .ConfigureAwait(false);
 
-            if (response.StatusCode == HttpStatusCode.OK)
+            if (response.StatusCode == HttpStatusCode.OK || i == maxAttempts - 1)
             {
                 break;
             }
@@ -31,7 +32,7 @@ public sealed class HealthTests
         }
 
         // Act
-        var body = await response!.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         // Assert
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);

@@ -12,6 +12,12 @@ public sealed class Auth0TokenProviderTests
         IntegrationTestConfig.ResetFileOverrides();
     }
 
+    [After(Test)]
+    public void RestoreFileOverrides()
+    {
+        IntegrationTestConfig.RestoreFileOverrides();
+    }
+
     [Test]
     public async Task Should_IncludeClientSecret_When_ClientSecretProvided()
     {

@@ -30,6 +30,8 @@ public sealed class IntegrationTestConfigTests
     [After(Test)]
     public void RestoreEnvironment()
     {
+        IntegrationTestConfig.RestoreFileOverrides();
+
         foreach (var (name, value) in this.savedValues)
         {
             Environment.SetEnvironmentVariable(name, value);

@@ -3,6 +3,7 @@ namespace TownCrier.IntegrationTests;
 internal static class IntegrationTestConfig
 {
     private static readonly Dictionary<string, string> FileOverrides = LoadEnvFile();
+    private static Dictionary<string, string>? savedOverrides;
 
     public static string ApiBaseUrl =>
         GetRequired("INTEGRATION_TEST_API_BASE_URL");
@@ -29,7 +30,26 @@ internal static class IntegrationTestConfig
         Environment.GetEnvironmentVariable(name)
         ?? (FileOverrides.TryGetValue(name, out var value) ? value : null);
 
-    internal static void ResetFileOverrides() => FileOverrides.Clear();
+    internal static void ResetFileOverrides()
+    {
+        savedOverrides = new Dictionary<string, string>(FileOverrides);
+        FileOverrides.Clear();
+    }
+
+    internal static void RestoreFileOverrides()
+    {
+        if (savedOverrides is null)
+        {
+            return;
+        }
+
+        foreach (var (key, value) in savedOverrides)
+        {
+            FileOverrides[key] = value;
+        }
+
+        savedOverrides = null;
+    }
 
     private static string GetRequired(string name) =>
         GetValue(name)
