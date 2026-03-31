@@ -23,6 +23,8 @@ public sealed class IntegrationTestConfigTests
         {
             this.savedValues[name] = Environment.GetEnvironmentVariable(name);
         }
+
+        IntegrationTestConfig.ResetFileOverrides();
     }
 
     [After(Test)]

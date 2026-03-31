@@ -2,7 +2,6 @@ using System.Net;
 
 namespace TownCrier.IntegrationTests;
 
-[NotInParallel]
 public sealed class HealthTests
 {
     [Test]
@@ -14,11 +13,25 @@ public sealed class HealthTests
             BaseAddress = new Uri(IntegrationTestConfig.ApiBaseUrl),
         };
 
+        // Warm up — staging revision may need a cold-start window
+        HttpResponseMessage? response = null;
+        for (var i = 0; i < 5; i++)
+        {
+            response = await client
+                .GetAsync(new Uri("/v1/health", UriKind.Relative))
+                .ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                break;
+            }
+
+            response.Dispose();
+            await Task.Delay(TimeSpan.FromSeconds(2 * (i + 1))).ConfigureAwait(false);
+        }
+
         // Act
-        using var response = await client
-            .GetAsync(new Uri("/v1/health", UriKind.Relative))
-            .ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var body = await response!.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         // Assert
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);

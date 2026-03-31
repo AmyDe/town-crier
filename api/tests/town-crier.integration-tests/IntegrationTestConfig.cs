@@ -29,6 +29,8 @@ internal static class IntegrationTestConfig
         Environment.GetEnvironmentVariable(name)
         ?? (FileOverrides.TryGetValue(name, out var value) ? value : null);
 
+    internal static void ResetFileOverrides() => FileOverrides.Clear();
+
     private static string GetRequired(string name) =>
         GetValue(name)
             ?? throw new InvalidOperationException(

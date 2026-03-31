@@ -6,6 +6,12 @@ namespace TownCrier.IntegrationTests;
 [NotInParallel]
 public sealed class Auth0TokenProviderTests
 {
+    [Before(Test)]
+    public void ClearFileOverrides()
+    {
+        IntegrationTestConfig.ResetFileOverrides();
+    }
+
     [Test]
     public async Task Should_IncludeClientSecret_When_ClientSecretProvided()
     {

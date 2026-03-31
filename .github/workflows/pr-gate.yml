@@ -195,10 +195,6 @@ jobs:
         run: dotnet build tests/town-crier.integration-tests --configuration Release
         working-directory: api
 
-      - name: Build integration tests
-        run: dotnet build tests/town-crier.integration-tests --configuration Release
-        working-directory: api
-
       - name: Run integration tests
         working-directory: api
         env:
@@ -227,7 +223,7 @@ jobs:
           az containerapp revision label remove \
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
-            --label staging --yes || true
+            --label staging || true
           az containerapp revision deactivate \
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
@@ -262,7 +258,7 @@ jobs:
           az containerapp revision label remove \
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
-            --label staging --yes || true
+            --label staging || true
 
   # ── iOS ──────────────────────────────────────────────
 
