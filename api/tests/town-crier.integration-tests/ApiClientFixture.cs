@@ -3,7 +3,7 @@ using TUnit.Core.Interfaces;
 
 namespace TownCrier.IntegrationTests;
 
-internal sealed class ApiClientFixture : IAsyncInitializer, IAsyncDisposable
+public sealed class ApiClientFixture : IAsyncInitializer, IAsyncDisposable
 {
     private HttpClient? client;
 

@@ -4,12 +4,14 @@ using System.Text.Json;
 namespace TownCrier.IntegrationTests;
 
 [NotInParallel]
-public sealed class UserProfileTests(ApiClientFixture fixture)
+public sealed class UserProfileTests
 {
     [Test]
-    [ClassDataSource<ApiClientFixture>(Shared = SharedType.Globally)]
-    public async Task Should_CreateAndRetrieveProfile_When_Authenticated()
+    [ClassDataSource<ApiClientFixture>(Shared = SharedType.PerTestSession)]
+    public async Task Should_CreateAndRetrieveProfile_When_Authenticated(ApiClientFixture fixture)
     {
+        ArgumentNullException.ThrowIfNull(fixture);
+
         // Arrange
         var client = fixture.Client;
 
@@ -32,6 +34,6 @@ public sealed class UserProfileTests(ApiClientFixture fixture)
 
         using var doc = JsonDocument.Parse(body);
         var userId = doc.RootElement.GetProperty("userId").GetString();
-        await Assert.That(userId).IsNotNullOrEmpty();
+        await Assert.That(userId).IsNotNull().And.IsNotEqualTo(string.Empty);
     }
 }
