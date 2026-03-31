@@ -196,7 +196,6 @@ jobs:
         working-directory: api
 
       - name: Run integration tests
-        run: ./tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests
         working-directory: api
         env:
           INTEGRATION_TEST_API_BASE_URL: ${{ needs.api-staging.outputs.staging-url }}
@@ -206,6 +205,11 @@ jobs:
           INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
           INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
           INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
+        run: |
+          echo "::group::Environment check"
+          printenv | grep INTEGRATION_TEST_ | sed 's/=.*/=<set>/'
+          echo "::endgroup::"
+          dotnet run --project tests/town-crier.integration-tests --no-launch-profile -- --report-trx
 
       - name: Login to Azure for cleanup
         if: failure()
