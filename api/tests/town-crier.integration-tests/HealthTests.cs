@@ -15,11 +15,13 @@ public sealed class HealthTests
         };
 
         // Act
-        using var response = await client.GetAsync("/v1/health").ConfigureAwait(false);
+        using var response = await client
+            .GetAsync(new Uri("/v1/health", UriKind.Relative))
+            .ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         // Assert
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        await Assert.That(body).ContainsHealthyStatus();
+        await Assert.That(body).Contains("Healthy");
     }
 }
