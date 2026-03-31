@@ -26,9 +26,19 @@ internal static class IntegrationTestConfig
     public static string Password =>
         GetRequired("INTEGRATION_TEST_PASSWORD");
 
-    internal static string? GetValue(string name) =>
-        Environment.GetEnvironmentVariable(name)
-        ?? (FileOverrides.TryGetValue(name, out var value) ? value : null);
+    internal static string? GetValue(string name)
+    {
+        var env = Environment.GetEnvironmentVariable(name);
+        if (!string.IsNullOrEmpty(env))
+        {
+            return env;
+        }
+
+        return FileOverrides.TryGetValue(name, out var value)
+            && !string.IsNullOrEmpty(value)
+                ? value
+                : null;
+    }
 
     internal static void ResetFileOverrides()
     {

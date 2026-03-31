@@ -13,8 +13,8 @@ public sealed class HealthTests
             BaseAddress = new Uri(IntegrationTestConfig.ApiBaseUrl),
         };
 
-        // Warm up — staging revision may need a cold-start window
-        const int maxAttempts = 5;
+        // Warm up — staging revision may need a cold-start window (up to ~60s)
+        const int maxAttempts = 10;
         HttpResponseMessage response = null!;
         for (var i = 0; i < maxAttempts; i++)
         {
@@ -28,7 +28,7 @@ public sealed class HealthTests
             }
 
             response.Dispose();
-            await Task.Delay(TimeSpan.FromSeconds(2 * (i + 1))).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         }
 
         // Act
