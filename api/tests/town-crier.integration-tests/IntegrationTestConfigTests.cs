@@ -3,6 +3,37 @@ namespace TownCrier.IntegrationTests;
 [NotInParallel]
 public sealed class IntegrationTestConfigTests
 {
+    private static readonly string[] EnvVarNames =
+    [
+        "INTEGRATION_TEST_API_BASE_URL",
+        "INTEGRATION_TEST_AUTH0_DOMAIN",
+        "INTEGRATION_TEST_AUTH0_CLIENT_ID",
+        "INTEGRATION_TEST_AUTH0_AUDIENCE",
+        "INTEGRATION_TEST_USERNAME",
+        "INTEGRATION_TEST_PASSWORD",
+        "INTEGRATION_TEST_AUTH0_CLIENT_SECRET",
+    ];
+
+    private readonly Dictionary<string, string?> savedValues = new();
+
+    [Before(Test)]
+    public void SaveEnvironment()
+    {
+        foreach (var name in EnvVarNames)
+        {
+            this.savedValues[name] = Environment.GetEnvironmentVariable(name);
+        }
+    }
+
+    [After(Test)]
+    public void RestoreEnvironment()
+    {
+        foreach (var (name, value) in this.savedValues)
+        {
+            Environment.SetEnvironmentVariable(name, value);
+        }
+    }
+
     [Test]
     public void Should_ThrowInvalidOperationException_When_RequiredEnvVarMissing()
     {
@@ -25,32 +56,19 @@ public sealed class IntegrationTestConfigTests
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_USERNAME", "user@test.com");
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_PASSWORD", "test-password");
 
-        try
-        {
-            // Act & Assert
-            await Assert.That(IntegrationTestConfig.ApiBaseUrl).IsEqualTo("https://test.example.com");
-            await Assert.That(IntegrationTestConfig.Auth0Domain).IsEqualTo("test.auth0.com");
-            await Assert.That(IntegrationTestConfig.Auth0ClientId).IsEqualTo("test-client-id");
-            await Assert.That(IntegrationTestConfig.Auth0Audience).IsEqualTo("https://api.test.com");
-            await Assert.That(IntegrationTestConfig.Username).IsEqualTo("user@test.com");
-            await Assert.That(IntegrationTestConfig.Password).IsEqualTo("test-password");
-        }
-        finally
-        {
-            // Cleanup
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_API_BASE_URL", null);
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_DOMAIN", null);
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_ID", null);
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_AUDIENCE", null);
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_USERNAME", null);
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_PASSWORD", null);
-        }
+        // Act & Assert
+        await Assert.That(IntegrationTestConfig.ApiBaseUrl).IsEqualTo("https://test.example.com");
+        await Assert.That(IntegrationTestConfig.Auth0Domain).IsEqualTo("test.auth0.com");
+        await Assert.That(IntegrationTestConfig.Auth0ClientId).IsEqualTo("test-client-id");
+        await Assert.That(IntegrationTestConfig.Auth0Audience).IsEqualTo("https://api.test.com");
+        await Assert.That(IntegrationTestConfig.Username).IsEqualTo("user@test.com");
+        await Assert.That(IntegrationTestConfig.Password).IsEqualTo("test-password");
     }
 
     [Test]
     public async Task Should_ReturnNull_When_OptionalClientSecretNotSet()
     {
-        // Arrange -- ensure the optional env var is not set
+        // Arrange
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
 
         // Act
@@ -66,17 +84,10 @@ public sealed class IntegrationTestConfigTests
         // Arrange
         Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", "my-secret");
 
-        try
-        {
-            // Act
-            var result = IntegrationTestConfig.Auth0ClientSecret;
+        // Act
+        var result = IntegrationTestConfig.Auth0ClientSecret;
 
-            // Assert
-            await Assert.That(result).IsEqualTo("my-secret");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("INTEGRATION_TEST_AUTH0_CLIENT_SECRET", null);
-        }
+        // Assert
+        await Assert.That(result).IsEqualTo("my-secret");
     }
 }
