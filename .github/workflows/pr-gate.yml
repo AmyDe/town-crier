@@ -159,14 +159,6 @@ jobs:
               --revision-weight "${{ steps.current.outputs.revision }}=100"
           fi
 
-      - name: Label staging revision
-        run: |
-          az containerapp revision label add \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --revision "${{ steps.deploy.outputs.revision }}" \
-            --label staging --yes
-
       - name: Get staging URL
         id: staging-url
         run: |
@@ -174,7 +166,8 @@ jobs:
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
             --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "url=https://staging---${APP_FQDN}" >> "$GITHUB_OUTPUT"
+          ENV_DOMAIN="${APP_FQDN#*.}"
+          echo "url=https://${{ steps.deploy.outputs.revision }}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
 
   # ── API: integration tests ──────────────────────────
 
@@ -209,26 +202,6 @@ jobs:
           printenv | grep ^INTEGRATION_TEST_ > tests/town-crier.integration-tests/bin/Release/net10.0/.env
           dotnet exec tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests.dll
 
-      - name: Login to Azure for cleanup
-        if: failure()
-        uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Cleanup staging on failure
-        if: failure()
-        run: |
-          az containerapp revision label remove \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --label staging || true
-          az containerapp revision deactivate \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --revision "${{ needs.api-staging.outputs.new-revision }}" || true
-
   # ── API: promote staging to live ────────────────────
 
   api-promote:
@@ -252,13 +225,6 @@ jobs:
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
             --revision-weight "${{ needs.api-staging.outputs.new-revision }}=100"
-
-      - name: Remove staging label
-        run: |
-          az containerapp revision label remove \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --label staging || true
 
   # ── iOS ──────────────────────────────────────────────
 
