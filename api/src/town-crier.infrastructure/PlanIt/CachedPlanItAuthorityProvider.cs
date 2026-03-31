@@ -61,7 +61,7 @@ public sealed class CachedPlanItAuthorityProvider : IAuthorityProvider, IDisposa
                 return;
             }
 
-            var url = new Uri("/api/areas/json?pg_sz=500", UriKind.Relative);
+            var url = new Uri("/api/areas/json?pg_sz=500&select=area_id,area_name,area_type,url,planning_url", UriKind.Relative);
             using var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 

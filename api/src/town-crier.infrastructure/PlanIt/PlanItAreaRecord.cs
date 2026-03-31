@@ -4,16 +4,16 @@ namespace TownCrier.Infrastructure.PlanIt;
 
 internal sealed class PlanItAreaRecord
 {
-    [JsonPropertyName("name")]
+    [JsonPropertyName("area_name")]
     public string Name { get; set; } = string.Empty;
 
-    [JsonPropertyName("id")]
+    [JsonPropertyName("area_id")]
     public int Id { get; set; }
 
     [JsonPropertyName("area_type")]
     public string AreaType { get; set; } = string.Empty;
 
-    [JsonPropertyName("council_url")]
+    [JsonPropertyName("url")]
     public string? CouncilUrl { get; set; }
 
     [JsonPropertyName("planning_url")]
