@@ -66,7 +66,6 @@ describe('LandingPage (formerly App)', () => {
 
     expect(within(main).getByText('417')).toBeInTheDocument();
     expect(within(main).getByText('How It Works')).toBeInTheDocument();
-    expect(within(main).getByText('Stronger together')).toBeInTheDocument();
     expect(within(main).getByText('Pricing')).toBeInTheDocument();
     expect(within(main).getByText('Frequently Asked Questions')).toBeInTheDocument();
   });
@@ -81,7 +80,6 @@ describe('LandingPage (formerly App)', () => {
 
     expect(sectionIds).toEqual([
       'how-it-works',
-      'community-groups',
       'pricing',
       'faq',
     ]);
