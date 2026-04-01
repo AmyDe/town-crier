@@ -23,12 +23,11 @@ public sealed class WatchZoneTests
         // Defensively create profile first (watch zones require a profile)
         await client.PostAsync(new Uri("/v1/me", UriKind.Relative), null).ConfigureAwait(false);
 
-        // Arrange -- unique zone ID and name (name has a unique key constraint per user)
-        var zoneId = Guid.NewGuid().ToString();
+        // Arrange -- unique name (name has a unique key constraint per user)
+        var uniqueSuffix = Guid.NewGuid().ToString()[..8];
         var createPayload = new
         {
-            zoneId,
-            name = $"Integration Test Zone {zoneId[..8]}",
+            name = $"Integration Test Zone {uniqueSuffix}",
             latitude = 51.5074,
             longitude = -0.1278,
             radiusMetres = 1000.0,
@@ -41,6 +40,10 @@ public sealed class WatchZoneTests
 
         // Assert -- create returns 201
         await Assert.That(createResponse.StatusCode).IsEqualTo(HttpStatusCode.Created);
+
+        // Extract server-generated zone ID from Location header
+        var location = createResponse.Headers.Location?.ToString() ?? string.Empty;
+        var zoneId = location.Split('/')[^1];
 
         // Act -- list watch zones
         using var listResponse = await client
