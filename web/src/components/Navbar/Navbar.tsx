@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import { useNavbarAuth } from './useNavbarAuth';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import styles from './Navbar.module.css';
 
@@ -11,6 +12,7 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const { theme, toggleTheme } = useTheme();
+  const { isAuthenticated, handleSignIn } = useNavbarAuth();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleMenuToggle = () => {
@@ -38,6 +40,19 @@ export function Navbar() {
 
         <div className={styles.actions}>
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+
+          {isAuthenticated ? (
+            <a href="/dashboard" className={styles.signIn}>
+              Sign In
+            </a>
+          ) : (
+            <button
+              className={styles.signIn}
+              onClick={() => void handleSignIn?.()}
+            >
+              Sign In
+            </button>
+          )}
 
           <a href="#download" className={styles.cta}>
             Download
