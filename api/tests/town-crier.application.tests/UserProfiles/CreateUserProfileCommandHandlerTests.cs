@@ -41,6 +41,22 @@ public sealed class CreateUserProfileCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_StoreEmail_When_ProfileCreated()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var handler = new CreateUserProfileCommandHandler(repository);
+        var command = new CreateUserProfileCommand("auth0|user-email", "user@example.com");
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var saved = repository.GetByUserId("auth0|user-email");
+        await Assert.That(saved!.Email).IsEqualTo("user@example.com");
+    }
+
+    [Test]
     public async Task Should_ReturnExistingProfile_When_UserAlreadyExists()
     {
         // Arrange

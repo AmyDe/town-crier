@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using TownCrier.Application.Admin;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
@@ -142,6 +143,8 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetSavedApplicationsQueryHandler>();
 
         services.AddTransient<GetDemoAccountQueryHandler>();
+
+        services.AddTransient<GrantSubscriptionCommandHandler>();
 
         return services;
     }

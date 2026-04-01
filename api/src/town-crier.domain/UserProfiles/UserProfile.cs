@@ -6,6 +6,7 @@ public sealed class UserProfile
 
     private UserProfile(
         string userId,
+        string? email,
         string? postcode,
         NotificationPreferences notificationPreferences,
         SubscriptionTier tier,
@@ -14,6 +15,7 @@ public sealed class UserProfile
         DateTimeOffset? gracePeriodExpiry)
     {
         this.UserId = userId;
+        this.Email = email;
         this.Postcode = postcode;
         this.NotificationPreferences = notificationPreferences;
         this.Tier = tier;
@@ -23,6 +25,8 @@ public sealed class UserProfile
     }
 
     public string UserId { get; }
+
+    public string? Email { get; }
 
     public string? Postcode { get; private set; }
 
@@ -38,12 +42,13 @@ public sealed class UserProfile
 
     public DateTimeOffset? GracePeriodExpiry { get; private set; }
 
-    public static UserProfile Register(string userId)
+    public static UserProfile Register(string userId, string? email = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
         return new UserProfile(
             userId,
+            email,
             postcode: null,
             notificationPreferences: NotificationPreferences.Default,
             tier: SubscriptionTier.Free,
@@ -117,6 +122,7 @@ public sealed class UserProfile
 
     internal static UserProfile Reconstitute(
         string userId,
+        string? email,
         string? postcode,
         NotificationPreferences notificationPreferences,
         Dictionary<string, ZoneNotificationPreferences> zonePreferences,
@@ -127,6 +133,7 @@ public sealed class UserProfile
     {
         var profile = new UserProfile(
             userId,
+            email,
             postcode,
             notificationPreferences,
             tier,

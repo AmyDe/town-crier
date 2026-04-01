@@ -22,6 +22,13 @@ public sealed class InMemoryUserProfileRepository : IUserProfileRepository
         return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
     }
 
+    public Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct)
+    {
+        var profile = this.store.Values
+            .FirstOrDefault(p => string.Equals(p.Email, email, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(profile);
+    }
+
     public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
     {
         var profile = this.store.Values

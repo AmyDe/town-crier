@@ -15,6 +15,13 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.FromResult(profile);
     }
 
+    public Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct)
+    {
+        var profile = this.store.Values
+            .FirstOrDefault(p => string.Equals(p.Email, email, StringComparison.OrdinalIgnoreCase));
+        return Task.FromResult(profile);
+    }
+
     public Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
     {
         var profiles = this.store.Values
