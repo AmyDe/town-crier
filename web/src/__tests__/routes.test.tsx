@@ -19,7 +19,7 @@ const existingProfile: UserProfile = {
 
 const stubApiClient: ApiClient = {
   get: async (path: string) => {
-    if (path.includes('watch-zones')) return [] as unknown;
+    if (path.includes('watch-zones')) return { zones: [] } as unknown;
     if (path.includes('/groups')) return [] as unknown;
     if (path.includes('notifications')) return { notifications: [], total: 0, page: 1 } as unknown;
     if (path.includes('settings') || path.includes('profile')) return { postcode: null, pushEnabled: false, tier: 'Free' } as unknown;

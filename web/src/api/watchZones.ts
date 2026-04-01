@@ -8,7 +8,10 @@ import type {
 
 export function watchZonesApi(client: ApiClient) {
   return {
-    list: () => client.get<readonly WatchZoneSummary[]>('/v1/me/watch-zones'),
+    list: async () => {
+      const result = await client.get<{ zones: readonly WatchZoneSummary[] }>('/v1/me/watch-zones');
+      return result.zones;
+    },
     create: (data: CreateWatchZoneRequest) =>
       client.post<WatchZoneSummary>('/v1/me/watch-zones', data),
     delete: (zoneId: string) => client.delete(`/v1/me/watch-zones/${zoneId}`),
