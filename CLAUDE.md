@@ -124,6 +124,10 @@ ALWAYS use installed CLI tools to complete tasks before asking the user to do so
 
 When a task involves any of these services, use the corresponding CLI directly. If a command fails or requires interactive auth, only then ask the user to intervene.
 
+### Deployments — PR-Only Policy
+
+NEVER deploy code directly using `az`, `pulumi`, or any other CLI tool. ALL code changes MUST be shipped via pull requests and deployed through CI/CD (GitHub Actions). Direct deployments bypass review, testing, and audit trails.
+
 ## Shell Commands — Non-Interactive Mode
 
 Always use non-interactive flags with file operations to avoid hanging on confirmation prompts (some systems alias `cp`, `mv`, `rm` to include `-i`):

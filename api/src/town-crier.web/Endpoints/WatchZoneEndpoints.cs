@@ -11,21 +11,22 @@ internal static class WatchZoneEndpoints
     {
         group.MapPost("/me/watch-zones", async (
             ClaimsPrincipal user,
-            CreateWatchZoneCommand command,
+            CreateWatchZoneRequest request,
             CreateWatchZoneCommandHandler handler,
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
-            var fullCommand = new CreateWatchZoneCommand(
+            var zoneId = Guid.NewGuid().ToString();
+            var command = new CreateWatchZoneCommand(
                 userId,
-                command.ZoneId,
-                command.Name,
-                command.Latitude,
-                command.Longitude,
-                command.RadiusMetres,
-                command.AuthorityId);
-            var result = await handler.HandleAsync(fullCommand, ct).ConfigureAwait(false);
-            return Results.Created($"/v1/me/watch-zones/{command.ZoneId}", result);
+                zoneId,
+                request.Name,
+                request.Latitude,
+                request.Longitude,
+                request.RadiusMetres,
+                request.AuthorityId);
+            var result = await handler.HandleAsync(command, ct).ConfigureAwait(false);
+            return Results.Created($"/v1/me/watch-zones/{zoneId}", result);
         });
 
         group.MapGet("/me/watch-zones", async (
