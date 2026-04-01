@@ -1,3 +1,13 @@
+# Automatically enables squash-merge auto-merge on new PRs.
+#
+# IMPORTANT: Uses GH_AUTO_MERGE_TOKEN (a fine-grained PAT) instead of
+# GITHUB_TOKEN so that the merge push is attributed to a real user and
+# triggers downstream workflows (e.g., CD Dev). Pushes from GITHUB_TOKEN
+# do not trigger further workflow runs by GitHub's design.
+#
+# Requires secrets:
+#   GH_AUTO_MERGE_TOKEN — Fine-grained PAT with Contents: write + Pull requests: write
+
 name: Auto-merge
 
 on:
@@ -17,6 +27,6 @@ jobs:
       - name: Enable auto-merge (squash)
         run: gh pr merge "$PR" --auto --squash --repo "$REPO"
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_AUTO_MERGE_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}

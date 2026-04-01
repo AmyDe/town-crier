@@ -1,5 +1,7 @@
-# Deploys changed components to the dev environment.
+# Deploys all components to the dev environment.
 # Triggered on every push to main (squash merges assumed).
+#
+# All components deploy unconditionally to keep dev in sync with main.
 #
 # Requires secrets:
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
@@ -31,33 +33,9 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  # ── Change detection ─────────────────────────────────
-  changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    outputs:
-      api: ${{ steps.detect.outputs.api }}
-      web: ${{ steps.detect.outputs.web }}
-      infra: ${{ steps.detect.outputs.infra }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-      - name: Detect changed paths
-        id: detect
-        uses: ./.github/actions/detect-changes
-        with:
-          mode: push
-          categories: api,web,infra
-          trigger-files: |
-            .github/workflows/cd-dev.yml:api,web,infra
-
   # ── Infrastructure: shared stack ─────────────────────
   infra-shared:
     name: "Infra: Pulumi up (shared)"
-    needs: changes
-    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -87,8 +65,7 @@ jobs:
   # ── Infrastructure: dev stack ────────────────────────
   infra-dev:
     name: "Infra: Pulumi up (dev)"
-    needs: [changes, infra-shared]
-    if: needs.changes.outputs.infra == 'true'
+    needs: infra-shared
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -118,8 +95,6 @@ jobs:
   # ── API: build & push image ─────────────────────────
   api-image:
     name: "API: Build & push image"
-    needs: changes
-    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
@@ -144,15 +119,9 @@ jobs:
         working-directory: api
 
   # ── API: deploy to dev ──────────────────────────────
-  # Runs when API code changed (new image) OR when infra changed (Pulumi may
-  # reset the container image to the placeholder — re-deploy the latest tag to
-  # recover).
   api-deploy:
     name: "API: Deploy to dev"
-    needs: [changes, api-image, infra-dev]
-    if: >-
-      !failure() && !cancelled()
-      && (needs.changes.outputs.api == 'true' || needs.changes.outputs.infra == 'true')
+    needs: [api-image, infra-dev]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -167,23 +136,15 @@ jobs:
 
       - name: Deploy to Container App
         run: |
-          if [ "${{ needs.changes.outputs.api }}" = "true" ]; then
-            TAG="${{ github.sha }}"
-          else
-            TAG="latest"
-          fi
           az containerapp update \
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${TAG}"
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
     name: "Web: Deploy to dev"
-    needs: [changes, infra-dev]
-    if: >-
-      !failure() && !cancelled()
-      && needs.changes.outputs.web == 'true'
+    needs: infra-dev
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
