@@ -5,8 +5,44 @@
   padding: var(--tc-space-lg);
 }
 
-.row {
-  height: 20px;
+.header {
+  height: 28px;
+  width: 40%;
   border-radius: var(--tc-radius-sm);
   background: var(--tc-border);
+}
+
+.row {
+  height: 16px;
+  border-radius: var(--tc-radius-sm);
+  background: var(--tc-border);
+}
+
+.widthNarrow {
+  width: 45%;
+}
+
+.widthMedium {
+  width: 60%;
+}
+
+.widthWide {
+  width: 80%;
+}
+
+@keyframes shimmer {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+.header,
+.row {
+  animation: shimmer 1.5s ease-in-out infinite;
 }
