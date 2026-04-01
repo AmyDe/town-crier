@@ -108,4 +108,34 @@ public sealed class UserProfileDocumentTests
         await Assert.That(document.ZonePreferences).IsNotNull();
         await Assert.That(document.ZonePreferences).IsEmpty();
     }
+
+    [Test]
+    public async Task Should_PreserveEmail_When_RoundTripped()
+    {
+        // Arrange
+        var original = UserProfile.Register("auth0|user-1", "test@example.com");
+
+        // Act
+        var document = UserProfileDocument.FromDomain(original);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(document.Email).IsEqualTo("test@example.com");
+        await Assert.That(roundTripped.Email).IsEqualTo("test@example.com");
+    }
+
+    [Test]
+    public async Task Should_HandleNullEmail_When_RoundTripped()
+    {
+        // Arrange
+        var original = UserProfile.Register("auth0|user-1");
+
+        // Act
+        var document = UserProfileDocument.FromDomain(original);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(document.Email).IsNull();
+        await Assert.That(roundTripped.Email).IsNull();
+    }
 }
