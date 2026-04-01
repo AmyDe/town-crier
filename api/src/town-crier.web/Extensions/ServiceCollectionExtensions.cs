@@ -81,7 +81,7 @@ internal static class ServiceCollectionExtensions
             var factory = sp.GetRequiredService<IHttpClientFactory>();
             var httpClient = factory.CreateClient("PostcodesIoResolver");
             httpClient.BaseAddress = new Uri(postcodesIoBaseUrl);
-            return new PostcodesIoAuthorityResolver(httpClient, sp.GetRequiredService<IAuthorityProvider>());
+            return new PostcodesIoAuthorityResolver(httpClient);
         });
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
