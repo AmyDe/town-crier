@@ -26,7 +26,7 @@ public sealed class UserProfile
 
     public string UserId { get; }
 
-    public string? Email { get; private set; }
+    public string? Email { get; }
 
     public string? Postcode { get; private set; }
 

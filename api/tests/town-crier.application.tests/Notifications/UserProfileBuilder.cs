@@ -5,6 +5,7 @@ namespace TownCrier.Application.Tests.Notifications;
 internal sealed class UserProfileBuilder
 {
     private string userId = "user-1";
+    private string? email;
     private SubscriptionTier tier = SubscriptionTier.Free;
     private bool pushEnabled = true;
     private DayOfWeek digestDay = DayOfWeek.Monday;
@@ -12,6 +13,12 @@ internal sealed class UserProfileBuilder
     public UserProfileBuilder WithUserId(string userId)
     {
         this.userId = userId;
+        return this;
+    }
+
+    public UserProfileBuilder WithEmail(string? email)
+    {
+        this.email = email;
         return this;
     }
 
@@ -35,7 +42,7 @@ internal sealed class UserProfileBuilder
 
     public UserProfile Build()
     {
-        var profile = UserProfile.Register(this.userId);
+        var profile = UserProfile.Register(this.userId, this.email);
         profile.UpdatePreferences(
             postcode: null,
             new NotificationPreferences(this.pushEnabled, this.digestDay));
