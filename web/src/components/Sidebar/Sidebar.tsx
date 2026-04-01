@@ -8,7 +8,6 @@ const NAV_ITEMS = [
   { label: 'Map', to: '/map' },
   { label: 'Search', to: '/search' },
   { label: 'Saved', to: '/saved' },
-  { label: 'Groups', to: '/groups' },
   { label: 'Notifications', to: '/notifications' },
   { label: 'Settings', to: '/settings' },
 ] as const;
