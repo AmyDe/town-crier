@@ -15,10 +15,6 @@ import { ConnectedApplicationDetailPage } from './features/ApplicationDetail/Con
 import { ConnectedWatchZoneListPage } from './features/WatchZones/ConnectedWatchZoneListPage';
 import { ConnectedWatchZoneCreatePage } from './features/WatchZones/ConnectedWatchZoneCreatePage';
 import { ConnectedWatchZoneEditPage } from './features/WatchZones/ConnectedWatchZoneEditPage';
-import { ConnectedGroupsListPage } from './features/Groups/ConnectedGroupsListPage';
-import { ConnectedGroupCreatePage } from './features/Groups/ConnectedGroupCreatePage';
-import { ConnectedGroupDetailPage } from './features/Groups/ConnectedGroupDetailPage';
-import { ConnectedAcceptInvitationPage } from './features/Groups/ConnectedAcceptInvitationPage';
 import { ConnectedSavedApplicationsPage } from './features/SavedApplications/ConnectedSavedApplicationsPage';
 import { ConnectedMapPage } from './features/Map/ConnectedMapPage';
 
@@ -44,10 +40,6 @@ export function AppRoutes() {
             <Route path="/map" element={<ConnectedMapPage />} />
             <Route path="/search" element={<ConnectedSearchPage />} />
             <Route path="/saved" element={<ConnectedSavedApplicationsPage />} />
-            <Route path="/groups" element={<ConnectedGroupsListPage />} />
-            <Route path="/groups/new" element={<ConnectedGroupCreatePage />} />
-            <Route path="/groups/:groupId" element={<ConnectedGroupDetailPage />} />
-            <Route path="/invitations/:invitationId/accept" element={<ConnectedAcceptInvitationPage />} />
             <Route path="/notifications" element={<ConnectedNotificationsPage />} />
             <Route path="/settings" element={<ConnectedSettingsPage />} />
           </Route>
