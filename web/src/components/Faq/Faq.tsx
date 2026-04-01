@@ -22,9 +22,9 @@ const FAQ_ITEMS: FaqItem[] = [
       'Yes. The Free plan lets you monitor one watch zone with daily email digests at no cost, forever. Upgrade any time if you need more zones, wider radii, or instant push notifications.',
   },
   {
-    question: 'Can community groups use Town Crier?',
+    question: 'Can communities use Town Crier?',
     answer:
-      'Absolutely. Neighbourhood forums, civic societies, and residents\u2019 associations use Town Crier to stay on top of planning activity in their area. The Pro plan supports multiple watch zones and team-friendly features.',
+      'Absolutely. Neighbourhood forums, civic societies, and residents\u2019 associations use Town Crier to stay on top of planning activity in their area. The Pro plan supports multiple watch zones for broader coverage.',
   },
   {
     question: 'How quickly will I be notified?',

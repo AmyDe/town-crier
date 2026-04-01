@@ -9,7 +9,6 @@ public static class CosmosContainerNames
     public const string DatabaseName = "town-crier";
 
     public const string Users = "Users";
-    public const string Groups = "Groups";
     public const string Notifications = "Notifications";
     public const string DeviceRegistrations = "DeviceRegistrations";
     public const string DecisionAlerts = "DecisionAlerts";

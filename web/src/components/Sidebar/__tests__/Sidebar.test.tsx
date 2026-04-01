@@ -35,7 +35,6 @@ describe('Sidebar', () => {
       'Map',
       'Search',
       'Saved',
-      'Groups',
       'Notifications',
       'Settings',
     ];
@@ -45,12 +44,19 @@ describe('Sidebar', () => {
     }
   });
 
-  it('renders exactly 9 nav links', () => {
+  it('renders exactly 8 nav links', () => {
     renderSidebar();
 
     const nav = screen.getByRole('navigation', { name: /main/i });
     const links = within(nav).getAllByRole('link');
-    // 9 section links + 1 app name link = 10
-    expect(links).toHaveLength(10);
+    // 8 section links + 1 app name link = 9
+    expect(links).toHaveLength(9);
+  });
+
+  it('does not render a Groups nav link', () => {
+    renderSidebar();
+
+    const nav = screen.getByRole('navigation', { name: /main/i });
+    expect(within(nav).queryByRole('link', { name: 'Groups' })).not.toBeInTheDocument();
   });
 });

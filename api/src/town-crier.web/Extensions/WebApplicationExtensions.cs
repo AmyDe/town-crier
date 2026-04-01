@@ -38,8 +38,6 @@ internal static class WebApplicationExtensions
         v1.MapNotificationEndpoints();
         v1.MapSavedApplicationEndpoints();
         v1.MapWatchZoneEndpoints();
-        v1.MapGroupEndpoints();
-        v1.MapInvitationEndpoints();
         v1.MapDemoAccountEndpoints();
 
         app.MapApiEndpoints();

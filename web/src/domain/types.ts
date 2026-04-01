@@ -6,8 +6,6 @@ type Brand<T, B extends string> = T & { readonly __brand: B };
 
 export type ApplicationUid = Brand<string, "ApplicationUid">;
 export type WatchZoneId = Brand<string, "WatchZoneId">;
-export type GroupId = Brand<string, "GroupId">;
-export type InvitationId = Brand<string, "InvitationId">;
 export type AuthorityId = Brand<number, "AuthorityId">;
 
 export function asApplicationUid(value: string): ApplicationUid {
@@ -16,14 +14,6 @@ export function asApplicationUid(value: string): ApplicationUid {
 
 export function asWatchZoneId(value: string): WatchZoneId {
   return value as WatchZoneId;
-}
-
-export function asGroupId(value: string): GroupId {
-  return value as GroupId;
-}
-
-export function asInvitationId(value: string): InvitationId {
-  return value as InvitationId;
 }
 
 export function asAuthorityId(value: number): AuthorityId {
@@ -61,22 +51,6 @@ const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Pro"];
 
 export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
   return typeof value === "string" && SUBSCRIPTION_TIERS.includes(value);
-}
-
-export type GroupRole = "Owner" | "Member";
-
-const GROUP_ROLES: readonly string[] = ["Owner", "Member"];
-
-export function isGroupRole(value: unknown): value is GroupRole {
-  return typeof value === "string" && GROUP_ROLES.includes(value);
-}
-
-export type InvitationStatus = "Pending" | "Accepted" | "Declined";
-
-const INVITATION_STATUSES: readonly string[] = ["Pending", "Accepted", "Declined"];
-
-export function isInvitationStatus(value: unknown): value is InvitationStatus {
-  return typeof value === "string" && INVITATION_STATUSES.includes(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -220,40 +194,6 @@ export interface DesignationContext {
 }
 
 // ---------------------------------------------------------------------------
-// Groups
-// ---------------------------------------------------------------------------
-
-export interface GroupMember {
-  readonly userId: string;
-  readonly role: GroupRole;
-  readonly joinedAt: string;
-}
-
-export interface GroupDetail {
-  readonly groupId: GroupId;
-  readonly name: string;
-  readonly ownerId: string;
-  readonly latitude: number;
-  readonly longitude: number;
-  readonly radiusMetres: number;
-  readonly authorityId: AuthorityId;
-  readonly members: readonly GroupMember[];
-}
-
-export interface GroupSummary {
-  readonly groupId: GroupId;
-  readonly name: string;
-  readonly role: GroupRole;
-  readonly memberCount: number;
-}
-
-export interface GroupInvitation {
-  readonly invitationId: InvitationId;
-  readonly groupId: GroupId;
-  readonly inviteeEmail: string;
-}
-
-// ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
 
@@ -274,18 +214,6 @@ export interface UpdateZonePreferencesRequest {
   readonly newApplications: boolean;
   readonly statusChanges: boolean;
   readonly decisionUpdates: boolean;
-}
-
-export interface CreateGroupRequest {
-  readonly name: string;
-  readonly latitude: number;
-  readonly longitude: number;
-  readonly radiusMetres: number;
-  readonly authorityId: number;
-}
-
-export interface InviteMemberRequest {
-  readonly inviteeEmail: string;
 }
 
 // ---------------------------------------------------------------------------

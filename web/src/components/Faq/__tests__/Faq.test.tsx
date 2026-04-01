@@ -46,7 +46,7 @@ describe('Faq', () => {
   it('renders question about community use', () => {
     render(<Faq />);
 
-    expect(screen.getByText(/can community groups use town crier/i)).toBeInTheDocument();
+    expect(screen.getByText(/can communities use town crier/i)).toBeInTheDocument();
   });
 
   it('renders question about notification speed', () => {

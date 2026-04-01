@@ -78,11 +78,14 @@ Determine the worker type from the bead's description, labels, and any paths men
 
 | Signals | Worker |
 |---------|--------|
+| delete, remove, strip, clean up, drop (feature/code removal tasks) + any tech area signals below | `delete-worker` |
 | Swift, SwiftUI, iOS, mobile, XCTest, ViewModel, Coordinator, `mobile/ios` paths | `ios-tdd-worker` |
 | .NET, C#, API, handler, endpoint, Cosmos, TUnit, `api` paths | `dotnet-tdd-worker` |
 | React, TypeScript, web, CSS, frontend, Vite, Vitest, component, hook, `web` paths | `react-tdd-worker` |
 | Pulumi, infrastructure, IaC, Azure, Container Apps, resource group, `infra` paths | `pulumi-infra-worker` |
 | CI/CD, pipeline, GitHub Actions, workflow, deployment, `.github/workflows` paths | `github-actions-worker` |
+
+**Delete worker classification:** If the bead's primary intent is removing/deleting code or features (not adding or modifying), classify as `delete-worker` regardless of tech area. The delete worker's allowed path is determined by the same tech area signals — e.g., a bead saying "remove Groups feature from web" maps to `delete-worker` with allowed path `web/`.
 
 If the bead cannot be mapped to any worker (e.g., manual tasks, genuinely ambiguous), **mark it blocked**:
 
@@ -117,6 +120,7 @@ Determine the worker's allowed path scope (this table is the single source of tr
 | `react-tdd-worker` | `web/` |
 | `pulumi-infra-worker` | `infra/` |
 | `github-actions-worker` | `.github/workflows/`, `.github/actions/` |
+| `delete-worker` | *(determined by tech area signals — same as the TDD/infra worker it replaces)* |
 
 Create a worktree using `bd worktree create`, which sets up a `.beads/redirect` file so `bd` commands in the worktree transparently use the main repo's database — no environment variables needed:
 
@@ -131,6 +135,8 @@ Store `worktree_path` and `worktree_branch` — you need them for validation, me
 
 Dispatch the worker into the pre-created worktree (no `isolation` — the worktree already exists):
 
+**For TDD and infra/CI workers:**
+
 ```
 Agent({
   "subagent_type": "<worker-type>",
@@ -140,6 +146,20 @@ Agent({
   "mode": "bypassPermissions",
   "run_in_background": true,
   "prompt": "Work on bead `<bead-id>`.\n\nYou are working in a pre-created worktree at `<worktree_path>`. All your commands must run from this directory — prefix every Bash call with `cd <worktree_path> &&`.\n\nThe worktree has beads configured via redirect — `bd` commands work automatically, no setup needed.\n\nCritical requirements:\n- Record a bead comment after EVERY Red and EVERY Green phase — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop\n- NEVER run `bd init`, `bd init --force`, or `bd doctor --fix` — these destroy the shared beads database. If bd commands fail, add a bead comment describing the error and continue with code work."
+})
+```
+
+**For delete worker:**
+
+```
+Agent({
+  "subagent_type": "delete-worker",
+  "name": "autopilot-worker",
+  "description": "Delete code for bead <bead-id>",
+  "model": "opus",
+  "mode": "bypassPermissions",
+  "run_in_background": true,
+  "prompt": "Work on bead `<bead-id>`.\n\nYou are working in a pre-created worktree at `<worktree_path>`. All your commands must run from this directory — prefix every Bash call with `cd <worktree_path> &&`.\n\nThe worktree has beads configured via redirect — `bd` commands work automatically, no setup needed.\n\nYour allowed path is `<allowed-path>`.\n\nCritical requirements:\n- Run tests BEFORE and AFTER deletions to prove nothing broke\n- Record a bead comment for every deletion group — this is your primary deliverable\n- Only modify files under `<allowed-path>` — do not touch anything outside this boundary\n- If you are unsure about scope or design, add a bead comment explaining the ambiguity and stop\n- NEVER run `bd init`, `bd init --force`, or `bd doctor --fix` — these destroy the shared beads database. If bd commands fail, add a bead comment describing the error and continue with code work."
 })
 ```
 
@@ -177,6 +197,15 @@ If Red = 0, fail: "no Red phase evidence."
 If Green = 0, fail: "no Green phase evidence."
 If summary missing, fail: "no TDD Summary comment."
 
+**For delete worker:**
+- At least one comment containing `## Baseline` (pre-deletion test run)
+- At least one comment containing `## Deletion:` (what was removed + build verification)
+- A summary comment containing `## Deletion Summary`
+
+If baseline missing, fail: "no Baseline evidence."
+If deletion comments = 0, fail: "no Deletion evidence."
+If summary missing, fail: "no Deletion Summary comment."
+
 **For infra worker:**
 - At least one comment containing `## Infrastructure Change`
 - A summary comment containing `## Infrastructure Summary`
@@ -187,7 +216,7 @@ If summary missing, fail: "no TDD Summary comment."
 
 #### Check 3: Commit Count Plausibility
 
-For TDD workers:
+For TDD workers only (skip this check for delete, infra, and CI/CD workers):
 
 ```bash
 git log main..<worker-branch> --oneline | wc -l
