@@ -22,7 +22,7 @@ The CI/CD pipeline had two issues causing the dev environment to drift from main
 
 - **Auto-merge**: Require a fine-grained PAT (`GH_AUTO_MERGE_TOKEN`) instead of `GITHUB_TOKEN` so the merge push triggers downstream workflows.
 
-- **GitHub Environments**: Configure deployment branch policies — production restricted to `main` branch and `v*` tags; development open to all branches (needed for PR staging tests).
+- **GitHub Environments**: Configure deployment branch policies — production restricted to `main` branch and `v*` tags; development has no branch restrictions (PR staging must deploy from any branch).
 
 ## Consequences
 
