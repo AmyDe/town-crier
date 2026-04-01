@@ -57,15 +57,11 @@ describe('DI wrapper naming convention', () => {
 
     const connectedFiles = findConnectedFiles(featuresDir).sort();
 
-    // All 16 DI wrapper files should use Connected prefix
+    // All 12 DI wrapper files should use Connected prefix (Groups removed)
     expect(connectedFiles).toEqual([
-      'ConnectedAcceptInvitationPage.tsx',
       'ConnectedApplicationDetailPage.tsx',
       'ConnectedApplicationsPage.tsx',
       'ConnectedDashboardPage.tsx',
-      'ConnectedGroupCreatePage.tsx',
-      'ConnectedGroupDetailPage.tsx',
-      'ConnectedGroupsListPage.tsx',
       'ConnectedMapPage.tsx',
       'ConnectedNotificationsPage.tsx',
       'ConnectedOnboardingPage.tsx',
