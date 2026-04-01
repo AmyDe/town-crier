@@ -84,6 +84,29 @@
   text-decoration: none;
 }
 
+.signIn {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 var(--tc-space-md);
+  background-color: transparent;
+  color: var(--tc-text-secondary);
+  font-weight: var(--tc-weight-medium);
+  font-size: var(--tc-text-caption);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--tc-duration-fast) ease,
+    border-color var(--tc-duration-fast) ease;
+}
+
+.signIn:hover {
+  color: var(--tc-text-primary);
+  border-color: var(--tc-text-secondary);
+  text-decoration: none;
+}
+
 .hamburger {
   display: flex;
   align-items: center;

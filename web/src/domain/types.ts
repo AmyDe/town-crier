@@ -202,7 +202,7 @@ export interface CreateWatchZoneRequest {
   readonly latitude: number;
   readonly longitude: number;
   readonly radiusMetres: number;
-  readonly authorityId: number;
+  readonly authorityId?: number;
 }
 
 export interface UpdateProfileRequest {

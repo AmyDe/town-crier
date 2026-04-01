@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { AuthProvider } from '../auth/auth-context';
+import { SpyAuthPort } from '../auth/__tests__/spies/spy-auth-port';
 import { LandingPage } from '../features/LandingPage/LandingPage';
 
 function stubMatchMedia(prefersDark: boolean): void {
@@ -21,7 +23,9 @@ function stubMatchMedia(prefersDark: boolean): void {
 function renderLandingPage() {
   return render(
     <MemoryRouter>
-      <LandingPage />
+      <AuthProvider value={new SpyAuthPort()}>
+        <LandingPage />
+      </AuthProvider>
     </MemoryRouter>,
   );
 }

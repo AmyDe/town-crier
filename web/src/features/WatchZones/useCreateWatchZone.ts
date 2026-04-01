@@ -66,7 +66,7 @@ export function useCreateWatchZone(
         latitude: state.coordinates.latitude,
         longitude: state.coordinates.longitude,
         radiusMetres: state.radiusMetres,
-        authorityId: state.authorityId as unknown as number,
+        authorityId: state.authorityId ?? undefined,
       });
       navigate('/watch-zones');
     } catch (err: unknown) {
