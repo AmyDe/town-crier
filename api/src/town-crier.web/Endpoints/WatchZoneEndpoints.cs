@@ -16,6 +16,18 @@ internal static class WatchZoneEndpoints
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
+            if (string.IsNullOrWhiteSpace(request.Name) ||
+                request.RadiusMetres <= 0 ||
+                request.Latitude is < -90 or > 90 ||
+                request.Longitude is < -180 or > 180 ||
+                request.AuthorityId is <= 0)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("Invalid watch zone payload."),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 400);
+            }
+
             var zoneId = Guid.NewGuid().ToString();
             var command = new CreateWatchZoneCommand(
                 userId,
