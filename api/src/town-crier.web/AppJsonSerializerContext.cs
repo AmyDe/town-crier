@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using TownCrier.Application.Admin;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
@@ -42,4 +43,6 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(UpdateZonePreferencesResult))]
 [JsonSerializable(typeof(GetZonePreferencesResult))]
 [JsonSerializable(typeof(GetVersionConfigResult))]
+[JsonSerializable(typeof(GrantSubscriptionCommand))]
+[JsonSerializable(typeof(GrantSubscriptionResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;
