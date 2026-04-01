@@ -1,18 +1,19 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Reflection;
+using System.Text.Json;
 using TownCrier.Application.Authorities;
 
 namespace TownCrier.Infrastructure.Geocoding;
 
 public sealed class PostcodesIoAuthorityResolver : IAuthorityResolver
 {
-    private readonly IAuthorityProvider authorityProvider;
+    private static readonly Dictionary<string, int> AuthorityMapping = LoadAuthorityMapping();
     private readonly HttpClient httpClient;
 
-    public PostcodesIoAuthorityResolver(HttpClient httpClient, IAuthorityProvider authorityProvider)
+    public PostcodesIoAuthorityResolver(HttpClient httpClient)
     {
         this.httpClient = httpClient;
-        this.authorityProvider = authorityProvider;
     }
 
     public async Task<int> ResolveFromCoordinatesAsync(double latitude, double longitude, CancellationToken ct)
@@ -41,16 +42,24 @@ public sealed class PostcodesIoAuthorityResolver : IAuthorityResolver
                 $"No local authority found for coordinates ({latitude}, {longitude})");
         }
 
-        var authorities = await this.authorityProvider.GetAllAsync(ct).ConfigureAwait(false);
-        var match = authorities.FirstOrDefault(a =>
-            string.Equals(a.Name, adminDistrict, StringComparison.OrdinalIgnoreCase));
-
-        if (match is null)
+        if (!AuthorityMapping.TryGetValue(adminDistrict, out var authorityId))
         {
             throw new InvalidOperationException(
-                $"No PlanIt authority matches local authority '{adminDistrict}' for coordinates ({latitude}, {longitude})");
+                $"No PlanIt authority mapping for admin district '{adminDistrict}' at coordinates ({latitude}, {longitude})");
         }
 
-        return match.Id;
+        return authorityId;
+    }
+
+    private static Dictionary<string, int> LoadAuthorityMapping()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        const string resourceName = "TownCrier.Infrastructure.Geocoding.authority-mapping.json";
+
+        using var stream = assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
+
+        return JsonSerializer.Deserialize(stream, GeocodingJsonSerializerContext.Default.DictionaryStringInt32)
+            ?? throw new InvalidOperationException("Failed to deserialize authority mapping.");
     }
 }
