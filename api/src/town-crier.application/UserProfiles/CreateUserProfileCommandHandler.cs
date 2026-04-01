@@ -25,7 +25,7 @@ public sealed class CreateUserProfileCommandHandler
                 existing.Tier);
         }
 
-        var profile = UserProfile.Register(command.UserId);
+        var profile = UserProfile.Register(command.UserId, command.Email);
         await this.repository.SaveAsync(profile, ct).ConfigureAwait(false);
 
         return new CreateUserProfileResult(

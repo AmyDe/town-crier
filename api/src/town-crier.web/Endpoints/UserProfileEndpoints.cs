@@ -14,7 +14,8 @@ internal static class UserProfileEndpoints
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
-            var result = await handler.HandleAsync(new CreateUserProfileCommand(userId), ct).ConfigureAwait(false);
+            var email = user.FindFirstValue("email");
+            var result = await handler.HandleAsync(new CreateUserProfileCommand(userId, email), ct).ConfigureAwait(false);
             return Results.Ok(result);
         });
 
