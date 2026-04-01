@@ -41,7 +41,6 @@ export function useOnboarding(port: OnboardingPort) {
         latitude: geocode.latitude,
         longitude: geocode.longitude,
         radiusMetres,
-        authorityId: 0,
       });
       setIsComplete(true);
     } catch (err) {

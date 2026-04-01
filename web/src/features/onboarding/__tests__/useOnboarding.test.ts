@@ -86,7 +86,6 @@ describe('useOnboarding', () => {
       latitude: 51.5074,
       longitude: -0.1278,
       radiusMetres: 2000,
-      authorityId: 0,
     });
     expect(result.current.isComplete).toBe(true);
     expect(result.current.isSubmitting).toBe(false);
