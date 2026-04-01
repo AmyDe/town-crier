@@ -136,9 +136,6 @@ public static class EnvironmentStack
             // SavedApplications — partitioned by userId
             new("SavedApplications", "/userId"),
 
-            // Groups — partitioned by ownerId
-            new("Groups", "/ownerId"),
-
             // DecisionAlerts — partitioned by userId
             new("DecisionAlerts", "/userId"),
         };
