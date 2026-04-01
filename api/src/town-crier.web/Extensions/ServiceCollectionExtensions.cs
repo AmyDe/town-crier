@@ -5,7 +5,6 @@ using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
-using TownCrier.Application.Groups;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
@@ -21,7 +20,6 @@ using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
-using TownCrier.Infrastructure.Groups;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -44,8 +42,6 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
         services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
         services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
-        services.AddSingleton<IGroupRepository, CosmosGroupRepository>();
-        services.AddSingleton<IGroupInvitationRepository, CosmosGroupInvitationRepository>();
         services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
         services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
         services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
@@ -146,14 +142,6 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetSavedApplicationsQueryHandler>();
 
         services.AddTransient<GetDemoAccountQueryHandler>();
-
-        services.AddTransient<CreateGroupCommandHandler>();
-        services.AddTransient<GetGroupQueryHandler>();
-        services.AddTransient<GetUserGroupsQueryHandler>();
-        services.AddTransient<InviteMemberCommandHandler>();
-        services.AddTransient<AcceptInvitationCommandHandler>();
-        services.AddTransient<RemoveGroupMemberCommandHandler>();
-        services.AddTransient<DeleteGroupCommandHandler>();
 
         return services;
     }

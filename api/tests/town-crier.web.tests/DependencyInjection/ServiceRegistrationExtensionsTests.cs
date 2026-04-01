@@ -7,7 +7,6 @@ using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
-using TownCrier.Application.Groups;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
@@ -46,8 +45,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<IPlanningApplicationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IUserProfileRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IWatchZoneRepository>()).IsNotNull();
-        await Assert.That(provider.GetService<IGroupRepository>()).IsNotNull();
-        await Assert.That(provider.GetService<IGroupInvitationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IDecisionAlertRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IDeviceRegistrationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<INotificationRepository>()).IsNotNull();
@@ -90,8 +87,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<SaveApplicationCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetSavedApplicationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetDemoAccountQueryHandler>()).IsNotNull();
-        await Assert.That(provider.GetService<CreateGroupCommandHandler>()).IsNotNull();
-        await Assert.That(provider.GetService<GetGroupQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<PollPlanItCommandHandler>()).IsNotNull();
     }
 
