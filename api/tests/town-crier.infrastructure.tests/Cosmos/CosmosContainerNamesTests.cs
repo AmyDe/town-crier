@@ -15,7 +15,6 @@ public sealed class CosmosContainerNamesTests
     public async Task Should_ExposeAllContainerNames_AsConstants()
     {
         string users = CosmosContainerNames.Users;
-        string groups = CosmosContainerNames.Groups;
         string notifications = CosmosContainerNames.Notifications;
         string deviceRegistrations = CosmosContainerNames.DeviceRegistrations;
         string decisionAlerts = CosmosContainerNames.DecisionAlerts;
@@ -24,7 +23,6 @@ public sealed class CosmosContainerNamesTests
         string applications = CosmosContainerNames.Applications;
 
         await Assert.That(users).IsNotEmpty();
-        await Assert.That(groups).IsNotEmpty();
         await Assert.That(notifications).IsNotEmpty();
         await Assert.That(deviceRegistrations).IsNotEmpty();
         await Assert.That(decisionAlerts).IsNotEmpty();
