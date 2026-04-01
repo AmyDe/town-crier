@@ -202,11 +202,12 @@ jobs:
           printenv | grep ^INTEGRATION_TEST_ > tests/town-crier.integration-tests/bin/Release/net10.0/.env
           dotnet exec tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests.dll
 
-  # ── API: promote staging to live ────────────────────
+  # ── API: clean up staging revision ───────────────────
 
-  api-promote:
-    name: "API: Promote staging"
+  api-staging-cleanup:
+    name: "API: Deactivate staging revision"
     needs: [api-staging, api-integration-test]
+    if: always() && needs.api-staging.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -219,20 +220,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Shift traffic to new revision
+      - name: Deactivate staging revision
         run: |
-          MODE=$(az containerapp show \
+          az containerapp revision deactivate \
             --name ca-town-crier-api-dev \
             --resource-group rg-town-crier-dev \
-            --query "properties.configuration.activeRevisionsMode" -o tsv)
-          if [ "$MODE" = "Single" ]; then
-            echo "Single-revision mode — traffic already routes to the latest revision"
-          else
-            az containerapp ingress traffic set \
-              --name ca-town-crier-api-dev \
-              --resource-group rg-town-crier-dev \
-              --revision-weight "${{ needs.api-staging.outputs.new-revision }}=100"
-          fi
+            --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
   # ── iOS ──────────────────────────────────────────────
 
@@ -356,7 +349,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [api-format, api-build-test, api-staging, api-integration-test, api-promote, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -368,7 +361,7 @@ jobs:
             "${{ needs.api-build-test.result }}"
             "${{ needs.api-staging.result }}"
             "${{ needs.api-integration-test.result }}"
-            "${{ needs.api-promote.result }}"
+            "${{ needs.api-staging-cleanup.result }}"
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
             "${{ needs.web-lint.result }}"
