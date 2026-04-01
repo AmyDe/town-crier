@@ -9,6 +9,7 @@
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription
 #   ACR_LOGIN_SERVER       — Azure Container Registry login server
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
+#   ADMIN_API_KEY          — API key for admin endpoints
 #
 # Requires GitHub Environment:
 #   development            — with OIDC federated credential (environment:development)
@@ -139,7 +140,8 @@ jobs:
           az containerapp update \
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}" \
+            --set-env-vars "Admin__ApiKey=${{ secrets.ADMIN_API_KEY }}"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
