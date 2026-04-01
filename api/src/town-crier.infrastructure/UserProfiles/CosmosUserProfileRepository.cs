@@ -26,6 +26,19 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return document?.ToDomain();
     }
 
+    public async Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct)
+    {
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Users,
+            "SELECT * FROM c WHERE c.email = @email",
+            [new QueryParameter("@email", email)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
+    }
+
     public async Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(
