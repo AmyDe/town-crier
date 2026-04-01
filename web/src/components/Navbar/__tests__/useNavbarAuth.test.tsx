@@ -6,7 +6,7 @@ import { useNavbarAuth } from '../useNavbarAuth';
 
 function createWrapper(spy: SpyAuthPort) {
   return function Wrapper({ children }: { children: ReactNode }) {
-    return AuthProvider({ value: spy, children });
+    return <AuthProvider value={spy}>{children}</AuthProvider>;
   };
 }
 
