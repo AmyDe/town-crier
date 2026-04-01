@@ -10,4 +10,11 @@ describe('LoadingSkeleton', () => {
     expect(skeleton).toBeInTheDocument();
     expect(skeleton).toHaveAttribute('aria-label', 'Loading');
   });
+
+  it('renders multiple skeleton rows', () => {
+    const { container } = render(<LoadingSkeleton />);
+
+    const rows = container.querySelectorAll('[data-testid="skeleton-row"]');
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+  });
 });
