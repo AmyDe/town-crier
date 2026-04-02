@@ -21,7 +21,8 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         await userProfileRepository.SaveAsync(profile, CancellationToken.None);
 
         var planItClient = new FakePlanItClient();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
 
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
@@ -49,7 +50,8 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         planItClient.AddSearchResult(application);
         planItClient.SearchTotal = 1;
 
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
         // Act
@@ -66,6 +68,38 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
     }
 
     [Test]
+    public async Task Should_UpsertSearchResults_Into_Repository()
+    {
+        // Arrange
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        var userProfileRepository = new FakeUserProfileRepository();
+        await userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var application = new PlanningApplicationBuilder()
+            .WithName("Extension to rear")
+            .WithUid("planit-123")
+            .Build();
+        var planItClient = new FakePlanItClient();
+        planItClient.AddSearchResult(application);
+        planItClient.SearchTotal = 1;
+
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
+
+        // Act
+        await handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        var stored = await appRepo.GetByUidAsync("planit-123", CancellationToken.None);
+        await Assert.That(stored).IsNotNull();
+        await Assert.That(stored!.Name).IsEqualTo("Extension to rear");
+    }
+
+    [Test]
     public async Task Should_ReturnEmptyResults_When_NoMatchesFound()
     {
         // Arrange
@@ -79,7 +113,8 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         var planItClient = new FakePlanItClient();
         planItClient.SearchTotal = 0;
 
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
         var query = new SearchPlanningApplicationsQuery("user-1", "nonexistent", AuthorityId: 42);
 
         // Act
@@ -96,7 +131,8 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         // Arrange
         var userProfileRepository = new FakeUserProfileRepository();
         var planItClient = new FakePlanItClient();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
         var query = new SearchPlanningApplicationsQuery("nonexistent-user", "extension", AuthorityId: 42);
 
         // Act & Assert
