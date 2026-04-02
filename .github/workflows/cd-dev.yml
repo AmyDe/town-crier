@@ -141,7 +141,8 @@ jobs:
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}" \
-            --set-env-vars "Admin__ApiKey=${{ secrets.ADMIN_API_KEY }}"
+            --set-secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
+            --set-env-vars "Admin__ApiKey=secretref:admin-api-key"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:

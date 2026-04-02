@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '../Sidebar/Sidebar';
+import { LoadingSkeleton } from '../LoadingSkeleton/LoadingSkeleton';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
@@ -67,7 +68,9 @@ export function AppShell() {
         </header>
 
         <div className={styles.content}>
-          <Outlet />
+          <Suspense fallback={<LoadingSkeleton />}>
+            <Outlet />
+          </Suspense>
         </div>
       </div>
     </div>
