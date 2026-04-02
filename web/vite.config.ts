@@ -16,9 +16,8 @@ export default defineConfig({
           if (id.includes('node_modules/@tanstack/')) {
             return 'query';
           }
-          if (id.includes('node_modules/leaflet') || id.includes('node_modules/react-leaflet')) {
-            return 'maps';
-          }
+          // leaflet intentionally omitted — only used by lazy-loaded
+          // MapPage, so Vite naturally splits it into that route chunk.
         },
       },
     },
