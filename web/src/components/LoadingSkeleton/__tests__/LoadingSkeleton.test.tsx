@@ -12,9 +12,9 @@ describe('LoadingSkeleton', () => {
   });
 
   it('renders multiple skeleton rows', () => {
-    const { container } = render(<LoadingSkeleton />);
+    render(<LoadingSkeleton />);
 
-    const rows = container.querySelectorAll('[data-testid="skeleton-row"]');
+    const rows = screen.getAllByTestId('skeleton-row');
     expect(rows.length).toBeGreaterThanOrEqual(3);
   });
 });
