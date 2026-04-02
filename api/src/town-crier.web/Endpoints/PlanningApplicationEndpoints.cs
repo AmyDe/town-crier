@@ -16,7 +16,7 @@ internal static class PlanningApplicationEndpoints
             return Results.Ok(result);
         });
 
-        group.MapGet("/applications/{uid}", async (
+        group.MapGet("/applications/{**uid}", async (
             string uid,
             GetApplicationByUidQueryHandler handler,
             CancellationToken ct) =>

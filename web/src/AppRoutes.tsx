@@ -67,7 +67,7 @@ export function AppRoutes() {
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<ConnectedApplicationsPage />} />
-            <Route path="/applications/:uid" element={<ConnectedApplicationDetailPage />} />
+            <Route path="/applications/*" element={<ConnectedApplicationDetailPage />} />
             <Route path="/watch-zones" element={<ConnectedWatchZoneListPage />} />
             <Route path="/watch-zones/new" element={<ConnectedWatchZoneCreatePage />} />
             <Route path="/watch-zones/:zoneId" element={<ConnectedWatchZoneEditPage />} />
