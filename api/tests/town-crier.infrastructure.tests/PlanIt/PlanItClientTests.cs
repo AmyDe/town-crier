@@ -254,10 +254,11 @@ public sealed class PlanItClientTests
         // Act
         await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
 
-        // Assert — must use 'search=' not 'q='
+        // Assert — must use 'search=' not 'q=', and pg_sz must be small (not 5000)
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
         await Assert.That(handler.RequestUrls[0]).Contains("search=car%20park");
         await Assert.That(handler.RequestUrls[0]).DoesNotContain("&q=");
+        await Assert.That(handler.RequestUrls[0]).Contains("pg_sz=20");
     }
 
     private static PlanItClient CreateClient(

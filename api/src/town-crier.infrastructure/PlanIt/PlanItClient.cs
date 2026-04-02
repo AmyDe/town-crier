@@ -11,6 +11,7 @@ namespace TownCrier.Infrastructure.PlanIt;
 public sealed class PlanItClient : IPlanItClient
 {
     private const int DefaultPageSize = 5000;
+    private const int SearchPageSize = 20;
 
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]
     private static readonly Random Jitter = new();
@@ -95,7 +96,7 @@ public sealed class PlanItClient : IPlanItClient
     private static string BuildSearchUrl(string searchText, int authorityId, int page)
     {
         var encodedQuery = Uri.EscapeDataString(searchText);
-        return $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}&search={encodedQuery}";
+        return $"/api/applics/json?pg_sz={SearchPageSize}&sort=-last_different&page={page}&auth={authorityId}&search={encodedQuery}";
     }
 
     private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)
