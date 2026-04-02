@@ -1,4 +1,5 @@
 using TownCrier.Application.PlanIt;
+using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.UserProfiles;
 
@@ -8,13 +9,16 @@ public sealed class SearchPlanningApplicationsQueryHandler
 {
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IPlanItClient planItClient;
+    private readonly IPlanningApplicationRepository applicationRepository;
 
     public SearchPlanningApplicationsQueryHandler(
         IUserProfileRepository userProfileRepository,
-        IPlanItClient planItClient)
+        IPlanItClient planItClient,
+        IPlanningApplicationRepository applicationRepository)
     {
         this.userProfileRepository = userProfileRepository;
         this.planItClient = planItClient;
+        this.applicationRepository = applicationRepository;
     }
 
     public async Task<SearchPlanningApplicationsResult> HandleAsync(
@@ -33,6 +37,11 @@ public sealed class SearchPlanningApplicationsQueryHandler
 
         var result = await this.planItClient.SearchApplicationsAsync(
             query.SearchText, query.AuthorityId, query.Page, ct).ConfigureAwait(false);
+
+        foreach (var application in result.Applications)
+        {
+            await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+        }
 
         var summaries = result.Applications.Select(a => new PlanningApplicationSummary(
             a.Uid,
