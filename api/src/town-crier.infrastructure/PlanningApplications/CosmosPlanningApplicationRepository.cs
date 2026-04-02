@@ -34,7 +34,7 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
 
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Applications,
-            "SELECT * FROM c WHERE c.Uid = @uid",
+            "SELECT * FROM c WHERE c.uid = @uid",
             [new QueryParameter("@uid", uid)],
             partitionKey: null,
             CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
