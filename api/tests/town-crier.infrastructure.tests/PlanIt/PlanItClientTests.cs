@@ -243,6 +243,23 @@ public sealed class PlanItClientTests
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
     }
 
+    [Test]
+    public async Task Should_UseSearchParameter_When_SearchingApplications()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
+
+        // Assert — must use 'search=' not 'q='
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
+        await Assert.That(handler.RequestUrls[0]).Contains("search=car%20park");
+        await Assert.That(handler.RequestUrls[0]).DoesNotContain("&q=");
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItRetryOptions? retryOptions = null,
