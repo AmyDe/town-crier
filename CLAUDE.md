@@ -198,6 +198,44 @@ What is the change that we're proposing and/or doing?
 What becomes easier or more difficult to do because of this change?
 ```
 
+## Technical Memos
+
+Record a memo in `/docs/memo/` to capture analysis, exploration, or discussion that hasn't resulted in a decision yet. Use the format `NNNN-title.md` (zero-padded sequence number). A memo should be written whenever:
+
+- A significant technical question has been explored with trade-offs analysed
+- A future migration path or scaling concern has been discussed
+- Options have been evaluated but no action is being taken yet
+
+A memo can graduate to an ADR when a decision is made. Use status `Superseded by ADR NNNN` when this happens.
+
+Use this template:
+
+```markdown
+# NNNN. Title
+
+Date: YYYY-MM-DD
+
+## Status
+
+Open | Superseded by ADR [NNNN](../adr/NNNN-title.md) | Resolved (no action)
+
+## Question
+
+What prompted this analysis?
+
+## Analysis
+
+What we explored and found.
+
+## Options Considered
+
+The paths forward with trade-offs.
+
+## Recommendation
+
+Current thinking, even if no decision has been made.
+```
+
 ## Style Enforcement Assets
 
 Standard linting/formatting configs are bundled with their respective skills:
