@@ -95,7 +95,7 @@ public sealed class PlanItClient : IPlanItClient
     private static string BuildSearchUrl(string searchText, int authorityId, int page)
     {
         var encodedQuery = Uri.EscapeDataString(searchText);
-        return $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}&q={encodedQuery}";
+        return $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}&search={encodedQuery}";
     }
 
     private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)
