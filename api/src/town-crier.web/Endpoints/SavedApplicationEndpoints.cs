@@ -7,7 +7,7 @@ internal static class SavedApplicationEndpoints
 {
     public static void MapSavedApplicationEndpoints(this RouteGroupBuilder group)
     {
-        group.MapPut("/me/saved-applications/{applicationUid}", async (
+        group.MapPut("/me/saved-applications/{**applicationUid}", async (
             ClaimsPrincipal user,
             string applicationUid,
             SaveApplicationCommandHandler handler,
@@ -18,7 +18,7 @@ internal static class SavedApplicationEndpoints
             return Results.NoContent();
         });
 
-        group.MapDelete("/me/saved-applications/{applicationUid}", async (
+        group.MapDelete("/me/saved-applications/{**applicationUid}", async (
             ClaimsPrincipal user,
             string applicationUid,
             RemoveSavedApplicationCommandHandler handler,

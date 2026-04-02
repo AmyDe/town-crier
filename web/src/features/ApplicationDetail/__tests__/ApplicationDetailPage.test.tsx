@@ -29,7 +29,7 @@ function renderPage(
     <MemoryRouter initialEntries={[`/applications/${uid}`]}>
       <Routes>
         <Route
-          path="/applications/:uid"
+          path="/applications/*"
           element={
             <ApplicationDetailPage
               applicationRepository={appRepo}

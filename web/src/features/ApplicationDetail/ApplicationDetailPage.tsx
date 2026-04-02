@@ -20,7 +20,7 @@ export function ApplicationDetailPage({
   designationRepository,
   savedApplicationRepository,
 }: Props) {
-  const { uid: rawUid } = useParams<{ uid: string }>();
+  const { '*': rawUid } = useParams();
   const uid = asApplicationUid(rawUid ?? '');
 
   const { application, isLoading, error } = useApplication(applicationRepository, uid);
