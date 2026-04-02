@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { LandingPage } from './features/LandingPage/LandingPage';
 import { CallbackPage } from './auth/CallbackPage';
@@ -5,18 +6,51 @@ import { LegalPage } from './features/legal/LegalPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
-import { ConnectedOnboardingPage } from './features/onboarding/ConnectedOnboardingPage';
-import { ConnectedApplicationsPage } from './features/Applications/ConnectedApplicationsPage';
-import { ConnectedDashboardPage } from './features/Dashboard/ConnectedDashboardPage';
-import { ConnectedNotificationsPage } from './features/Notifications/ConnectedNotificationsPage';
-import { ConnectedSettingsPage } from './features/Settings/ConnectedSettingsPage';
-import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
-import { ConnectedApplicationDetailPage } from './features/ApplicationDetail/ConnectedApplicationDetailPage';
-import { ConnectedWatchZoneListPage } from './features/WatchZones/ConnectedWatchZoneListPage';
-import { ConnectedWatchZoneCreatePage } from './features/WatchZones/ConnectedWatchZoneCreatePage';
-import { ConnectedWatchZoneEditPage } from './features/WatchZones/ConnectedWatchZoneEditPage';
-import { ConnectedSavedApplicationsPage } from './features/SavedApplications/ConnectedSavedApplicationsPage';
-import { ConnectedMapPage } from './features/Map/ConnectedMapPage';
+
+const ConnectedOnboardingPage = lazy(() =>
+  import('./features/onboarding/ConnectedOnboardingPage').then((m) => ({ default: m.ConnectedOnboardingPage })),
+);
+const ConnectedDashboardPage = lazy(() =>
+  import('./features/Dashboard/ConnectedDashboardPage').then((m) => ({ default: m.ConnectedDashboardPage })),
+);
+const ConnectedApplicationsPage = lazy(() =>
+  import('./features/Applications/ConnectedApplicationsPage').then((m) => ({ default: m.ConnectedApplicationsPage })),
+);
+const ConnectedApplicationDetailPage = lazy(() =>
+  import('./features/ApplicationDetail/ConnectedApplicationDetailPage').then((m) => ({
+    default: m.ConnectedApplicationDetailPage,
+  })),
+);
+const ConnectedWatchZoneListPage = lazy(() =>
+  import('./features/WatchZones/ConnectedWatchZoneListPage').then((m) => ({ default: m.ConnectedWatchZoneListPage })),
+);
+const ConnectedWatchZoneCreatePage = lazy(() =>
+  import('./features/WatchZones/ConnectedWatchZoneCreatePage').then((m) => ({
+    default: m.ConnectedWatchZoneCreatePage,
+  })),
+);
+const ConnectedWatchZoneEditPage = lazy(() =>
+  import('./features/WatchZones/ConnectedWatchZoneEditPage').then((m) => ({ default: m.ConnectedWatchZoneEditPage })),
+);
+const ConnectedMapPage = lazy(() =>
+  import('./features/Map/ConnectedMapPage').then((m) => ({ default: m.ConnectedMapPage })),
+);
+const ConnectedSearchPage = lazy(() =>
+  import('./features/Search/ConnectedSearchPage').then((m) => ({ default: m.ConnectedSearchPage })),
+);
+const ConnectedSavedApplicationsPage = lazy(() =>
+  import('./features/SavedApplications/ConnectedSavedApplicationsPage').then((m) => ({
+    default: m.ConnectedSavedApplicationsPage,
+  })),
+);
+const ConnectedNotificationsPage = lazy(() =>
+  import('./features/Notifications/ConnectedNotificationsPage').then((m) => ({
+    default: m.ConnectedNotificationsPage,
+  })),
+);
+const ConnectedSettingsPage = lazy(() =>
+  import('./features/Settings/ConnectedSettingsPage').then((m) => ({ default: m.ConnectedSettingsPage })),
+);
 
 export function AppRoutes() {
   return (
@@ -28,7 +62,7 @@ export function AppRoutes() {
 
       {/* Authenticated routes */}
       <Route element={<AuthGuard />}>
-        <Route path="/onboarding" element={<ConnectedOnboardingPage />} />
+        <Route path="/onboarding" element={<Suspense fallback={null}><ConnectedOnboardingPage /></Suspense>} />
         <Route element={<OnboardingGate />}>
           <Route element={<AppShell />}>
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
