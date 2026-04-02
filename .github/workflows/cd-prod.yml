@@ -116,13 +116,21 @@ jobs:
             exit 1
           fi
 
+      - name: Set Container App secrets
+        run: |
+          az containerapp secret set \
+            --name "ca-town-crier-api-prod" \
+            --resource-group "$RESOURCE_GROUP" \
+            --secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}"
+        env:
+          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
+
       - name: Deploy API image to prod
         run: |
           az containerapp update \
             --name "ca-town-crier-api-prod" \
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}" \
-            --set-secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
             --set-env-vars "Admin__ApiKey=secretref:admin-api-key"
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}

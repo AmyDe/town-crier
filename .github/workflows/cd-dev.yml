@@ -135,13 +135,19 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Set Container App secrets
+        run: |
+          az containerapp secret set \
+            --name "ca-town-crier-api-dev" \
+            --resource-group "rg-town-crier-dev" \
+            --secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}"
+
       - name: Deploy to Container App
         run: |
           az containerapp update \
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}" \
-            --set-secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
             --set-env-vars "Admin__ApiKey=secretref:admin-api-key"
 
   # ── Web: deploy to dev ──────────────────────────────
