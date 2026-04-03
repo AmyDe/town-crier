@@ -34,6 +34,7 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(PlanningApplicationResult))]
 [JsonSerializable(typeof(IReadOnlyList<PlanningApplicationResult>))]
 [JsonSerializable(typeof(SearchPlanningApplicationsResult))]
+[JsonSerializable(typeof(GetUserApplicationAuthoritiesResult))]
 [JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]
 [JsonSerializable(typeof(CreateWatchZoneRequest))]

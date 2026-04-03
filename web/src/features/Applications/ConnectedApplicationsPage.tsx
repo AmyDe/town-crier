@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { useApiClient } from '../../api/useApiClient';
 import { applicationsApi } from '../../api/applications';
-import { authoritiesApi } from '../../api/authorities';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import type { AuthoritySearchPort } from '../../domain/ports/authority-search-port';
+import type { UserAuthoritiesPort } from '../../domain/ports/user-authorities-port';
 import { ApplicationsPage } from './ApplicationsPage';
 
 export function ConnectedApplicationsPage() {
@@ -17,12 +16,12 @@ export function ConnectedApplicationsPage() {
     [client],
   );
 
-  const searchPort: AuthoritySearchPort = useMemo(
+  const userAuthoritiesPort: UserAuthoritiesPort = useMemo(
     () => ({
-      search: (query) => authoritiesApi(client).list(query),
+      fetchMyAuthorities: () => applicationsApi(client).getMyAuthorities(),
     }),
     [client],
   );
 
-  return <ApplicationsPage browsePort={browsePort} searchPort={searchPort} />;
+  return <ApplicationsPage userAuthoritiesPort={userAuthoritiesPort} browsePort={browsePort} />;
 }

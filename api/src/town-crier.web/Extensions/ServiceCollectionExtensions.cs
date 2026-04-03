@@ -138,6 +138,7 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<GetApplicationByUidQueryHandler>();
         services.AddTransient<GetApplicationsByAuthorityQueryHandler>();
+        services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
         services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
         services.AddTransient<GetNotificationsQueryHandler>();

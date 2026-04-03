@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using TownCrier.Application.PlanningApplications;
 
 namespace TownCrier.Web.Endpoints;
@@ -6,6 +7,17 @@ internal static class PlanningApplicationEndpoints
 {
     public static void MapPlanningApplicationEndpoints(this RouteGroupBuilder group)
     {
+        group.MapGet("/me/application-authorities", async (
+            ClaimsPrincipal user,
+            GetUserApplicationAuthoritiesQueryHandler handler,
+            CancellationToken ct) =>
+        {
+            var userId = user.FindFirstValue("sub")!;
+            var result = await handler.HandleAsync(
+                new GetUserApplicationAuthoritiesQuery(userId), ct).ConfigureAwait(false);
+            return Results.Ok(result);
+        });
+
         group.MapGet("/applications", async (
             int authorityId,
             GetApplicationsByAuthorityQueryHandler handler,
