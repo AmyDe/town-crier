@@ -29,7 +29,6 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   changes:
@@ -333,18 +332,25 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: pulumi/actions@v6
-        with:
-          command: preview
-          stack-name: ${{ vars.PULUMI_STACK }}
-          work-dir: infra
-          comment-on-pr: true
+      - name: Pulumi preview
+        working-directory: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           ARM_USE_OIDC: true
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          pulumi stack select ${{ vars.PULUMI_STACK }}
+          pulumi preview --non-interactive 2>&1 | tee /tmp/pulumi-preview.txt
+
+      - name: Comment preview on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREVIEW=$(cat /tmp/pulumi-preview.txt)
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body "$(printf '<details><summary>Pulumi preview — <code>${{ vars.PULUMI_STACK }}</code></summary>\n\n```\n%s\n```\n\n</details>' "$PREVIEW")"
 
   # ── Gate (sole required status check) ────────────────
 

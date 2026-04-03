@@ -1,7 +1,7 @@
-# Sets up .NET SDK (via global.json) and caches NuGet packages for infra projects.
-# Centralises the setup-dotnet + cache pair used across infra jobs.
-name: Setup .NET for Infra
-description: Install .NET SDK from global.json and cache NuGet packages for infra projects
+# Sets up .NET SDK (via global.json), Pulumi CLI, and caches NuGet packages
+# for infra projects. Centralises the setup used across infra jobs.
+name: Setup .NET & Pulumi for Infra
+description: Install .NET SDK, Pulumi CLI, and cache NuGet packages for infra projects
 
 runs:
   using: composite
@@ -10,6 +10,14 @@ runs:
       uses: actions/setup-dotnet@v5
       with:
         global-json-file: api/global.json
+
+    - name: Install Pulumi CLI
+      shell: bash
+      run: curl -fsSL https://get.pulumi.com | sh
+
+    - name: Add Pulumi to PATH
+      shell: bash
+      run: echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
 
     - name: Cache NuGet packages
       uses: actions/cache@v5
