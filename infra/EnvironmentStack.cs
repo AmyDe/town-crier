@@ -285,7 +285,9 @@ public static class EnvironmentStack
             // causing activation failure (quickstart listens on port 80, not 8080).
             // Traffic weights are managed by CI (staging revisions with 0% traffic),
             // so Pulumi must not reset them on the next `pulumi up`.
-            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic" },
+            // Secrets are managed by `az containerapp secret set` in the CD pipeline;
+            // Pulumi must not try to remove them when updating the template.
+            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic", "configuration.secrets" },
         });
 
         if (customDomainPhase == 1)
