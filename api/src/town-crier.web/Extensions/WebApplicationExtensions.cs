@@ -10,9 +10,7 @@ internal static class WebApplicationExtensions
     public static void UseMiddlewarePipeline(this WebApplication app)
     {
         app.UseCors();
-        app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseMiddleware<ErrorResponseMiddleware>();
-        app.UseMiddleware<RequestLoggingMiddleware>();
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<RateLimitMiddleware>();

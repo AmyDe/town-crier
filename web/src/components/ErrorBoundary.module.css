@@ -1,0 +1,32 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: var(--tc-space-xl);
+  text-align: center;
+}
+
+.title {
+  font-size: var(--tc-text-display-small);
+  font-weight: var(--tc-weight-semibold);
+  color: var(--tc-text-primary);
+  margin-bottom: var(--tc-space-md);
+}
+
+.message {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+  margin-bottom: var(--tc-space-lg);
+}
+
+.button {
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border: none;
+  border-radius: var(--tc-radius-md);
+  font-size: var(--tc-text-body);
+  cursor: pointer;
+}

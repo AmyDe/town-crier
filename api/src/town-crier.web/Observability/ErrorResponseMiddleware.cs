@@ -2,10 +2,8 @@ using System.Text.Json;
 
 namespace TownCrier.Web.Observability;
 
-internal sealed class ErrorResponseMiddleware(RequestDelegate next)
+internal sealed partial class ErrorResponseMiddleware(RequestDelegate next, ILogger<ErrorResponseMiddleware> logger)
 {
-    private const string CorrelationIdHeader = "X-Correlation-Id";
-
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -16,6 +14,7 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            LogUnhandledException(logger, ex, context.Request.Method, context.Request.Path.Value ?? "/");
             context.Items["ErrorDetail"] = ex.Message;
             if (!context.Response.HasStarted)
             {
@@ -27,10 +26,6 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
             && !context.Response.HasStarted
             && context.Response.ContentLength is null or 0)
         {
-            var correlationId = context.Request.Headers[CorrelationIdHeader].FirstOrDefault()
-                ?? context.Response.Headers[CorrelationIdHeader].FirstOrDefault()
-                ?? string.Empty;
-
             var detail = context.Items.TryGetValue("ErrorDetail", out var detailObj)
                 ? detailObj as string
                 : null;
@@ -38,7 +33,6 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
             var errorBody = new ErrorResponse(
                 context.Response.StatusCode,
                 GetReasonPhrase(context.Response.StatusCode),
-                correlationId,
                 detail);
 
             context.Response.ContentType = "application/json";
@@ -63,4 +57,7 @@ internal sealed class ErrorResponseMiddleware(RequestDelegate next)
             _ => "Error",
         };
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unhandled exception on {Method} {Path}")]
+    private static partial void LogUnhandledException(ILogger logger, Exception exception, string method, string path);
 }

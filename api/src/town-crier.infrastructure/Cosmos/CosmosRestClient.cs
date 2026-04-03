@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
@@ -35,12 +37,19 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos ReadItem");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "ReadItem");
+
         var encodedId = Uri.EscapeDataString(id);
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -63,6 +72,11 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos Upsert");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "Upsert");
+
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
@@ -74,6 +88,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             "application/json");
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
+
         response.EnsureSuccessStatusCode();
     }
 
@@ -83,12 +100,19 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         string partitionKey,
         CancellationToken ct)
     {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos Delete");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "Delete");
+
         var encodedId = Uri.EscapeDataString(id);
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"/{resourceLink}");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
@@ -106,6 +130,11 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos Query");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "Query");
+
         var results = new List<T>();
         string? continuation = null;
 
@@ -122,6 +151,8 @@ internal sealed class CosmosRestClient : ICosmosRestClient
 
             using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
             await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
+
+            RecordResponseMetrics(activity, response);
 
             var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             await using (stream.ConfigureAwait(false))
@@ -184,6 +215,27 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         throw new HttpRequestException(
             $"Cosmos DB query failed ({(int)response.StatusCode}): {body} | SQL: {sql}");
+    }
+
+    private static void RecordResponseMetrics(Activity? activity, HttpResponseMessage response)
+    {
+        var statusCode = (int)response.StatusCode;
+        activity?.SetTag("db.cosmosdb.status_code", statusCode);
+
+        if (response.Headers.TryGetValues("x-ms-request-charge", out var ruValues))
+        {
+            var ruString = ruValues.FirstOrDefault();
+            if (ruString is not null && double.TryParse(ruString, out var ru))
+            {
+                activity?.SetTag("db.cosmosdb.request_charge", ru);
+                CosmosInstrumentation.RequestCharge.Record(ru);
+            }
+        }
+
+        if (statusCode == 429)
+        {
+            CosmosInstrumentation.Throttles.Add(1);
+        }
     }
 
     private HttpRequestMessage BuildQueryRequest(

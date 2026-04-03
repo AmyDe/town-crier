@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.WatchZones;
@@ -68,6 +70,11 @@ public sealed class PollPlanItCommandHandler
             var count = 0;
             foreach (var authorityId in authoritiesToPoll)
             {
+                using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
+                authorityActivity?.SetTag("polling.authority_code", authorityId);
+                var authorityStart = Stopwatch.GetTimestamp();
+
+                var authorityAppCount = 0;
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
                     await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
@@ -83,9 +90,17 @@ public sealed class PollPlanItCommandHandler
                         }
                     }
 
+                    authorityAppCount++;
                     count++;
                 }
+
+                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
+                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
+                authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
             }
+
+            PollingMetrics.AuthoritiesPolled.Add(polled);
+            PollingMetrics.AuthoritiesSkipped.Add(skipped);
 
             health.RecordSuccess(now);
             await this.pollingHealthStore.SaveAsync(health, ct).ConfigureAwait(false);
@@ -95,6 +110,8 @@ public sealed class PollPlanItCommandHandler
         }
         catch
         {
+            PollingMetrics.PollFailures.Add(1);
+
             health.RecordFailure();
             await this.pollingHealthStore.SaveAsync(health, ct).ConfigureAwait(false);
 
