@@ -153,6 +153,20 @@ describe('AppRoutes', () => {
       });
     });
 
+    it('redirects to /dashboard when already-onboarded user visits /onboarding', async () => {
+      const authSpy = new SpyAuthPort();
+      authSpy.isAuthenticated = true;
+
+      const profileSpy = new SpyProfileRepository();
+      profileSpy.fetchProfileResult = existingProfile;
+
+      renderRoutes({ route: '/onboarding', authSpy, profileSpy });
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+      });
+    });
+
     it('renders all feature route placeholders inside AppShell', async () => {
       const authSpy = new SpyAuthPort();
       authSpy.isAuthenticated = true;
