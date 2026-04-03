@@ -65,7 +65,7 @@ public sealed class ServiceRegistrationExtensionsTests
         services.AddInfrastructureServices(configuration);
 
         // Act
-        services.AddApplicationServices();
+        services.AddApplicationServices(configuration);
 
         // Assert — verify key handler registrations exist
         var provider = services.BuildServiceProvider();

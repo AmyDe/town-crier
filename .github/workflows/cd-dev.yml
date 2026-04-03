@@ -10,6 +10,7 @@
 #   ACR_LOGIN_SERVER       — Azure Container Registry login server
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
 #   ADMIN_API_KEY          — API key for admin endpoints
+#   AUTO_GRANT_PRO_DOMAINS — Comma-separated email domains for automatic Pro tier
 #
 # Requires GitHub Environment:
 #   development            — with OIDC federated credential (environment:development)
@@ -140,7 +141,9 @@ jobs:
           az containerapp secret set \
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
-            --secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}"
+            --secrets \
+              "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
+              "auto-grant-pro-domains=${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
 
       - name: Deploy to Container App
         run: |
@@ -148,7 +151,9 @@ jobs:
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}" \
-            --set-env-vars "Admin__ApiKey=secretref:admin-api-key"
+            --set-env-vars \
+              "Admin__ApiKey=secretref:admin-api-key" \
+              "Subscription__AutoGrant__ProDomains=secretref:auto-grant-pro-domains"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
