@@ -10,7 +10,7 @@ public sealed class ProgramDecompositionTests
     public async Task Should_ConfigureMiddlewarePipeline_When_UseMiddlewarePipelineCalled()
     {
         // This test verifies UseMiddlewarePipeline exists and correctly wires
-        // CORS, correlation ID, error response, request logging, auth, and rate limiting.
+        // CORS, error response, auth, and rate limiting.
         await using var factory = new TestWebApplicationFactory();
         using var client = factory.CreateClient();
 
@@ -19,9 +19,6 @@ public sealed class ProgramDecompositionTests
 
         // Assert — middleware pipeline must be active
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
-
-        // Verify correlation ID middleware is in the pipeline
-        await Assert.That(response.Headers.Contains("X-Correlation-Id")).IsTrue();
     }
 
     [Test]
@@ -105,17 +102,6 @@ public sealed class ProgramDecompositionTests
         using var response = await client.GetAsync(new Uri("/v1/me", UriKind.Relative));
 
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
-    }
-
-    [Test]
-    public async Task Should_IncludeCorrelationId_When_AnyRequestProcessed()
-    {
-        await using var factory = new TestWebApplicationFactory();
-        using var client = factory.CreateClient();
-
-        using var response = await client.GetAsync(new Uri("/health", UriKind.Relative));
-
-        await Assert.That(response.Headers.Contains("X-Correlation-Id")).IsTrue();
     }
 
     [Test]
