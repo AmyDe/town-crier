@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import type { OnboardingPort } from '../../domain/ports/onboarding-port';
 import type { GeocodingPort } from '../../domain/ports/geocoding-port';
+import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import { useOnboarding } from './useOnboarding';
@@ -15,6 +16,7 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
   const {
     step,
     geocode,
+    postcode,
     radiusMetres,
     isSubmitting,
     error,
@@ -79,12 +81,17 @@ export function OnboardingPage({ onboardingPort, geocodingPort }: Props) {
         {step === 'confirm' && (
           <>
             <h2 className={styles.stepLabel}>Confirm your watch zone</h2>
+            {geocode && (
+              <ConfirmMap
+                latitude={geocode.latitude}
+                longitude={geocode.longitude}
+                radiusMetres={radiusMetres}
+              />
+            )}
             <div className={styles.confirmDetails}>
               <div className={styles.confirmRow}>
-                <span className={styles.confirmLabel}>Location</span>
-                <span className={styles.confirmValue}>
-                  {geocode ? `${geocode.latitude.toFixed(4)}, ${geocode.longitude.toFixed(4)}` : ''}
-                </span>
+                <span className={styles.confirmLabel}>Postcode</span>
+                <span className={styles.confirmValue}>{postcode}</span>
               </div>
               <div className={styles.confirmRow}>
                 <span className={styles.confirmLabel}>Radius</span>
