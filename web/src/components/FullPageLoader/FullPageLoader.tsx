@@ -4,7 +4,7 @@ interface FullPageLoaderProps {
   message?: string;
 }
 
-export function FullPageLoader({ message = 'Loading\u2026' }: FullPageLoaderProps) {
+export function FullPageLoader({ message = 'Loading…' }: FullPageLoaderProps) {
   return (
     <div className={styles.container} role="status" aria-label={message}>
       <div className={styles.spinner} />

@@ -13,7 +13,7 @@ export function AuthGuard() {
   }, [isLoading, isAuthenticated, error, loginWithRedirect]);
 
   if (isLoading || !isAuthenticated) {
-    return <FullPageLoader message="Signing you in\u2026" />;
+    return <FullPageLoader message="Signing you in…" />;
   }
 
   return <Outlet />;

@@ -19,14 +19,15 @@ function renderWithAuth(spy: SpyAuthPort) {
 }
 
 describe('AuthGuard', () => {
-  it('shows nothing while loading', () => {
+  it('shows loading indicator while loading', () => {
     const spy = new SpyAuthPort();
     spy.isLoading = true;
 
-    const { container } = renderWithAuth(spy);
+    renderWithAuth(spy);
 
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
-    expect(container.innerHTML).toBe('');
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByText('Signing you in…')).toBeInTheDocument();
   });
 
   it('renders child when authenticated', () => {

@@ -24,7 +24,7 @@ export function OnboardingGate() {
   }, [repository]);
 
   if (state === 'loading') {
-    return <FullPageLoader message="Loading your profile\u2026" />;
+    return <FullPageLoader message="Loading your profile…" />;
   }
 
   if (state === 'needs-onboarding') {

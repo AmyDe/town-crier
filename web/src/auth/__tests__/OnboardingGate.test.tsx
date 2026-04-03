@@ -52,17 +52,18 @@ describe('OnboardingGate', () => {
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
   });
 
-  it('shows nothing while loading', () => {
+  it('shows loading indicator while loading', () => {
     // Create a spy that never resolves
     const spy = new SpyProfileRepository();
     spy.fetchProfileResult = existingProfile;
     // Override to return a never-resolving promise
     spy.fetchProfile = () => new Promise<UserProfile | null>(() => {});
 
-    const { container } = renderWithProfile(spy);
+    renderWithProfile(spy);
 
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
     expect(screen.queryByText('Onboarding')).not.toBeInTheDocument();
-    expect(container.innerHTML).toBe('');
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByText('Loading your profile…')).toBeInTheDocument();
   });
 });
