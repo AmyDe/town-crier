@@ -18,18 +18,25 @@ export function useAuthoritySearch(port: AuthoritySearchPort) {
     isSearching: false,
   });
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const skipNextSearchRef = useRef(false);
 
   const setQuery = useCallback((query: string) => {
     setState((prev) => ({ ...prev, query }));
   }, []);
 
   const clearResults = useCallback(() => {
+    skipNextSearchRef.current = true;
     setState((prev) => ({ ...prev, results: [] }));
   }, []);
 
   useEffect(() => {
     if (timerRef.current !== undefined) {
       clearTimeout(timerRef.current);
+    }
+
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false;
+      return;
     }
 
     if (state.query.length < MIN_QUERY_LENGTH) {
