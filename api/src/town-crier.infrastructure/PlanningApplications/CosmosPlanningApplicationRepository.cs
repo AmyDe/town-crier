@@ -49,8 +49,8 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
 
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Applications,
-            "SELECT * FROM c",
-            parameters: null,
+            "SELECT * FROM c WHERE c.authorityCode = @authorityCode",
+            [new QueryParameter("@authorityCode", authorityCode)],
             authorityCode,
             CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
             ct).ConfigureAwait(false);
