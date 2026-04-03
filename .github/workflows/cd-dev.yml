@@ -145,6 +145,18 @@ jobs:
               "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
               "auto-grant-pro-domains=${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
 
+      - uses: ./.github/actions/setup-dotnet-infra
+
+      - name: Get App Insights connection string
+        id: appinsights
+        working-directory: infra
+        run: |
+          CONNECTION_STRING=$(pulumi stack output appInsightsConnectionString --stack shared)
+          echo "::add-mask::$CONNECTION_STRING"
+          echo "connection-string=$CONNECTION_STRING" >> "$GITHUB_OUTPUT"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
       - name: Deploy to Container App
         run: |
           az containerapp update \
@@ -153,7 +165,8 @@ jobs:
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}" \
             --set-env-vars \
               "Admin__ApiKey=secretref:admin-api-key" \
-              "Subscription__AutoGrant__ProDomains=secretref:auto-grant-pro-domains"
+              "Subscription__AutoGrant__ProDomains=secretref:auto-grant-pro-domains" \
+              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ steps.appinsights.outputs.connection-string }}"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
@@ -183,6 +196,7 @@ jobs:
           VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
           VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
 
       - uses: ./.github/actions/azure-login
         with:
