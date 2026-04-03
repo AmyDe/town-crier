@@ -18,9 +18,9 @@ export function ConnectedApplicationsPage() {
 
   const userAuthoritiesPort: UserAuthoritiesPort = useMemo(
     () => ({
-      fetchMyAuthorities: async () => [],
+      fetchMyAuthorities: () => applicationsApi(client).getMyAuthorities(),
     }),
-    [],
+    [client],
   );
 
   return <ApplicationsPage userAuthoritiesPort={userAuthoritiesPort} browsePort={browsePort} />;
