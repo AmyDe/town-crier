@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using TownCrier.Application.Observability;
 using TownCrier.Application.Polling;
 
 namespace TownCrier.Web.Polling;
@@ -31,12 +33,23 @@ internal sealed partial class PlanItPollingService : BackgroundService
         {
             try
             {
+                using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
+                activity?.SetTag("polling.cycle_number", this.cycleNumber);
+                var cycleStart = Stopwatch.GetTimestamp();
+
                 var scope = this.scopeFactory.CreateAsyncScope();
                 await using (scope.ConfigureAwait(false))
                 {
                     var handler = scope.ServiceProvider.GetRequiredService<PollPlanItCommandHandler>();
 
                     var result = await handler.HandleAsync(new PollPlanItCommand(this.cycleNumber), stoppingToken).ConfigureAwait(false);
+
+                    activity?.SetTag("polling.authorities_total", result.TotalActiveAuthorities);
+                    activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
+                    activity?.SetTag("polling.authorities_skipped", result.AuthoritiesSkipped);
+                    activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
+
+                    PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
 
                     LogPollCycleCompleted(this.logger, result.ApplicationCount, this.cycleNumber, result.AuthoritiesPolled, result.AuthoritiesSkipped);
                 }
