@@ -4,11 +4,15 @@ namespace TownCrier.Application.UserProfiles;
 
 public sealed class CreateUserProfileCommandHandler
 {
-    private readonly IUserProfileRepository repository;
+    private static readonly DateTimeOffset FarFutureExpiry = new(2099, 12, 31, 0, 0, 0, TimeSpan.Zero);
 
-    public CreateUserProfileCommandHandler(IUserProfileRepository repository)
+    private readonly IUserProfileRepository repository;
+    private readonly AutoGrantOptions autoGrantOptions;
+
+    public CreateUserProfileCommandHandler(IUserProfileRepository repository, AutoGrantOptions autoGrantOptions)
     {
         this.repository = repository;
+        this.autoGrantOptions = autoGrantOptions;
     }
 
     public async Task<CreateUserProfileResult> HandleAsync(CreateUserProfileCommand command, CancellationToken ct)
@@ -26,6 +30,12 @@ public sealed class CreateUserProfileCommandHandler
         }
 
         var profile = UserProfile.Register(command.UserId, command.Email);
+
+        if (this.autoGrantOptions.IsProDomain(command.Email))
+        {
+            profile.ActivateSubscription(SubscriptionTier.Pro, FarFutureExpiry);
+        }
+
         await this.repository.SaveAsync(profile, ct).ConfigureAwait(false);
 
         return new CreateUserProfileResult(

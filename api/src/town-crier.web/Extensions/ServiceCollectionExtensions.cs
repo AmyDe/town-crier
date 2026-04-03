@@ -108,7 +108,7 @@ internal static class ServiceCollectionExtensions
     }
 
     public static IServiceCollection AddApplicationServices(
-        this IServiceCollection services)
+        this IServiceCollection services, IConfiguration configuration)
     {
         services.AddTransient<GeocodePostcodeQueryHandler>();
         services.AddTransient<GetAuthoritiesQueryHandler>();
@@ -117,6 +117,10 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<PollPlanItCommandHandler>();
 
+        services.AddSingleton(new AutoGrantOptions
+        {
+            ProDomains = configuration["Subscription:AutoGrant:ProDomains"] ?? string.Empty,
+        });
         services.AddTransient<CreateUserProfileCommandHandler>();
         services.AddTransient<GetUserProfileQueryHandler>();
         services.AddTransient<UpdateUserProfileCommandHandler>();

@@ -7,6 +7,7 @@
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
 #   ADMIN_API_KEY          — API key for admin endpoints
+#   AUTO_GRANT_PRO_DOMAINS — Comma-separated email domains for automatic Pro tier
 #
 # Requires GitHub Environment:
 #   production             — with OIDC federated credential (environment:production)
@@ -120,7 +121,9 @@ jobs:
           az containerapp secret set \
             --name "ca-town-crier-api-prod" \
             --resource-group "$RESOURCE_GROUP" \
-            --secrets "admin-api-key=${{ secrets.ADMIN_API_KEY }}"
+            --secrets \
+              "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
+              "auto-grant-pro-domains=${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
@@ -130,7 +133,9 @@ jobs:
             --name "ca-town-crier-api-prod" \
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}" \
-            --set-env-vars "Admin__ApiKey=secretref:admin-api-key"
+            --set-env-vars \
+              "Admin__ApiKey=secretref:admin-api-key" \
+              "Subscription__AutoGrant__ProDomains=secretref:auto-grant-pro-domains"
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
