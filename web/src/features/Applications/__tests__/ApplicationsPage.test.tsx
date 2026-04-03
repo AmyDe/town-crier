@@ -105,7 +105,7 @@ describe('ApplicationsPage', () => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('link', { name: 'Authorities' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Authorities' })).toBeInTheDocument();
   });
 
   it('returns to authority list when breadcrumb is clicked', async () => {
@@ -125,7 +125,7 @@ describe('ApplicationsPage', () => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('link', { name: 'Authorities' }));
+    await user.click(screen.getByRole('button', { name: 'Authorities' }));
 
     await waitFor(() => {
       expect(screen.getByText('Bath and NE Somerset')).toBeInTheDocument();

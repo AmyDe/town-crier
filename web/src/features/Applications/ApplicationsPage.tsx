@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import type { AuthorityListItem } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { UserAuthoritiesPort } from '../../domain/ports/user-authorities-port';
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
+  const navigate = useNavigate();
   const { authorities, isLoading: isLoadingAuthorities, error: authoritiesError } =
     useUserAuthorities(userAuthoritiesPort);
   const { selectedAuthority, applications, isLoading: isLoadingApps, error: appsError, selectAuthority } =
@@ -32,19 +34,12 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
 
       {selectedAuthority !== null && (
         <nav className={styles.breadcrumb} aria-label="Breadcrumb">
-          <a
+          <button
             className={styles.breadcrumbLink}
-            role="link"
-            tabIndex={0}
             onClick={handleBackToAuthorities}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                handleBackToAuthorities();
-              }
-            }}
           >
             Authorities
-          </a>
+          </button>
           <span aria-hidden="true">&rsaquo;</span>
           <span className={styles.breadcrumbCurrent}>{selectedAuthority.name}</span>
         </nav>
@@ -69,9 +64,7 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
               title="No watch zones yet"
               message="Set up a watch zone to start browsing applications."
               actionLabel="Create watch zone"
-              onAction={() => {
-                window.location.href = '/watch-zones/new';
-              }}
+              onAction={() => navigate('/watch-zones/new')}
             />
           )}
 
