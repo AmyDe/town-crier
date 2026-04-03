@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
+import { FullPageLoader } from '../components/FullPageLoader/FullPageLoader.tsx';
 import { useProfileRepository } from './profile-context.ts';
 
 type GateState = 'loading' | 'has-profile' | 'needs-onboarding';
@@ -23,7 +24,7 @@ export function OnboardingGate() {
   }, [repository]);
 
   if (state === 'loading') {
-    return null;
+    return <FullPageLoader message="Loading your profile…" />;
   }
 
   if (state === 'needs-onboarding') {

@@ -1,0 +1,32 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--tc-background);
+  gap: var(--tc-space-lg);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--tc-border);
+  border-top-color: var(--tc-amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.message {
+  color: var(--tc-text-secondary);
+  font-family: var(--tc-font-family);
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  margin: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
