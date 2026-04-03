@@ -86,8 +86,9 @@ The Applications container change feed is consumed by the notification processor
 |-----------|--------------|-----------|
 | `DeviceRegistrations` | `/userId` | APNs device tokens per user, supporting multiple devices per platform. Queried when dispatching push notifications |
 | `SavedApplications` | `/userId` | User-bookmarked planning applications. Always queried per-user for the saved applications list |
-| `Groups` | `/ownerId` | Community groups with shared watch zones. Owner-scoped queries for group management |
-| `GroupInvitations` | `/groupId` | Pending/accepted/declined invitations to join a group. Group-scoped for invitation management, with cross-partition query by invitee email on acceptance |
 | `DecisionAlerts` | `/userId` | Alerts triggered when a watched application receives a decision. Per-user feed similar to Notifications |
 
-- Total containers: 10 (original 5 + 5 new). The `Leases` container for change feed checkpointing remains as documented.
+- Total containers: 8 (original 5 + 3 new). The `Leases` container for change feed checkpointing remains as documented.
+
+### 2026-04-03
+- Removed: **Groups** and **GroupInvitations** containers. The community groups feature was removed from the codebase — no domain entities, API handlers, or Pulumi container definitions exist. Web frontend explicitly asserts no Group-related symbols are exported. Container count corrected from 10 to 8.
