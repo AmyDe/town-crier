@@ -78,6 +78,9 @@ node_modules/
 # Superpowers brainstorm sessions
 .superpowers/
 
+# Git worktrees
+.worktrees/
+
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
 .claude/worktrees/autopilot-tc-kkc.1/
