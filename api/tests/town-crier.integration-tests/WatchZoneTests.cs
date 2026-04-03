@@ -20,8 +20,9 @@ public sealed class WatchZoneTests
 
         var client = fixture.Client;
 
-        // Defensively create profile first (watch zones require a profile)
-        await client.PostAsync(new Uri("/v1/me", UriKind.Relative), null).ConfigureAwait(false);
+        // Ensure profile exists (watch zones require a profile)
+        using var profileResponse = await client.PostAsync(new Uri("/v1/me", UriKind.Relative), null).ConfigureAwait(false);
+        await Assert.That(profileResponse.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
         // Arrange -- unique name (name has a unique key constraint per user)
         var uniqueSuffix = Guid.NewGuid().ToString()[..8];
@@ -39,8 +40,11 @@ public sealed class WatchZoneTests
             .PostAsJsonAsync(new Uri("/v1/me/watch-zones", UriKind.Relative), createPayload, CamelCaseOptions)
             .ConfigureAwait(false);
 
-        // Assert -- create returns 201
-        await Assert.That(createResponse.StatusCode).IsEqualTo(HttpStatusCode.Created);
+        // Assert -- create returns 201 (include body for diagnostics on failure)
+        var createBody = await createResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        await Assert.That(createResponse.StatusCode)
+            .IsEqualTo(HttpStatusCode.Created)
+            .Because($"response body: {createBody}");
 
         // Extract server-generated zone ID from Location header
         var location = createResponse.Headers.Location?.ToString() ?? string.Empty;

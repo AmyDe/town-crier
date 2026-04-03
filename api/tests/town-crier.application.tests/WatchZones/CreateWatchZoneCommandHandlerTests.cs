@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Application.WatchZones;
@@ -350,6 +351,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
             this.planItClient,
             this.planningApplicationRepository,
             this.authorityResolver,
-            new FakeTimeProvider(FixedNow));
+            new FakeTimeProvider(FixedNow),
+            NullLogger<CreateWatchZoneCommandHandler>.Instance);
     }
 }

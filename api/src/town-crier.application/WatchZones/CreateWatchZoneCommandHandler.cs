@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
@@ -8,11 +9,12 @@ using TownCrier.Domain.WatchZones;
 
 namespace TownCrier.Application.WatchZones;
 
-public sealed class CreateWatchZoneCommandHandler
+public sealed partial class CreateWatchZoneCommandHandler
 {
     private static readonly TimeSpan BackfillWindow = TimeSpan.FromDays(90);
 
     private readonly IAuthorityResolver authorityResolver;
+    private readonly ILogger<CreateWatchZoneCommandHandler> logger;
     private readonly IPlanItClient planItClient;
     private readonly IPlanningApplicationRepository planningApplicationRepository;
     private readonly TimeProvider timeProvider;
@@ -25,7 +27,8 @@ public sealed class CreateWatchZoneCommandHandler
         IPlanItClient planItClient,
         IPlanningApplicationRepository planningApplicationRepository,
         IAuthorityResolver authorityResolver,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        ILogger<CreateWatchZoneCommandHandler> logger)
     {
         this.watchZoneRepository = watchZoneRepository;
         this.userProfileRepository = userProfileRepository;
@@ -33,6 +36,7 @@ public sealed class CreateWatchZoneCommandHandler
         this.planningApplicationRepository = planningApplicationRepository;
         this.authorityResolver = authorityResolver;
         this.timeProvider = timeProvider;
+        this.logger = logger;
     }
 
     public async Task<CreateWatchZoneResult> HandleAsync(CreateWatchZoneCommand command, CancellationToken ct)
@@ -57,12 +61,21 @@ public sealed class CreateWatchZoneCommandHandler
 
         if (profile.Tier != SubscriptionTier.Free)
         {
-            var backfillSince = this.timeProvider.GetUtcNow() - BackfillWindow;
-
-            await foreach (var application in this.planItClient.FetchApplicationsAsync(
-                authorityId, backfillSince, ct).ConfigureAwait(false))
+            try
             {
-                await this.planningApplicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+                var backfillSince = this.timeProvider.GetUtcNow() - BackfillWindow;
+
+                await foreach (var application in this.planItClient.FetchApplicationsAsync(
+                    authorityId, backfillSince, ct).ConfigureAwait(false))
+                {
+                    await this.planningApplicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+                }
+            }
+#pragma warning disable CA1031 // Best-effort backfill — polling service provides the safety net
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogBackfillFailed(this.logger, authorityId, ex);
             }
         }
 
@@ -72,4 +85,7 @@ public sealed class CreateWatchZoneCommandHandler
 
         return new CreateWatchZoneResult(nearbyApplications);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt backfill failed for authority {AuthorityId}; zone was created, polling will backfill later")]
+    private static partial void LogBackfillFailed(ILogger logger, int authorityId, Exception exception);
 }
