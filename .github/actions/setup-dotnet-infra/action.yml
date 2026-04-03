@@ -7,12 +7,12 @@ runs:
   using: composite
   steps:
     - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         global-json-file: api/global.json
 
     - name: Cache NuGet packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-infra-${{ runner.os }}-${{ hashFiles('infra/**/*.csproj') }}

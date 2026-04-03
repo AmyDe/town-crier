@@ -41,7 +41,7 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       infra: ${{ steps.detect.outputs.infra }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Detect changed paths
@@ -65,8 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: api/global.json
       - run: dotnet format --verify-no-changes
@@ -79,11 +79,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: api/global.json
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('api/**/*.csproj', 'api/**/Directory.Build.props') }}
@@ -112,7 +112,7 @@ jobs:
       staging-url: ${{ steps.staging-url.outputs.url }}
       new-revision: ${{ steps.deploy.outputs.revision }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/azure-login
         with:
@@ -178,9 +178,9 @@ jobs:
     timeout-minutes: 10
     environment: development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: api/global.json
 
@@ -212,7 +212,7 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/azure-login
         with:
@@ -236,7 +236,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: brew install swiftlint
       - run: swiftlint lint
         working-directory: mobile/ios
@@ -248,8 +248,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v6
+      - uses: actions/cache@v5
         with:
           path: mobile/ios/.build
           key: ios-${{ runner.os }}-${{ hashFiles('mobile/ios/Package.resolved') }}
@@ -276,8 +276,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -294,8 +294,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -322,7 +322,7 @@ jobs:
       id-token: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-dotnet-infra
 
