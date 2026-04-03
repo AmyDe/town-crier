@@ -8,6 +8,7 @@ using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
+using Pulumi.AzureNative.ApplicationInsights;
 
 public static class SharedStack
 {
@@ -77,6 +78,18 @@ public static class SharedStack
                 Name = WorkspaceSkuNameEnum.PerGB2018,
             },
             RetentionInDays = 30,
+            Tags = tags,
+        });
+
+        // Application Insights (shared, backed by Log Analytics)
+        var appInsights = new Component("appi-town-crier-shared", new ComponentArgs
+        {
+            ResourceName = "appi-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            WorkspaceResourceId = logAnalytics.Id,
+            ApplicationType = "web",
+            Kind = "web",
+            IngestionMode = IngestionMode.LogAnalytics,
             Tags = tags,
         });
 
@@ -163,6 +176,7 @@ public static class SharedStack
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
+            ["appInsightsConnectionString"] = appInsights.ConnectionString,
         };
     }
 }

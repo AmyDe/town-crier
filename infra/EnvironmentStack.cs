@@ -43,6 +43,7 @@ public static class EnvironmentStack
         var cosmosDataIdentityClientId = shared.GetOutput("cosmosDataIdentityClientId").Apply(o => o?.ToString() ?? "");
         var cosmosAccountName = shared.GetOutput("cosmosAccountName").Apply(o => o?.ToString() ?? "");
         var cosmosAccountEndpoint = shared.GetOutput("cosmosAccountEndpoint").Apply(o => o?.ToString() ?? "");
+        var appInsightsConnectionString = shared.GetOutput("appInsightsConnectionString").Apply(o => o?.ToString() ?? "");
         // Extract the CAE name from its resource ID to avoid
         // requiring a shared stack deploy before the env stack can preview.
         // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
@@ -266,6 +267,7 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
                             new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
                             new EnvironmentVarArgs { Name = "Cors__AllowedOrigins__0", Value = $"https://{frontendDomain}" },
+                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
                         },
                     },
                 },
