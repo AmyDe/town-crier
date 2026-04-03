@@ -24,6 +24,10 @@
   position: relative;
 }
 
+.item > a {
+  padding-right: var(--tc-space-xxl);
+}
+
 .removeButton {
   position: absolute;
   top: var(--tc-space-sm);
@@ -31,21 +35,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--tc-space-xs) var(--tc-space-sm);
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--tc-border);
-  border-radius: var(--tc-radius-sm);
+  border-radius: 50%;
   background: var(--tc-surface);
   color: var(--tc-text-secondary);
-  font-size: var(--tc-text-caption);
+  font-size: var(--tc-text-body);
+  line-height: 1;
   cursor: pointer;
   z-index: 1;
   transition: color var(--tc-duration-fast) ease,
-    border-color var(--tc-duration-fast) ease;
+    border-color var(--tc-duration-fast) ease,
+    background-color var(--tc-duration-fast) ease;
 }
 
 .removeButton:hover {
   color: var(--tc-status-refused);
   border-color: var(--tc-status-refused);
+  background-color: color-mix(in srgb, var(--tc-status-refused) 10%, transparent);
 }
 
 .removeButton:focus-visible {

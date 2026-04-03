@@ -78,7 +78,7 @@ export function SavedApplicationsPage({ repository }: Props) {
               }}
               aria-label={`Remove ${saved.application.name}`}
             >
-              Remove
+              ×
             </button>
           </li>
         ))}
