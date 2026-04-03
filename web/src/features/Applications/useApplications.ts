@@ -18,7 +18,17 @@ export function useApplications(port: ApplicationsBrowsePort) {
   });
 
   const selectAuthority = useCallback(
-    (authority: AuthorityListItem) => {
+    (authority: AuthorityListItem | null) => {
+      if (authority === null) {
+        setState({
+          selectedAuthority: null,
+          applications: [],
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
+
       setState((prev) => ({
         ...prev,
         selectedAuthority: authority,

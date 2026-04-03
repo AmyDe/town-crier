@@ -1,74 +1,130 @@
 import type { AuthorityListItem } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import type { AuthoritySearchPort } from '../../domain/ports/authority-search-port';
+import type { UserAuthoritiesPort } from '../../domain/ports/user-authorities-port';
+import { useUserAuthorities } from './useUserAuthorities';
 import { useApplications } from './useApplications';
-import { AuthoritySelector } from '../../components/AuthoritySelector/AuthoritySelector';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import styles from './ApplicationsPage.module.css';
 
 interface Props {
+  userAuthoritiesPort: UserAuthoritiesPort;
   browsePort: ApplicationsBrowsePort;
-  searchPort: AuthoritySearchPort;
 }
 
-export function ApplicationsPage({ browsePort, searchPort }: Props) {
-  const { selectedAuthority, applications, isLoading, error, selectAuthority } =
+export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
+  const { authorities, isLoading: isLoadingAuthorities, error: authoritiesError } =
+    useUserAuthorities(userAuthoritiesPort);
+  const { selectedAuthority, applications, isLoading: isLoadingApps, error: appsError, selectAuthority } =
     useApplications(browsePort);
 
-  function handleAuthoritySelect(authority: AuthorityListItem) {
+  function handleAuthorityClick(authority: AuthorityListItem) {
     selectAuthority(authority);
+  }
+
+  function handleBackToAuthorities() {
+    selectAuthority(null);
   }
 
   return (
     <div className={styles.container}>
       <h1 className={styles.heading}>Applications</h1>
 
-      <div className={styles.selectorWrapper}>
-        <AuthoritySelector searchPort={searchPort} onSelect={handleAuthoritySelect} />
-      </div>
-
-      {isLoading && (
-        <div className={styles.loading} aria-live="polite">Loading applications...</div>
+      {selectedAuthority !== null && (
+        <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+          <a
+            className={styles.breadcrumbLink}
+            role="link"
+            tabIndex={0}
+            onClick={handleBackToAuthorities}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                handleBackToAuthorities();
+              }
+            }}
+          >
+            Authorities
+          </a>
+          <span aria-hidden="true">&rsaquo;</span>
+          <span className={styles.breadcrumbCurrent}>{selectedAuthority.name}</span>
+        </nav>
       )}
 
-      {error !== null && (
-        <EmptyState
-          title="Something went wrong"
-          message={error.message}
-          actionLabel="Try again"
-          onAction={() => {
-            if (selectedAuthority) {
-              selectAuthority(selectedAuthority);
-            }
-          }}
-        />
+      {selectedAuthority === null && (
+        <>
+          {isLoadingAuthorities && (
+            <div className={styles.loading} aria-live="polite">Loading authorities...</div>
+          )}
+
+          {authoritiesError !== null && (
+            <EmptyState
+              title="Something went wrong"
+              message={authoritiesError.message}
+            />
+          )}
+
+          {!isLoadingAuthorities && authoritiesError === null && authorities.length === 0 && (
+            <EmptyState
+              icon="🏛️"
+              title="No watch zones yet"
+              message="Set up a watch zone to start browsing applications."
+              actionLabel="Create watch zone"
+              onAction={() => {
+                window.location.href = '/watch-zones/new';
+              }}
+            />
+          )}
+
+          {!isLoadingAuthorities && authoritiesError === null && authorities.length > 0 && (
+            <div className={styles.authorityGrid}>
+              {authorities.map((authority) => (
+                <button
+                  key={authority.id}
+                  className={styles.authorityCard}
+                  onClick={() => handleAuthorityClick(authority)}
+                >
+                  <span className={styles.authorityName}>{authority.name}</span>
+                  <span className={styles.authorityType}>{authority.areaType}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {!isLoading && error === null && selectedAuthority === null && (
-        <EmptyState
-          icon="🏛️"
-          title="Browse applications"
-          message="Select an authority to browse planning applications."
-        />
-      )}
+      {selectedAuthority !== null && (
+        <>
+          {isLoadingApps && (
+            <div className={styles.loading} aria-live="polite">Loading applications...</div>
+          )}
 
-      {!isLoading && error === null && selectedAuthority !== null && applications.length === 0 && (
-        <EmptyState
-          icon="📋"
-          title="No applications"
-          message="No applications found for this authority."
-        />
-      )}
+          {appsError !== null && (
+            <EmptyState
+              title="Something went wrong"
+              message={appsError.message}
+              actionLabel="Try again"
+              onAction={() => selectAuthority(selectedAuthority)}
+            />
+          )}
 
-      {!isLoading && error === null && applications.length > 0 && (
-        <ul className={styles.list}>
-          {applications.map((app) => (
-            <li key={app.uid}>
-              <ApplicationCard application={app} />
-            </li>
-          ))}
-        </ul>
+          {!isLoadingApps && appsError === null && applications.length === 0 && (
+            <EmptyState
+              icon="📋"
+              title="No applications"
+              message="No applications found for this authority."
+            />
+          )}
+
+          {!isLoadingApps && appsError === null && applications.length > 0 && (
+            <ul className={styles.list}>
+              {applications.map((app) => (
+                <li key={app.uid}>
+                  <ApplicationCard application={app} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

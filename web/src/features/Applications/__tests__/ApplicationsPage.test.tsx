@@ -3,97 +3,153 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApplicationsPage } from '../ApplicationsPage';
+import { SpyUserAuthoritiesPort } from './spies/spy-user-authorities-port';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
-import { SpyAuthoritySearchPort } from '../../../components/AuthoritySelector/__tests__/spies/spy-authority-search-port';
+import { cornwallAuthority, bathAuthority } from './fixtures/authority.fixtures';
 import {
   undecidedApplication,
   approvedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
-import {
-  cambridgeAuthority,
-  twoAuthorityResults,
-} from '../../../components/AuthoritySelector/__tests__/fixtures/authority.fixtures';
 
 function renderPage(
+  userAuthoritiesPort: SpyUserAuthoritiesPort,
   browsePort: SpyApplicationsBrowsePort,
-  searchPort: SpyAuthoritySearchPort,
 ) {
   return render(
     <MemoryRouter>
-      <ApplicationsPage browsePort={browsePort} searchPort={searchPort} />
+      <ApplicationsPage userAuthoritiesPort={userAuthoritiesPort} browsePort={browsePort} />
     </MemoryRouter>,
   );
 }
 
 describe('ApplicationsPage', () => {
+  let userAuthoritiesPort: SpyUserAuthoritiesPort;
   let browsePort: SpyApplicationsBrowsePort;
-  let searchPort: SpyAuthoritySearchPort;
 
   beforeEach(() => {
+    userAuthoritiesPort = new SpyUserAuthoritiesPort();
     browsePort = new SpyApplicationsBrowsePort();
-    searchPort = new SpyAuthoritySearchPort();
   });
 
-  it('renders page heading and authority selector', () => {
-    renderPage(browsePort, searchPort);
+  it('renders page heading', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [];
+    renderPage(userAuthoritiesPort, browsePort);
 
-    expect(screen.getByRole('heading', { name: 'Applications' })).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Search authorities' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Applications' })).toBeInTheDocument();
+    });
   });
 
-  it('shows empty state before authority is selected', () => {
-    renderPage(browsePort, searchPort);
+  it('shows loading state while fetching authorities', () => {
+    renderPage(userAuthoritiesPort, browsePort);
 
-    expect(screen.getByText('Select an authority to browse planning applications.')).toBeInTheDocument();
+    expect(screen.getByText('Loading authorities...')).toBeInTheDocument();
   });
 
-  it('shows application cards after authority is selected', async () => {
-    searchPort.searchResult = twoAuthorityResults();
+  it('shows empty state when user has no watch zones', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [];
+    renderPage(userAuthoritiesPort, browsePort);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Set up a watch zone to start browsing applications.'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows authority cards when user has watch zones', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority(), bathAuthority()];
+    renderPage(userAuthoritiesPort, browsePort);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Bath and NE Somerset')).toBeInTheDocument();
+  });
+
+  it('shows applications when authority card is clicked', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
     browsePort.fetchByAuthorityResult = [undecidedApplication(), approvedApplication()];
     const user = userEvent.setup();
 
-    renderPage(browsePort, searchPort);
+    renderPage(userAuthoritiesPort, browsePort);
 
-    // Type to search for authority
-    const input = screen.getByRole('combobox', { name: 'Search authorities' });
-    await user.type(input, 'Cambridge');
-
-    // Wait for search results to appear
     await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
     });
 
-    // Select the authority
-    const option = screen.getByText('Cambridge City Council');
-    await user.click(option);
+    await user.click(screen.getByText('Cornwall Council'));
 
-    // Wait for applications to load
     await waitFor(() => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
     expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
-    expect(browsePort.fetchByAuthorityCalls).toEqual([cambridgeAuthority().id]);
+    expect(browsePort.fetchByAuthorityCalls).toEqual([cornwallAuthority().id]);
+  });
+
+  it('shows breadcrumb when viewing applications', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
+    browsePort.fetchByAuthorityResult = [undecidedApplication()];
+    const user = userEvent.setup();
+
+    renderPage(userAuthoritiesPort, browsePort);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Cornwall Council'));
+
+    await waitFor(() => {
+      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('link', { name: 'Authorities' })).toBeInTheDocument();
+  });
+
+  it('returns to authority list when breadcrumb is clicked', async () => {
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority(), bathAuthority()];
+    browsePort.fetchByAuthorityResult = [undecidedApplication()];
+    const user = userEvent.setup();
+
+    renderPage(userAuthoritiesPort, browsePort);
+
+    await waitFor(() => {
+      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Cornwall Council'));
+
+    await waitFor(() => {
+      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('link', { name: 'Authorities' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Bath and NE Somerset')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
   });
 
   it('shows empty state when authority has no applications', async () => {
-    searchPort.searchResult = twoAuthorityResults();
+    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
     browsePort.fetchByAuthorityResult = [];
     const user = userEvent.setup();
 
-    renderPage(browsePort, searchPort);
-
-    const input = screen.getByRole('combobox', { name: 'Search authorities' });
-    await user.type(input, 'Cambridge');
+    renderPage(userAuthoritiesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Cambridge City Council'));
+    await user.click(screen.getByText('Cornwall Council'));
 
     await waitFor(() => {
-      expect(screen.getByText('No applications found for this authority.')).toBeInTheDocument();
+      expect(
+        screen.getByText('No applications found for this authority.'),
+      ).toBeInTheDocument();
     });
   });
 });
