@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace TownCrier.Infrastructure.Observability;
 
-internal static class CosmosInstrumentation
+public static class CosmosInstrumentation
 {
     public const string ActivitySourceName = "TownCrier.Cosmos";
     public const string MeterName = "TownCrier.Cosmos";
