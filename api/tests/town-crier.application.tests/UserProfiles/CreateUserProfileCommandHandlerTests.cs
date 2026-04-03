@@ -81,7 +81,7 @@ public sealed class CreateUserProfileCommandHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
-        var command = new CreateUserProfileCommand("auth0|family-1", "alice@family.uk");
+        var command = new CreateUserProfileCommand("auth0|family-1", "alice@family.uk", EmailVerified: true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
@@ -90,6 +90,21 @@ public sealed class CreateUserProfileCommandHandlerTests
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Pro);
         var saved = repository.GetByUserId("auth0|family-1");
         await Assert.That(saved!.Tier).IsEqualTo(SubscriptionTier.Pro);
+    }
+
+    [Test]
+    public async Task Should_RemainFreeTier_When_EmailNotVerified()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var command = new CreateUserProfileCommand("auth0|unverified-1", "alice@family.uk", EmailVerified: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
     }
 
     [Test]
@@ -128,7 +143,7 @@ public sealed class CreateUserProfileCommandHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk, vip.com"));
-        var command = new CreateUserProfileCommand("auth0|vip-1", "bob@vip.com");
+        var command = new CreateUserProfileCommand("auth0|vip-1", "bob@vip.com", EmailVerified: true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
@@ -143,7 +158,7 @@ public sealed class CreateUserProfileCommandHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
-        var command = new CreateUserProfileCommand("auth0|upper-1", "Alice@FAMILY.UK");
+        var command = new CreateUserProfileCommand("auth0|upper-1", "Alice@FAMILY.UK", EmailVerified: true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);

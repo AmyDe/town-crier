@@ -31,7 +31,7 @@ public sealed class CreateUserProfileCommandHandler
 
         var profile = UserProfile.Register(command.UserId, command.Email);
 
-        if (this.autoGrantOptions.IsProDomain(command.Email))
+        if (command.EmailVerified && this.autoGrantOptions.IsProDomain(command.Email))
         {
             profile.ActivateSubscription(SubscriptionTier.Pro, FarFutureExpiry);
         }
