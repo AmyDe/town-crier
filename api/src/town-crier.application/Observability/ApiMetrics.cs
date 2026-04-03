@@ -2,23 +2,25 @@ using System.Diagnostics.Metrics;
 
 namespace TownCrier.Application.Observability;
 
+#pragma warning disable SA1202 // Meter must be initialized before public fields that reference it
 public static class ApiMetrics
 {
     public const string MeterName = "TownCrier.Api";
 
-    public static readonly Meter ApiMeter = new(MeterName);
+    private static readonly Meter Meter = new(MeterName);
 
     public static readonly Counter<long> WatchZonesCreated =
-        ApiMeter.CreateCounter<long>("towncrier.watchzones.created");
+        Meter.CreateCounter<long>("towncrier.watchzones.created");
 
     public static readonly Counter<long> NotificationsSent =
-        ApiMeter.CreateCounter<long>("towncrier.notifications.sent");
+        Meter.CreateCounter<long>("towncrier.notifications.sent");
 
     public static readonly UpDownCounter<long> ActiveSubscriptions =
-        ApiMeter.CreateUpDownCounter<long>("towncrier.subscriptions.active");
+        Meter.CreateUpDownCounter<long>("towncrier.subscriptions.active");
 
     public static readonly Counter<long> EndpointErrors =
-        ApiMeter.CreateCounter<long>(
+        Meter.CreateCounter<long>(
             "towncrier.api.errors",
             description: "Unhandled exceptions by endpoint");
 }
+#pragma warning restore SA1202

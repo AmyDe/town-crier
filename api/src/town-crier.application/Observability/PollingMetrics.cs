@@ -2,33 +2,35 @@ using System.Diagnostics.Metrics;
 
 namespace TownCrier.Application.Observability;
 
+#pragma warning disable SA1202 // Meter must be initialized before public fields that reference it
 public static class PollingMetrics
 {
     public const string MeterName = "TownCrier.Polling";
 
-    public static readonly Meter PollingMeter = new(MeterName);
+    private static readonly Meter Meter = new(MeterName);
 
     public static readonly Counter<long> AuthoritiesPolled =
-        PollingMeter.CreateCounter<long>("towncrier.polling.authorities_polled");
+        Meter.CreateCounter<long>("towncrier.polling.authorities_polled");
 
     public static readonly Counter<long> AuthoritiesSkipped =
-        PollingMeter.CreateCounter<long>("towncrier.polling.authorities_skipped");
+        Meter.CreateCounter<long>("towncrier.polling.authorities_skipped");
 
     public static readonly Counter<long> ApplicationsIngested =
-        PollingMeter.CreateCounter<long>("towncrier.polling.applications_ingested");
+        Meter.CreateCounter<long>("towncrier.polling.applications_ingested");
 
     public static readonly Counter<long> PollFailures =
-        PollingMeter.CreateCounter<long>("towncrier.polling.failures");
+        Meter.CreateCounter<long>("towncrier.polling.failures");
 
-    public static readonly Histogram<double> PlanItLatency =
-        PollingMeter.CreateHistogram<double>(
-            "towncrier.polling.planit_latency_ms",
+    public static readonly Histogram<double> AuthorityProcessingDuration =
+        Meter.CreateHistogram<double>(
+            "towncrier.polling.authority_processing_ms",
             unit: "ms",
-            description: "PlanIt API response time");
+            description: "Total per-authority processing time (fetch + upsert + notifications)");
 
     public static readonly Histogram<double> CycleDuration =
-        PollingMeter.CreateHistogram<double>(
+        Meter.CreateHistogram<double>(
             "towncrier.polling.cycle_duration_ms",
             unit: "ms",
             description: "Full polling cycle duration");
 }
+#pragma warning restore SA1202

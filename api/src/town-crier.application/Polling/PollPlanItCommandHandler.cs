@@ -94,7 +94,7 @@ public sealed class PollPlanItCommandHandler
                     count++;
                 }
 
-                PollingMetrics.PlanItLatency.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
+                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
                 PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
                 authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
             }
