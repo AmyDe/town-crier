@@ -4,6 +4,7 @@ import type { GeocodingPort } from '../../domain/ports/geocoding-port';
 import { useCreateWatchZone } from './useCreateWatchZone';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
+import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import styles from './WatchZoneCreatePage.module.css';
 
 interface Props {
@@ -16,12 +17,15 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
   const {
     step,
     name,
+    postcode,
+    coordinates,
     radiusMetres,
     isSaving,
     error,
     setGeocode,
     setName,
     setRadiusMetres,
+    confirmDetails,
     save,
   } = useCreateWatchZone(repository, navigate);
 
@@ -71,10 +75,52 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
             <button
               type="button"
               className={styles.saveButton}
+              onClick={confirmDetails}
+            >
+              Next
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 'confirm' && (
+        <section className={styles.section}>
+          {coordinates && (
+            <ConfirmMap
+              latitude={coordinates.latitude}
+              longitude={coordinates.longitude}
+              radiusMetres={radiusMetres}
+            />
+          )}
+          <div className={styles.confirmDetails}>
+            <div className={styles.confirmRow}>
+              <span className={styles.confirmLabel}>Postcode</span>
+              <span className={styles.confirmValue}>{postcode}</span>
+            </div>
+            <div className={styles.confirmRow}>
+              <span className={styles.confirmLabel}>Name</span>
+              <span className={styles.confirmValue}>{name}</span>
+            </div>
+            <div className={styles.confirmRow}>
+              <span className={styles.confirmLabel}>Radius</span>
+              <span className={styles.confirmValue}>
+                {radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`}
+              </span>
+            </div>
+          </div>
+          {error && (
+            <p className={styles.error} role="alert">
+              {error}
+            </p>
+          )}
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.saveButton}
               onClick={save}
               disabled={isSaving}
             >
-              {isSaving ? 'Saving...' : 'Save'}
+              {isSaving ? 'Saving...' : 'Confirm'}
             </button>
           </div>
         </section>
