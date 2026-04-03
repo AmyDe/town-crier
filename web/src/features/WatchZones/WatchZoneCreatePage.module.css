@@ -101,3 +101,27 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.confirmDetails {
+  background: var(--tc-surface-elevated);
+  border-radius: var(--tc-radius-sm);
+  padding: var(--tc-space-md);
+  margin-bottom: var(--tc-space-lg);
+}
+
+.confirmRow {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--tc-space-xs) 0;
+}
+
+.confirmLabel {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-secondary);
+}
+
+.confirmValue {
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-font-semibold);
+  color: var(--tc-text-primary);
+}

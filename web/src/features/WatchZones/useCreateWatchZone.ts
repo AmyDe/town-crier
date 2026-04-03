@@ -2,11 +2,12 @@ import { useState, useCallback } from 'react';
 import type { GeocodeResult, AuthorityId } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 
-type CreateStep = 'postcode' | 'details';
+type CreateStep = 'postcode' | 'details' | 'confirm';
 
 interface CreateWatchZoneState {
   step: CreateStep;
   name: string;
+  postcode: string;
   coordinates: GeocodeResult | null;
   radiusMetres: number;
   authorityId: AuthorityId | null;
@@ -21,6 +22,7 @@ export function useCreateWatchZone(
   const [state, setState] = useState<CreateWatchZoneState>({
     step: 'postcode',
     name: '',
+    postcode: '',
     coordinates: null,
     radiusMetres: 2000,
     authorityId: null,
@@ -28,10 +30,11 @@ export function useCreateWatchZone(
     error: null,
   });
 
-  const setGeocode = useCallback((result: GeocodeResult) => {
+  const setGeocode = useCallback((result: GeocodeResult, enteredPostcode: string) => {
     setState(prev => ({
       ...prev,
       coordinates: result,
+      postcode: enteredPostcode,
       step: 'details',
       error: null,
     }));
@@ -49,13 +52,17 @@ export function useCreateWatchZone(
     setState(prev => ({ ...prev, authorityId }));
   }, []);
 
+  const confirmDetails = useCallback(() => {
+    if (!state.name.trim()) {
+      setState(prev => ({ ...prev, error: 'Please enter a name for this watch zone' }));
+      return;
+    }
+    setState(prev => ({ ...prev, step: 'confirm', error: null }));
+  }, [state.name]);
+
   const save = useCallback(async () => {
     if (!state.coordinates) {
       setState(prev => ({ ...prev, error: 'Please look up a postcode first' }));
-      return;
-    }
-    if (!state.name.trim()) {
-      setState(prev => ({ ...prev, error: 'Please enter a name for this watch zone' }));
       return;
     }
 
@@ -78,6 +85,7 @@ export function useCreateWatchZone(
   return {
     step: state.step,
     name: state.name,
+    postcode: state.postcode,
     coordinates: state.coordinates,
     radiusMetres: state.radiusMetres,
     isSaving: state.isSaving,
@@ -86,6 +94,7 @@ export function useCreateWatchZone(
     setName,
     setRadiusMetres,
     setAuthorityId,
+    confirmDetails,
     save,
   };
 }

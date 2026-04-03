@@ -7,6 +7,7 @@ export type OnboardingStep = 'welcome' | 'postcode' | 'radius' | 'confirm';
 export function useOnboarding(port: OnboardingPort) {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [geocode, setGeocode] = useState<GeocodeResult | null>(null);
+  const [postcode, setPostcode] = useState('');
   const [radiusMetres, setRadiusMetres] = useState(1000);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,8 +17,9 @@ export function useOnboarding(port: OnboardingPort) {
     setStep('postcode');
   }, []);
 
-  const handleGeocode = useCallback((result: GeocodeResult) => {
+  const handleGeocode = useCallback((result: GeocodeResult, enteredPostcode: string) => {
     setGeocode(result);
+    setPostcode(enteredPostcode);
     setStep('radius');
   }, []);
 
@@ -53,6 +55,7 @@ export function useOnboarding(port: OnboardingPort) {
   return {
     step,
     geocode,
+    postcode,
     radiusMetres,
     isSubmitting,
     error,

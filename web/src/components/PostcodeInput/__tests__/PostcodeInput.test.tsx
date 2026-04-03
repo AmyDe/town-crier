@@ -26,7 +26,7 @@ describe('PostcodeInput', () => {
     await user.click(screen.getByRole('button', { name: /look up/i }));
 
     await waitFor(() => {
-      expect(handleGeocode).toHaveBeenCalledWith({ latitude: 51.5074, longitude: -0.1278 });
+      expect(handleGeocode).toHaveBeenCalledWith({ latitude: 51.5074, longitude: -0.1278 }, 'SW1A 1AA');
     });
   });
 
