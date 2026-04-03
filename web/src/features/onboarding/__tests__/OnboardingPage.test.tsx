@@ -1,9 +1,33 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { describe, it, expect, vi } from 'vitest';
 import { OnboardingPage } from '../OnboardingPage';
 import { SpyOnboardingPort } from './spies/spy-onboarding-port';
 import { SpyGeocodingPort } from './spies/spy-geocoding-port';
+
+vi.mock('react-leaflet', () => ({
+  MapContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="map-container">{children}</div>
+  ),
+  TileLayer: () => <div data-testid="tile-layer" />,
+  Marker: () => <div data-testid="map-marker" />,
+  Circle: () => <div data-testid="map-circle" />,
+  useMap: () => ({
+    fitBounds: vi.fn(),
+  }),
+}));
+
+vi.mock('leaflet', () => ({
+  default: {
+    icon: () => ({}),
+    Icon: { Default: { mergeOptions: () => {} } },
+    latLng: () => ({ toBounds: () => ({ pad: () => ({}) }) }),
+  },
+  icon: () => ({}),
+  Icon: { Default: { mergeOptions: () => {} } },
+  latLng: () => ({ toBounds: () => ({ pad: () => ({}) }) }),
+}));
 
 function renderOnboarding(
   onboardingPort: SpyOnboardingPort,
@@ -77,6 +101,26 @@ describe('OnboardingPage', () => {
     await user.click(screen.getByRole('button', { name: /next/i }));
 
     expect(screen.getByRole('button', { name: /confirm/i })).toBeInTheDocument();
+  });
+
+  it('shows postcode and map on confirm step', async () => {
+    const user = userEvent.setup();
+    const geocodingSpy = new SpyGeocodingPort();
+    renderOnboarding(new SpyOnboardingPort(), geocodingSpy);
+
+    await user.click(screen.getByRole('button', { name: /get started/i }));
+    await user.type(screen.getByLabelText(/postcode/i), 'SW1A 1AA');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('radiogroup', { name: /radius/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText('2 km'));
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    expect(screen.getByText('SW1A 1AA')).toBeInTheDocument();
   });
 
   it('calls APIs and navigates to dashboard on confirm', async () => {

@@ -33,18 +33,19 @@ describe('useCreateWatchZone', () => {
     const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
 
     act(() => {
-      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 });
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
     });
 
     expect(result.current.step).toBe('details');
     expect(result.current.coordinates).toEqual({ latitude: 52.2053, longitude: 0.1218 });
+    expect(result.current.postcode).toBe('CB1 2AD');
   });
 
   it('allows setting name and radius', () => {
     const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
 
     act(() => {
-      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 });
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
     });
 
     act(() => {
@@ -62,7 +63,7 @@ describe('useCreateWatchZone', () => {
     const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
 
     act(() => {
-      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 });
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
     });
 
     act(() => {
@@ -91,7 +92,7 @@ describe('useCreateWatchZone', () => {
     const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
 
     act(() => {
-      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 });
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
       result.current.setName('Home');
       result.current.setAuthorityId(asAuthorityId(1));
     });
@@ -119,19 +120,18 @@ describe('useCreateWatchZone', () => {
     expect(result.current.error).toBe('Please look up a postcode first');
   });
 
-  it('does not save without a name', async () => {
+  it('does not advance to confirm without a name', () => {
     const { result } = renderHook(() => useCreateWatchZone(spy, navigate));
 
     act(() => {
-      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 });
-      result.current.setAuthorityId(asAuthorityId(1));
+      result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
     });
 
-    await act(async () => {
-      await result.current.save();
+    act(() => {
+      result.current.confirmDetails();
     });
 
-    expect(spy.createCalls).toHaveLength(0);
+    expect(result.current.step).toBe('details');
     expect(result.current.error).toBe('Please enter a name for this watch zone');
   });
 });

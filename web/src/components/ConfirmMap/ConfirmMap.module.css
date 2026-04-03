@@ -1,0 +1,6 @@
+.container {
+  border-radius: var(--tc-radius-md);
+  overflow: hidden;
+  height: 250px;
+  margin-bottom: var(--tc-space-md);
+}

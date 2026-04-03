@@ -5,7 +5,7 @@ import styles from './PostcodeInput.module.css';
 
 interface Props {
   geocodingPort: GeocodingPort;
-  onGeocode: (result: GeocodeResult) => void;
+  onGeocode: (result: GeocodeResult, postcode: string) => void;
 }
 
 export function PostcodeInput({ geocodingPort, onGeocode }: Props) {
@@ -15,7 +15,7 @@ export function PostcodeInput({ geocodingPort, onGeocode }: Props) {
   async function handleLookup() {
     const result = await lookup();
     if (result) {
-      onGeocode(result);
+      onGeocode(result, postcode);
     }
   }
 
