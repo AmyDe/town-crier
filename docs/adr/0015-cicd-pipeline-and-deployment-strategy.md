@@ -4,7 +4,7 @@ Date: 2026-03-28
 
 ## Status
 
-Accepted
+Accepted (deployment behaviour partially superseded by [ADR 0017](0017-cd-dev-always-deploy-and-pr-gate-no-promote.md))
 
 ## Context
 
@@ -79,3 +79,6 @@ The React SPA is deployed to **Azure Static Web Apps** using the official `Azure
 - Added: **API staging deployment in PR gate.** The PR gate now deploys the API to the dev Container App as a staging revision (labelled `pr{SHORT_SHA}`) with 0% traffic, runs **integration tests** against the staging URL using Auth0 test credentials, and on success **promotes** the staging revision to 100% traffic. Failed staging revisions are automatically deactivated and cleaned up. This validates the full API deployment and authentication flow before merge, not just unit tests.
 - Added: **Auto-merge workflow** (`auto-merge.yml`). Triggers on `pull_request` opened/ready_for_review events and enables squash auto-merge. Combined with CODEOWNERS requiring 2 approvals from `@AmyDe`, `@copilot`, and `@coderabbitai`, this enables hands-off merge after automated review approval.
 - Updated: API quality gates table now includes staging deployment, integration tests, and promotion as PR checks in addition to format, build, and unit test.
+
+### 2026-04-03
+- Updated: The promotion step described in the 2026-03-31 amendment is no longer accurate. [ADR 0017](0017-cd-dev-always-deploy-and-pr-gate-no-promote.md) (2026-04-01) removed the `api-promote` step from the PR gate — staging revisions are now validated via integration tests and then deactivated, with no traffic shift to the staging revision. CD Dev also no longer uses component-aware change detection; all components (infrastructure, API, web) deploy unconditionally on every push to `main`. See ADR 0017 for current deployment behaviour.
