@@ -31,6 +31,7 @@ public sealed class WatchZoneTests
             latitude = 51.5074,
             longitude = -0.1278,
             radiusMetres = 1000.0,
+            authorityId = 471, // City of London — avoids external postcodes.io reverse-geocode call
         };
 
         // Act -- create watch zone
