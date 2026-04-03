@@ -113,7 +113,7 @@ public sealed class CreateUserProfileCommandHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
-        var command = new CreateUserProfileCommand("auth0|other-1", "someone@gmail.com");
+        var command = new CreateUserProfileCommand("auth0|other-1", "someone@gmail.com", EmailVerified: true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
@@ -174,12 +174,12 @@ public sealed class CreateUserProfileCommandHandlerTests
         var repository = new FakeUserProfileRepository();
         var noAutoGrant = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
         await noAutoGrant.HandleAsync(
-            new CreateUserProfileCommand("auth0|existing", "alice@family.uk"), CancellationToken.None);
+            new CreateUserProfileCommand("auth0|existing", "alice@family.uk", EmailVerified: true), CancellationToken.None);
 
         // Act — re-register with auto-grant enabled (should return existing, not upgrade)
         var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
         var result = await handler.HandleAsync(
-            new CreateUserProfileCommand("auth0|existing", "alice@family.uk"), CancellationToken.None);
+            new CreateUserProfileCommand("auth0|existing", "alice@family.uk", EmailVerified: true), CancellationToken.None);
 
         // Assert — still Free because existing profile is returned as-is
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
