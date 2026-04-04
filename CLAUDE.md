@@ -11,8 +11,10 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 ```
 /api          # .NET 10 backend (Hexagonal / Ports & Adapters)
 /mobile/ios   # Native iOS app (Clean Architecture / MVVM-C)
+/web          # React/TypeScript frontend
 /infra        # Pulumi IaC (.NET 10 / C#)
 /docs/adr     # Architecture Decision Records
+/docs/specs   # Feature specs referenced by beads
 ```
 
 ## Tech Stack
@@ -95,18 +97,31 @@ Business logic lives in domain entities and value objects, not in handlers. Hand
 - **Swift types:** PascalCase; no `I` prefix on protocols (use `...able`, `...Service`, `...Repository`)
 - **C# classes:** `sealed` by default; Swift classes: `final` by default
 
-## Issue Tracking — Beads (Exclusive)
+## Specs and Beads
 
-Use **beads** (`bd`) for ALL task and issue tracking. Do NOT use TodoWrite, TaskCreate, or markdown files for tracking work.
+### Philosophy
 
-- Run `bd prime` at the start of every session (or after compaction/clear) to load the workflow context
-- Create a beads issue **before** writing code: `bd create --title="..." --description="..." --type=task|bug|feature --priority=2`
-- Mark issues in-progress when starting: `bd update <id> --status=in_progress`
-- Close issues when done: `bd close <id>`
-- Check for available work: `bd ready`
+Beads track *what to do* and *dependencies*. Specs capture *how* and *why*. Keep beads lightweight — one-line descriptions referencing spec files. ([Yegge, Issue #976](https://github.com/gastownhall/beads/issues/976))
+
+### Specs Convention
+
+Feature specifications live in `docs/specs/<topic>.md`. When breaking down a plan into beads, create the spec file first, then create beads that reference it:
+
+```bash
+bd create --title="Implement auth flow" --description="Spec: docs/specs/auth-flow.md#phase-1" --type=task --priority=2
+```
+
+### Beads (Exclusive Issue Tracker)
+
+Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown files.
+
+- Run `bd prime` to load workflow context (commands, session protocol)
 - Do NOT use `bd edit` — it opens an interactive editor that blocks agents
-- Beads data is stored in a Dolt database at `.beads/dolt/` with a remote pointing to this GitHub repo (stored on `refs/dolt/data`, invisible to normal Git operations)
-- Run `bd dolt push` to sync beads data to GitHub — this is separate from `git push`
+- Run `bd dolt push` to sync beads to GitHub (separate from `git push`)
+
+### Cleanup Discipline
+
+Keep the working set under ~200 issues. Run `bd cleanup` regularly and compact closed issues with `bd compact`.
 
 ## CLI-First Policy
 
@@ -243,49 +258,18 @@ Standard linting/formatting configs are bundled with their respective skills:
 - `.claude/skills/ios-coding-standards/assets/.swiftlint.yml` (force cast/try/unwrap as errors)
 
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
-## Beads Issue Tracker
+<!-- BEGIN BEADS INTEGRATION v:2 profile:minimal -->
+## Beads Quick Reference
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
+Run `bd prime` for full command reference. Key commands:
 
 ```bash
 bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --claim  # Claim work
 bd close <id>         # Complete work
+bd remember "insight" # Persistent knowledge across sessions
 ```
 
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+Rules: `bd` for ALL tracking (not TodoWrite/TaskCreate). `bd remember` for persistent knowledge (not MEMORY.md).
 <!-- END BEADS INTEGRATION -->

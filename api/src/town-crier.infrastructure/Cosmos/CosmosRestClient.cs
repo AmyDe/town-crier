@@ -140,7 +140,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
 
         do
         {
+#pragma warning disable CA2000 // using var disposes request on all paths including early return
             using var request = this.BuildQueryRequest(collection, sql, parameters);
+#pragma warning restore CA2000
             await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
             AddQueryHeaders(request, partitionKey);
 
@@ -150,6 +152,25 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             }
 
             using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+            // Fan-out detection: the gateway returns 400 on the initial probe when it
+            // cannot serve DISTINCT/GROUP BY across partitions. Subsequent continuation
+            // pages never trigger this — only the first request can.
+            if (continuation is null
+                && response.StatusCode == HttpStatusCode.BadRequest
+                && partitionKey is null)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (errorBody.Contains("partitionedQueryExecutionInfoVersion", StringComparison.Ordinal))
+                {
+                    return await this.QueryWithFanOutAsync(
+                        collection, sql, parameters, typeInfo, activity, ct).ConfigureAwait(false);
+                }
+
+                throw new HttpRequestException(
+                    $"Cosmos DB query failed ({(int)response.StatusCode}): {errorBody} | SQL: {sql}");
+            }
+
             await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
 
             RecordResponseMetrics(activity, response);
@@ -235,6 +256,95 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         if (statusCode == 429)
         {
             CosmosInstrumentation.Throttles.Add(1);
+        }
+    }
+
+    private async Task<List<T>> QueryWithFanOutAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        JsonTypeInfo<T> typeInfo,
+        Activity? activity,
+        CancellationToken ct)
+    {
+        var rangeIds = await this.GetPartitionKeyRangesAsync(collection, ct).ConfigureAwait(false);
+        var results = new List<T>();
+
+        foreach (var rangeId in rangeIds)
+        {
+            string? continuation = null;
+
+            do
+            {
+                using var request = this.BuildQueryRequest(collection, sql, parameters);
+                await this.AddHeadersAsync(request, null, ct).ConfigureAwait(false);
+                AddQueryHeaders(request, null);
+                request.Headers.TryAddWithoutValidation(
+                    "x-ms-documentdb-partitionkeyrangeid", rangeId);
+
+                if (continuation is not null)
+                {
+                    request.Headers.TryAddWithoutValidation("x-ms-continuation", continuation);
+                }
+
+                using var response = await this.httpClient.SendAsync(request, ct)
+                    .ConfigureAwait(false);
+                await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
+
+                RecordResponseMetrics(activity, response);
+
+                var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                await using (stream.ConfigureAwait(false))
+                {
+                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                        .ConfigureAwait(false);
+
+                    foreach (var element in doc.RootElement.GetProperty("Documents").EnumerateArray())
+                    {
+                        results.Add(element.Deserialize(typeInfo)!);
+                    }
+                }
+
+                continuation = response.Headers.TryGetValues("x-ms-continuation", out var values)
+                    ? values.FirstOrDefault()
+                    : null;
+            }
+            while (continuation is not null);
+        }
+
+        return results;
+    }
+
+    private async Task<List<string>> GetPartitionKeyRangesAsync(
+        string collection,
+        CancellationToken ct)
+    {
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/pkranges";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
+        await this.AddHeadersAsync(request, null, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException(
+                $"Failed to fetch partition key ranges ({(int)response.StatusCode}): {body}");
+        }
+
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            var ranges = new List<string>();
+            foreach (var range in doc.RootElement.GetProperty("PartitionKeyRanges").EnumerateArray())
+            {
+                ranges.Add(range.GetProperty("id").GetString()!);
+            }
+
+            return ranges;
         }
     }
 

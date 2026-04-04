@@ -107,6 +107,24 @@ public sealed class CosmosWatchZoneRepositoryTests
     }
 
     [Test]
+    public async Task Should_DeduplicateAuthorityIds_When_QueryReturnsDuplicatesFromPartitionFanOut()
+    {
+        // Arrange — simulate partition fan-out returning duplicate DISTINCT results
+        var client = new FakeCosmosRestClient();
+        client.SetQueryResults("SELECT DISTINCT VALUE c.authorityId", new List<int> { 1, 2, 2, 3, 3, 3 });
+        var repo = new CosmosWatchZoneRepository(client);
+
+        // Act
+        var result = await repo.GetDistinctAuthorityIdsAsync(CancellationToken.None);
+
+        // Assert — duplicates from overlapping partition ranges must be removed
+        await Assert.That(result.Count).IsEqualTo(3);
+        await Assert.That(result).Contains(1);
+        await Assert.That(result).Contains(2);
+        await Assert.That(result).Contains(3);
+    }
+
+    [Test]
     public async Task Should_ReturnEmptyDictionary_When_GetZoneCountsByAuthorityCalledWithNoData()
     {
         // Arrange
@@ -118,5 +136,31 @@ public sealed class CosmosWatchZoneRepositoryTests
 
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_ReaggregateZoneCounts_When_QueryReturnsPartialAggregatesFromPartitionFanOut()
+    {
+        // Arrange — simulate partition fan-out returning partial GROUP BY aggregates.
+        // Authority 1 appears in two partition ranges (counts 3 + 2 = 5),
+        // Authority 2 appears once (count 4).
+        var client = new FakeCosmosRestClient();
+        client.SetQueryResults(
+            "SELECT c.authorityId, COUNT(1) AS zoneCount",
+            new List<AuthorityZoneCountResult>
+            {
+                new() { AuthorityId = 1, ZoneCount = 3 },
+                new() { AuthorityId = 2, ZoneCount = 4 },
+                new() { AuthorityId = 1, ZoneCount = 2 },
+            });
+        var repo = new CosmosWatchZoneRepository(client);
+
+        // Act
+        var result = await repo.GetZoneCountsByAuthorityAsync(CancellationToken.None);
+
+        // Assert — partial aggregates for same authority must be summed
+        await Assert.That(result.Count).IsEqualTo(2);
+        await Assert.That(result[1]).IsEqualTo(5);
+        await Assert.That(result[2]).IsEqualTo(4);
     }
 }

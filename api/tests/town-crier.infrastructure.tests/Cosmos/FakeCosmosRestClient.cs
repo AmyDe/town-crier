@@ -11,6 +11,21 @@ namespace TownCrier.Infrastructure.Tests.Cosmos;
 internal sealed class FakeCosmosRestClient : ICosmosRestClient
 {
     private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> store = new();
+    private readonly Dictionary<string, object> cannedQueryResults = new();
+
+    /// <summary>
+    /// Registers a pre-canned result list that <see cref="QueryAsync{T}"/> will return
+    /// when the SQL query starts with <paramref name="sqlPrefix"/>. This bypasses
+    /// normal document-store deserialization and returns the list directly, allowing
+    /// tests to simulate partition fan-out scenarios (duplicates, partial aggregates).
+    /// </summary>
+    /// <typeparam name="T">The element type of the result list.</typeparam>
+    /// <param name="sqlPrefix">The SQL prefix to match against the query.</param>
+    /// <param name="results">The pre-canned result list to return.</param>
+    public void SetQueryResults<T>(string sqlPrefix, List<T> results)
+    {
+        this.cannedQueryResults[sqlPrefix] = results;
+    }
 
     public Task<T?> ReadDocumentAsync<T>(
         string collection,
@@ -64,6 +79,16 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        // If a pre-canned result was registered for this SQL prefix, return it directly.
+        // This lets tests simulate partition fan-out scenarios (duplicates, partial aggregates).
+        foreach (var (prefix, value) in this.cannedQueryResults)
+        {
+            if (sql.StartsWith(prefix, StringComparison.Ordinal) && value is List<T> canned)
+            {
+                return Task.FromResult(new List<T>(canned));
+            }
+        }
+
         // Return all documents in the collection, optionally filtered by partition key.
         // The fake does not parse SQL — tests must set up data so that
         // "return everything matching the partition" is a valid approximation.
