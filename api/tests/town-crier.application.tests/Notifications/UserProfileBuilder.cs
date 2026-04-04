@@ -9,6 +9,8 @@ internal sealed class UserProfileBuilder
     private SubscriptionTier tier = SubscriptionTier.Free;
     private bool pushEnabled = true;
     private DayOfWeek digestDay = DayOfWeek.Monday;
+    private bool emailDigestEnabled = true;
+    private bool emailInstantEnabled;
 
     public UserProfileBuilder WithUserId(string userId)
     {
@@ -40,12 +42,28 @@ internal sealed class UserProfileBuilder
         return this;
     }
 
+    public UserProfileBuilder WithEmailDigestEnabled(bool enabled)
+    {
+        this.emailDigestEnabled = enabled;
+        return this;
+    }
+
+    public UserProfileBuilder WithEmailInstantEnabled(bool enabled)
+    {
+        this.emailInstantEnabled = enabled;
+        return this;
+    }
+
     public UserProfile Build()
     {
         var profile = UserProfile.Register(this.userId, this.email);
         profile.UpdatePreferences(
             postcode: null,
-            new NotificationPreferences(this.pushEnabled, this.digestDay));
+            new NotificationPreferences(
+                this.pushEnabled,
+                this.digestDay,
+                this.emailDigestEnabled,
+                this.emailInstantEnabled));
 
         if (this.tier != SubscriptionTier.Free)
         {
