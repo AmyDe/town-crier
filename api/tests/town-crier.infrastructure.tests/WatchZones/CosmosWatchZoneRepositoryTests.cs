@@ -107,6 +107,24 @@ public sealed class CosmosWatchZoneRepositoryTests
     }
 
     [Test]
+    public async Task Should_DeduplicateAuthorityIds_When_QueryReturnsDuplicatesFromPartitionFanOut()
+    {
+        // Arrange — simulate partition fan-out returning duplicate DISTINCT results
+        var client = new FakeCosmosRestClient();
+        client.SetQueryResults("SELECT DISTINCT VALUE c.authorityId", new List<int> { 1, 2, 2, 3, 3, 3 });
+        var repo = new CosmosWatchZoneRepository(client);
+
+        // Act
+        var result = await repo.GetDistinctAuthorityIdsAsync(CancellationToken.None);
+
+        // Assert — duplicates from overlapping partition ranges must be removed
+        await Assert.That(result.Count).IsEqualTo(3);
+        await Assert.That(result).Contains(1);
+        await Assert.That(result).Contains(2);
+        await Assert.That(result).Contains(3);
+    }
+
+    [Test]
     public async Task Should_ReturnEmptyDictionary_When_GetZoneCountsByAuthorityCalledWithNoData()
     {
         // Arrange
