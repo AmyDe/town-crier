@@ -1,3 +1,4 @@
+using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
@@ -55,6 +56,7 @@ public sealed class SearchPlanningApplicationsQueryHandler
             a.StartDate,
             a.Url)).ToList();
 
+        ApiMetrics.SearchesPerformed.Add(1);
         return new SearchPlanningApplicationsResult(summaries, result.Total, query.Page);
     }
 }

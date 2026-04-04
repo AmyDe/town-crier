@@ -1,3 +1,4 @@
+using TownCrier.Application.Observability;
 using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Application.UserProfiles;
@@ -37,6 +38,7 @@ public sealed class CreateUserProfileCommandHandler
         }
 
         await this.repository.SaveAsync(profile, ct).ConfigureAwait(false);
+        ApiMetrics.UsersRegistered.Add(1);
 
         return new CreateUserProfileResult(
             profile.UserId,

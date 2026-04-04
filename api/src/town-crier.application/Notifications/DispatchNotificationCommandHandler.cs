@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.Notifications;
 using TownCrier.Domain.UserProfiles;
@@ -66,6 +67,8 @@ public sealed class DispatchNotificationCommandHandler
             authorityId: application.AreaId,
             now: now);
 
+        ApiMetrics.NotificationsCreated.Add(1);
+
         // Check notification preferences — record but don't push
         if (!profile.NotificationPreferences.PushEnabled)
         {
@@ -104,6 +107,7 @@ public sealed class DispatchNotificationCommandHandler
             await this.pushNotificationSender.SendAsync(notification, devices, ct)
                 .ConfigureAwait(false);
             notification.MarkPushSent();
+            ApiMetrics.NotificationsSent.Add(1);
         }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);

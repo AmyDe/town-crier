@@ -102,8 +102,18 @@ A significant architectural choice exists in code with no corresponding ADR:
 ### Supersession needed
 Code shows a decision has been reversed — the old ADR should be marked "Superseded" and a new one created.
 
+### Cross-reference supersession needed
+A newer ADR's decision implicitly invalidates an older ADR, but the older ADR's status was never updated. This is the **ADR-to-ADR** case — the codebase scan alone won't catch it because both ADRs exist and the newer one is accurate.
+
+To detect this: during Phase 1, after building the inventory, cross-reference every pair of ADRs for contradictions. Specifically:
+- If ADR B explicitly says it replaces the approach from ADR A (e.g., "the Docker Compose approach was abandoned"), check whether A's status reflects this.
+- If ADR B covers the same architectural concern as ADR A but makes a different decision, the older one is likely superseded.
+- Check the `Superseded by` links — if ADR B supersedes ADR C, also check whether B's decision implicitly supersedes other related ADRs that aren't linked.
+
+This check runs against the ADR corpus itself, not the codebase. It should happen at the end of Phase 1, before the codebase scan begins.
+
 ### No action needed
-ADR accurately reflects codebase reality. This is the happy path — most runs on `/loop` should end here.
+ADR accurately reflects codebase reality and no cross-reference contradictions exist. This is the happy path — most runs on `/loop` should end here.
 
 **Judgement calls:**
 - Not every dependency needs an ADR. A utility library (`lodash`, `date-fns`) is not architectural. A library that shapes how you build features (React Query for server state, Leaflet for maps, Auth0 for identity) is.

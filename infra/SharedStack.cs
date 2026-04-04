@@ -9,6 +9,8 @@ using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
 using Pulumi.AzureNative.ApplicationInsights;
+using Pulumi.AzureNative.Portal;
+using Pulumi.AzureNative.Portal.Inputs;
 
 public static class SharedStack
 {
@@ -165,6 +167,84 @@ public static class SharedStack
             PrincipalId = cosmosDataIdentity.PrincipalId,
         });
 
+        // Operational Dashboard
+        var dashboard = new Dashboard("dash-towncrier-operational", new DashboardArgs
+        {
+            DashboardName = "dash-towncrier-operational",
+            ResourceGroupName = resourceGroup.Name,
+            Location = resourceGroup.Location,
+            Tags = tags,
+            Properties = new DashboardPropertiesWithProvisioningStateArgs
+            {
+                Lenses = new[]
+                {
+                    new DashboardLensArgs
+                    {
+                        Order = 0,
+                        Parts = new[]
+                        {
+                            // Row 1: Users & Engagement
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 0, Y = 0, ColSpan = 4, RowSpan = 4 },
+                                Metadata = KqlTile(
+                                    appInsights.Id,
+                                    "requests | where name == 'GET /v1/me' | summarize dcount(user_AuthenticatedId) by bin(timestamp, 1h) | render timechart",
+                                    "Active Users"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 4, Y = 0, ColSpan = 4, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.users.registered", "Registrations"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 8, Y = 0, ColSpan = 4, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.search.performed", "Searches"),
+                            },
+                            // Row 2: Watch Zones & Notifications
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 0, Y = 4, ColSpan = 4, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.watchzones.created", "Watch Zones Created"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 4, Y = 4, ColSpan = 4, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.watchzones.deleted", "Watch Zones Deleted"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 8, Y = 4, ColSpan = 4, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.notifications.sent", "Notifications Sent"),
+                            },
+                            // Row 3: Sync & Infrastructure Health
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 0, Y = 8, ColSpan = 3, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.polling.authorities_polled", "Sync Success vs Failure"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 3, Y = 8, ColSpan = 3, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.polling.applications_ingested", "Applications Ingested"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 6, Y = 8, ColSpan = 3, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.cosmos.request_charge_ru", "Cosmos RU Consumption"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 9, Y = 8, ColSpan = 3, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.api.errors", "API Errors"),
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
@@ -177,6 +257,102 @@ public static class SharedStack
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
+        };
+    }
+
+    private static DashboardPartMetadataArgs MetricTile(
+        Output<string> appInsightsId, string metricName, string title)
+    {
+        return new DashboardPartMetadataArgs
+        {
+            Type = "Extension/HubsExtension/PartType/MonitorChartPart",
+            Settings = new InputMap<object>
+            {
+                ["content"] = new Dictionary<string, object>
+                {
+                    ["options"] = new Dictionary<string, object>
+                    {
+                        ["chart"] = new Dictionary<string, object>
+                        {
+                            ["metrics"] = new object[]
+                            {
+                                new Dictionary<string, object>
+                                {
+                                    ["resourceMetadata"] = new Dictionary<string, object>
+                                    {
+                                        ["id"] = appInsightsId,
+                                    },
+                                    ["name"] = metricName,
+                                    ["aggregationType"] = 1,
+                                    ["namespace"] = "azure.applicationinsights",
+                                    ["metricVisualization"] = new Dictionary<string, object>
+                                    {
+                                        ["displayName"] = title,
+                                    },
+                                },
+                            },
+                            ["title"] = title,
+                            ["titleKind"] = 1,
+                            ["visualization"] = new Dictionary<string, object>
+                            {
+                                ["chartType"] = 2,
+                            },
+                            ["timespan"] = new Dictionary<string, object>
+                            {
+                                ["relative"] = new Dictionary<string, object>
+                                {
+                                    ["duration"] = 86400000,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    private static DashboardPartMetadataArgs KqlTile(
+        Output<string> appInsightsId, string query, string title)
+    {
+        return new DashboardPartMetadataArgs
+        {
+            Type = "Extension/Microsoft_OperationsManagementSuite_Workspace/PartType/LogsDashboardPart",
+            Settings = new InputMap<object>
+            {
+                ["content"] = new Dictionary<string, object>
+                {
+                    ["Query"] = query,
+                    ["ControlType"] = "AnalyticsChart",
+                    ["SpecificChart"] = "Line",
+                    ["PartTitle"] = title,
+                    ["Dimensions"] = new Dictionary<string, object>
+                    {
+                        ["xAxis"] = new Dictionary<string, object>
+                        {
+                            ["name"] = "timestamp",
+                            ["type"] = "datetime",
+                        },
+                        ["yAxis"] = new Dictionary<string, object>
+                        {
+                            ["name"] = "aggregation",
+                            ["type"] = "long",
+                        },
+                    },
+                },
+            },
+            Inputs = new InputList<object>
+            {
+                (Input<object>)(object)new Dictionary<string, object>
+                {
+                    ["name"] = "resourceTypeMode",
+                    ["value"] = "components",
+                },
+                (Input<object>)(object)new Dictionary<string, object>
+                {
+                    ["name"] = "ComponentId",
+                    ["value"] = appInsightsId,
+                },
+            },
         };
     }
 }

@@ -22,5 +22,19 @@ public static class ApiMetrics
         Meter.CreateCounter<long>(
             "towncrier.api.errors",
             description: "Unhandled exceptions by endpoint");
+
+    public static readonly Counter<long> UsersRegistered =
+        Meter.CreateCounter<long>("towncrier.users.registered");
+
+    public static readonly Counter<long> WatchZonesDeleted =
+        Meter.CreateCounter<long>("towncrier.watchzones.deleted");
+
+    public static readonly Counter<long> SearchesPerformed =
+        Meter.CreateCounter<long>("towncrier.search.performed");
+
+    public static readonly Counter<long> NotificationsCreated =
+        Meter.CreateCounter<long>(
+            "towncrier.notifications.created",
+            description: "Notification records created (may or may not result in push)");
 }
 #pragma warning restore SA1202
