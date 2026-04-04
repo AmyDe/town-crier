@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using TownCrier.Application.Authorities;
+using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
@@ -58,6 +59,7 @@ public sealed partial class CreateWatchZoneCommandHandler
             authorityId);
 
         await this.watchZoneRepository.SaveAsync(zone, ct).ConfigureAwait(false);
+        ApiMetrics.WatchZonesCreated.Add(1);
 
         if (profile.Tier != SubscriptionTier.Free)
         {

@@ -1,3 +1,5 @@
+using TownCrier.Application.Observability;
+
 namespace TownCrier.Application.WatchZones;
 
 public sealed class DeleteWatchZoneCommandHandler
@@ -14,5 +16,6 @@ public sealed class DeleteWatchZoneCommandHandler
         ArgumentNullException.ThrowIfNull(command);
 
         await this.watchZoneRepository.DeleteAsync(command.UserId, command.ZoneId, ct).ConfigureAwait(false);
+        ApiMetrics.WatchZonesDeleted.Add(1);
     }
 }
