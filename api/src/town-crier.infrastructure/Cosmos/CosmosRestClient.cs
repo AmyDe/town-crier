@@ -153,6 +153,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
 
             using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
 
+            // Fan-out detection: the gateway returns 400 on the initial probe when it
+            // cannot serve DISTINCT/GROUP BY across partitions. Subsequent continuation
+            // pages never trigger this — only the first request can.
             if (continuation is null
                 && response.StatusCode == HttpStatusCode.BadRequest
                 && partitionKey is null)
@@ -321,7 +324,13 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         await this.AddHeadersAsync(request, null, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException(
+                $"Failed to fetch partition key ranges ({(int)response.StatusCode}): {body}");
+        }
 
         var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         await using (stream.ConfigureAwait(false))
