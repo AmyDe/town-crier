@@ -62,6 +62,8 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           pulumi stack select prod
+          pulumi config set --secret adminApiKey "${{ secrets.ADMIN_API_KEY }}"
+          pulumi config set --secret autoGrantProDomains "${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
           pulumi up --yes --non-interactive
 
       - name: Extract Pulumi outputs
@@ -116,39 +118,12 @@ jobs:
             exit 1
           fi
 
-      - name: Set Container App secrets
-        run: |
-          az containerapp secret set \
-            --name "ca-town-crier-api-prod" \
-            --resource-group "$RESOURCE_GROUP" \
-            --secrets \
-              "admin-api-key=${{ secrets.ADMIN_API_KEY }}" \
-              "auto-grant-pro-domains=${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
-
-      - uses: ./.github/actions/setup-dotnet-infra
-
-      - name: Get App Insights connection string
-        id: appinsights
-        working-directory: infra
-        run: |
-          CONNECTION_STRING=$(pulumi stack output appInsightsConnectionString --stack shared)
-          echo "::add-mask::$CONNECTION_STRING"
-          echo "connection-string=$CONNECTION_STRING" >> "$GITHUB_OUTPUT"
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
       - name: Deploy API image to prod
         run: |
           az containerapp update \
             --name "ca-town-crier-api-prod" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}" \
-            --set-env-vars \
-              "Admin__ApiKey=secretref:admin-api-key" \
-              "Subscription__AutoGrant__ProDomains=secretref:auto-grant-pro-domains" \
-              "APPLICATIONINSIGHTS_CONNECTION_STRING=${{ steps.appinsights.outputs.connection-string }}"
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}"
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
