@@ -137,4 +137,30 @@ public sealed class CosmosWatchZoneRepositoryTests
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);
     }
+
+    [Test]
+    public async Task Should_ReaggregateZoneCounts_When_QueryReturnsPartialAggregatesFromPartitionFanOut()
+    {
+        // Arrange — simulate partition fan-out returning partial GROUP BY aggregates.
+        // Authority 1 appears in two partition ranges (counts 3 + 2 = 5),
+        // Authority 2 appears once (count 4).
+        var client = new FakeCosmosRestClient();
+        client.SetQueryResults(
+            "SELECT c.authorityId, COUNT(1) AS zoneCount",
+            new List<AuthorityZoneCountResult>
+            {
+                new() { AuthorityId = 1, ZoneCount = 3 },
+                new() { AuthorityId = 2, ZoneCount = 4 },
+                new() { AuthorityId = 1, ZoneCount = 2 },
+            });
+        var repo = new CosmosWatchZoneRepository(client);
+
+        // Act
+        var result = await repo.GetZoneCountsByAuthorityAsync(CancellationToken.None);
+
+        // Assert — partial aggregates for same authority must be summed
+        await Assert.That(result.Count).IsEqualTo(2);
+        await Assert.That(result[1]).IsEqualTo(5);
+        await Assert.That(result[2]).IsEqualTo(4);
+    }
 }
