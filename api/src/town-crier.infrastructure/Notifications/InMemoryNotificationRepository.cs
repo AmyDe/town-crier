@@ -32,6 +32,15 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
+    public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
+        string userId, DateTimeOffset since, CancellationToken ct)
+    {
+        var notifications = this.store
+            .Where(n => n.UserId == userId && n.CreatedAt >= since)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Notification>>(notifications);
+    }
+
     public Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
         string userId, int page, int pageSize, CancellationToken ct)
     {
