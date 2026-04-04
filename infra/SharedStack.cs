@@ -316,15 +316,16 @@ public static class SharedStack
     {
         return new DashboardPartMetadataArgs
         {
-            Type = "Extension/Microsoft_OperationsManagementSuite_Workspace/PartType/LogsDashboardPart",
+            Type = "Extension/AppInsightsExtension/PartType/AnalyticsPart",
             Settings = new InputMap<object>
             {
                 ["content"] = new Dictionary<string, object>
                 {
                     ["Query"] = query,
-                    ["ControlType"] = "AnalyticsChart",
+                    ["ControlType"] = "FrameControlChart",
                     ["SpecificChart"] = "Line",
                     ["PartTitle"] = title,
+                    ["IsQueryContainTimeRange"] = false,
                     ["Dimensions"] = new Dictionary<string, object>
                     {
                         ["xAxis"] = new Dictionary<string, object>
@@ -332,21 +333,19 @@ public static class SharedStack
                             ["name"] = "timestamp",
                             ["type"] = "datetime",
                         },
-                        ["yAxis"] = new Dictionary<string, object>
+                        ["yAxis"] = new object[]
                         {
-                            ["name"] = "aggregation",
-                            ["type"] = "long",
+                            new Dictionary<string, object>
+                            {
+                                ["name"] = "Value",
+                                ["type"] = "long",
+                            },
                         },
                     },
                 },
             },
             Inputs = new[]
             {
-                (object)new Dictionary<string, object>
-                {
-                    ["name"] = "resourceTypeMode",
-                    ["value"] = "components",
-                },
                 (object)new Dictionary<string, object>
                 {
                     ["name"] = "ComponentId",
