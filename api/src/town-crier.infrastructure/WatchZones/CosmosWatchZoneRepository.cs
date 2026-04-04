@@ -109,6 +109,8 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             CosmosJsonSerializerContext.Default.AuthorityZoneCountResult,
             ct).ConfigureAwait(false);
 
-        return items.ToDictionary(item => item.AuthorityId, item => item.ZoneCount);
+        return items
+            .GroupBy(item => item.AuthorityId)
+            .ToDictionary(g => g.Key, g => g.Sum(item => item.ZoneCount));
     }
 }
