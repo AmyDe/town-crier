@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main. Creates a feature branch, opens a PR via `gh`, then watches for the PR Gate CI check to pass — auto-merge is enabled automatically by a GitHub Actions workflow. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work from main onto the remote. Also trigger when the user has been working on main and wants to push but can't due to branch protection. Do NOT use for: creating PRs without merging, pushing feature branches, or work that isn't on main.
+description: Automate the push-to-main flow when you have local commits and/or unstaged changes on main, or when you're on a feature branch (e.g., from a worktree) ready to PR and merge. Creates a feature branch (if on main), opens a PR via `gh`, then watches for the PR Gate CI check to pass — auto-merge is enabled automatically by a GitHub Actions workflow. MUST use this skill whenever the user says "ship", "ship it", "push to main", "push my changes", "get this on main", "merge to main", "create a PR and merge", or any variation of wanting to get local work merged. Also trigger when the user has been working on main and wants to push but can't due to branch protection, or when work on a feature branch/worktree is ready to ship. Do NOT use for: creating PRs without merging.
 ---
 
 # Ship to Main
@@ -19,8 +19,11 @@ There are no reviewer approvals required. The merge flow is entirely CI-driven:
 
 ### Step 1: Pre-flight
 
-1. Confirm you're on `main`. If not, stop and tell the user — don't switch branches when there might be in-progress work elsewhere.
-2. `git fetch origin` to get the latest remote state.
+1. Run `git fetch origin` to get the latest remote state.
+2. Detect which branch you're on:
+   - **On `main`:** proceed normally through Steps 2–5.
+   - **On a feature branch** (e.g., work done in a worktree): skip Steps 2–4 and go directly to Step 5 (Push and create PR). Note the branch name and whether you're in a worktree (`git worktree list`) for cleanup later.
+   - **On an unrelated branch with uncommitted work:** stop and tell the user.
 3. Check there's actually work to ship:
    - `git log origin/main..HEAD --oneline` — local commits ahead of origin
    - `git status --short` — unstaged or untracked changes
@@ -99,20 +102,25 @@ The **PR Gate** (`gate` job in `pr-gate.yml`) is the sole required status check.
 
 The `gate` job passes if every triggered check passes (skipped checks are fine).
 
-**Poll loop** (repeat every 30 seconds, up to 15 minutes):
+**Watch for checks to complete** — use `--watch` to block until done instead of manual sleep loops:
 
 ```bash
-gh pr checks <pr-number> --json name,state,conclusion
+gh pr checks <pr-number> --watch --fail-fast
 ```
 
-**On each poll iteration:**
+Run this with the Bash tool's **timeout set to 600000ms** (10 minutes). The command blocks until all checks complete (exit 0 = all passed) or any check fails (non-zero exit).
 
-1. Check if the `PR Gate` check has completed:
-   - **Conclusion `success`** → proceed to Step 7.
-   - **Conclusion `failure`** → enter the **failure handling** below.
-2. If still pending, report which checks are running and continue polling.
+- **Exit 0** → all checks passed. Proceed to Step 7.
+- **Non-zero exit** → a check failed. Enter the **failure handling** below.
+- **Timeout** → report the PR URL and stop. Auto-merge remains enabled — no work is lost.
 
-**Timeout:** If 15 minutes pass without the gate completing, report the current check states and the PR URL, then stop. Auto-merge remains enabled — no work is lost.
+If you need to inspect individual check statuses (e.g., after a failure), query with JSON:
+
+```bash
+gh pr checks <pr-number> --json name,state,bucket
+```
+
+**IMPORTANT:** The field is `bucket` (not `conclusion`). Valid bucket values: `pass`, `fail`, `pending`, `skipping`.
 
 ### Step 6a: Handle CI failures
 
@@ -149,40 +157,50 @@ Once the gate passes, auto-merge will squash-merge the PR. Wait for it:
 gh pr view <pr-number> --json state -q '.state'
 ```
 
-Once state is `"MERGED"`:
+Once state is `"MERGED"`, detect your context before cleanup:
 
 ```bash
-git checkout main
-git pull origin main
+git worktree list
 ```
 
-**Full cleanup — worktrees, local branches, and remote branches:**
+**If you're in a worktree** (feature branch is in a secondary worktree, `main` is in the primary):
 
-1. **Remove any worktrees** for the feature branch:
+1. Note the primary worktree path (the one on `main`).
+2. All remaining cleanup commands target the **primary worktree** — use `git -C <primary-path>`:
    ```bash
-   # List worktrees and remove any pointing to the feature branch
-   git worktree list
-   # If the feature branch appears, remove its worktree
-   git worktree remove <worktree-path>
+   git -C <primary-path> worktree remove <this-worktree-path>
+   git -C <primary-path> branch -D <branch-name>
    ```
 
-2. **Delete the local branch:**
+**If you're on the feature branch directly** (no worktree):
+
+1. Switch to main and delete the branch:
    ```bash
+   git checkout main
    git branch -D <branch-name>
    ```
 
-3. **Delete the remote branch** (if GitHub's auto-delete-on-merge didn't catch it):
-   ```bash
-   git push origin --delete <branch-name>
-   ```
-   Ignore "remote ref does not exist" errors — that means auto-delete already handled it.
+**Then, from the primary worktree (on `main`), pull and prune:**
 
-4. **Prune stale remote tracking refs:**
+1. Stash any uncommitted changes first (other in-progress work on main):
+   ```bash
+   git status --short
+   # Only if there are changes:
+   git stash
+   ```
+2. Pull with rebase to handle divergent local commits (e.g., spec/doc commits made before the worktree):
+   ```bash
+   git pull --rebase origin main
+   ```
+3. Restore stashed changes:
+   ```bash
+   git stash pop   # only if you stashed above
+   ```
+4. Prune stale remote-tracking refs. **Do NOT use `git push origin --delete`** — the pre-push hook blocks it on main, and GitHub auto-deletes merged branches anyway:
    ```bash
    git remote prune origin
    ```
-
-5. **Verify** only `main` remains locally:
+5. Verify only `main` remains locally:
    ```bash
    git branch -a
    ```
@@ -203,7 +221,7 @@ Report success with the PR URL.
 
 ## Error Handling
 
-- **Not on main:** Stop. Tell the user which branch they're on.
+- **Not on main or a feature branch:** Stop. Tell the user which branch they're on and ask what to do.
 - **Nothing to ship:** Tell the user. Don't create empty PRs.
 - **CI gate failed:** Report which checks failed, show relevant log output, and the PR URL. Fix mechanical issues (format, lint, tests) up to 3 rounds. For infrastructure/environment failures, stop and report.
 - **Timeout (15 min, gate not complete):** Report current check states and PR URL. Auto-merge remains enabled — no work lost.
