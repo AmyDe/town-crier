@@ -189,7 +189,7 @@ public static class SharedStack
                                 Position = new DashboardPartsPositionArgs { X = 0, Y = 0, ColSpan = 4, RowSpan = 4 },
                                 Metadata = KqlTile(
                                     appInsights.Id,
-                                    "requests | where name == 'GET /v1/me' | summarize dcount(user_AuthenticatedId) by bin(timestamp, 1h) | render timechart",
+                                    "let data = requests | where name == 'GET /v1/me' | summarize Value=dcount(user_AuthenticatedId) by timestamp=bin(timestamp, 1h); let empty = datatable(timestamp:datetime, Value:long)[]; union data, empty | render timechart",
                                     "Active Users"),
                             },
                             new DashboardPartsArgs
