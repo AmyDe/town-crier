@@ -51,7 +51,7 @@ internal static class ServiceCollectionExtensions
             ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
         services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
 
-        services.AddSingleton<IActiveAuthorityProvider, InMemoryActiveAuthorityProvider>();
+        services.AddSingleton<IActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
         services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();
         services.AddSingleton<IPollingHealthAlerter, LogPollingHealthAlerter>();
         services.AddSingleton(new PollingHealthConfig(
