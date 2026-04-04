@@ -88,13 +88,15 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
 
     public async Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
     {
-        return await this.client.QueryAsync(
+        var results = await this.client.QueryAsync(
             CosmosContainerNames.WatchZones,
             "SELECT DISTINCT VALUE c.authorityId FROM c",
             parameters: null,
             partitionKey: null,
             CosmosJsonSerializerContext.Default.Int32,
             ct).ConfigureAwait(false);
+
+        return results.Distinct().ToList();
     }
 
     public async Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
