@@ -15,4 +15,5 @@ public static class CosmosContainerNames
     public const string SavedApplications = "SavedApplications";
     public const string WatchZones = "WatchZones";
     public const string Applications = "Applications";
+    public const string PollState = "PollState";
 }
