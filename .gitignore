@@ -16,6 +16,7 @@ Icon
 [Bb]in/
 [Oo]bj/
 [Rr]elease/
+!.claude/skills/release/
 x64/
 x86/
 [Aa]rm/
