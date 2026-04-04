@@ -52,6 +52,19 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
+    public async Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct)
+    {
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Users,
+            "SELECT * FROM c WHERE c.digestDay = @digestDay",
+            [new QueryParameter("@digestDay", (int)digestDay)],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
+
     public async Task<UserProfile?> GetByOriginalTransactionIdAsync(
         string originalTransactionId,
         CancellationToken ct)

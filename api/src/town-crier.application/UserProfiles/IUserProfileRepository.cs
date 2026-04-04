@@ -10,6 +10,8 @@ public interface IUserProfileRepository
 
     Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct);
 
+    Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct);
+
     Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct);
 
     Task SaveAsync(UserProfile profile, CancellationToken ct);
