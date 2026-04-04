@@ -9,13 +9,11 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
-using TownCrier.Application.Polling;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Domain.Polling;
 using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
@@ -24,7 +22,6 @@ using TownCrier.Infrastructure.GovUkPlanningData;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
-using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.RateLimiting;
 using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.UserProfiles;
@@ -47,21 +44,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
         services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 
-        var pollStateFilePath = configuration["Polling:StateFilePath"]
-            ?? Path.Combine(AppContext.BaseDirectory, "poll-state.txt");
-        services.AddSingleton<IPollStateStore>(new FilePollStateStore(pollStateFilePath));
-
-        services.AddSingleton<IActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
-        services.AddSingleton<IPollingHealthStore, InMemoryPollingHealthStore>();
-        services.AddSingleton<IPollingHealthAlerter, LogPollingHealthAlerter>();
-        services.AddSingleton(new PollingHealthConfig(
-            StalenessThreshold: TimeSpan.FromHours(1),
-            MaxConsecutiveFailures: 5));
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
-        services.AddSingleton(new PollingScheduleConfig(
-            HighThreshold: configuration.GetValue("Polling:HighThreshold", 5),
-            LowThreshold: configuration.GetValue("Polling:LowThreshold", 2)));
 
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
         services.Configure<RateLimitOptions>(configuration.GetSection("RateLimiting"));
@@ -114,8 +97,6 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetAuthoritiesQueryHandler>();
         services.AddTransient<GetAuthorityByIdQueryHandler>();
         services.AddTransient<GetDesignationContextQueryHandler>();
-
-        services.AddTransient<PollPlanItCommandHandler>();
 
         services.AddSingleton(new AutoGrantOptions
         {

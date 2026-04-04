@@ -7,7 +7,6 @@ using TownCrier.Application.Observability;
 using TownCrier.Infrastructure.Observability;
 using TownCrier.Web;
 using TownCrier.Web.Extensions;
-using TownCrier.Web.Polling;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
@@ -71,7 +70,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddApplicationServices(builder.Configuration);
 builder.Services.AddAuthenticationServices(builder.Configuration);
-builder.Services.AddHostedService<PlanItPollingService>();
 
 var app = builder.Build();
 
