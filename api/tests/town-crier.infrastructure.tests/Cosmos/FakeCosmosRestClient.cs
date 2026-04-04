@@ -19,6 +19,9 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
     /// normal document-store deserialization and returns the list directly, allowing
     /// tests to simulate partition fan-out scenarios (duplicates, partial aggregates).
     /// </summary>
+    /// <typeparam name="T">The element type of the result list.</typeparam>
+    /// <param name="sqlPrefix">The SQL prefix to match against the query.</param>
+    /// <param name="results">The pre-canned result list to return.</param>
     public void SetQueryResults<T>(string sqlPrefix, List<T> results)
     {
         this.cannedQueryResults[sqlPrefix] = results;
