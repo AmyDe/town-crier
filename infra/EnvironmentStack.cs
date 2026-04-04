@@ -141,6 +141,9 @@ public static class EnvironmentStack
 
             // DecisionAlerts — partitioned by userId
             new("DecisionAlerts", "/userId"),
+
+            // PollState — single document storing last poll timestamp
+            new("PollState", "/id"),
         };
 
         foreach (var container in containerDefinitions)
@@ -282,7 +285,7 @@ public static class EnvironmentStack
                 },
                 Scale = new ScaleArgs
                 {
-                    MinReplicas = 1,
+                    MinReplicas = 0,
                     MaxReplicas = 1,
                 },
             },
@@ -302,6 +305,70 @@ public static class EnvironmentStack
             CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain,
                 new CustomResourceOptions { DependsOn = { containerApp } });
         }
+
+        // Container Apps Job (Polling Worker) — runs on a cron schedule
+        var pollingJob = new Job($"job-town-crier-poll-{env}", new JobArgs
+        {
+            JobName = $"job-town-crier-poll-{env}",
+            ResourceGroupName = resourceGroup.Name,
+            EnvironmentId = containerAppsEnvironmentId,
+            Configuration = new JobConfigurationArgs
+            {
+                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
+                ReplicaTimeout = 300,
+                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
+                {
+                    CronExpression = "*/15 * * * *",
+                    Parallelism = 1,
+                    ReplicaCompletionCount = 1,
+                },
+                Registries = new[]
+                {
+                    new RegistryCredentialsArgs
+                    {
+                        Server = acrLoginServer,
+                        Identity = acrPullIdentityId,
+                    },
+                },
+            },
+            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
+            {
+                Type = ManagedServiceIdentityType.UserAssigned,
+                UserAssignedIdentities = new InputList<string>
+                {
+                    acrPullIdentityId,
+                    cosmosDataIdentityId,
+                },
+            },
+            Template = new JobTemplateArgs
+            {
+                Containers = new[]
+                {
+                    new ContainerArgs
+                    {
+                        Name = "worker",
+                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
+                        Resources = new ContainerResourcesArgs
+                        {
+                            Cpu = 0.25,
+                            Memory = "0.5Gi",
+                        },
+                        Env = new[]
+                        {
+                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
+                            new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
+                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
+                        },
+                    },
+                },
+            },
+            Tags = tags,
+        }, new CustomResourceOptions
+        {
+            // CD pipeline updates the container image via `az containerapp job update`.
+            IgnoreChanges = { "template.containers[0].image" },
+        });
 
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
