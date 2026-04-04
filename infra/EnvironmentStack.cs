@@ -282,7 +282,7 @@ public static class EnvironmentStack
                 },
                 Scale = new ScaleArgs
                 {
-                    MinReplicas = 0,
+                    MinReplicas = 1,
                     MaxReplicas = 1,
                 },
             },
