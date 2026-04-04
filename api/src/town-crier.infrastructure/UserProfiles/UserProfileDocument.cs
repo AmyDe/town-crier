@@ -16,6 +16,10 @@ internal sealed class UserProfileDocument
 
     public required DayOfWeek DigestDay { get; init; }
 
+    public bool EmailDigestEnabled { get; init; } = true;
+
+    public bool EmailInstantEnabled { get; init; }
+
     public required Dictionary<string, ZoneNotificationPreferences> ZonePreferences { get; init; }
 
     public required string Tier { get; init; }
@@ -38,6 +42,8 @@ internal sealed class UserProfileDocument
             Postcode = profile.Postcode,
             PushEnabled = profile.NotificationPreferences.PushEnabled,
             DigestDay = profile.NotificationPreferences.DigestDay,
+            EmailDigestEnabled = profile.NotificationPreferences.EmailDigestEnabled,
+            EmailInstantEnabled = profile.NotificationPreferences.EmailInstantEnabled,
             ZonePreferences = new Dictionary<string, ZoneNotificationPreferences>(profile.AllZonePreferences),
             Tier = profile.Tier.ToString(),
             SubscriptionExpiry = profile.SubscriptionExpiry,
@@ -49,7 +55,11 @@ internal sealed class UserProfileDocument
     public UserProfile ToDomain()
     {
         var tier = Enum.Parse<SubscriptionTier>(this.Tier);
-        var notificationPreferences = new NotificationPreferences(this.PushEnabled, this.DigestDay);
+        var notificationPreferences = new NotificationPreferences(
+            this.PushEnabled,
+            this.DigestDay,
+            this.EmailDigestEnabled,
+            this.EmailInstantEnabled);
 
         return UserProfile.Reconstitute(
             this.UserId,
