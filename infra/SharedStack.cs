@@ -340,14 +340,14 @@ public static class SharedStack
                     },
                 },
             },
-            Inputs = new InputList<object>
+            Inputs = new[]
             {
-                (Input<object>)(object)new Dictionary<string, object>
+                (object)new Dictionary<string, object>
                 {
                     ["name"] = "resourceTypeMode",
                     ["value"] = "components",
                 },
-                (Input<object>)(object)new Dictionary<string, object>
+                (object)new Dictionary<string, object>
                 {
                     ["name"] = "ComponentId",
                     ["value"] = appInsightsId,
