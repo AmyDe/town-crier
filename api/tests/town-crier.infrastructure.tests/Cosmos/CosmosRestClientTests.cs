@@ -263,6 +263,76 @@ public sealed class CosmosRestClientTests
             .IsEqualTo("1");
     }
 
+    [Test]
+    public async Task Should_DrainContinuationPages_When_FanOutQueryHasMultiplePages()
+    {
+        var (client, handler) = CreateClient();
+
+        // Request 1: cross-partition query returns 400 with fan-out marker
+        handler.EnqueueResponse(
+            HttpStatusCode.BadRequest,
+            """{"code":"BadRequest","message":"partitionedQueryExecutionInfoVersion"}""");
+
+        // Request 2: GET pkranges returns one partition key range
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"PartitionKeyRanges":[{"id":"0"}],"_count":1}""");
+
+        // Request 3: range 0 page 1 with continuation
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d1","name":"Page1"}],"_count":1}""",
+            [new("x-ms-continuation", "page2-token")]);
+
+        // Request 4: range 0 page 2 (no continuation)
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d2","name":"Page2"}],"_count":1}""");
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT DISTINCT VALUE c.name FROM c",
+            null,
+            null,
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        // Should have combined results from both pages
+        await Assert.That(results).HasCount().EqualTo(2);
+        await Assert.That(results[0].Name).IsEqualTo("Page1");
+        await Assert.That(results[1].Name).IsEqualTo("Page2");
+
+        // Should have sent 4 requests total
+        await Assert.That(handler.SentRequests).HasCount().EqualTo(4);
+
+        // Last request should have the continuation header
+        var lastRequest = handler.SentRequests[3];
+        await Assert.That(lastRequest.Headers.GetValues("x-ms-continuation").First())
+            .IsEqualTo("page2-token");
+    }
+
+    [Test]
+    public async Task Should_ThrowNormally_When_CrossPartitionBadRequestWithoutFanOutMarker()
+    {
+        var (client, handler) = CreateClient();
+
+        // 400 without the fan-out marker
+        handler.EnqueueResponse(
+            HttpStatusCode.BadRequest,
+            """{"code":"BadRequest","message":"syntax error"}""");
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.QueryAsync(
+                "Users",
+                "SELECT * FROM c",
+                null,
+                null,
+                TestSerializerContext.Default.TestDocument,
+                CancellationToken.None));
+
+        await Assert.That(exception.Message).Contains("syntax error");
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
