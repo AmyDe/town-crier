@@ -32,6 +32,8 @@ public static class EnvironmentStack
         var auth0Domain = config.Require("auth0Domain");
         var auth0Audience = config.Require("auth0Audience");
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
+        var adminApiKey = config.RequireSecret("adminApiKey");
+        var autoGrantProDomains = config.RequireSecret("autoGrantProDomains");
 
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
@@ -204,6 +206,11 @@ public static class EnvironmentStack
             Configuration = new ConfigurationArgs
             {
                 ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
+                Secrets = new[]
+                {
+                    new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
+                    new SecretArgs { Name = "auto-grant-pro-domains", Value = autoGrantProDomains },
+                },
                 Ingress = new IngressArgs
                 {
                     External = true,
@@ -268,6 +275,8 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
                             new EnvironmentVarArgs { Name = "Cors__AllowedOrigins__0", Value = $"https://{frontendDomain}" },
                             new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
+                            new EnvironmentVarArgs { Name = "Admin__ApiKey", SecretRef = "admin-api-key" },
+                            new EnvironmentVarArgs { Name = "Subscription__AutoGrant__ProDomains", SecretRef = "auto-grant-pro-domains" },
                         },
                     },
                 },
@@ -285,9 +294,7 @@ public static class EnvironmentStack
             // causing activation failure (quickstart listens on port 80, not 8080).
             // Traffic weights are managed by CI (staging revisions with 0% traffic),
             // so Pulumi must not reset them on the next `pulumi up`.
-            // Secrets are managed by `az containerapp secret set` in the CD pipeline;
-            // Pulumi must not try to remove them when updating the template.
-            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic", "configuration.secrets" },
+            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic" },
         });
 
         if (customDomainPhase == 1)
