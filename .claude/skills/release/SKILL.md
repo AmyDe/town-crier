@@ -22,7 +22,7 @@ If the request is ambiguous (e.g., just "release" or "new version"), look at the
 - If there are only `fix`, `docs`, `chore`, `perf`, `ci`, `refactor`, `test` commits → default to **patch**
 - If any commit message contains `BREAKING CHANGE` or uses `!` after the type (e.g., `feat!:`) → default to **major**
 
-Present your reasoning and the proposed version to the user before creating the release, so they can confirm or override.
+Proceed automatically with the computed version — no confirmation needed.
 
 ## Workflow
 
@@ -84,16 +84,7 @@ Rules:
 - Omit the `(scope)` part if the original commit had no scope
 - Prefix `ci` and `chore` entries with the type in lowercase (e.g., `chore(ci): ...`) rather than bolding them, to match the established style for those categories
 
-### Step 5: Confirm with the user
-
-Present:
-1. The proposed version (`vX.Y.Z`)
-2. The formatted release notes
-3. The number of commits included
-
-Ask the user to confirm before creating the release.
-
-### Step 6: Create the release
+### Step 5: Create the release
 
 ```bash
 gh release create <version> \
@@ -116,7 +107,7 @@ EOF
 
 After creation, report the release URL to the user.
 
-### Step 7: Sync beads
+### Step 6: Sync beads
 
 If there are any open beads that were completed by the released commits, offer to close them. Then run `bd dolt push` to sync beads state.
 
