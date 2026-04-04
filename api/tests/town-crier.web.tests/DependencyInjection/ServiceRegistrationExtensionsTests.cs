@@ -9,7 +9,6 @@ using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
-using TownCrier.Application.Polling;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
@@ -49,7 +48,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<IDeviceRegistrationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<INotificationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<ISavedApplicationRepository>()).IsNotNull();
-        await Assert.That(provider.GetService<IPollStateStore>()).IsNotNull();
     }
 
     [Test]
@@ -87,7 +85,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<SaveApplicationCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetSavedApplicationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetDemoAccountQueryHandler>()).IsNotNull();
-        await Assert.That(provider.GetService<PollPlanItCommandHandler>()).IsNotNull();
     }
 
     [Test]

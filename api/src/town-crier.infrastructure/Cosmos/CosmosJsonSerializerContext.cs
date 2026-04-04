@@ -5,6 +5,7 @@ using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanningApplications;
+using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
@@ -31,6 +32,7 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(UserProfileDocument))]
 [JsonSerializable(typeof(List<UserProfileDocument>))]
 [JsonSerializable(typeof(DecisionAlertDocument))]
+[JsonSerializable(typeof(PollStateDocument))]
 [JsonSerializable(typeof(CosmosQueryBody))]
 [JsonSerializable(typeof(string))]
 internal sealed partial class CosmosJsonSerializerContext : JsonSerializerContext;

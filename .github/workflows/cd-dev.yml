@@ -122,6 +122,32 @@ jobs:
           docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest"
         working-directory: api
 
+  # ── Worker: build & push image ──────────────────────────
+  worker-image:
+    name: "Worker: Build & push image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Build and push worker image
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
+          docker build -f Dockerfile.worker -t "$IMAGE" -t "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:latest" .
+          docker push "$IMAGE"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:latest"
+        working-directory: api
+
   # ── API: deploy to dev ──────────────────────────────
   api-deploy:
     name: "API: Deploy to dev"
@@ -144,6 +170,29 @@ jobs:
             --name "ca-town-crier-api-dev" \
             --resource-group "rg-town-crier-dev" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
+
+  # ── Worker: deploy to dev ───────────────────────────────
+  worker-deploy:
+    name: "Worker: Deploy to dev"
+    needs: [worker-image, infra-dev]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy worker image to Job
+        run: |
+          az containerapp job update \
+            --name "job-town-crier-poll-dev" \
+            --resource-group "rg-town-crier-dev" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:

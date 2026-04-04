@@ -127,6 +127,58 @@ jobs:
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 
+  # ── Worker ───────────────────────────────────────────────
+  worker:
+    name: Deploy Worker
+    needs: infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag to commit SHA
+        id: resolve
+        run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve worker image tag
+        id: check-image
+        run: |
+          ACR_NAME="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${ACR_NAME%.azurecr.io}"
+          SHA="${{ steps.resolve.outputs.sha }}"
+          if az acr manifest show \
+            --registry "$ACR_NAME" \
+            --name "town-crier-worker:$SHA" 2>/dev/null; then
+            echo "Using exact image for SHA $SHA"
+            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
+          elif az acr manifest show \
+            --registry "$ACR_NAME" \
+            --name "town-crier-worker:latest" 2>/dev/null; then
+            echo "No image for SHA $SHA — falling back to latest"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No worker image found (tried SHA $SHA and latest)"
+            exit 1
+          fi
+
+      - name: Deploy worker image to prod
+        run: |
+          az containerapp job update \
+            --name "job-town-crier-poll-prod" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
+        env:
+          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
+
   # ── Web ───────────────────────────────────────────────
   web:
     name: Deploy web
