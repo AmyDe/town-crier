@@ -156,10 +156,36 @@ git checkout main
 git pull origin main
 ```
 
-If the branch wasn't deleted automatically:
-```bash
-git branch -d <branch-name>
-```
+**Full cleanup — worktrees, local branches, and remote branches:**
+
+1. **Remove any worktrees** for the feature branch:
+   ```bash
+   # List worktrees and remove any pointing to the feature branch
+   git worktree list
+   # If the feature branch appears, remove its worktree
+   git worktree remove <worktree-path>
+   ```
+
+2. **Delete the local branch:**
+   ```bash
+   git branch -D <branch-name>
+   ```
+
+3. **Delete the remote branch** (if GitHub's auto-delete-on-merge didn't catch it):
+   ```bash
+   git push origin --delete <branch-name>
+   ```
+   Ignore "remote ref does not exist" errors — that means auto-delete already handled it.
+
+4. **Prune stale remote tracking refs:**
+   ```bash
+   git remote prune origin
+   ```
+
+5. **Verify** only `main` remains locally:
+   ```bash
+   git branch -a
+   ```
 
 ### Step 8: Sync beads and verify
 
