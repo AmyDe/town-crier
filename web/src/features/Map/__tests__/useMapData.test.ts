@@ -187,4 +187,64 @@ describe('useMapData', () => {
 
     expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(true);
   });
+
+  it('shows uid as saved after save-unsave-save toggle sequence', async () => {
+    const spy = new SpyMapPort();
+    spy.fetchMyAuthoritiesResult = [anAuthority()];
+    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [];
+
+    const { result } = renderHook(() => useMapData(spy));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const uid = asApplicationUid('app-001');
+
+    await act(async () => {
+      await result.current.saveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(true);
+
+    await act(async () => {
+      await result.current.unsaveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(false);
+
+    await act(async () => {
+      await result.current.saveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(true);
+  });
+
+  it('shows uid as unsaved after unsave-save-unsave toggle sequence on initially saved item', async () => {
+    const spy = new SpyMapPort();
+    spy.fetchMyAuthoritiesResult = [anAuthority()];
+    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+
+    const { result } = renderHook(() => useMapData(spy));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const uid = asApplicationUid('app-001');
+
+    await act(async () => {
+      await result.current.unsaveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(false);
+
+    await act(async () => {
+      await result.current.saveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(true);
+
+    await act(async () => {
+      await result.current.unsaveApplication(uid);
+    });
+    expect(result.current.savedUids.has(uid)).toBe(false);
+  });
 });
