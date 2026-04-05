@@ -8,11 +8,11 @@ internal sealed class PlanItResponse
     public List<PlanItApplicationRecord> Records { get; set; } = [];
 
     [JsonPropertyName("pg_sz")]
-    public int PageSize { get; set; }
+    public int? PageSize { get; set; }
 
     [JsonPropertyName("from")]
-    public int From { get; set; }
+    public int? From { get; set; }
 
     [JsonPropertyName("total")]
-    public int Total { get; set; }
+    public int? Total { get; set; }
 }
