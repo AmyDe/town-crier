@@ -6,7 +6,7 @@ namespace TownCrier.Infrastructure.Polling;
 
 public sealed class CosmosPollStateStore : IPollStateStore
 {
-    private const string DocumentId = "poll-state";
+    private const string GlobalDocumentId = "poll-state";
 
     private readonly ICosmosRestClient client;
 
@@ -16,12 +16,13 @@ public sealed class CosmosPollStateStore : IPollStateStore
         this.client = client;
     }
 
-    public async Task<DateTimeOffset?> GetLastPollTimeAsync(CancellationToken ct)
+    public async Task<DateTimeOffset?> GetLastPollTimeAsync(int authorityId, CancellationToken ct)
     {
+        var documentId = FormatDocumentId(authorityId);
         var doc = await this.client.ReadDocumentAsync(
             CosmosContainerNames.PollState,
-            DocumentId,
-            DocumentId,
+            documentId,
+            documentId,
             CosmosJsonSerializerContext.Default.PollStateDocument,
             ct).ConfigureAwait(false);
 
@@ -33,19 +34,35 @@ public sealed class CosmosPollStateStore : IPollStateStore
         return DateTimeOffset.Parse(doc.LastPollTime, CultureInfo.InvariantCulture);
     }
 
-    public async Task SaveLastPollTimeAsync(DateTimeOffset pollTime, CancellationToken ct)
+    public async Task SaveLastPollTimeAsync(int authorityId, DateTimeOffset pollTime, CancellationToken ct)
     {
+        var documentId = FormatDocumentId(authorityId);
         var doc = new PollStateDocument
         {
-            Id = DocumentId,
+            Id = documentId,
             LastPollTime = pollTime.ToString("O", CultureInfo.InvariantCulture),
+            AuthorityId = authorityId,
         };
 
         await this.client.UpsertDocumentAsync(
             CosmosContainerNames.PollState,
             doc,
-            DocumentId,
+            documentId,
             CosmosJsonSerializerContext.Default.PollStateDocument,
             ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteGlobalPollStateAsync(CancellationToken ct)
+    {
+        await this.client.DeleteDocumentAsync(
+            CosmosContainerNames.PollState,
+            GlobalDocumentId,
+            GlobalDocumentId,
+            ct).ConfigureAwait(false);
+    }
+
+    private static string FormatDocumentId(int authorityId)
+    {
+        return string.Create(CultureInfo.InvariantCulture, $"poll-state-{authorityId}");
     }
 }

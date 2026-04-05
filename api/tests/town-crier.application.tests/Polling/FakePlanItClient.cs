@@ -11,6 +11,8 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
 
+    public Dictionary<int, DateTimeOffset?> DifferentStartByAuthority { get; } = [];
+
     public List<int> AuthorityIdsRequested { get; } = [];
 
     public Exception? ExceptionToThrow { get; set; }
@@ -53,6 +55,7 @@ internal sealed class FakePlanItClient : IPlanItClient
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         this.LastDifferentStartUsed = differentStart;
+        this.DifferentStartByAuthority[authorityId] = differentStart;
         this.AuthorityIdsRequested.Add(authorityId);
 
         if (this.exceptionsByAuthority.TryGetValue(authorityId, out var authorityException))
