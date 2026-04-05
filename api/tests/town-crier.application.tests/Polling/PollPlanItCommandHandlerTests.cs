@@ -1,3 +1,5 @@
+using System.Net;
+using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
@@ -104,13 +106,20 @@ public sealed class PollPlanItCommandHandlerTests
     [Test]
     public async Task Should_PersistCurrentTime_When_PollSucceeds()
     {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var pollStateStore = new FakePollStateStore();
         var fakeTime = new DateTimeOffset(2026, 3, 16, 12, 0, 0, TimeSpan.Zero);
-        var handler = CreateHandler(pollStateStore: pollStateStore, timeProvider: new FakeTimeProvider(fakeTime));
+        var handler = CreateHandler(
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(fakeTime));
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -185,6 +194,30 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SavePollStateAfterEachAuthority_When_MultipleAuthoritiesPolled()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(3);
+    }
+
+    [Test]
     public async Task Should_RethrowException_When_PlanItFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
@@ -195,6 +228,35 @@ public sealed class PollPlanItCommandHandlerTests
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_PreserveProgressForCompletedAuthorities_When_LaterAuthorityFails()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("rate limited"));
+
+        var pollStateStore = new FakePollStateStore();
+        var fakeTime = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(fakeTime));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+
+        // Authority 100 completed before the failure, so poll state should be saved
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
+        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
     }
 
     [Test]
@@ -210,16 +272,75 @@ public sealed class PollPlanItCommandHandlerTests
             pollStateStore: pollStateStore,
             authorityProvider: authorityProvider);
 
-        try
-        {
-            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-        }
-        catch (HttpRequestException)
-        {
-            // expected
-        }
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
 
         await Assert.That(pollStateStore.LastPollTime).IsNull();
+    }
+
+    [Test]
+    public async Task Should_SkipAuthorityAndContinue_When_FirstRateLimitHit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_BreakLoop_When_SecondRateLimitHit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+        authorityProvider.Add(400);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.ThrowForAuthority(300, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(400, new PlanningApplicationBuilder().WithUid("app-4").WithAreaId(400).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Only authority 100 completed before two 429s stopped the loop
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+
+        // Authority 400 was never attempted
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(400);
+    }
+
+    [Test]
+    public async Task Should_PropagateException_When_NonRateLimitHttpError()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
     }
 
     private static PollPlanItCommandHandler CreateHandler(
@@ -238,6 +359,7 @@ public sealed class PollPlanItCommandHandlerTests
             timeProvider ?? TimeProvider.System,
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
-            notificationEnqueuer ?? new FakeNotificationEnqueuer());
+            notificationEnqueuer ?? new FakeNotificationEnqueuer(),
+            NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

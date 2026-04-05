@@ -6,6 +6,7 @@ namespace TownCrier.Application.Tests.Polling;
 internal sealed class FakePlanItClient : IPlanItClient
 {
     private readonly Dictionary<int, List<PlanningApplication>> applicationsByAuthority = [];
+    private readonly Dictionary<int, Exception> exceptionsByAuthority = [];
     private readonly List<PlanningApplication> searchResults = [];
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
@@ -23,6 +24,11 @@ internal sealed class FakePlanItClient : IPlanItClient
     public void AddSearchResult(PlanningApplication application)
     {
         this.searchResults.Add(application);
+    }
+
+    public void ThrowForAuthority(int authorityId, Exception exception)
+    {
+        this.exceptionsByAuthority[authorityId] = exception;
     }
 
     public void Add(int authorityId, PlanningApplication application)
@@ -48,6 +54,11 @@ internal sealed class FakePlanItClient : IPlanItClient
     {
         this.LastDifferentStartUsed = differentStart;
         this.AuthorityIdsRequested.Add(authorityId);
+
+        if (this.exceptionsByAuthority.TryGetValue(authorityId, out var authorityException))
+        {
+            throw authorityException;
+        }
 
         if (this.ExceptionToThrow is not null)
         {

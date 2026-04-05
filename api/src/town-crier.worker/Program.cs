@@ -74,6 +74,8 @@ using var host = builder.Build();
 var handler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TownCrier.Worker");
 
+var exitCode = 0;
+
 try
 {
     using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
@@ -90,8 +92,6 @@ try
     activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
 
     WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
-
-    return 0;
 }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
 catch (Exception ex)
@@ -99,5 +99,32 @@ catch (Exception ex)
 {
     PollingMetrics.PollFailures.Add(1);
     WorkerLog.PollCycleFailed(logger, ex);
-    return 1;
+    exitCode = 1;
 }
+
+// Force-flush OpenTelemetry before the short-lived process exits.
+// The Azure Monitor exporter batches on ~30 s intervals; without this,
+// the worker terminates before the first batch window.
+try
+{
+    host.Services.GetService<MeterProvider>()?.ForceFlush(timeoutMilliseconds: 10_000);
+}
+#pragma warning disable CA1031 // Flush failure must not mask the original error
+catch (Exception)
+{
+    // Intentionally swallowed — flush failure must not mask the original exit code.
+}
+#pragma warning restore CA1031
+
+try
+{
+    host.Services.GetService<TracerProvider>()?.ForceFlush(timeoutMilliseconds: 10_000);
+}
+#pragma warning disable CA1031 // Flush failure must not mask the original error
+catch (Exception)
+{
+    // Intentionally swallowed — flush failure must not mask the original exit code.
+}
+#pragma warning restore CA1031
+
+return exitCode;
