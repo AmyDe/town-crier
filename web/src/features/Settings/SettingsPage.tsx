@@ -88,6 +88,19 @@ export function SettingsPage({ repository }: Props) {
         </div>
       </section>
 
+      {/* Session section */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Session</h2>
+        <div className={styles.card}>
+          <button
+            className={styles.secondaryButton}
+            onClick={() => logout()}
+          >
+            Sign Out
+          </button>
+        </div>
+      </section>
+
       {/* Danger zone */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Account</h2>
