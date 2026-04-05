@@ -228,6 +228,41 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_PreserveProgressForCompletedAuthorities_When_LaterAuthorityFails()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("rate limited"));
+
+        var pollStateStore = new FakePollStateStore();
+        var fakeTime = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(fakeTime));
+
+        try
+        {
+            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        }
+        catch (HttpRequestException)
+        {
+            // expected — authority 200 fails
+        }
+
+        // Authority 100 completed before the failure, so poll state should be saved
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
+        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+    }
+
+    [Test]
     public async Task Should_NotSavePollState_When_PollFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
