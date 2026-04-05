@@ -20,7 +20,6 @@ public sealed class ExportUserDataQueryHandler
 
         return new ExportUserDataResult(
             profile.UserId,
-            profile.Postcode,
             profile.NotificationPreferences.PushEnabled,
             profile.Tier);
     }

@@ -5,7 +5,6 @@ export function freeUserProfile(
 ): UserProfile {
   return {
     userId: 'auth0|abc123',
-    postcode: 'CB1 2AD',
     pushEnabled: true,
     tier: 'Free' as SubscriptionTier,
     ...overrides,

@@ -23,7 +23,7 @@ public sealed class UserProfileDocumentTests
     {
         // Arrange
         var profile = UserProfile.Register("auth0|user-1");
-        profile.UpdatePreferences("SW1A 1AA", new NotificationPreferences(true, DayOfWeek.Wednesday));
+        profile.UpdatePreferences(new NotificationPreferences(true, DayOfWeek.Wednesday));
         profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
         profile.LinkOriginalTransactionId("txn-abc-123");
 
@@ -32,7 +32,6 @@ public sealed class UserProfileDocumentTests
 
         // Assert
         await Assert.That(document.UserId).IsEqualTo("auth0|user-1");
-        await Assert.That(document.Postcode).IsEqualTo("SW1A 1AA");
         await Assert.That(document.PushEnabled).IsTrue();
         await Assert.That(document.DigestDay).IsEqualTo(DayOfWeek.Wednesday);
         await Assert.That(document.Tier).IsEqualTo("Pro");
@@ -45,7 +44,7 @@ public sealed class UserProfileDocumentTests
     {
         // Arrange
         var original = UserProfile.Register("auth0|user-1");
-        original.UpdatePreferences("SW1A 1AA", new NotificationPreferences(false, DayOfWeek.Friday));
+        original.UpdatePreferences(new NotificationPreferences(false, DayOfWeek.Friday));
         original.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 6, 15, 0, 0, 0, TimeSpan.Zero));
         original.LinkOriginalTransactionId("txn-round-trip");
         original.EnterGracePeriod(new DateTimeOffset(2027, 7, 1, 0, 0, 0, TimeSpan.Zero));
@@ -56,7 +55,6 @@ public sealed class UserProfileDocumentTests
 
         // Assert
         await Assert.That(roundTripped.UserId).IsEqualTo(original.UserId);
-        await Assert.That(roundTripped.Postcode).IsEqualTo(original.Postcode);
         await Assert.That(roundTripped.NotificationPreferences.PushEnabled).IsEqualTo(original.NotificationPreferences.PushEnabled);
         await Assert.That(roundTripped.NotificationPreferences.DigestDay).IsEqualTo(original.NotificationPreferences.DigestDay);
         await Assert.That(roundTripped.Tier).IsEqualTo(original.Tier);
@@ -93,14 +91,13 @@ public sealed class UserProfileDocumentTests
     [Test]
     public async Task Should_HandleNullOptionalFields_When_MappedFromDomain()
     {
-        // Arrange — fresh profile has null postcode, subscription expiry, etc.
+        // Arrange — fresh profile has null subscription expiry, etc.
         var profile = UserProfile.Register("auth0|user-1");
 
         // Act
         var document = UserProfileDocument.FromDomain(profile);
 
         // Assert
-        await Assert.That(document.Postcode).IsNull();
         await Assert.That(document.Tier).IsEqualTo("Free");
         await Assert.That(document.SubscriptionExpiry).IsNull();
         await Assert.That(document.OriginalTransactionId).IsNull();

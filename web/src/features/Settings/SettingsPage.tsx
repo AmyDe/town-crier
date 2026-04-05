@@ -57,10 +57,6 @@ export function SettingsPage({ repository }: Props) {
             <span className={styles.value}>{profile?.userId}</span>
           </div>
           <div className={styles.field}>
-            <span className={styles.label}>Postcode</span>
-            <span className={styles.value}>{profile?.postcode ?? 'Not set'}</span>
-          </div>
-          <div className={styles.field}>
             <span className={styles.label}>Subscription</span>
             <span className={styles.value}>{profile?.tier}</span>
           </div>

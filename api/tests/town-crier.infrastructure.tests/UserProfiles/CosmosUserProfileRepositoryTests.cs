@@ -14,7 +14,7 @@ public sealed class CosmosUserProfileRepositoryTests
         var repo = new CosmosUserProfileRepository(client);
 
         var profile = UserProfile.Register("user-1");
-        profile.UpdatePreferences("SW1A 1AA", NotificationPreferences.Default);
+        profile.UpdatePreferences(NotificationPreferences.Default);
         await repo.SaveAsync(profile, CancellationToken.None);
 
         // Act
@@ -23,7 +23,6 @@ public sealed class CosmosUserProfileRepositoryTests
         // Assert
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.UserId).IsEqualTo("user-1");
-        await Assert.That(result.Postcode).IsEqualTo("SW1A 1AA");
     }
 
     [Test]

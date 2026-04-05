@@ -7,7 +7,6 @@ public sealed class UserProfile
     private UserProfile(
         string userId,
         string? email,
-        string? postcode,
         NotificationPreferences notificationPreferences,
         SubscriptionTier tier,
         DateTimeOffset? subscriptionExpiry,
@@ -16,7 +15,6 @@ public sealed class UserProfile
     {
         this.UserId = userId;
         this.Email = email;
-        this.Postcode = postcode;
         this.NotificationPreferences = notificationPreferences;
         this.Tier = tier;
         this.SubscriptionExpiry = subscriptionExpiry;
@@ -27,8 +25,6 @@ public sealed class UserProfile
     public string UserId { get; }
 
     public string? Email { get; }
-
-    public string? Postcode { get; private set; }
 
     public NotificationPreferences NotificationPreferences { get; private set; }
 
@@ -49,7 +45,6 @@ public sealed class UserProfile
         return new UserProfile(
             userId,
             email,
-            postcode: null,
             notificationPreferences: NotificationPreferences.Default,
             tier: SubscriptionTier.Free,
             subscriptionExpiry: null,
@@ -57,9 +52,8 @@ public sealed class UserProfile
             gracePeriodExpiry: null);
     }
 
-    public void UpdatePreferences(string? postcode, NotificationPreferences notificationPreferences)
+    public void UpdatePreferences(NotificationPreferences notificationPreferences)
     {
-        this.Postcode = postcode;
         this.NotificationPreferences = notificationPreferences;
     }
 
@@ -123,7 +117,6 @@ public sealed class UserProfile
     internal static UserProfile Reconstitute(
         string userId,
         string? email,
-        string? postcode,
         NotificationPreferences notificationPreferences,
         Dictionary<string, ZoneNotificationPreferences> zonePreferences,
         SubscriptionTier tier,
@@ -134,7 +127,6 @@ public sealed class UserProfile
         var profile = new UserProfile(
             userId,
             email,
-            postcode,
             notificationPreferences,
             tier,
             subscriptionExpiry,

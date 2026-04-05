@@ -6,7 +6,7 @@ namespace TownCrier.Application.Tests.UserProfiles;
 public sealed class UpdateUserProfileCommandHandlerTests
 {
     [Test]
-    public async Task Should_UpdatePostcode_When_ProfileExists()
+    public async Task Should_UpdatePushEnabled_When_ProfileExists()
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
@@ -14,13 +14,12 @@ public sealed class UpdateUserProfileCommandHandlerTests
         await repository.SaveAsync(profile, CancellationToken.None);
 
         var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|user-789", "SW1A 1AA", true);
+        var command = new UpdateUserProfileCommand("auth0|user-789", true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        await Assert.That(result.Postcode).IsEqualTo("SW1A 1AA");
         await Assert.That(result.PushEnabled).IsTrue();
     }
 
@@ -33,14 +32,13 @@ public sealed class UpdateUserProfileCommandHandlerTests
         await repository.SaveAsync(profile, CancellationToken.None);
 
         var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|user-789", null, false);
+        var command = new UpdateUserProfileCommand("auth0|user-789", false);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
         await Assert.That(result.PushEnabled).IsFalse();
-        await Assert.That(result.Postcode).IsNull();
     }
 
     [Test]
@@ -52,15 +50,14 @@ public sealed class UpdateUserProfileCommandHandlerTests
         await repository.SaveAsync(profile, CancellationToken.None);
 
         var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|user-789", "EC1A 1BB", false);
+        var command = new UpdateUserProfileCommand("auth0|user-789", false);
 
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
         var saved = repository.GetByUserId("auth0|user-789");
-        await Assert.That(saved!.Postcode).IsEqualTo("EC1A 1BB");
-        await Assert.That(saved.NotificationPreferences.PushEnabled).IsFalse();
+        await Assert.That(saved!.NotificationPreferences.PushEnabled).IsFalse();
     }
 
     [Test]
@@ -69,7 +66,7 @@ public sealed class UpdateUserProfileCommandHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|nonexistent", "SW1A 1AA", true);
+        var command = new UpdateUserProfileCommand("auth0|nonexistent", true);
 
         // Act & Assert
         await Assert.ThrowsAsync<UserProfileNotFoundException>(
@@ -85,7 +82,7 @@ public sealed class UpdateUserProfileCommandHandlerTests
         await repository.SaveAsync(profile, CancellationToken.None);
 
         var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|user-789", "SW1A 1AA", false);
+        var command = new UpdateUserProfileCommand("auth0|user-789", false);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);

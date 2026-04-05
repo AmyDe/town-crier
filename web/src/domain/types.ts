@@ -68,7 +68,6 @@ export interface Coordinates {
 
 export interface UserProfile {
   readonly userId: string;
-  readonly postcode: string | null;
   readonly pushEnabled: boolean;
   readonly tier: SubscriptionTier;
 }
@@ -206,7 +205,6 @@ export interface CreateWatchZoneRequest {
 }
 
 export interface UpdateProfileRequest {
-  readonly postcode: string | null;
   readonly pushEnabled: boolean;
 }
 

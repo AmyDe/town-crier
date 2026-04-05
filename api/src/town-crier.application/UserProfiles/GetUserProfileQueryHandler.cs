@@ -21,7 +21,6 @@ public sealed class GetUserProfileQueryHandler
 
         return new GetUserProfileResult(
             profile.UserId,
-            profile.Postcode,
             profile.NotificationPreferences.PushEnabled,
             profile.Tier);
     }

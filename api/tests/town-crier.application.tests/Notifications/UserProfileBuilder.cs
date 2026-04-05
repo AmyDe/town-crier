@@ -58,7 +58,6 @@ internal sealed class UserProfileBuilder
     {
         var profile = UserProfile.Register(this.userId, this.email);
         profile.UpdatePreferences(
-            postcode: null,
             new NotificationPreferences(
                 this.pushEnabled,
                 this.digestDay,

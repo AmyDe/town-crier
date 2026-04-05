@@ -11,7 +11,7 @@ public sealed class ExportUserDataQueryHandlerTests
         // Arrange
         var repository = new FakeUserProfileRepository();
         var profile = UserProfile.Register("auth0|user1");
-        profile.UpdatePreferences("SW1A 1AA", new NotificationPreferences(PushEnabled: true));
+        profile.UpdatePreferences(new NotificationPreferences(PushEnabled: true));
         await repository.SaveAsync(profile, CancellationToken.None);
         var handler = new ExportUserDataQueryHandler(repository);
 
@@ -22,7 +22,6 @@ public sealed class ExportUserDataQueryHandlerTests
         // Assert
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.UserId).IsEqualTo("auth0|user1");
-        await Assert.That(result.Postcode).IsEqualTo("SW1A 1AA");
         await Assert.That(result.PushEnabled).IsTrue();
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
     }

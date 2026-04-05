@@ -25,7 +25,6 @@ public sealed class CreateUserProfileCommandHandler
         {
             return new CreateUserProfileResult(
                 existing.UserId,
-                existing.Postcode,
                 existing.NotificationPreferences.PushEnabled,
                 existing.Tier);
         }
@@ -42,7 +41,6 @@ public sealed class CreateUserProfileCommandHandler
 
         return new CreateUserProfileResult(
             profile.UserId,
-            profile.Postcode,
             profile.NotificationPreferences.PushEnabled,
             profile.Tier);
     }
