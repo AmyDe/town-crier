@@ -39,6 +39,5 @@ public sealed class GetUserProfileQueryHandlerTests
         await Assert.That(result!.UserId).IsEqualTo("auth0|user-456");
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
         await Assert.That(result.PushEnabled).IsTrue();
-        await Assert.That(result.Postcode).IsNull();
     }
 }

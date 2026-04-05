@@ -20,7 +20,6 @@ public sealed class CreateUserProfileCommandHandlerTests
         await Assert.That(result.UserId).IsEqualTo("auth0|user-123");
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
         await Assert.That(result.PushEnabled).IsTrue();
-        await Assert.That(result.Postcode).IsNull();
     }
 
     [Test]

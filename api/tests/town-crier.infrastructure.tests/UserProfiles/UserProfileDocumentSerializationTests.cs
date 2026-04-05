@@ -23,7 +23,7 @@ public sealed class UserProfileDocumentSerializationTests
     {
         // Arrange
         var profile = UserProfile.Register("auth0|user-1");
-        profile.UpdatePreferences("SW1A 1AA", new NotificationPreferences(true, DayOfWeek.Wednesday));
+        profile.UpdatePreferences(new NotificationPreferences(true, DayOfWeek.Wednesday));
         profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
         profile.LinkOriginalTransactionId("txn-ser-123");
         profile.SetZonePreferences("zone-1", new ZoneNotificationPreferences(true, true, false));
@@ -36,7 +36,6 @@ public sealed class UserProfileDocumentSerializationTests
         // Assert
         await Assert.That(deserialized.Id).IsEqualTo(original.Id);
         await Assert.That(deserialized.UserId).IsEqualTo(original.UserId);
-        await Assert.That(deserialized.Postcode).IsEqualTo(original.Postcode);
         await Assert.That(deserialized.PushEnabled).IsEqualTo(original.PushEnabled);
         await Assert.That(deserialized.DigestDay).IsEqualTo(original.DigestDay);
         await Assert.That(deserialized.Tier).IsEqualTo(original.Tier);
