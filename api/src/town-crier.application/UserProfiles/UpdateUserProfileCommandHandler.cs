@@ -18,12 +18,11 @@ public sealed class UpdateUserProfileCommandHandler
         var profile = await this.repository.GetByUserIdAsync(command.UserId, ct).ConfigureAwait(false)
             ?? throw UserProfileNotFoundException.ForUser(command.UserId);
 
-        profile.UpdatePreferences(command.Postcode, new NotificationPreferences(command.PushEnabled));
+        profile.UpdatePreferences(new NotificationPreferences(command.PushEnabled));
         await this.repository.SaveAsync(profile, ct).ConfigureAwait(false);
 
         return new UpdateUserProfileResult(
             profile.UserId,
-            profile.Postcode,
             profile.NotificationPreferences.PushEnabled,
             profile.Tier);
     }
