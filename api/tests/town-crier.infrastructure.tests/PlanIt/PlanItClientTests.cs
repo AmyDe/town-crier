@@ -49,6 +49,27 @@ public sealed class PlanItClientTests
         }
         """;
 
+    private const string NullDescriptionResponse = """
+        {
+            "records": [
+                {
+                    "name": "Leeds/26/01500/FUL",
+                    "uid": "26/01500/FUL",
+                    "area_name": "Leeds",
+                    "area_id": 292,
+                    "address": "1 Example Road Leeds",
+                    "description": null,
+                    "app_type": "Full",
+                    "app_state": "Undecided",
+                    "last_different": "2026-03-14T11:59:17.642"
+                }
+            ],
+            "pg_sz": 100,
+            "from": 0,
+            "total": 1
+        }
+        """;
+
     [Test]
     public async Task Should_ReturnApplications_When_ApiReturnsResults()
     {
@@ -448,6 +469,22 @@ public sealed class PlanItClientTests
         // Assert — default 1s throttle delay
         await Assert.That(throttleDelays).HasCount().EqualTo(1);
         await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(1));
+    }
+
+    [Test]
+    public async Task Should_DefaultToEmptyString_When_DescriptionIsNull()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", NullDescriptionResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert
+        await Assert.That(results).HasCount().EqualTo(1);
+        await Assert.That(results[0].Description).IsEqualTo(string.Empty);
     }
 
     private static PlanItClient CreateClient(

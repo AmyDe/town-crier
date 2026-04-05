@@ -9,9 +9,9 @@ interface Props {
 
 const MAX_DESCRIPTION_LENGTH = 120;
 
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) {
-    return text;
+function truncate(text: string | null, maxLength: number): string {
+  if (text === null || text.length <= maxLength) {
+    return text ?? '';
   }
   return text.slice(0, maxLength) + '...';
 }
