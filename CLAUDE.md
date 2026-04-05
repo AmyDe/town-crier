@@ -28,6 +28,23 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 | CI/CD | GitHub Actions |
 | Testing | TUnit (.NET), XCTest (iOS) |
 
+## Data Sources
+
+When looking up user data or entity information, query Cosmos DB first — not Auth0 or other external identity providers. Auth0 tenants may be deleted or unavailable, and most user data is already stored in Cosmos from onboarding.
+
+## Git & Release Workflow
+
+- Never commit directly to main. Always create a feature branch and open a PR, even for small fixes.
+- When git push or tag push is blocked by branch protection hooks, immediately fall back to `gh release create` instead of debugging the hook.
+
+## Debugging Guidelines
+
+When diagnosing issues, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (e.g., Auth0 vs Cosmos, OpenTelemetry vs logs).
+
+## Testing & CI
+
+When fixing CI failures, always check for ALL root causes before declaring the fix complete. Run the full test suite and verify end-to-end, not just the first failure.
+
 ## Development Commands
 
 ### .NET API (`/api`)
@@ -119,6 +136,19 @@ Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown fi
 - Do NOT use `bd edit` — it opens an interactive editor that blocks agents
 - Run `bd dolt push` to sync beads to GitHub (separate from `git push`)
 
+### Superpowers Workflow Integration
+
+When using the superpowers brainstorm → plan → execute workflow, beads are the task ledger:
+
+1. **After `writing-plans`:** ALWAYS run `plan-to-beads` before executing. This converts plan tasks into beads and is a required bridge step — not optional.
+2. **Instead of TodoWrite:** Use beads for all task state. The superpowers skills say "Create TodoWrite" and "Mark task complete in TodoWrite" — replace these with:
+   - Session start: `bd list --status=open` to see the task ledger
+   - Starting a task: `bd update <id> --status=in_progress`
+   - Completing a task: `bd close <id>`
+3. **Subagent implementers** should `bd update <id> --claim` at the start of their task and `bd close <id>` when done.
+
+This applies to both `superpowers:subagent-driven-development` and `superpowers:executing-plans`. User instructions take precedence over skill instructions per the superpowers contract.
+
 ### Cleanup Discipline
 
 Keep the working set under ~200 issues. Run `bd cleanup` regularly and compact closed issues with `bd compact`.
@@ -153,6 +183,8 @@ mv -f source dest               # NOT: mv source dest
 rm -f file                      # NOT: rm file
 rm -rf directory                # NOT: rm -r directory
 ```
+
+Always use `--yes` or equivalent non-interactive flags when running CLI fix/format commands in Bash. Never assume interactive prompts will work.
 
 ## Session Completion Checklist
 

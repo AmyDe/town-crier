@@ -87,3 +87,5 @@ node_modules/
 .claude/worktrees/autopilot-tc-kkc.1/
 # bd worktree
 extract-polling-job/
+# bd worktree
+email-notifications/
