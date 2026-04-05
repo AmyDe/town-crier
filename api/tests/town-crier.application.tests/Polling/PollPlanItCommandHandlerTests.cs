@@ -218,7 +218,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_RethrowException_When_PlanItFails()
+    public async Task Should_ReturnZeroApplications_When_SingleAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -226,12 +226,14 @@ public sealed class PollPlanItCommandHandlerTests
 
         var handler = CreateHandler(planItClient: failingClient, authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(0);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(0);
     }
 
     [Test]
-    public async Task Should_PreserveProgressForCompletedAuthorities_When_LaterAuthorityFails()
+    public async Task Should_ContinueAndPreserveProgress_When_MiddleAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -251,16 +253,17 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider: authorityProvider,
             timeProvider: new FakeTimeProvider(fakeTime));
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Authority 100 completed before the failure, so poll state should be saved
-        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
+        // Authority 100 and 300 completed, 200 failed but was isolated
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
         await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
     }
 
     [Test]
-    public async Task Should_NotSavePollState_When_PollFails()
+    public async Task Should_NotSavePollState_When_OnlyAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -272,8 +275,7 @@ public sealed class PollPlanItCommandHandlerTests
             pollStateStore: pollStateStore,
             authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.LastPollTime).IsNull();
     }
@@ -327,20 +329,47 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_PropagateException_When_NonRateLimitHttpError()
+    public async Task Should_ContinueToNextAuthority_When_NonRateLimitExceptionOccurs()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
         authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new InvalidOperationException("Unexpected JSON structure"));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Authority 200 failed but 100 and 300 should still succeed
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(300);
+    }
+
+    [Test]
+    public async Task Should_ContinueToNextAuthority_When_NonRateLimitHttpErrorOccurs()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
 
         var planItClient = new FakePlanItClient();
         planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
         planItClient.ThrowForAuthority(200, new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
 
         var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
     }
 
     private static PollPlanItCommandHandler CreateHandler(

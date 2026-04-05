@@ -93,7 +93,7 @@ public sealed class PlanItClient : IPlanItClient
             .Select(MapToDomain)
             .ToList();
 
-        return new PlanItSearchResult(applications, planItResponse.Total);
+        return new PlanItSearchResult(applications, planItResponse.Total ?? 0);
     }
 
     private static string BuildSearchUrl(string searchText, int authorityId, int page)

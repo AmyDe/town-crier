@@ -351,6 +351,89 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_DeserializeAndReturnApplications_When_PaginationFieldsAreNull()
+    {
+        // Arrange
+        const string nullPaginationResponse = """
+            {
+                "records": [
+                    {
+                        "name": "Leeds/26/01471/TR",
+                        "uid": "26/01471/TR",
+                        "area_name": "Leeds",
+                        "area_id": 292,
+                        "address": "Highgate House Grove Lane Leeds",
+                        "postcode": "LS6 2AP",
+                        "description": "T1 lime tree - crown reduction",
+                        "app_type": "Trees",
+                        "app_state": "Undecided",
+                        "app_size": "Small",
+                        "start_date": "2026-03-13",
+                        "decided_date": null,
+                        "consulted_date": null,
+                        "location_x": -1.577373,
+                        "location_y": 53.824035,
+                        "url": "https://publicaccess.leeds.gov.uk/example",
+                        "link": "https://www.planit.org.uk/planapplic/26-01471-TR",
+                        "last_different": "2026-03-14T11:59:17.642"
+                    }
+                ],
+                "pg_sz": null,
+                "from": null,
+                "total": null
+            }
+            """;
+
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", nullPaginationResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — should deserialize without throwing
+        await Assert.That(results).HasCount().EqualTo(1);
+        await Assert.That(results[0].Name).IsEqualTo("Leeds/26/01471/TR");
+    }
+
+    [Test]
+    public async Task Should_ReturnZeroTotal_When_SearchResponseHasNullTotal()
+    {
+        // Arrange
+        const string nullTotalSearchResponse = """
+            {
+                "records": [
+                    {
+                        "name": "Leeds/26/01471/TR",
+                        "uid": "26/01471/TR",
+                        "area_name": "Leeds",
+                        "area_id": 292,
+                        "address": "Highgate House Grove Lane Leeds",
+                        "description": "T1 lime tree - crown reduction",
+                        "app_type": "Trees",
+                        "app_state": "Undecided",
+                        "last_different": "2026-03-14T11:59:17.642"
+                    }
+                ],
+                "pg_sz": null,
+                "from": null,
+                "total": null
+            }
+            """;
+
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/api/applics/json", nullTotalSearchResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        var result = await client.SearchApplicationsAsync("tree", 292, 1, CancellationToken.None);
+
+        // Assert — null total should be treated as 0
+        await Assert.That(result.Total).IsEqualTo(0);
+        await Assert.That(result.Applications).HasCount().EqualTo(1);
+    }
+
+    [Test]
     public async Task Should_UseDefaultOneSecondDelay_When_NoThrottleOptionsProvided()
     {
         // Arrange
