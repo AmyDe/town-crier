@@ -14,6 +14,7 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
@@ -88,13 +89,7 @@ internal static class ServiceCollectionExtensions
         {
             client.BaseAddress = new Uri(planItBaseUrl);
         });
-        services.AddSingleton<IAuthorityProvider>(sp =>
-        {
-            var factory = sp.GetRequiredService<IHttpClientFactory>();
-            var httpClient = factory.CreateClient("PlanItAreas");
-            httpClient.BaseAddress = new Uri(planItBaseUrl);
-            return new CachedPlanItAuthorityProvider(httpClient, sp.GetRequiredService<TimeProvider>());
-        });
+        services.AddSingleton<IAuthorityProvider>(new StaticAuthorityProvider());
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
         var govUkBaseUrl = configuration["GovUkPlanningData:BaseUrl"] ?? "https://www.planning.data.gov.uk/";
