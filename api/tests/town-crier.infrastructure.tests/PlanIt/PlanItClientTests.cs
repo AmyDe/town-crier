@@ -262,10 +262,92 @@ public sealed class PlanItClientTests
         await Assert.That(handler.RequestUrls[0]).Contains("pg_sz=20");
     }
 
+    [Test]
+    public async Task Should_DelayBeforeEachRequest_When_ThrottleConfigured()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", SingleRecordResponse);
+        var throttleDelays = new List<TimeSpan>();
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(500) };
+        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null);
+
+        // Assert — one throttle delay before the single request
+        await Assert.That(throttleDelays).HasCount().EqualTo(1);
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(500));
+    }
+
+    [Test]
+    public async Task Should_DelayBeforeEachPageRequest_When_Paginating()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+
+        var page1Records = CreateRecordsJson(100);
+        var page1Json = BuildResponseJson(page1Records, total: 150);
+        handler.SetupJsonResponse("page=1", page1Json);
+
+        var page2Records = CreateRecordsJson(50, startIndex: 100);
+        var page2Json = BuildResponseJson(page2Records, total: 150, from: 100);
+        handler.SetupJsonResponse("page=2", page2Json);
+
+        var throttleDelays = new List<TimeSpan>();
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(200) };
+        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null);
+
+        // Assert — one throttle delay per page (2 pages = 2 delays)
+        await Assert.That(throttleDelays).HasCount().EqualTo(2);
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(200));
+        await Assert.That(throttleDelays[1]).IsEqualTo(TimeSpan.FromMilliseconds(200));
+    }
+
+    [Test]
+    public async Task Should_DelayBeforeSearchRequest_When_ThrottleConfigured()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
+        var throttleDelays = new List<TimeSpan>();
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(300) };
+        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+
+        // Act
+        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
+
+        // Assert — one throttle delay before the search request
+        await Assert.That(throttleDelays).HasCount().EqualTo(1);
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(300));
+    }
+
+    [Test]
+    public async Task Should_UseDefaultOneSecondDelay_When_NoThrottleOptionsProvided()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", SingleRecordResponse);
+        var throttleDelays = new List<TimeSpan>();
+        var client = CreateClient(handler, throttleDelays: throttleDelays);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null);
+
+        // Assert — default 1s throttle delay
+        await Assert.That(throttleDelays).HasCount().EqualTo(1);
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(1));
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItRetryOptions? retryOptions = null,
-        List<TimeSpan>? delays = null)
+        PlanItThrottleOptions? throttleOptions = null,
+        List<TimeSpan>? delays = null,
+        List<TimeSpan>? throttleDelays = null)
     {
         var httpClient = new HttpClient(handler, disposeHandler: false)
         {
@@ -273,16 +355,17 @@ public sealed class PlanItClientTests
         };
 
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
-        if (delays is not null)
+        if (delays is not null || throttleDelays is not null)
         {
             delayFunc = (delay, _) =>
             {
-                delays.Add(delay);
+                delays?.Add(delay);
+                throttleDelays?.Add(delay);
                 return Task.CompletedTask;
             };
         }
 
-        return new PlanItClient(httpClient, retryOptions ?? new PlanItRetryOptions(), delayFunc);
+        return new PlanItClient(httpClient, retryOptions ?? new PlanItRetryOptions(), throttleOptions, delayFunc);
     }
 
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(

@@ -18,15 +18,18 @@ public sealed class PlanItClient : IPlanItClient
 
     private readonly HttpClient httpClient;
     private readonly PlanItRetryOptions retryOptions;
+    private readonly PlanItThrottleOptions throttleOptions;
     private readonly Func<TimeSpan, CancellationToken, Task> delayFunc;
 
     public PlanItClient(
         HttpClient httpClient,
         PlanItRetryOptions? retryOptions = null,
+        PlanItThrottleOptions? throttleOptions = null,
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
     {
         this.httpClient = httpClient;
         this.retryOptions = retryOptions ?? new PlanItRetryOptions();
+        this.throttleOptions = throttleOptions ?? new PlanItThrottleOptions();
         this.delayFunc = delayFunc ?? Task.Delay;
     }
 
@@ -146,6 +149,8 @@ public sealed class PlanItClient : IPlanItClient
 
     private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, CancellationToken ct)
     {
+        _ = this.throttleOptions;
+
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
         {
             var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
