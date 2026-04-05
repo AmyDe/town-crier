@@ -1,4 +1,4 @@
-import type { AuthorityId, AuthorityListItem, PlanningApplication } from '../../../../domain/types';
+import type { ApplicationUid, AuthorityId, AuthorityListItem, PlanningApplication, SavedApplication } from '../../../../domain/types';
 import type { MapPort } from '../../../../domain/ports/map-port';
 
 export class SpyMapPort implements MapPort {
@@ -24,5 +24,37 @@ export class SpyMapPort implements MapPort {
       throw this.fetchApplicationsByAuthorityError;
     }
     return this.fetchApplicationsByAuthorityResults.get(authorityId as number) ?? [];
+  }
+
+  fetchSavedApplicationsCalls = 0;
+  fetchSavedApplicationsResult: readonly SavedApplication[] = [];
+  fetchSavedApplicationsError: Error | null = null;
+
+  async fetchSavedApplications(): Promise<readonly SavedApplication[]> {
+    this.fetchSavedApplicationsCalls++;
+    if (this.fetchSavedApplicationsError) {
+      throw this.fetchSavedApplicationsError;
+    }
+    return this.fetchSavedApplicationsResult;
+  }
+
+  saveApplicationCalls: ApplicationUid[] = [];
+  saveApplicationError: Error | null = null;
+
+  async saveApplication(uid: ApplicationUid): Promise<void> {
+    this.saveApplicationCalls.push(uid);
+    if (this.saveApplicationError) {
+      throw this.saveApplicationError;
+    }
+  }
+
+  unsaveApplicationCalls: ApplicationUid[] = [];
+  unsaveApplicationError: Error | null = null;
+
+  async unsaveApplication(uid: ApplicationUid): Promise<void> {
+    this.unsaveApplicationCalls.push(uid);
+    if (this.unsaveApplicationError) {
+      throw this.unsaveApplicationError;
+    }
   }
 }
