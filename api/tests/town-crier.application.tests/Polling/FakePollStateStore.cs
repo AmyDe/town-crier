@@ -6,6 +6,8 @@ internal sealed class FakePollStateStore : IPollStateStore
 {
     public DateTimeOffset? LastPollTime { get; private set; }
 
+    public int SaveCallCount { get; private set; }
+
     public void SetLastPollTime(DateTimeOffset pollTime)
     {
         this.LastPollTime = pollTime;
@@ -19,6 +21,7 @@ internal sealed class FakePollStateStore : IPollStateStore
     public Task SaveLastPollTimeAsync(DateTimeOffset pollTime, CancellationToken ct)
     {
         this.LastPollTime = pollTime;
+        this.SaveCallCount++;
         return Task.CompletedTask;
     }
 }

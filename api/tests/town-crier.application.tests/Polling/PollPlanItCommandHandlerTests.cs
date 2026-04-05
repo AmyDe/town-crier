@@ -185,6 +185,30 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SavePollStateAfterEachAuthority_When_MultipleAuthoritiesPolled()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(3);
+    }
+
+    [Test]
     public async Task Should_RethrowException_When_PlanItFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
