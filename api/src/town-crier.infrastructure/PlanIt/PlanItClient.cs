@@ -10,7 +10,7 @@ namespace TownCrier.Infrastructure.PlanIt;
 
 public sealed class PlanItClient : IPlanItClient
 {
-    private const int DefaultPageSize = 5000;
+    private const int DefaultPageSize = 100;
     private const int SearchPageSize = 20;
 
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]

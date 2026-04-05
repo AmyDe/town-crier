@@ -61,22 +61,42 @@ public sealed class CachedPlanItAuthorityProvider : IAuthorityProvider, IDisposa
                 return;
             }
 
-            var url = new Uri("/api/areas/json?pg_sz=500&select=area_id,area_name,area_type,url,planning_url", UriKind.Relative);
-            using var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
+            const int pageSize = 100;
+            var allRecords = new List<PlanItAreaRecord>();
+            var page = 1;
+            int fetched;
 
-            var areasResponse = await JsonSerializer.DeserializeAsync(
-                await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
-                PlanItJsonSerializerContext.Default.PlanItAreasResponse,
-                ct).ConfigureAwait(false);
+            do
+            {
+                var url = new Uri(
+                    $"/api/areas/json?pg_sz={pageSize}&page={page}&select=area_id,area_name,area_type,url,planning_url",
+                    UriKind.Relative);
+                using var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
+                response.EnsureSuccessStatusCode();
 
-            if (areasResponse is null)
+                var areasResponse = await JsonSerializer.DeserializeAsync(
+                    await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
+                    PlanItJsonSerializerContext.Default.PlanItAreasResponse,
+                    ct).ConfigureAwait(false);
+
+                if (areasResponse is null)
+                {
+                    break;
+                }
+
+                fetched = areasResponse.Records.Count;
+                allRecords.AddRange(areasResponse.Records);
+                page++;
+            }
+            while (fetched >= pageSize);
+
+            if (allRecords.Count == 0)
             {
                 this.cachedAuthorities ??= [];
                 return;
             }
 
-            this.cachedAuthorities = areasResponse.Records
+            this.cachedAuthorities = allRecords
                 .Select(r => new Authority(r.Id, r.Name, r.AreaType, r.CouncilUrl, r.PlanningUrl))
                 .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList()
