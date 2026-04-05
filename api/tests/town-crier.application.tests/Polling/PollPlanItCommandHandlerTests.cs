@@ -117,6 +117,7 @@ public sealed class PollPlanItCommandHandlerTests
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -248,14 +249,8 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider: authorityProvider,
             timeProvider: new FakeTimeProvider(fakeTime));
 
-        try
-        {
-            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-        }
-        catch (HttpRequestException)
-        {
-            // expected — authority 200 fails
-        }
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
 
         // Authority 100 completed before the failure, so poll state should be saved
         await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
@@ -275,14 +270,8 @@ public sealed class PollPlanItCommandHandlerTests
             pollStateStore: pollStateStore,
             authorityProvider: authorityProvider);
 
-        try
-        {
-            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-        }
-        catch (HttpRequestException)
-        {
-            // expected
-        }
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
 
         await Assert.That(pollStateStore.LastPollTime).IsNull();
     }
