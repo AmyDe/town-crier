@@ -79,4 +79,16 @@ describe('LandingPage', () => {
       'faq',
     ]);
   });
+
+  it('shows signed-out toast when ?signed_out=true is present', () => {
+    render(
+      <MemoryRouter initialEntries={['/?signed_out=true']}>
+        <AuthProvider value={new SpyAuthPort()}>
+          <LandingPage />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("You've been signed out")).toBeInTheDocument();
+  });
 });
