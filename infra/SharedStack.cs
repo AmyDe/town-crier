@@ -193,6 +193,7 @@ public static class SharedStack
             DomainName = "towncrierapp.uk",
             EmailServiceName = emailService.Name,
             ResourceGroupName = resourceGroup.Name,
+            Location = "global",
             DomainManagement = DomainManagement.CustomerManaged,
             Tags = tags,
         });
