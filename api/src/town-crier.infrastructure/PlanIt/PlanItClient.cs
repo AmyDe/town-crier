@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TownCrier.Application.PlanIt;
 using TownCrier.Domain.PlanningApplications;
+using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.PlanIt;
 
@@ -44,7 +45,7 @@ public sealed class PlanItClient : IPlanItClient
         do
         {
             var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
-            using var response = await this.SendWithRetryAsync(url, ct).ConfigureAwait(false);
+            using var response = await this.SendWithRetryAsync(url, authorityId, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var planItResponse = await JsonSerializer.DeserializeAsync(
@@ -76,7 +77,7 @@ public sealed class PlanItClient : IPlanItClient
         CancellationToken ct)
     {
         var url = new Uri(BuildSearchUrl(searchText, authorityId, page), UriKind.Relative);
-        using var response = await this.SendWithRetryAsync(url, ct).ConfigureAwait(false);
+        using var response = await this.SendWithRetryAsync(url, authorityId, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var planItResponse = await JsonSerializer.DeserializeAsync(
@@ -147,7 +148,7 @@ public sealed class PlanItClient : IPlanItClient
         return DateOnly.Parse(value, CultureInfo.InvariantCulture);
     }
 
-    private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, int authorityId, CancellationToken ct)
     {
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
         {
@@ -157,6 +158,14 @@ public sealed class PlanItClient : IPlanItClient
             }
 
             var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                PlanItInstrumentation.HttpErrors.Add(
+                    1,
+                    new KeyValuePair<string, object?>("http.response.status_code", (int)response.StatusCode),
+                    new KeyValuePair<string, object?>("planit.authority_code", authorityId));
+            }
 
             if (response.StatusCode != (HttpStatusCode)429)
             {

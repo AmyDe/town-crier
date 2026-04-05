@@ -9,6 +9,7 @@ internal sealed class FakePlanItHandler : HttpMessageHandler
     private readonly Dictionary<string, string> responses = new();
     private readonly List<string> requestUrls = [];
     private readonly Dictionary<string, int> rateLimitCounters = new();
+    private readonly Dictionary<string, HttpStatusCode> statusCodeResponses = new();
 
     public IReadOnlyList<string> RequestUrls => this.requestUrls;
 
@@ -28,6 +29,11 @@ internal sealed class FakePlanItHandler : HttpMessageHandler
         this.rateLimitCounters[urlContains] = int.MaxValue;
     }
 
+    public void SetupStatusCodeResponse(string urlContains, HttpStatusCode statusCode)
+    {
+        this.statusCodeResponses[urlContains] = statusCode;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -41,6 +47,14 @@ internal sealed class FakePlanItHandler : HttpMessageHandler
             {
                 this.rateLimitCounters[key]--;
                 return Task.FromResult(new HttpResponseMessage((HttpStatusCode)429));
+            }
+        }
+
+        foreach (var (key, statusCode) in this.statusCodeResponses)
+        {
+            if (url.Contains(key, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(statusCode));
             }
         }
 
