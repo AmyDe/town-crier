@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
@@ -314,6 +315,7 @@ public sealed class PollPlanItCommandHandlerTests
             timeProvider ?? TimeProvider.System,
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
-            notificationEnqueuer ?? new FakeNotificationEnqueuer());
+            notificationEnqueuer ?? new FakeNotificationEnqueuer(),
+            NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }
