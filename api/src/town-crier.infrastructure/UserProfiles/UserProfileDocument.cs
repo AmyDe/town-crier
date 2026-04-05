@@ -10,8 +10,6 @@ internal sealed class UserProfileDocument
 
     public string? Email { get; init; }
 
-    public string? Postcode { get; init; }
-
     public required bool PushEnabled { get; init; }
 
     public required DayOfWeek DigestDay { get; init; }
@@ -39,7 +37,6 @@ internal sealed class UserProfileDocument
             Id = profile.UserId,
             UserId = profile.UserId,
             Email = profile.Email,
-            Postcode = profile.Postcode,
             PushEnabled = profile.NotificationPreferences.PushEnabled,
             DigestDay = profile.NotificationPreferences.DigestDay,
             EmailDigestEnabled = profile.NotificationPreferences.EmailDigestEnabled,
@@ -64,7 +61,6 @@ internal sealed class UserProfileDocument
         return UserProfile.Reconstitute(
             this.UserId,
             this.Email,
-            this.Postcode,
             notificationPreferences,
             this.ZonePreferences,
             tier,
