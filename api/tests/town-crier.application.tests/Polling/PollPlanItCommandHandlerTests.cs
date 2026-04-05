@@ -1,3 +1,4 @@
+using System.Net;
 using TownCrier.Application.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
@@ -274,6 +275,27 @@ public sealed class PollPlanItCommandHandlerTests
             () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
 
         await Assert.That(pollStateStore.LastPollTime).IsNull();
+    }
+
+    [Test]
+    public async Task Should_SkipAuthorityAndContinue_When_FirstRateLimitHit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
     }
 
     private static PollPlanItCommandHandler CreateHandler(
