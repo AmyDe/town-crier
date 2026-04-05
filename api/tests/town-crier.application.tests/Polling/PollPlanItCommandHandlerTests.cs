@@ -94,7 +94,7 @@ public sealed class PollPlanItCommandHandlerTests
         var planItClient = new FakePlanItClient();
         var pollStateStore = new FakePollStateStore();
         var lastPoll = new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero);
-        pollStateStore.SetLastPollTime(lastPoll);
+        pollStateStore.SetLastPollTime(1, lastPoll);
 
         var handler = CreateHandler(planItClient: planItClient, pollStateStore: pollStateStore, authorityProvider: authorityProvider);
 
@@ -118,7 +118,7 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(fakeTime);
         await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
     }
 
@@ -259,7 +259,9 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.ApplicationCount).IsEqualTo(2);
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
         await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
-        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(300)).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsNull();
     }
 
     [Test]
@@ -277,7 +279,7 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(pollStateStore.LastPollTime).IsNull();
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsNull();
     }
 
     [Test]
@@ -370,6 +372,94 @@ public sealed class PollPlanItCommandHandlerTests
 
         await Assert.That(result.ApplicationCount).IsEqualTo(2);
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_Use30DayLookback_When_NewAuthorityHasNoPollState()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var pollStateStore = new FakePollStateStore();
+        var existingPollTime = new DateTimeOffset(2026, 4, 5, 10, 0, 0, TimeSpan.Zero);
+        pollStateStore.SetLastPollTime(100, existingPollTime);
+
+        var now = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var planItClient = new FakePlanItClient();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(now));
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Authority 100 should use its existing poll time
+        await Assert.That(planItClient.DifferentStartByAuthority[100]).IsEqualTo(existingPollTime);
+
+        // Authority 200 should use 30-day lookback
+        var expected30DaysAgo = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
+        await Assert.That(planItClient.DifferentStartByAuthority[200]).IsEqualTo(expected30DaysAgo);
+    }
+
+    [Test]
+    public async Task Should_RetainPerAuthorityPollTime_When_AuthorityIsRateLimited()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var pollStateStore = new FakePollStateStore();
+        var authority100Time = new DateTimeOffset(2026, 4, 4, 10, 0, 0, TimeSpan.Zero);
+        var authority200Time = new DateTimeOffset(2026, 4, 3, 8, 0, 0, TimeSpan.Zero);
+        pollStateStore.SetLastPollTime(100, authority100Time);
+        pollStateStore.SetLastPollTime(200, authority200Time);
+
+        var now = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(now));
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Authority 100 should be advanced to now
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(now);
+
+        // Authority 200 should retain its original poll time (rate limited, not advanced)
+        await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsEqualTo(authority200Time);
+    }
+
+    [Test]
+    public async Task Should_DeleteGlobalPollState_When_CycleCompletes()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(pollStateStore: pollStateStore, authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_DeleteGlobalPollState_When_NoActiveAuthorities()
+    {
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(pollStateStore: pollStateStore);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
     }
 
     private static PollPlanItCommandHandler CreateHandler(
