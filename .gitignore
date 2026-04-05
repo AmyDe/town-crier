@@ -85,7 +85,8 @@ node_modules/
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
 .claude/worktrees/autopilot-tc-kkc.1/
-# bd worktree
 extract-polling-job/
-# bd worktree
 email-notifications/
+
+# Skill evaluation workspaces
+.claude/skills/*-workspace/
