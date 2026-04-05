@@ -441,6 +441,18 @@ public static class SharedStack
     private static DashboardPartMetadataArgs KqlTile(
         Output<string> appInsightsId, string query, string title)
     {
+        var componentId = appInsightsId.Apply(id =>
+        {
+            var segments = id.Split('/');
+            return new Dictionary<string, object>
+            {
+                ["SubscriptionId"] = segments[2],
+                ["ResourceGroup"] = segments[4],
+                ["Name"] = segments[8],
+                ["ResourceId"] = id,
+            };
+        });
+
         return new DashboardPartMetadataArgs
         {
             Type = "Extension/AppInsightsExtension/PartType/AnalyticsPart",
@@ -476,7 +488,7 @@ public static class SharedStack
                 (object)new Dictionary<string, object>
                 {
                     ["name"] = "ComponentId",
-                    ["value"] = appInsightsId,
+                    ["value"] = componentId,
                 },
             },
         };
