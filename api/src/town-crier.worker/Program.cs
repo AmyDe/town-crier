@@ -62,6 +62,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
 var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
 #pragma warning restore S1075
+builder.Services.AddSingleton(new PlanItThrottleOptions());
 builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 {
     client.BaseAddress = new Uri(planItBaseUrl);
