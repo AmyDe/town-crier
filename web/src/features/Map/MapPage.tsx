@@ -8,6 +8,7 @@ import { FitBounds } from './FitBounds';
 import { BookmarkButton } from './BookmarkButton';
 import styles from './MapPage.module.css';
 import 'leaflet/dist/leaflet.css';
+import './leaflet-overrides.css';
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =

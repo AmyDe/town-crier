@@ -1,0 +1,32 @@
+/* ==========================================================================
+   Leaflet Popup Overrides
+   Leaflet ships popup styles with a hardcoded white background. In dark
+   mode the app's text tokens resolve to light colours, making popup text
+   invisible. These overrides replace hardcoded values with design tokens
+   so popups match the active theme in light, dark, and OLED dark modes.
+   ========================================================================== */
+
+.leaflet-popup-content-wrapper {
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  border-radius: var(--tc-radius-md);
+  box-shadow: var(--tc-shadow-elevated);
+}
+
+.leaflet-popup-tip {
+  background: var(--tc-surface);
+}
+
+.leaflet-popup-content a {
+  color: var(--tc-amber);
+}
+
+/* Override the default close button to match the theme */
+.leaflet-popup-close-button {
+  color: var(--tc-text-secondary);
+}
+
+.leaflet-popup-close-button:hover,
+.leaflet-popup-close-button:focus {
+  color: var(--tc-text-primary);
+}
