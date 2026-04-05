@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Globalization;
+using System.Net;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -485,6 +487,135 @@ public sealed class PlanItClientTests
         // Assert
         await Assert.That(results).HasCount().EqualTo(1);
         await Assert.That(results[0].Description).IsEqualTo(string.Empty);
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_RecordHttpErrorMetric_When_ApiReturns429()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) });
+
+        var recorded = new List<(long Value, int StatusCode, int AuthorityCode)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.planit.http_errors")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            var statusCode = 0;
+            var authorityCode = 0;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "http.response.status_code")
+                {
+                    statusCode = (int)tag.Value!;
+                }
+
+                if (tag.Key == "planit.authority_code")
+                {
+                    authorityCode = (int)tag.Value!;
+                }
+            }
+
+            recorded.Add((measurement, statusCode, authorityCode));
+        });
+        listener.Start();
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+
+        // Assert — 2 rate limit responses recorded
+        await Assert.That(recorded).HasCount().EqualTo(2);
+        await Assert.That(recorded[0].StatusCode).IsEqualTo(429);
+        await Assert.That(recorded[0].AuthorityCode).IsEqualTo(292);
+        await Assert.That(recorded[1].StatusCode).IsEqualTo(429);
+        await Assert.That(recorded[1].AuthorityCode).IsEqualTo(292);
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_RecordHttpErrorMetric_When_ApiReturns500()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupStatusCodeResponse("page=1", HttpStatusCode.InternalServerError);
+        var client = CreateClient(handler);
+
+        var recorded = new List<(long Value, int StatusCode, int AuthorityCode)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.planit.http_errors")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            var statusCode = 0;
+            var authorityCode = 0;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "http.response.status_code")
+                {
+                    statusCode = (int)tag.Value!;
+                }
+
+                if (tag.Key == "planit.authority_code")
+                {
+                    authorityCode = (int)tag.Value!;
+                }
+            }
+
+            recorded.Add((measurement, statusCode, authorityCode));
+        });
+        listener.Start();
+
+        // Act & Assert — EnsureSuccessStatusCode throws, but metric should still be recorded
+        await Assert.ThrowsAsync<HttpRequestException>(
+            async () => await ConsumeAsync(client, differentStart: null, authorityId: 314));
+
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0].StatusCode).IsEqualTo(500);
+        await Assert.That(recorded[0].AuthorityCode).IsEqualTo(314);
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_NotRecordHttpErrorMetric_When_ApiReturns200()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", SingleRecordResponse);
+        var client = CreateClient(handler);
+
+        var recorded = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.planit.http_errors")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            recorded.Add(measurement);
+        });
+        listener.Start();
+
+        // Act
+        await ConsumeAsync(client, differentStart: null);
+
+        // Assert — no errors recorded for successful response
+        await Assert.That(recorded).HasCount().EqualTo(0);
     }
 
     private static PlanItClient CreateClient(
