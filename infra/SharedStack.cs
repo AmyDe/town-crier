@@ -253,7 +253,11 @@ public static class SharedStack
                             new DashboardPartsArgs
                             {
                                 Position = new DashboardPartsPositionArgs { X = 0, Y = 8, ColSpan = 3, RowSpan = 4 },
-                                Metadata = MetricTile(appInsights.Id, "towncrier.polling.authorities_polled", "Sync Success vs Failure"),
+                                Metadata = StackedMetricTile(
+                                    appInsights.Id,
+                                    "towncrier.polling.authorities_polled", "Successes",
+                                    "towncrier.polling.failures", "Failures",
+                                    "Sync Success vs Failure"),
                             },
                             new DashboardPartsArgs
                             {
@@ -343,6 +347,74 @@ public static class SharedStack
                                     ["metricVisualization"] = new Dictionary<string, object>
                                     {
                                         ["displayName"] = title,
+                                    },
+                                },
+                            },
+                            ["title"] = title,
+                            ["titleKind"] = 1,
+                            ["visualization"] = new Dictionary<string, object>
+                            {
+                                ["chartType"] = 2,
+                            },
+                            ["timespan"] = new Dictionary<string, object>
+                            {
+                                ["relative"] = new Dictionary<string, object>
+                                {
+                                    ["duration"] = 86400000,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    private static DashboardPartMetadataArgs StackedMetricTile(
+        Output<string> appInsightsId,
+        string metric1, string label1,
+        string metric2, string label2,
+        string title)
+    {
+        return new DashboardPartMetadataArgs
+        {
+            Type = "Extension/HubsExtension/PartType/MonitorChartPart",
+            Settings = new InputMap<object>
+            {
+                ["content"] = new Dictionary<string, object>
+                {
+                    ["options"] = new Dictionary<string, object>
+                    {
+                        ["chart"] = new Dictionary<string, object>
+                        {
+                            ["metrics"] = new object[]
+                            {
+                                new Dictionary<string, object>
+                                {
+                                    ["resourceMetadata"] = new Dictionary<string, object>
+                                    {
+                                        ["id"] = appInsightsId,
+                                    },
+                                    ["name"] = metric1,
+                                    ["aggregationType"] = 1,
+                                    ["namespace"] = "azure.applicationinsights",
+                                    ["metricVisualization"] = new Dictionary<string, object>
+                                    {
+                                        ["displayName"] = label1,
+                                    },
+                                },
+                                new Dictionary<string, object>
+                                {
+                                    ["resourceMetadata"] = new Dictionary<string, object>
+                                    {
+                                        ["id"] = appInsightsId,
+                                    },
+                                    ["name"] = metric2,
+                                    ["aggregationType"] = 1,
+                                    ["namespace"] = "azure.applicationinsights",
+                                    ["metricVisualization"] = new Dictionary<string, object>
+                                    {
+                                        ["displayName"] = label2,
                                     },
                                 },
                             },
