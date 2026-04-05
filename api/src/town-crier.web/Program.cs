@@ -34,7 +34,8 @@ builder.Services.AddOpenTelemetry()
             .AddHttpClientInstrumentation()
             .AddMeter(ApiMetrics.MeterName)
             .AddMeter(PollingMetrics.MeterName)
-            .AddMeter(CosmosInstrumentation.MeterName);
+            .AddMeter(CosmosInstrumentation.MeterName)
+            .AddMeter(PlanItInstrumentation.MeterName);
 
         if (hasAppInsights)
         {
