@@ -3,4 +3,5 @@ export interface AuthPort {
   readonly isLoading: boolean;
   readonly error: Error | undefined;
   loginWithRedirect(): Promise<void>;
+  logout(): Promise<void>;
 }

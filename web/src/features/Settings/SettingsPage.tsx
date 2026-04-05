@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../../auth/auth-context';
 import { useTheme } from '../../hooks/useTheme';
 import { useUserProfile } from './useUserProfile';
 import { ThemeToggle } from '../../components/ThemeToggle/ThemeToggle';
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function SettingsPage({ repository }: Props) {
-  const { logout } = useAuth0();
+  const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const {
     profile,
@@ -84,6 +84,19 @@ export function SettingsPage({ repository }: Props) {
             disabled={isExporting}
           >
             {isExporting ? 'Exporting...' : 'Export Your Data'}
+          </button>
+        </div>
+      </section>
+
+      {/* Session section */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Session</h2>
+        <div className={styles.card}>
+          <button
+            className={styles.secondaryButton}
+            onClick={() => logout()}
+          >
+            Sign Out
           </button>
         </div>
       </section>
