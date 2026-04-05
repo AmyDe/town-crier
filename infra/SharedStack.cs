@@ -11,6 +11,8 @@ using Pulumi.AzureNative.CosmosDB.Inputs;
 using Pulumi.AzureNative.ApplicationInsights;
 using Pulumi.AzureNative.Portal;
 using Pulumi.AzureNative.Portal.Inputs;
+using Pulumi.AzureNative.Communication;
+using Pulumi.AzureNative.Communication.Inputs;
 
 public static class SharedStack
 {
@@ -167,6 +169,32 @@ public static class SharedStack
             PrincipalId = cosmosDataIdentity.PrincipalId,
         });
 
+        // Azure Communication Services (Email)
+        var communicationService = new CommunicationService("acs-town-crier-shared", new CommunicationServiceArgs
+        {
+            CommunicationServiceName = "acs-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            DataLocation = "Europe",
+            Tags = tags,
+        });
+
+        var emailService = new EmailService("email-town-crier-shared", new EmailServiceArgs
+        {
+            EmailServiceName = "email-town-crier-shared",
+            ResourceGroupName = resourceGroup.Name,
+            DataLocation = "Europe",
+            Tags = tags,
+        });
+
+        _ = new Domain("domain-towncrierapp-uk", new DomainArgs
+        {
+            DomainName = "towncrierapp.uk",
+            EmailServiceName = emailService.Name,
+            ResourceGroupName = resourceGroup.Name,
+            DomainManagement = DomainManagement.CustomerManaged,
+            Tags = tags,
+        });
+
         // Operational Dashboard
         var dashboard = new Dashboard("dash-towncrier-operational", new DashboardArgs
         {
@@ -257,6 +285,7 @@ public static class SharedStack
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
+            ["acsConnectionString"] = communicationService.HostName.Apply(h => $"endpoint=https://{h}/"),
         };
     }
 

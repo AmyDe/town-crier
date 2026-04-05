@@ -46,6 +46,7 @@ public static class EnvironmentStack
         var cosmosAccountName = shared.GetOutput("cosmosAccountName").Apply(o => o?.ToString() ?? "");
         var cosmosAccountEndpoint = shared.GetOutput("cosmosAccountEndpoint").Apply(o => o?.ToString() ?? "");
         var appInsightsConnectionString = shared.GetOutput("appInsightsConnectionString").Apply(o => o?.ToString() ?? "");
+        var acsConnectionString = shared.GetOutput("acsConnectionString").Apply(o => o?.ToString() ?? "");
         // Extract the CAE name from its resource ID to avoid
         // requiring a shared stack deploy before the env stack can preview.
         // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
@@ -213,6 +214,7 @@ public static class EnvironmentStack
                 {
                     new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
                     new SecretArgs { Name = "auto-grant-pro-domains", Value = autoGrantProDomains },
+                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
                 },
                 Ingress = new IngressArgs
                 {
@@ -280,6 +282,7 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
                             new EnvironmentVarArgs { Name = "Admin__ApiKey", SecretRef = "admin-api-key" },
                             new EnvironmentVarArgs { Name = "Subscription__AutoGrant__ProDomains", SecretRef = "auto-grant-pro-domains" },
+                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
                         },
                     },
                 },
