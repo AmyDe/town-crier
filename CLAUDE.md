@@ -136,6 +136,29 @@ Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown fi
 - Do NOT use `bd edit` — it opens an interactive editor that blocks agents
 - Run `bd dolt push` to sync beads to GitHub (separate from `git push`)
 
+### Bead-First Rule
+
+**Every code change requires a bead — no exceptions.** Even a one-line typo fix gets a bead. Beads are the ledger of all work done; if it's not in a bead, it didn't happen.
+
+Before editing any source file (`.swift`, `.cs`, `.ts`, `.tsx`, `.css`, `.csproj`):
+1. `bd create --title="<describe the change>" --type=task --priority=3`
+2. `bd update <id> --claim`
+3. Make your changes
+4. `bd close <id>`
+
+A PreToolUse hook (`.claude/require-bead.sh`) enforces this — Write/Edit on code files is blocked when no bead is in_progress. Do not try to work around it.
+
+### Worktree-First Rule
+
+**All code changes must happen in a worktree — never in the main working tree.** Multiple conversations often run in parallel; editing the main tree causes conflicts.
+
+Before editing code, enter an isolated worktree:
+1. `EnterWorktree` (optionally with a descriptive name)
+2. Make your changes within the worktree
+3. Use the `/ship` skill or `ExitWorktree` when done
+
+A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. Do not try to work around it.
+
 ### Superpowers Workflow Integration
 
 When using the superpowers brainstorm → plan → execute workflow, beads are the task ledger:

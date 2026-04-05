@@ -56,6 +56,12 @@
       {
         "hooks": [
           {
+            "command": ".claude/require-worktree.sh",
+            "statusMessage": "Checking worktree isolation...",
+            "timeout": 5,
+            "type": "command"
+          },
+          {
             "command": ".claude/require-bead.sh",
             "statusMessage": "Checking bead ledger...",
             "timeout": 10,
