@@ -43,6 +43,7 @@
   font-size: var(--tc-text-caption);
   color: var(--tc-text-primary);
   margin: 0 0 var(--tc-space-xs) 0;
+  flex: 1;
 }
 
 .popupAddress {
@@ -59,4 +60,10 @@
 
 .popupLink:hover {
   text-decoration: underline;
+}
+
+.popupHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tc-space-xs);
 }

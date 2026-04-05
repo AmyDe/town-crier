@@ -1,4 +1,4 @@
-import type { AuthorityListItem, PlanningApplication } from '../../../../domain/types';
+import type { AuthorityListItem, PlanningApplication, SavedApplication } from '../../../../domain/types';
 import { asAuthorityId, asApplicationUid } from '../../../../domain/types';
 
 export function anAuthority(overrides?: Partial<AuthorityListItem>): AuthorityListItem {
@@ -63,6 +63,26 @@ export function aSecondApplication(overrides?: Partial<PlanningApplication>): Pl
     url: null,
     link: null,
     lastDifferent: '2026-02-15',
+    ...overrides,
+  };
+}
+
+export function aSavedApplication(overrides?: Partial<SavedApplication>): SavedApplication {
+  return {
+    applicationUid: asApplicationUid('app-001'),
+    savedAt: '2026-03-15T10:00:00Z',
+    application: {
+      uid: asApplicationUid('app-001'),
+      name: 'Application 1',
+      address: '12 Mill Road, Cambridge',
+      postcode: 'CB1 2AD',
+      description: 'Erection of two-storey rear extension',
+      appType: 'Full Planning',
+      appState: 'Undecided',
+      areaName: 'Cambridge City Council',
+      startDate: '2026-01-15',
+      url: null,
+    },
     ...overrides,
   };
 }
