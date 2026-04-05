@@ -48,6 +48,7 @@ builder.Services.AddOpenTelemetry()
         metrics
             .AddHttpClientInstrumentation()
             .AddMeter(PollingMetrics.MeterName)
+            .AddMeter(ApiMetrics.MeterName)
             .AddMeter(CosmosInstrumentation.MeterName)
             .AddMeter(PlanItInstrumentation.MeterName);
 
@@ -73,7 +74,8 @@ if (!string.IsNullOrEmpty(acsConnectionString))
 {
     try
     {
-        builder.Services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+        builder.Services.AddSingleton<IEmailSender>(sp =>
+            new AcsEmailSender(acsConnectionString, sp.GetRequiredService<ILogger<AcsEmailSender>>()));
     }
     catch (InvalidOperationException)
     {
