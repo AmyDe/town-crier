@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { SettingsPage } from '../SettingsPage';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
 import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';
+import { AuthProvider } from '../../../auth/auth-context';
+import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
 
 // Stub useTheme — ThemeToggle receives theme/toggleTheme as props so we
 // only need to verify the toggle is rendered and clickable.
@@ -12,16 +14,15 @@ vi.mock('../../../hooks/useTheme', () => ({
   useTheme: () => ({ theme: 'light' as const, toggleTheme: vi.fn() }),
 }));
 
-// Stub useAuth0 — SettingsPage gets logout from Auth0.
-const mockLogout = vi.fn();
-vi.mock('@auth0/auth0-react', () => ({
-  useAuth0: () => ({ logout: mockLogout }),
-}));
+let spyAuth: SpyAuthPort;
 
 function renderSettingsPage(repository: SpySettingsRepository) {
+  spyAuth = new SpyAuthPort();
   return render(
     <MemoryRouter>
-      <SettingsPage repository={repository} />
+      <AuthProvider value={spyAuth}>
+        <SettingsPage repository={repository} />
+      </AuthProvider>
     </MemoryRouter>,
   );
 }
@@ -31,7 +32,6 @@ describe('SettingsPage', () => {
 
   beforeEach(() => {
     spy = new SpySettingsRepository();
-    mockLogout.mockReset();
   });
 
   it('renders the page heading', async () => {
@@ -107,6 +107,7 @@ describe('SettingsPage', () => {
     await user.click(confirmButton);
 
     expect(spy.deleteAccountCalls).toBe(1);
+    expect(spyAuth.logoutCalls).toBe(1);
   });
 
   it('renders attribution section', async () => {
