@@ -98,6 +98,7 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 });
 
 builder.Services.AddTransient<PollPlanItCommandHandler>();
+builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 
 using var host = builder.Build();
 
@@ -107,35 +108,68 @@ using var host = builder.Build();
 _ = host.Services.GetRequiredService<MeterProvider>();
 _ = host.Services.GetRequiredService<TracerProvider>();
 
-var handler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
+var mode = builder.Configuration["WORKER_MODE"] ?? "poll";
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TownCrier.Worker");
 
 var exitCode = 0;
 
-try
+switch (mode)
 {
-    using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
-    var cycleStart = Stopwatch.GetTimestamp();
+    case "poll":
+        try
+        {
+            using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
+            var cycleStart = Stopwatch.GetTimestamp();
 
-    WorkerLog.PollCycleStarting(logger);
+            WorkerLog.PollCycleStarting(logger);
 
-    var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
-        .ConfigureAwait(false);
+            var pollHandler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
+            var result = await pollHandler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
+                .ConfigureAwait(false);
 
-    PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
+            PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
 
-    activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
-    activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
+            activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
+            activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
 
-    WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
-}
+            WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
+        }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
-catch (Exception ex)
+        catch (Exception ex)
 #pragma warning restore CA1031
-{
-    PollingMetrics.PollFailures.Add(1);
-    WorkerLog.PollCycleFailed(logger, ex);
-    exitCode = 1;
+        {
+            PollingMetrics.PollFailures.Add(1);
+            WorkerLog.PollCycleFailed(logger, ex);
+            exitCode = 1;
+        }
+
+        break;
+
+    case "digest":
+        try
+        {
+            WorkerLog.DigestCycleStarting(logger);
+
+            var digestHandler = host.Services.GetRequiredService<GenerateWeeklyDigestsCommandHandler>();
+            await digestHandler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None)
+                .ConfigureAwait(false);
+
+            WorkerLog.DigestCycleCompleted(logger);
+        }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            WorkerLog.DigestCycleFailed(logger, ex);
+            exitCode = 1;
+        }
+
+        break;
+
+    default:
+        WorkerLog.UnknownWorkerMode(logger, mode);
+        exitCode = 1;
+        break;
 }
 
 // Force-flush OpenTelemetry before the short-lived process exits.
