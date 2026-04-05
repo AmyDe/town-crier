@@ -40,6 +40,11 @@ export function useMapData(port: MapPort) {
   }, [data?.fetchedSavedUids, pendingSaves, pendingRemoves]);
 
   const saveApplication = useCallback(async (uid: ApplicationUid) => {
+    setPendingRemoves(prev => {
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
     setPendingSaves(prev => new Set([...prev, uid]));
     try {
       await port.saveApplication(uid);
@@ -53,6 +58,11 @@ export function useMapData(port: MapPort) {
   }, [port]);
 
   const unsaveApplication = useCallback(async (uid: ApplicationUid) => {
+    setPendingSaves(prev => {
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
     setPendingRemoves(prev => new Set([...prev, uid]));
     try {
       await port.unsaveApplication(uid);
