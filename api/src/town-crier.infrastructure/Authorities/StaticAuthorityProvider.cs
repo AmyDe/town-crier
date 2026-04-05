@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using TownCrier.Application.Authorities;
 using TownCrier.Domain.Authorities;
@@ -36,7 +35,7 @@ public sealed class StaticAuthorityProvider : IAuthorityProvider
 
     private static List<AuthorityRecord> LoadEmbeddedAuthorities()
     {
-        var assembly = Assembly.GetExecutingAssembly();
+        var assembly = typeof(StaticAuthorityProvider).Assembly;
         const string resourceName = "TownCrier.Infrastructure.Authorities.authorities.json";
 
         using var stream = assembly.GetManifestResourceStream(resourceName)
