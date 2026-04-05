@@ -327,20 +327,75 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_PropagateException_When_NonRateLimitHttpError()
+    public async Task Should_ContinueToNextAuthority_When_NonRateLimitExceptionOccurs()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
         authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new InvalidOperationException("Unexpected JSON structure"));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Authority 200 failed but 100 and 300 should still succeed
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+        await Assert.That(planItClient.AuthorityIdsRequested).Contains(300);
+    }
+
+    [Test]
+    public async Task Should_ContinueToNextAuthority_When_NonRateLimitHttpErrorOccurs()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
 
         var planItClient = new FakePlanItClient();
         planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
         planItClient.ThrowForAuthority(200, new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
 
         var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_SavePollStateForSuccessfulAuthorities_When_OtherAuthorityFails()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("timeout"));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var pollStateStore = new FakePollStateStore();
+        var fakeTime = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(fakeTime));
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Poll state saved for authority 100 and 300 (not 200 which failed)
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
+        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
     }
 
     private static PollPlanItCommandHandler CreateHandler(
