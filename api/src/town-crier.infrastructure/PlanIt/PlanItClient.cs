@@ -105,7 +105,7 @@ public sealed class PlanItClient : IPlanItClient
 
         if (differentStart.HasValue)
         {
-            url += $"&different_start={differentStart.Value:yyyy-MM-ddTHH:mm:ss}";
+            url += $"&different_start={differentStart.Value:yyyy-MM-dd}";
         }
 
         return url;

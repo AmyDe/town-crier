@@ -110,7 +110,8 @@ public sealed class PlanItClientTests
 
         // Assert
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
-        await Assert.That(handler.RequestUrls[0]).Contains("different_start=2026-03-15T10:30:00");
+        await Assert.That(handler.RequestUrls[0]).Contains("different_start=2026-03-15");
+        await Assert.That(handler.RequestUrls[0]).DoesNotContain("T10:30:00");
     }
 
     [Test]
