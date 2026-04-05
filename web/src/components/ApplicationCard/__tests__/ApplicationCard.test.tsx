@@ -108,4 +108,11 @@ describe('ApplicationCard', () => {
 
     expect(screen.queryByTestId('application-start-date')).not.toBeInTheDocument();
   });
+
+  it('handles null description without crashing', () => {
+    renderCard({ description: null as unknown as string });
+
+    const description = screen.getByTestId('application-description');
+    expect(description.textContent).toBe('');
+  });
 });
