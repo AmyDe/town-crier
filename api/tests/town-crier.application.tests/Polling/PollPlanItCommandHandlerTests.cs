@@ -104,9 +104,15 @@ public sealed class PollPlanItCommandHandlerTests
     [Test]
     public async Task Should_PersistCurrentTime_When_PollSucceeds()
     {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
         var pollStateStore = new FakePollStateStore();
         var fakeTime = new DateTimeOffset(2026, 3, 16, 12, 0, 0, TimeSpan.Zero);
-        var handler = CreateHandler(pollStateStore: pollStateStore, timeProvider: new FakeTimeProvider(fakeTime));
+        var handler = CreateHandler(
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(fakeTime));
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 

@@ -42,6 +42,7 @@ public sealed class PollPlanItCommandHandler
         var authorityIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
 
         var count = 0;
+        var authoritiesPolled = 0;
         foreach (var authorityId in authorityIds)
         {
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
@@ -71,12 +72,12 @@ public sealed class PollPlanItCommandHandler
             PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
             PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
             authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
+
+            PollingMetrics.AuthoritiesPolled.Add(1);
+            await this.pollStateStore.SaveLastPollTimeAsync(now, ct).ConfigureAwait(false);
+            authoritiesPolled++;
         }
 
-        PollingMetrics.AuthoritiesPolled.Add(authorityIds.Count);
-
-        await this.pollStateStore.SaveLastPollTimeAsync(now, ct).ConfigureAwait(false);
-
-        return new PollPlanItResult(count, authorityIds.Count);
+        return new PollPlanItResult(count, authoritiesPolled);
     }
 }
