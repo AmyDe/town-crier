@@ -6,16 +6,22 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.Notifications;
 using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
+using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.DeviceRegistrations;
+using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.Observability;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
+using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Worker;
 
@@ -57,7 +63,30 @@ builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningAppl
 builder.Services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
 builder.Services.AddSingleton<IPollStateStore, CosmosPollStateStore>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
-builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
+builder.Services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
+builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
+builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
+builder.Services.AddSingleton<IPushNotificationSender, NoOpPushNotificationSender>();
+
+var acsConnectionString = builder.Configuration["AzureCommunicationServices:ConnectionString"];
+if (!string.IsNullOrEmpty(acsConnectionString))
+{
+    try
+    {
+        builder.Services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+    }
+    catch (InvalidOperationException)
+    {
+        builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
+    }
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
+}
+
+builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
+builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
