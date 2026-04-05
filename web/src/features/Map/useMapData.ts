@@ -1,3 +1,4 @@
+import { useState, useCallback, useMemo } from 'react';
 import type { ApplicationUid, PlanningApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -28,7 +29,41 @@ export function useMapData(port: MapPort) {
     [port],
   );
 
-  const savedUids: ReadonlySet<ApplicationUid> = data?.fetchedSavedUids ?? new Set();
+  const [pendingSaves, setPendingSaves] = useState(new Set<ApplicationUid>());
+  const [pendingRemoves, setPendingRemoves] = useState(new Set<ApplicationUid>());
+
+  const savedUids: ReadonlySet<ApplicationUid> = useMemo(() => {
+    const result = new Set(data?.fetchedSavedUids ?? []);
+    for (const uid of pendingSaves) result.add(uid);
+    for (const uid of pendingRemoves) result.delete(uid);
+    return result;
+  }, [data?.fetchedSavedUids, pendingSaves, pendingRemoves]);
+
+  const saveApplication = useCallback(async (uid: ApplicationUid) => {
+    setPendingSaves(prev => new Set([...prev, uid]));
+    try {
+      await port.saveApplication(uid);
+    } catch {
+      setPendingSaves(prev => {
+        const next = new Set(prev);
+        next.delete(uid);
+        return next;
+      });
+    }
+  }, [port]);
+
+  const unsaveApplication = useCallback(async (uid: ApplicationUid) => {
+    setPendingRemoves(prev => new Set([...prev, uid]));
+    try {
+      await port.unsaveApplication(uid);
+    } catch {
+      setPendingRemoves(prev => {
+        const next = new Set(prev);
+        next.delete(uid);
+        return next;
+      });
+    }
+  }, [port]);
 
   return {
     applications: data?.applications ?? [],
@@ -36,5 +71,7 @@ export function useMapData(port: MapPort) {
     isLoading,
     error,
     refresh,
+    saveApplication,
+    unsaveApplication,
   };
 }
