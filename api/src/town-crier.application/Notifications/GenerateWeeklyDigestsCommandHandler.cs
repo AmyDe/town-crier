@@ -1,5 +1,6 @@
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Application.WatchZones;
 using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Application.Notifications;
@@ -10,6 +11,8 @@ public sealed class GenerateWeeklyDigestsCommandHandler
     private readonly INotificationRepository notificationRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
+    private readonly IEmailSender emailSender;
+    private readonly IWatchZoneRepository watchZoneRepository;
     private readonly TimeProvider timeProvider;
 
     public GenerateWeeklyDigestsCommandHandler(
@@ -17,12 +20,16 @@ public sealed class GenerateWeeklyDigestsCommandHandler
         INotificationRepository notificationRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
+        IEmailSender emailSender,
+        IWatchZoneRepository watchZoneRepository,
         TimeProvider timeProvider)
     {
         this.userProfileRepository = userProfileRepository;
         this.notificationRepository = notificationRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
+        this.emailSender = emailSender;
+        this.watchZoneRepository = watchZoneRepository;
         this.timeProvider = timeProvider;
     }
 
@@ -32,35 +39,56 @@ public sealed class GenerateWeeklyDigestsCommandHandler
         var today = now.DayOfWeek;
         var since = now.AddDays(-7);
 
-        var proUsers = await this.userProfileRepository.GetAllByTierAsync(SubscriptionTier.Pro, ct)
+        var users = await this.userProfileRepository.GetAllByDigestDayAsync(today, ct)
             .ConfigureAwait(false);
 
-        foreach (var profile in proUsers)
+        foreach (var profile in users)
         {
-            if (profile.NotificationPreferences.DigestDay != today)
+            var wantsPush = profile.Tier == SubscriptionTier.Pro
+                && profile.NotificationPreferences.PushEnabled;
+            var wantsEmail = profile.NotificationPreferences.EmailDigestEnabled
+                && !string.IsNullOrEmpty(profile.Email);
+
+            if (!wantsPush && !wantsEmail)
             {
                 continue;
             }
 
-            if (!profile.NotificationPreferences.PushEnabled)
-            {
-                continue;
-            }
-
-            var applicationCount = await this.notificationRepository.CountByUserSinceAsync(
+            var notifications = await this.notificationRepository.GetByUserSinceAsync(
                 profile.UserId, since, ct).ConfigureAwait(false);
 
-            if (applicationCount == 0)
+            if (notifications.Count == 0)
             {
                 continue;
             }
 
-            var devices = await this.deviceRegistrationRepository.GetByUserIdAsync(profile.UserId, ct)
-                .ConfigureAwait(false);
-
-            if (devices.Count > 0)
+            if (wantsPush)
             {
-                await this.pushNotificationSender.SendDigestAsync(applicationCount, devices, ct)
+                var devices = await this.deviceRegistrationRepository.GetByUserIdAsync(profile.UserId, ct)
+                    .ConfigureAwait(false);
+
+                if (devices.Count > 0)
+                {
+                    await this.pushNotificationSender.SendDigestAsync(notifications.Count, devices, ct)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            if (wantsEmail)
+            {
+                var zones = await this.watchZoneRepository.GetByUserIdAsync(profile.UserId, ct)
+                    .ConfigureAwait(false);
+
+                var zoneLookup = zones.ToDictionary(z => z.Id, z => z.Name);
+
+                var digests = notifications
+                    .GroupBy(n => n.WatchZoneId)
+                    .Select(g => new WatchZoneDigest(
+                        zoneLookup.GetValueOrDefault(g.Key, "Unknown Zone"),
+                        g.ToList()))
+                    .ToList();
+
+                await this.emailSender.SendDigestAsync(profile.Email!, digests, ct)
                     .ConfigureAwait(false);
             }
         }
