@@ -37,7 +37,12 @@ internal static class UserProfileEndpoints
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
-            var profileCommand = new UpdateUserProfileCommand(userId, command.PushEnabled);
+            var profileCommand = new UpdateUserProfileCommand(
+                userId,
+                command.PushEnabled,
+                command.DigestDay,
+                command.EmailDigestEnabled,
+                command.EmailInstantEnabled);
 
             try
             {
