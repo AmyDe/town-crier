@@ -218,7 +218,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_RethrowException_When_PlanItFails()
+    public async Task Should_ReturnZeroApplications_When_SingleAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -226,12 +226,14 @@ public sealed class PollPlanItCommandHandlerTests
 
         var handler = CreateHandler(planItClient: failingClient, authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(0);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(0);
     }
 
     [Test]
-    public async Task Should_PreserveProgressForCompletedAuthorities_When_LaterAuthorityFails()
+    public async Task Should_ContinueAndPreserveProgress_When_MiddleAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -251,16 +253,17 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider: authorityProvider,
             timeProvider: new FakeTimeProvider(fakeTime));
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Authority 100 completed before the failure, so poll state should be saved
-        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
+        // Authority 100 and 300 completed, 200 failed but was isolated
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
         await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
     }
 
     [Test]
-    public async Task Should_NotSavePollState_When_PollFails()
+    public async Task Should_NotSavePollState_When_OnlyAuthorityFails()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -272,8 +275,7 @@ public sealed class PollPlanItCommandHandlerTests
             pollStateStore: pollStateStore,
             authorityProvider: authorityProvider);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
-            () => handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None));
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.LastPollTime).IsNull();
     }
