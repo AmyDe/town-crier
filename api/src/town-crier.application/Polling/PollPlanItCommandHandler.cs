@@ -41,9 +41,7 @@ public sealed partial class PollPlanItCommandHandler
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
     {
-        var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(ct).ConfigureAwait(false);
         var now = this.timeProvider.GetUtcNow();
-        lastPollTime ??= now.AddDays(-30);
         var authorityIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
 
         var count = 0;
@@ -57,6 +55,9 @@ public sealed partial class PollPlanItCommandHandler
 
             try
             {
+                var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
+                lastPollTime ??= now.AddDays(-30);
+
                 var authorityAppCount = 0;
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
@@ -82,7 +83,7 @@ public sealed partial class PollPlanItCommandHandler
                 authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
 
                 PollingMetrics.AuthoritiesPolled.Add(1);
-                await this.pollStateStore.SaveLastPollTimeAsync(now, ct).ConfigureAwait(false);
+                await this.pollStateStore.SaveLastPollTimeAsync(authorityId, now, ct).ConfigureAwait(false);
                 authoritiesPolled++;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
@@ -106,6 +107,8 @@ public sealed partial class PollPlanItCommandHandler
                 LogAuthorityError(this.logger, authorityId, ex);
             }
         }
+
+        await this.pollStateStore.DeleteGlobalPollStateAsync(ct).ConfigureAwait(false);
 
         return new PollPlanItResult(count, authoritiesPolled);
     }
