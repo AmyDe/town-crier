@@ -65,17 +65,22 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_PassNullDifferentStart_When_NoPreviousPollState()
+    public async Task Should_UseDefault30DayLookback_When_NoPreviousPollState()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
 
         var planItClient = new FakePlanItClient();
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+        var now = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            timeProvider: new FakeTimeProvider(now));
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(planItClient.LastDifferentStartUsed).IsNull();
+        var expected = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
+        await Assert.That(planItClient.LastDifferentStartUsed).IsEqualTo(expected);
     }
 
     [Test]

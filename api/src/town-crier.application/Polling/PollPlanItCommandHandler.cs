@@ -37,8 +37,9 @@ public sealed class PollPlanItCommandHandler
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
     {
         var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(ct).ConfigureAwait(false);
-        var authorityIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
         var now = this.timeProvider.GetUtcNow();
+        lastPollTime ??= now.AddDays(-30);
+        var authorityIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
 
         var count = 0;
         foreach (var authorityId in authorityIds)
