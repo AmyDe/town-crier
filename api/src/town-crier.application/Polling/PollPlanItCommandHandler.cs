@@ -89,6 +89,7 @@ public sealed partial class PollPlanItCommandHandler
             {
                 rateLimitHitCount++;
                 PollingMetrics.AuthoritiesSkipped.Add(1);
+                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
 
                 if (rateLimitHitCount >= 2)
                 {
@@ -106,6 +107,6 @@ public sealed partial class PollPlanItCommandHandler
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, skipping to next authority")]
     private static partial void LogRateLimitSkip(ILogger logger, int authorityId, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Rate limited polling authority {AuthorityId} (second consecutive 429), stopping polling cycle")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Rate limited polling authority {AuthorityId} (second 429 this cycle), stopping polling cycle")]
     private static partial void LogRateLimitBreak(ILogger logger, int authorityId, Exception exception);
 }
