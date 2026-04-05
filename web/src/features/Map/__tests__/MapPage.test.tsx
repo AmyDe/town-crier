@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';
-import { aWatchZone, anApplication } from './fixtures/map.fixtures';
+import { anAuthority, anApplication } from './fixtures/map.fixtures';
 
 // Mock react-leaflet — Leaflet doesn't render in jsdom
 vi.mock('react-leaflet', () => ({
@@ -37,7 +37,7 @@ describe('MapPage', () => {
   });
 
   it('renders map heading and container', async () => {
-    spy.fetchWatchZonesResult = [aWatchZone()];
+    spy.fetchMyAuthoritiesResult = [anAuthority()];
 
     render(
       <MemoryRouter>
@@ -63,7 +63,7 @@ describe('MapPage', () => {
   });
 
   it('renders error state on failure', async () => {
-    spy.fetchWatchZonesError = new Error('Network unavailable');
+    spy.fetchMyAuthoritiesError = new Error('Network unavailable');
 
     render(
       <MemoryRouter>
@@ -77,10 +77,10 @@ describe('MapPage', () => {
   });
 
   it('renders application markers with popups showing summary info', async () => {
-    const zone = aWatchZone();
+    const auth = anAuthority();
     const app = anApplication();
-    spy.fetchWatchZonesResult = [zone];
-    spy.fetchApplicationsByAuthorityResults.set(zone.authorityId as number, [app]);
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [app]);
 
     render(
       <MemoryRouter>
@@ -101,15 +101,15 @@ describe('MapPage', () => {
   });
 
   it('skips applications without coordinates', async () => {
-    const zone = aWatchZone();
+    const auth = anAuthority();
     const appWithCoords = anApplication();
     const appWithoutCoords = anApplication({
       uid: 'no-coords' as never,
       latitude: null,
       longitude: null,
     });
-    spy.fetchWatchZonesResult = [zone];
-    spy.fetchApplicationsByAuthorityResults.set(zone.authorityId as number, [
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [
       appWithCoords,
       appWithoutCoords,
     ]);

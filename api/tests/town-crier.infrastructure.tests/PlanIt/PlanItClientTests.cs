@@ -34,7 +34,7 @@ public sealed class PlanItClientTests
                     "last_different": "2026-03-14T11:59:17.642"
                 }
             ],
-            "pg_sz": 5000,
+            "pg_sz": 100,
             "from": 0,
             "total": 1
         }
@@ -43,7 +43,7 @@ public sealed class PlanItClientTests
     private const string EmptyResponse = """
         {
             "records": [],
-            "pg_sz": 5000,
+            "pg_sz": 100,
             "from": 0,
             "total": 0
         }
@@ -120,12 +120,12 @@ public sealed class PlanItClientTests
         // Arrange
         using var handler = new FakePlanItHandler();
 
-        var page1Records = CreateRecordsJson(5000);
-        var page1Json = BuildResponseJson(page1Records, total: 5500);
+        var page1Records = CreateRecordsJson(100);
+        var page1Json = BuildResponseJson(page1Records, total: 150);
         handler.SetupJsonResponse("page=1", page1Json);
 
-        var page2Records = CreateRecordsJson(500, startIndex: 5000);
-        var page2Json = BuildResponseJson(page2Records, total: 5500, from: 5000);
+        var page2Records = CreateRecordsJson(50, startIndex: 100);
+        var page2Json = BuildResponseJson(page2Records, total: 150, from: 100);
         handler.SetupJsonResponse("page=2", page2Json);
 
         var client = CreateClient(handler);
@@ -134,7 +134,7 @@ public sealed class PlanItClientTests
         var results = await ConsumeAsync(client, differentStart: null);
 
         // Assert
-        await Assert.That(results).HasCount().EqualTo(5500);
+        await Assert.That(results).HasCount().EqualTo(150);
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
         await Assert.That(handler.RequestUrls[0]).Contains("page=1");
         await Assert.That(handler.RequestUrls[1]).Contains("page=2");
@@ -255,7 +255,7 @@ public sealed class PlanItClientTests
         // Act
         await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
 
-        // Assert — must use 'search=' not 'q=', and pg_sz must be small (not 5000)
+        // Assert — must use 'search=' not 'q=', and pg_sz must be small (not 100)
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
         await Assert.That(handler.RequestUrls[0]).Contains("search=car%20park");
         await Assert.That(handler.RequestUrls[0]).DoesNotContain("&q=");
@@ -304,7 +304,7 @@ public sealed class PlanItClientTests
         return $$$"""
             {
                 "records": {{{recordsJson}}},
-                "pg_sz": 5000,
+                "pg_sz": 100,
                 "from": {{{from}}},
                 "total": {{{total}}}
             }

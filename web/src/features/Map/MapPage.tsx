@@ -9,7 +9,7 @@ const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const DEFAULT_CENTER: [number, number] = [51.5074, -0.1278];
+const UK_CENTER: [number, number] = [51.5074, -0.1278];
 const DEFAULT_ZOOM = 13;
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function MapPage({ port }: Props) {
-  const { zones, applications, isLoading, error } = useMapData(port);
+  const { applications, isLoading, error } = useMapData(port);
 
   if (isLoading) {
     return (
@@ -37,14 +37,14 @@ export function MapPage({ port }: Props) {
     );
   }
 
-  const center: [number, number] =
-    zones.length > 0
-      ? [zones[0]!.latitude, zones[0]!.longitude]
-      : DEFAULT_CENTER;
-
   const markableApplications = applications.filter(
     app => app.latitude !== null && app.longitude !== null,
   );
+
+  const center: [number, number] =
+    markableApplications.length > 0
+      ? [markableApplications[0]!.latitude!, markableApplications[0]!.longitude!]
+      : UK_CENTER;
 
   return (
     <div className={styles.container}>

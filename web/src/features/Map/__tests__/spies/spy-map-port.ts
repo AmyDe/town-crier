@@ -1,17 +1,17 @@
-import type { AuthorityId, PlanningApplication, WatchZoneSummary } from '../../../../domain/types';
+import type { AuthorityId, AuthorityListItem, PlanningApplication } from '../../../../domain/types';
 import type { MapPort } from '../../../../domain/ports/map-port';
 
 export class SpyMapPort implements MapPort {
-  fetchWatchZonesCalls = 0;
-  fetchWatchZonesResult: readonly WatchZoneSummary[] = [];
-  fetchWatchZonesError: Error | null = null;
+  fetchMyAuthoritiesCalls = 0;
+  fetchMyAuthoritiesResult: readonly AuthorityListItem[] = [];
+  fetchMyAuthoritiesError: Error | null = null;
 
-  async fetchWatchZones(): Promise<readonly WatchZoneSummary[]> {
-    this.fetchWatchZonesCalls++;
-    if (this.fetchWatchZonesError) {
-      throw this.fetchWatchZonesError;
+  async fetchMyAuthorities(): Promise<readonly AuthorityListItem[]> {
+    this.fetchMyAuthoritiesCalls++;
+    if (this.fetchMyAuthoritiesError) {
+      throw this.fetchMyAuthoritiesError;
     }
-    return this.fetchWatchZonesResult;
+    return this.fetchMyAuthoritiesResult;
   }
 
   fetchApplicationsByAuthorityCalls: AuthorityId[] = [];

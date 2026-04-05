@@ -1,31 +1,23 @@
-import type { PlanningApplication, WatchZoneSummary } from '../../domain/types';
+import type { PlanningApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useFetchData } from '../../hooks/useFetchData';
 
-interface MapData {
-  zones: readonly WatchZoneSummary[];
-  applications: readonly PlanningApplication[];
-}
-
 export function useMapData(port: MapPort) {
-  const { data, isLoading, error, refresh } = useFetchData<MapData>(
+  const { data, isLoading, error, refresh } = useFetchData<readonly PlanningApplication[]>(
     async () => {
-      const zones = await port.fetchWatchZones();
+      const authorities = await port.fetchMyAuthorities();
 
-      const uniqueAuthorityIds = [...new Set(zones.map(z => z.authorityId))];
+      const uniqueAuthorityIds = [...new Set(authorities.map(a => a.id))];
       const applicationArrays = await Promise.all(
         uniqueAuthorityIds.map(id => port.fetchApplicationsByAuthority(id)),
       );
-      const applications = applicationArrays.flat();
-
-      return { zones, applications };
+      return applicationArrays.flat();
     },
     [port],
   );
 
   return {
-    zones: data?.zones ?? [],
-    applications: data?.applications ?? [],
+    applications: data ?? [],
     isLoading,
     error,
     refresh,
