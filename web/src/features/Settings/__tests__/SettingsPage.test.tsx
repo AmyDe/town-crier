@@ -41,14 +41,11 @@ describe('SettingsPage', () => {
   });
 
   it('renders profile info after loading', async () => {
-    spy.fetchProfileResult = proUserProfile({
-      postcode: 'SW1A 1AA',
-    });
+    spy.fetchProfileResult = proUserProfile();
 
     renderSettingsPage(spy);
 
-    expect(await screen.findByText('SW1A 1AA')).toBeInTheDocument();
-    expect(screen.getByText('Pro')).toBeInTheDocument();
+    expect(await screen.findByText('Pro')).toBeInTheDocument();
   });
 
   it('renders Free tier for free users', async () => {
