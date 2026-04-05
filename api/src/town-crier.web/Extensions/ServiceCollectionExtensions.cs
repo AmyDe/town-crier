@@ -50,7 +50,8 @@ internal static class ServiceCollectionExtensions
         {
             try
             {
-                services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+                services.AddSingleton<IEmailSender>(sp =>
+                    new AcsEmailSender(acsConnectionString, sp.GetRequiredService<ILogger<AcsEmailSender>>()));
             }
             catch (InvalidOperationException)
             {

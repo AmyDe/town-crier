@@ -291,6 +291,17 @@ public static class SharedStack
                                     "customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h), status | render timechart",
                                     "PlanIt Errors"),
                             },
+                            // Row 5: Email
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 0, Y = 16, ColSpan = 6, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.emails.sent", "Emails Sent"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 6, Y = 16, ColSpan = 6, RowSpan = 4 },
+                                Metadata = MetricTile(appInsights.Id, "towncrier.emails.failed", "Email Failures"),
+                            },
                         },
                     },
                 },

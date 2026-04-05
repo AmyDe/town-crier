@@ -36,5 +36,15 @@ public static class ApiMetrics
         Meter.CreateCounter<long>(
             "towncrier.notifications.created",
             description: "Notification records created (may or may not result in push)");
+
+    public static readonly Counter<long> EmailsSent =
+        Meter.CreateCounter<long>(
+            "towncrier.emails.sent",
+            description: "Emails successfully queued for delivery");
+
+    public static readonly Counter<long> EmailsFailed =
+        Meter.CreateCounter<long>(
+            "towncrier.emails.failed",
+            description: "Email send failures");
 }
 #pragma warning restore SA1202

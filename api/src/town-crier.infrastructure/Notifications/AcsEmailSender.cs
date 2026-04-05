@@ -1,6 +1,8 @@
 using Azure;
 using Azure.Communication.Email;
+using Microsoft.Extensions.Logging;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.Observability;
 using TownCrier.Domain.Notifications;
 
 namespace TownCrier.Infrastructure.Notifications;
@@ -9,10 +11,12 @@ public sealed class AcsEmailSender : IEmailSender
 {
     private const string SenderAddress = "hello@towncrierapp.uk";
     private readonly EmailClient emailClient;
+    private readonly ILogger<AcsEmailSender> logger;
 
-    public AcsEmailSender(string connectionString)
+    public AcsEmailSender(string connectionString, ILogger<AcsEmailSender> logger)
     {
         this.emailClient = new EmailClient(connectionString);
+        this.logger = logger;
     }
 
     public async Task SendDigestAsync(string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
@@ -28,7 +32,18 @@ public sealed class AcsEmailSender : IEmailSender
             },
             recipients: new EmailRecipients([new EmailAddress(email)]));
 
-        await this.emailClient.SendAsync(WaitUntil.Started, emailMessage, ct).ConfigureAwait(false);
+        try
+        {
+            await this.emailClient.SendAsync(WaitUntil.Started, emailMessage, ct).ConfigureAwait(false);
+            ApiMetrics.EmailsSent.Add(1, new KeyValuePair<string, object?>("email.type", "digest"));
+        }
+#pragma warning disable CA1031 // Failed emails must not block the handler
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ApiMetrics.EmailsFailed.Add(1, new KeyValuePair<string, object?>("email.type", "digest"));
+            EmailLog.DigestSendFailed(this.logger, email, ex);
+        }
     }
 
     public async Task SendNotificationAsync(string email, Notification notification, CancellationToken ct)
@@ -44,7 +59,18 @@ public sealed class AcsEmailSender : IEmailSender
             },
             recipients: new EmailRecipients([new EmailAddress(email)]));
 
-        await this.emailClient.SendAsync(WaitUntil.Started, emailMessage, ct).ConfigureAwait(false);
+        try
+        {
+            await this.emailClient.SendAsync(WaitUntil.Started, emailMessage, ct).ConfigureAwait(false);
+            ApiMetrics.EmailsSent.Add(1, new KeyValuePair<string, object?>("email.type", "instant"));
+        }
+#pragma warning disable CA1031 // Failed emails must not block the handler
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            ApiMetrics.EmailsFailed.Add(1, new KeyValuePair<string, object?>("email.type", "instant"));
+            EmailLog.NotificationSendFailed(this.logger, email, ex);
+        }
     }
 
     private static string BuildDigestHtml(IReadOnlyList<WatchZoneDigest> digests, int totalCount)

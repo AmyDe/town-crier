@@ -6,16 +6,22 @@ using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.Notifications;
 using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
+using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.DeviceRegistrations;
+using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.Observability;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
+using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Worker;
 
@@ -42,6 +48,7 @@ builder.Services.AddOpenTelemetry()
         metrics
             .AddHttpClientInstrumentation()
             .AddMeter(PollingMetrics.MeterName)
+            .AddMeter(ApiMetrics.MeterName)
             .AddMeter(CosmosInstrumentation.MeterName)
             .AddMeter(PlanItInstrumentation.MeterName);
 
@@ -57,7 +64,31 @@ builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningAppl
 builder.Services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
 builder.Services.AddSingleton<IPollStateStore, CosmosPollStateStore>();
 builder.Services.AddSingleton<IActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
-builder.Services.AddSingleton<INotificationEnqueuer, LogNotificationEnqueuer>();
+builder.Services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
+builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
+builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
+builder.Services.AddSingleton<IPushNotificationSender, NoOpPushNotificationSender>();
+
+var acsConnectionString = builder.Configuration["AzureCommunicationServices:ConnectionString"];
+if (!string.IsNullOrEmpty(acsConnectionString))
+{
+    try
+    {
+        builder.Services.AddSingleton<IEmailSender>(sp =>
+            new AcsEmailSender(acsConnectionString, sp.GetRequiredService<ILogger<AcsEmailSender>>()));
+    }
+    catch (InvalidOperationException)
+    {
+        builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
+    }
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
+}
+
+builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
+builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
 builder.Services.AddSingleton(TimeProvider.System);
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
@@ -69,6 +100,7 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 });
 
 builder.Services.AddTransient<PollPlanItCommandHandler>();
+builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 
 using var host = builder.Build();
 
@@ -78,35 +110,68 @@ using var host = builder.Build();
 _ = host.Services.GetRequiredService<MeterProvider>();
 _ = host.Services.GetRequiredService<TracerProvider>();
 
-var handler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
+var mode = builder.Configuration["WORKER_MODE"] ?? "poll";
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TownCrier.Worker");
 
 var exitCode = 0;
 
-try
+switch (mode)
 {
-    using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
-    var cycleStart = Stopwatch.GetTimestamp();
+    case "poll":
+        try
+        {
+            using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
+            var cycleStart = Stopwatch.GetTimestamp();
 
-    WorkerLog.PollCycleStarting(logger);
+            WorkerLog.PollCycleStarting(logger);
 
-    var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
-        .ConfigureAwait(false);
+            var pollHandler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
+            var result = await pollHandler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
+                .ConfigureAwait(false);
 
-    PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
+            PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
 
-    activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
-    activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
+            activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
+            activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
 
-    WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
-}
+            WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
+        }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
-catch (Exception ex)
+        catch (Exception ex)
 #pragma warning restore CA1031
-{
-    PollingMetrics.PollFailures.Add(1);
-    WorkerLog.PollCycleFailed(logger, ex);
-    exitCode = 1;
+        {
+            PollingMetrics.PollFailures.Add(1);
+            WorkerLog.PollCycleFailed(logger, ex);
+            exitCode = 1;
+        }
+
+        break;
+
+    case "digest":
+        try
+        {
+            WorkerLog.DigestCycleStarting(logger);
+
+            var digestHandler = host.Services.GetRequiredService<GenerateWeeklyDigestsCommandHandler>();
+            await digestHandler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None)
+                .ConfigureAwait(false);
+
+            WorkerLog.DigestCycleCompleted(logger);
+        }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            WorkerLog.DigestCycleFailed(logger, ex);
+            exitCode = 1;
+        }
+
+        break;
+
+    default:
+        WorkerLog.UnknownWorkerMode(logger, mode);
+        exitCode = 1;
+        break;
 }
 
 // Force-flush OpenTelemetry before the short-lived process exits.
