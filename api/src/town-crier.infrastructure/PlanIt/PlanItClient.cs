@@ -123,7 +123,7 @@ public sealed class PlanItClient : IPlanItClient
             areaId: record.AreaId,
             address: record.Address,
             postcode: record.Postcode,
-            description: record.Description,
+            description: record.Description ?? string.Empty,
             appType: record.AppType,
             appState: record.AppState,
             appSize: record.AppSize,
