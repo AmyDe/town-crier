@@ -326,6 +326,31 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_ThrottleBeforeEveryRetryAttempt_When_RateLimitedThenSucceeds()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
+        var allDelays = new List<TimeSpan>();
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(100) };
+        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) };
+        var client = CreateClient(handler, retryOptions: retryOptions, throttleOptions: throttleOptions, throttleDelays: allDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // 1 x 429 + 1 success = 2 total HTTP requests
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
+
+        // Throttle fires before EVERY HTTP request (2 throttle delays) plus 1 backoff delay after 429 = 3 total
+        var throttleCount = allDelays.Count(d => d == TimeSpan.FromMilliseconds(100));
+        await Assert.That(throttleCount).IsEqualTo(2);
+    }
+
+    [Test]
     public async Task Should_UseDefaultOneSecondDelay_When_NoThrottleOptionsProvided()
     {
         // Arrange
