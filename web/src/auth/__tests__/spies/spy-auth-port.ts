@@ -5,8 +5,13 @@ export class SpyAuthPort implements AuthPort {
   isLoading = false;
   error: Error | undefined = undefined;
   loginWithRedirectCalls = 0;
+  logoutCalls = 0;
 
   loginWithRedirect = async (): Promise<void> => {
     this.loginWithRedirectCalls += 1;
+  };
+
+  logout = async (): Promise<void> => {
+    this.logoutCalls += 1;
   };
 }
