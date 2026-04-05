@@ -288,7 +288,13 @@ public static class SharedStack
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
-            ["acsConnectionString"] = communicationService.HostName.Apply(h => $"endpoint=https://{h}/"),
+            ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationService.Name)
+                .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
+                {
+                    ResourceGroupName = names.Item1,
+                    CommunicationServiceName = names.Item2,
+                }))
+                .Apply(keys => keys.PrimaryConnectionString),
         };
     }
 

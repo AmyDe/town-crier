@@ -47,7 +47,14 @@ internal static class ServiceCollectionExtensions
         var acsConnectionString = configuration["AzureCommunicationServices:ConnectionString"];
         if (!string.IsNullOrEmpty(acsConnectionString))
         {
-            services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+            try
+            {
+                services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+            }
+            catch (InvalidOperationException)
+            {
+                services.AddSingleton<IEmailSender, NoOpEmailSender>();
+            }
         }
         else
         {
