@@ -1,19 +1,13 @@
-import L from 'leaflet';
-import iconUrl from 'leaflet/dist/images/marker-icon.png';
-import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
-import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useMapData } from './useMapData';
+import { savedMarkerIcon, unsavedMarkerIcon } from './markerIcons';
+import { FitBounds } from './FitBounds';
+import { BookmarkButton } from './BookmarkButton';
 import styles from './MapPage.module.css';
 import 'leaflet/dist/leaflet.css';
-
-L.Icon.Default.mergeOptions({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
-});
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =
@@ -27,7 +21,19 @@ interface Props {
 }
 
 export function MapPage({ port }: Props) {
-  const { applications, isLoading, error } = useMapData(port);
+  const { applications, savedUids, isLoading, error, saveApplication, unsaveApplication } =
+    useMapData(port);
+
+  const markableApplications = useMemo(
+    () => applications.filter(app => app.latitude !== null && app.longitude !== null),
+    [applications],
+  );
+
+  const fitPositions = useMemo(() => {
+    const savedApps = markableApplications.filter(app => savedUids.has(app.uid));
+    const targets = savedApps.length > 0 ? savedApps : markableApplications;
+    return targets.map(app => [app.latitude!, app.longitude!] as [number, number]);
+  }, [markableApplications, savedUids]);
 
   if (isLoading) {
     return (
@@ -47,42 +53,46 @@ export function MapPage({ port }: Props) {
     );
   }
 
-  const markableApplications = applications.filter(
-    app => app.latitude !== null && app.longitude !== null,
-  );
-
-  const center: [number, number] =
-    markableApplications.length > 0
-      ? [markableApplications[0]!.latitude!, markableApplications[0]!.longitude!]
-      : UK_CENTER;
-
   return (
     <div className={styles.container}>
       <h1 className={styles.heading}>Map</h1>
       <div className={styles.mapWrapper}>
         <MapContainer
-          center={center}
+          center={UK_CENTER}
           zoom={DEFAULT_ZOOM}
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
-          {markableApplications.map(app => (
-            <Marker
-              key={app.uid}
-              position={[app.latitude!, app.longitude!]}
-            >
-              <Popup>
-                <p className={styles.popupDescription}>{app.description}</p>
-                <p className={styles.popupAddress}>{app.address}</p>
-                <Link
-                  className={styles.popupLink}
-                  to={`/applications/${app.uid}`}
-                >
-                  View details
-                </Link>
-              </Popup>
-            </Marker>
-          ))}
+          <FitBounds positions={fitPositions} />
+          {markableApplications.map(app => {
+            const isSaved = savedUids.has(app.uid);
+            return (
+              <Marker
+                key={app.uid}
+                position={[app.latitude!, app.longitude!]}
+                icon={isSaved ? savedMarkerIcon : unsavedMarkerIcon}
+              >
+                <Popup>
+                  <div className={styles.popupHeader}>
+                    <p className={styles.popupDescription}>{app.description}</p>
+                    <BookmarkButton
+                      isSaved={isSaved}
+                      onToggle={() =>
+                        isSaved ? unsaveApplication(app.uid) : saveApplication(app.uid)
+                      }
+                    />
+                  </div>
+                  <p className={styles.popupAddress}>{app.address}</p>
+                  <Link
+                    className={styles.popupLink}
+                    to={`/applications/${app.uid}`}
+                  >
+                    View details
+                  </Link>
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
       </div>
     </div>

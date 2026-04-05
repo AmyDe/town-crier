@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';
-import { anAuthority, anApplication } from './fixtures/map.fixtures';
+import { anAuthority, anApplication, aSavedApplication } from './fixtures/map.fixtures';
+import { asApplicationUid } from '../../../domain/types';
 
-// Mock react-leaflet — Leaflet doesn't render in jsdom
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="map-container">{children}</div>
@@ -17,16 +17,18 @@ vi.mock('react-leaflet', () => ({
   Popup: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="map-popup">{children}</div>
   ),
+  useMap: () => ({ fitBounds: vi.fn() }),
 }));
 
-// Mock leaflet itself
 vi.mock('leaflet', () => ({
   default: {
-    icon: () => ({}),
-    Icon: { Default: { mergeOptions: () => {} } },
+    divIcon: () => ({}),
+    latLngBounds: () => ({}),
+    latLng: (lat: number, lng: number) => ({ lat, lng }),
   },
-  icon: () => ({}),
-  Icon: { Default: { mergeOptions: () => {} } },
+  divIcon: () => ({}),
+  latLngBounds: () => ({}),
+  latLng: (lat: number, lng: number) => ({ lat, lng }),
 }));
 
 describe('MapPage', () => {
@@ -122,6 +124,86 @@ describe('MapPage', () => {
 
     await waitFor(() => {
       expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+    });
+  });
+
+  it('renders "Save application" button for unsaved apps', async () => {
+    const auth = anAuthority();
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [];
+
+    render(
+      <MemoryRouter>
+        <MapPage port={spy} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save application' })).toBeInTheDocument();
+    });
+  });
+
+  it('renders "Unsave application" button for saved apps', async () => {
+    const auth = anAuthority();
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+
+    render(
+      <MemoryRouter>
+        <MapPage port={spy} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Unsave application' })).toBeInTheDocument();
+    });
+  });
+
+  it('calls saveApplication when save button is clicked', async () => {
+    const auth = anAuthority();
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [];
+
+    render(
+      <MemoryRouter>
+        <MapPage port={spy} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save application' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save application' }));
+
+    await waitFor(() => {
+      expect(spy.saveApplicationCalls).toEqual([asApplicationUid('app-001')]);
+    });
+  });
+
+  it('calls unsaveApplication when unsave button is clicked', async () => {
+    const auth = anAuthority();
+    spy.fetchMyAuthoritiesResult = [auth];
+    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+
+    render(
+      <MemoryRouter>
+        <MapPage port={spy} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Unsave application' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unsave application' }));
+
+    await waitFor(() => {
+      expect(spy.unsaveApplicationCalls).toEqual([asApplicationUid('app-001')]);
     });
   });
 });
