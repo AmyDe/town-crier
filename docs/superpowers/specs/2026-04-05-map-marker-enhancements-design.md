@@ -45,10 +45,13 @@ Replace default Leaflet markers with custom SVG-based `L.DivIcon` markers:
 
 ## Auto-fit Bounds
 
-- After applications load, compute a `L.LatLngBounds` from all markable applications
 - Use a `FitBounds` child component (following the existing `FitToCircle` pattern in `ConfirmMap.tsx`) that calls `map.fitBounds(bounds, { padding: [50, 50] })`
-- Falls back to UK center (`[51.5074, -0.1278]`) at zoom 13 when there are no applications
-- Bounds are recalculated only when the application list changes, not on every render
+- **Priority order for bounds calculation:**
+  1. If the user has saved applications with coordinates, fit to saved applications only
+  2. If no saved applications, fit to all applications
+  3. If no applications at all, fall back to UK center (`[51.5074, -0.1278]`) at zoom 13
+- This frames the viewport on what the user cares about while keeping all other pins visible for context
+- Bounds are recalculated only when the application list or saved set changes, not on every render
 
 ## Component Structure
 
