@@ -1,0 +1,2427 @@
+[
+  {
+    "id": 384,
+    "name": "Aberdeen",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 385,
+    "name": "Aberdeenshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 245,
+    "name": "Adur",
+    "areaType": "English District"
+  },
+  {
+    "id": 449,
+    "name": "Adur and Worthing",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 462,
+    "name": "Alderney",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 66,
+    "name": "Allerdale",
+    "areaType": "Council District"
+  },
+  {
+    "id": 72,
+    "name": "Amber Valley",
+    "areaType": "English District"
+  },
+  {
+    "id": 398,
+    "name": "Anglesey",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 391,
+    "name": "Angus",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 498,
+    "name": "Antrim and Newtownabbey",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 499,
+    "name": "Ards and North Down",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 386,
+    "name": "Argyll",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 500,
+    "name": "Armagh Banbridge Craigavon",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 246,
+    "name": "Arun",
+    "areaType": "English District"
+  },
+  {
+    "id": 197,
+    "name": "Ashfield",
+    "areaType": "English District"
+  },
+  {
+    "id": 138,
+    "name": "Ashford",
+    "areaType": "English District"
+  },
+  {
+    "id": 57,
+    "name": "Aylesbury Vale",
+    "areaType": "Council District"
+  },
+  {
+    "id": 222,
+    "name": "Babergh",
+    "areaType": "English District"
+  },
+  {
+    "id": 511,
+    "name": "Babergh Mid Suffolk",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 295,
+    "name": "Barking and Dagenham",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 296,
+    "name": "Barnet",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 273,
+    "name": "Barnsley",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 67,
+    "name": "Barrow",
+    "areaType": "Council District"
+  },
+  {
+    "id": 99,
+    "name": "Basildon",
+    "areaType": "English District"
+  },
+  {
+    "id": 117,
+    "name": "Basingstoke",
+    "areaType": "English District"
+  },
+  {
+    "id": 198,
+    "name": "Bassetlaw",
+    "areaType": "English District"
+  },
+  {
+    "id": 22,
+    "name": "Bath",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 516,
+    "name": "BCP",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 55,
+    "name": "Bedford",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 448,
+    "name": "Belfast",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 297,
+    "name": "Bexley",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 282,
+    "name": "Birmingham",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 162,
+    "name": "Blaby",
+    "areaType": "English District"
+  },
+  {
+    "id": 8,
+    "name": "Blackburn",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 9,
+    "name": "Blackpool",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 414,
+    "name": "Blaenau Gwent",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 73,
+    "name": "Bolsover",
+    "areaType": "English District"
+  },
+  {
+    "id": 258,
+    "name": "Bolton",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 169,
+    "name": "Boston",
+    "areaType": "English District"
+  },
+  {
+    "id": 28,
+    "name": "Bournemouth",
+    "areaType": "Council District"
+  },
+  {
+    "id": 36,
+    "name": "Bracknell",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 289,
+    "name": "Bradford",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 100,
+    "name": "Braintree",
+    "areaType": "English District"
+  },
+  {
+    "id": 176,
+    "name": "Breckland",
+    "areaType": "English District"
+  },
+  {
+    "id": 420,
+    "name": "Brecon Beacons",
+    "areaType": "National Park"
+  },
+  {
+    "id": 298,
+    "name": "Brent",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 101,
+    "name": "Brentwood",
+    "areaType": "English District"
+  },
+  {
+    "id": 409,
+    "name": "Bridgend",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 43,
+    "name": "Brighton",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 23,
+    "name": "Bristol",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 494,
+    "name": "British Islands",
+    "areaType": "Cross Border Area"
+  },
+  {
+    "id": 177,
+    "name": "Broadland",
+    "areaType": "English District"
+  },
+  {
+    "id": 360,
+    "name": "Broads",
+    "areaType": "National Park"
+  },
+  {
+    "id": 299,
+    "name": "Bromley",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 252,
+    "name": "Bromsgrove",
+    "areaType": "English District"
+  },
+  {
+    "id": 512,
+    "name": "Bromsgrove Redditch",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 128,
+    "name": "Broxbourne",
+    "areaType": "English District"
+  },
+  {
+    "id": 199,
+    "name": "Broxtowe",
+    "areaType": "English District"
+  },
+  {
+    "id": 327,
+    "name": "Buckinghamshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 150,
+    "name": "Burnley",
+    "areaType": "English District"
+  },
+  {
+    "id": 259,
+    "name": "Bury",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 413,
+    "name": "Caerphilly",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 397,
+    "name": "Cairngorms",
+    "areaType": "National Park"
+  },
+  {
+    "id": 290,
+    "name": "Calderdale",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 61,
+    "name": "Cambridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 328,
+    "name": "Cambridgeshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 300,
+    "name": "Camden",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 214,
+    "name": "Cannock Chase",
+    "areaType": "English District"
+  },
+  {
+    "id": 139,
+    "name": "Canterbury",
+    "areaType": "English District"
+  },
+  {
+    "id": 411,
+    "name": "Cardiff",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 68,
+    "name": "Carlisle",
+    "areaType": "Council District"
+  },
+  {
+    "id": 406,
+    "name": "Carmarthenshire",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 102,
+    "name": "Castle Point",
+    "areaType": "English District"
+  },
+  {
+    "id": 501,
+    "name": "Causeway and Glens",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 56,
+    "name": "Central Bedfordshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 404,
+    "name": "Ceredigion",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 487,
+    "name": "Channel Islands",
+    "areaType": "Crown Dependencies"
+  },
+  {
+    "id": 163,
+    "name": "Charnwood",
+    "areaType": "English District"
+  },
+  {
+    "id": 103,
+    "name": "Chelmsford",
+    "areaType": "English District"
+  },
+  {
+    "id": 111,
+    "name": "Cheltenham",
+    "areaType": "English District"
+  },
+  {
+    "id": 204,
+    "name": "Cherwell",
+    "areaType": "English District"
+  },
+  {
+    "id": 49,
+    "name": "Cheshire East",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 50,
+    "name": "Chester",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 74,
+    "name": "Chesterfield",
+    "areaType": "English District"
+  },
+  {
+    "id": 247,
+    "name": "Chichester",
+    "areaType": "English District"
+  },
+  {
+    "id": 58,
+    "name": "Chiltern",
+    "areaType": "Council District"
+  },
+  {
+    "id": 513,
+    "name": "Chiltern South Bucks",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 151,
+    "name": "Chorley",
+    "areaType": "English District"
+  },
+  {
+    "id": 88,
+    "name": "Christchurch",
+    "areaType": "Council District"
+  },
+  {
+    "id": 294,
+    "name": "City",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 364,
+    "name": "Clackmannanshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 104,
+    "name": "Colchester",
+    "areaType": "English District"
+  },
+  {
+    "id": 400,
+    "name": "Conwy",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 69,
+    "name": "Copeland",
+    "areaType": "Council District"
+  },
+  {
+    "id": 183,
+    "name": "Corby",
+    "areaType": "Council District"
+  },
+  {
+    "id": 52,
+    "name": "Cornwall",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 112,
+    "name": "Cotswold",
+    "areaType": "English District"
+  },
+  {
+    "id": 283,
+    "name": "Coventry",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 190,
+    "name": "Craven",
+    "areaType": "Council District"
+  },
+  {
+    "id": 248,
+    "name": "Crawley",
+    "areaType": "English District"
+  },
+  {
+    "id": 301,
+    "name": "Croydon",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 522,
+    "name": "Cumberland",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 329,
+    "name": "Cumbria",
+    "areaType": "English County"
+  },
+  {
+    "id": 129,
+    "name": "Dacorum",
+    "areaType": "English District"
+  },
+  {
+    "id": 5,
+    "name": "Darlington",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 140,
+    "name": "Dartford",
+    "areaType": "English District"
+  },
+  {
+    "id": 354,
+    "name": "Dartmoor",
+    "areaType": "National Park"
+  },
+  {
+    "id": 184,
+    "name": "Daventry",
+    "areaType": "Council District"
+  },
+  {
+    "id": 401,
+    "name": "Denbighshire",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 15,
+    "name": "Derby",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 330,
+    "name": "Derbyshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 75,
+    "name": "Derbyshire Dales",
+    "areaType": "English District"
+  },
+  {
+    "id": 502,
+    "name": "Derry and Strabane",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 331,
+    "name": "Devon",
+    "areaType": "English County"
+  },
+  {
+    "id": 525,
+    "name": "DNS Wales",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 274,
+    "name": "Doncaster",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 332,
+    "name": "Dorset",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 141,
+    "name": "Dover",
+    "areaType": "English District"
+  },
+  {
+    "id": 284,
+    "name": "Dudley",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 365,
+    "name": "Dumfries",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 392,
+    "name": "Dundee",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 47,
+    "name": "Durham",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 302,
+    "name": "Ealing",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 366,
+    "name": "East Ayrshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 62,
+    "name": "East Cambridgeshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 80,
+    "name": "East Devon",
+    "areaType": "English District"
+  },
+  {
+    "id": 89,
+    "name": "East Dorset",
+    "areaType": "Council District"
+  },
+  {
+    "id": 394,
+    "name": "East Dunbartonshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 470,
+    "name": "East England",
+    "areaType": "English Region"
+  },
+  {
+    "id": 118,
+    "name": "East Hampshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 130,
+    "name": "East Hertfordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 170,
+    "name": "East Lindsey",
+    "areaType": "English District"
+  },
+  {
+    "id": 367,
+    "name": "East Lothian",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 468,
+    "name": "East Midlands",
+    "areaType": "English Region"
+  },
+  {
+    "id": 185,
+    "name": "East Northamptonshire",
+    "areaType": "Council District"
+  },
+  {
+    "id": 368,
+    "name": "East Renfrewshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 11,
+    "name": "East Riding",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 215,
+    "name": "East Staffordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 509,
+    "name": "East Suffolk",
+    "areaType": "English District"
+  },
+  {
+    "id": 333,
+    "name": "East Sussex",
+    "areaType": "English County"
+  },
+  {
+    "id": 94,
+    "name": "Eastbourne",
+    "areaType": "English District"
+  },
+  {
+    "id": 119,
+    "name": "Eastleigh",
+    "areaType": "English District"
+  },
+  {
+    "id": 70,
+    "name": "Eden",
+    "areaType": "Council District"
+  },
+  {
+    "id": 387,
+    "name": "Edinburgh",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 229,
+    "name": "Elmbridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 524,
+    "name": "Energy Consents Unit",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 303,
+    "name": "Enfield",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 474,
+    "name": "England",
+    "areaType": "UK Nation"
+  },
+  {
+    "id": 477,
+    "name": "England and Wales",
+    "areaType": "Cross Border Area"
+  },
+  {
+    "id": 105,
+    "name": "Epping Forest",
+    "areaType": "English District"
+  },
+  {
+    "id": 230,
+    "name": "Epsom and Ewell",
+    "areaType": "English District"
+  },
+  {
+    "id": 76,
+    "name": "Erewash",
+    "areaType": "English District"
+  },
+  {
+    "id": 334,
+    "name": "Essex",
+    "areaType": "English County"
+  },
+  {
+    "id": 81,
+    "name": "Exeter",
+    "areaType": "English District"
+  },
+  {
+    "id": 355,
+    "name": "Exmoor",
+    "areaType": "National Park"
+  },
+  {
+    "id": 370,
+    "name": "Falkirk",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 120,
+    "name": "Fareham",
+    "areaType": "English District"
+  },
+  {
+    "id": 63,
+    "name": "Fenland",
+    "areaType": "English District"
+  },
+  {
+    "id": 503,
+    "name": "Fermanagh and Omagh",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 371,
+    "name": "Fife",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 402,
+    "name": "Flintshire",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 223,
+    "name": "Forest Heath",
+    "areaType": "Council District"
+  },
+  {
+    "id": 113,
+    "name": "Forest of Dean",
+    "areaType": "English District"
+  },
+  {
+    "id": 152,
+    "name": "Fylde",
+    "areaType": "English District"
+  },
+  {
+    "id": 277,
+    "name": "Gateshead",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 200,
+    "name": "Gedling",
+    "areaType": "English District"
+  },
+  {
+    "id": 410,
+    "name": "Glamorgan",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 395,
+    "name": "Glasgow",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 114,
+    "name": "Gloucester",
+    "areaType": "English District"
+  },
+  {
+    "id": 335,
+    "name": "Gloucestershire",
+    "areaType": "English County"
+  },
+  {
+    "id": 121,
+    "name": "Gosport",
+    "areaType": "English District"
+  },
+  {
+    "id": 142,
+    "name": "Gravesham",
+    "areaType": "English District"
+  },
+  {
+    "id": 476,
+    "name": "Great Britain",
+    "areaType": "Cross Border Area"
+  },
+  {
+    "id": 178,
+    "name": "Great Yarmouth",
+    "areaType": "English District"
+  },
+  {
+    "id": 515,
+    "name": "Greater Cambridge",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 481,
+    "name": "Greater Manchester",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 304,
+    "name": "Greenwich",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 495,
+    "name": "Guernsey",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 458,
+    "name": "Guernsey Bailiwick",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 231,
+    "name": "Guildford",
+    "areaType": "English District"
+  },
+  {
+    "id": 399,
+    "name": "Gwynedd",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 305,
+    "name": "Hackney",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 6,
+    "name": "Halton",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 191,
+    "name": "Hambleton",
+    "areaType": "Council District"
+  },
+  {
+    "id": 306,
+    "name": "Hammersmith and Fulham",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 336,
+    "name": "Hampshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 164,
+    "name": "Harborough",
+    "areaType": "English District"
+  },
+  {
+    "id": 307,
+    "name": "Haringey",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 106,
+    "name": "Harlow",
+    "areaType": "English District"
+  },
+  {
+    "id": 192,
+    "name": "Harrogate",
+    "areaType": "Council District"
+  },
+  {
+    "id": 308,
+    "name": "Harrow",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 122,
+    "name": "Hart",
+    "areaType": "English District"
+  },
+  {
+    "id": 1,
+    "name": "Hartlepool",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 95,
+    "name": "Hastings",
+    "areaType": "English District"
+  },
+  {
+    "id": 123,
+    "name": "Havant",
+    "areaType": "English District"
+  },
+  {
+    "id": 309,
+    "name": "Havering",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 19,
+    "name": "Herefordshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 337,
+    "name": "Hertfordshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 131,
+    "name": "Hertsmere",
+    "areaType": "English District"
+  },
+  {
+    "id": 77,
+    "name": "High Peak",
+    "areaType": "English District"
+  },
+  {
+    "id": 372,
+    "name": "Highland",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 310,
+    "name": "Hillingdon",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 165,
+    "name": "Hinckley and Bosworth",
+    "areaType": "English District"
+  },
+  {
+    "id": 249,
+    "name": "Horsham",
+    "areaType": "English District"
+  },
+  {
+    "id": 311,
+    "name": "Hounslow",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 10,
+    "name": "Hull",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 64,
+    "name": "Huntingdonshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 153,
+    "name": "Hyndburn",
+    "areaType": "English District"
+  },
+  {
+    "id": 373,
+    "name": "Inverclyde",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 224,
+    "name": "Ipswich",
+    "areaType": "English District"
+  },
+  {
+    "id": 464,
+    "name": "Isle of Man",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 46,
+    "name": "Isle of Wight",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 312,
+    "name": "Islington",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 459,
+    "name": "Jersey",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 313,
+    "name": "Kensington",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 338,
+    "name": "Kent",
+    "areaType": "English County"
+  },
+  {
+    "id": 186,
+    "name": "Kettering",
+    "areaType": "Council District"
+  },
+  {
+    "id": 179,
+    "name": "Kings Lynn",
+    "areaType": "English District"
+  },
+  {
+    "id": 314,
+    "name": "Kingston",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 291,
+    "name": "Kirklees",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 268,
+    "name": "Knowsley",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 356,
+    "name": "Lake District",
+    "areaType": "National Park"
+  },
+  {
+    "id": 315,
+    "name": "Lambeth",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 339,
+    "name": "Lancashire",
+    "areaType": "English County"
+  },
+  {
+    "id": 154,
+    "name": "Lancaster",
+    "areaType": "English District"
+  },
+  {
+    "id": 292,
+    "name": "Leeds",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 16,
+    "name": "Leicester",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 340,
+    "name": "Leicestershire",
+    "areaType": "English County"
+  },
+  {
+    "id": 96,
+    "name": "Lewes",
+    "areaType": "English District"
+  },
+  {
+    "id": 316,
+    "name": "Lewisham",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 216,
+    "name": "Lichfield",
+    "areaType": "English District"
+  },
+  {
+    "id": 171,
+    "name": "Lincoln",
+    "areaType": "English District"
+  },
+  {
+    "id": 341,
+    "name": "Lincolnshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 504,
+    "name": "Lisburn and Castlereagh",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 269,
+    "name": "Liverpool",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 396,
+    "name": "Loch Lomond",
+    "areaType": "National Park"
+  },
+  {
+    "id": 471,
+    "name": "London",
+    "areaType": "English Region"
+  },
+  {
+    "id": 496,
+    "name": "London Legacy",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 32,
+    "name": "Luton",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 143,
+    "name": "Maidstone",
+    "areaType": "English District"
+  },
+  {
+    "id": 107,
+    "name": "Maldon",
+    "areaType": "English District"
+  },
+  {
+    "id": 253,
+    "name": "Malvern Hills",
+    "areaType": "English District"
+  },
+  {
+    "id": 260,
+    "name": "Manchester",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 201,
+    "name": "Mansfield",
+    "areaType": "English District"
+  },
+  {
+    "id": 35,
+    "name": "Medway",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 166,
+    "name": "Melton",
+    "areaType": "English District"
+  },
+  {
+    "id": 209,
+    "name": "Mendip",
+    "areaType": "Council District"
+  },
+  {
+    "id": 482,
+    "name": "Merseyside",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 419,
+    "name": "Merthyr Tydfil",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 317,
+    "name": "Merton",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 82,
+    "name": "Mid Devon",
+    "areaType": "English District"
+  },
+  {
+    "id": 505,
+    "name": "Mid East Antrim",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 508,
+    "name": "Mid Kent",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 225,
+    "name": "Mid Suffolk",
+    "areaType": "English District"
+  },
+  {
+    "id": 250,
+    "name": "Mid Sussex",
+    "areaType": "English District"
+  },
+  {
+    "id": 506,
+    "name": "Mid Ulster",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 2,
+    "name": "Middlesbrough",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 374,
+    "name": "Midlothian",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 42,
+    "name": "Milton Keynes",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 232,
+    "name": "Mole Valley",
+    "areaType": "English District"
+  },
+  {
+    "id": 416,
+    "name": "Monmouthshire",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 375,
+    "name": "Moray",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 408,
+    "name": "Neath",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 124,
+    "name": "New Forest (District)",
+    "areaType": "English District"
+  },
+  {
+    "id": 362,
+    "name": "New Forest (Park)",
+    "areaType": "National Park"
+  },
+  {
+    "id": 202,
+    "name": "Newark and Sherwood",
+    "areaType": "English District"
+  },
+  {
+    "id": 217,
+    "name": "Newcastle under Lyme",
+    "areaType": "English District"
+  },
+  {
+    "id": 278,
+    "name": "Newcastle upon Tyne",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 318,
+    "name": "Newham",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 417,
+    "name": "Newport",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 507,
+    "name": "Newry Mourne Down",
+    "areaType": "Northern Ireland District"
+  },
+  {
+    "id": 520,
+    "name": "NI Strategic Planning",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 342,
+    "name": "Norfolk",
+    "areaType": "English County"
+  },
+  {
+    "id": 376,
+    "name": "North Ayrshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 83,
+    "name": "North Devon",
+    "areaType": "English District"
+  },
+  {
+    "id": 90,
+    "name": "North Dorset",
+    "areaType": "Council District"
+  },
+  {
+    "id": 465,
+    "name": "North East",
+    "areaType": "English Region"
+  },
+  {
+    "id": 78,
+    "name": "North East Derbyshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 12,
+    "name": "North East Lincs",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 132,
+    "name": "North Hertfordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 172,
+    "name": "North Kesteven",
+    "areaType": "English District"
+  },
+  {
+    "id": 393,
+    "name": "North Lanarkshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 13,
+    "name": "North Lincs",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 180,
+    "name": "North Norfolk",
+    "areaType": "English District"
+  },
+  {
+    "id": 518,
+    "name": "North Northamptonshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 24,
+    "name": "North Somerset",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 279,
+    "name": "North Tyneside",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 240,
+    "name": "North Warwickshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 466,
+    "name": "North West",
+    "areaType": "English Region"
+  },
+  {
+    "id": 167,
+    "name": "North West Leicestershire",
+    "areaType": "English District"
+  },
+  {
+    "id": 358,
+    "name": "North York Moors",
+    "areaType": "National Park"
+  },
+  {
+    "id": 344,
+    "name": "North Yorkshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 187,
+    "name": "Northampton",
+    "areaType": "Council District"
+  },
+  {
+    "id": 478,
+    "name": "Northern Ireland",
+    "areaType": "UK Nation"
+  },
+  {
+    "id": 48,
+    "name": "Northumberland (County)",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 357,
+    "name": "Northumberland (Park)",
+    "areaType": "National Park"
+  },
+  {
+    "id": 181,
+    "name": "Norwich",
+    "areaType": "English District"
+  },
+  {
+    "id": 18,
+    "name": "Nottingham",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 345,
+    "name": "Nottinghamshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 460,
+    "name": "NSIP England",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 526,
+    "name": "NSIP Wales",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 241,
+    "name": "Nuneaton",
+    "areaType": "English District"
+  },
+  {
+    "id": 168,
+    "name": "Oadby and Wigston",
+    "areaType": "English District"
+  },
+  {
+    "id": 514,
+    "name": "Old Oak Park Royal",
+    "areaType": "Other Planning Entity"
+  },
+  {
+    "id": 261,
+    "name": "Oldham",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 377,
+    "name": "Orkney",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 205,
+    "name": "Oxford",
+    "areaType": "English District"
+  },
+  {
+    "id": 346,
+    "name": "Oxfordshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 359,
+    "name": "Peak District",
+    "areaType": "National Park"
+  },
+  {
+    "id": 421,
+    "name": "Pembroke Coast",
+    "areaType": "National Park"
+  },
+  {
+    "id": 405,
+    "name": "Pembrokeshire",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 155,
+    "name": "Pendle",
+    "areaType": "English District"
+  },
+  {
+    "id": 378,
+    "name": "Perth",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 31,
+    "name": "Peterborough",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 26,
+    "name": "Plymouth",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 29,
+    "name": "Poole",
+    "areaType": "Council District"
+  },
+  {
+    "id": 44,
+    "name": "Portsmouth",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 418,
+    "name": "Powys",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 156,
+    "name": "Preston",
+    "areaType": "English District"
+  },
+  {
+    "id": 91,
+    "name": "Purbeck",
+    "areaType": "Council District"
+  },
+  {
+    "id": 38,
+    "name": "Reading",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 319,
+    "name": "Redbridge",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 3,
+    "name": "Redcar and Cleveland",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 254,
+    "name": "Redditch",
+    "areaType": "English District"
+  },
+  {
+    "id": 233,
+    "name": "Reigate",
+    "areaType": "English District"
+  },
+  {
+    "id": 388,
+    "name": "Renfrewshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 412,
+    "name": "Rhondda",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 157,
+    "name": "Ribble Valley",
+    "areaType": "English District"
+  },
+  {
+    "id": 320,
+    "name": "Richmond",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 193,
+    "name": "Richmondshire",
+    "areaType": "Council District"
+  },
+  {
+    "id": 262,
+    "name": "Rochdale",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 108,
+    "name": "Rochford",
+    "areaType": "English District"
+  },
+  {
+    "id": 158,
+    "name": "Rossendale",
+    "areaType": "English District"
+  },
+  {
+    "id": 97,
+    "name": "Rother",
+    "areaType": "English District"
+  },
+  {
+    "id": 275,
+    "name": "Rotherham",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 242,
+    "name": "Rugby",
+    "areaType": "English District"
+  },
+  {
+    "id": 234,
+    "name": "Runnymede",
+    "areaType": "English District"
+  },
+  {
+    "id": 203,
+    "name": "Rushcliffe",
+    "areaType": "English District"
+  },
+  {
+    "id": 125,
+    "name": "Rushmoor",
+    "areaType": "English District"
+  },
+  {
+    "id": 17,
+    "name": "Rutland",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 194,
+    "name": "Ryedale",
+    "areaType": "Council District"
+  },
+  {
+    "id": 263,
+    "name": "Salford",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 285,
+    "name": "Sandwell",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 488,
+    "name": "Sark",
+    "areaType": "Crown Dependency"
+  },
+  {
+    "id": 195,
+    "name": "Scarborough",
+    "areaType": "Council District"
+  },
+  {
+    "id": 53,
+    "name": "Scilly Isles",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 479,
+    "name": "Scotland",
+    "areaType": "UK Nation"
+  },
+  {
+    "id": 379,
+    "name": "Scottish Borders",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 210,
+    "name": "Sedgemoor",
+    "areaType": "Council District"
+  },
+  {
+    "id": 271,
+    "name": "Sefton",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 196,
+    "name": "Selby",
+    "areaType": "Council District"
+  },
+  {
+    "id": 144,
+    "name": "Sevenoaks",
+    "areaType": "English District"
+  },
+  {
+    "id": 276,
+    "name": "Sheffield",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 145,
+    "name": "Shepway",
+    "areaType": "English District"
+  },
+  {
+    "id": 380,
+    "name": "Shetlands",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 51,
+    "name": "Shropshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 39,
+    "name": "Slough",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 422,
+    "name": "Snowdonia",
+    "areaType": "National Park"
+  },
+  {
+    "id": 286,
+    "name": "Solihull",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 347,
+    "name": "Somerset",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 517,
+    "name": "Somerset West and Taunton",
+    "areaType": "Council District"
+  },
+  {
+    "id": 381,
+    "name": "South Ayrshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 59,
+    "name": "South Bucks",
+    "areaType": "Council District"
+  },
+  {
+    "id": 65,
+    "name": "South Cambridgeshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 79,
+    "name": "South Derbyshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 363,
+    "name": "South Downs",
+    "areaType": "National Park"
+  },
+  {
+    "id": 472,
+    "name": "South East",
+    "areaType": "English Region"
+  },
+  {
+    "id": 25,
+    "name": "South Gloucestershire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 84,
+    "name": "South Hams",
+    "areaType": "English District"
+  },
+  {
+    "id": 173,
+    "name": "South Holland",
+    "areaType": "English District"
+  },
+  {
+    "id": 174,
+    "name": "South Kesteven",
+    "areaType": "English District"
+  },
+  {
+    "id": 71,
+    "name": "South Lakeland",
+    "areaType": "Council District"
+  },
+  {
+    "id": 382,
+    "name": "South Lanarkshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 182,
+    "name": "South Norfolk",
+    "areaType": "English District"
+  },
+  {
+    "id": 521,
+    "name": "South Norfolk Broadland",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 188,
+    "name": "South Northamptonshire",
+    "areaType": "Council District"
+  },
+  {
+    "id": 206,
+    "name": "South Oxfordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 159,
+    "name": "South Ribble",
+    "areaType": "English District"
+  },
+  {
+    "id": 211,
+    "name": "South Somerset",
+    "areaType": "Council District"
+  },
+  {
+    "id": 218,
+    "name": "South Staffordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 280,
+    "name": "South Tyneside",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 473,
+    "name": "South West",
+    "areaType": "English Region"
+  },
+  {
+    "id": 510,
+    "name": "South West Devon",
+    "areaType": "Combined Planning Authority"
+  },
+  {
+    "id": 483,
+    "name": "South Yorkshire",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 45,
+    "name": "Southampton",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 33,
+    "name": "Southend",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 321,
+    "name": "Southwark",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 235,
+    "name": "Spelthorne",
+    "areaType": "English District"
+  },
+  {
+    "id": 133,
+    "name": "St Albans",
+    "areaType": "English District"
+  },
+  {
+    "id": 226,
+    "name": "St Edmundsbury",
+    "areaType": "Council District"
+  },
+  {
+    "id": 270,
+    "name": "St Helens",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 219,
+    "name": "Stafford",
+    "areaType": "English District"
+  },
+  {
+    "id": 348,
+    "name": "Staffordshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 220,
+    "name": "Staffordshire Moorlands",
+    "areaType": "English District"
+  },
+  {
+    "id": 134,
+    "name": "Stevenage",
+    "areaType": "English District"
+  },
+  {
+    "id": 383,
+    "name": "Stirling",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 264,
+    "name": "Stockport",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 4,
+    "name": "Stockton-on-Tees",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 21,
+    "name": "Stoke on Trent",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 243,
+    "name": "Stratford on Avon",
+    "areaType": "English District"
+  },
+  {
+    "id": 115,
+    "name": "Stroud",
+    "areaType": "English District"
+  },
+  {
+    "id": 349,
+    "name": "Suffolk",
+    "areaType": "English County"
+  },
+  {
+    "id": 227,
+    "name": "Suffolk Coastal",
+    "areaType": "Council District"
+  },
+  {
+    "id": 281,
+    "name": "Sunderland",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 350,
+    "name": "Surrey",
+    "areaType": "English County"
+  },
+  {
+    "id": 236,
+    "name": "Surrey Heath",
+    "areaType": "English District"
+  },
+  {
+    "id": 322,
+    "name": "Sutton",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 146,
+    "name": "Swale",
+    "areaType": "English District"
+  },
+  {
+    "id": 407,
+    "name": "Swansea",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 30,
+    "name": "Swindon",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 265,
+    "name": "Tameside",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 221,
+    "name": "Tamworth",
+    "areaType": "English District"
+  },
+  {
+    "id": 237,
+    "name": "Tandridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 212,
+    "name": "Taunton Deane",
+    "areaType": "Council District"
+  },
+  {
+    "id": 85,
+    "name": "Teignbridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 20,
+    "name": "Telford",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 109,
+    "name": "Tendring",
+    "areaType": "English District"
+  },
+  {
+    "id": 126,
+    "name": "Test Valley",
+    "areaType": "English District"
+  },
+  {
+    "id": 116,
+    "name": "Tewkesbury",
+    "areaType": "English District"
+  },
+  {
+    "id": 147,
+    "name": "Thanet",
+    "areaType": "English District"
+  },
+  {
+    "id": 135,
+    "name": "Three Rivers",
+    "areaType": "English District"
+  },
+  {
+    "id": 34,
+    "name": "Thurrock",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 148,
+    "name": "Tonbridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 27,
+    "name": "Torbay",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 415,
+    "name": "Torfaen",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 86,
+    "name": "Torridge",
+    "areaType": "English District"
+  },
+  {
+    "id": 323,
+    "name": "Tower Hamlets",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 266,
+    "name": "Trafford",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 149,
+    "name": "Tunbridge Wells",
+    "areaType": "English District"
+  },
+  {
+    "id": 484,
+    "name": "Tyne and Wear",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 475,
+    "name": "United Kingdom",
+    "areaType": "Cross Border Area"
+  },
+  {
+    "id": 110,
+    "name": "Uttlesford",
+    "areaType": "English District"
+  },
+  {
+    "id": 207,
+    "name": "Vale of White Horse",
+    "areaType": "English District"
+  },
+  {
+    "id": 293,
+    "name": "Wakefield",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 480,
+    "name": "Wales",
+    "areaType": "UK Nation"
+  },
+  {
+    "id": 287,
+    "name": "Walsall",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 324,
+    "name": "Waltham Forest",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 325,
+    "name": "Wandsworth",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 7,
+    "name": "Warrington",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 244,
+    "name": "Warwick",
+    "areaType": "English District"
+  },
+  {
+    "id": 351,
+    "name": "Warwickshire",
+    "areaType": "English County"
+  },
+  {
+    "id": 136,
+    "name": "Watford",
+    "areaType": "English District"
+  },
+  {
+    "id": 228,
+    "name": "Waveney",
+    "areaType": "Council District"
+  },
+  {
+    "id": 238,
+    "name": "Waverley",
+    "areaType": "English District"
+  },
+  {
+    "id": 98,
+    "name": "Wealden",
+    "areaType": "English District"
+  },
+  {
+    "id": 189,
+    "name": "Wellingborough",
+    "areaType": "Council District"
+  },
+  {
+    "id": 137,
+    "name": "Welwyn Hatfield",
+    "areaType": "English District"
+  },
+  {
+    "id": 37,
+    "name": "West Berkshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 87,
+    "name": "West Devon",
+    "areaType": "English District"
+  },
+  {
+    "id": 92,
+    "name": "West Dorset",
+    "areaType": "Council District"
+  },
+  {
+    "id": 389,
+    "name": "West Dunbartonshire",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 160,
+    "name": "West Lancashire",
+    "areaType": "English District"
+  },
+  {
+    "id": 175,
+    "name": "West Lindsey",
+    "areaType": "English District"
+  },
+  {
+    "id": 390,
+    "name": "West Lothian",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 469,
+    "name": "West Midlands",
+    "areaType": "English Region"
+  },
+  {
+    "id": 485,
+    "name": "West Midlands County",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 519,
+    "name": "West Northamptonshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 208,
+    "name": "West Oxfordshire",
+    "areaType": "English District"
+  },
+  {
+    "id": 213,
+    "name": "West Somerset",
+    "areaType": "Council District"
+  },
+  {
+    "id": 497,
+    "name": "West Suffolk",
+    "areaType": "English District"
+  },
+  {
+    "id": 352,
+    "name": "West Sussex",
+    "areaType": "English County"
+  },
+  {
+    "id": 486,
+    "name": "West Yorkshire",
+    "areaType": "Metropolitan County"
+  },
+  {
+    "id": 369,
+    "name": "Western Isles",
+    "areaType": "Scottish Council"
+  },
+  {
+    "id": 326,
+    "name": "Westminster",
+    "areaType": "London Borough"
+  },
+  {
+    "id": 523,
+    "name": "Westmorland and Furness",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 93,
+    "name": "Weymouth",
+    "areaType": "Council District"
+  },
+  {
+    "id": 267,
+    "name": "Wigan",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 54,
+    "name": "Wiltshire",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 127,
+    "name": "Winchester",
+    "areaType": "English District"
+  },
+  {
+    "id": 40,
+    "name": "Windsor",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 272,
+    "name": "Wirral",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 239,
+    "name": "Woking",
+    "areaType": "English District"
+  },
+  {
+    "id": 41,
+    "name": "Wokingham",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 288,
+    "name": "Wolverhampton",
+    "areaType": "Metropolitan Borough"
+  },
+  {
+    "id": 255,
+    "name": "Worcester",
+    "areaType": "English District"
+  },
+  {
+    "id": 353,
+    "name": "Worcestershire",
+    "areaType": "English County"
+  },
+  {
+    "id": 251,
+    "name": "Worthing",
+    "areaType": "English District"
+  },
+  {
+    "id": 403,
+    "name": "Wrexham",
+    "areaType": "Welsh Principal Area"
+  },
+  {
+    "id": 256,
+    "name": "Wychavon",
+    "areaType": "English District"
+  },
+  {
+    "id": 60,
+    "name": "Wycombe",
+    "areaType": "Council District"
+  },
+  {
+    "id": 161,
+    "name": "Wyre",
+    "areaType": "English District"
+  },
+  {
+    "id": 257,
+    "name": "Wyre Forest",
+    "areaType": "English District"
+  },
+  {
+    "id": 14,
+    "name": "York",
+    "areaType": "English Unitary Authority"
+  },
+  {
+    "id": 467,
+    "name": "Yorkshire and Humber",
+    "areaType": "English Region"
+  },
+  {
+    "id": 361,
+    "name": "Yorkshire Dales",
+    "areaType": "National Park"
+  }
+]
