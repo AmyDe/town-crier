@@ -44,6 +44,16 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
         services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 
+        var acsConnectionString = configuration["AzureCommunicationServices:ConnectionString"];
+        if (!string.IsNullOrEmpty(acsConnectionString))
+        {
+            services.AddSingleton<IEmailSender>(new AcsEmailSender(acsConnectionString));
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, NoOpEmailSender>();
+        }
+
         services.AddSingleton(TimeProvider.System);
 
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
