@@ -174,6 +174,7 @@ public static class SharedStack
         {
             CommunicationServiceName = "acs-town-crier-shared",
             ResourceGroupName = resourceGroup.Name,
+            Location = "global",
             DataLocation = "Europe",
             Tags = tags,
         });
@@ -182,6 +183,7 @@ public static class SharedStack
         {
             EmailServiceName = "email-town-crier-shared",
             ResourceGroupName = resourceGroup.Name,
+            Location = "global",
             DataLocation = "Europe",
             Tags = tags,
         });
