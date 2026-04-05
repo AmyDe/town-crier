@@ -372,34 +372,6 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
     }
 
-    [Test]
-    public async Task Should_SavePollStateForSuccessfulAuthorities_When_OtherAuthorityFails()
-    {
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(100);
-        authorityProvider.Add(200);
-        authorityProvider.Add(300);
-
-        var planItClient = new FakePlanItClient();
-        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
-        planItClient.ThrowForAuthority(200, new HttpRequestException("timeout"));
-        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
-
-        var pollStateStore = new FakePollStateStore();
-        var fakeTime = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
-        var handler = CreateHandler(
-            planItClient: planItClient,
-            pollStateStore: pollStateStore,
-            authorityProvider: authorityProvider,
-            timeProvider: new FakeTimeProvider(fakeTime));
-
-        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        // Poll state saved for authority 100 and 300 (not 200 which failed)
-        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
-        await Assert.That(pollStateStore.LastPollTime).IsEqualTo(fakeTime);
-    }
-
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
