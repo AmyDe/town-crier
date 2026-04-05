@@ -59,6 +59,20 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
+        string userId, DateTimeOffset since, CancellationToken ct)
+    {
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT * FROM c WHERE c.userId = @userId AND c.createdAt >= @since ORDER BY c.createdAt DESC",
+            [new QueryParameter("@userId", userId), new QueryParameter("@since", since)],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
+
     public async Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
         string userId, int page, int pageSize, CancellationToken ct)
     {

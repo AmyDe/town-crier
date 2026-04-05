@@ -30,6 +30,14 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
     }
 
+    public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct)
+    {
+        var profiles = this.store.Values
+            .Where(p => p.NotificationPreferences.DigestDay == digestDay)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
+    }
+
     public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
     {
         var profile = this.store.Values

@@ -4,7 +4,7 @@ Date: 2026-04-02
 
 ## Status
 
-Open
+Superseded by ADR [0020](../adr/0020-email-notifications-via-acs.md)
 
 ## Question
 
