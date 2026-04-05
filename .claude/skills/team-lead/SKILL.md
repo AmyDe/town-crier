@@ -46,7 +46,12 @@ One fresh worker per bead — never reuse.
 
 1. Invoke `/beads:beads` to load context
 2. `TeamCreate(team_name: "town-crier-guild")`
-3. `git worktree prune`
+3. Clean orphaned worktrees:
+   ```bash
+   bd worktree list --json | jq -r '.[] | select(.path | contains(".claude/worktrees/")) | .path' | while read wt; do
+     bd worktree remove "$wt" --force
+   done
+   ```
 4. `/beads:ready` to find work
 5. For each bead, `/beads:show` to classify:
 
@@ -63,7 +68,14 @@ If ambiguous, ask the user.
 
 ## Phase 2: Dispatch
 
-Spawn all ready workers in a **single message** with `run_in_background: true`:
+For each bead, create a worktree with `bd worktree create`, then dispatch the worker into it.
+
+**Create worktrees first** (can run in parallel bash calls):
+```bash
+bd worktree create ".claude/worktrees/tc-42" --branch "guild/tc-42"
+```
+
+**Then spawn all workers in a single message** with `run_in_background: true`:
 
 ```json
 Agent({
@@ -71,11 +83,10 @@ Agent({
   "name": "aldric",
   "description": "Implement bead TC-42",
   "team_name": "town-crier-guild",
-  "isolation": "worktree",
   "model": "opus",
   "mode": "bypassPermissions",
   "run_in_background": true,
-  "prompt": "Work on bead `TC-42`."
+  "prompt": "Work on bead `TC-42`.\n\nYou are in a pre-created worktree at `<worktree_path>`. Prefix Bash calls with `cd <worktree_path> &&`.\n\nBeads configured via redirect — `bd` commands work automatically.\nOnly modify files under `<allowed-path>`.\nNEVER run `bd init`, `bd init --force`, or `bd doctor --fix`."
 })
 ```
 
@@ -99,7 +110,7 @@ You are a **transparent pipe** — never answer decisions yourself, even trivial
 2. **Check scope**: `git diff main..<branch> --name-only` — all files in allowed path?
 3. **Dismiss worker**: `SendMessage(to: "<name>"): "Your work is complete. Shut down."`
 4. **Merge**: `git merge <branch> --no-edit`
-   - Conflicts -> `git merge --abort` -> spawn conflict-resolver agent (`general-purpose`, `isolation: "worktree"`)
+   - Conflicts -> `git merge --abort` -> `bd worktree create` for the resolver, then spawn conflict-resolver agent (`general-purpose`) with the worktree path
 5. **Verify tests**:
 
 | Worker | Test Command |
@@ -129,7 +140,8 @@ Final sync: `bd dolt push`. Do **not** `git push` unless user asks.
 - Never reuse workers — one bead, one fresh agent
 - Always dismiss workers after validation
 - Always `bd dolt push` after closing a bead
-- Always `isolation: "worktree"` and `model: "opus"` on Agent calls
+- Always `bd worktree create` before dispatching — never `isolation: "worktree"` or raw git commands
+- Always `model: "opus"` on Agent calls
 
 ## Reporting
 

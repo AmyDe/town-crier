@@ -30,11 +30,11 @@ git push -u origin HEAD
 
 Clean orphaned worktrees:
 ```bash
-for wt in $(git worktree list --porcelain | grep '^worktree ' | awk '{print $2}' | grep '\.claude/worktrees/'); do
+# Use bd worktree list to find orphans, bd worktree remove to clean them
+bd worktree list --json | jq -r '.[] | select(.path | contains(".claude/worktrees/")) | .path' | while read wt; do
   echo "Autopilot: removing orphaned worktree $wt"
-  bd worktree remove "$wt" --force 2>/dev/null || git worktree remove --force "$wt" 2>/dev/null
+  bd worktree remove "$wt" --force
 done
-git worktree prune
 ```
 
 Invoke `/beads:ready`. No beads? Report `Autopilot: no ready beads — idle` and return.
@@ -130,7 +130,6 @@ bd dolt push
 Clean up:
 ```bash
 bd worktree remove <worktree-path> --force
-git worktree prune
 ```
 
 Report:

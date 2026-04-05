@@ -160,15 +160,15 @@ gh pr view <pr-number> --json state -q '.state'
 Once state is `"MERGED"`, detect your context before cleanup:
 
 ```bash
-git worktree list
+bd worktree list
 ```
 
 **If you're in a worktree** (feature branch is in a secondary worktree, `main` is in the primary):
 
 1. Note the primary worktree path (the one on `main`).
-2. All remaining cleanup commands target the **primary worktree** — use `git -C <primary-path>`:
+2. Remove the worktree and delete the branch:
    ```bash
-   git -C <primary-path> worktree remove <this-worktree-path>
+   bd worktree remove <this-worktree-name> --force
    git -C <primary-path> branch -D <branch-name>
    ```
 
