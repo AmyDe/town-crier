@@ -142,4 +142,20 @@ describe('SettingsPage', () => {
 
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
+
+  it('renders sign out button in Session section', async () => {
+    renderSettingsPage(spy);
+
+    expect(await screen.findByRole('button', { name: /sign out/i })).toBeInTheDocument();
+  });
+
+  it('calls logout when sign out button is clicked', async () => {
+    const user = userEvent.setup();
+    renderSettingsPage(spy);
+
+    const button = await screen.findByRole('button', { name: /sign out/i });
+    await user.click(button);
+
+    expect(spyAuth.logoutCalls).toBe(1);
+  });
 });
