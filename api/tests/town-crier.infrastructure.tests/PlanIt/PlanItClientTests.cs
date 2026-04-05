@@ -354,6 +354,12 @@ public sealed class PlanItClientTests
             BaseAddress = new Uri(BaseUrl),
         };
 
+        // When tracking backoff delays but not throttle delays, disable throttle
+        // so throttle delays don't pollute the backoff delay list.
+        throttleOptions ??= delays is not null && throttleDelays is null
+            ? new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.Zero }
+            : new PlanItThrottleOptions();
+
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
         if (delays is not null || throttleDelays is not null)
         {

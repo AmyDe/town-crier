@@ -149,7 +149,10 @@ public sealed class PlanItClient : IPlanItClient
 
     private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, CancellationToken ct)
     {
-        _ = this.throttleOptions;
+        if (this.throttleOptions.DelayBetweenRequests > TimeSpan.Zero)
+        {
+            await this.delayFunc(this.throttleOptions.DelayBetweenRequests, ct).ConfigureAwait(false);
+        }
 
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
         {
