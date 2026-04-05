@@ -270,6 +270,23 @@ public static class SharedStack
                                 Position = new DashboardPartsPositionArgs { X = 9, Y = 8, ColSpan = 3, RowSpan = 4 },
                                 Metadata = MetricTile(appInsights.Id, "towncrier.api.errors", "API Errors"),
                             },
+                            // Row 4: PlanIt API Health
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 0, Y = 12, ColSpan = 6, RowSpan = 4 },
+                                Metadata = KqlTile(
+                                    appInsights.Id,
+                                    "customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status == '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h) | render timechart",
+                                    "PlanIt 429s"),
+                            },
+                            new DashboardPartsArgs
+                            {
+                                Position = new DashboardPartsPositionArgs { X = 6, Y = 12, ColSpan = 6, RowSpan = 4 },
+                                Metadata = KqlTile(
+                                    appInsights.Id,
+                                    "customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status != '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h), status | render timechart",
+                                    "PlanIt Errors"),
+                            },
                         },
                     },
                 },
