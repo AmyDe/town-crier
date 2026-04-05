@@ -71,6 +71,12 @@ builder.Services.AddTransient<PollPlanItCommandHandler>();
 
 using var host = builder.Build();
 
+// Eagerly initialize OTel providers so they listen before metrics are recorded.
+// Without this, Counter.Add() / Histogram.Record() silently drop measurements
+// because the providers are lazy singletons first resolved at ForceFlush time.
+_ = host.Services.GetRequiredService<MeterProvider>();
+_ = host.Services.GetRequiredService<TracerProvider>();
+
 var handler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
 var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TownCrier.Worker");
 
