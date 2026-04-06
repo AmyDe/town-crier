@@ -641,6 +641,33 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_UseRetryAfterDelay_When_HeaderContainsHttpDate()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+
+        // Use a date 30 seconds in the future from now
+        var futureDate = DateTimeOffset.UtcNow.AddSeconds(30);
+        var httpDateValue = futureDate.ToString("R");
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: httpDateValue);
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // The delay should be approximately 30 seconds (from the HTTP-date Retry-After),
+        // not the exponential backoff of ~1s. Allow a generous range for clock drift.
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(25))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromSeconds(35));
+    }
+
+    [Test]
     public async Task Should_FallBackToExponentialBackoff_When_NoRetryAfterHeader()
     {
         // Arrange
