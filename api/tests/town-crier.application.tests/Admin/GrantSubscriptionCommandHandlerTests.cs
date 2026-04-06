@@ -1,4 +1,5 @@
 using TownCrier.Application.Admin;
+using TownCrier.Application.Tests.Notifications;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.UserProfiles;
@@ -12,10 +13,11 @@ public sealed class GrantSubscriptionCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
         var profile = UserProfile.Register("auth0|user-1", "friend@example.com");
         await repository.SaveAsync(profile, CancellationToken.None);
 
-        var handler = new GrantSubscriptionCommandHandler(repository);
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
         var command = new GrantSubscriptionCommand("friend@example.com", SubscriptionTier.Pro);
 
         // Act
@@ -31,10 +33,11 @@ public sealed class GrantSubscriptionCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
         var profile = UserProfile.Register("auth0|user-1", "friend@example.com");
         await repository.SaveAsync(profile, CancellationToken.None);
 
-        var handler = new GrantSubscriptionCommandHandler(repository);
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
         var command = new GrantSubscriptionCommand("friend@example.com", SubscriptionTier.Personal);
 
         // Act
@@ -49,11 +52,12 @@ public sealed class GrantSubscriptionCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
         var profile = UserProfile.Register("auth0|user-1", "friend@example.com");
         profile.ActivateSubscription(SubscriptionTier.Pro, DateTimeOffset.UtcNow.AddYears(73));
         await repository.SaveAsync(profile, CancellationToken.None);
 
-        var handler = new GrantSubscriptionCommandHandler(repository);
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
         var command = new GrantSubscriptionCommand("friend@example.com", SubscriptionTier.Free);
 
         // Act
@@ -68,10 +72,11 @@ public sealed class GrantSubscriptionCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
         var profile = UserProfile.Register("auth0|user-1", "friend@example.com");
         await repository.SaveAsync(profile, CancellationToken.None);
 
-        var handler = new GrantSubscriptionCommandHandler(repository);
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
         var command = new GrantSubscriptionCommand("friend@example.com", SubscriptionTier.Pro);
 
         // Act
@@ -87,11 +92,60 @@ public sealed class GrantSubscriptionCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new GrantSubscriptionCommandHandler(repository);
+        var auth0Client = new FakeAuth0ManagementClient();
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
         var command = new GrantSubscriptionCommand("nobody@example.com", SubscriptionTier.Pro);
 
         // Act & Assert
         await Assert.ThrowsAsync<UserProfileNotFoundException>(
             () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_SyncTierToAuth0_When_GrantingProSubscription()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
+        var profile = new UserProfileBuilder()
+            .WithUserId("auth0|user-1")
+            .WithEmail("user@example.com")
+            .Build();
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
+        var command = new GrantSubscriptionCommand("user@example.com", SubscriptionTier.Pro);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(auth0Client.Updates).HasCount().EqualTo(1);
+        await Assert.That(auth0Client.Updates[0].UserId).IsEqualTo("auth0|user-1");
+        await Assert.That(auth0Client.Updates[0].Tier).IsEqualTo("Pro");
+    }
+
+    [Test]
+    public async Task Should_SyncTierToAuth0_When_DowngradingToFree()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var auth0Client = new FakeAuth0ManagementClient();
+        var profile = new UserProfileBuilder()
+            .WithUserId("auth0|user-1")
+            .WithEmail("user@example.com")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new GrantSubscriptionCommandHandler(repository, auth0Client);
+        var command = new GrantSubscriptionCommand("user@example.com", SubscriptionTier.Free);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(auth0Client.Updates).HasCount().EqualTo(1);
+        await Assert.That(auth0Client.Updates[0].Tier).IsEqualTo("Free");
     }
 }
