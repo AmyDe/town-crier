@@ -1,6 +1,7 @@
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.Entitlements;
 using TownCrier.Domain.Notifications;
 using TownCrier.Domain.UserProfiles;
 
@@ -113,8 +114,9 @@ public sealed class DispatchNotificationCommandHandler
             ApiMetrics.NotificationsSent.Add(1);
         }
 
-        // Send instant email notification for paid tiers
-        if (profile.Tier != SubscriptionTier.Free
+        // Send instant email notification for entitled tiers
+        var entitlements = EntitlementMap.EntitlementsFor(profile.Tier);
+        if (entitlements.Contains(Entitlement.InstantEmails)
             && profile.NotificationPreferences.EmailInstantEnabled
             && !string.IsNullOrEmpty(profile.Email))
         {

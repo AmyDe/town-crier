@@ -2,7 +2,6 @@ using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
-using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Application.Search;
 
@@ -28,13 +27,8 @@ public sealed class SearchPlanningApplicationsQueryHandler
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var profile = await this.userProfileRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false)
+        _ = await this.userProfileRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false)
             ?? throw UserProfileNotFoundException.ForUser(query.UserId);
-
-        if (profile.Tier != SubscriptionTier.Pro)
-        {
-            throw new ProTierRequiredException();
-        }
 
         var result = await this.planItClient.SearchApplicationsAsync(
             query.SearchText, query.AuthorityId, query.Page, ct).ConfigureAwait(false);
