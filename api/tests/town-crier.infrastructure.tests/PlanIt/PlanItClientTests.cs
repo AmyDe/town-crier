@@ -457,7 +457,7 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_UseDefaultOneSecondDelay_When_NoThrottleOptionsProvided()
+    public async Task Should_UseDefaultTwoSecondDelay_When_NoThrottleOptionsProvided()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
@@ -468,9 +468,9 @@ public sealed class PlanItClientTests
         // Act
         await ConsumeAsync(client, differentStart: null);
 
-        // Assert — default 1s throttle delay
+        // Assert — default 2s throttle delay
         await Assert.That(throttleDelays).HasCount().EqualTo(1);
-        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(1));
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(2));
     }
 
     [Test]
