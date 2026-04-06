@@ -148,6 +148,28 @@ public sealed class PlanItClient : IPlanItClient
         return DateOnly.Parse(value, CultureInfo.InvariantCulture);
     }
 
+    private static TimeSpan? ParseRetryAfterHeader(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter is null)
+        {
+            return null;
+        }
+
+        if (retryAfter.Delta.HasValue)
+        {
+            return retryAfter.Delta.Value;
+        }
+
+        if (retryAfter.Date.HasValue)
+        {
+            var delay = retryAfter.Date.Value - DateTimeOffset.UtcNow;
+            return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+        }
+
+        return null;
+    }
+
     private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, int authorityId, CancellationToken ct)
     {
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
@@ -172,6 +194,7 @@ public sealed class PlanItClient : IPlanItClient
                 return response;
             }
 
+            var retryAfterDelay = ParseRetryAfterHeader(response);
             response.Dispose();
 
             if (attempt == this.retryOptions.MaxRetries)
@@ -182,7 +205,7 @@ public sealed class PlanItClient : IPlanItClient
                     HttpStatusCode.TooManyRequests);
             }
 
-            var delay = this.CalculateBackoffDelay(attempt);
+            var delay = retryAfterDelay ?? this.CalculateBackoffDelay(attempt);
             await this.delayFunc(delay, ct).ConfigureAwait(false);
         }
 
