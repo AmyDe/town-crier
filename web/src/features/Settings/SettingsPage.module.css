@@ -159,3 +159,38 @@
 .legalLink:hover {
   text-decoration: underline;
 }
+
+.toggleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--tc-space-sm) 0;
+}
+
+.toggleRow + .toggleRow,
+.toggleRow + .selectRow,
+.selectRow + .toggleRow {
+  border-top: 1px solid var(--tc-border);
+}
+
+.selectRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--tc-space-sm) 0;
+}
+
+.select {
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  cursor: pointer;
+  transition: border-color var(--tc-duration-fast);
+}
+
+.select:hover {
+  border-color: var(--tc-amber);
+}
