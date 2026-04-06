@@ -10,9 +10,9 @@ namespace TownCrier.Application.Tests.Search;
 public sealed class SearchPlanningApplicationsQueryHandlerTests
 {
     [Test]
-    public async Task Should_ThrowProTierRequired_When_UserIsFreeTier()
+    public async Task Should_ReturnResults_When_UserIsFreeTier()
     {
-        // Arrange
+        // Arrange — tier check is now in the endpoint filter, not the handler
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
             .WithTier(SubscriptionTier.Free)
@@ -21,14 +21,17 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         await userProfileRepository.SaveAsync(profile, CancellationToken.None);
 
         var planItClient = new FakePlanItClient();
+        planItClient.SearchTotal = 0;
         var appRepo = new FakePlanningApplicationRepository();
         var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
 
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ProTierRequiredException>(
-            () => handler.HandleAsync(query, CancellationToken.None));
+        // Act
+        var result = await handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert — handler no longer rejects free tier
+        await Assert.That(result.Applications).HasCount().EqualTo(0);
     }
 
     [Test]

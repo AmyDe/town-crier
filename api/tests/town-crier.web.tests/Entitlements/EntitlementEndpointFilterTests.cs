@@ -74,4 +74,55 @@ public sealed class EntitlementEndpointFilterTests
 
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
     }
+
+    [Test]
+    public async Task Should_Return403_When_FreeTierAccessesSearch()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var token = TestJwtToken.Generate(claims:
+        [
+            new Claim("subscription_tier", "Free"),
+        ]);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync(new Uri("/v1/search?q=test&authorityId=42&page=1", UriKind.Relative));
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Forbidden);
+    }
+
+    [Test]
+    public async Task Should_AllowSearch_When_ProTier()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var token = TestJwtToken.Generate(
+            userId: "auth0|pro-search-user",
+            claims: [new Claim("subscription_tier", "Pro")]);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        // Create user profile first so search handler doesn't 404
+        await client.PostAsync(new Uri("/v1/me", UriKind.Relative), null);
+
+        var response = await client.GetAsync(new Uri("/v1/search?q=test&authorityId=42&page=1", UriKind.Relative));
+
+        // Should NOT be 403 — may be 200 with empty results
+        await Assert.That(response.StatusCode).IsNotEqualTo(HttpStatusCode.Forbidden);
+    }
+
+    [Test]
+    public async Task Should_DefaultToFree_When_TierClaimMissing()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var token = TestJwtToken.Generate();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync(new Uri("/v1/search?q=test&authorityId=42&page=1", UriKind.Relative));
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Forbidden);
+    }
 }

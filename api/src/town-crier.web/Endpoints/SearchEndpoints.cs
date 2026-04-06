@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
-using TownCrier.Domain.UserProfiles;
+using TownCrier.Domain.Entitlements;
 
 namespace TownCrier.Web.Endpoints;
 
@@ -25,17 +25,12 @@ internal static class SearchEndpoints
                 var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
                 return Results.Ok(result);
             }
-            catch (ProTierRequiredException)
-            {
-                return Results.Json(
-                    new ApiErrorResponse("This feature requires a Pro subscription."),
-                    AppJsonSerializerContext.Default.ApiErrorResponse,
-                    statusCode: 403);
-            }
             catch (UserProfileNotFoundException)
             {
                 return Results.NotFound();
             }
-        });
+        })
+        .AddEndpointFilter<EntitlementEndpointFilter>()
+        .WithMetadata(new RequiresEntitlementAttribute(Entitlement.SearchApplications));
     }
 }
