@@ -18,6 +18,7 @@ public sealed partial class PollPlanItCommandHandler
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
     private readonly ILogger<PollPlanItCommandHandler> logger;
+    private readonly PlanItPollingOptions pollingOptions;
 
     public PollPlanItCommandHandler(
         IPlanItClient planItClient,
@@ -27,7 +28,8 @@ public sealed partial class PollPlanItCommandHandler
         IActiveAuthorityProvider activeAuthorityProvider,
         IWatchZoneRepository watchZoneRepository,
         INotificationEnqueuer notificationEnqueuer,
-        ILogger<PollPlanItCommandHandler> logger)
+        ILogger<PollPlanItCommandHandler> logger,
+        PlanItPollingOptions? pollingOptions = null)
     {
         this.planItClient = planItClient;
         this.pollStateStore = pollStateStore;
@@ -37,6 +39,7 @@ public sealed partial class PollPlanItCommandHandler
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
         this.logger = logger;
+        this.pollingOptions = pollingOptions ?? new PlanItPollingOptions();
     }
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
@@ -99,6 +102,7 @@ public sealed partial class PollPlanItCommandHandler
                 }
 
                 LogRateLimitSkip(this.logger, authorityId, ex);
+                await Task.Delay(this.pollingOptions.RateLimitCooldown, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
