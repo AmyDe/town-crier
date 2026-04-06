@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.Entitlements;
 using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Web.Endpoints;
@@ -36,6 +37,25 @@ internal static class UserProfileEndpoints
             UpdateUserProfileCommandHandler handler,
             CancellationToken ct) =>
         {
+            if (command.EmailInstantEnabled)
+            {
+                var tierClaim = user.FindFirst("subscription_tier")?.Value;
+                var tier = Enum.TryParse<SubscriptionTier>(tierClaim, ignoreCase: true, out var parsed)
+                    ? parsed
+                    : SubscriptionTier.Free;
+
+                if (!EntitlementMap.EntitlementsFor(tier).Contains(Entitlement.InstantEmails))
+                {
+                    return Results.Json(
+                        new EntitlementErrorResponse(
+                            "insufficient_entitlement",
+                            Entitlement.InstantEmails.ToString(),
+                            "This feature requires a paid subscription."),
+                        AppJsonSerializerContext.Default.EntitlementErrorResponse,
+                        statusCode: 403);
+                }
+            }
+
             var userId = user.FindFirstValue("sub")!;
             var profileCommand = new UpdateUserProfileCommand(
                 userId,
