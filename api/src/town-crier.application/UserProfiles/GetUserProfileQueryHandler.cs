@@ -22,6 +22,9 @@ public sealed class GetUserProfileQueryHandler
         return new GetUserProfileResult(
             profile.UserId,
             profile.NotificationPreferences.PushEnabled,
+            profile.NotificationPreferences.DigestDay,
+            profile.NotificationPreferences.EmailDigestEnabled,
+            profile.NotificationPreferences.EmailInstantEnabled,
             profile.Tier);
     }
 }
