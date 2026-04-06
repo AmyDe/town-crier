@@ -273,6 +273,7 @@ public static class EnvironmentStack
                         },
                         Env = new[]
                         {
+                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-api" },
                             new EnvironmentVarArgs { Name = "Auth0__Domain", Value = auth0Domain },
                             new EnvironmentVarArgs { Name = "Auth0__Audience", Value = auth0Audience },
                             new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
@@ -362,6 +363,7 @@ public static class EnvironmentStack
                         },
                         Env = new[]
                         {
+                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
                             new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
                             new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
                             new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
@@ -431,6 +433,7 @@ public static class EnvironmentStack
                         },
                         Env = new[]
                         {
+                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
                             new EnvironmentVarArgs { Name = "WORKER_MODE", Value = "digest" },
                             new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
                             new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
