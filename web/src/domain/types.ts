@@ -53,6 +53,22 @@ export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
   return typeof value === "string" && SUBSCRIPTION_TIERS.includes(value);
 }
 
+/**
+ * Matches .NET System.DayOfWeek numeric enum.
+ * 0 = Sunday, 1 = Monday, ..., 6 = Saturday.
+ */
+export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export const DAY_OF_WEEK_LABELS: Record<DayOfWeek, string> = {
+  0: 'Sunday',
+  1: 'Monday',
+  2: 'Tuesday',
+  3: 'Wednesday',
+  4: 'Thursday',
+  5: 'Friday',
+  6: 'Saturday',
+};
+
 // ---------------------------------------------------------------------------
 // Shared value types
 // ---------------------------------------------------------------------------
@@ -69,6 +85,9 @@ export interface Coordinates {
 export interface UserProfile {
   readonly userId: string;
   readonly pushEnabled: boolean;
+  readonly emailDigestEnabled: boolean;
+  readonly emailInstantEnabled: boolean;
+  readonly digestDay: DayOfWeek;
   readonly tier: SubscriptionTier;
 }
 
@@ -206,6 +225,9 @@ export interface CreateWatchZoneRequest {
 
 export interface UpdateProfileRequest {
   readonly pushEnabled: boolean;
+  readonly emailDigestEnabled: boolean;
+  readonly emailInstantEnabled: boolean;
+  readonly digestDay: DayOfWeek;
 }
 
 export interface UpdateZonePreferencesRequest {

@@ -1,5 +1,5 @@
 import type { SettingsRepository } from '../../../../domain/ports/settings-repository';
-import type { UserProfile } from '../../../../domain/types';
+import type { UpdateProfileRequest, UserProfile } from '../../../../domain/types';
 import { freeUserProfile } from '../fixtures/user-profile.fixtures';
 
 export class SpySettingsRepository implements SettingsRepository {
@@ -13,6 +13,20 @@ export class SpySettingsRepository implements SettingsRepository {
       throw this.fetchProfileError;
     }
     return this.fetchProfileResult;
+  }
+
+  updateProfileCalls = 0;
+  updateProfileLastRequest: UpdateProfileRequest | null = null;
+  updateProfileResult: UserProfile | null = null;
+  updateProfileError: Error | null = null;
+
+  async updateProfile(request: UpdateProfileRequest): Promise<UserProfile> {
+    this.updateProfileCalls++;
+    this.updateProfileLastRequest = request;
+    if (this.updateProfileError) {
+      throw this.updateProfileError;
+    }
+    return this.updateProfileResult ?? this.fetchProfileResult;
   }
 
   exportDataCalls = 0;
