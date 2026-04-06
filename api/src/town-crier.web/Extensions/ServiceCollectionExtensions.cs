@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Admin;
+using TownCrier.Application.Auth;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
@@ -14,6 +15,7 @@ using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.Auth;
 using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DecisionAlerts;
@@ -61,6 +63,19 @@ internal static class ServiceCollectionExtensions
         else
         {
             services.AddSingleton<IEmailSender, NoOpEmailSender>();
+        }
+
+        var auth0M2mClientId = configuration["Auth0:M2M:ClientId"];
+        var auth0M2mClientSecret = configuration["Auth0:M2M:ClientSecret"];
+        var auth0Domain = configuration["Auth0:Domain"];
+        if (!string.IsNullOrEmpty(auth0M2mClientId) && !string.IsNullOrEmpty(auth0M2mClientSecret) && !string.IsNullOrEmpty(auth0Domain))
+        {
+            services.AddHttpClient<IAuth0ManagementClient, Auth0ManagementClient>((httpClient, sp) =>
+                new Auth0ManagementClient(httpClient, auth0Domain, auth0M2mClientId, auth0M2mClientSecret));
+        }
+        else
+        {
+            services.AddSingleton<IAuth0ManagementClient, NoOpAuth0ManagementClient>();
         }
 
         services.AddSingleton(TimeProvider.System);

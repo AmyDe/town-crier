@@ -13,10 +13,12 @@ using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.VersionConfig;
 using TownCrier.Application.WatchZones;
+using TownCrier.Web.Endpoints;
 
 namespace TownCrier.Web;
 
 [JsonSerializable(typeof(ApiErrorResponse))]
+[JsonSerializable(typeof(EntitlementErrorResponse))]
 [JsonSerializable(typeof(UserIdResponse))]
 [JsonSerializable(typeof(GetAuthoritiesResult))]
 [JsonSerializable(typeof(GetAuthorityByIdResult))]

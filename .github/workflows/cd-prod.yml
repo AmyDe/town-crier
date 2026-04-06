@@ -191,10 +191,19 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy worker image to prod
+      - name: Deploy worker image to poll job
         run: |
           az containerapp job update \
             --name "job-town-crier-poll-prod" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
+        env:
+          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
+
+      - name: Deploy worker image to digest job
+        run: |
+          az containerapp job update \
+            --name "job-town-crier-digest-prod" \
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
         env:

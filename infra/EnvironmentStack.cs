@@ -378,6 +378,75 @@ public static class EnvironmentStack
             IgnoreChanges = { "template.containers[0].image" },
         });
 
+        // Container Apps Job (Digest Worker) — runs daily, handler filters by user's preferred day
+        _ = new Job($"job-town-crier-digest-{env}", new JobArgs
+        {
+            JobName = $"job-town-crier-digest-{env}",
+            ResourceGroupName = resourceGroup.Name,
+            EnvironmentId = containerAppsEnvironmentId,
+            Configuration = new JobConfigurationArgs
+            {
+                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
+                ReplicaTimeout = 600,
+                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
+                {
+                    CronExpression = "0 7 * * *",
+                    Parallelism = 1,
+                    ReplicaCompletionCount = 1,
+                },
+                Registries = new[]
+                {
+                    new RegistryCredentialsArgs
+                    {
+                        Server = acrLoginServer,
+                        Identity = acrPullIdentityId,
+                    },
+                },
+                Secrets = new[]
+                {
+                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+                },
+            },
+            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
+            {
+                Type = ManagedServiceIdentityType.UserAssigned,
+                UserAssignedIdentities = new InputList<string>
+                {
+                    acrPullIdentityId,
+                    cosmosDataIdentityId,
+                },
+            },
+            Template = new JobTemplateArgs
+            {
+                Containers = new[]
+                {
+                    new ContainerArgs
+                    {
+                        Name = "worker",
+                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
+                        Resources = new ContainerResourcesArgs
+                        {
+                            Cpu = 0.25,
+                            Memory = "0.5Gi",
+                        },
+                        Env = new[]
+                        {
+                            new EnvironmentVarArgs { Name = "WORKER_MODE", Value = "digest" },
+                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
+                            new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
+                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
+                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
+                        },
+                    },
+                },
+            },
+            Tags = tags,
+        }, new CustomResourceOptions
+        {
+            IgnoreChanges = { "template.containers[0].image" },
+        });
+
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
         {
