@@ -2,5 +2,7 @@ namespace TownCrier.Infrastructure.PlanIt;
 
 public sealed record PlanItThrottleOptions
 {
-    public TimeSpan DelayBetweenRequests { get; init; } = TimeSpan.FromSeconds(1);
+    public double DelayBetweenRequestsSeconds { get; init; } = 2;
+
+    public TimeSpan DelayBetweenRequests => TimeSpan.FromSeconds(this.DelayBetweenRequestsSeconds);
 }

@@ -200,7 +200,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
         var delays = new List<TimeSpan>();
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) }, delays: delays);
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 }, delays: delays);
 
         // Act
         var results = await ConsumeAsync(client, differentStart: null);
@@ -219,7 +219,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 3, SingleRecordResponse);
         var delays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelay = TimeSpan.FromSeconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelaySeconds = 1 };
         var client = CreateClient(handler, retryOptions: options, delays: delays);
 
         // Act
@@ -241,7 +241,7 @@ public sealed class PlanItClientTests
         // Arrange
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitForever("page=1");
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
         var client = CreateClient(handler, retryOptions: options);
 
         // Act & Assert
@@ -256,7 +256,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
 
         // No response configured → returns 404, which is a non-429 error
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
         var client = CreateClient(handler, retryOptions: options);
 
         // Act & Assert — should throw immediately without retrying
@@ -292,7 +292,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupJsonResponse("page=1", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(500) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.5 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -318,7 +318,7 @@ public sealed class PlanItClientTests
         handler.SetupJsonResponse("page=2", page2Json);
 
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(200) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.2 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -337,7 +337,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(300) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.3 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -355,8 +355,8 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
         var allDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(100) };
-        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.1 };
+        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 };
         var client = CreateClient(handler, retryOptions: retryOptions, throttleOptions: throttleOptions, throttleDelays: allDelays);
 
         // Act
@@ -457,7 +457,7 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_UseDefaultOneSecondDelay_When_NoThrottleOptionsProvided()
+    public async Task Should_UseDefaultTwoSecondDelay_When_NoThrottleOptionsProvided()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
@@ -468,9 +468,9 @@ public sealed class PlanItClientTests
         // Act
         await ConsumeAsync(client, differentStart: null);
 
-        // Assert — default 1s throttle delay
+        // Assert — default 2s throttle delay
         await Assert.That(throttleDelays).HasCount().EqualTo(1);
-        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(1));
+        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromSeconds(2));
     }
 
     [Test]
@@ -496,7 +496,7 @@ public sealed class PlanItClientTests
         // Arrange
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) });
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 });
 
         var recorded = new List<(long Value, int StatusCode, int AuthorityCode)>();
         using var listener = new MeterListener();
@@ -618,6 +618,77 @@ public sealed class PlanItClientTests
         await Assert.That(recorded).HasCount().EqualTo(0);
     }
 
+    [Test]
+    public async Task Should_UseRetryAfterDelay_When_429ResponseHasDeltaSecondsHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // The backoff delay should be exactly 10 seconds (from Retry-After header),
+        // not the exponential backoff of ~1s (base delay * 2^0)
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public async Task Should_UseRetryAfterDelay_When_HeaderContainsHttpDate()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+
+        // Use a date 30 seconds in the future from now
+        var futureDate = DateTimeOffset.UtcNow.AddSeconds(30);
+        var httpDateValue = futureDate.ToString("R");
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: httpDateValue);
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // The delay should be approximately 30 seconds (from the HTTP-date Retry-After),
+        // not the exponential backoff of ~1s. Allow a generous range for clock drift.
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(25))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromSeconds(35));
+    }
+
+    [Test]
+    public async Task Should_FallBackToExponentialBackoff_When_NoRetryAfterHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // Without Retry-After header, should use exponential backoff (~1s base * 2^0 = ~1s with jitter)
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(1500));
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItRetryOptions? retryOptions = null,
@@ -633,7 +704,7 @@ public sealed class PlanItClientTests
         // When tracking backoff delays but not throttle delays, disable throttle
         // so throttle delays don't pollute the backoff delay list.
         throttleOptions ??= delays is not null && throttleDelays is null
-            ? new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.Zero }
+            ? new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 }
             : new PlanItThrottleOptions();
 
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
