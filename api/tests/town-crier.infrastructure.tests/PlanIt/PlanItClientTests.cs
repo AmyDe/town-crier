@@ -618,6 +618,28 @@ public sealed class PlanItClientTests
         await Assert.That(recorded).HasCount().EqualTo(0);
     }
 
+    [Test]
+    public async Task Should_UseRetryAfterDelay_When_429ResponseHasDeltaSecondsHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // The backoff delay should be exactly 10 seconds (from Retry-After header),
+        // not the exponential backoff of ~1s (base delay * 2^0)
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(10));
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItRetryOptions? retryOptions = null,
