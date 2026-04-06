@@ -200,7 +200,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
         var delays = new List<TimeSpan>();
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) }, delays: delays);
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 }, delays: delays);
 
         // Act
         var results = await ConsumeAsync(client, differentStart: null);
@@ -219,7 +219,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 3, SingleRecordResponse);
         var delays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelay = TimeSpan.FromSeconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelaySeconds = 1 };
         var client = CreateClient(handler, retryOptions: options, delays: delays);
 
         // Act
@@ -241,7 +241,7 @@ public sealed class PlanItClientTests
         // Arrange
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitForever("page=1");
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
         var client = CreateClient(handler, retryOptions: options);
 
         // Act & Assert
@@ -256,7 +256,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
 
         // No response configured → returns 404, which is a non-429 error
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) };
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
         var client = CreateClient(handler, retryOptions: options);
 
         // Act & Assert — should throw immediately without retrying
@@ -356,7 +356,7 @@ public sealed class PlanItClientTests
         handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
         var allDelays = new List<TimeSpan>();
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.1 };
-        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) };
+        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 };
         var client = CreateClient(handler, retryOptions: retryOptions, throttleOptions: throttleOptions, throttleDelays: allDelays);
 
         // Act
@@ -496,7 +496,7 @@ public sealed class PlanItClientTests
         // Arrange
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(1) });
+        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 });
 
         var recorded = new List<(long Value, int StatusCode, int AuthorityCode)>();
         using var listener = new MeterListener();
