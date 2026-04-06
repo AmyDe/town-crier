@@ -26,7 +26,7 @@ export class SpySettingsRepository implements SettingsRepository {
     if (this.updateProfileError) {
       throw this.updateProfileError;
     }
-    return this.updateProfileResult ?? this.fetchProfileResult;
+    return this.updateProfileResult ?? { ...this.fetchProfileResult, ...request };
   }
 
   exportDataCalls = 0;
