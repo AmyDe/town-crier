@@ -333,6 +333,10 @@ public static class EnvironmentStack
                         Identity = acrPullIdentityId,
                     },
                 },
+                Secrets = new[]
+                {
+                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+                },
             },
             Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
             {
@@ -362,6 +366,7 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
                             new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
                             new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
+                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
                         },
                     },
                 },
