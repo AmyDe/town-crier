@@ -1,6 +1,6 @@
 import type { ApiClient } from '../../api/client';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
-import type { UserProfile } from '../../domain/types';
+import type { UpdateProfileRequest, UserProfile } from '../../domain/types';
 import { userProfileApi } from '../../api/userProfile';
 
 export class ApiSettingsRepository implements SettingsRepository {
@@ -20,6 +20,10 @@ export class ApiSettingsRepository implements SettingsRepository {
 
   async fetchProfile(): Promise<UserProfile> {
     return this.api.get();
+  }
+
+  async updateProfile(request: UpdateProfileRequest): Promise<UserProfile> {
+    return this.api.update(request);
   }
 
   async exportData(): Promise<Blob> {

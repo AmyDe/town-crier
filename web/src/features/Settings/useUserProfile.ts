@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
-import type { UserProfile } from '../../domain/types';
+import type { UpdateProfileRequest, UserProfile } from '../../domain/types';
 import { useFetchData } from '../../hooks/useFetchData';
 
 export function useUserProfile(
@@ -10,13 +10,41 @@ export function useUserProfile(
   const [isExporting, setIsExporting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [optimisticProfile, setOptimisticProfile] = useState<UserProfile | null>(null);
 
-  const { data: profile, isLoading, error: fetchError } = useFetchData<UserProfile>(
+  const { data: fetchedProfile, isLoading, error: fetchError } = useFetchData<UserProfile>(
     () => repository.fetchProfile(),
     [repository],
   );
 
+  const profile = optimisticProfile ?? fetchedProfile;
   const error = actionError ?? fetchError;
+
+  const updatePreferences = useCallback(async (changes: Partial<UpdateProfileRequest>) => {
+    const base = optimisticProfile ?? fetchedProfile;
+    if (!base) return;
+
+    const request: UpdateProfileRequest = {
+      pushEnabled: base.pushEnabled,
+      emailDigestEnabled: base.emailDigestEnabled,
+      emailInstantEnabled: base.emailInstantEnabled,
+      digestDay: base.digestDay,
+      ...changes,
+    };
+
+    const previous = optimisticProfile;
+    setOptimisticProfile({ ...base, ...changes });
+    setActionError(null);
+
+    try {
+      const updated = await repository.updateProfile(request);
+      setOptimisticProfile(updated);
+    } catch (err) {
+      setOptimisticProfile(previous);
+      const message = err instanceof Error ? err.message : 'Failed to update preferences';
+      setActionError(message);
+    }
+  }, [optimisticProfile, fetchedProfile, repository]);
 
   const exportData = useCallback(async () => {
     setIsExporting(true);
@@ -59,5 +87,6 @@ export function useUserProfile(
     error,
     exportData,
     deleteAccount,
+    updatePreferences,
   };
 }

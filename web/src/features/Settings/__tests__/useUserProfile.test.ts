@@ -2,7 +2,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useUserProfile } from '../useUserProfile';
 import { SpySettingsRepository } from './spies/spy-settings-repository';
-import { proUserProfile } from './fixtures/user-profile.fixtures';
+import { freeUserProfile, proUserProfile } from './fixtures/user-profile.fixtures';
 
 describe('useUserProfile', () => {
   let spy: SpySettingsRepository;
@@ -140,5 +140,61 @@ describe('useUserProfile', () => {
     });
 
     expect(result.current.isDeleting).toBe(false);
+  });
+
+  it('updates preferences and calls repository', async () => {
+    spy.fetchProfileResult = freeUserProfile();
+
+    const { result } = renderHook(() => useUserProfile(spy, logout));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.updatePreferences({ emailDigestEnabled: false });
+    });
+
+    expect(spy.updateProfileCalls).toBe(1);
+    expect(spy.updateProfileLastRequest).toEqual({
+      pushEnabled: true,
+      emailDigestEnabled: false,
+      emailInstantEnabled: false,
+      digestDay: 1,
+    });
+  });
+
+  it('optimistically updates profile on preference change', async () => {
+    spy.fetchProfileResult = freeUserProfile();
+
+    const { result } = renderHook(() => useUserProfile(spy, logout));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.updatePreferences({ emailInstantEnabled: true });
+    });
+
+    expect(result.current.profile?.emailInstantEnabled).toBe(true);
+  });
+
+  it('reverts profile on preference update failure', async () => {
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true });
+    spy.updateProfileError = new Error('Network error');
+
+    const { result } = renderHook(() => useUserProfile(spy, logout));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.updatePreferences({ emailDigestEnabled: false });
+    });
+
+    expect(result.current.profile?.emailDigestEnabled).toBe(true);
+    expect(result.current.error).toBe('Network error');
   });
 });

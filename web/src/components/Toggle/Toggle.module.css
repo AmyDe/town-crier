@@ -1,0 +1,34 @@
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  padding: 2px;
+  border: 1px solid var(--tc-border);
+  border-radius: 12px;
+  background: var(--tc-surface);
+  cursor: pointer;
+  transition: background-color var(--tc-duration-fast) ease,
+              border-color var(--tc-duration-fast) ease;
+}
+
+.toggle[data-checked] {
+  background: var(--tc-amber);
+  border-color: var(--tc-amber);
+}
+
+.thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--tc-text-secondary);
+  transition: transform var(--tc-duration-fast) ease,
+              background-color var(--tc-duration-fast) ease;
+}
+
+.toggle[data-checked] .thumb {
+  transform: translateX(20px);
+  background: var(--tc-text-on-accent);
+}

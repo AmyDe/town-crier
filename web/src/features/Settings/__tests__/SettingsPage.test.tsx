@@ -158,4 +158,66 @@ describe('SettingsPage', () => {
 
     expect(spyAuth.logoutCalls).toBe(1);
   });
+
+  it('renders email digest toggle', async () => {
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true });
+
+    renderSettingsPage(spy);
+
+    const toggle = await screen.findByRole('switch', { name: /email digest/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('renders instant emails toggle', async () => {
+    spy.fetchProfileResult = freeUserProfile({ emailInstantEnabled: false });
+
+    renderSettingsPage(spy);
+
+    const toggle = await screen.findByRole('switch', { name: /instant email/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('renders digest day picker when digest is enabled', async () => {
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true, digestDay: 1 });
+
+    renderSettingsPage(spy);
+
+    const select = await screen.findByLabelText(/digest day/i);
+    expect(select).toHaveValue('1');
+  });
+
+  it('hides digest day picker when digest is disabled', async () => {
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: false });
+
+    renderSettingsPage(spy);
+
+    await screen.findByRole('heading', { name: /notifications/i });
+    expect(screen.queryByLabelText(/digest day/i)).not.toBeInTheDocument();
+  });
+
+  it('calls updateProfile when email digest is toggled off', async () => {
+    const user = userEvent.setup();
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true });
+
+    renderSettingsPage(spy);
+
+    const toggle = await screen.findByRole('switch', { name: /email digest/i });
+    await user.click(toggle);
+
+    expect(spy.updateProfileCalls).toBe(1);
+    expect(spy.updateProfileLastRequest?.emailDigestEnabled).toBe(false);
+  });
+
+  it('calls updateProfile when digest day is changed', async () => {
+    const user = userEvent.setup();
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true, digestDay: 1 });
+
+    renderSettingsPage(spy);
+
+    const select = await screen.findByLabelText(/digest day/i);
+    await user.selectOptions(select, '5');
+
+    expect(spy.updateProfileCalls).toBe(1);
+    expect(spy.updateProfileLastRequest?.digestDay).toBe(5);
+  });
 });

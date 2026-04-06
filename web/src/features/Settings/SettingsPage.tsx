@@ -5,6 +5,8 @@ import { useTheme } from '../../hooks/useTheme';
 import { useUserProfile } from './useUserProfile';
 import { ThemeToggle } from '../../components/ThemeToggle/ThemeToggle';
 import { ConfirmDialog } from '../../components/ConfirmDialog/ConfirmDialog';
+import { Toggle } from '../../components/Toggle/Toggle';
+import { DAY_OF_WEEK_LABELS, type DayOfWeek } from '../../domain/types';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
 import styles from './SettingsPage.module.css';
 
@@ -23,6 +25,7 @@ export function SettingsPage({ repository }: Props) {
     error,
     exportData,
     deleteAccount,
+    updatePreferences,
   } = useUserProfile(repository, () => logout());
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -59,6 +62,46 @@ export function SettingsPage({ repository }: Props) {
           <div className={styles.field}>
             <span className={styles.label}>Subscription</span>
             <span className={styles.value}>{profile?.tier}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Notifications section */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Notifications</h2>
+        <div className={styles.card}>
+          <div className={styles.toggleRow}>
+            <span className={styles.label}>Email digest</span>
+            <Toggle
+              checked={profile?.emailDigestEnabled ?? true}
+              onChange={(checked) => updatePreferences({ emailDigestEnabled: checked })}
+              label="Email digest"
+            />
+          </div>
+          {profile?.emailDigestEnabled && (
+            <div className={styles.selectRow}>
+              <label htmlFor="digest-day" className={styles.label}>Digest day</label>
+              <select
+                id="digest-day"
+                className={styles.select}
+                value={profile.digestDay}
+                onChange={(e) => updatePreferences({ digestDay: Number(e.target.value) as DayOfWeek })}
+              >
+                {([1, 2, 3, 4, 5, 6, 0] as const).map((day) => (
+                  <option key={day} value={day}>
+                    {DAY_OF_WEEK_LABELS[day]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className={styles.toggleRow}>
+            <span className={styles.label}>Instant emails</span>
+            <Toggle
+              checked={profile?.emailInstantEnabled ?? false}
+              onChange={(checked) => updatePreferences({ emailInstantEnabled: checked })}
+              label="Instant emails"
+            />
           </div>
         </div>
       </section>
