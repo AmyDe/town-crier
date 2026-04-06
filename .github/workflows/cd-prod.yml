@@ -64,6 +64,8 @@ jobs:
           pulumi stack select prod
           pulumi config set --secret adminApiKey "${{ secrets.ADMIN_API_KEY }}"
           pulumi config set --secret autoGrantProDomains "${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
+          pulumi config set --secret auth0M2mClientId "${{ secrets.AUTH0_M2M_CLIENT_ID }}"
+          pulumi config set --secret auth0M2mClientSecret "${{ secrets.AUTH0_M2M_CLIENT_SECRET }}"
           pulumi up --yes --non-interactive
 
       - name: Extract Pulumi outputs

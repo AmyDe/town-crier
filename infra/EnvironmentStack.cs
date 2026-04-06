@@ -34,6 +34,8 @@ public static class EnvironmentStack
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
         var adminApiKey = config.RequireSecret("adminApiKey");
         var autoGrantProDomains = config.RequireSecret("autoGrantProDomains");
+        var auth0M2mClientId = config.RequireSecret("auth0M2mClientId");
+        var auth0M2mClientSecret = config.RequireSecret("auth0M2mClientSecret");
 
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
@@ -215,6 +217,8 @@ public static class EnvironmentStack
                     new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
                     new SecretArgs { Name = "auto-grant-pro-domains", Value = autoGrantProDomains },
                     new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+                    new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId },
+                    new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret },
                 },
                 Ingress = new IngressArgs
                 {
@@ -284,6 +288,8 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "Admin__ApiKey", SecretRef = "admin-api-key" },
                             new EnvironmentVarArgs { Name = "Subscription__AutoGrant__ProDomains", SecretRef = "auto-grant-pro-domains" },
                             new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
+                            new EnvironmentVarArgs { Name = "Auth0__M2M__ClientId", SecretRef = "auth0-m2m-client-id" },
+                            new EnvironmentVarArgs { Name = "Auth0__M2M__ClientSecret", SecretRef = "auth0-m2m-client-secret" },
                         },
                     },
                 },
