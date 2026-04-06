@@ -640,6 +640,28 @@ public sealed class PlanItClientTests
         await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(10));
     }
 
+    [Test]
+    public async Task Should_FallBackToExponentialBackoff_When_NoRetryAfterHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // Without Retry-After header, should use exponential backoff (~1s base * 2^0 = ~1s with jitter)
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500))
+            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(1500));
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItRetryOptions? retryOptions = null,
