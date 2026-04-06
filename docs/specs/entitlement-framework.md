@@ -51,7 +51,38 @@ public static class EntitlementMap
 }
 ```
 
-New entitlements: add an enum value and update the mapping. Endpoints and Auth0 Action don't change.
+A `Quota` enum defines features gated by numeric limits rather than boolean access:
+
+```csharp
+public enum Quota
+{
+    WatchZones
+}
+```
+
+`EntitlementMap` exposes both entitlements and quotas:
+
+```csharp
+public static class EntitlementMap
+{
+    public static IReadOnlySet<Entitlement> EntitlementsFor(SubscriptionTier tier) => // ...as above...
+
+    public static int LimitFor(SubscriptionTier tier, Quota quota) => (tier, quota) switch
+    {
+        (SubscriptionTier.Free, Quota.WatchZones) => 1,
+        (SubscriptionTier.Personal, Quota.WatchZones) => 3,
+        (SubscriptionTier.Pro, Quota.WatchZones) => int.MaxValue,
+        _ => 1
+    };
+}
+```
+
+**Entitlements vs quotas:**
+
+- **Entitlements** (boolean) — enforced by the endpoint filter pre-handler, no DB read needed
+- **Quotas** (numeric) — enforced in the handler or domain model, which already loads the current count from Cosmos
+
+Both are defined in `EntitlementMap`, both driven by tier. New quotas: add a `Quota` enum value and a mapping entry.
 
 ### Endpoint Filter (Web Layer)
 
@@ -134,7 +165,7 @@ Between purchases, the claim refreshes naturally when the access token expires.
 |---------|-----------|-------------|
 | HTTP endpoints | `RequiresEntitlementAttribute` + `EntitlementEndpointFilter` | JWT `subscription_tier` claim |
 | Background jobs | `EntitlementMap.For(profile.Tier)` | `UserProfile.Tier` from Cosmos |
-| Both | `EntitlementMap` resolves tier to entitlements | — |
+| Both | `EntitlementMap` resolves tier to entitlements and quotas | — |
 
 ## Key Decisions
 
@@ -145,7 +176,7 @@ Between purchases, the claim refreshes naturally when the access token expires.
 
 ## Migration Path
 
-1. Add `Entitlement` enum and `EntitlementMap` to domain layer
+1. Add `Entitlement` enum, `Quota` enum, and `EntitlementMap` to domain layer
 2. Add `RequiresEntitlementAttribute` and `EntitlementEndpointFilter` to web layer
 3. Deploy Auth0 Post-Login Action
 4. Add Auth0 metadata sync to `GrantSubscriptionCommandHandler`
