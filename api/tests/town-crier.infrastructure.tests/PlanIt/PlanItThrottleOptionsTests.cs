@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -33,5 +34,40 @@ public sealed class PlanItThrottleOptionsTests
 
         // Assert
         await Assert.That(options.DelayBetweenRequests).IsEqualTo(TimeSpan.Zero);
+    }
+
+    [Test]
+    public async Task Should_BindFromConfiguration_When_SectionProvided()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PlanIt:Throttle:DelayBetweenRequestsSeconds"] = "5",
+            })
+            .Build();
+
+        var options = new PlanItThrottleOptions();
+        config.GetSection("PlanIt:Throttle").Bind(options);
+
+        // Assert
+        await Assert.That(options.DelayBetweenRequestsSeconds).IsEqualTo(5);
+        await Assert.That(options.DelayBetweenRequests).IsEqualTo(TimeSpan.FromSeconds(5));
+    }
+
+    [Test]
+    public async Task Should_KeepDefaults_When_ConfigSectionEmpty()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var options = new PlanItThrottleOptions();
+        config.GetSection("PlanIt:Throttle").Bind(options);
+
+        // Assert — defaults preserved
+        await Assert.That(options.DelayBetweenRequestsSeconds).IsEqualTo(2);
+        await Assert.That(options.DelayBetweenRequests).IsEqualTo(TimeSpan.FromSeconds(2));
     }
 }
