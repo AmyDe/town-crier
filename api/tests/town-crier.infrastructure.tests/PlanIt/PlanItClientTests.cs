@@ -292,7 +292,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupJsonResponse("page=1", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(500) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.5 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -318,7 +318,7 @@ public sealed class PlanItClientTests
         handler.SetupJsonResponse("page=2", page2Json);
 
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(200) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.2 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -337,7 +337,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(300) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.3 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
 
         // Act
@@ -355,7 +355,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
         var allDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.FromMilliseconds(100) };
+        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.1 };
         var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelay = TimeSpan.FromMilliseconds(10) };
         var client = CreateClient(handler, retryOptions: retryOptions, throttleOptions: throttleOptions, throttleDelays: allDelays);
 
@@ -633,7 +633,7 @@ public sealed class PlanItClientTests
         // When tracking backoff delays but not throttle delays, disable throttle
         // so throttle delays don't pollute the backoff delay list.
         throttleOptions ??= delays is not null && throttleDelays is null
-            ? new PlanItThrottleOptions { DelayBetweenRequests = TimeSpan.Zero }
+            ? new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 }
             : new PlanItThrottleOptions();
 
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
