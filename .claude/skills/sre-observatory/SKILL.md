@@ -29,7 +29,21 @@ All queries use `az monitor app-insights query` with KQL via the `--analytics-qu
 
 ## Time Window
 
-Default to the last 24 hours (`ago(24h)`). If the user specifies a different window (e.g., "last week", "since the deploy"), adjust accordingly. For anomaly detection, always compare the analysis window against the previous 7-day baseline.
+The time window is determined in this priority order:
+
+1. **User-specified range** — If the user passes a time range (e.g., `sre-observatory last 6h`, `sre-observatory since 2026-04-05T10:00:00Z`, `sre-observatory last week`), use it directly. Convert relative expressions to KQL (`ago(6h)`, `ago(7d)`) or absolute `datetime()` as appropriate.
+
+2. **Default: since last prod deploy** — If no range is specified, look up the last successful "CD Production" workflow run and use its start time as the analysis window start:
+   ```bash
+   gh run list --workflow="CD Production" --status=completed --limit=1 --json startedAt -q '.[0].startedAt'
+   ```
+   Convert the ISO timestamp to a KQL `datetime()` literal. For example, if the deploy was at `2026-04-06T06:35:32Z`, use `where timestamp > datetime(2026-04-06T06:35:32Z)`.
+
+   If no completed CD Production run is found (e.g., first deploy hasn't happened yet), fall back to `ago(24h)`.
+
+3. **Baseline comparison** — For anomaly detection, always compare the analysis window against the previous 7-day baseline regardless of the analysis window chosen.
+
+Store the resolved time window in a variable at the start so all phases use the same boundary. Print the resolved window to the conversation at the start of Phase 1 so the user knows what's being analyzed (e.g., "Analyzing telemetry since last prod deploy at 2026-04-06T06:35:32Z (~3h window)").
 
 ## Understanding the Telemetry Model
 
@@ -44,6 +58,8 @@ If a standard table returns empty results, **always check customMetrics for the 
 ## Execution
 
 Run phases sequentially. Each phase queries App Insights, analyzes the results, and accumulates findings. File beads only after all phases complete — this lets you correlate across signals before deciding what's actionable. The query templates below are starting points — adapt, expand, and follow threads based on what you find. Your SRE judgment matters more than rigid adherence to the template.
+
+**Important:** All KQL templates below use `ago(24h)` as a placeholder. Replace every instance with the resolved time window from the Time Window section above (e.g., `datetime(2026-04-06T06:35:32Z)` if keying off the last deploy). Do the same for baseline window calculations — shift them relative to the analysis window, not hardcoded to `ago(8d)`/`ago(1d)`.
 
 ### Phase 1: Baseline & Orientation
 
@@ -354,16 +370,35 @@ Now that you have the full picture, decide what's actionable.
 1. Run `bd search "<key terms>"` to check for existing beads covering this issue
 2. If a match exists, update it with `bd update <id> --notes="..."` instead of creating a duplicate
 
-**Filing format:**
+#### Filing workflow: parent epic + child beads
+
+Every observatory run creates exactly **one parent epic** that groups all findings. Individual findings are filed as child beads under it.
+
+**Step 1 — Create the parent epic (always, even if zero findings):**
+```bash
+bd create \
+  --title="[SRE] Observatory run <YYYY-MM-DD>" \
+  --description="SRE telemetry review. Window: <resolved time window description>. Health: <healthy|degraded|impaired>. Findings: <N>." \
+  --type=epic \
+  --priority=3
+```
+Note the epic ID (e.g., `tc-abc`).
+
+**Step 2 — File each finding as a child bead:**
 ```bash
 bd create \
   --title="[SRE] <concise description of the issue>" \
   --description="<what was observed, including KQL query and key metrics. Include: what's happening, since when, blast radius, and suggested investigation starting point>" \
   --type=bug \
   --priority=<0-4>
+bd dep add <child-id> <epic-id>
 ```
 
-Prefix all titles with `[SRE]` so these are easy to filter. Use `--type=bug` for errors and failures; `--type=task` for performance investigations that aren't strictly broken.
+Use `--type=bug` for errors and failures; `--type=task` for performance investigations that aren't strictly broken. Prefix all titles with `[SRE]`.
+
+**Step 3 — Update the epic description** with the final finding count and list of child bead IDs once all are filed. If zero findings, close the epic immediately with `bd close <epic-id> --reason="Clean bill of health"`.
+
+The parent epic's priority should match the **highest severity** finding filed under it (e.g., if you file a P1 child, promote the epic to P1).
 
 ### Phase 7: Summary & Sync
 
