@@ -6,6 +6,8 @@ namespace TownCrier.Application.Tests.Polling;
 
 public sealed class PollPlanItCommandHandlerTests
 {
+    private static readonly PlanItPollingOptions ZeroCooldownOptions = new() { RateLimitCooldownSeconds = 0 };
+
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
@@ -506,6 +508,6 @@ public sealed class PollPlanItCommandHandlerTests
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             NullLogger<PollPlanItCommandHandler>.Instance,
-            pollingOptions);
+            pollingOptions ?? ZeroCooldownOptions);
     }
 }
