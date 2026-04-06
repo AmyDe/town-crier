@@ -462,6 +462,31 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
     }
 
+    [Test]
+    public async Task Should_ContinueToNextAuthority_When_RateLimitHitWithCooldown()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var pollingOptions = new PlanItPollingOptions { RateLimitCooldownSeconds = 0 };
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            pollingOptions: pollingOptions);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
@@ -469,7 +494,8 @@ public sealed class PollPlanItCommandHandlerTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        PlanItPollingOptions? pollingOptions = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -479,6 +505,7 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            NullLogger<PollPlanItCommandHandler>.Instance);
+            NullLogger<PollPlanItCommandHandler>.Instance,
+            pollingOptions);
     }
 }
