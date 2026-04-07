@@ -23,6 +23,12 @@ public sealed class CreateUserProfileCommandHandler
         var existing = await this.repository.GetByUserIdAsync(command.UserId, ct).ConfigureAwait(false);
         if (existing is not null)
         {
+            if (existing.Email is null && !string.IsNullOrWhiteSpace(command.Email))
+            {
+                existing.BackfillEmail(command.Email);
+                await this.repository.SaveAsync(existing, ct).ConfigureAwait(false);
+            }
+
             return new CreateUserProfileResult(
                 existing.UserId,
                 existing.NotificationPreferences.PushEnabled,
