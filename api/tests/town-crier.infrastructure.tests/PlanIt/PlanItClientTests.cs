@@ -2,6 +2,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -641,6 +643,45 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_LogRetryAfterSource_When_429ResponseHasRetryAfterHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
+        var logger = new FakePlanItLogger();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, logger: logger);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+
+        // Assert — logged that Retry-After header was used
+        await Assert.That(logger.Messages).HasCount().EqualTo(1);
+        await Assert.That(logger.Messages[0]).Contains("Retry-After");
+        await Assert.That(logger.Messages[0]).Contains("10");
+        await Assert.That(logger.Messages[0]).Contains("292");
+    }
+
+    [Test]
+    public async Task Should_LogBackoffSource_When_429ResponseHasNoRetryAfterHeader()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
+        var logger = new FakePlanItLogger();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
+        var client = CreateClient(handler, retryOptions: options, logger: logger);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+
+        // Assert — logged that exponential backoff was used
+        await Assert.That(logger.Messages).HasCount().EqualTo(1);
+        await Assert.That(logger.Messages[0]).Contains("backoff");
+        await Assert.That(logger.Messages[0]).Contains("292");
+    }
+
+    [Test]
     public async Task Should_UseRetryAfterDelay_When_HeaderContainsHttpDate()
     {
         // Arrange
@@ -694,7 +735,8 @@ public sealed class PlanItClientTests
         PlanItRetryOptions? retryOptions = null,
         PlanItThrottleOptions? throttleOptions = null,
         List<TimeSpan>? delays = null,
-        List<TimeSpan>? throttleDelays = null)
+        List<TimeSpan>? throttleDelays = null,
+        ILogger<PlanItClient>? logger = null)
     {
         var httpClient = new HttpClient(handler, disposeHandler: false)
         {
@@ -718,7 +760,7 @@ public sealed class PlanItClientTests
             };
         }
 
-        return new PlanItClient(httpClient, retryOptions ?? new PlanItRetryOptions(), throttleOptions, delayFunc);
+        return new PlanItClient(httpClient, logger ?? NullLogger<PlanItClient>.Instance, retryOptions ?? new PlanItRetryOptions(), throttleOptions, delayFunc);
     }
 
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(
