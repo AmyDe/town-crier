@@ -24,7 +24,7 @@ public sealed class UserProfile
 
     public string UserId { get; }
 
-    public string? Email { get; }
+    public string? Email { get; private set; }
 
     public NotificationPreferences NotificationPreferences { get; private set; }
 
@@ -50,6 +50,18 @@ public sealed class UserProfile
             subscriptionExpiry: null,
             originalTransactionId: null,
             gracePeriodExpiry: null);
+    }
+
+    public void BackfillEmail(string email)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+        if (this.Email is not null)
+        {
+            return;
+        }
+
+        this.Email = email;
     }
 
     public void UpdatePreferences(NotificationPreferences notificationPreferences)

@@ -184,6 +184,45 @@ public sealed class CreateUserProfileCommandHandlerTests
         await Assert.That(result.Tier).IsEqualTo(SubscriptionTier.Free);
     }
 
+    [Test]
+    public async Task Should_BackfillEmail_When_ExistingProfileHasNullEmail()
+    {
+        // Arrange — profile created without email (the bug scenario)
+        var repository = new FakeUserProfileRepository();
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        await handler.HandleAsync(
+            new CreateUserProfileCommand("auth0|no-email-user"), CancellationToken.None);
+
+        var before = repository.GetByUserId("auth0|no-email-user");
+        await Assert.That(before!.Email).IsNull();
+
+        // Act — re-register now that the token includes email
+        await handler.HandleAsync(
+            new CreateUserProfileCommand("auth0|no-email-user", "user@example.com"), CancellationToken.None);
+
+        // Assert — email has been backfilled
+        var after = repository.GetByUserId("auth0|no-email-user");
+        await Assert.That(after!.Email).IsEqualTo("user@example.com");
+    }
+
+    [Test]
+    public async Task Should_NotOverwriteEmail_When_ExistingProfileAlreadyHasEmail()
+    {
+        // Arrange — profile created with email
+        var repository = new FakeUserProfileRepository();
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        await handler.HandleAsync(
+            new CreateUserProfileCommand("auth0|has-email", "original@example.com"), CancellationToken.None);
+
+        // Act — re-register with a different email
+        await handler.HandleAsync(
+            new CreateUserProfileCommand("auth0|has-email", "different@example.com"), CancellationToken.None);
+
+        // Assert — original email preserved
+        var saved = repository.GetByUserId("auth0|has-email");
+        await Assert.That(saved!.Email).IsEqualTo("original@example.com");
+    }
+
     private static AutoGrantOptions NoAutoGrant() => new();
 
     private static AutoGrantOptions AutoGrantFor(string domains) => new() { ProDomains = domains };
