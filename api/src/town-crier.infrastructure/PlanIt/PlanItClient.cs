@@ -3,13 +3,14 @@ using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using TownCrier.Application.PlanIt;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.PlanIt;
 
-public sealed class PlanItClient : IPlanItClient
+public sealed partial class PlanItClient : IPlanItClient
 {
     private const int DefaultPageSize = 100;
     private const int SearchPageSize = 20;
@@ -18,17 +19,20 @@ public sealed class PlanItClient : IPlanItClient
     private static readonly Random Jitter = new();
 
     private readonly HttpClient httpClient;
+    private readonly ILogger<PlanItClient> logger;
     private readonly PlanItRetryOptions retryOptions;
     private readonly PlanItThrottleOptions throttleOptions;
     private readonly Func<TimeSpan, CancellationToken, Task> delayFunc;
 
     public PlanItClient(
         HttpClient httpClient,
+        ILogger<PlanItClient> logger,
         PlanItRetryOptions? retryOptions = null,
         PlanItThrottleOptions? throttleOptions = null,
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
     {
         this.httpClient = httpClient;
+        this.logger = logger;
         this.retryOptions = retryOptions ?? new PlanItRetryOptions();
         this.throttleOptions = throttleOptions ?? new PlanItThrottleOptions();
         this.delayFunc = delayFunc ?? Task.Delay;
@@ -170,6 +174,9 @@ public sealed class PlanItClient : IPlanItClient
         return null;
     }
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt 429 for authority {AuthorityId}, attempt {Attempt}/{MaxRetries}, waiting {DelayMs}ms ({Source})")]
+    private static partial void LogRetryDelay(ILogger logger, int authorityId, int attempt, int maxRetries, int delayMs, string source);
+
     private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, int authorityId, CancellationToken ct)
     {
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
@@ -206,6 +213,8 @@ public sealed class PlanItClient : IPlanItClient
             }
 
             var delay = retryAfterDelay ?? this.CalculateBackoffDelay(attempt);
+            var source = retryAfterDelay.HasValue ? "Retry-After" : "exponential backoff";
+            LogRetryDelay(this.logger, authorityId, attempt + 1, this.retryOptions.MaxRetries, (int)delay.TotalMilliseconds, source);
             await this.delayFunc(delay, ct).ConfigureAwait(false);
         }
 
