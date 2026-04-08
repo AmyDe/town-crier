@@ -26,6 +26,7 @@ internal static class WebApplicationExtensions
             .AllowAnonymous();
 
         v1.MapVersionConfigEndpoints();
+        v1.MapLegalEndpoints();
         v1.MapDesignationEndpoints();
         v1.MapAuthorityEndpoints();
         v1.MapPlanningApplicationEndpoints();
