@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace TownCrier.Web.Observability;
@@ -14,6 +15,9 @@ internal sealed partial class ErrorResponseMiddleware(RequestDelegate next, ILog
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            Activity.Current?.AddException(ex);
+            Activity.Current?.SetStatus(ActivityStatusCode.Error, ex.Message);
+
             LogUnhandledException(logger, ex, context.Request.Method, context.Request.Path.Value ?? "/");
             context.Items["ErrorDetail"] = ex.Message;
             if (!context.Response.HasStarted)

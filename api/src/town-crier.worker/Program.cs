@@ -35,7 +35,7 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing =>
     {
         tracing
-            .AddHttpClientInstrumentation()
+            .AddHttpClientInstrumentation(options => options.RecordException = true)
             .AddSource(PollingInstrumentation.ActivitySourceName)
             .AddSource(CosmosInstrumentation.ActivitySourceName);
 
@@ -131,9 +131,10 @@ var exitCode = 0;
 switch (mode)
 {
     case "poll":
+    {
+        using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
         try
         {
-            using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
             var cycleStart = Stopwatch.GetTimestamp();
 
             WorkerLog.PollCycleStarting(logger);
@@ -153,14 +154,19 @@ switch (mode)
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             PollingMetrics.PollFailures.Add(1);
             WorkerLog.PollCycleFailed(logger, ex);
             exitCode = 1;
         }
 
         break;
+    }
 
     case "digest":
+    {
+        using var digestActivity = PollingInstrumentation.Source.StartActivity("Digest Cycle");
         try
         {
             WorkerLog.DigestCycleStarting(logger);
@@ -175,11 +181,14 @@ switch (mode)
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            digestActivity?.AddException(ex);
+            digestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             WorkerLog.DigestCycleFailed(logger, ex);
             exitCode = 1;
         }
 
         break;
+    }
 
     default:
         WorkerLog.UnknownWorkerMode(logger, mode);
