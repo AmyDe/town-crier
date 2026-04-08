@@ -369,10 +369,7 @@ public static class EnvironmentStack
         return new Dictionary<string, object?>
         {
             ["resourceGroupName"] = resourceGroup.Name,
-            ["containerAppUrl"] = containerApp.LatestRevisionFqdn.Apply(fqdn => $"https://{fqdn}"),
             ["cosmosAccountEndpoint"] = cosmosAccountEndpoint,
-            ["cosmosDatabaseName"] = cosmosDatabase.Name,
-            ["staticWebAppUrl"] = staticWebApp.DefaultHostname.Apply(hostname => $"https://{hostname}"),
             ["staticWebAppName"] = staticWebApp.Name,
         };
     }
