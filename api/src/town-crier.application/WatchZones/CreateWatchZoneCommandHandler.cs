@@ -69,12 +69,15 @@ public sealed partial class CreateWatchZoneCommandHandler
         {
             try
             {
+                using var backfillCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                backfillCts.CancelAfter(this.backfillTimeout);
+
                 var backfillSince = this.timeProvider.GetUtcNow() - BackfillWindow;
 
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(
-                    authorityId, backfillSince, ct).ConfigureAwait(false))
+                    authorityId, backfillSince, backfillCts.Token).ConfigureAwait(false))
                 {
-                    await this.planningApplicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+                    await this.planningApplicationRepository.UpsertAsync(application, backfillCts.Token).ConfigureAwait(false);
                 }
             }
 #pragma warning disable CA1031 // Best-effort backfill — polling service provides the safety net
