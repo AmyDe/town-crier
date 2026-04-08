@@ -90,3 +90,5 @@ email-notifications/
 
 # Skill evaluation workspaces
 .claude/skills/*-workspace/
+.claude/worktrees/autopilot-tc-k2v/
+.claude/worktrees/autopilot-tc-2v1/

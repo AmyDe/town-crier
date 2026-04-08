@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { GeocodeResult, AuthorityId } from '../../domain/types';
+import type { GeocodeResult } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 
 type CreateStep = 'postcode' | 'details' | 'confirm';
@@ -10,7 +10,6 @@ interface CreateWatchZoneState {
   postcode: string;
   coordinates: GeocodeResult | null;
   radiusMetres: number;
-  authorityId: AuthorityId | null;
   isSaving: boolean;
   error: string | null;
 }
@@ -25,7 +24,6 @@ export function useCreateWatchZone(
     postcode: '',
     coordinates: null,
     radiusMetres: 2000,
-    authorityId: null,
     isSaving: false,
     error: null,
   });
@@ -46,10 +44,6 @@ export function useCreateWatchZone(
 
   const setRadiusMetres = useCallback((radiusMetres: number) => {
     setState(prev => ({ ...prev, radiusMetres }));
-  }, []);
-
-  const setAuthorityId = useCallback((authorityId: AuthorityId) => {
-    setState(prev => ({ ...prev, authorityId }));
   }, []);
 
   const confirmDetails = useCallback(() => {
@@ -73,14 +67,13 @@ export function useCreateWatchZone(
         latitude: state.coordinates.latitude,
         longitude: state.coordinates.longitude,
         radiusMetres: state.radiusMetres,
-        authorityId: state.authorityId ?? undefined,
       });
       navigate('/watch-zones');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred';
       setState(prev => ({ ...prev, isSaving: false, error: message }));
     }
-  }, [state.coordinates, state.name, state.radiusMetres, state.authorityId, repository, navigate]);
+  }, [state.coordinates, state.name, state.radiusMetres, repository, navigate]);
 
   return {
     step: state.step,
@@ -93,7 +86,6 @@ export function useCreateWatchZone(
     setGeocode,
     setName,
     setRadiusMetres,
-    setAuthorityId,
     confirmDetails,
     save,
   };

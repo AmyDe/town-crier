@@ -6,8 +6,6 @@ namespace TownCrier.Application.Tests.Polling;
 
 public sealed class PollPlanItCommandHandlerTests
 {
-    private static readonly PlanItPollingOptions ZeroCooldownOptions = new() { RateLimitCooldownSeconds = 0 };
-
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
@@ -285,7 +283,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_SkipAuthorityAndContinue_When_FirstRateLimitHit()
+    public async Task Should_BreakImmediately_When_RateLimitHit()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -301,35 +299,12 @@ public sealed class PollPlanItCommandHandlerTests
 
         var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(result.ApplicationCount).IsEqualTo(2);
-        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
-    }
-
-    [Test]
-    public async Task Should_BreakLoop_When_SecondRateLimitHit()
-    {
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(100);
-        authorityProvider.Add(200);
-        authorityProvider.Add(300);
-        authorityProvider.Add(400);
-
-        var planItClient = new FakePlanItClient();
-        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
-        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-        planItClient.ThrowForAuthority(300, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-        planItClient.Add(400, new PlanningApplicationBuilder().WithUid("app-4").WithAreaId(400).Build());
-
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
-
-        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        // Only authority 100 completed before two 429s stopped the loop
+        // Only authority 100 completed before the 429 stopped the loop
         await Assert.That(result.ApplicationCount).IsEqualTo(1);
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
 
-        // Authority 400 was never attempted
-        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(400);
+        // Authority 300 was never attempted
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
     }
 
     [Test]
@@ -464,31 +439,6 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
     }
 
-    [Test]
-    public async Task Should_ContinueToNextAuthority_When_RateLimitHitWithCooldown()
-    {
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(100);
-        authorityProvider.Add(200);
-        authorityProvider.Add(300);
-
-        var planItClient = new FakePlanItClient();
-        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
-        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
-
-        var pollingOptions = new PlanItPollingOptions { RateLimitCooldownSeconds = 0 };
-        var handler = CreateHandler(
-            planItClient: planItClient,
-            authorityProvider: authorityProvider,
-            pollingOptions: pollingOptions);
-
-        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        await Assert.That(result.ApplicationCount).IsEqualTo(2);
-        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
-    }
-
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
@@ -496,8 +446,7 @@ public sealed class PollPlanItCommandHandlerTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        TimeProvider? timeProvider = null,
-        PlanItPollingOptions? pollingOptions = null)
+        TimeProvider? timeProvider = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -507,7 +456,6 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            NullLogger<PollPlanItCommandHandler>.Instance,
-            pollingOptions ?? ZeroCooldownOptions);
+            NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

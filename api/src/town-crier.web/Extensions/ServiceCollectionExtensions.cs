@@ -102,10 +102,6 @@ internal static class ServiceCollectionExtensions
         configuration.GetSection("PlanIt:Throttle").Bind(planItThrottle);
         services.AddSingleton(planItThrottle);
 
-        var planItRetry = new PlanItRetryOptions();
-        configuration.GetSection("PlanIt:Retry").Bind(planItRetry);
-        services.AddSingleton(planItRetry);
-
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
         var planItBaseUrl = configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
 #pragma warning restore S1075

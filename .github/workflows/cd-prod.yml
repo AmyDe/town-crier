@@ -193,21 +193,17 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy worker image to poll job
+      - name: Deploy worker image to all jobs
         run: |
-          az containerapp job update \
-            --name "job-town-crier-poll-prod" \
-            --resource-group "$RESOURCE_GROUP" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
-
-      - name: Deploy worker image to digest job
-        run: |
-          az containerapp job update \
-            --name "job-town-crier-digest-prod" \
-            --resource-group "$RESOURCE_GROUP" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
+          for JOB in poll digest; do
+            echo "::group::Deploying to job-town-crier-${JOB}-prod"
+            az containerapp job update \
+              --name "job-town-crier-${JOB}-prod" \
+              --resource-group "$RESOURCE_GROUP" \
+              --image "$IMAGE"
+            echo "::endgroup::"
+          done
         env:
           RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
 

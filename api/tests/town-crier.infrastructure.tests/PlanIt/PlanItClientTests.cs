@@ -2,8 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -196,59 +194,19 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_RetryAndSucceed_When_ApiReturns429ThenSuccess()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
-        var delays = new List<TimeSpan>();
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 }, delays: delays);
-
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
-
-        // Assert — got results after retries
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // 2 x 429 + 1 success = 3 total requests
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(3);
-    }
-
-    [Test]
-    public async Task Should_ApplyExponentialBackoff_When_Retrying429()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 3, SingleRecordResponse);
-        var delays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 5, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, delays: delays);
-
-        // Act
-        await ConsumeAsync(client, differentStart: null);
-
-        // Assert — backoff progression: 1s, 2s, 4s (exponential, ignoring jitter for range check)
-        await Assert.That(delays).HasCount().EqualTo(3);
-        await Assert.That(delays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500))
-            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(1500));
-        await Assert.That(delays[1]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(1000))
-            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(3000));
-        await Assert.That(delays[2]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(2000))
-            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(6000));
-    }
-
-    [Test]
-    public async Task Should_ThrowHttpRequestException_When_MaxRetriesExhausted()
+    public async Task Should_ThrowImmediately_When_ApiReturns429()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
         handler.SetupRateLimitForever("page=1");
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
-        var client = CreateClient(handler, retryOptions: options);
+        var client = CreateClient(handler);
 
-        // Act & Assert
+        // Act & Assert — should throw immediately without retrying
         await Assert.ThrowsAsync<HttpRequestException>(
             async () => await ConsumeAsync(client, differentStart: null));
+
+        // Only 1 request — no retries, the client throws on first 429
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
     }
 
     [Test]
@@ -256,10 +214,8 @@ public sealed class PlanItClientTests
     {
         // Arrange
         using var handler = new FakePlanItHandler();
-
-        // No response configured → returns 404, which is a non-429 error
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 };
-        var client = CreateClient(handler, retryOptions: options);
+        handler.SetupStatusCodeResponse("page=1", HttpStatusCode.InternalServerError);
+        var client = CreateClient(handler);
 
         // Act & Assert — should throw immediately without retrying
         await Assert.ThrowsAsync<HttpRequestException>(
@@ -295,7 +251,7 @@ public sealed class PlanItClientTests
         handler.SetupJsonResponse("page=1", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.5 };
-        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+        var client = CreateClient(handler, throttleOptions: throttleOptions, delays: throttleDelays);
 
         // Act
         await ConsumeAsync(client, differentStart: null);
@@ -321,7 +277,7 @@ public sealed class PlanItClientTests
 
         var throttleDelays = new List<TimeSpan>();
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.2 };
-        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+        var client = CreateClient(handler, throttleOptions: throttleOptions, delays: throttleDelays);
 
         // Act
         await ConsumeAsync(client, differentStart: null);
@@ -340,7 +296,7 @@ public sealed class PlanItClientTests
         handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.3 };
-        var client = CreateClient(handler, throttleOptions: throttleOptions, throttleDelays: throttleDelays);
+        var client = CreateClient(handler, throttleOptions: throttleOptions, delays: throttleDelays);
 
         // Act
         await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
@@ -348,31 +304,6 @@ public sealed class PlanItClientTests
         // Assert — one throttle delay before the search request
         await Assert.That(throttleDelays).HasCount().EqualTo(1);
         await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(300));
-    }
-
-    [Test]
-    public async Task Should_ThrottleBeforeEveryRetryAttempt_When_RateLimitedThenSucceeds()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
-        var allDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.1 };
-        var retryOptions = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 };
-        var client = CreateClient(handler, retryOptions: retryOptions, throttleOptions: throttleOptions, throttleDelays: allDelays);
-
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
-
-        // Assert — got results after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // 1 x 429 + 1 success = 2 total HTTP requests
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
-
-        // Throttle fires before EVERY HTTP request (2 throttle delays) plus 1 backoff delay after 429 = 3 total
-        var throttleCount = allDelays.Count(d => d == TimeSpan.FromMilliseconds(100));
-        await Assert.That(throttleCount).IsEqualTo(2);
     }
 
     [Test]
@@ -465,7 +396,7 @@ public sealed class PlanItClientTests
         using var handler = new FakePlanItHandler();
         handler.SetupJsonResponse("page=1", SingleRecordResponse);
         var throttleDelays = new List<TimeSpan>();
-        var client = CreateClient(handler, throttleDelays: throttleDelays);
+        var client = CreateClient(handler, delays: throttleDelays);
 
         // Act
         await ConsumeAsync(client, differentStart: null);
@@ -497,8 +428,8 @@ public sealed class PlanItClientTests
     {
         // Arrange
         using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.001 });
+        handler.SetupRateLimitForever("page=1");
+        var client = CreateClient(handler);
 
         var recorded = new List<(long Value, int StatusCode, int AuthorityCode)>();
         using var listener = new MeterListener();
@@ -530,15 +461,14 @@ public sealed class PlanItClientTests
         });
         listener.Start();
 
-        // Act
-        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+        // Act — 429 throws immediately, no retries
+        await Assert.ThrowsAsync<HttpRequestException>(
+            async () => await ConsumeAsync(client, differentStart: null, authorityId: 292));
 
-        // Assert — 2 rate limit responses recorded
-        await Assert.That(recorded).HasCount().EqualTo(2);
+        // Assert — single 429 response recorded
+        await Assert.That(recorded).HasCount().EqualTo(1);
         await Assert.That(recorded[0].StatusCode).IsEqualTo(429);
         await Assert.That(recorded[0].AuthorityCode).IsEqualTo(292);
-        await Assert.That(recorded[1].StatusCode).IsEqualTo(429);
-        await Assert.That(recorded[1].AuthorityCode).IsEqualTo(292);
     }
 
     [Test]
@@ -620,147 +550,27 @@ public sealed class PlanItClientTests
         await Assert.That(recorded).HasCount().EqualTo(0);
     }
 
-    [Test]
-    public async Task Should_UseRetryAfterDelay_When_429ResponseHasDeltaSecondsHeader()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
-        var backoffDelays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
-
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
-
-        // Assert — got results after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // The backoff delay should be exactly 10 seconds (from Retry-After header),
-        // not the exponential backoff of ~1s (base delay * 2^0)
-        await Assert.That(backoffDelays).HasCount().EqualTo(1);
-        await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(10));
-    }
-
-    [Test]
-    public async Task Should_LogRetryAfterSource_When_429ResponseHasRetryAfterHeader()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
-        var logger = new FakePlanItLogger();
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, logger: logger);
-
-        // Act
-        await ConsumeAsync(client, differentStart: null, authorityId: 292);
-
-        // Assert — logged that Retry-After header was used
-        await Assert.That(logger.Messages).HasCount().EqualTo(1);
-        await Assert.That(logger.Messages[0]).Contains("Retry-After");
-        await Assert.That(logger.Messages[0]).Contains("10");
-        await Assert.That(logger.Messages[0]).Contains("292");
-    }
-
-    [Test]
-    public async Task Should_LogBackoffSource_When_429ResponseHasNoRetryAfterHeader()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
-        var logger = new FakePlanItLogger();
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, logger: logger);
-
-        // Act
-        await ConsumeAsync(client, differentStart: null, authorityId: 292);
-
-        // Assert — logged that exponential backoff was used
-        await Assert.That(logger.Messages).HasCount().EqualTo(1);
-        await Assert.That(logger.Messages[0]).Contains("backoff");
-        await Assert.That(logger.Messages[0]).Contains("292");
-    }
-
-    [Test]
-    public async Task Should_UseRetryAfterDelay_When_HeaderContainsHttpDate()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-
-        // Use a date 30 seconds in the future from now
-        var futureDate = DateTimeOffset.UtcNow.AddSeconds(30);
-        var httpDateValue = futureDate.ToString("R");
-        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: httpDateValue);
-        var backoffDelays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
-
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
-
-        // Assert — got results after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // The delay should be approximately 30 seconds (from the HTTP-date Retry-After),
-        // not the exponential backoff of ~1s. Allow a generous range for clock drift.
-        await Assert.That(backoffDelays).HasCount().EqualTo(1);
-        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromSeconds(25))
-            .And.IsLessThanOrEqualTo(TimeSpan.FromSeconds(35));
-    }
-
-    [Test]
-    public async Task Should_FallBackToExponentialBackoff_When_NoRetryAfterHeader()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 1, SingleRecordResponse);
-        var backoffDelays = new List<TimeSpan>();
-        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1 };
-        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
-
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
-
-        // Assert — got results after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // Without Retry-After header, should use exponential backoff (~1s base * 2^0 = ~1s with jitter)
-        await Assert.That(backoffDelays).HasCount().EqualTo(1);
-        await Assert.That(backoffDelays[0]).IsGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(500))
-            .And.IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(1500));
-    }
-
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
-        PlanItRetryOptions? retryOptions = null,
         PlanItThrottleOptions? throttleOptions = null,
-        List<TimeSpan>? delays = null,
-        List<TimeSpan>? throttleDelays = null,
-        ILogger<PlanItClient>? logger = null)
+        List<TimeSpan>? delays = null)
     {
         var httpClient = new HttpClient(handler, disposeHandler: false)
         {
             BaseAddress = new Uri(BaseUrl),
         };
 
-        // When tracking backoff delays but not throttle delays, disable throttle
-        // so throttle delays don't pollute the backoff delay list.
-        throttleOptions ??= delays is not null && throttleDelays is null
-            ? new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 }
-            : new PlanItThrottleOptions();
-
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null;
-        if (delays is not null || throttleDelays is not null)
+        if (delays is not null)
         {
             delayFunc = (delay, _) =>
             {
-                delays?.Add(delay);
-                throttleDelays?.Add(delay);
+                delays.Add(delay);
                 return Task.CompletedTask;
             };
         }
 
-        return new PlanItClient(httpClient, logger ?? NullLogger<PlanItClient>.Instance, retryOptions ?? new PlanItRetryOptions(), throttleOptions, delayFunc);
+        return new PlanItClient(httpClient, throttleOptions, delayFunc);
     }
 
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(

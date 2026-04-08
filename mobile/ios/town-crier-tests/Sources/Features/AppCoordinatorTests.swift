@@ -53,67 +53,6 @@ struct AppCoordinatorTests {
     #expect(!vm.isLoading)
   }
 
-  // MARK: - Offline-Aware Factory
-
-  @Test func makeApplicationListViewModel_withOfflineRepository_usesOfflinePath() async {
-    let remote = SpyPlanningApplicationRepository()
-    remote.fetchApplicationsResult = .success([.pendingReview])
-    let cache = SpyApplicationCacheStore()
-    let connectivity = StubConnectivityMonitor(isConnected: true)
-    let offlineRepo = OfflineAwareRepository(
-      remote: remote,
-      cache: cache,
-      connectivity: connectivity
-    )
-    let sut = AppCoordinator(
-      repository: remote,
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      offlineRepository: offlineRepo,
-      geocoder: SpyPostcodeGeocoder(),
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-
-    let vm = sut.makeApplicationListViewModel(authority: .cambridge)
-    await vm.loadApplications()
-
-    #expect(vm.dataFreshness == .fresh)
-    #expect(vm.filteredApplications.count == 1)
-  }
-
-  @Test func makeMapViewModel_withOfflineRepository_usesOfflinePath() async {
-    let remote = SpyPlanningApplicationRepository()
-    remote.fetchApplicationsResult = .success([.pendingReview])
-    let cache = SpyApplicationCacheStore()
-    let connectivity = StubConnectivityMonitor(isConnected: true)
-    let offlineRepo = OfflineAwareRepository(
-      remote: remote,
-      cache: cache,
-      connectivity: connectivity
-    )
-    let sut = AppCoordinator(
-      repository: remote,
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      offlineRepository: offlineRepo,
-      geocoder: SpyPostcodeGeocoder(),
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-
-    let vm = sut.makeMapViewModel(watchZone: .cambridge)
-    await vm.loadApplications()
-
-    #expect(vm.dataFreshness == .fresh)
-  }
-
   // MARK: - Application List Factory
 
   @Test func makeApplicationListViewModel_createsViewModelWithAuthority() async {

@@ -1,39 +1,27 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using TownCrier.Application.PlanIt;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.PlanIt;
 
-public sealed partial class PlanItClient : IPlanItClient
+public sealed class PlanItClient : IPlanItClient
 {
     private const int DefaultPageSize = 100;
     private const int SearchPageSize = 20;
 
-    [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]
-    private static readonly Random Jitter = new();
-
     private readonly HttpClient httpClient;
-    private readonly ILogger<PlanItClient> logger;
-    private readonly PlanItRetryOptions retryOptions;
     private readonly PlanItThrottleOptions throttleOptions;
     private readonly Func<TimeSpan, CancellationToken, Task> delayFunc;
 
     public PlanItClient(
         HttpClient httpClient,
-        ILogger<PlanItClient> logger,
-        PlanItRetryOptions? retryOptions = null,
         PlanItThrottleOptions? throttleOptions = null,
         Func<TimeSpan, CancellationToken, Task>? delayFunc = null)
     {
         this.httpClient = httpClient;
-        this.logger = logger;
-        this.retryOptions = retryOptions ?? new PlanItRetryOptions();
         this.throttleOptions = throttleOptions ?? new PlanItThrottleOptions();
         this.delayFunc = delayFunc ?? Task.Delay;
     }
@@ -49,7 +37,7 @@ public sealed partial class PlanItClient : IPlanItClient
         do
         {
             var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
-            using var response = await this.SendWithRetryAsync(url, authorityId, ct).ConfigureAwait(false);
+            using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
             var planItResponse = await JsonSerializer.DeserializeAsync(
@@ -81,7 +69,7 @@ public sealed partial class PlanItClient : IPlanItClient
         CancellationToken ct)
     {
         var url = new Uri(BuildSearchUrl(searchText, authorityId, page), UriKind.Relative);
-        using var response = await this.SendWithRetryAsync(url, authorityId, ct).ConfigureAwait(false);
+        using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var planItResponse = await JsonSerializer.DeserializeAsync(
@@ -152,86 +140,23 @@ public sealed partial class PlanItClient : IPlanItClient
         return DateOnly.Parse(value, CultureInfo.InvariantCulture);
     }
 
-    private static TimeSpan? ParseRetryAfterHeader(HttpResponseMessage response)
+    private async Task<HttpResponseMessage> SendWithThrottleAsync(Uri url, int authorityId, CancellationToken ct)
     {
-        var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter is null)
+        if (this.throttleOptions.DelayBetweenRequests > TimeSpan.Zero)
         {
-            return null;
+            await this.delayFunc(this.throttleOptions.DelayBetweenRequests, ct).ConfigureAwait(false);
         }
 
-        if (retryAfter.Delta.HasValue)
+        var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
         {
-            return retryAfter.Delta.Value;
+            PlanItInstrumentation.HttpErrors.Add(
+                1,
+                new KeyValuePair<string, object?>("http.response.status_code", (int)response.StatusCode),
+                new KeyValuePair<string, object?>("planit.authority_code", authorityId));
         }
 
-        if (retryAfter.Date.HasValue)
-        {
-            var delay = retryAfter.Date.Value - DateTimeOffset.UtcNow;
-            return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
-        }
-
-        return null;
-    }
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt 429 for authority {AuthorityId}, attempt {Attempt}/{MaxRetries}, waiting {DelayMs}ms ({Source})")]
-    private static partial void LogRetryDelay(ILogger logger, int authorityId, int attempt, int maxRetries, int delayMs, string source);
-
-    private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, int authorityId, CancellationToken ct)
-    {
-        for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
-        {
-            if (this.throttleOptions.DelayBetweenRequests > TimeSpan.Zero)
-            {
-                await this.delayFunc(this.throttleOptions.DelayBetweenRequests, ct).ConfigureAwait(false);
-            }
-
-            var response = await this.httpClient.GetAsync(url, ct).ConfigureAwait(false);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                PlanItInstrumentation.HttpErrors.Add(
-                    1,
-                    new KeyValuePair<string, object?>("http.response.status_code", (int)response.StatusCode),
-                    new KeyValuePair<string, object?>("planit.authority_code", authorityId));
-            }
-
-            if (response.StatusCode != (HttpStatusCode)429)
-            {
-                return response;
-            }
-
-            var retryAfterDelay = ParseRetryAfterHeader(response);
-            response.Dispose();
-
-            if (attempt == this.retryOptions.MaxRetries)
-            {
-                throw new HttpRequestException(
-                    $"Rate limited by PlanIt API after {this.retryOptions.MaxRetries} retries.",
-                    inner: null,
-                    HttpStatusCode.TooManyRequests);
-            }
-
-            var delay = retryAfterDelay ?? this.CalculateBackoffDelay(attempt);
-            var source = retryAfterDelay.HasValue ? "Retry-After" : "exponential backoff";
-            LogRetryDelay(this.logger, authorityId, attempt + 1, this.retryOptions.MaxRetries, (int)delay.TotalMilliseconds, source);
-            await this.delayFunc(delay, ct).ConfigureAwait(false);
-        }
-
-        // Unreachable — loop always returns or throws
-        throw new InvalidOperationException();
-    }
-
-    [SuppressMessage("Security", "CA5394:Do not use insecure randomness", Justification = "Jitter for backoff delay does not require cryptographic randomness")]
-    private TimeSpan CalculateBackoffDelay(int attempt)
-    {
-        var baseMs = this.retryOptions.BaseDelay.TotalMilliseconds;
-        var exponentialMs = baseMs * Math.Pow(2, attempt);
-
-        // Add jitter: ±50% of the exponential delay
-        var jitterFactor = 0.5 + Jitter.NextDouble();
-        var delayMs = exponentialMs * jitterFactor;
-
-        return TimeSpan.FromMilliseconds(delayMs);
+        return response;
     }
 }

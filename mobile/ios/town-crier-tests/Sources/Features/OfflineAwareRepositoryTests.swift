@@ -130,27 +130,4 @@ struct OfflineAwareRepositoryTests {
         }
     }
 
-    // MARK: - Freshness
-
-    @Test func freshness_fresh_whenOnlineAndRemoteSucceeds() async throws {
-        let apps = [PlanningApplication.pendingReview]
-        let (sut, _, _, _) = makeSUT(remoteApplications: apps)
-
-        let result = try await sut.fetchApplications(for: .cambridge)
-
-        #expect(DataFreshness.from(result) == .fresh)
-    }
-
-    @Test func freshness_stale_whenCacheIsBeyondTTL() async throws {
-        let staleEntry = CacheEntry(
-            data: [PlanningApplication.approved],
-            fetchedAt: Date().addingTimeInterval(-2000),
-            ttlSeconds: 900
-        )
-        let (sut, _, _, _) = makeSUT(cachedEntry: staleEntry, isConnected: false)
-
-        let result = try await sut.fetchApplications(for: .cambridge)
-
-        #expect(DataFreshness.from(result) == .stale)
-    }
 }

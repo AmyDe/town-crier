@@ -17,6 +17,12 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public Exception? ExceptionToThrow { get; set; }
 
+    /// <summary>
+    /// Gets or sets a delay applied to FetchApplicationsAsync (honoring cancellation)
+    /// before yielding results or throwing.
+    /// </summary>
+    public TimeSpan? FetchDelay { get; set; }
+
     public int SearchTotal { get; set; }
 
     public string? LastSearchText { get; private set; }
@@ -57,6 +63,11 @@ internal sealed class FakePlanItClient : IPlanItClient
         this.LastDifferentStartUsed = differentStart;
         this.DifferentStartByAuthority[authorityId] = differentStart;
         this.AuthorityIdsRequested.Add(authorityId);
+
+        if (this.FetchDelay.HasValue)
+        {
+            await Task.Delay(this.FetchDelay.Value, ct).ConfigureAwait(false);
+        }
 
         if (this.exceptionsByAuthority.TryGetValue(authorityId, out var authorityException))
         {

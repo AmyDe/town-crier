@@ -27,6 +27,9 @@ public static class PollingMetrics
             unit: "ms",
             description: "Total per-authority processing time (fetch + upsert + notifications)");
 
+    public static readonly Counter<long> RateLimited =
+        Meter.CreateCounter<long>("towncrier.polling.rate_limited");
+
     public static readonly Histogram<double> CycleDuration =
         Meter.CreateHistogram<double>(
             "towncrier.polling.cycle_duration_ms",

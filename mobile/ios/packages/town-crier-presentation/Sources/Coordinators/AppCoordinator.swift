@@ -50,16 +50,6 @@ public final class AppCoordinator: ObservableObject {
     LoginViewModel(authService: authService)
   }
 
-  public func makeHomeViewModel() -> HomeViewModel {
-    HomeViewModel()
-  }
-
-  public func makeLegalDocumentViewModel(
-    _ documentType: LegalDocumentType
-  ) -> LegalDocumentViewModel {
-    LegalDocumentViewModel(documentType: documentType)
-  }
-
   public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
     if let offlineRepository {
       return MapViewModel(offlineRepository: offlineRepository, watchZone: watchZone)
