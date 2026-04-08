@@ -285,7 +285,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_SkipAuthorityAndContinue_When_FirstRateLimitHit()
+    public async Task Should_BreakImmediately_When_RateLimitHit()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -301,8 +301,12 @@ public sealed class PollPlanItCommandHandlerTests
 
         var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(result.ApplicationCount).IsEqualTo(2);
-        await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
+        // Only authority 100 completed before the 429 stopped the loop
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+
+        // Authority 300 was never attempted
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
     }
 
     [Test]
