@@ -247,6 +247,45 @@ public sealed class CreateWatchZoneCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SaveZoneAndReturnCachedApps_When_BackfillExceedsTimeout()
+    {
+        // Arrange — Pro user with a slow PlanIt that exceeds the backfill timeout
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        // Pre-seed a cached nearby application (from a previous poll)
+        var cachedApp = new PlanningApplicationBuilder()
+            .WithName("cached-app")
+            .WithAreaId(42)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+        await this.planningApplicationRepository.UpsertAsync(cachedApp, CancellationToken.None);
+
+        // PlanIt will block for 30 seconds — far longer than the 1s test timeout
+        this.planItClient.FetchDelay = TimeSpan.FromSeconds(30);
+
+        var handler = this.CreateHandler(backfillTimeout: TimeSpan.FromSeconds(1));
+        var command = CreateCommand();
+
+        // Act — measure wall-clock time to confirm the backfill timeout is enforced
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+        stopwatch.Stop();
+
+        // Assert — handler returned within the backfill timeout, not after 30s
+        await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(5));
+
+        // Assert — zone was saved despite backfill timeout
+        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(1);
+
+        // Assert — cached nearby apps are still returned
+        await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
+        await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("cached-app");
+    }
+
+    [Test]
     public async Task Should_ThrowInvalidOperation_When_UserProfileNotFound()
     {
         // Arrange
@@ -343,7 +382,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
             AuthorityId: 42);
     }
 
-    private CreateWatchZoneCommandHandler CreateHandler()
+    private CreateWatchZoneCommandHandler CreateHandler(TimeSpan? backfillTimeout = null)
     {
         return new CreateWatchZoneCommandHandler(
             this.watchZoneRepository,
@@ -352,6 +391,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
             this.planningApplicationRepository,
             this.authorityResolver,
             new FakeTimeProvider(FixedNow),
-            NullLogger<CreateWatchZoneCommandHandler>.Instance);
+            NullLogger<CreateWatchZoneCommandHandler>.Instance,
+            backfillTimeout);
     }
 }

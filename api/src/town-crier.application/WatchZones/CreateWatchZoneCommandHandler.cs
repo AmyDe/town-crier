@@ -13,8 +13,10 @@ namespace TownCrier.Application.WatchZones;
 public sealed partial class CreateWatchZoneCommandHandler
 {
     private static readonly TimeSpan BackfillWindow = TimeSpan.FromDays(90);
+    private static readonly TimeSpan DefaultBackfillTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IAuthorityResolver authorityResolver;
+    private readonly TimeSpan backfillTimeout;
     private readonly ILogger<CreateWatchZoneCommandHandler> logger;
     private readonly IPlanItClient planItClient;
     private readonly IPlanningApplicationRepository planningApplicationRepository;
@@ -29,7 +31,8 @@ public sealed partial class CreateWatchZoneCommandHandler
         IPlanningApplicationRepository planningApplicationRepository,
         IAuthorityResolver authorityResolver,
         TimeProvider timeProvider,
-        ILogger<CreateWatchZoneCommandHandler> logger)
+        ILogger<CreateWatchZoneCommandHandler> logger,
+        TimeSpan? backfillTimeout = null)
     {
         this.watchZoneRepository = watchZoneRepository;
         this.userProfileRepository = userProfileRepository;
@@ -38,6 +41,7 @@ public sealed partial class CreateWatchZoneCommandHandler
         this.authorityResolver = authorityResolver;
         this.timeProvider = timeProvider;
         this.logger = logger;
+        this.backfillTimeout = backfillTimeout ?? DefaultBackfillTimeout;
     }
 
     public async Task<CreateWatchZoneResult> HandleAsync(CreateWatchZoneCommand command, CancellationToken ct)
@@ -77,7 +81,7 @@ public sealed partial class CreateWatchZoneCommandHandler
             catch (Exception ex)
 #pragma warning restore CA1031
             {
-                LogBackfillFailed(this.logger, authorityId, ex);
+                LogBackfillFailed(this.logger, authorityId, this.backfillTimeout, ex);
             }
         }
 
@@ -88,6 +92,6 @@ public sealed partial class CreateWatchZoneCommandHandler
         return new CreateWatchZoneResult(nearbyApplications);
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt backfill failed for authority {AuthorityId}; zone was created, polling will backfill later")]
-    private static partial void LogBackfillFailed(ILogger logger, int authorityId, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt backfill failed for authority {AuthorityId} (timeout={BackfillTimeout}); zone was created, polling will backfill later")]
+    private static partial void LogBackfillFailed(ILogger logger, int authorityId, TimeSpan backfillTimeout, Exception exception);
 }
