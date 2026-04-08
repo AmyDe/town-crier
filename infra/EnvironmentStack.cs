@@ -325,10 +325,10 @@ public static class EnvironmentStack
             Configuration = new JobConfigurationArgs
             {
                 TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
-                ReplicaTimeout = 600,
+                ReplicaTimeout = 120,
                 ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
                 {
-                    CronExpression = "0 * * * *",
+                    CronExpression = "*/15 * * * *",
                     Parallelism = 1,
                     ReplicaCompletionCount = 1,
                 },
