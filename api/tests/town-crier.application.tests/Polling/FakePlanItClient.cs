@@ -18,7 +18,7 @@ internal sealed class FakePlanItClient : IPlanItClient
     public Exception? ExceptionToThrow { get; set; }
 
     /// <summary>
-    /// When set, FetchApplicationsAsync will delay for this duration (honoring cancellation)
+    /// Gets or sets a delay applied to FetchApplicationsAsync (honoring cancellation)
     /// before yielding results or throwing.
     /// </summary>
     public TimeSpan? FetchDelay { get; set; }
