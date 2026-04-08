@@ -206,19 +206,17 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy worker image to poll job
+      - name: Deploy worker image to all jobs
         run: |
-          az containerapp job update \
-            --name "job-town-crier-poll-dev" \
-            --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
-
-      - name: Deploy worker image to digest job
-        run: |
-          az containerapp job update \
-            --name "job-town-crier-digest-dev" \
-            --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
+          for JOB in poll digest; do
+            echo "::group::Deploying to job-town-crier-${JOB}-dev"
+            az containerapp job update \
+              --name "job-town-crier-${JOB}-dev" \
+              --resource-group "rg-town-crier-dev" \
+              --image "$IMAGE"
+            echo "::endgroup::"
+          done
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
