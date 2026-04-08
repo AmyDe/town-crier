@@ -6,6 +6,7 @@ using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
+using TownCrier.Application.Legal;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
@@ -46,6 +47,7 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(UpdateZonePreferencesResult))]
 [JsonSerializable(typeof(GetZonePreferencesResult))]
 [JsonSerializable(typeof(GetVersionConfigResult))]
+[JsonSerializable(typeof(GetLegalDocumentResult))]
 [JsonSerializable(typeof(GrantSubscriptionCommand))]
 [JsonSerializable(typeof(GrantSubscriptionResult))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;
