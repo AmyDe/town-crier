@@ -75,4 +75,45 @@ public sealed class PlanItRetryOptionsTests
         await Assert.That(options.BaseDelaySeconds).IsEqualTo(1);
         await Assert.That(options.BaseDelay).IsEqualTo(TimeSpan.FromSeconds(1));
     }
+
+    [Test]
+    public async Task Should_DefaultMaxRetryAfterTo30Seconds_When_NoPropertiesSet()
+    {
+        // Arrange & Act
+        var options = new PlanItRetryOptions();
+
+        // Assert
+        await Assert.That(options.MaxRetryAfterSeconds).IsEqualTo(30);
+        await Assert.That(options.MaxRetryAfter).IsEqualTo(TimeSpan.FromSeconds(30));
+    }
+
+    [Test]
+    public async Task Should_AllowCustomMaxRetryAfter_When_Set()
+    {
+        // Arrange & Act
+        var options = new PlanItRetryOptions { MaxRetryAfterSeconds = 60 };
+
+        // Assert
+        await Assert.That(options.MaxRetryAfterSeconds).IsEqualTo(60);
+        await Assert.That(options.MaxRetryAfter).IsEqualTo(TimeSpan.FromSeconds(60));
+    }
+
+    [Test]
+    public async Task Should_BindMaxRetryAfterFromConfiguration_When_SectionProvided()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PlanIt:Retry:MaxRetryAfterSeconds"] = "45",
+            })
+            .Build();
+
+        var options = new PlanItRetryOptions();
+        config.GetSection("PlanIt:Retry").Bind(options);
+
+        // Assert
+        await Assert.That(options.MaxRetryAfterSeconds).IsEqualTo(45);
+        await Assert.That(options.MaxRetryAfter).IsEqualTo(TimeSpan.FromSeconds(45));
+    }
 }
