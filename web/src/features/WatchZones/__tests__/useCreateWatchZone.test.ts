@@ -3,7 +3,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useCreateWatchZone } from '../useCreateWatchZone';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
 import { aWatchZone } from './fixtures/watch-zone.fixtures';
-import { asAuthorityId } from '../../../domain/types';
 
 describe('useCreateWatchZone', () => {
   let spy: SpyWatchZoneRepository;
@@ -68,7 +67,6 @@ describe('useCreateWatchZone', () => {
 
     act(() => {
       result.current.setName('Home');
-      result.current.setAuthorityId(asAuthorityId(1));
     });
 
     await act(async () => {
@@ -81,7 +79,6 @@ describe('useCreateWatchZone', () => {
       latitude: 52.2053,
       longitude: 0.1218,
       radiusMetres: 2000,
-      authorityId: 1,
     });
     expect(navigatedTo).toBe('/watch-zones');
   });
@@ -94,7 +91,6 @@ describe('useCreateWatchZone', () => {
     act(() => {
       result.current.setGeocode({ latitude: 52.2053, longitude: 0.1218 }, 'CB1 2AD');
       result.current.setName('Home');
-      result.current.setAuthorityId(asAuthorityId(1));
     });
 
     await act(async () => {
