@@ -61,6 +61,14 @@ builder.Services.AddOpenTelemetry()
         }
     });
 
+builder.Services.Configure<MetricReaderOptions>(o =>
+{
+    o.PeriodicExportingMetricReaderOptions = new PeriodicExportingMetricReaderOptions
+    {
+        ExportIntervalMilliseconds = 5_000,
+    };
+});
+
 builder.Services.AddCosmosRestClient(builder.Configuration);
 
 builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
@@ -101,10 +109,6 @@ builder.Services.AddSingleton(planItThrottle);
 var planItRetry = new PlanItRetryOptions();
 builder.Configuration.GetSection("PlanIt:Retry").Bind(planItRetry);
 builder.Services.AddSingleton(planItRetry);
-
-var planItPolling = new PlanItPollingOptions();
-builder.Configuration.GetSection("PlanIt:Polling").Bind(planItPolling);
-builder.Services.AddSingleton(planItPolling);
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
 var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
@@ -199,8 +203,8 @@ switch (mode)
 }
 
 // Force-flush OpenTelemetry before the short-lived process exits.
-// The Azure Monitor exporter batches on ~30 s intervals; without this,
-// the worker terminates before the first batch window.
+// The Azure Monitor exporter batches on 5 s intervals; without this,
+// the worker may terminate before the final batch is sent.
 try
 {
     host.Services.GetService<MeterProvider>()?.ForceFlush(timeoutMilliseconds: 10_000);
