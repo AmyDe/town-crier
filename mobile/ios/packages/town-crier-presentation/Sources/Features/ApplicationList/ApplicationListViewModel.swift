@@ -8,7 +8,6 @@ public final class ApplicationListViewModel: ObservableObject {
     @Published var selectedStatusFilter: ApplicationStatus?
     @Published private(set) var isLoading = false
     @Published private(set) var error: DomainError?
-    @Published private(set) var dataFreshness: DataFreshness = .fresh
 
     private let repository: PlanningApplicationRepository?
     private let offlineRepository: OfflineAwareRepository?
@@ -70,10 +69,8 @@ public final class ApplicationListViewModel: ObservableObject {
             if let offlineRepository {
                 let entry = try await offlineRepository.fetchApplications(for: authority)
                 fetched = entry.data
-                dataFreshness = DataFreshness.from(entry)
             } else if let repository {
                 fetched = try await repository.fetchApplications(for: authority)
-                dataFreshness = .fresh
             } else {
                 fetched = []
             }

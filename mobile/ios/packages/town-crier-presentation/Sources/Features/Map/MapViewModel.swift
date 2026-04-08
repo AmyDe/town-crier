@@ -8,7 +8,6 @@ public final class MapViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var error: DomainError?
     @Published private(set) var selectedApplication: PlanningApplication?
-    @Published private(set) var dataFreshness: DataFreshness = .fresh
     @Published private(set) var hasLoaded = false
 
     let centreLat: Double
@@ -60,10 +59,8 @@ public final class MapViewModel: ObservableObject {
             if let offlineRepository {
                 let entry = try await offlineRepository.fetchApplications(for: LocalAuthority(code: "", name: ""))
                 fetched = entry.data
-                dataFreshness = DataFreshness.from(entry)
             } else if let repository {
                 fetched = try await repository.fetchApplications(for: LocalAuthority(code: "", name: ""))
-                dataFreshness = .fresh
             } else {
                 fetched = []
             }
