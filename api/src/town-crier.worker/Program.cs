@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
@@ -28,10 +29,11 @@ using TownCrier.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-var hasAppInsights = !string.IsNullOrEmpty(
-    builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]);
+var aiConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+var hasAppInsights = !string.IsNullOrEmpty(aiConnectionString);
 
 builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("town-crier-worker"))
     .WithTracing(tracing =>
     {
         tracing
@@ -41,7 +43,7 @@ builder.Services.AddOpenTelemetry()
 
         if (hasAppInsights)
         {
-            tracing.AddAzureMonitorTraceExporter();
+            tracing.AddAzureMonitorTraceExporter(o => o.ConnectionString = aiConnectionString);
         }
     })
     .WithMetrics(metrics =>
@@ -55,7 +57,7 @@ builder.Services.AddOpenTelemetry()
 
         if (hasAppInsights)
         {
-            metrics.AddAzureMonitorMetricExporter();
+            metrics.AddAzureMonitorMetricExporter(o => o.ConnectionString = aiConnectionString);
         }
     });
 

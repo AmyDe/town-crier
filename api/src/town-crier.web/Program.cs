@@ -2,6 +2,7 @@ using Azure.Monitor.OpenTelemetry.Exporter;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using TownCrier.Application.Observability;
 using TownCrier.Infrastructure.Observability;
@@ -10,10 +11,11 @@ using TownCrier.Web.Extensions;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
-var hasAppInsights = !string.IsNullOrEmpty(
-    builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]);
+var aiConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+var hasAppInsights = !string.IsNullOrEmpty(aiConnectionString);
 
 builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("town-crier-web"))
     .WithTracing(tracing =>
     {
         tracing
@@ -24,7 +26,7 @@ builder.Services.AddOpenTelemetry()
 
         if (hasAppInsights)
         {
-            tracing.AddAzureMonitorTraceExporter();
+            tracing.AddAzureMonitorTraceExporter(o => o.ConnectionString = aiConnectionString);
         }
     })
     .WithMetrics(metrics =>
@@ -39,7 +41,7 @@ builder.Services.AddOpenTelemetry()
 
         if (hasAppInsights)
         {
-            metrics.AddAzureMonitorMetricExporter();
+            metrics.AddAzureMonitorMetricExporter(o => o.ConnectionString = aiConnectionString);
         }
     });
 
@@ -47,7 +49,7 @@ builder.Logging.AddOpenTelemetry(logging =>
 {
     if (hasAppInsights)
     {
-        logging.AddAzureMonitorLogExporter();
+        logging.AddAzureMonitorLogExporter(o => o.ConnectionString = aiConnectionString);
     }
 });
 
