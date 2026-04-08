@@ -316,145 +316,19 @@ public static class EnvironmentStack
                 new CustomResourceOptions { DependsOn = { containerApp } });
         }
 
-        // Container Apps Job (Polling Worker) — runs on a cron schedule
-        var pollingJob = new Job($"job-town-crier-poll-{env}", new JobArgs
-        {
-            JobName = $"job-town-crier-poll-{env}",
-            ResourceGroupName = resourceGroup.Name,
-            EnvironmentId = containerAppsEnvironmentId,
-            Configuration = new JobConfigurationArgs
-            {
-                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
-                ReplicaTimeout = 120,
-                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
-                {
-                    CronExpression = "*/15 * * * *",
-                    Parallelism = 1,
-                    ReplicaCompletionCount = 1,
-                },
-                Registries = new[]
-                {
-                    new RegistryCredentialsArgs
-                    {
-                        Server = acrLoginServer,
-                        Identity = acrPullIdentityId,
-                    },
-                },
-                Secrets = new[]
-                {
-                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
-                },
-            },
-            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
-            {
-                Type = ManagedServiceIdentityType.UserAssigned,
-                UserAssignedIdentities = new InputList<string>
-                {
-                    acrPullIdentityId,
-                    cosmosDataIdentityId,
-                },
-            },
-            Template = new JobTemplateArgs
-            {
-                Containers = new[]
-                {
-                    new ContainerArgs
-                    {
-                        Name = "worker",
-                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
-                        Resources = new ContainerResourcesArgs
-                        {
-                            Cpu = 0.25,
-                            Memory = "0.5Gi",
-                        },
-                        Env = new[]
-                        {
-                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
-                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
-                            new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
-                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
-                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
-                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
-                        },
-                    },
-                },
-            },
-            Tags = tags,
-        }, new CustomResourceOptions
-        {
-            // CD pipeline updates the container image via `az containerapp job update`.
-            IgnoreChanges = { "template.containers[0].image" },
-        });
+        // Container Apps Jobs — polling and digest workers share the same shape,
+        // differing only in name suffix, cron schedule, timeout, and WORKER_MODE.
+        var pollingJob = CreateWorkerJob("poll", "*/15 * * * *", replicaTimeout: 120, workerMode: null,
+            env, resourceGroup.Name, containerAppsEnvironmentId,
+            acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+            cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+            appInsightsConnectionString, acsConnectionString, tags);
 
-        // Container Apps Job (Digest Worker) — runs daily, handler filters by user's preferred day
-        _ = new Job($"job-town-crier-digest-{env}", new JobArgs
-        {
-            JobName = $"job-town-crier-digest-{env}",
-            ResourceGroupName = resourceGroup.Name,
-            EnvironmentId = containerAppsEnvironmentId,
-            Configuration = new JobConfigurationArgs
-            {
-                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
-                ReplicaTimeout = 600,
-                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
-                {
-                    CronExpression = "0 7 * * *",
-                    Parallelism = 1,
-                    ReplicaCompletionCount = 1,
-                },
-                Registries = new[]
-                {
-                    new RegistryCredentialsArgs
-                    {
-                        Server = acrLoginServer,
-                        Identity = acrPullIdentityId,
-                    },
-                },
-                Secrets = new[]
-                {
-                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
-                },
-            },
-            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
-            {
-                Type = ManagedServiceIdentityType.UserAssigned,
-                UserAssignedIdentities = new InputList<string>
-                {
-                    acrPullIdentityId,
-                    cosmosDataIdentityId,
-                },
-            },
-            Template = new JobTemplateArgs
-            {
-                Containers = new[]
-                {
-                    new ContainerArgs
-                    {
-                        Name = "worker",
-                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
-                        Resources = new ContainerResourcesArgs
-                        {
-                            Cpu = 0.25,
-                            Memory = "0.5Gi",
-                        },
-                        Env = new[]
-                        {
-                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
-                            new EnvironmentVarArgs { Name = "WORKER_MODE", Value = "digest" },
-                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
-                            new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
-                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
-                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
-                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
-                        },
-                    },
-                },
-            },
-            Tags = tags,
-        }, new CustomResourceOptions
-        {
-            IgnoreChanges = { "template.containers[0].image" },
-        });
+        CreateWorkerJob("digest", "0 7 * * *", replicaTimeout: 600, workerMode: "digest",
+            env, resourceGroup.Name, containerAppsEnvironmentId,
+            acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+            cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+            appInsightsConnectionString, acsConnectionString, tags);
 
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
@@ -521,5 +395,105 @@ public static class EnvironmentStack
                 DomainControlValidation = "CNAME",
             },
         }, options);
+    }
+
+    /// <summary>
+    /// Creates a Container Apps Job for a background worker.
+    /// All worker jobs share the same container shape, identity, and base env vars;
+    /// they differ only in name suffix, cron schedule, timeout, and optional WORKER_MODE.
+    /// </summary>
+    private static Job CreateWorkerJob(
+        string nameSuffix,
+        string cronExpression,
+        int replicaTimeout,
+        string? workerMode,
+        string env,
+        Output<string> resourceGroupName,
+        Output<string> environmentId,
+        Output<string> acrLoginServer,
+        Output<string> acrPullIdentityId,
+        Output<string> cosmosDataIdentityId,
+        Output<string> cosmosAccountEndpoint,
+        Output<string> cosmosDatabaseName,
+        Output<string> cosmosDataIdentityClientId,
+        Output<string> appInsightsConnectionString,
+        Output<string> acsConnectionString,
+        InputMap<string> tags)
+    {
+        var envVars = new List<EnvironmentVarArgs>
+        {
+            new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
+            new() { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
+            new() { Name = "Cosmos__DatabaseName", Value = cosmosDatabaseName },
+            new() { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+            new() { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
+            new() { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
+        };
+
+        if (workerMode is not null)
+        {
+            envVars.Insert(1, new EnvironmentVarArgs { Name = "WORKER_MODE", Value = workerMode });
+        }
+
+        return new Job($"job-town-crier-{nameSuffix}-{env}", new JobArgs
+        {
+            JobName = $"job-town-crier-{nameSuffix}-{env}",
+            ResourceGroupName = resourceGroupName,
+            EnvironmentId = environmentId,
+            Configuration = new JobConfigurationArgs
+            {
+                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
+                ReplicaTimeout = replicaTimeout,
+                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
+                {
+                    CronExpression = cronExpression,
+                    Parallelism = 1,
+                    ReplicaCompletionCount = 1,
+                },
+                Registries = new[]
+                {
+                    new RegistryCredentialsArgs
+                    {
+                        Server = acrLoginServer,
+                        Identity = acrPullIdentityId,
+                    },
+                },
+                Secrets = new[]
+                {
+                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+                },
+            },
+            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
+            {
+                Type = ManagedServiceIdentityType.UserAssigned,
+                UserAssignedIdentities = new InputList<string>
+                {
+                    acrPullIdentityId,
+                    cosmosDataIdentityId,
+                },
+            },
+            Template = new JobTemplateArgs
+            {
+                Containers = new[]
+                {
+                    new ContainerArgs
+                    {
+                        Name = "worker",
+                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
+                        Resources = new ContainerResourcesArgs
+                        {
+                            Cpu = 0.25,
+                            Memory = "0.5Gi",
+                        },
+                        Env = envVars.ToArray(),
+                    },
+                },
+            },
+            Tags = tags,
+        }, new CustomResourceOptions
+        {
+            // CD pipeline updates the container image via `az containerapp job update`.
+            IgnoreChanges = { "template.containers[0].image" },
+        });
     }
 }
