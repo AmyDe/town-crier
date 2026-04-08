@@ -74,7 +74,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
 
         var docs = await this.client.QueryAsync(
             CosmosContainerNames.PollState,
-            "SELECT * FROM c WHERE c.authorityId != null",
+            "SELECT * FROM c WHERE STARTSWITH(c.id, 'poll-state-')",
             parameters: null,
             partitionKey: null,
             CosmosJsonSerializerContext.Default.PollStateDocument,
@@ -85,7 +85,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
         // Never-polled authorities first, then by oldest lastPollTime
         return candidateAuthorityIds
             .OrderBy(id => polledSet.ContainsKey(id) ? 1 : 0)
-            .ThenBy(id => polledSet.TryGetValue(id, out var time) ? time : string.Empty)
+            .ThenBy(id => polledSet.TryGetValue(id, out var time) ? DateTimeOffset.Parse(time, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue)
             .ToList();
     }
 
