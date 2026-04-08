@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { NotificationItem } from '../../domain/types';
 import type { NotificationRepository } from '../../domain/ports/notification-repository';
 import { usePagination } from '../../hooks/usePagination';
@@ -18,6 +18,8 @@ export function useNotifications(repository: NotificationRepository) {
     error: null,
   });
 
+  const paginationRef = useRef<ReturnType<typeof usePagination>>(null!);
+
   const loadPage = useCallback(async (page: number) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -27,8 +29,8 @@ export function useNotifications(repository: NotificationRepository) {
         isLoading: false,
         error: null,
       });
-      pagination.setTotal(result.total);
-      pagination.setPage(result.page);
+      paginationRef.current.setTotal(result.total);
+      paginationRef.current.setPage(result.page);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An error occurred';
       setState(prev => ({
@@ -42,6 +44,10 @@ export function useNotifications(repository: NotificationRepository) {
   const pagination = usePagination({ loadPage, pageSize: PAGE_SIZE });
 
   useEffect(() => {
+    paginationRef.current = pagination;
+  });
+
+  useEffect(() => {
     let cancelled = false;
     repository.list(1, PAGE_SIZE).then(result => {
       if (!cancelled) {
@@ -50,8 +56,8 @@ export function useNotifications(repository: NotificationRepository) {
           isLoading: false,
           error: null,
         });
-        pagination.setTotal(result.total);
-        pagination.setPage(result.page);
+        paginationRef.current.setTotal(result.total);
+        paginationRef.current.setPage(result.page);
       }
     }).catch((err: unknown) => {
       if (!cancelled) {

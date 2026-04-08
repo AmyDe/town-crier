@@ -4,7 +4,7 @@ import { usePagination } from '../usePagination';
 
 describe('usePagination', () => {
   it('calculates totalPages from total and pageSize', () => {
-    const loadPage = (_page: number): void => {};
+    const loadPage = (): void => {};
 
     const { result } = renderHook(() => usePagination({ loadPage, pageSize: 20 }));
 
@@ -17,7 +17,7 @@ describe('usePagination', () => {
   });
 
   it('returns 0 totalPages when total is 0', () => {
-    const loadPage = (_page: number): void => {};
+    const loadPage = (): void => {};
 
     const { result } = renderHook(() => usePagination({ loadPage, pageSize: 20 }));
 
@@ -104,7 +104,7 @@ describe('usePagination', () => {
   });
 
   it('starts on page 1', () => {
-    const loadPage = (_page: number): void => {};
+    const loadPage = (): void => {};
 
     const { result } = renderHook(() => usePagination({ loadPage, pageSize: 20 }));
 
@@ -112,7 +112,7 @@ describe('usePagination', () => {
   });
 
   it('updates page via setPage', () => {
-    const loadPage = (_page: number): void => {};
+    const loadPage = (): void => {};
 
     const { result } = renderHook(() => usePagination({ loadPage, pageSize: 20 }));
 

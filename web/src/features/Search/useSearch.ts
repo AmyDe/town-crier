@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AuthorityId, PlanningApplicationSummary } from '../../domain/types';
 import type { SearchRepository } from '../../domain/ports/search-repository';
 import { ApiRequestError } from '../../api/client';
@@ -23,6 +23,7 @@ export function useSearch(repository: SearchRepository) {
 
   const queryRef = useRef('');
   const authorityRef = useRef<AuthorityId | null>(null);
+  const paginationRef = useRef<ReturnType<typeof usePagination>>(null!);
 
   const fetchPage = useCallback(async (query: string, authorityId: AuthorityId, page: number) => {
     setState(prev => ({ ...prev, isLoading: true, error: null, proGateRequired: false }));
@@ -34,8 +35,8 @@ export function useSearch(repository: SearchRepository) {
         error: null,
         proGateRequired: false,
       });
-      pagination.setTotal(result.total);
-      pagination.setPage(result.page);
+      paginationRef.current.setTotal(result.total);
+      paginationRef.current.setPage(result.page);
     } catch (err: unknown) {
       if (err instanceof ApiRequestError && err.status === 403) {
         setState(prev => ({
@@ -63,6 +64,10 @@ export function useSearch(repository: SearchRepository) {
   }, [fetchPage]);
 
   const pagination = usePagination({ loadPage, pageSize: PAGE_SIZE });
+
+  useEffect(() => {
+    paginationRef.current = pagination;
+  });
 
   const performSearch = useCallback((query: string, authorityId: AuthorityId) => {
     queryRef.current = query;
