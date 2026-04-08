@@ -6,8 +6,6 @@ namespace TownCrier.Application.Tests.Polling;
 
 public sealed class PollPlanItCommandHandlerTests
 {
-    private static readonly int[] ExpectedRoundRobinOrder = [300, 100, 200];
-
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
@@ -506,7 +504,10 @@ public sealed class PollPlanItCommandHandlerTests
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         // Should be polled in order: 300 (oldest), 100, 200 (newest)
-        await Assert.That(planItClient.AuthorityIdsRequested).IsEquivalentTo(ExpectedRoundRobinOrder);
+        await Assert.That(planItClient.AuthorityIdsRequested).HasCount().EqualTo(3);
+        await Assert.That(planItClient.AuthorityIdsRequested[0]).IsEqualTo(300);
+        await Assert.That(planItClient.AuthorityIdsRequested[1]).IsEqualTo(100);
+        await Assert.That(planItClient.AuthorityIdsRequested[2]).IsEqualTo(200);
     }
 
     [Test]
