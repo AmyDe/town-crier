@@ -42,11 +42,14 @@ public sealed partial class PollPlanItCommandHandler
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
     {
         var now = this.timeProvider.GetUtcNow();
-        var authorityIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
+        var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
+        var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
+            activeIds.ToList(), ct).ConfigureAwait(false);
 
         var count = 0;
         var authoritiesPolled = 0;
-        foreach (var authorityId in authorityIds)
+        var rateLimited = false;
+        foreach (var authorityId in sortedIds)
         {
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
             authorityActivity?.SetTag("polling.authority_code", authorityId);
@@ -90,7 +93,8 @@ public sealed partial class PollPlanItCommandHandler
                 PollingMetrics.AuthoritiesSkipped.Add(1);
                 PollingMetrics.RateLimited.Add(1);
                 PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
-                LogRateLimitBreak(this.logger, authorityId, ex);
+                rateLimited = true;
+                LogRateLimitStop(this.logger, authorityId, ex);
                 break;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -103,11 +107,11 @@ public sealed partial class PollPlanItCommandHandler
 
         await this.pollStateStore.DeleteGlobalPollStateAsync(ct).ConfigureAwait(false);
 
-        return new PollPlanItResult(count, authoritiesPolled);
+        return new PollPlanItResult(count, authoritiesPolled, rateLimited);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]
-    private static partial void LogRateLimitBreak(ILogger logger, int authorityId, Exception exception);
+    private static partial void LogRateLimitStop(ILogger logger, int authorityId, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error polling authority {AuthorityId}, skipping to next authority")]
     private static partial void LogAuthorityError(ILogger logger, int authorityId, Exception exception);

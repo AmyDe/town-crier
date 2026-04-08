@@ -6,6 +6,8 @@ namespace TownCrier.Application.Tests.Polling;
 
 public sealed class PollPlanItCommandHandlerTests
 {
+    private static readonly int[] ExpectedRoundRobinOrder = [300, 100, 200];
+
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
@@ -389,8 +391,8 @@ public sealed class PollPlanItCommandHandlerTests
         authorityProvider.Add(200);
 
         var pollStateStore = new FakePollStateStore();
-        var authority100Time = new DateTimeOffset(2026, 4, 4, 10, 0, 0, TimeSpan.Zero);
-        var authority200Time = new DateTimeOffset(2026, 4, 3, 8, 0, 0, TimeSpan.Zero);
+        var authority100Time = new DateTimeOffset(2026, 4, 3, 8, 0, 0, TimeSpan.Zero);
+        var authority200Time = new DateTimeOffset(2026, 4, 4, 10, 0, 0, TimeSpan.Zero);
         pollStateStore.SetLastPollTime(100, authority100Time);
         pollStateStore.SetLastPollTime(200, authority200Time);
 
@@ -437,6 +439,97 @@ public sealed class PollPlanItCommandHandlerTests
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_StopAndSetRateLimited_When_429Hit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Authority 100 completed, 200 triggered 429, 300 never attempted
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+        await Assert.That(result.RateLimited).IsTrue();
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
+    }
+
+    [Test]
+    public async Task Should_NotSetRateLimited_When_NoRateLimitHit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.RateLimited).IsFalse();
+    }
+
+    [Test]
+    public async Task Should_PollLeastRecentlyPolledFirst_When_MultipleAuthorities()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var pollStateStore = new FakePollStateStore();
+
+        // Authority 300 polled longest ago, 200 most recently, 100 in between
+        pollStateStore.SetLastPollTime(300, new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero));
+        pollStateStore.SetLastPollTime(100, new DateTimeOffset(2026, 4, 3, 0, 0, 0, TimeSpan.Zero));
+        pollStateStore.SetLastPollTime(200, new DateTimeOffset(2026, 4, 5, 0, 0, 0, TimeSpan.Zero));
+
+        var planItClient = new FakePlanItClient();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Should be polled in order: 300 (oldest), 100, 200 (newest)
+        await Assert.That(planItClient.AuthorityIdsRequested).IsEquivalentTo(ExpectedRoundRobinOrder);
+    }
+
+    [Test]
+    public async Task Should_PollNeverPolledAuthorityFirst_When_MixedPollState()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(100, new DateTimeOffset(2026, 4, 5, 0, 0, 0, TimeSpan.Zero));
+
+        var planItClient = new FakePlanItClient();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Never-polled authority 200 should be first
+        await Assert.That(planItClient.AuthorityIdsRequested[0]).IsEqualTo(200);
     }
 
     private static PollPlanItCommandHandler CreateHandler(
