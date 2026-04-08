@@ -683,6 +683,32 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_LogCappedRetryAfterWarning_When_RetryAfterExceedsMax()
+    {
+        // Arrange — Retry-After: 300s, max: 30s
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "300");
+        var logger = new FakePlanItLogger();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1, MaxRetryAfterSeconds = 30 };
+        var client = CreateClient(handler, retryOptions: options, logger: logger);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 52);
+
+        // Assert — should log that Retry-After was capped, including original and capped values
+        await Assert.That(logger.Messages).HasCount().EqualTo(2);
+
+        // First message: the cap warning
+        await Assert.That(logger.Messages[0]).Contains("capped");
+        await Assert.That(logger.Messages[0]).Contains("300");
+        await Assert.That(logger.Messages[0]).Contains("30");
+        await Assert.That(logger.Messages[0]).Contains("52");
+
+        // Second message: the normal retry delay log
+        await Assert.That(logger.Messages[1]).Contains("Retry-After");
+    }
+
+    [Test]
     public async Task Should_LogRetryAfterSource_When_429ResponseHasRetryAfterHeader()
     {
         // Arrange
