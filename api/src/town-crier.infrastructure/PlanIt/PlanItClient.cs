@@ -212,7 +212,10 @@ public sealed partial class PlanItClient : IPlanItClient
                     HttpStatusCode.TooManyRequests);
             }
 
-            var delay = retryAfterDelay ?? this.CalculateBackoffDelay(attempt);
+            var cappedRetryAfter = retryAfterDelay.HasValue
+                ? TimeSpan.FromTicks(Math.Min(retryAfterDelay.Value.Ticks, this.retryOptions.MaxRetryAfter.Ticks))
+                : (TimeSpan?)null;
+            var delay = cappedRetryAfter ?? this.CalculateBackoffDelay(attempt);
             var source = retryAfterDelay.HasValue ? "Retry-After" : "exponential backoff";
             LogRetryDelay(this.logger, authorityId, attempt + 1, this.retryOptions.MaxRetries, (int)delay.TotalMilliseconds, source);
             await this.delayFunc(delay, ct).ConfigureAwait(false);
