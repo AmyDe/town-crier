@@ -61,6 +61,34 @@ public sealed class CosmosPollStateStore : IPollStateStore
             ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
+        IReadOnlyList<int> candidateAuthorityIds,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(candidateAuthorityIds);
+
+        if (candidateAuthorityIds.Count == 0)
+        {
+            return [];
+        }
+
+        var docs = await this.client.QueryAsync(
+            CosmosContainerNames.PollState,
+            "SELECT * FROM c WHERE STARTSWITH(c.id, 'poll-state-')",
+            parameters: null,
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.PollStateDocument,
+            ct).ConfigureAwait(false);
+
+        var polledSet = docs.ToDictionary(d => d.AuthorityId, d => d.LastPollTime);
+
+        // Never-polled authorities first, then by oldest lastPollTime
+        return candidateAuthorityIds
+            .OrderBy(id => polledSet.ContainsKey(id) ? 1 : 0)
+            .ThenBy(id => polledSet.TryGetValue(id, out var time) ? DateTimeOffset.Parse(time, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue)
+            .ToList();
+    }
+
     private static string FormatDocumentId(int authorityId)
     {
         return string.Create(CultureInfo.InvariantCulture, $"poll-state-{authorityId}");

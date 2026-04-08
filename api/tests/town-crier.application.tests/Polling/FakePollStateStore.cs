@@ -38,4 +38,15 @@ internal sealed class FakePollStateStore : IPollStateStore
         this.DeleteGlobalCalled = true;
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
+        IReadOnlyList<int> candidateAuthorityIds,
+        CancellationToken ct)
+    {
+        IReadOnlyList<int> sorted = candidateAuthorityIds
+            .OrderBy(id => this.pollTimes.ContainsKey(id) ? 1 : 0)
+            .ThenBy(id => this.pollTimes.TryGetValue(id, out var time) ? time : DateTimeOffset.MinValue)
+            .ToList();
+        return Task.FromResult(sorted);
+    }
 }

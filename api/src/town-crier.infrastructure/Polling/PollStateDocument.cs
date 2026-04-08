@@ -6,5 +6,5 @@ internal sealed class PollStateDocument
 
     public required string LastPollTime { get; init; }
 
-    public int? AuthorityId { get; init; }
+    public required int AuthorityId { get; init; }
 }
