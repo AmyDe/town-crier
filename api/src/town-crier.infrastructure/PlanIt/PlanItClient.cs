@@ -177,6 +177,9 @@ public sealed partial class PlanItClient : IPlanItClient
     [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt 429 for authority {AuthorityId}, attempt {Attempt}/{MaxRetries}, waiting {DelayMs}ms ({Source})")]
     private static partial void LogRetryDelay(ILogger logger, int authorityId, int attempt, int maxRetries, int delayMs, string source);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt Retry-After {OriginalSeconds}s capped to {CappedSeconds}s for authority {AuthorityId}")]
+    private static partial void LogRetryAfterCapped(ILogger logger, int originalSeconds, int cappedSeconds, int authorityId);
+
     private async Task<HttpResponseMessage> SendWithRetryAsync(Uri url, int authorityId, CancellationToken ct)
     {
         for (var attempt = 0; attempt <= this.retryOptions.MaxRetries; attempt++)
@@ -215,6 +218,12 @@ public sealed partial class PlanItClient : IPlanItClient
             var cappedRetryAfter = retryAfterDelay.HasValue
                 ? TimeSpan.FromTicks(Math.Min(retryAfterDelay.Value.Ticks, this.retryOptions.MaxRetryAfter.Ticks))
                 : (TimeSpan?)null;
+
+            if (retryAfterDelay.HasValue && retryAfterDelay.Value > this.retryOptions.MaxRetryAfter)
+            {
+                LogRetryAfterCapped(this.logger, (int)retryAfterDelay.Value.TotalSeconds, (int)this.retryOptions.MaxRetryAfter.TotalSeconds, authorityId);
+            }
+
             var delay = cappedRetryAfter ?? this.CalculateBackoffDelay(attempt);
             var source = retryAfterDelay.HasValue ? "Retry-After" : "exponential backoff";
             LogRetryDelay(this.logger, authorityId, attempt + 1, this.retryOptions.MaxRetries, (int)delay.TotalMilliseconds, source);
