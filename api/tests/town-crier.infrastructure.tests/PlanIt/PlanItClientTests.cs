@@ -196,22 +196,19 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_RetryAndSucceed_When_ApiReturns429ThenSuccess()
+    public async Task Should_ThrowImmediately_When_ApiReturns429()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
-        handler.SetupRateLimitThenSuccess("page=1", count: 2, SingleRecordResponse);
-        var delays = new List<TimeSpan>();
-        var client = CreateClient(handler, retryOptions: new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 0.01 }, delays: delays);
+        handler.SetupRateLimitForever("page=1");
+        var client = CreateClient(handler);
 
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
+        // Act & Assert — should throw immediately without retrying
+        await Assert.ThrowsAsync<HttpRequestException>(
+            async () => await ConsumeAsync(client, differentStart: null));
 
-        // Assert — got results after retries
-        await Assert.That(results).HasCount().EqualTo(1);
-
-        // 2 x 429 + 1 success = 3 total requests
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(3);
+        // Only 1 request — no retries, the client throws on first 429
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
     }
 
     [Test]
