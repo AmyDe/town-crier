@@ -18,7 +18,6 @@ public sealed partial class PollPlanItCommandHandler
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
     private readonly ILogger<PollPlanItCommandHandler> logger;
-    private readonly PlanItPollingOptions pollingOptions;
 
     public PollPlanItCommandHandler(
         IPlanItClient planItClient,
@@ -28,8 +27,7 @@ public sealed partial class PollPlanItCommandHandler
         IActiveAuthorityProvider activeAuthorityProvider,
         IWatchZoneRepository watchZoneRepository,
         INotificationEnqueuer notificationEnqueuer,
-        ILogger<PollPlanItCommandHandler> logger,
-        PlanItPollingOptions? pollingOptions = null)
+        ILogger<PollPlanItCommandHandler> logger)
     {
         this.planItClient = planItClient;
         this.pollStateStore = pollStateStore;
@@ -39,7 +37,6 @@ public sealed partial class PollPlanItCommandHandler
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
         this.logger = logger;
-        this.pollingOptions = pollingOptions ?? new PlanItPollingOptions();
     }
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
@@ -49,7 +46,6 @@ public sealed partial class PollPlanItCommandHandler
 
         var count = 0;
         var authoritiesPolled = 0;
-        var rateLimitHitCount = 0;
         foreach (var authorityId in authorityIds)
         {
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
@@ -91,18 +87,11 @@ public sealed partial class PollPlanItCommandHandler
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                rateLimitHitCount++;
                 PollingMetrics.AuthoritiesSkipped.Add(1);
+                PollingMetrics.RateLimited.Add(1);
                 PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
-
-                if (rateLimitHitCount >= 2)
-                {
-                    LogRateLimitBreak(this.logger, authorityId, ex);
-                    break;
-                }
-
-                LogRateLimitSkip(this.logger, authorityId, ex);
-                await Task.Delay(this.pollingOptions.RateLimitCooldown, ct).ConfigureAwait(false);
+                LogRateLimitBreak(this.logger, authorityId, ex);
+                break;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -117,10 +106,7 @@ public sealed partial class PollPlanItCommandHandler
         return new PollPlanItResult(count, authoritiesPolled);
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, skipping to next authority")]
-    private static partial void LogRateLimitSkip(ILogger logger, int authorityId, Exception exception);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Rate limited polling authority {AuthorityId} (second 429 this cycle), stopping polling cycle")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]
     private static partial void LogRateLimitBreak(ILogger logger, int authorityId, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error polling authority {AuthorityId}, skipping to next authority")]
