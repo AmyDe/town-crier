@@ -643,6 +643,46 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_CapRetryAfterDelay_When_HeaderExceedsMaxRetryAfter()
+    {
+        // Arrange — PlanIt returns Retry-After: 300 (5 minutes), but max is 30s
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "300");
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1, MaxRetryAfterSeconds = 30 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — got results after retry
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // The delay should be capped to 30 seconds, NOT the raw 300 seconds from the header
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(30));
+    }
+
+    [Test]
+    public async Task Should_NotCapRetryAfterDelay_When_HeaderIsUnderMaxRetryAfter()
+    {
+        // Arrange — Retry-After: 10s, max is 30s — should use 10s as-is
+        using var handler = new FakePlanItHandler();
+        handler.SetupRateLimitWithRetryAfter("page=1", count: 1, SingleRecordResponse, retryAfterValue: "10");
+        var backoffDelays = new List<TimeSpan>();
+        var options = new PlanItRetryOptions { MaxRetries = 3, BaseDelaySeconds = 1, MaxRetryAfterSeconds = 30 };
+        var client = CreateClient(handler, retryOptions: options, delays: backoffDelays);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null);
+
+        // Assert — delay should be exactly 10s (uncapped)
+        await Assert.That(results).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays).HasCount().EqualTo(1);
+        await Assert.That(backoffDelays[0]).IsEqualTo(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
     public async Task Should_LogRetryAfterSource_When_429ResponseHasRetryAfterHeader()
     {
         // Arrange
