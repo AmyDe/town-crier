@@ -6,5 +6,9 @@ public sealed record PlanItRetryOptions
 
     public double BaseDelaySeconds { get; init; } = 1;
 
+    public double MaxRetryAfterSeconds { get; init; } = 30;
+
     public TimeSpan BaseDelay => TimeSpan.FromSeconds(this.BaseDelaySeconds);
+
+    public TimeSpan MaxRetryAfter => TimeSpan.FromSeconds(this.MaxRetryAfterSeconds);
 }
