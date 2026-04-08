@@ -286,6 +286,42 @@ public sealed class CreateWatchZoneCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SaveZoneAndReturnCachedApps_When_BackfillThrowsHttpError()
+    {
+        // Arrange — Pro user where PlanIt returns 400 Bad Request
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        // Pre-seed a cached nearby application
+        var cachedApp = new PlanningApplicationBuilder()
+            .WithName("cached-app")
+            .WithAreaId(42)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+        await this.planningApplicationRepository.UpsertAsync(cachedApp, CancellationToken.None);
+
+        // PlanIt will throw an HttpRequestException (simulating 400 Bad Request)
+        this.planItClient.ThrowForAuthority(
+            42,
+            new HttpRequestException("Response status code does not indicate success: 400 (Bad Request)."));
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — zone was saved despite PlanIt error
+        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(1);
+
+        // Assert — cached nearby apps are still returned
+        await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
+        await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("cached-app");
+    }
+
+    [Test]
     public async Task Should_ThrowInvalidOperation_When_UserProfileNotFound()
     {
         // Arrange
