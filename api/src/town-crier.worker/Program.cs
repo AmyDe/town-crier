@@ -131,64 +131,64 @@ var exitCode = 0;
 switch (mode)
 {
     case "poll":
-    {
-        using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
-        try
         {
-            var cycleStart = Stopwatch.GetTimestamp();
+            using var activity = PollingInstrumentation.Source.StartActivity("Polling Cycle");
+            try
+            {
+                var cycleStart = Stopwatch.GetTimestamp();
 
-            WorkerLog.PollCycleStarting(logger);
+                WorkerLog.PollCycleStarting(logger);
 
-            var pollHandler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
-            var result = await pollHandler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
-                .ConfigureAwait(false);
+                var pollHandler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
+                var result = await pollHandler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
+                    .ConfigureAwait(false);
 
-            PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
+                PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
 
-            activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
-            activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
+                activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
+                activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
 
-            WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
-        }
+                WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
+            }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
-        catch (Exception ex)
+            catch (Exception ex)
 #pragma warning restore CA1031
-        {
-            activity?.AddException(ex);
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            PollingMetrics.PollFailures.Add(1);
-            WorkerLog.PollCycleFailed(logger, ex);
-            exitCode = 1;
-        }
+            {
+                activity?.AddException(ex);
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                PollingMetrics.PollFailures.Add(1);
+                WorkerLog.PollCycleFailed(logger, ex);
+                exitCode = 1;
+            }
 
-        break;
-    }
+            break;
+        }
 
     case "digest":
-    {
-        using var digestActivity = PollingInstrumentation.Source.StartActivity("Digest Cycle");
-        try
         {
-            WorkerLog.DigestCycleStarting(logger);
+            using var digestActivity = PollingInstrumentation.Source.StartActivity("Digest Cycle");
+            try
+            {
+                WorkerLog.DigestCycleStarting(logger);
 
-            var digestHandler = host.Services.GetRequiredService<GenerateWeeklyDigestsCommandHandler>();
-            await digestHandler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None)
-                .ConfigureAwait(false);
+                var digestHandler = host.Services.GetRequiredService<GenerateWeeklyDigestsCommandHandler>();
+                await digestHandler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None)
+                    .ConfigureAwait(false);
 
-            WorkerLog.DigestCycleCompleted(logger);
-        }
+                WorkerLog.DigestCycleCompleted(logger);
+            }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
-        catch (Exception ex)
+            catch (Exception ex)
 #pragma warning restore CA1031
-        {
-            digestActivity?.AddException(ex);
-            digestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            WorkerLog.DigestCycleFailed(logger, ex);
-            exitCode = 1;
-        }
+            {
+                digestActivity?.AddException(ex);
+                digestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                WorkerLog.DigestCycleFailed(logger, ex);
+                exitCode = 1;
+            }
 
-        break;
-    }
+            break;
+        }
 
     default:
         WorkerLog.UnknownWorkerMode(logger, mode);
