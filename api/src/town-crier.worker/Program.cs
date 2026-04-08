@@ -106,10 +106,6 @@ var planItThrottle = new PlanItThrottleOptions();
 builder.Configuration.GetSection("PlanIt:Throttle").Bind(planItThrottle);
 builder.Services.AddSingleton(planItThrottle);
 
-var planItRetry = new PlanItRetryOptions();
-builder.Configuration.GetSection("PlanIt:Retry").Bind(planItRetry);
-builder.Services.AddSingleton(planItRetry);
-
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
 var planItBaseUrl = builder.Configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
 #pragma warning restore S1075
