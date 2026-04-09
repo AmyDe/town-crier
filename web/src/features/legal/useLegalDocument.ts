@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { LegalDocument } from '../../domain/types';
 import type { LegalDocumentPort } from '../../domain/ports/legal-document-port';
 
@@ -8,27 +8,39 @@ interface LegalDocumentState {
   error: string | null;
 }
 
-export function useLegalDocument(port: LegalDocumentPort, documentType: string) {
-  const [state, setState] = useState<LegalDocumentState>({
-    document: null,
-    isLoading: true,
-    error: null,
-  });
+const initialState: LegalDocumentState = {
+  document: null,
+  isLoading: true,
+  error: null,
+};
 
-  const loadDocument = useCallback(async () => {
-    setState({ document: null, isLoading: true, error: null });
-    try {
-      const doc = await port.fetchDocument(documentType);
-      setState({ document: doc, isLoading: false, error: null });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load document';
-      setState({ document: null, isLoading: false, error: message });
-    }
-  }, [port, documentType]);
+export function useLegalDocument(port: LegalDocumentPort, documentType: string) {
+  const requestKey = useMemo(() => `${documentType}`, [documentType]);
+  const [state, setState] = useState<LegalDocumentState>(initialState);
+  const [activeKey, setActiveKey] = useState(requestKey);
+
+  if (requestKey !== activeKey) {
+    setActiveKey(requestKey);
+    setState(initialState);
+  }
 
   useEffect(() => {
-    loadDocument();
-  }, [loadDocument]);
+    let cancelled = false;
+
+    port.fetchDocument(documentType).then(
+      (doc) => {
+        if (!cancelled) setState({ document: doc, isLoading: false, error: null });
+      },
+      (err: unknown) => {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Failed to load document';
+          setState({ document: null, isLoading: false, error: message });
+        }
+      },
+    );
+
+    return () => { cancelled = true; };
+  }, [port, documentType]);
 
   return state;
 }
