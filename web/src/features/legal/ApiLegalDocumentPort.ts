@@ -5,7 +5,7 @@ export class ApiLegalDocumentPort implements LegalDocumentPort {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof globalThis.fetch;
 
-  constructor(baseUrl: string, fetchFn: typeof globalThis.fetch = globalThis.fetch) {
+  constructor(baseUrl: string, fetchFn: typeof globalThis.fetch = globalThis.fetch.bind(globalThis)) {
     this.baseUrl = baseUrl;
     this.fetchFn = fetchFn;
   }

@@ -40,7 +40,7 @@ describe('Footer', () => {
 
     const link = screen.getByRole('link', { name: /privacy policy/i });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/privacy');
+    expect(link).toHaveAttribute('href', '/legal/privacy');
   });
 
   it('renders a Terms of Service link', () => {
@@ -48,7 +48,7 @@ describe('Footer', () => {
 
     const link = screen.getByRole('link', { name: /terms of service/i });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/terms');
+    expect(link).toHaveAttribute('href', '/legal/terms');
   });
 
   it('renders legal links inside a nav element for accessibility', () => {
