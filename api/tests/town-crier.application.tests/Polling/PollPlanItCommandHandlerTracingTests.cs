@@ -10,7 +10,7 @@ namespace TownCrier.Application.Tests.Polling;
 public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
 {
     private readonly ActivityListener listener;
-    private readonly List<Activity> completedActivities = [];
+    private readonly List<Activity> stoppedActivities = [];
 
     public PollPlanItCommandHandlerTracingTests()
     {
@@ -18,7 +18,7 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
         {
             ShouldListenTo = source => source.Name == PollingInstrumentation.ActivitySourceName,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = activity => this.completedActivities.Add(activity),
+            ActivityStopped = activity => this.stoppedActivities.Add(activity),
         };
         ActivitySource.AddActivityListener(this.listener);
     }
@@ -40,11 +40,14 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
 
         var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
 
+        // Clear any activities leaked from earlier tests that share the static ActivitySource
+        this.stoppedActivities.Clear();
+
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         // Assert -- the "Poll Authority" activity should have an exception event
-        var authorityActivity = this.completedActivities.Find(a => a.DisplayName == "Poll Authority");
+        var authorityActivity = this.stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull()
             .Because("an activity must be created for each authority poll");
 
@@ -68,11 +71,14 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
 
         var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
 
+        // Clear any activities leaked from earlier tests
+        this.stoppedActivities.Clear();
+
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         // Assert
-        var authorityActivity = this.completedActivities.Find(a => a.DisplayName == "Poll Authority");
+        var authorityActivity = this.stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull();
         await Assert.That(authorityActivity!.Status).IsEqualTo(ActivityStatusCode.Error)
             .Because("failed authority polls must set error status for OTel exception pipeline");
@@ -91,11 +97,14 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
 
         var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
 
+        // Clear any activities leaked from earlier tests
+        this.stoppedActivities.Clear();
+
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         // Assert -- rate limit exceptions must also be recorded on the activity
-        var authorityActivity = this.completedActivities.Find(a => a.DisplayName == "Poll Authority");
+        var authorityActivity = this.stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull();
 
         var exceptionEvent = authorityActivity!.Events.FirstOrDefault(e => e.Name == "exception");

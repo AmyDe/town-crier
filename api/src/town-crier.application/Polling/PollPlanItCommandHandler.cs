@@ -91,12 +91,16 @@ public sealed partial class PollPlanItCommandHandler
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
+                authorityActivity?.AddException(ex);
+                authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 PollingMetrics.RateLimited.Add(1);
                 rateLimited = true;
                 LogRateLimitStop(this.logger, authorityId, ex);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                authorityActivity?.AddException(ex);
+                authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 LogAuthorityError(this.logger, authorityId, ex);
             }
 
