@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+import type { LegalDocument } from '../../../domain/types';
 import { useLegalDocument } from '../useLegalDocument';
 import { SpyLegalDocumentPort } from './spies/spy-legal-document-port';
 import { privacyPolicy, termsOfService } from './fixtures/legal-document.fixtures';
@@ -56,5 +57,74 @@ describe('useLegalDocument', () => {
 
     expect(result.current.error).toBe('Network error');
     expect(result.current.document).toBeNull();
+  });
+
+  it('resets to loading state when documentType changes', async () => {
+    const spy = new SpyLegalDocumentPort();
+    spy.fetchDocumentResult = privacyPolicy();
+
+    const { result, rerender } = renderHook(
+      ({ type }) => useLegalDocument(spy, type),
+      { initialProps: { type: 'privacy' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.document).toEqual(privacyPolicy());
+
+    spy.fetchDocumentResult = termsOfService();
+    rerender({ type: 'terms' });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.document).toEqual(termsOfService());
+    expect(result.current.error).toBeNull();
+    expect(spy.fetchDocumentCalls).toEqual(['privacy', 'terms']);
+  });
+
+  it('does not show stale document from previous type after change', async () => {
+    let resolveSecondFetch: ((doc: LegalDocument) => void) | null = null;
+    const spy = new SpyLegalDocumentPort();
+    spy.fetchDocumentResult = privacyPolicy();
+
+    const { result, rerender } = renderHook(
+      ({ type }) => useLegalDocument(spy, type),
+      { initialProps: { type: 'privacy' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.document).toEqual(privacyPolicy());
+
+    // Make second fetch hang until we resolve it manually
+    const originalFetch = spy.fetchDocument.bind(spy);
+    spy.fetchDocument = (documentType: string) => {
+      spy.fetchDocumentCalls.push(documentType);
+      return new Promise<LegalDocument>((resolve) => {
+        resolveSecondFetch = resolve;
+      });
+    };
+
+    rerender({ type: 'terms' });
+
+    // While the second fetch is pending, state should show loading, not stale privacy doc
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(true);
+    });
+    expect(result.current.document).toBeNull();
+
+    // Resolve the second fetch
+    resolveSecondFetch!(termsOfService());
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+    expect(result.current.document).toEqual(termsOfService());
   });
 });
