@@ -14,7 +14,7 @@ var builder = WebApplication.CreateSlimBuilder(args);
 var aiConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
 var hasAppInsights = !string.IsNullOrEmpty(aiConnectionString);
 
-builder.Services.AddOpenTelemetry()
+var otel = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("town-crier-web"))
     .WithTracing(tracing =>
     {
@@ -23,11 +23,6 @@ builder.Services.AddOpenTelemetry()
             .AddHttpClientInstrumentation(options => options.RecordException = true)
             .AddSource(PollingInstrumentation.ActivitySourceName)
             .AddSource(CosmosInstrumentation.ActivitySourceName);
-
-        if (hasAppInsights)
-        {
-            tracing.AddAzureMonitorTraceExporter(o => o.ConnectionString = aiConnectionString);
-        }
     })
     .WithMetrics(metrics =>
     {
@@ -38,22 +33,17 @@ builder.Services.AddOpenTelemetry()
             .AddMeter(PollingMetrics.MeterName)
             .AddMeter(CosmosInstrumentation.MeterName)
             .AddMeter(PlanItInstrumentation.MeterName);
-
-        if (hasAppInsights)
-        {
-            metrics.AddAzureMonitorMetricExporter(o => o.ConnectionString = aiConnectionString);
-        }
     });
+
+if (hasAppInsights)
+{
+    otel.UseAzureMonitorExporter(o => o.ConnectionString = aiConnectionString);
+}
 
 builder.Logging.AddOpenTelemetry(logging =>
 {
     logging.IncludeFormattedMessage = true;
     logging.IncludeScopes = true;
-
-    if (hasAppInsights)
-    {
-        logging.AddAzureMonitorLogExporter(o => o.ConnectionString = aiConnectionString);
-    }
 });
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
