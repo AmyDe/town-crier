@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import TownCrierDomain
 
@@ -35,8 +36,8 @@ struct ErrorHandlingViewModelTests {
 
     @Test func handleError_withGenericError_usesUnexpectedFallback() {
         let sut = TestViewModel()
-        struct SomeError: Error, CustomStringConvertible {
-            var description: String { "boom" }
+        struct SomeError: Error, LocalizedError {
+            var errorDescription: String? { "boom" }
         }
 
         sut.handleError(SomeError())
@@ -48,8 +49,8 @@ struct ErrorHandlingViewModelTests {
 
     @Test func handleError_withGenericError_usesCustomFallback() {
         let sut = TestViewModel()
-        struct SomeError: Error, CustomStringConvertible {
-            var description: String { "network" }
+        struct SomeError: Error, LocalizedError {
+            var errorDescription: String? { "network" }
         }
 
         sut.handleError(SomeError()) { .authenticationFailed($0) }
