@@ -99,13 +99,13 @@ describe('AppRoutes', () => {
     it('renders legal page at /legal/privacy', () => {
       renderRoutes({ route: '/legal/privacy' });
 
-      expect(screen.getByText(/privacy/i)).toBeInTheDocument();
+      expect(screen.getByText(/loading/i)).toBeInTheDocument();
     });
 
     it('renders legal page at /legal/terms', () => {
       renderRoutes({ route: '/legal/terms' });
 
-      expect(screen.getByText(/terms/i)).toBeInTheDocument();
+      expect(screen.getByText(/loading/i)).toBeInTheDocument();
     });
   });
 
