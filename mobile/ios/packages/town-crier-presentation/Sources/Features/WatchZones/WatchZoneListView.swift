@@ -1,4 +1,3 @@
-import MapKit
 import SwiftUI
 import TownCrierDomain
 
@@ -100,32 +99,4 @@ private struct WatchZoneRow: View {
         .padding(.vertical, TCSpacing.extraSmall)
     }
 
-}
-
-/// A small non-interactive map preview showing the zone circle.
-private struct ZoneMapPreview: View {
-    let centre: Coordinate
-    let radiusMetres: Double
-
-    var body: some View {
-        Map(initialPosition: .region(region)) {
-            MapCircle(center: clLocation, radius: radiusMetres)
-                .foregroundStyle(Color.tcAmber.opacity(0.2))
-                .stroke(Color.tcAmber, lineWidth: 1)
-        }
-        .mapStyle(.standard(elevation: .flat))
-        .allowsHitTesting(false)
-    }
-
-    private var clLocation: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: centre.latitude, longitude: centre.longitude)
-    }
-
-    private var region: MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: clLocation,
-            latitudinalMeters: radiusMetres * 2.5,
-            longitudinalMeters: radiusMetres * 2.5
-        )
-    }
 }
