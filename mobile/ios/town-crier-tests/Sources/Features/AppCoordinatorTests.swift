@@ -13,8 +13,6 @@ struct AppCoordinatorTests {
       repository: spy,
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
-      geocoder: SpyPostcodeGeocoder(),
-      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -43,16 +41,6 @@ struct AppCoordinatorTests {
     #expect(sut.detailApplication == nil)
   }
 
-  // MARK: - Subscription ViewModel Factory
-
-  @Test func makeSubscriptionViewModel_createsViewModel() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeSubscriptionViewModel()
-
-    #expect(vm.products.isEmpty)
-    #expect(!vm.isLoading)
-  }
-
   // MARK: - Application List Factory
 
   @Test func makeApplicationListViewModel_createsViewModelWithAuthority() async {
@@ -78,29 +66,6 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
-  // MARK: - Onboarding ViewModel Factory
-
-  @Test func makeOnboardingViewModel_createsViewModelWithDependencies() {
-    let (sut, _) = makeSUT()
-
-    let vm = sut.makeOnboardingViewModel()
-
-    #expect(vm.currentStep == .welcome)
-  }
-
-  @Test func makeOnboardingViewModel_completionSetsOnboardingComplete() async throws {
-    let (sut, _) = makeSUT()
-
-    let vm = sut.makeOnboardingViewModel()
-    vm.advance()  // → postcodeEntry
-    vm.postcodeInput = "CB1 2AD"
-    await vm.submitPostcode()  // → radiusPicker
-    vm.confirmRadius()  // → notificationPermission
-    await vm.skipNotifications()
-
-    #expect(sut.isOnboardingComplete)
-  }
-
   @Test func isOnboardingComplete_falseByDefault() {
     let (sut, _) = makeSUT()
 
@@ -114,8 +79,6 @@ struct AppCoordinatorTests {
       repository: SpyPlanningApplicationRepository(),
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
-      geocoder: SpyPostcodeGeocoder(),
-      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: onboardingRepoSpy,
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),

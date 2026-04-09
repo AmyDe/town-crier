@@ -14,8 +14,6 @@ public final class AppCoordinator: ObservableObject {
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
-  private let geocoder: PostcodeGeocoder
-  private let watchZoneRepository: WatchZoneRepository
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
@@ -27,8 +25,6 @@ public final class AppCoordinator: ObservableObject {
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     offlineRepository: OfflineAwareRepository? = nil,
-    geocoder: PostcodeGeocoder,
-    watchZoneRepository: WatchZoneRepository,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
@@ -38,8 +34,6 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.offlineRepository = offlineRepository
-    self.geocoder = geocoder
-    self.watchZoneRepository = watchZoneRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
@@ -71,19 +65,6 @@ public final class AppCoordinator: ObservableObject {
       self?.showApplicationDetail(id)
     }
     return viewModel
-  }
-
-  public func makeOnboardingViewModel() -> OnboardingViewModel {
-    OnboardingViewModel(
-      geocoder: geocoder,
-      watchZoneRepository: watchZoneRepository,
-      onboardingRepository: onboardingRepository,
-      notificationService: notificationService
-    )
-  }
-
-  public func makeSubscriptionViewModel() -> SubscriptionViewModel {
-    SubscriptionViewModel(subscriptionService: subscriptionService)
   }
 
   public func makeSettingsViewModel() -> SettingsViewModel {
