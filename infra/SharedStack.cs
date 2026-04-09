@@ -313,7 +313,6 @@ public static class SharedStack
             ["resourceGroupName"] = resourceGroup.Name,
             ["containerRegistryLoginServer"] = containerRegistry.LoginServer,
             ["acrPullIdentityId"] = acrPullIdentity.Id,
-            ["acrPullIdentityClientId"] = acrPullIdentity.ClientId,
             ["cosmosDataIdentityId"] = cosmosDataIdentity.Id,
             ["cosmosDataIdentityClientId"] = cosmosDataIdentity.ClientId,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,

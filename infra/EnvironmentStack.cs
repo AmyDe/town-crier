@@ -41,7 +41,6 @@ public static class EnvironmentStack
         var shared = new StackReference("AmyDe/town-crier/shared");
         var acrLoginServer = shared.GetOutput("containerRegistryLoginServer").Apply(o => o?.ToString() ?? "");
         var acrPullIdentityId = shared.GetOutput("acrPullIdentityId").Apply(o => o?.ToString() ?? "");
-        var acrPullIdentityClientId = shared.GetOutput("acrPullIdentityClientId").Apply(o => o?.ToString() ?? "");
         var containerAppsEnvironmentId = shared.GetOutput("containerAppsEnvironmentId").Apply(o => o?.ToString() ?? "");
         var cosmosDataIdentityId = shared.GetOutput("cosmosDataIdentityId").Apply(o => o?.ToString() ?? "");
         var cosmosDataIdentityClientId = shared.GetOutput("cosmosDataIdentityClientId").Apply(o => o?.ToString() ?? "");
