@@ -1,90 +1,60 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { AuthorityId, PlanningApplicationSummary } from '../../domain/types';
+import { useState, useCallback, useRef } from 'react';
+import type { AuthorityId, PlanningApplicationSummary, SearchResult } from '../../domain/types';
 import type { SearchRepository } from '../../domain/ports/search-repository';
 import { ApiRequestError } from '../../api/client';
-import { usePagination } from '../../hooks/usePagination';
-import { extractErrorMessage } from '../../utils/extractErrorMessage';
+import { usePaginatedFetch } from '../../hooks/usePaginatedFetch';
 
 const PAGE_SIZE = 20;
 
-interface SearchState {
-  applications: readonly PlanningApplicationSummary[];
-  isLoading: boolean;
-  error: string | null;
-  proGateRequired: boolean;
-}
-
 export function useSearch(repository: SearchRepository) {
-  const [state, setState] = useState<SearchState>({
-    applications: [],
-    isLoading: false,
-    error: null,
-    proGateRequired: false,
-  });
+  const [proGateRequired, setProGateRequired] = useState(false);
 
   const queryRef = useRef('');
   const authorityRef = useRef<AuthorityId | null>(null);
-  const paginationRef = useRef<ReturnType<typeof usePagination>>(null!);
 
-  const fetchPage = useCallback(async (query: string, authorityId: AuthorityId, page: number) => {
-    setState(prev => ({ ...prev, isLoading: true, error: null, proGateRequired: false }));
-    try {
-      const result = await repository.search(query, authorityId, page);
-      setState({
-        applications: result.applications,
-        isLoading: false,
-        error: null,
-        proGateRequired: false,
-      });
-      paginationRef.current.setTotal(result.total);
-      paginationRef.current.setPage(result.page);
-    } catch (err: unknown) {
-      if (err instanceof ApiRequestError && err.status === 403) {
-        setState(prev => ({
-          ...prev,
-          applications: [],
-          isLoading: false,
-          error: null,
-          proGateRequired: true,
-        }));
-        return;
+  const fetcher = useCallback(
+    (page: number) => {
+      if (authorityRef.current === null) {
+        return Promise.resolve({ applications: [], total: 0, page: 1 } as SearchResult);
       }
-      const message = extractErrorMessage(err);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: message,
-      }));
+      return repository.search(queryRef.current, authorityRef.current, page);
+    },
+    [repository],
+  );
+
+  const handleError = useCallback((err: unknown): 'default' | 'handled' => {
+    if (err instanceof ApiRequestError && err.status === 403) {
+      setProGateRequired(true);
+      return 'handled';
     }
-  }, [repository]);
+    return 'default';
+  }, []);
 
-  const loadPage = useCallback((page: number) => {
-    if (authorityRef.current !== null) {
-      fetchPage(queryRef.current, authorityRef.current, page);
-    }
-  }, [fetchPage]);
-
-  const pagination = usePagination({ loadPage, pageSize: PAGE_SIZE });
-
-  useEffect(() => {
-    paginationRef.current = pagination;
+  const result = usePaginatedFetch<SearchResult, PlanningApplicationSummary>({
+    fetcher,
+    pageSize: PAGE_SIZE,
+    getItems: (r) => r.applications,
+    getTotal: (r) => r.total,
+    getPage: (r) => r.page,
+    onError: handleError,
   });
 
   const performSearch = useCallback((query: string, authorityId: AuthorityId) => {
     queryRef.current = query;
     authorityRef.current = authorityId;
-    fetchPage(query, authorityId, 1);
-  }, [fetchPage]);
+    setProGateRequired(false);
+    result.loadPage(1);
+  }, [result.loadPage]);
 
   return {
-    applications: state.applications,
-    page: pagination.page,
-    totalPages: pagination.totalPages,
-    isLoading: state.isLoading,
-    error: state.error,
-    proGateRequired: state.proGateRequired,
+    applications: result.items,
+    page: result.page,
+    totalPages: result.totalPages,
+    isLoading: result.isLoading,
+    error: result.error,
+    proGateRequired,
     performSearch,
-    goToNextPage: pagination.goToNextPage,
-    goToPreviousPage: pagination.goToPreviousPage,
+    goToNextPage: result.goToNextPage,
+    goToPreviousPage: result.goToPreviousPage,
   };
 }
