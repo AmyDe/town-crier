@@ -3,9 +3,9 @@ import TownCrierDomain
 
 /// ViewModel managing login, logout, and session restoration.
 @MainActor
-public final class LoginViewModel: ObservableObject {
+public final class LoginViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public private(set) var isLoading = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
     @Published public private(set) var session: AuthSession?
 
     private let authService: AuthenticationService
@@ -24,10 +24,8 @@ public final class LoginViewModel: ObservableObject {
         error = nil
         do {
             session = try await authService.login()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .authenticationFailed(error.localizedDescription)
+            handleError(error) { .authenticationFailed($0) }
         }
         isLoading = false
     }
@@ -38,10 +36,8 @@ public final class LoginViewModel: ObservableObject {
         do {
             try await authService.logout()
             session = nil
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .logoutFailed(error.localizedDescription)
+            handleError(error) { .logoutFailed($0) }
         }
     }
 
