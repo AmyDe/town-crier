@@ -83,6 +83,8 @@ public sealed partial class PollPlanItCommandHandler
                 authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
 
                 await this.pollStateStore.SaveLastPollTimeAsync(authorityId, now, ct).ConfigureAwait(false);
+                PollingMetrics.AuthoritiesPolled.Add(1);
+                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
                 authoritiesPolled++;
                 count += authorityAppCount;
             }
@@ -102,9 +104,6 @@ public sealed partial class PollPlanItCommandHandler
                 LogAuthorityError(this.logger, authorityId, ex);
             }
         }
-
-        PollingMetrics.AuthoritiesPolled.Add(authoritiesPolled);
-        PollingMetrics.ApplicationsIngested.Add(count);
 
         await this.pollStateStore.DeleteGlobalPollStateAsync(ct).ConfigureAwait(false);
 

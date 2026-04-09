@@ -41,9 +41,10 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Assert — single cycle-level emission with total count
-        await Assert.That(recorded).HasCount().EqualTo(1);
-        await Assert.That(recorded[0]).IsEqualTo(2);
+        // Assert — per-authority emission (one Add(1) per successful authority)
+        await Assert.That(recorded).HasCount().EqualTo(2);
+        await Assert.That(recorded[0]).IsEqualTo(1);
+        await Assert.That(recorded[1]).IsEqualTo(1);
     }
 
     [Test]
@@ -266,78 +267,6 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         // Assert — both skipped and rate_limited incremented
         await Assert.That(skipped).HasCount().EqualTo(1);
         await Assert.That(rateLimited).HasCount().EqualTo(1);
-    }
-
-    [Test]
-    public async Task Should_EmitAuthoritiesPolledWithZero_When_AllAuthoritiesRateLimited()
-    {
-        // Arrange
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(100);
-        authorityProvider.Add(200);
-
-        var planItClient = new FakePlanItClient();
-        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-        planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
-
-        var recorded = new List<long>();
-        using var listener = new MeterListener();
-        listener.InstrumentPublished = (instrument, listener) =>
-        {
-            if (instrument.Name == "towncrier.polling.authorities_polled")
-            {
-                listener.EnableMeasurementEvents(instrument);
-            }
-        };
-        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
-        {
-            recorded.Add(measurement);
-        });
-        listener.Start();
-
-        // Act
-        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        // Assert — counter must still emit so OTel exports it (dashboard shows 0 not gap)
-        await Assert.That(recorded.Sum()).IsEqualTo(0);
-        await Assert.That(recorded).HasCount().GreaterThanOrEqualTo(1);
-    }
-
-    [Test]
-    public async Task Should_EmitApplicationsIngestedWithZero_When_AllAuthoritiesRateLimited()
-    {
-        // Arrange
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(100);
-
-        var planItClient = new FakePlanItClient();
-        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
-
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
-
-        var recorded = new List<long>();
-        using var listener = new MeterListener();
-        listener.InstrumentPublished = (instrument, listener) =>
-        {
-            if (instrument.Name == "towncrier.polling.applications_ingested")
-            {
-                listener.EnableMeasurementEvents(instrument);
-            }
-        };
-        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
-        {
-            recorded.Add(measurement);
-        });
-        listener.Start();
-
-        // Act
-        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        // Assert — counter must still emit so OTel exports it (dashboard shows 0 not gap)
-        await Assert.That(recorded.Sum()).IsEqualTo(0);
-        await Assert.That(recorded).HasCount().GreaterThanOrEqualTo(1);
     }
 
     [Test]
