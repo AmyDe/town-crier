@@ -1,67 +1,31 @@
 import { useState, useCallback } from 'react';
 import type { AuthorityListItem, PlanningApplicationSummary } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-
-interface ApplicationsState {
-  selectedAuthority: AuthorityListItem | null;
-  applications: readonly PlanningApplicationSummary[];
-  isLoading: boolean;
-  error: Error | null;
-}
+import { useFetchData } from '../../hooks/useFetchData';
 
 export function useApplications(port: ApplicationsBrowsePort) {
-  const [state, setState] = useState<ApplicationsState>({
-    selectedAuthority: null,
-    applications: [],
-    isLoading: false,
-    error: null,
-  });
+  const [selectedAuthority, setSelectedAuthority] = useState<AuthorityListItem | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
+
+  const { data, isLoading, error } = useFetchData<readonly PlanningApplicationSummary[]>(
+    () => port.fetchByAuthority(selectedAuthority!.id),
+    [selectedAuthority?.id, fetchKey],
+    { enabled: selectedAuthority !== null },
+  );
 
   const selectAuthority = useCallback(
     (authority: AuthorityListItem | null) => {
-      if (authority === null) {
-        setState({
-          selectedAuthority: null,
-          applications: [],
-          isLoading: false,
-          error: null,
-        });
-        return;
-      }
-
-      setState((prev) => ({
-        ...prev,
-        selectedAuthority: authority,
-        isLoading: true,
-        error: null,
-      }));
-
-      port
-        .fetchByAuthority(authority.id)
-        .then((applications) => {
-          setState((prev) => ({
-            ...prev,
-            applications,
-            isLoading: false,
-          }));
-        })
-        .catch((err: unknown) => {
-          setState((prev) => ({
-            ...prev,
-            applications: [],
-            isLoading: false,
-            error: err instanceof Error ? err : new Error(String(err)),
-          }));
-        });
+      setSelectedAuthority(authority);
+      setFetchKey((k) => k + 1);
     },
-    [port],
+    [],
   );
 
   return {
-    selectedAuthority: state.selectedAuthority,
-    applications: state.applications,
-    isLoading: state.isLoading,
-    error: state.error,
+    selectedAuthority,
+    applications: data ?? [],
+    isLoading,
+    error,
     selectAuthority,
   };
 }

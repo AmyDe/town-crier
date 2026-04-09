@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useApplications } from '../useApplications';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
+import type { PlanningApplicationSummary } from '../../../domain/types';
 import {
   undecidedApplication,
   approvedApplication,
@@ -44,8 +45,12 @@ describe('useApplications', () => {
   });
 
   it('sets loading to true while fetching', async () => {
+    let resolvePromise: (value: readonly PlanningApplicationSummary[]) => void;
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityResult = [undecidedApplication()];
+    spy.fetchByAuthorityOverride = () =>
+      new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
     const authority = cambridgeAuthority();
 
     const { result } = renderHook(() => useApplications(spy));
@@ -54,12 +59,16 @@ describe('useApplications', () => {
       result.current.selectAuthority(authority);
     });
 
-    // Loading should be true immediately after selecting
-    expect(result.current.isLoading).toBe(true);
-
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(result.current.isLoading).toBe(true);
     });
+
+    await act(async () => {
+      resolvePromise!([undecidedApplication()]);
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.applications).toHaveLength(1);
   });
 
   it('sets error when fetch fails', async () => {
@@ -77,7 +86,7 @@ describe('useApplications', () => {
       expect(result.current.error).not.toBeNull();
     });
 
-    expect(result.current.error?.message).toBe('Network unavailable');
+    expect(result.current.error).toBe('Network unavailable');
     expect(result.current.applications).toEqual([]);
     expect(result.current.isLoading).toBe(false);
   });

@@ -41,6 +41,7 @@ export function useFetchData<T>(
 
   useEffect(() => {
     if (!enabled) return;
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
     let cancelled = false;
     (async () => {
       try {
