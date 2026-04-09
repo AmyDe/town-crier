@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
 import type { UpdateProfileRequest, UserProfile } from '../../domain/types';
 import { useFetchData } from '../../hooks/useFetchData';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export function useUserProfile(
   repository: SettingsRepository,
@@ -41,7 +42,7 @@ export function useUserProfile(
       setOptimisticProfile(updated);
     } catch (err) {
       setOptimisticProfile(previous);
-      const message = err instanceof Error ? err.message : 'Failed to update preferences';
+      const message = extractErrorMessage(err, 'Failed to update preferences');
       setActionError(message);
     }
   }, [optimisticProfile, fetchedProfile, repository]);
@@ -59,7 +60,7 @@ export function useUserProfile(
       URL.revokeObjectURL(url);
       setIsExporting(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to export data';
+      const message = extractErrorMessage(err, 'Failed to export data');
       setIsExporting(false);
       setActionError(message);
     }
@@ -73,7 +74,7 @@ export function useUserProfile(
       setIsDeleting(false);
       logout();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete account';
+      const message = extractErrorMessage(err, 'Failed to delete account');
       setIsDeleting(false);
       setActionError(message);
     }

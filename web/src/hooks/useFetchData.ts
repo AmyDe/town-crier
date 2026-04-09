@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type DependencyList } from 'react';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 
 interface FetchDataState<T> {
   data: T | null;
@@ -12,10 +13,6 @@ interface FetchDataResult<T> extends FetchDataState<T> {
 
 interface FetchDataOptions {
   enabled?: boolean;
-}
-
-function extractErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'An error occurred';
 }
 
 export function useFetchData<T>(

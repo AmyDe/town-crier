@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { WatchZoneSummary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useFetchData } from '../../hooks/useFetchData';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export function useWatchZones(repository: WatchZoneRepository) {
   const [actionError, setActionError] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export function useWatchZones(repository: WatchZoneRepository) {
       await repository.delete(zoneId);
       refresh();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = extractErrorMessage(err);
       setActionError(message);
     }
   }, [repository, refresh]);

@@ -113,16 +113,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
-
-      - name: Build and push image
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
-          docker build -t "$IMAGE" -t "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest" .
-          docker push "$IMAGE"
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:latest"
-        working-directory: api
+      - uses: ./.github/actions/acr-build-push
+        with:
+          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          image-name: town-crier-api
+          working-directory: api
 
   # ── Worker: build & push image ──────────────────────────
   worker-image:
@@ -139,16 +134,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
-
-      - name: Build and push worker image
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
-          docker build -f Dockerfile.worker -t "$IMAGE" -t "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:latest" .
-          docker push "$IMAGE"
-          docker push "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:latest"
-        working-directory: api
+      - uses: ./.github/actions/acr-build-push
+        with:
+          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          image-name: town-crier-worker
+          dockerfile: Dockerfile.worker
+          working-directory: api
 
   # ── API: deploy to dev ──────────────────────────────
   api-deploy:
@@ -166,29 +157,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Get current active revision
-        id: old-revision
-        run: |
-          REV=$(az containerapp ingress traffic show \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-          echo "revision=$REV" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy to Container App
-        run: |
-          az containerapp update \
-            --name "ca-town-crier-api-dev" \
-            --resource-group "rg-town-crier-dev" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}"
-
-      - name: Deactivate old revision
-        if: steps.old-revision.outputs.revision != ''
-        run: |
-          az containerapp revision deactivate \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --revision "${{ steps.old-revision.outputs.revision }}" || true
+      - uses: ./.github/actions/deploy-container-app
+        with:
+          app-name: ca-town-crier-api-dev
+          resource-group: rg-town-crier-dev
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}
 
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
@@ -206,17 +179,11 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy worker image to all jobs
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}"
-          for JOB in poll digest; do
-            echo "::group::Deploying to job-town-crier-${JOB}-dev"
-            az containerapp job update \
-              --name "job-town-crier-${JOB}-dev" \
-              --resource-group "rg-town-crier-dev" \
-              --image "$IMAGE"
-            echo "::endgroup::"
-          done
+      - uses: ./.github/actions/deploy-worker-jobs
+        with:
+          env-suffix: dev
+          resource-group: rg-town-crier-dev
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:

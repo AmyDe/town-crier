@@ -4,12 +4,12 @@ import TownCrierDomain
 
 /// Drives create/edit of a single watch zone with postcode geocoding and tier-based radius limits.
 @MainActor
-public final class WatchZoneEditorViewModel: ObservableObject {
+public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public var postcodeInput: String = ""
     @Published public var selectedRadiusMetres: Double = 1000
     @Published public private(set) var geocodedCoordinate: Coordinate?
     @Published public private(set) var isLoading = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
 
     var onSave: ((WatchZone) -> Void)?
 
@@ -50,22 +50,16 @@ public final class WatchZoneEditorViewModel: ObservableObject {
         let postcode: Postcode
         do {
             postcode = try Postcode(postcodeInput)
-        } catch let domainError as DomainError {
-            error = domainError
-            isLoading = false
-            return
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
             isLoading = false
             return
         }
 
         do {
             geocodedCoordinate = try await geocoder.geocode(postcode)
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
 
         isLoading = false
@@ -94,10 +88,8 @@ public final class WatchZoneEditorViewModel: ObservableObject {
             )
             try await repository.save(zone)
             onSave?(zone)
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
     }
 }

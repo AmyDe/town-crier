@@ -1,0 +1,52 @@
+# Deploys a new image to an Azure Container App, then deactivates the
+# previously-active revision to keep the revision list clean.
+#
+# Assumes azure/login has already been called in an earlier step.
+name: Deploy Container App
+description: Update a Container App with a new image and deactivate the old revision
+
+inputs:
+  app-name:
+    description: Container App name (e.g., ca-town-crier-api-dev)
+    required: true
+  resource-group:
+    description: Azure resource group
+    required: true
+  image:
+    description: Full image reference including tag (e.g., myregistry.azurecr.io/app:sha)
+    required: true
+
+outputs:
+  old-revision:
+    description: The revision that was deactivated (empty if none)
+    value: ${{ steps.old-revision.outputs.revision }}
+
+runs:
+  using: composite
+  steps:
+    - name: Get current active revision
+      id: old-revision
+      shell: bash
+      run: |
+        REV=$(az containerapp ingress traffic show \
+          --name "${{ inputs.app-name }}" \
+          --resource-group "${{ inputs.resource-group }}" \
+          --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
+        echo "revision=$REV" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy new image
+      shell: bash
+      run: |
+        az containerapp update \
+          --name "${{ inputs.app-name }}" \
+          --resource-group "${{ inputs.resource-group }}" \
+          --image "${{ inputs.image }}"
+
+    - name: Deactivate old revision
+      if: steps.old-revision.outputs.revision != ''
+      shell: bash
+      run: |
+        az containerapp revision deactivate \
+          --name "${{ inputs.app-name }}" \
+          --resource-group "${{ inputs.resource-group }}" \
+          --revision "${{ steps.old-revision.outputs.revision }}" || true

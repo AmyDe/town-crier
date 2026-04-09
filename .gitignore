@@ -92,3 +92,5 @@ email-notifications/
 .claude/skills/*-workspace/
 .claude/worktrees/autopilot-tc-k2v/
 .claude/worktrees/autopilot-tc-2v1/
+.claude/worktrees/autopilot-tc-xd8/
+.claude/worktrees/autopilot-tc-c6i/

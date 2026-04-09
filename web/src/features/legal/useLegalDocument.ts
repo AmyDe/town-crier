@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { LegalDocument } from '../../domain/types';
 import type { LegalDocumentPort } from '../../domain/ports/legal-document-port';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 interface LegalDocumentState {
   document: LegalDocument | null;
@@ -33,7 +34,7 @@ export function useLegalDocument(port: LegalDocumentPort, documentType: string) 
       },
       (err: unknown) => {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'Failed to load document';
+          const message = extractErrorMessage(err, 'Failed to load document');
           setState({ document: null, isLoading: false, error: message });
         }
       },

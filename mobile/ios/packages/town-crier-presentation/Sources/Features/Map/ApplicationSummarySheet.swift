@@ -8,7 +8,7 @@ struct ApplicationSummarySheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: TCSpacing.medium) {
             HStack {
-                statusBadge
+                StatusBadgeView(status: application.status)
                 Spacer()
                 Text(application.reference.value)
                     .font(.system(.caption))
@@ -34,28 +34,4 @@ struct ApplicationSummarySheet: View {
         .presentationDragIndicator(.visible)
     }
 
-    private var statusBadge: some View {
-        HStack(spacing: TCSpacing.extraSmall) {
-            Image(systemName: statusIcon)
-            Text(statusLabel)
-        }
-        .font(.system(.caption, weight: .medium))
-        .foregroundStyle(statusColor)
-        .padding(.horizontal, TCSpacing.small)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .background(statusColor.opacity(0.15))
-        .clipShape(Capsule())
-    }
-
-    private var statusColor: Color {
-        application.status.displayColor
-    }
-
-    private var statusLabel: String {
-        application.status.displayLabel
-    }
-
-    private var statusIcon: String {
-        application.status.displayIcon
-    }
 }

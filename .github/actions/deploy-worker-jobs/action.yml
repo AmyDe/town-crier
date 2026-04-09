@@ -1,0 +1,33 @@
+# Updates all Container App Jobs for the worker with a new image.
+# Iterates over the standard job names (poll, digest) with the
+# naming convention job-town-crier-{name}-{env-suffix}.
+#
+# Assumes azure/login has already been called in an earlier step.
+name: Deploy Worker Jobs
+description: Update all worker Container App Jobs with a new image
+
+inputs:
+  env-suffix:
+    description: Environment suffix for job names (e.g., dev, prod)
+    required: true
+  resource-group:
+    description: Azure resource group
+    required: true
+  image:
+    description: Full image reference including tag
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy worker image to all jobs
+      shell: bash
+      run: |
+        for JOB in poll digest; do
+          echo "::group::Deploying to job-town-crier-${JOB}-${{ inputs.env-suffix }}"
+          az containerapp job update \
+            --name "job-town-crier-${JOB}-${{ inputs.env-suffix }}" \
+            --resource-group "${{ inputs.resource-group }}" \
+            --image "${{ inputs.image }}"
+          echo "::endgroup::"
+        done

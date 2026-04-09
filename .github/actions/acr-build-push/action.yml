@@ -1,0 +1,45 @@
+# Logs into Azure Container Registry, builds a Docker image, and pushes
+# it tagged with both the commit SHA and "latest".
+#
+# Assumes azure/login has already been called in an earlier step.
+name: ACR Build & Push
+description: Login to ACR, build a Docker image, and push with SHA + latest tags
+
+inputs:
+  acr-login-server:
+    description: ACR login server (e.g., myregistry.azurecr.io)
+    required: true
+  image-name:
+    description: Image name without registry prefix (e.g., town-crier-api)
+    required: true
+  dockerfile:
+    description: Dockerfile path relative to working-directory (e.g., Dockerfile, Dockerfile.worker)
+    required: false
+    default: Dockerfile
+  working-directory:
+    description: Build context directory
+    required: false
+    default: "."
+  tag:
+    description: Primary image tag (defaults to github.sha)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Login to ACR
+      shell: bash
+      run: az acr login --name "${{ inputs.acr-login-server }}"
+
+    - name: Build and push image
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        TAG="${{ inputs.tag }}"
+        TAG="${TAG:-${{ github.sha }}}"
+        IMAGE="${{ inputs.acr-login-server }}/${{ inputs.image-name }}:${TAG}"
+        LATEST="${{ inputs.acr-login-server }}/${{ inputs.image-name }}:latest"
+        docker build -f "${{ inputs.dockerfile }}" -t "$IMAGE" -t "$LATEST" .
+        docker push "$IMAGE"
+        docker push "$LATEST"

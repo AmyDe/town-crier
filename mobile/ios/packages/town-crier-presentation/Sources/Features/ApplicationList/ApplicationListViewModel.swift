@@ -3,11 +3,11 @@ import TownCrierDomain
 
 /// ViewModel driving the filterable list of planning applications.
 @MainActor
-public final class ApplicationListViewModel: ObservableObject {
+public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published private(set) var applications: [PlanningApplication] = []
     @Published var selectedStatusFilter: ApplicationStatus?
     @Published private(set) var isLoading = false
-    @Published private(set) var error: DomainError?
+    @Published var error: DomainError?
 
     private let repository: PlanningApplicationRepository?
     private let offlineRepository: OfflineAwareRepository?
@@ -75,10 +75,8 @@ public final class ApplicationListViewModel: ObservableObject {
                 fetched = []
             }
             applications = fetched.sorted { $0.receivedDate > $1.receivedDate }
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
         isLoading = false
     }

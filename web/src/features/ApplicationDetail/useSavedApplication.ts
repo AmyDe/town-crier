@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ApplicationUid } from '../../domain/types';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 interface SavedApplicationState {
   isSaved: boolean;
@@ -30,7 +31,7 @@ export function useSavedApplication(
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'Unknown error';
+          const message = extractErrorMessage(err, 'Unknown error');
           setState({ isSaved: false, isLoading: false, error: message });
         }
       }
@@ -53,7 +54,7 @@ export function useSavedApplication(
         await repository.save(uid);
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      const message = extractErrorMessage(err, 'Unknown error');
       setState((prev) => ({ ...prev, isSaved: wasSaved, error: message }));
     }
   }, [repository, uid, state.isSaved]);

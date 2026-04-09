@@ -3,6 +3,7 @@ import type { AuthorityId, PlanningApplicationSummary } from '../../domain/types
 import type { SearchRepository } from '../../domain/ports/search-repository';
 import { ApiRequestError } from '../../api/client';
 import { usePagination } from '../../hooks/usePagination';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 const PAGE_SIZE = 20;
 
@@ -48,7 +49,7 @@ export function useSearch(repository: SearchRepository) {
         }));
         return;
       }
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = extractErrorMessage(err);
       setState(prev => ({
         ...prev,
         isLoading: false,

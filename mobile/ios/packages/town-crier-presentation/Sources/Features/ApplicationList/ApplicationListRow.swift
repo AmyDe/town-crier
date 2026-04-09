@@ -8,7 +8,7 @@ struct ApplicationListRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: TCSpacing.small) {
             HStack {
-                statusBadge
+                StatusBadgeView(status: application.status)
                 Spacer()
                 Text(application.receivedDate.formattedForDisplay)
                     .font(TCTypography.caption)
@@ -28,30 +28,4 @@ struct ApplicationListRow: View {
         .padding(.vertical, TCSpacing.small)
     }
 
-    // MARK: - Status Badge
-
-    private var statusBadge: some View {
-        HStack(spacing: TCSpacing.extraSmall) {
-            Image(systemName: statusIcon)
-            Text(statusLabel)
-        }
-        .font(TCTypography.captionEmphasis)
-        .foregroundStyle(statusColor)
-        .padding(.horizontal, TCSpacing.small)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .background(statusColor.opacity(0.15))
-        .clipShape(Capsule())
-    }
-
-    private var statusLabel: String {
-        application.status.displayLabel
-    }
-
-    private var statusIcon: String {
-        application.status.displayIcon
-    }
-
-    private var statusColor: Color {
-        application.status.displayColor
-    }
 }

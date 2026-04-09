@@ -8,7 +8,7 @@ internal sealed class PlanningApplicationBuilder
     private readonly string? postcode = "SW1A 1AA";
     private readonly string description = "Test planning application";
     private readonly string appType = "Full";
-    private readonly DateTimeOffset lastDifferent = DateTimeOffset.UtcNow;
+    private DateTimeOffset lastDifferent = DateTimeOffset.UtcNow;
     private string areaName = "Test Council";
     private int areaId = 1;
     private string name = "Test Application";
@@ -51,6 +51,12 @@ internal sealed class PlanningApplicationBuilder
     {
         this.latitude = latitude;
         this.longitude = longitude;
+        return this;
+    }
+
+    public PlanningApplicationBuilder WithLastDifferent(DateTimeOffset lastDifferent)
+    {
+        this.lastDifferent = lastDifferent;
         return this;
     }
 

@@ -120,35 +120,11 @@ jobs:
             exit 1
           fi
 
-      - name: Get current active revision
-        id: old-revision
-        run: |
-          REV=$(az containerapp ingress traffic show \
-            --name ca-town-crier-api-prod \
-            --resource-group "$RESOURCE_GROUP" \
-            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-          echo "revision=$REV" >> "$GITHUB_OUTPUT"
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
-
-      - name: Deploy API image to prod
-        run: |
-          az containerapp update \
-            --name "ca-town-crier-api-prod" \
-            --resource-group "$RESOURCE_GROUP" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}"
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
-
-      - name: Deactivate old revision
-        if: steps.old-revision.outputs.revision != ''
-        run: |
-          az containerapp revision deactivate \
-            --name ca-town-crier-api-prod \
-            --resource-group "$RESOURCE_GROUP" \
-            --revision "${{ steps.old-revision.outputs.revision }}" || true
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
+      - uses: ./.github/actions/deploy-container-app
+        with:
+          app-name: ca-town-crier-api-prod
+          resource-group: ${{ needs.infra.outputs.resource-group }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ steps.check-image.outputs.tag }}
 
   # ── Worker ───────────────────────────────────────────────
   worker:
@@ -193,19 +169,11 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy worker image to all jobs
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}"
-          for JOB in poll digest; do
-            echo "::group::Deploying to job-town-crier-${JOB}-prod"
-            az containerapp job update \
-              --name "job-town-crier-${JOB}-prod" \
-              --resource-group "$RESOURCE_GROUP" \
-              --image "$IMAGE"
-            echo "::endgroup::"
-          done
-        env:
-          RESOURCE_GROUP: ${{ needs.infra.outputs.resource-group }}
+      - uses: ./.github/actions/deploy-worker-jobs
+        with:
+          env-suffix: prod
+          resource-group: ${{ needs.infra.outputs.resource-group }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}
 
   # ── Web ───────────────────────────────────────────────
   web:

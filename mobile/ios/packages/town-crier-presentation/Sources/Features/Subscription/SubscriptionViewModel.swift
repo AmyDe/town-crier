@@ -3,12 +3,12 @@ import TownCrierDomain
 
 /// ViewModel managing subscription product display, purchasing, and restoration.
 @MainActor
-public final class SubscriptionViewModel: ObservableObject {
+public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public private(set) var products: [SubscriptionProduct] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var isPurchasing = false
     @Published public private(set) var isRestoring = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
     @Published public private(set) var currentEntitlement: SubscriptionEntitlement?
 
     private let subscriptionService: SubscriptionService
@@ -28,10 +28,8 @@ public final class SubscriptionViewModel: ObservableObject {
         do {
             products = try await subscriptionService.availableProducts()
             currentEntitlement = await subscriptionService.currentEntitlement()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
         isLoading = false
     }
@@ -44,10 +42,8 @@ public final class SubscriptionViewModel: ObservableObject {
             currentEntitlement = try await subscriptionService.purchase(productId)
         } catch DomainError.purchaseCancelled {
             // User cancelled — not an error
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .purchaseFailed(error.localizedDescription)
+            handleError(error) { .purchaseFailed($0) }
         }
         isPurchasing = false
     }
@@ -58,10 +54,8 @@ public final class SubscriptionViewModel: ObservableObject {
         error = nil
         do {
             currentEntitlement = try await subscriptionService.restorePurchases()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .restoreFailed(error.localizedDescription)
+            handleError(error) { .restoreFailed($0) }
         }
         isRestoring = false
     }

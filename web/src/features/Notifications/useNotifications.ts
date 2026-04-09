@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { NotificationItem } from '../../domain/types';
 import type { NotificationRepository } from '../../domain/ports/notification-repository';
 import { usePagination } from '../../hooks/usePagination';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 const PAGE_SIZE = 20;
 
@@ -32,7 +33,7 @@ export function useNotifications(repository: NotificationRepository) {
       paginationRef.current.setTotal(result.total);
       paginationRef.current.setPage(result.page);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = extractErrorMessage(err);
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -61,7 +62,7 @@ export function useNotifications(repository: NotificationRepository) {
       }
     }).catch((err: unknown) => {
       if (!cancelled) {
-        const message = err instanceof Error ? err.message : 'An error occurred';
+        const message = extractErrorMessage(err);
         setState(prev => ({ ...prev, isLoading: false, error: message }));
       }
     });
