@@ -533,6 +533,124 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(planItClient.AuthorityIdsRequested[0]).IsEqualTo(200);
     }
 
+    [Test]
+    public async Task Should_SavePollState_When_429HitAfterSomeApplicationsIngested()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        var app1 = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithAreaId(100)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+        var app2 = new PlanningApplicationBuilder()
+            .WithUid("app-2").WithAreaId(100)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 12, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+        var app3 = new PlanningApplicationBuilder()
+            .WithUid("app-3").WithAreaId(100)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 14, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+        planItClient.Add(100, app1);
+        planItClient.Add(100, app2);
+        planItClient.Add(100, app3);
+        planItClient.ThrowAfterYielding(
+            100,
+            2,
+            new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsNotNull();
+        await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_EmitApplicationsIngested_When_429HitMidPagination()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(100).Build());
+        planItClient.ThrowAfterYielding(
+            100,
+            2,
+            new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+        await Assert.That(result.RateLimited).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_EmitAuthoritiesPolled_When_429HitMidPagination()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(100).Build());
+        planItClient.ThrowAfterYielding(
+            100,
+            2,
+            new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_AdvanceToNextAuthority_When_PreviousAuthorityPartiallyCompleted()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(100).Build());
+
+        // Mid-pagination 429 on authority 100 after 2 apps
+        planItClient.ThrowAfterYielding(
+            100,
+            2,
+            new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-4").WithAreaId(200).Build());
+
+        var pollStateStore = new FakePollStateStore();
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.ApplicationCount).IsEqualTo(2);
+
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsNotNull();
+
+        await Assert.That(result.RateLimited).IsTrue();
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,

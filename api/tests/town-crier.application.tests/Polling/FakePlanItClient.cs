@@ -7,6 +7,7 @@ internal sealed class FakePlanItClient : IPlanItClient
 {
     private readonly Dictionary<int, List<PlanningApplication>> applicationsByAuthority = [];
     private readonly Dictionary<int, Exception> exceptionsByAuthority = [];
+    private readonly Dictionary<int, (int Count, Exception Exception)> throwAfterYieldingByAuthority = [];
     private readonly List<PlanningApplication> searchResults = [];
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
@@ -37,6 +38,11 @@ internal sealed class FakePlanItClient : IPlanItClient
     public void ThrowForAuthority(int authorityId, Exception exception)
     {
         this.exceptionsByAuthority[authorityId] = exception;
+    }
+
+    public void ThrowAfterYielding(int authorityId, int count, Exception exception)
+    {
+        this.throwAfterYieldingByAuthority[authorityId] = (count, exception);
     }
 
     public void Add(int authorityId, PlanningApplication application)
@@ -81,9 +87,17 @@ internal sealed class FakePlanItClient : IPlanItClient
 
         if (this.applicationsByAuthority.TryGetValue(authorityId, out var applications))
         {
+            var yielded = 0;
             foreach (var app in applications)
             {
+                if (this.throwAfterYieldingByAuthority.TryGetValue(authorityId, out var rule)
+                    && yielded >= rule.Count)
+                {
+                    throw rule.Exception;
+                }
+
                 yield return app;
+                yielded++;
             }
         }
 
