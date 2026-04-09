@@ -256,3 +256,19 @@ export interface AuthoritiesResult {
   readonly authorities: readonly AuthorityListItem[];
   readonly total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Legal documents
+// ---------------------------------------------------------------------------
+
+export interface LegalDocumentSection {
+  readonly heading: string;
+  readonly body: string;
+}
+
+export interface LegalDocument {
+  readonly documentType: string;
+  readonly title: string;
+  readonly lastUpdated: string;
+  readonly sections: readonly LegalDocumentSection[];
+}
