@@ -17,7 +17,7 @@ public struct ApplicationDetailView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: TCSpacing.large) {
-                statusBadge
+                StatusBadgeView(status: viewModel.status)
 
                 Text(viewModel.description)
                     .font(TCTypography.displaySmall)
@@ -52,21 +52,6 @@ public struct ApplicationDetailView: View {
             }
         }
         #endif
-    }
-
-    // MARK: - Status Badge
-
-    private var statusBadge: some View {
-        HStack(spacing: TCSpacing.extraSmall) {
-            Image(systemName: viewModel.statusIcon)
-            Text(viewModel.statusLabel)
-        }
-        .font(TCTypography.captionEmphasis)
-        .foregroundStyle(statusColor)
-        .padding(.horizontal, TCSpacing.small)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .background(statusColor.opacity(0.15))
-        .clipShape(Capsule())
     }
 
     // MARK: - Detail Card
@@ -117,11 +102,6 @@ public struct ApplicationDetailView: View {
         }
     }
 
-    // MARK: - Status Color
-
-    private var statusColor: Color {
-        viewModel.status.displayColor
-    }
 }
 
 #if os(iOS)
