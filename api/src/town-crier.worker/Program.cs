@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -60,6 +61,17 @@ builder.Services.AddOpenTelemetry()
             metrics.AddAzureMonitorMetricExporter(o => o.ConnectionString = aiConnectionString);
         }
     });
+
+builder.Logging.AddOpenTelemetry(logging =>
+{
+    logging.IncludeFormattedMessage = true;
+    logging.IncludeScopes = true;
+
+    if (hasAppInsights)
+    {
+        logging.AddAzureMonitorLogExporter(o => o.ConnectionString = aiConnectionString);
+    }
+});
 
 builder.Services.Configure<MetricReaderOptions>(o =>
 {

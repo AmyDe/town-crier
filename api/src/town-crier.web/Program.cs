@@ -47,6 +47,9 @@ builder.Services.AddOpenTelemetry()
 
 builder.Logging.AddOpenTelemetry(logging =>
 {
+    logging.IncludeFormattedMessage = true;
+    logging.IncludeScopes = true;
+
     if (hasAppInsights)
     {
         logging.AddAzureMonitorLogExporter(o => o.ConnectionString = aiConnectionString);
