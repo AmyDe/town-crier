@@ -7,11 +7,11 @@ import SafariServices
 
 /// Full detail view for a planning application.
 public struct ApplicationDetailView: View {
-    @StateObject private var viewModel: ApplicationDetailViewModel
+    private let viewModel: ApplicationDetailViewModel
     @State private var showingSafari = false
 
     public init(viewModel: ApplicationDetailViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+        self.viewModel = viewModel
     }
 
     public var body: some View {
