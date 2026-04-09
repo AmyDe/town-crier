@@ -46,7 +46,9 @@ describe('DI wrapper naming convention', () => {
         const stat = statSync(fullPath);
 
         if (stat.isDirectory()) {
-          results.push(...findConnectedFiles(fullPath));
+          if (basename(fullPath) !== '__tests__') {
+            results.push(...findConnectedFiles(fullPath));
+          }
         } else if (basename(entry).startsWith('Connected') && entry.endsWith('.tsx')) {
           results.push(basename(entry));
         }
@@ -57,11 +59,12 @@ describe('DI wrapper naming convention', () => {
 
     const connectedFiles = findConnectedFiles(featuresDir).sort();
 
-    // All 12 DI wrapper files should use Connected prefix (Groups removed)
+    // All 13 DI wrapper files should use Connected prefix (Groups removed)
     expect(connectedFiles).toEqual([
       'ConnectedApplicationDetailPage.tsx',
       'ConnectedApplicationsPage.tsx',
       'ConnectedDashboardPage.tsx',
+      'ConnectedLegalPage.tsx',
       'ConnectedMapPage.tsx',
       'ConnectedNotificationsPage.tsx',
       'ConnectedOnboardingPage.tsx',

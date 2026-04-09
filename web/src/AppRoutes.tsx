@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { LandingPage } from './features/LandingPage/LandingPage';
 import { CallbackPage } from './auth/CallbackPage';
-import { LegalPage } from './features/legal/LegalPage';
+import { ConnectedLegalPage } from './features/legal/ConnectedLegalPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
@@ -58,7 +58,7 @@ export function AppRoutes() {
       {/* Public routes */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/callback" element={<CallbackPage />} />
-      <Route path="/legal/:type" element={<LegalPage />} />
+      <Route path="/legal/:type" element={<ConnectedLegalPage />} />
 
       {/* Authenticated routes */}
       <Route element={<AuthGuard />}>
