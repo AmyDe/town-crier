@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { GeocodeResult } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 type CreateStep = 'postcode' | 'details' | 'confirm';
 
@@ -70,7 +71,7 @@ export function useCreateWatchZone(
       });
       navigate('/watch-zones');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = extractErrorMessage(err);
       setState(prev => ({ ...prev, isSaving: false, error: message }));
     }
   }, [state.coordinates, state.name, state.radiusMetres, repository, navigate]);

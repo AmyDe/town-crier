@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { GeocodeResult } from '../../domain/types';
 import type { GeocodingPort } from '../../domain/ports/geocoding-port';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export function usePostcodeGeocode(port: GeocodingPort) {
   const [postcode, setPostcodeRaw] = useState('');
@@ -20,7 +21,7 @@ export function usePostcodeGeocode(port: GeocodingPort) {
       setIsGeocoding(false);
       return result;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Geocode failed';
+      const message = extractErrorMessage(err, 'Geocode failed');
       setError(message);
       setIsGeocoding(false);
       return null;
