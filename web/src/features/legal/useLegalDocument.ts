@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import type { LegalDocument } from '../../domain/types';
 import type { LegalDocumentPort } from '../../domain/ports/legal-document-port';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
@@ -16,17 +16,11 @@ const initialState: LegalDocumentState = {
 };
 
 export function useLegalDocument(port: LegalDocumentPort, documentType: string) {
-  const requestKey = useMemo(() => `${documentType}`, [documentType]);
   const [state, setState] = useState<LegalDocumentState>(initialState);
-  const [activeKey, setActiveKey] = useState(requestKey);
-
-  if (requestKey !== activeKey) {
-    setActiveKey(requestKey);
-    setState(initialState);
-  }
 
   useEffect(() => {
     let cancelled = false;
+    setState(initialState);
 
     port.fetchDocument(documentType).then(
       (doc) => {
