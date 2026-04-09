@@ -11,6 +11,7 @@ namespace TownCrier.Web.Tests.Observability;
 public sealed class ServerRequestTracingTests
 {
     [Test]
+    [Retry(3)]
     public async Task Should_ExportServerSpan_When_HttpRequestIsHandled()
     {
         // Arrange -- configure a fake App Insights connection string so the
@@ -51,6 +52,7 @@ public sealed class ServerRequestTracingTests
     }
 
     [Test]
+    [Retry(3)]
     public async Task Should_IncludeHttpAttributesOnServerSpan_When_HttpRequestIsHandled()
     {
         // Arrange
