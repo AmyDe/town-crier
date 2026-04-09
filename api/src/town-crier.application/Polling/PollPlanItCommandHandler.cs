@@ -77,16 +77,14 @@ public sealed partial class PollPlanItCommandHandler
                     }
 
                     authorityAppCount++;
-                    count++;
                 }
 
                 PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
-                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
                 authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
 
-                PollingMetrics.AuthoritiesPolled.Add(1);
                 await this.pollStateStore.SaveLastPollTimeAsync(authorityId, now, ct).ConfigureAwait(false);
                 authoritiesPolled++;
+                count += authorityAppCount;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
@@ -104,6 +102,9 @@ public sealed partial class PollPlanItCommandHandler
                 LogAuthorityError(this.logger, authorityId, ex);
             }
         }
+
+        PollingMetrics.AuthoritiesPolled.Add(authoritiesPolled);
+        PollingMetrics.ApplicationsIngested.Add(count);
 
         await this.pollStateStore.DeleteGlobalPollStateAsync(ct).ConfigureAwait(false);
 

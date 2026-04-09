@@ -41,10 +41,9 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Assert — one increment per authority
-        await Assert.That(recorded).HasCount().EqualTo(2);
-        await Assert.That(recorded[0]).IsEqualTo(1);
-        await Assert.That(recorded[1]).IsEqualTo(1);
+        // Assert — single cycle-level emission with total count
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0]).IsEqualTo(2);
     }
 
     [Test]
