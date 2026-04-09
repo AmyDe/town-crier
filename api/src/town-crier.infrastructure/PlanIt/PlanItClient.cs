@@ -97,7 +97,7 @@ public sealed class PlanItClient : IPlanItClient
 
     private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)
     {
-        var url = $"/api/applics/json?pg_sz={DefaultPageSize}&sort=-last_different&page={page}&auth={authorityId}";
+        var url = $"/api/applics/json?pg_sz={DefaultPageSize}&sort=last_different&page={page}&auth={authorityId}";
 
         if (differentStart.HasValue)
         {
