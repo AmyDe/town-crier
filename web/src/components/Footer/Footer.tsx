@@ -25,8 +25,8 @@ export function Footer() {
           </p>
 
           <nav aria-label="Legal" className={styles.legal}>
-            <a href="/privacy" className={styles.legalLink}>Privacy Policy</a>
-            <a href="/terms" className={styles.legalLink}>Terms of Service</a>
+            <a href="/legal/privacy" className={styles.legalLink}>Privacy Policy</a>
+            <a href="/legal/terms" className={styles.legalLink}>Terms of Service</a>
           </nav>
         </div>
       </div>
