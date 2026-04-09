@@ -1,51 +1,28 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import type { ApplicationUid } from '../../domain/types';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
+import { useFetchData } from '../../hooks/useFetchData';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
-
-interface SavedApplicationState {
-  isSaved: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
 
 export function useSavedApplication(
   repository: SavedApplicationRepository,
   uid: ApplicationUid,
 ) {
-  const [state, setState] = useState<SavedApplicationState>({
-    isSaved: false,
-    isLoading: true,
-    error: null,
-  });
+  const { data: savedList, isLoading, error: fetchError } = useFetchData(
+    () => repository.listSaved(),
+    [repository, uid],
+  );
 
-  useEffect(() => {
-    let cancelled = false;
+  const isSavedFromFetch = savedList?.some((s) => s.applicationUid === uid) ?? false;
 
-    async function checkSavedStatus() {
-      try {
-        const savedList = await repository.listSaved();
-        if (!cancelled) {
-          const found = savedList.some((s) => s.applicationUid === uid);
-          setState({ isSaved: found, isLoading: false, error: null });
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          const message = extractErrorMessage(err, 'Unknown error');
-          setState({ isSaved: false, isLoading: false, error: message });
-        }
-      }
-    }
-
-    checkSavedStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [repository, uid]);
+  const [optimistic, setOptimistic] = useState<{
+    isSaved: boolean;
+    error: string | null;
+  } | null>(null);
 
   const toggleSave = useCallback(async () => {
-    const wasSaved = state.isSaved;
-    setState((prev) => ({ ...prev, isSaved: !wasSaved, error: null }));
+    const wasSaved = optimistic?.isSaved ?? isSavedFromFetch;
+    setOptimistic({ isSaved: !wasSaved, error: null });
 
     try {
       if (wasSaved) {
@@ -55,9 +32,14 @@ export function useSavedApplication(
       }
     } catch (err: unknown) {
       const message = extractErrorMessage(err, 'Unknown error');
-      setState((prev) => ({ ...prev, isSaved: wasSaved, error: message }));
+      setOptimistic({ isSaved: wasSaved, error: message });
     }
-  }, [repository, uid, state.isSaved]);
+  }, [repository, uid, optimistic, isSavedFromFetch]);
 
-  return { ...state, toggleSave };
+  return {
+    isSaved: optimistic?.isSaved ?? isSavedFromFetch,
+    isLoading,
+    error: optimistic?.error ?? fetchError,
+    toggleSave,
+  };
 }
