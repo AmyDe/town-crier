@@ -407,6 +407,37 @@ public sealed class PlanItClientTests
     }
 
     [Test]
+    public async Task Should_UseAscendingSortOrder_When_FetchingApplicationsForPolling()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", EmptyResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        await ConsumeAsync(client, differentStart: null, authorityId: 292);
+
+        // Assert — polling uses ascending sort for resumable progress
+        await Assert.That(handler.RequestUrls[0]).Contains("sort=last_different");
+        await Assert.That(handler.RequestUrls[0]).DoesNotContain("sort=-last_different");
+    }
+
+    [Test]
+    public async Task Should_UseDescendingSortOrder_When_SearchingApplications()
+    {
+        // Arrange
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
+
+        // Assert — search uses descending sort (newest first)
+        await Assert.That(handler.RequestUrls[0]).Contains("sort=-last_different");
+    }
+
+    [Test]
     public async Task Should_DefaultToEmptyString_When_DescriptionIsNull()
     {
         // Arrange
