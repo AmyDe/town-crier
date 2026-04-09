@@ -5,17 +5,17 @@ import { extractErrorMessage } from '../utils/extractErrorMessage';
 /**
  * Return value from onError:
  * - 'default': fall through to the default error handling (sets error message)
- * - 'handled' or any other string: error was handled by the callback, do not set error
+ * - 'handled': error was handled by the callback, do not set error state
  */
-type OnErrorResult = 'default' | 'handled' | string;
+type OnErrorResult = 'default' | 'handled';
 
-interface UsePaginatedFetchOptions<TResult> {
+interface UsePaginatedFetchOptions<TResult, TItem> {
   /** Async function that fetches a page of data */
   fetcher: (page: number) => Promise<TResult>;
   /** Number of items per page */
   pageSize: number;
   /** Extract the items array from the fetch result */
-  getItems: (result: TResult) => readonly unknown[];
+  getItems: (result: TResult) => readonly TItem[];
   /** Extract the total count from the fetch result */
   getTotal: (result: TResult) => number;
   /** Extract the current page number from the fetch result */
@@ -44,7 +44,7 @@ interface PaginatedState<TItem> {
 }
 
 export function usePaginatedFetch<TResult, TItem = unknown>(
-  options: UsePaginatedFetchOptions<TResult> & { getItems: (result: TResult) => readonly TItem[] },
+  options: UsePaginatedFetchOptions<TResult, TItem>,
 ): UsePaginatedFetchResult<TItem> {
   const { fetcher, pageSize, getItems, getTotal, getPage, autoLoad = false, onError } = options;
 
