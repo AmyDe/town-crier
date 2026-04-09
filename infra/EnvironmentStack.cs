@@ -25,6 +25,18 @@ public sealed record CosmosContainerDefinition(
 
 public static class EnvironmentStack
 {
+    /// <summary>
+    /// CPU cores allocated to each container (Container App and Worker Job).
+    /// Azure Container Apps minimum is 0.25 vCPU.
+    /// </summary>
+    private const double ContainerCpu = 0.25;
+
+    /// <summary>
+    /// Memory allocated to each container (Container App and Worker Job).
+    /// Must be at least 2x the CPU value in Gi (0.25 vCPU -> 0.5Gi minimum).
+    /// </summary>
+    private const string ContainerMemory = "0.5Gi";
+
     public static Dictionary<string, object?> Run(Config config, string env, InputMap<string> tags)
     {
         var frontendDomain = config.Require("frontendDomain");
@@ -271,8 +283,8 @@ public static class EnvironmentStack
                         Image = "mcr.microsoft.com/k8se/quickstart:latest",
                         Resources = new ContainerResourcesArgs
                         {
-                            Cpu = 0.25,
-                            Memory = "0.5Gi",
+                            Cpu = ContainerCpu,
+                            Memory = ContainerMemory,
                         },
                         Env = new[]
                         {
@@ -478,8 +490,8 @@ public static class EnvironmentStack
                         Image = "mcr.microsoft.com/k8se/quickstart:latest",
                         Resources = new ContainerResourcesArgs
                         {
-                            Cpu = 0.25,
-                            Memory = "0.5Gi",
+                            Cpu = ContainerCpu,
+                            Memory = ContainerMemory,
                         },
                         Env = envVars.ToArray(),
                     },
