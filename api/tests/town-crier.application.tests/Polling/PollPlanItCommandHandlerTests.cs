@@ -240,18 +240,21 @@ public sealed class PollPlanItCommandHandlerTests
         authorityProvider.Add(200);
         authorityProvider.Add(300);
 
+        var app100LastDifferent = new DateTimeOffset(2026, 4, 4, 10, 0, 0, TimeSpan.Zero);
+        var app300LastDifferent = new DateTimeOffset(2026, 4, 4, 14, 0, 0, TimeSpan.Zero);
+
         var planItClient = new FakePlanItClient();
-        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
-        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder()
+            .WithUid("app-1").WithAreaId(100).WithLastDifferent(app100LastDifferent).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder()
+            .WithUid("app-3").WithAreaId(300).WithLastDifferent(app300LastDifferent).Build());
         planItClient.ThrowForAuthority(200, new HttpRequestException("rate limited"));
 
         var pollStateStore = new FakePollStateStore();
-        var fakeTime = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
         var handler = CreateHandler(
             planItClient: planItClient,
             pollStateStore: pollStateStore,
-            authorityProvider: authorityProvider,
-            timeProvider: new FakeTimeProvider(fakeTime));
+            authorityProvider: authorityProvider);
 
         var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -259,8 +262,8 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.ApplicationCount).IsEqualTo(2);
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
         await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(fakeTime);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(300)).IsEqualTo(fakeTime);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(app100LastDifferent);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(300)).IsEqualTo(app300LastDifferent);
         await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsNull();
     }
 
@@ -394,21 +397,21 @@ public sealed class PollPlanItCommandHandlerTests
         pollStateStore.SetLastPollTime(100, authority100Time);
         pollStateStore.SetLastPollTime(200, authority200Time);
 
-        var now = new DateTimeOffset(2026, 4, 5, 12, 0, 0, TimeSpan.Zero);
+        var app100LastDifferent = new DateTimeOffset(2026, 4, 5, 10, 0, 0, TimeSpan.Zero);
         var planItClient = new FakePlanItClient();
-        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder()
+            .WithUid("app-1").WithAreaId(100).WithLastDifferent(app100LastDifferent).Build());
         planItClient.ThrowForAuthority(200, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
 
         var handler = CreateHandler(
             planItClient: planItClient,
             pollStateStore: pollStateStore,
-            authorityProvider: authorityProvider,
-            timeProvider: new FakeTimeProvider(now));
+            authorityProvider: authorityProvider);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Authority 100 should be advanced to now
-        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(now);
+        // Authority 100 should be advanced to high-water mark
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(app100LastDifferent);
 
         // Authority 200 should retain its original poll time (rate limited, not advanced)
         await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsEqualTo(authority200Time);

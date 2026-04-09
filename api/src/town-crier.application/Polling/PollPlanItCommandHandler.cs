@@ -55,12 +55,15 @@ public sealed partial class PollPlanItCommandHandler
             authorityActivity?.SetTag("polling.authority_code", authorityId);
             var authorityStart = Stopwatch.GetTimestamp();
 
+            var authorityAppCount = 0;
+            DateTimeOffset? highWaterMark = null;
+            var completedSuccessfully = false;
+
             try
             {
                 var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
                 lastPollTime ??= now.AddDays(-30);
 
-                var authorityAppCount = 0;
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
                     await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
@@ -77,31 +80,45 @@ public sealed partial class PollPlanItCommandHandler
                     }
 
                     authorityAppCount++;
+
+                    if (application.LastDifferent > (highWaterMark ?? DateTimeOffset.MinValue))
+                    {
+                        highWaterMark = application.LastDifferent;
+                    }
                 }
 
-                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
-                authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
-
-                await this.pollStateStore.SaveLastPollTimeAsync(authorityId, now, ct).ConfigureAwait(false);
-                PollingMetrics.AuthoritiesPolled.Add(1);
-                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
-                authoritiesPolled++;
-                count += authorityAppCount;
+                completedSuccessfully = true;
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                PollingMetrics.AuthoritiesSkipped.Add(1);
                 PollingMetrics.RateLimited.Add(1);
-                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
                 rateLimited = true;
                 LogRateLimitStop(this.logger, authorityId, ex);
-                break;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                PollingMetrics.AuthoritiesSkipped.Add(1);
-                PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
                 LogAuthorityError(this.logger, authorityId, ex);
+            }
+
+            PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
+            authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
+
+            if (completedSuccessfully || authorityAppCount > 0)
+            {
+                PollingMetrics.AuthoritiesPolled.Add(1);
+                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
+                await this.pollStateStore.SaveLastPollTimeAsync(authorityId, highWaterMark ?? now, ct).ConfigureAwait(false);
+                authoritiesPolled++;
+                count += authorityAppCount;
+            }
+            else
+            {
+                PollingMetrics.AuthoritiesSkipped.Add(1);
+            }
+
+            if (rateLimited)
+            {
+                break;
             }
         }
 
