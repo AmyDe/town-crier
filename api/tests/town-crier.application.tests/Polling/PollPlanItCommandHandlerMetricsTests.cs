@@ -341,6 +341,150 @@ public sealed class PollPlanItCommandHandlerMetricsTests
     }
 
     [Test]
+    public async Task Should_EmitAuthoritiesPolledPerAuthority_When_MultipleSucceed()
+    {
+        // Arrange — two authorities that succeed
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var recorded = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.authorities_polled")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            recorded.Add(measurement);
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — each authority emits separately with value 1 (not batched)
+        await Assert.That(recorded).HasCount().EqualTo(2);
+        await Assert.That(recorded).Contains(1L);
+        await Assert.That(recorded.Sum()).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_EmitApplicationsIngestedPerAuthority_When_MultipleSucceed()
+    {
+        // Arrange — two authorities, each with applications
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(200).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var recorded = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.applications_ingested")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            recorded.Add(measurement);
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — each authority emits its own count (2 and 1), not a single batched 3
+        await Assert.That(recorded).HasCount().EqualTo(2);
+        await Assert.That(recorded.Sum()).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_NotEmitAuthoritiesPolled_When_AllAuthoritiesRateLimited()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var recorded = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.authorities_polled")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            recorded.Add(measurement);
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — no emission when nothing was polled (zero-value Add is a no-op in OTel exporters)
+        await Assert.That(recorded.Where(v => v > 0)).IsEmpty();
+    }
+
+    [Test]
+    public async Task Should_NotEmitApplicationsIngested_When_AllAuthoritiesRateLimited()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var recorded = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.applications_ingested")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            recorded.Add(measurement);
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — no emission when nothing was ingested
+        await Assert.That(recorded.Where(v => v > 0)).IsEmpty();
+    }
+
+    [Test]
     public async Task Should_NotCountFailedAuthorityAsPolled_When_AuthorityErrors()
     {
         // Arrange
