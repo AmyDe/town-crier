@@ -50,18 +50,19 @@ var otel = builder.Services.AddOpenTelemetry()
             .AddMeter(ApiMetrics.MeterName)
             .AddMeter(CosmosInstrumentation.MeterName)
             .AddMeter(PlanItInstrumentation.MeterName);
-    });
+    })
+    .WithLogging(
+        configureBuilder: null,
+        configureOptions: logging =>
+        {
+            logging.IncludeFormattedMessage = true;
+            logging.IncludeScopes = true;
+        });
 
 if (hasAppInsights)
 {
     otel.UseAzureMonitorExporter(o => o.ConnectionString = aiConnectionString);
 }
-
-builder.Logging.AddOpenTelemetry(logging =>
-{
-    logging.IncludeFormattedMessage = true;
-    logging.IncludeScopes = true;
-});
 
 builder.Services.Configure<MetricReaderOptions>(o =>
 {
@@ -120,6 +121,12 @@ builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 
 using var host = builder.Build();
+
+// Start hosted services so the ExporterRegistrationHostedService runs.
+// This service wires the Azure Monitor trace and log exporters into the
+// TracerProvider and LoggerProvider — without it, spans and log-based
+// exceptions are silently dropped.
+await host.StartAsync().ConfigureAwait(false);
 
 // Eagerly initialize OTel providers so they listen before metrics are recorded.
 // Without this, Counter.Add() / Histogram.Record() silently drop measurements
@@ -199,6 +206,9 @@ switch (mode)
         exitCode = 1;
         break;
 }
+
+// Stop hosted services (mirrors the StartAsync above).
+await host.StopAsync().ConfigureAwait(false);
 
 // Force-flush OpenTelemetry before the short-lived process exits.
 // The Azure Monitor exporter batches on 5 s intervals; without this,
