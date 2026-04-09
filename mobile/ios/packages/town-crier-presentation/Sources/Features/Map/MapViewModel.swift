@@ -3,10 +3,10 @@ import TownCrierDomain
 
 /// ViewModel driving the map view with planning application pins.
 @MainActor
-public final class MapViewModel: ObservableObject {
+public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published private(set) var annotations: [MapAnnotationItem] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var error: DomainError?
+    @Published var error: DomainError?
     @Published private(set) var selectedApplication: PlanningApplication?
     @Published private(set) var hasLoaded = false
 
@@ -69,10 +69,8 @@ public final class MapViewModel: ObservableObject {
                 guard let location = app.location else { return nil }
                 return MapAnnotationItem(application: app, coordinate: location)
             }
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
         isLoading = false
         hasLoaded = true

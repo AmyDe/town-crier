@@ -4,10 +4,10 @@ import TownCrierDomain
 
 /// Manages the list of user's watch zones with tier-based limits.
 @MainActor
-public final class WatchZoneListViewModel: ObservableObject {
+public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public private(set) var zones: [WatchZone] = []
     @Published public private(set) var isLoading = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
     @Published public private(set) var currentTier: SubscriptionTier = .free
 
     var onAddZone: (() -> Void)?
@@ -42,10 +42,8 @@ public final class WatchZoneListViewModel: ObservableObject {
 
         do {
             zones = try await repository.loadAll()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
 
         isLoading = false
@@ -56,10 +54,8 @@ public final class WatchZoneListViewModel: ObservableObject {
         do {
             try await repository.delete(zone.id)
             zones.removeAll { $0.id == zone.id }
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
     }
 

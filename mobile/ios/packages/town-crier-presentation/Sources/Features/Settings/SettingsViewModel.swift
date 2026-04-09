@@ -4,14 +4,14 @@ import TownCrierDomain
 
 /// ViewModel managing the settings and account screen.
 @MainActor
-public final class SettingsViewModel: ObservableObject {
+public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public private(set) var userEmail: String?
     @Published public private(set) var userName: String?
     @Published public private(set) var authMethod: AuthMethod?
     @Published public private(set) var subscriptionTier: SubscriptionTier = .free
     @Published public private(set) var isTrialPeriod = false
     @Published public private(set) var isLoading = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
     @Published public var isShowingDeleteConfirmation = false
 
     public var onLogout: (() -> Void)?
@@ -88,10 +88,8 @@ public final class SettingsViewModel: ObservableObject {
             try await authService.logout()
             clearSession()
             onLogout?()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .logoutFailed(error.localizedDescription)
+            handleError(error) { .logoutFailed($0) }
         }
     }
 
@@ -111,10 +109,8 @@ public final class SettingsViewModel: ObservableObject {
             try await authService.deleteAccount()
             clearSession()
             onLogout?()
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
     }
 

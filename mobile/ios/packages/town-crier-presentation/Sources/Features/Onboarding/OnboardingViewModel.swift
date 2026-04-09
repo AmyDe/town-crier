@@ -11,11 +11,11 @@ public enum OnboardingStep: CaseIterable, Equatable, Sendable {
 
 /// Drives the onboarding flow: welcome → postcode entry → radius picker → notification permission → complete.
 @MainActor
-public final class OnboardingViewModel: ObservableObject {
+public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel {
     @Published public private(set) var currentStep: OnboardingStep = .welcome
     @Published public var postcodeInput: String = ""
     @Published public private(set) var isLoading = false
-    @Published public private(set) var error: DomainError?
+    @Published public internal(set) var error: DomainError?
     @Published public private(set) var validatedPostcode: Postcode?
     @Published public private(set) var geocodedCoordinate: Coordinate?
     @Published public var selectedRadiusMetres: Double = 1000
@@ -75,12 +75,8 @@ public final class OnboardingViewModel: ObservableObject {
         let postcode: Postcode
         do {
             postcode = try Postcode(postcodeInput)
-        } catch let domainError as DomainError {
-            error = domainError
-            isLoading = false
-            return
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
             isLoading = false
             return
         }
@@ -89,10 +85,8 @@ public final class OnboardingViewModel: ObservableObject {
             validatedPostcode = postcode
             geocodedCoordinate = try await geocoder.geocode(postcode)
             currentStep = .radiusPicker
-        } catch let domainError as DomainError {
-            error = domainError
         } catch {
-            self.error = .unexpected(error.localizedDescription)
+            handleError(error)
         }
 
         isLoading = false
