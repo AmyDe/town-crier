@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { GeocodeResult } from '../../domain/types';
 import type { OnboardingPort } from '../../domain/ports/onboarding-port';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export type OnboardingStep = 'welcome' | 'postcode' | 'radius' | 'confirm';
 
@@ -46,7 +47,7 @@ export function useOnboarding(port: OnboardingPort) {
       });
       setIsComplete(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(extractErrorMessage(err, 'Something went wrong'));
     } finally {
       setIsSubmitting(false);
     }

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { ZoneNotificationPreferences, UpdateZonePreferencesRequest } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useFetchData } from '../../hooks/useFetchData';
+import { extractErrorMessage } from '../../utils/extractErrorMessage';
 
 export function useZonePreferences(repository: WatchZoneRepository, zoneId: string) {
   const [isSaving, setIsSaving] = useState(false);
@@ -20,7 +21,7 @@ export function useZonePreferences(repository: WatchZoneRepository, zoneId: stri
       refresh();
       setIsSaving(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred';
+      const message = extractErrorMessage(err);
       setIsSaving(false);
       setActionError(message);
     }
