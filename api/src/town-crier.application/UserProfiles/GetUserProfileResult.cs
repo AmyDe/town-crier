@@ -7,5 +7,4 @@ public sealed record GetUserProfileResult(
     bool PushEnabled,
     DayOfWeek DigestDay,
     bool EmailDigestEnabled,
-    bool EmailInstantEnabled,
     SubscriptionTier Tier);

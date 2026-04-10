@@ -10,7 +10,6 @@ public static class EntitlementMap
     private static readonly IReadOnlySet<Entitlement> PersonalEntitlements =
         new HashSet<Entitlement>
         {
-            Entitlement.InstantEmails,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts,
             Entitlement.HourlyDigestEmails,
@@ -19,7 +18,6 @@ public static class EntitlementMap
     private static readonly IReadOnlySet<Entitlement> ProEntitlements =
         new HashSet<Entitlement>
         {
-            Entitlement.InstantEmails,
             Entitlement.SearchApplications,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts,

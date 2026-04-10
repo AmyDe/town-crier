@@ -14,12 +14,11 @@ public sealed class EntitlementMapTests
     }
 
     [Test]
-    public async Task PersonalTier_Should_HaveInstantEmailsAndAlerts()
+    public async Task PersonalTier_Should_HaveAlertsAndHourlyDigest()
     {
         var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Personal);
 
-        await Assert.That(entitlements).HasCount().EqualTo(4);
-        await Assert.That(entitlements).Contains(Entitlement.InstantEmails);
+        await Assert.That(entitlements).HasCount().EqualTo(3);
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
         await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
@@ -31,8 +30,7 @@ public sealed class EntitlementMapTests
     {
         var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Pro);
 
-        await Assert.That(entitlements).HasCount().EqualTo(5);
-        await Assert.That(entitlements).Contains(Entitlement.InstantEmails);
+        await Assert.That(entitlements).HasCount().EqualTo(4);
         await Assert.That(entitlements).Contains(Entitlement.SearchApplications);
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
