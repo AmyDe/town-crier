@@ -75,6 +75,11 @@ public sealed partial class PollPlanItCommandHandler
 
                         foreach (var zone in matchingZones)
                         {
+                            if (zone.CreatedAt > application.LastDifferent)
+                            {
+                                continue;
+                            }
+
                             await this.notificationEnqueuer.EnqueueAsync(application, zone, ct).ConfigureAwait(false);
                         }
                     }
