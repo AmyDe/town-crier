@@ -60,4 +60,28 @@ public sealed class EntitlementMapTests
 
         await Assert.That(limit).IsEqualTo(int.MaxValue);
     }
+
+    [Test]
+    public async Task PersonalTier_Should_HaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Personal);
+
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
+    }
+
+    [Test]
+    public async Task ProTier_Should_HaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Pro);
+
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
+    }
+
+    [Test]
+    public async Task FreeTier_Should_NotHaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Free);
+
+        await Assert.That(entitlements).DoesNotContain(Entitlement.HourlyDigestEmails);
+    }
 }
