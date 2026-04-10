@@ -14,14 +14,14 @@ public sealed class EntitlementMapTests
     }
 
     [Test]
-    public async Task PersonalTier_Should_HaveInstantEmailsAndAlerts()
+    public async Task PersonalTier_Should_HaveAlertsAndHourlyDigest()
     {
         var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Personal);
 
         await Assert.That(entitlements).HasCount().EqualTo(3);
-        await Assert.That(entitlements).Contains(Entitlement.InstantEmails);
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
         await Assert.That(entitlements).DoesNotContain(Entitlement.SearchApplications);
     }
 
@@ -31,10 +31,10 @@ public sealed class EntitlementMapTests
         var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Pro);
 
         await Assert.That(entitlements).HasCount().EqualTo(4);
-        await Assert.That(entitlements).Contains(Entitlement.InstantEmails);
         await Assert.That(entitlements).Contains(Entitlement.SearchApplications);
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
     }
 
     [Test]
@@ -59,5 +59,29 @@ public sealed class EntitlementMapTests
         var limit = EntitlementMap.LimitFor(SubscriptionTier.Pro, Quota.WatchZones);
 
         await Assert.That(limit).IsEqualTo(int.MaxValue);
+    }
+
+    [Test]
+    public async Task PersonalTier_Should_HaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Personal);
+
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
+    }
+
+    [Test]
+    public async Task ProTier_Should_HaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Pro);
+
+        await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
+    }
+
+    [Test]
+    public async Task FreeTier_Should_NotHaveHourlyDigestEmails()
+    {
+        var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Free);
+
+        await Assert.That(entitlements).DoesNotContain(Entitlement.HourlyDigestEmails);
     }
 }

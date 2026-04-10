@@ -15,5 +15,9 @@ public interface INotificationRepository
     Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
         string userId, int page, int pageSize, CancellationToken ct);
 
+    Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct);
+
+    Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsAsync(CancellationToken ct);
+
     Task SaveAsync(Notification notification, CancellationToken ct);
 }

@@ -1,7 +1,6 @@
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
-using TownCrier.Domain.Entitlements;
 using TownCrier.Domain.Notifications;
 using TownCrier.Domain.UserProfiles;
 
@@ -15,7 +14,6 @@ public sealed class DispatchNotificationCommandHandler
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
-    private readonly IEmailSender emailSender;
     private readonly TimeProvider timeProvider;
 
     public DispatchNotificationCommandHandler(
@@ -23,14 +21,12 @@ public sealed class DispatchNotificationCommandHandler
         IUserProfileRepository userProfileRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
-        IEmailSender emailSender,
         TimeProvider timeProvider)
     {
         this.notificationRepository = notificationRepository;
         this.userProfileRepository = userProfileRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
-        this.emailSender = emailSender;
         this.timeProvider = timeProvider;
     }
 
@@ -112,16 +108,6 @@ public sealed class DispatchNotificationCommandHandler
                 .ConfigureAwait(false);
             notification.MarkPushSent();
             ApiMetrics.NotificationsSent.Add(1);
-        }
-
-        // Send instant email notification for entitled tiers
-        var entitlements = EntitlementMap.EntitlementsFor(profile.Tier);
-        if (entitlements.Contains(Entitlement.InstantEmails)
-            && profile.NotificationPreferences.EmailInstantEnabled
-            && !string.IsNullOrEmpty(profile.Email))
-        {
-            await this.emailSender.SendNotificationAsync(profile.Email, notification, ct)
-                .ConfigureAwait(false);
         }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);

@@ -62,7 +62,7 @@ public sealed partial class PollPlanItCommandHandler
             try
             {
                 var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
-                lastPollTime ??= now.AddDays(-30);
+                lastPollTime ??= now.AddDays(-1);
 
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
@@ -75,6 +75,11 @@ public sealed partial class PollPlanItCommandHandler
 
                         foreach (var zone in matchingZones)
                         {
+                            if (zone.CreatedAt > application.LastDifferent)
+                            {
+                                continue;
+                            }
+
                             await this.notificationEnqueuer.EnqueueAsync(application, zone, ct).ConfigureAwait(false);
                         }
                     }

@@ -29,7 +29,7 @@ public sealed class GetUserApplicationAuthoritiesQueryHandlerTests
     public async Task Should_ReturnMatchingAuthorities_When_UserHasWatchZones()
     {
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42));
+            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42, DateTimeOffset.MinValue));
         this.authorityProvider.Add(
             new AuthorityBuilder().WithId(42).WithName("Cornwall Council").WithAreaType("Unitary").Build());
 
@@ -49,9 +49,9 @@ public sealed class GetUserApplicationAuthoritiesQueryHandlerTests
     public async Task Should_DeduplicateAuthorities_When_MultipleZonesSameAuthority()
     {
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42));
+            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42, DateTimeOffset.MinValue));
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-2", "user-1", "Office", new Coordinates(50.8, -3.6), 3000, 42));
+            "zone-2", "user-1", "Office", new Coordinates(50.8, -3.6), 3000, 42, DateTimeOffset.MinValue));
         this.authorityProvider.Add(
             new AuthorityBuilder().WithId(42).WithName("Cornwall Council").WithAreaType("Unitary").Build());
 
@@ -68,9 +68,9 @@ public sealed class GetUserApplicationAuthoritiesQueryHandlerTests
     public async Task Should_SortByName_When_MultipleAuthorities()
     {
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42));
+            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42, DateTimeOffset.MinValue));
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-2", "user-1", "Work", new Coordinates(51.5, -0.1), 3000, 10));
+            "zone-2", "user-1", "Work", new Coordinates(51.5, -0.1), 3000, 10, DateTimeOffset.MinValue));
         this.authorityProvider.Add(
             new AuthorityBuilder().WithId(42).WithName("Cornwall Council").WithAreaType("Unitary").Build());
         this.authorityProvider.Add(
@@ -91,9 +91,9 @@ public sealed class GetUserApplicationAuthoritiesQueryHandlerTests
     public async Task Should_ExcludeOtherUsersZones_When_MultipleUsersExist()
     {
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42));
+            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 42, DateTimeOffset.MinValue));
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-2", "user-2", "Home", new Coordinates(51.5, -0.1), 3000, 10));
+            "zone-2", "user-2", "Home", new Coordinates(51.5, -0.1), 3000, 10, DateTimeOffset.MinValue));
         this.authorityProvider.Add(
             new AuthorityBuilder().WithId(42).WithName("Cornwall Council").WithAreaType("Unitary").Build());
         this.authorityProvider.Add(
@@ -113,7 +113,7 @@ public sealed class GetUserApplicationAuthoritiesQueryHandlerTests
     public async Task Should_SkipAuthority_When_NotFoundInProvider()
     {
         this.watchZoneRepository.Add(new WatchZone(
-            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 999));
+            "zone-1", "user-1", "Home", new Coordinates(50.7, -3.5), 5000, 999, DateTimeOffset.MinValue));
 
         var handler = new GetUserApplicationAuthoritiesQueryHandler(
             this.watchZoneRepository, this.authorityProvider);

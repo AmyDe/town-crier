@@ -58,7 +58,6 @@ public sealed class GetUserProfileQueryHandlerTests
         // Assert
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.EmailDigestEnabled).IsTrue();
-        await Assert.That(result.EmailInstantEnabled).IsFalse();
         await Assert.That(result.DigestDay).IsEqualTo(DayOfWeek.Monday);
     }
 }

@@ -34,6 +34,9 @@ internal sealed class NotificationDocument
     [JsonPropertyName("pushSent")]
     public required bool PushSent { get; init; }
 
+    [JsonPropertyName("emailSent")]
+    public bool EmailSent { get; init; }
+
     [JsonPropertyName("createdAt")]
     public required DateTimeOffset CreatedAt { get; init; }
 
@@ -53,6 +56,7 @@ internal sealed class NotificationDocument
             ApplicationType = notification.ApplicationType,
             AuthorityId = notification.AuthorityId,
             PushSent = notification.PushSent,
+            EmailSent = notification.EmailSent,
             CreatedAt = notification.CreatedAt,
             Ttl = NinetyDaysInSeconds,
         };
@@ -70,6 +74,7 @@ internal sealed class NotificationDocument
             this.ApplicationType,
             this.AuthorityId,
             this.PushSent,
+            this.EmailSent,
             this.CreatedAt);
     }
 }

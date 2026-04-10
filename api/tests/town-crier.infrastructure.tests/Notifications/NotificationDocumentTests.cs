@@ -34,6 +34,7 @@ public sealed class NotificationDocumentTests
         await Assert.That(roundTripped.ApplicationType).IsEqualTo("Full Planning");
         await Assert.That(roundTripped.AuthorityId).IsEqualTo(55);
         await Assert.That(roundTripped.PushSent).IsEqualTo(notification.PushSent);
+        await Assert.That(roundTripped.EmailSent).IsEqualTo(notification.EmailSent);
         await Assert.That(roundTripped.CreatedAt).IsEqualTo(notification.CreatedAt);
     }
 
@@ -50,6 +51,35 @@ public sealed class NotificationDocumentTests
 
         // Assert
         await Assert.That(roundTripped.PushSent).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_PreserveEmailSentFlag_When_NotificationHasEmailSent()
+    {
+        // Arrange
+        var notification = new NotificationBuilder().Build();
+        notification.MarkEmailSent();
+
+        // Act
+        var document = NotificationDocument.FromDomain(notification);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.EmailSent).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_DefaultEmailSentToFalse_When_NewlyCreated()
+    {
+        // Arrange
+        var notification = new NotificationBuilder().Build();
+
+        // Act
+        var document = NotificationDocument.FromDomain(notification);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.EmailSent).IsFalse();
     }
 
     [Test]

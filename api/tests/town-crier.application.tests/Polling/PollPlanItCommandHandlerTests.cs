@@ -67,7 +67,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_UseDefault30DayLookback_When_NoPreviousPollState()
+    public async Task Should_UseDefault1DayLookback_When_NoPreviousPollState()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -81,7 +81,7 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        var expected = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
+        var expected = new DateTimeOffset(2026, 4, 4, 12, 0, 0, TimeSpan.Zero);
         await Assert.That(planItClient.LastDifferentStartUsed).IsEqualTo(expected);
     }
 
@@ -155,6 +155,70 @@ public sealed class PollPlanItCommandHandlerTests
         var planItClient = new FakePlanItClient();
         planItClient.Add(1, new PlanningApplicationBuilder()
             .WithUid("app-1").WithAreaId(1).WithCoordinates(51.5080, -0.1270).Build());
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            watchZoneRepository: watchZoneRepository,
+            notificationEnqueuer: notificationEnqueuer);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_NotEnqueueNotification_When_ZoneCreatedAfterApplicationLastDifferent()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var applicationLastDifferent = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+        var zoneCreatedAt = new DateTimeOffset(2026, 3, 15, 14, 0, 0, TimeSpan.Zero);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1").WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278).WithRadiusMetres(5000).WithAuthorityId(1)
+            .WithCreatedAt(zoneCreatedAt).Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-1").WithAreaId(1).WithCoordinates(51.5080, -0.1270)
+            .WithLastDifferent(applicationLastDifferent).Build());
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            watchZoneRepository: watchZoneRepository,
+            notificationEnqueuer: notificationEnqueuer);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_EnqueueNotification_When_ZoneCreatedBeforeApplicationLastDifferent()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var applicationLastDifferent = new DateTimeOffset(2026, 3, 15, 14, 0, 0, TimeSpan.Zero);
+        var zoneCreatedAt = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.Zero);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1").WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278).WithRadiusMetres(5000).WithAuthorityId(1)
+            .WithCreatedAt(zoneCreatedAt).Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-1").WithAreaId(1).WithCoordinates(51.5080, -0.1270)
+            .WithLastDifferent(applicationLastDifferent).Build());
 
         var handler = CreateHandler(
             planItClient: planItClient,
@@ -355,7 +419,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_Use30DayLookback_When_NewAuthorityHasNoPollState()
+    public async Task Should_Use1DayLookback_When_NewAuthorityHasNoPollState()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -379,9 +443,9 @@ public sealed class PollPlanItCommandHandlerTests
         // Authority 100 should use its existing poll time
         await Assert.That(planItClient.DifferentStartByAuthority[100]).IsEqualTo(existingPollTime);
 
-        // Authority 200 should use 30-day lookback
-        var expected30DaysAgo = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
-        await Assert.That(planItClient.DifferentStartByAuthority[200]).IsEqualTo(expected30DaysAgo);
+        // Authority 200 should use 1-day lookback
+        var expected1DayAgo = new DateTimeOffset(2026, 4, 4, 12, 0, 0, TimeSpan.Zero);
+        await Assert.That(planItClient.DifferentStartByAuthority[200]).IsEqualTo(expected1DayAgo);
     }
 
     [Test]

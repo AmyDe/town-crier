@@ -16,6 +16,8 @@ internal sealed class UserProfileDocument
 
     public bool EmailDigestEnabled { get; init; } = true;
 
+    // Legacy field — kept for backward compatibility with existing Cosmos documents.
+    // No longer written; ignored during domain reconstitution.
     public bool EmailInstantEnabled { get; init; }
 
     public required Dictionary<string, ZoneNotificationPreferences> ZonePreferences { get; init; }
@@ -40,7 +42,6 @@ internal sealed class UserProfileDocument
             PushEnabled = profile.NotificationPreferences.PushEnabled,
             DigestDay = profile.NotificationPreferences.DigestDay,
             EmailDigestEnabled = profile.NotificationPreferences.EmailDigestEnabled,
-            EmailInstantEnabled = profile.NotificationPreferences.EmailInstantEnabled,
             ZonePreferences = new Dictionary<string, ZoneNotificationPreferences>(profile.AllZonePreferences),
             Tier = profile.Tier.ToString(),
             SubscriptionExpiry = profile.SubscriptionExpiry,
@@ -55,8 +56,7 @@ internal sealed class UserProfileDocument
         var notificationPreferences = new NotificationPreferences(
             this.PushEnabled,
             this.DigestDay,
-            this.EmailDigestEnabled,
-            this.EmailInstantEnabled);
+            this.EmailDigestEnabled);
 
         return UserProfile.Reconstitute(
             this.UserId,

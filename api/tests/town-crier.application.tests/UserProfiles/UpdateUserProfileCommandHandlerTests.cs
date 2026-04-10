@@ -112,26 +112,6 @@ public sealed class UpdateUserProfileCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_UpdateEmailInstantEnabled_When_SetToTrue()
-    {
-        // Arrange
-        var repository = new FakeUserProfileRepository();
-        var profile = UserProfile.Register("auth0|user-789");
-        await repository.SaveAsync(profile, CancellationToken.None);
-
-        var handler = new UpdateUserProfileCommandHandler(repository);
-        var command = new UpdateUserProfileCommand("auth0|user-789", true, EmailInstantEnabled: true);
-
-        // Act
-        var result = await handler.HandleAsync(command, CancellationToken.None);
-
-        // Assert
-        await Assert.That(result.EmailInstantEnabled).IsTrue();
-        var saved = repository.GetByUserId("auth0|user-789");
-        await Assert.That(saved!.NotificationPreferences.EmailInstantEnabled).IsTrue();
-    }
-
-    [Test]
     public async Task Should_UpdateDigestDay_When_SetToFriday()
     {
         // Arrange

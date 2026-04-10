@@ -19,6 +19,8 @@ internal sealed class WatchZoneDocument
 
     public required int AuthorityId { get; init; }
 
+    public DateTimeOffset? CreatedAt { get; init; }
+
     public static WatchZoneDocument FromDomain(WatchZone zone)
     {
         ArgumentNullException.ThrowIfNull(zone);
@@ -32,6 +34,7 @@ internal sealed class WatchZoneDocument
             Longitude = zone.Centre.Longitude,
             RadiusMetres = zone.RadiusMetres,
             AuthorityId = zone.AuthorityId,
+            CreatedAt = zone.CreatedAt,
         };
     }
 
@@ -43,6 +46,7 @@ internal sealed class WatchZoneDocument
             this.Name,
             new Coordinates(this.Latitude, this.Longitude),
             this.RadiusMetres,
-            this.AuthorityId);
+            this.AuthorityId,
+            this.CreatedAt ?? DateTimeOffset.MinValue);
     }
 }

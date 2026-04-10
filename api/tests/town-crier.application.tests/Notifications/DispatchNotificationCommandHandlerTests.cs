@@ -15,7 +15,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_CreateNotificationRecord_When_ApplicationMatchesWatchZone()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, _, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -32,7 +32,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_SendPushNotification_When_UserHasRegisteredDevice()
     {
         // Arrange
-        var (handler, _, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -48,7 +48,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_MarkPushSent_When_NotificationDispatched()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, _, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -62,7 +62,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotSendDuplicateNotification_When_SameApplicationAndUser()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         var command = CreateCommand();
@@ -80,7 +80,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_RecordNotificationButNotPush_When_PushDisabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -101,7 +101,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_EnforceFreeTierCap_When_FiveNotificationsSentInMonth()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         for (var i = 0; i < 5; i++)
@@ -122,7 +122,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_AllowUnlimitedNotifications_When_ProTier()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -153,7 +153,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange
         var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 28, 10, 0, 0, TimeSpan.Zero));
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler(timeProvider);
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler(timeProvider);
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         for (var i = 0; i < 5; i++)
@@ -179,7 +179,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotCreateNotification_When_UserProfileNotFound()
     {
         // Arrange — no user profile seeded
-        var (handler, notificationRepo, _, pushSender, _, _) = CreateHandler();
+        var (handler, notificationRepo, _, pushSender, _) = CreateHandler();
 
         // Act
         await handler.HandleAsync(CreateCommand(), CancellationToken.None);
@@ -193,7 +193,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotSendPush_When_NoRegisteredDevices()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
 
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
@@ -211,7 +211,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_RecordButNotPush_When_ZoneNewApplicationsDisabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
 
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
         profile.SetZonePreferences(
@@ -238,7 +238,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_SendPush_When_ZoneNewApplicationsEnabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
 
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
         profile.SetZonePreferences(
@@ -261,87 +261,22 @@ public sealed class DispatchNotificationCommandHandlerTests
         await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
     }
 
-    [Test]
-    public async Task Should_SendInstantEmail_When_PersonalUserHasEmailInstantEnabled()
-    {
-        var (handler, _, userProfileRepo, _, deviceRepo, emailSender) = CreateHandler();
-
-        var profile = new UserProfileBuilder()
-            .WithUserId("user-1")
-            .WithEmail("user@example.com")
-            .WithTier(SubscriptionTier.Personal)
-            .WithEmailInstantEnabled(true)
-            .Build();
-        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
-
-        var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
-        await deviceRepo.SaveAsync(device, CancellationToken.None);
-
-        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
-
-        await Assert.That(emailSender.NotificationsSent).HasCount().EqualTo(1);
-        await Assert.That(emailSender.NotificationsSent[0].Email).IsEqualTo("user@example.com");
-    }
-
-    [Test]
-    public async Task Should_NotSendInstantEmail_When_FreeUserHasEmailInstantEnabled()
-    {
-        var (handler, _, userProfileRepo, _, deviceRepo, emailSender) = CreateHandler();
-
-        var profile = new UserProfileBuilder()
-            .WithUserId("user-1")
-            .WithEmail("user@example.com")
-            .WithEmailInstantEnabled(true)
-            .Build();
-        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
-
-        var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
-        await deviceRepo.SaveAsync(device, CancellationToken.None);
-
-        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
-
-        await Assert.That(emailSender.NotificationsSent).HasCount().EqualTo(0);
-    }
-
-    [Test]
-    public async Task Should_NotSendInstantEmail_When_EmailInstantDisabled()
-    {
-        var (handler, _, userProfileRepo, _, deviceRepo, emailSender) = CreateHandler();
-
-        var profile = new UserProfileBuilder()
-            .WithUserId("user-1")
-            .WithEmail("user@example.com")
-            .WithTier(SubscriptionTier.Pro)
-            .WithEmailInstantEnabled(false)
-            .Build();
-        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
-
-        var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
-        await deviceRepo.SaveAsync(device, CancellationToken.None);
-
-        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
-
-        await Assert.That(emailSender.NotificationsSent).HasCount().EqualTo(0);
-    }
-
     private static (DispatchNotificationCommandHandler Handler,
         FakeNotificationRepository NotificationRepo,
         FakeUserProfileRepository UserProfileRepo,
         SpyPushNotificationSender PushSender,
-        FakeDeviceRegistrationRepository DeviceRepo,
-        SpyEmailSender EmailSender) CreateHandler(FakeTimeProvider? timeProvider = null)
+        FakeDeviceRegistrationRepository DeviceRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
     {
         var notificationRepo = new FakeNotificationRepository();
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
-        var emailSender = new SpyEmailSender();
         var tp = timeProvider ?? new FakeTimeProvider(March2026);
 
         var handler = new DispatchNotificationCommandHandler(
-            notificationRepo, userProfileRepo, deviceRepo, pushSender, emailSender, tp);
+            notificationRepo, userProfileRepo, deviceRepo, pushSender, tp);
 
-        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender);
+        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
     }
 
     private static async Task SeedFreeUserWithDevice(
