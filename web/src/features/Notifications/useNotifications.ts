@@ -1,81 +1,32 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { NotificationItem } from '../../domain/types';
+import { useCallback } from 'react';
+import type { NotificationItem, NotificationsResult } from '../../domain/types';
 import type { NotificationRepository } from '../../domain/ports/notification-repository';
-import { usePagination } from '../../hooks/usePagination';
-import { extractErrorMessage } from '../../utils/extractErrorMessage';
+import { usePaginatedFetch } from '../../hooks/usePaginatedFetch';
 
 const PAGE_SIZE = 20;
 
-interface NotificationsState {
-  notifications: readonly NotificationItem[];
-  isLoading: boolean;
-  error: string | null;
-}
-
 export function useNotifications(repository: NotificationRepository) {
-  const [state, setState] = useState<NotificationsState>({
-    notifications: [],
-    isLoading: true,
-    error: null,
+  const fetcher = useCallback(
+    (page: number) => repository.list(page, PAGE_SIZE),
+    [repository],
+  );
+
+  const result = usePaginatedFetch<NotificationsResult, NotificationItem>({
+    fetcher,
+    pageSize: PAGE_SIZE,
+    getItems: (r) => r.notifications,
+    getTotal: (r) => r.total,
+    getPage: (r) => r.page,
+    autoLoad: true,
   });
-
-  const paginationRef = useRef<ReturnType<typeof usePagination>>(null!);
-
-  const loadPage = useCallback(async (page: number) => {
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    try {
-      const result = await repository.list(page, PAGE_SIZE);
-      setState({
-        notifications: result.notifications,
-        isLoading: false,
-        error: null,
-      });
-      paginationRef.current.setTotal(result.total);
-      paginationRef.current.setPage(result.page);
-    } catch (err: unknown) {
-      const message = extractErrorMessage(err);
-      setState(prev => ({
-        ...prev,
-        isLoading: false,
-        error: message,
-      }));
-    }
-  }, [repository]);
-
-  const pagination = usePagination({ loadPage, pageSize: PAGE_SIZE });
-
-  useEffect(() => {
-    paginationRef.current = pagination;
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    repository.list(1, PAGE_SIZE).then(result => {
-      if (!cancelled) {
-        setState({
-          notifications: result.notifications,
-          isLoading: false,
-          error: null,
-        });
-        paginationRef.current.setTotal(result.total);
-        paginationRef.current.setPage(result.page);
-      }
-    }).catch((err: unknown) => {
-      if (!cancelled) {
-        const message = extractErrorMessage(err);
-        setState(prev => ({ ...prev, isLoading: false, error: message }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [repository]);
 
   return {
-    notifications: state.notifications,
-    page: pagination.page,
-    totalPages: pagination.totalPages,
-    isLoading: state.isLoading,
-    error: state.error,
-    goToNextPage: pagination.goToNextPage,
-    goToPreviousPage: pagination.goToPreviousPage,
+    notifications: result.items,
+    page: result.page,
+    totalPages: result.totalPages,
+    isLoading: result.isLoading,
+    error: result.error,
+    goToNextPage: result.goToNextPage,
+    goToPreviousPage: result.goToPreviousPage,
   };
 }

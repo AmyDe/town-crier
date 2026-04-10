@@ -1,0 +1,48 @@
+# Installs Node.js, runs npm ci, and builds the Vite web app with
+# environment-specific VITE_ variables baked in at build time.
+#
+# Produces the production bundle in web/dist, ready for deployment.
+name: Build Web
+description: Install dependencies and build the Vite web app with VITE_ env vars
+
+inputs:
+  vite-api-base-url:
+    description: VITE_API_BASE_URL — backend API base URL
+    required: true
+  vite-auth0-domain:
+    description: VITE_AUTH0_DOMAIN — Auth0 tenant domain
+    required: true
+  vite-auth0-client-id:
+    description: VITE_AUTH0_CLIENT_ID — Auth0 SPA client ID
+    required: true
+  vite-auth0-audience:
+    description: VITE_AUTH0_AUDIENCE — Auth0 API audience
+    required: true
+  vite-applicationinsights-connection-string:
+    description: VITE_APPLICATIONINSIGHTS_CONNECTION_STRING — App Insights connection string
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+      working-directory: web
+
+    - name: Build
+      shell: bash
+      run: npm run build
+      working-directory: web
+      env:
+        VITE_API_BASE_URL: ${{ inputs.vite-api-base-url }}
+        VITE_AUTH0_DOMAIN: ${{ inputs.vite-auth0-domain }}
+        VITE_AUTH0_CLIENT_ID: ${{ inputs.vite-auth0-client-id }}
+        VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
+        VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}

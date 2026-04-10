@@ -16,10 +16,10 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     @Published public var postcodeInput: String = ""
     @Published public private(set) var isLoading = false
     @Published public internal(set) var error: DomainError?
-    @Published public private(set) var validatedPostcode: Postcode?
+    private var validatedPostcode: Postcode?
     @Published public private(set) var geocodedCoordinate: Coordinate?
     @Published public var selectedRadiusMetres: Double = 1000
-    @Published public private(set) var createdWatchZone: WatchZone?
+    private var createdWatchZone: WatchZone?
     @Published public private(set) var isComplete = false
 
     var onComplete: ((WatchZone) -> Void)?

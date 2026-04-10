@@ -1,4 +1,3 @@
-import MapKit
 import SwiftUI
 import TownCrierDomain
 
@@ -87,9 +86,10 @@ public struct WatchZoneEditorView: View {
     private var mapPreviewSection: some View {
         if let coordinate = viewModel.geocodedCoordinate {
             Section("Preview") {
-                ZoneMapPreviewLarge(
+                ZoneMapPreview(
                     centre: coordinate,
-                    radiusMetres: viewModel.selectedRadiusMetres
+                    radiusMetres: viewModel.selectedRadiusMetres,
+                    strokeWidth: 2
                 )
                 .frame(height: 220)
                 .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
@@ -116,32 +116,4 @@ public struct WatchZoneEditorView: View {
         }
     }
 
-}
-
-/// Larger map preview for the editor screen.
-private struct ZoneMapPreviewLarge: View {
-    let centre: Coordinate
-    let radiusMetres: Double
-
-    var body: some View {
-        Map(initialPosition: .region(region)) {
-            MapCircle(center: clLocation, radius: radiusMetres)
-                .foregroundStyle(Color.tcAmber.opacity(0.2))
-                .stroke(Color.tcAmber, lineWidth: 2)
-        }
-        .mapStyle(.standard(elevation: .flat))
-        .allowsHitTesting(false)
-    }
-
-    private var clLocation: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: centre.latitude, longitude: centre.longitude)
-    }
-
-    private var region: MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: clLocation,
-            latitudinalMeters: radiusMetres * 2.5,
-            longitudinalMeters: radiusMetres * 2.5
-        )
-    }
 }

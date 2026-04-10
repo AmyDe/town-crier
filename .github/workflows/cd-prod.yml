@@ -52,6 +52,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Select Pulumi stack
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: pulumi stack select prod
+
+      - name: Set Pulumi secrets
+        uses: ./.github/actions/setup-pulumi-secrets
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        with:
+          admin-api-key: ${{ secrets.ADMIN_API_KEY }}
+          auto-grant-pro-domains: ${{ secrets.AUTO_GRANT_PRO_DOMAINS }}
+          auth0-m2m-client-id: ${{ secrets.AUTH0_M2M_CLIENT_ID }}
+          auth0-m2m-client-secret: ${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+
       - name: Pulumi up (prod)
         working-directory: infra
         env:
@@ -60,13 +76,7 @@ jobs:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        run: |
-          pulumi stack select prod
-          pulumi config set --secret adminApiKey "${{ secrets.ADMIN_API_KEY }}"
-          pulumi config set --secret autoGrantProDomains "${{ secrets.AUTO_GRANT_PRO_DOMAINS }}"
-          pulumi config set --secret auth0M2mClientId "${{ secrets.AUTH0_M2M_CLIENT_ID }}"
-          pulumi config set --secret auth0M2mClientSecret "${{ secrets.AUTH0_M2M_CLIENT_SECRET }}"
-          pulumi up --yes --non-interactive
+        run: pulumi up --yes --non-interactive
 
       - name: Extract Pulumi outputs
         id: outputs
@@ -185,25 +195,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/build-web
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: web
-
-      - name: Build
-        run: npm run build
-        working-directory: web
-        env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          VITE_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
-          VITE_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
-          VITE_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
-          VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
+          vite-auth0-domain: ${{ vars.VITE_AUTH0_DOMAIN }}
+          vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
 
       - uses: ./.github/actions/azure-login
         with:

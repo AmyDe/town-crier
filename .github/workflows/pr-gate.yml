@@ -29,6 +29,9 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CONTAINER_APP_NAME: ca-town-crier-api-dev
+  RESOURCE_GROUP: rg-town-crier-dev
+  API_IMAGE_NAME: town-crier-api
 
 jobs:
   changes:
@@ -125,7 +128,7 @@ jobs:
 
       - name: Build and push image
         run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.event.pull_request.head.sha }}"
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
         working-directory: api
@@ -134,8 +137,8 @@ jobs:
         id: current
         run: |
           CURRENT=$(az containerapp ingress traffic show \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
             --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
           echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
 
@@ -144,18 +147,18 @@ jobs:
         run: |
           SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           az containerapp update \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.event.pull_request.head.sha }}" \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}" \
             --revision-suffix "pr${SHORT_SHA}"
-          echo "revision=ca-town-crier-api-dev--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "revision=${{ env.CONTAINER_APP_NAME }}--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Pin traffic to current revision
         run: |
           if [ -n "${{ steps.current.outputs.revision }}" ]; then
             az containerapp ingress traffic set \
-              --name ca-town-crier-api-dev \
-              --resource-group rg-town-crier-dev \
+              --name "${{ env.CONTAINER_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
               --revision-weight "${{ steps.current.outputs.revision }}=100"
           fi
 
@@ -163,8 +166,8 @@ jobs:
         id: staging-url
         run: |
           APP_FQDN=$(az containerapp show \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
             --query "properties.configuration.ingress.fqdn" -o tsv)
           ENV_DOMAIN="${APP_FQDN#*.}"
           echo "url=https://${{ steps.deploy.outputs.revision }}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
@@ -223,8 +226,8 @@ jobs:
       - name: Deactivate staging revision
         run: |
           az containerapp revision deactivate \
-            --name ca-town-crier-api-dev \
-            --resource-group rg-town-crier-dev \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
             --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
   # ── iOS ──────────────────────────────────────────────

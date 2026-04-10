@@ -23,7 +23,6 @@ struct CompositionRootTests {
     let onboardingRepository = UserDefaultsOnboardingRepository()
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let repository = APIPlanningApplicationRepository(apiClient: apiClient)
-    let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let notificationService = CompositeNotificationService(
       permissionProvider: SpyNotificationPermissionProvider(),
       apiService: APINotificationService(apiClient: apiClient)
@@ -33,8 +32,6 @@ struct CompositionRootTests {
       repository: repository,
       authService: authService,
       subscriptionService: subscriptionService,
-      geocoder: geocoder,
-      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -76,8 +73,6 @@ struct CompositionRootTests {
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
-      geocoder: APIPostcodeGeocoder(apiClient: apiClient),
-      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: onboardingRepo,
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
@@ -120,8 +115,6 @@ struct CompositionRootTests {
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
-      geocoder: APIPostcodeGeocoder(apiClient: apiClient),
-      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),

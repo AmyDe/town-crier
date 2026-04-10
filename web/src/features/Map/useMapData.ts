@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
 import type { ApplicationUid, PlanningApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -6,6 +6,32 @@ import { useFetchData } from '../../hooks/useFetchData';
 interface MapData {
   readonly applications: readonly PlanningApplication[];
   readonly fetchedSavedUids: ReadonlySet<ApplicationUid>;
+}
+
+type UidSetSetter = Dispatch<SetStateAction<Set<ApplicationUid>>>;
+
+function makeToggle(
+  setAdd: UidSetSetter,
+  setRemove: UidSetSetter,
+  portAction: (uid: ApplicationUid) => Promise<void>,
+) {
+  return async (uid: ApplicationUid) => {
+    setRemove(prev => {
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
+    setAdd(prev => new Set([...prev, uid]));
+    try {
+      await portAction(uid);
+    } catch {
+      setAdd(prev => {
+        const next = new Set(prev);
+        next.delete(uid);
+        return next;
+      });
+    }
+  };
 }
 
 export function useMapData(port: MapPort) {
@@ -39,41 +65,15 @@ export function useMapData(port: MapPort) {
     return result;
   }, [data?.fetchedSavedUids, pendingSaves, pendingRemoves]);
 
-  const saveApplication = useCallback(async (uid: ApplicationUid) => {
-    setPendingRemoves(prev => {
-      const next = new Set(prev);
-      next.delete(uid);
-      return next;
-    });
-    setPendingSaves(prev => new Set([...prev, uid]));
-    try {
-      await port.saveApplication(uid);
-    } catch {
-      setPendingSaves(prev => {
-        const next = new Set(prev);
-        next.delete(uid);
-        return next;
-      });
-    }
-  }, [port]);
+  const saveApplication = useMemo(
+    () => makeToggle(setPendingSaves, setPendingRemoves, uid => port.saveApplication(uid)),
+    [port],
+  );
 
-  const unsaveApplication = useCallback(async (uid: ApplicationUid) => {
-    setPendingSaves(prev => {
-      const next = new Set(prev);
-      next.delete(uid);
-      return next;
-    });
-    setPendingRemoves(prev => new Set([...prev, uid]));
-    try {
-      await port.unsaveApplication(uid);
-    } catch {
-      setPendingRemoves(prev => {
-        const next = new Set(prev);
-        next.delete(uid);
-        return next;
-      });
-    }
-  }, [port]);
+  const unsaveApplication = useMemo(
+    () => makeToggle(setPendingRemoves, setPendingSaves, uid => port.unsaveApplication(uid)),
+    [port],
+  );
 
   return {
     applications: data?.applications ?? [],

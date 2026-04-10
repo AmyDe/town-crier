@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import TownCrierDomain
 
@@ -13,7 +12,7 @@ public struct TimelineItem: Equatable, Sendable {
 
 /// ViewModel exposing display-ready properties for a planning application detail screen.
 @MainActor
-public final class ApplicationDetailViewModel: ObservableObject {
+public final class ApplicationDetailViewModel {
     public let description: String
     public let address: String
     public let reference: String

@@ -94,7 +94,7 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
           {appsError !== null && (
             <EmptyState
               title="Something went wrong"
-              message={appsError.message}
+              message={appsError}
               actionLabel="Try again"
               onAction={() => selectAuthority(selectedAuthority)}
             />

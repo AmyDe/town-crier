@@ -146,11 +146,15 @@ struct OnboardingViewModelTests {
         await sut.submitPostcode() // → radiusPicker
         sut.selectedRadiusMetres = 2000
 
+        var completedZone: WatchZone?
+        sut.onComplete = { zone in completedZone = zone }
         sut.confirmRadius()
 
         #expect(sut.currentStep == .notificationPermission)
-        #expect(sut.createdWatchZone != nil)
-        #expect(sut.createdWatchZone?.radiusMetres == 2000)
+        // Verify zone was created via the completion callback after onboarding finishes
+        await sut.skipNotifications()
+        #expect(completedZone != nil)
+        #expect(completedZone?.radiusMetres == 2000)
     }
 
     @Test func goBack_fromRadiusPicker_returnsToPostcodeEntry() async {

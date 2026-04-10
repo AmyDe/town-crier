@@ -247,4 +247,41 @@ describe('useMapData', () => {
     });
     expect(result.current.savedUids.has(uid)).toBe(false);
   });
+
+  it('handles save and unsave of different UIDs independently', async () => {
+    const spy = new SpyMapPort();
+    spy.fetchMyAuthoritiesResult = [anAuthority()];
+    spy.fetchApplicationsByAuthorityResults.set(1, [
+      anApplication(),
+      aSecondApplication(),
+    ]);
+    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+
+    const { result } = renderHook(() => useMapData(spy));
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const uidA = asApplicationUid('app-001');
+    const uidB = asApplicationUid('app-002');
+
+    // uidA starts saved, uidB starts unsaved
+    expect(result.current.savedUids.has(uidA)).toBe(true);
+    expect(result.current.savedUids.has(uidB)).toBe(false);
+
+    // unsave A and save B simultaneously
+    await act(async () => {
+      await result.current.unsaveApplication(uidA);
+    });
+    await act(async () => {
+      await result.current.saveApplication(uidB);
+    });
+
+    expect(result.current.savedUids.has(uidA)).toBe(false);
+    expect(result.current.savedUids.has(uidB)).toBe(true);
+
+    expect(spy.unsaveApplicationCalls).toEqual([uidA]);
+    expect(spy.saveApplicationCalls).toEqual([uidB]);
+  });
 });

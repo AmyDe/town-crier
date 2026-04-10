@@ -33,18 +33,19 @@ var otel = builder.Services.AddOpenTelemetry()
             .AddMeter(PollingMetrics.MeterName)
             .AddMeter(CosmosInstrumentation.MeterName)
             .AddMeter(PlanItInstrumentation.MeterName);
-    });
+    })
+    .WithLogging(
+        configureBuilder: null,
+        configureOptions: logging =>
+        {
+            logging.IncludeFormattedMessage = true;
+            logging.IncludeScopes = true;
+        });
 
 if (hasAppInsights)
 {
     otel.UseAzureMonitorExporter(o => o.ConnectionString = aiConnectionString);
 }
-
-builder.Logging.AddOpenTelemetry(logging =>
-{
-    logging.IncludeFormattedMessage = true;
-    logging.IncludeScopes = true;
-});
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? ["http://localhost:5173"];
