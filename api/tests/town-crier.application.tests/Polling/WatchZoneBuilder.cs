@@ -12,6 +12,7 @@ internal sealed class WatchZoneBuilder
     private double longitude = -0.1278;
     private double radiusMetres = 5000;
     private int authorityId = 1;
+    private DateTimeOffset createdAt = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     public WatchZoneBuilder WithId(string id)
     {
@@ -50,6 +51,12 @@ internal sealed class WatchZoneBuilder
         return this;
     }
 
+    public WatchZoneBuilder WithCreatedAt(DateTimeOffset createdAt)
+    {
+        this.createdAt = createdAt;
+        return this;
+    }
+
     public WatchZone Build()
     {
         return new WatchZone(
@@ -58,6 +65,7 @@ internal sealed class WatchZoneBuilder
             this.name,
             new Coordinates(this.latitude, this.longitude),
             this.radiusMetres,
-            this.authorityId);
+            this.authorityId,
+            this.createdAt);
     }
 }
