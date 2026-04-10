@@ -64,6 +64,15 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         return Task.FromResult<(IReadOnlyList<Notification> Items, int Total)>((items, total));
     }
 
+    public Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct)
+    {
+        var notifications = this.store
+            .Where(n => n.UserId == userId && !n.EmailSent)
+            .OrderBy(n => n.CreatedAt)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<Notification>>(notifications);
+    }
+
     public Task SaveAsync(Notification notification, CancellationToken ct)
     {
         this.store.Add(notification);

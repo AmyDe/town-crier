@@ -11,11 +11,23 @@ public sealed class FakeNotificationRepositoryEmailTests
         var repo = new FakeNotificationRepository();
 
         var unsent = Notification.Create(
-            "user-1", "APP/2026/0001", "zone-1", "1 High St", "Extension", "Householder", 42,
+            "user-1",
+            "APP/2026/0001",
+            "zone-1",
+            "1 High St",
+            "Extension",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero));
 
         var sent = Notification.Create(
-            "user-1", "APP/2026/0002", "zone-1", "2 High St", "Garage", "Householder", 42,
+            "user-1",
+            "APP/2026/0002",
+            "zone-1",
+            "2 High St",
+            "Garage",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 11, 0, 0, TimeSpan.Zero));
         sent.MarkEmailSent();
 
@@ -37,11 +49,23 @@ public sealed class FakeNotificationRepositoryEmailTests
         var repo = new FakeNotificationRepository();
 
         var older = Notification.Create(
-            "user-1", "APP/2026/0001", "zone-1", "1 High St", "Extension", "Householder", 42,
+            "user-1",
+            "APP/2026/0001",
+            "zone-1",
+            "1 High St",
+            "Extension",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 8, 0, 0, TimeSpan.Zero));
 
         var newer = Notification.Create(
-            "user-1", "APP/2026/0002", "zone-1", "2 High St", "Garage", "Householder", 42,
+            "user-1",
+            "APP/2026/0002",
+            "zone-1",
+            "2 High St",
+            "Garage",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 12, 0, 0, TimeSpan.Zero));
 
         repo.Seed(newer);
@@ -62,7 +86,13 @@ public sealed class FakeNotificationRepositoryEmailTests
         var repo = new FakeNotificationRepository();
 
         var sent = Notification.Create(
-            "user-1", "APP/2026/0001", "zone-1", "1 High St", "Extension", "Householder", 42,
+            "user-1",
+            "APP/2026/0001",
+            "zone-1",
+            "1 High St",
+            "Extension",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero));
         sent.MarkEmailSent();
 
@@ -82,11 +112,23 @@ public sealed class FakeNotificationRepositoryEmailTests
         var repo = new FakeNotificationRepository();
 
         var user1Notification = Notification.Create(
-            "user-1", "APP/2026/0001", "zone-1", "1 High St", "Extension", "Householder", 42,
+            "user-1",
+            "APP/2026/0001",
+            "zone-1",
+            "1 High St",
+            "Extension",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero));
 
         var user2Notification = Notification.Create(
-            "user-2", "APP/2026/0002", "zone-2", "2 High St", "Garage", "Householder", 42,
+            "user-2",
+            "APP/2026/0002",
+            "zone-2",
+            "2 High St",
+            "Garage",
+            "Householder",
+            42,
             new DateTimeOffset(2026, 3, 15, 11, 0, 0, TimeSpan.Zero));
 
         repo.Seed(user1Notification);

@@ -110,6 +110,20 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         return (items, total);
     }
 
+    public async Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(
+        string userId, CancellationToken ct)
+    {
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT * FROM c WHERE c.userId = @userId AND (c.emailSent = false OR NOT IS_DEFINED(c.emailSent)) ORDER BY c.createdAt ASC",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
+
     public async Task SaveAsync(Notification notification, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(notification);
