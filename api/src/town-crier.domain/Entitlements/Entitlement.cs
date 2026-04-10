@@ -6,4 +6,5 @@ public enum Entitlement
     SearchApplications,
     StatusChangeAlerts,
     DecisionUpdateAlerts,
+    HourlyDigestEmails,
 }

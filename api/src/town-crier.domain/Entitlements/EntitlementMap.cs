@@ -13,6 +13,7 @@ public static class EntitlementMap
             Entitlement.InstantEmails,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts,
+            Entitlement.HourlyDigestEmails,
         };
 
     private static readonly IReadOnlySet<Entitlement> ProEntitlements =
@@ -22,6 +23,7 @@ public static class EntitlementMap
             Entitlement.SearchApplications,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts,
+            Entitlement.HourlyDigestEmails,
         };
 
     public static IReadOnlySet<Entitlement> EntitlementsFor(SubscriptionTier tier) => tier switch
