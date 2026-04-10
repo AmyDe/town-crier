@@ -38,6 +38,24 @@ public sealed class CreateWatchZoneCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SetCreatedAtFromTimeProvider_When_ZoneCreated()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        await Assert.That(zones.First().CreatedAt).IsEqualTo(FixedNow);
+    }
+
+    [Test]
     public async Task Should_NotCallPlanIt_When_FreeUserCreatesZone()
     {
         // Arrange
