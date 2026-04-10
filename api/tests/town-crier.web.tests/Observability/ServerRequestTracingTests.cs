@@ -1,10 +1,14 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
+using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.UserProfiles;
+using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests.Observability;
 
@@ -49,6 +53,60 @@ public sealed class ServerRequestTracingTests
         var serverSpan = exportedActivities.Find(a => a.Kind == ActivityKind.Server);
         await Assert.That(serverSpan).IsNotNull()
             .Because("ASP.NET Core server spans must be exported for the App Insights requests table");
+    }
+
+    [Test]
+    [Retry(3)]
+    public async Task Should_ExportExceptionEvent_When_EndpointThrows()
+    {
+        // Arrange -- replace the user profile repository with one that always throws,
+        // so GET /v1/me triggers an unhandled exception through ErrorResponseMiddleware.
+        var exportedActivities = new List<Activity>();
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting(
+                "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://localhost/");
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddOpenTelemetry()
+                    .WithTracing(tracing =>
+                    {
+                        tracing.AddInMemoryExporter(exportedActivities);
+                    });
+
+                services.AddSingleton<IUserProfileRepository>(
+                    new ThrowingUserProfileRepository());
+            });
+        });
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TestJwtToken.Generate());
+
+        // Act
+        using var response = await client.GetAsync(new Uri("/v1/me", UriKind.Relative));
+
+        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
+        tracerProvider.ForceFlush();
+
+        // Assert -- the response should be 500 and the server span must carry the exception
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.InternalServerError);
+
+        var serverSpan = exportedActivities.Find(a => a.Kind == ActivityKind.Server);
+        await Assert.That(serverSpan).IsNotNull()
+            .Because("a server span must be exported even when the request fails");
+
+        var exceptionEvent = serverSpan!.Events.FirstOrDefault(e => e.Name == "exception");
+        await Assert.That(exceptionEvent.Name).IsEqualTo("exception")
+            .Because("ErrorResponseMiddleware must record the exception on the span for App Insights");
+
+        var exceptionType = exceptionEvent.Tags
+            .FirstOrDefault(t => t.Key == "exception.type").Value as string;
+        await Assert.That(exceptionType).IsEqualTo("System.InvalidOperationException");
+
+        await Assert.That(serverSpan.Status).IsEqualTo(ActivityStatusCode.Error);
     }
 
     [Test]
@@ -106,5 +164,29 @@ public sealed class ServerRequestTracingTests
             ?? serverSpan.GetTagItem("url.path");
         await Assert.That(route).IsNotNull()
             .Because("server span must include http.route for App Insights request naming");
+    }
+
+    private sealed class ThrowingUserProfileRepository : IUserProfileRepository
+    {
+        public Task<UserProfile?> GetByUserIdAsync(string userId, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task SaveAsync(UserProfile profile, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
+
+        public Task DeleteAsync(string userId, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
     }
 }
