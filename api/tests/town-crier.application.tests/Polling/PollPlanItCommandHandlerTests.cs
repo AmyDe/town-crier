@@ -67,7 +67,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_UseDefault30DayLookback_When_NoPreviousPollState()
+    public async Task Should_UseDefault1DayLookback_When_NoPreviousPollState()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -81,7 +81,7 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        var expected = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
+        var expected = new DateTimeOffset(2026, 4, 4, 12, 0, 0, TimeSpan.Zero);
         await Assert.That(planItClient.LastDifferentStartUsed).IsEqualTo(expected);
     }
 
@@ -419,7 +419,7 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_Use30DayLookback_When_NewAuthorityHasNoPollState()
+    public async Task Should_Use1DayLookback_When_NewAuthorityHasNoPollState()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
@@ -443,9 +443,9 @@ public sealed class PollPlanItCommandHandlerTests
         // Authority 100 should use its existing poll time
         await Assert.That(planItClient.DifferentStartByAuthority[100]).IsEqualTo(existingPollTime);
 
-        // Authority 200 should use 30-day lookback
-        var expected30DaysAgo = new DateTimeOffset(2026, 3, 6, 12, 0, 0, TimeSpan.Zero);
-        await Assert.That(planItClient.DifferentStartByAuthority[200]).IsEqualTo(expected30DaysAgo);
+        // Authority 200 should use 1-day lookback
+        var expected1DayAgo = new DateTimeOffset(2026, 4, 4, 12, 0, 0, TimeSpan.Zero);
+        await Assert.That(planItClient.DifferentStartByAuthority[200]).IsEqualTo(expected1DayAgo);
     }
 
     [Test]
