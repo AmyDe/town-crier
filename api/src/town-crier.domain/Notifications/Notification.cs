@@ -12,6 +12,7 @@ public sealed class Notification
         string applicationType,
         int authorityId,
         bool pushSent,
+        bool emailSent,
         DateTimeOffset createdAt)
     {
         this.Id = id;
@@ -23,6 +24,7 @@ public sealed class Notification
         this.ApplicationType = applicationType;
         this.AuthorityId = authorityId;
         this.PushSent = pushSent;
+        this.EmailSent = emailSent;
         this.CreatedAt = createdAt;
     }
 
@@ -43,6 +45,8 @@ public sealed class Notification
     public int AuthorityId { get; }
 
     public bool PushSent { get; private set; }
+
+    public bool EmailSent { get; private set; }
 
     public DateTimeOffset CreatedAt { get; }
 
@@ -70,12 +74,18 @@ public sealed class Notification
             applicationType: applicationType,
             authorityId: authorityId,
             pushSent: false,
+            emailSent: false,
             createdAt: now);
     }
 
     public void MarkPushSent()
     {
         this.PushSent = true;
+    }
+
+    public void MarkEmailSent()
+    {
+        this.EmailSent = true;
     }
 
     internal static Notification Reconstitute(
@@ -88,6 +98,7 @@ public sealed class Notification
         string applicationType,
         int authorityId,
         bool pushSent,
+        bool emailSent,
         DateTimeOffset createdAt)
     {
         return new Notification(
@@ -100,6 +111,7 @@ public sealed class Notification
             applicationType,
             authorityId,
             pushSent,
+            emailSent,
             createdAt);
     }
 }
