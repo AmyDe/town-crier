@@ -6,8 +6,6 @@ public interface IPollStateStore
 
     Task SaveLastPollTimeAsync(int authorityId, DateTimeOffset pollTime, CancellationToken ct);
 
-    Task DeleteGlobalPollStateAsync(CancellationToken ct);
-
     Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
         IReadOnlyList<int> candidateAuthorityIds,
         CancellationToken ct);

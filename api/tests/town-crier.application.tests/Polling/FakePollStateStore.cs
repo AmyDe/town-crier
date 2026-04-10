@@ -8,8 +8,6 @@ internal sealed class FakePollStateStore : IPollStateStore
 
     public int SaveCallCount { get; private set; }
 
-    public bool DeleteGlobalCalled { get; private set; }
-
     public DateTimeOffset? GetLastPollTimeFor(int authorityId)
     {
         return this.pollTimes.TryGetValue(authorityId, out var time) ? time : null;
@@ -30,12 +28,6 @@ internal sealed class FakePollStateStore : IPollStateStore
     {
         this.pollTimes[authorityId] = pollTime;
         this.SaveCallCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task DeleteGlobalPollStateAsync(CancellationToken ct)
-    {
-        this.DeleteGlobalCalled = true;
         return Task.CompletedTask;
     }
 

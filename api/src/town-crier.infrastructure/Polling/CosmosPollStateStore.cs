@@ -6,8 +6,6 @@ namespace TownCrier.Infrastructure.Polling;
 
 public sealed class CosmosPollStateStore : IPollStateStore
 {
-    private const string GlobalDocumentId = "poll-state";
-
     private readonly ICosmosRestClient client;
 
     public CosmosPollStateStore(ICosmosRestClient client)
@@ -49,15 +47,6 @@ public sealed class CosmosPollStateStore : IPollStateStore
             doc,
             documentId,
             CosmosJsonSerializerContext.Default.PollStateDocument,
-            ct).ConfigureAwait(false);
-    }
-
-    public async Task DeleteGlobalPollStateAsync(CancellationToken ct)
-    {
-        await this.client.DeleteDocumentAsync(
-            CosmosContainerNames.PollState,
-            GlobalDocumentId,
-            GlobalDocumentId,
             ct).ConfigureAwait(false);
     }
 

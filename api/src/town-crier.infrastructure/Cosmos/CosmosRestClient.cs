@@ -135,6 +135,12 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         activity?.SetTag("db.cosmosdb.container", collection);
         activity?.SetTag("db.operation.name", "Query");
 
+        if (partitionKey is null && RequiresFanOut(sql))
+        {
+            return await this.QueryWithFanOutAsync(
+                collection, sql, parameters, typeInfo, activity, ct).ConfigureAwait(false);
+        }
+
         var results = new List<T>();
         string? continuation = null;
 
@@ -210,6 +216,10 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             ? results[0]
             : throw new InvalidOperationException("Query returned no results.");
     }
+
+    private static bool RequiresFanOut(string sql) =>
+        sql.Contains("DISTINCT", StringComparison.OrdinalIgnoreCase) ||
+        sql.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase);
 
     private static void AddQueryHeaders(HttpRequestMessage request, string? partitionKey)
     {

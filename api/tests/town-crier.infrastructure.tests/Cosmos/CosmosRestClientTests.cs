@@ -210,6 +210,7 @@ public sealed class CosmosRestClientTests
         var (client, handler) = CreateClient();
 
         // Request 1: cross-partition query returns 400 with fan-out marker
+        // (uses SELECT * to exercise the runtime probe path — DISTINCT/GROUP BY skip this)
         handler.EnqueueResponse(
             HttpStatusCode.BadRequest,
             """{"code":"BadRequest","message":"Cross partition query ... partitionedQueryExecutionInfoVersion"}""");
@@ -231,7 +232,7 @@ public sealed class CosmosRestClientTests
 
         var results = await client.QueryAsync(
             "Users",
-            "SELECT DISTINCT VALUE c.name FROM c",
+            "SELECT * FROM c WHERE ST_DISTANCE(c.location, @point) < 1000",
             null,
             null,
             TestSerializerContext.Default.TestDocument,
@@ -269,6 +270,7 @@ public sealed class CosmosRestClientTests
         var (client, handler) = CreateClient();
 
         // Request 1: cross-partition query returns 400 with fan-out marker
+        // (uses non-DISTINCT query to exercise the runtime probe path)
         handler.EnqueueResponse(
             HttpStatusCode.BadRequest,
             """{"code":"BadRequest","message":"partitionedQueryExecutionInfoVersion"}""");
@@ -291,7 +293,7 @@ public sealed class CosmosRestClientTests
 
         var results = await client.QueryAsync(
             "Users",
-            "SELECT DISTINCT VALUE c.name FROM c",
+            "SELECT * FROM c WHERE ST_DISTANCE(c.location, @point) < 1000",
             null,
             null,
             TestSerializerContext.Default.TestDocument,
@@ -331,6 +333,98 @@ public sealed class CosmosRestClientTests
                 CancellationToken.None));
 
         await Assert.That(exception.Message).Contains("syntax error");
+    }
+
+    [Test]
+    public async Task Should_SkipProbeAndFanOutDirectly_When_DistinctCrossPartitionQuery()
+    {
+        var (client, handler) = CreateClient();
+
+        // No 400 probe — first request is GET pkranges
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"PartitionKeyRanges":[{"id":"0"},{"id":"1"}],"_count":2}""");
+
+        // Per-range queries return results directly
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d1","name":"Alpha"}],"_count":1}""");
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d2","name":"Beta"}],"_count":1}""");
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT DISTINCT VALUE c.name FROM c",
+            null,
+            null,
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        // Results from both partitions
+        await Assert.That(results).HasCount().EqualTo(2);
+
+        // Only 3 requests: pkranges + 2 partition queries (no initial probe)
+        await Assert.That(handler.SentRequests).HasCount().EqualTo(3);
+
+        // First request is GET pkranges, NOT a POST query probe
+        var firstRequest = handler.SentRequests[0];
+        await Assert.That(firstRequest.Method).IsEqualTo(HttpMethod.Get);
+        await Assert.That(firstRequest.RequestUri!.AbsolutePath)
+            .IsEqualTo("/dbs/test-db/colls/Users/pkranges");
+    }
+
+    [Test]
+    public async Task Should_SkipProbeAndFanOutDirectly_When_GroupByCrossPartitionQuery()
+    {
+        var (client, handler) = CreateClient();
+
+        // No 400 probe — first request is GET pkranges
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"PartitionKeyRanges":[{"id":"0"}],"_count":1}""");
+
+        // Single partition query
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d1","name":"GroupResult"}],"_count":1}""");
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT c.category, COUNT(1) AS total FROM c GROUP BY c.category",
+            null,
+            null,
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // Only 2 requests: pkranges + 1 partition query (no initial probe)
+        await Assert.That(handler.SentRequests).HasCount().EqualTo(2);
+        await Assert.That(handler.SentRequests[0].Method).IsEqualTo(HttpMethod.Get);
+    }
+
+    [Test]
+    public async Task Should_StillProbeNormally_When_SimpleCrossPartitionQuery()
+    {
+        var (client, handler) = CreateClient();
+
+        // Simple cross-partition SELECT * should NOT skip to fan-out
+        handler.EnqueueResponse(HttpStatusCode.OK, """{"Documents":[{"id":"d1","name":"Test"}],"_count":1}""");
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT * FROM c WHERE c.active = true",
+            null,
+            null,
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(results).HasCount().EqualTo(1);
+
+        // Normal path: single POST query, no fan-out
+        await Assert.That(handler.SentRequests).HasCount().EqualTo(1);
+        await Assert.That(handler.SentRequests[0].Method).IsEqualTo(HttpMethod.Post);
     }
 
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
