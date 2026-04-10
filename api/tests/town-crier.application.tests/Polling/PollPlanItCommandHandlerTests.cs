@@ -482,31 +482,6 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_DeleteGlobalPollState_When_CycleCompletes()
-    {
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(1);
-
-        var pollStateStore = new FakePollStateStore();
-        var handler = CreateHandler(pollStateStore: pollStateStore, authorityProvider: authorityProvider);
-
-        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
-    }
-
-    [Test]
-    public async Task Should_DeleteGlobalPollState_When_NoActiveAuthorities()
-    {
-        var pollStateStore = new FakePollStateStore();
-        var handler = CreateHandler(pollStateStore: pollStateStore);
-
-        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
-
-        await Assert.That(pollStateStore.DeleteGlobalCalled).IsTrue();
-    }
-
-    [Test]
     public async Task Should_StopAndSetRateLimited_When_429Hit()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();

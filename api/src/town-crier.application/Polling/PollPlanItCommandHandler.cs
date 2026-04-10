@@ -131,8 +131,6 @@ public sealed partial class PollPlanItCommandHandler
             }
         }
 
-        await this.pollStateStore.DeleteGlobalPollStateAsync(ct).ConfigureAwait(false);
-
         return new PollPlanItResult(count, authoritiesPolled, rateLimited);
     }
 
