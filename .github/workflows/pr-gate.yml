@@ -98,9 +98,53 @@ jobs:
       - name: Run unit tests
         run: |
           dotnet test tests/town-crier.application.tests --no-build --configuration Release
-          dotnet test tests/town-crier.web.tests --no-build --configuration Release
           dotnet test tests/town-crier.infrastructure.tests --no-build --configuration Release
         working-directory: api
+
+      - name: Run web tests (timeout-guarded)
+        # web.tests: Azure Monitor exporter can hang on shutdown when configured
+        # with a fake connection string (tests OTel code paths). All tests pass
+        # within seconds; only process cleanup blocks. We use timeout to kill the
+        # hung process, but ONLY accept a timeout exit if the .trx results file
+        # proves every test executed and none failed.
+        run: |
+          set +e
+          timeout 120 dotnet test tests/town-crier.web.tests \
+            --no-build --configuration Release \
+            --logger "trx;LogFileName=web-tests.trx"
+          web_status=$?
+          set -e
+
+          if [ "$web_status" -eq 124 ]; then
+            echo "::warning::dotnet test timed out (exit 124) — checking .trx for proof of success"
+            trx_file=$(find tests/town-crier.web.tests/TestResults -name '*.trx' -print 2>/dev/null | head -n1)
+            if [ -z "$trx_file" ]; then
+              echo "::error::Timeout with no .trx file produced — tests may not have run"
+              exit 1
+            fi
+            if ! grep -q 'failed="0"' "$trx_file"; then
+              echo "::error::Timeout and .trx shows test failures"
+              exit 1
+            fi
+            if ! grep -Eq 'executed="[1-9][0-9]*"' "$trx_file"; then
+              echo "::error::Timeout and .trx shows zero tests executed"
+              exit 1
+            fi
+            echo "Tests completed successfully before timeout killed the hung process"
+          elif [ "$web_status" -ne 0 ]; then
+            echo "::error::dotnet test failed with exit code $web_status"
+            exit "$web_status"
+          fi
+        working-directory: api
+
+      - name: Upload web test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: api/tests/town-crier.web.tests/TestResults/*.trx
+          if-no-files-found: ignore
+          retention-days: 7
 
   # ── API: staging deploy ─────────────────────────────
 
