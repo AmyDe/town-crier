@@ -44,7 +44,18 @@ var otel = builder.Services.AddOpenTelemetry()
 
 if (hasAppInsights)
 {
-    otel.UseAzureMonitorExporter(o => o.ConnectionString = aiConnectionString);
+    otel.UseAzureMonitorExporter(o =>
+    {
+        o.ConnectionString = aiConnectionString;
+
+        // Azure Monitor Exporter 1.6.0+ defaults to RateLimitedSampler at 5 TPS,
+        // which drops most dependency spans under burst traffic (e.g., Cosmos polling
+        // with 900+ calls). Set TracesPerSecond=null to use ApplicationInsightsSampler
+        // with SamplingRatio=1.0 for 100% fixed-percentage sampling, ensuring all
+        // outbound calls appear in the App Insights dependencies table.
+        o.SamplingRatio = 1.0f;
+        o.TracesPerSecond = null;
+    });
 }
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
