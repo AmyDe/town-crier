@@ -17,10 +17,15 @@ const initialState: LegalDocumentState = {
 
 export function useLegalDocument(port: LegalDocumentPort, documentType: string) {
   const [state, setState] = useState<LegalDocumentState>(initialState);
+  const [activeType, setActiveType] = useState(documentType);
+
+  if (activeType !== documentType) {
+    setActiveType(documentType);
+    setState(initialState);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setState(initialState);
 
     port.fetchDocument(documentType).then(
       (doc) => {

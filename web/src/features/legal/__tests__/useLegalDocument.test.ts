@@ -103,7 +103,6 @@ describe('useLegalDocument', () => {
     expect(result.current.document).toEqual(privacyPolicy());
 
     // Make second fetch hang until we resolve it manually
-    const originalFetch = spy.fetchDocument.bind(spy);
     spy.fetchDocument = (documentType: string) => {
       spy.fetchDocumentCalls.push(documentType);
       return new Promise<LegalDocument>((resolve) => {

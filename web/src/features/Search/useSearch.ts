@@ -44,7 +44,7 @@ export function useSearch(repository: SearchRepository) {
     authorityRef.current = authorityId;
     setProGateRequired(false);
     result.loadPage(1);
-  }, [result.loadPage]);
+  }, [result]);
 
   return {
     applications: result.items,

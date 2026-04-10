@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
 import type { ApplicationUid, PlanningApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -65,13 +65,13 @@ export function useMapData(port: MapPort) {
     return result;
   }, [data?.fetchedSavedUids, pendingSaves, pendingRemoves]);
 
-  const saveApplication = useCallback(
-    makeToggle(setPendingSaves, setPendingRemoves, uid => port.saveApplication(uid)),
+  const saveApplication = useMemo(
+    () => makeToggle(setPendingSaves, setPendingRemoves, uid => port.saveApplication(uid)),
     [port],
   );
 
-  const unsaveApplication = useCallback(
-    makeToggle(setPendingRemoves, setPendingSaves, uid => port.unsaveApplication(uid)),
+  const unsaveApplication = useMemo(
+    () => makeToggle(setPendingRemoves, setPendingSaves, uid => port.unsaveApplication(uid)),
     [port],
   );
 
