@@ -15,7 +15,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosWatchZoneRepository(client);
 
-        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100);
+        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100, DateTimeOffset.MinValue);
 
         // Act
         await repo.SaveAsync(zone, CancellationToken.None);
@@ -33,8 +33,8 @@ public sealed class CosmosWatchZoneRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosWatchZoneRepository(client);
 
-        var zone1 = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100);
-        var zone2 = new WatchZone("zone-2", "user-1", "Work", new Coordinates(51.6, -0.2), 1000, 200);
+        var zone1 = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100, DateTimeOffset.MinValue);
+        var zone2 = new WatchZone("zone-2", "user-1", "Work", new Coordinates(51.6, -0.2), 1000, 200, DateTimeOffset.MinValue);
         await repo.SaveAsync(zone1, CancellationToken.None);
         await repo.SaveAsync(zone2, CancellationToken.None);
 
@@ -52,7 +52,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosWatchZoneRepository(client);
 
-        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100);
+        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100, DateTimeOffset.MinValue);
         await repo.SaveAsync(zone, CancellationToken.None);
 
         // Act
@@ -82,7 +82,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosWatchZoneRepository(client);
 
-        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100);
+        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100, DateTimeOffset.MinValue);
         await repo.SaveAsync(zone, CancellationToken.None);
 
         // Act — fake returns all documents in collection (no SQL parsing)

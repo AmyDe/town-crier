@@ -4,7 +4,7 @@ namespace TownCrier.Domain.WatchZones;
 
 public sealed class WatchZone
 {
-    public WatchZone(string id, string userId, string name, Coordinates centre, double radiusMetres, int authorityId)
+    public WatchZone(string id, string userId, string name, Coordinates centre, double radiusMetres, int authorityId, DateTimeOffset createdAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
@@ -19,6 +19,7 @@ public sealed class WatchZone
         this.Centre = centre;
         this.RadiusMetres = radiusMetres;
         this.AuthorityId = authorityId;
+        this.CreatedAt = createdAt;
     }
 
     public string Id { get; }
@@ -32,4 +33,6 @@ public sealed class WatchZone
     public double RadiusMetres { get; }
 
     public int AuthorityId { get; }
+
+    public DateTimeOffset CreatedAt { get; }
 }
