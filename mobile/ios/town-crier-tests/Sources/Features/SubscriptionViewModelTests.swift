@@ -6,7 +6,9 @@ import TownCrierDomain
 @Suite("SubscriptionViewModel")
 @MainActor
 struct SubscriptionViewModelTests {
-  private func makeSUT() -> (SubscriptionViewModel, SpySubscriptionService, SpyAuthenticationService) {
+  private func makeSUT() -> (
+    SubscriptionViewModel, SpySubscriptionService, SpyAuthenticationService
+  ) {
     let subscriptionSpy = SpySubscriptionService()
     let authSpy = SpyAuthenticationService()
     let sut = SubscriptionViewModel(
