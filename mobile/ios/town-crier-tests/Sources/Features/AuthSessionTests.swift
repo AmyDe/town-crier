@@ -37,4 +37,22 @@ struct AuthSessionTests {
     )
     #expect(session.subscriptionTier == .free)
   }
+
+  @Test func equality_considersTier() {
+    let free = AuthSession(
+      accessToken: "token",
+      idToken: "id",
+      expiresAt: Date.distantFuture,
+      userProfile: .testUser,
+      subscriptionTier: .free
+    )
+    let pro = AuthSession(
+      accessToken: "token",
+      idToken: "id",
+      expiresAt: Date.distantFuture,
+      userProfile: .testUser,
+      subscriptionTier: .pro
+    )
+    #expect(free != pro)
+  }
 }
