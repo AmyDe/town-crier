@@ -24,6 +24,15 @@ internal static partial class WorkerLog
     [LoggerMessage(Level = LogLevel.Error, Message = "Weekly digest generation failed")]
     internal static partial void DigestCycleFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll, digest")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting hourly digest generation")]
+    internal static partial void HourlyDigestCycleStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hourly digest generation completed")]
+    internal static partial void HourlyDigestCycleCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Hourly digest generation failed")]
+    internal static partial void HourlyDigestCycleFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll, digest, hourly-digest")]
     internal static partial void UnknownWorkerMode(ILogger logger, string workerMode);
 }
