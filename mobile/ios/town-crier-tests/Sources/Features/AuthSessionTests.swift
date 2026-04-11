@@ -14,4 +14,27 @@ struct AuthSessionTests {
     let session = AuthSession.expired
     #expect(session.isExpired)
   }
+
+  // MARK: - subscriptionTier
+
+  @Test func subscriptionTier_storesProvidedTier() {
+    let session = AuthSession(
+      accessToken: "token",
+      idToken: "id",
+      expiresAt: Date.distantFuture,
+      userProfile: .testUser,
+      subscriptionTier: .pro
+    )
+    #expect(session.subscriptionTier == .pro)
+  }
+
+  @Test func subscriptionTier_defaultsToFree_whenOmitted() {
+    let session = AuthSession(
+      accessToken: "token",
+      idToken: "id",
+      expiresAt: Date.distantFuture,
+      userProfile: .testUser
+    )
+    #expect(session.subscriptionTier == .free)
+  }
 }
