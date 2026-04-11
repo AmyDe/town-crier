@@ -42,4 +42,33 @@ struct DomainErrorMessageTests {
     @Test func isRetryable_falseForAuthFailed() {
         #expect(!DomainError.authenticationFailed("err").isRetryable)
     }
+
+    // MARK: - insufficientEntitlement
+
+    @Test func insufficientEntitlement_hasUpgradeTitle() {
+        let error = DomainError.insufficientEntitlement(required: "searchApplications")
+        #expect(error.userTitle == "Upgrade Required")
+    }
+
+    @Test func insufficientEntitlement_hasUpgradeMessage() {
+        let error = DomainError.insufficientEntitlement(required: "searchApplications")
+        #expect(
+            error.userMessage
+                == "This feature requires a higher subscription tier. Upgrade to unlock it."
+        )
+    }
+
+    @Test func insufficientEntitlement_isNotRetryable() {
+        let error = DomainError.insufficientEntitlement(required: "searchApplications")
+        #expect(!error.isRetryable)
+    }
+
+    @Test func insufficientEntitlement_preservesRequiredField() {
+        let error = DomainError.insufficientEntitlement(required: "statusChangeAlerts")
+        if case .insufficientEntitlement(let required) = error {
+            #expect(required == "statusChangeAlerts")
+        } else {
+            Issue.record("Expected insufficientEntitlement case")
+        }
+    }
 }
