@@ -2,5 +2,5 @@
 ///
 /// Must remain in sync with the API's `Quota` enum.
 public enum Quota: Equatable, Hashable, Sendable {
-    case watchZones
+  case watchZones
 }
