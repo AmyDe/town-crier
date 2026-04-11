@@ -14,7 +14,8 @@ struct JWTSubscriptionTierExtractorTests {
 
   @Test func extractTier_returnsPersonal_whenClaimIsPersonal() {
     // JWT payload: {"subscription_tier": "personal", "sub": "auth0|123"}
-    let jwt = Self.header
+    let jwt =
+      Self.header
       + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJwZXJzb25hbCIsICJzdWIiOiAiYXV0aDB8MTIzIn0"
       + ".fakesignature"
 
@@ -25,7 +26,8 @@ struct JWTSubscriptionTierExtractorTests {
 
   @Test func extractTier_returnsPro_whenClaimIsPro() {
     // JWT payload: {"subscription_tier": "pro", "sub": "auth0|123"}
-    let jwt = Self.header
+    let jwt =
+      Self.header
       + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJwcm8iLCAic3ViIjogImF1dGgwfDEyMyJ9"
       + ".fakesignature"
 
@@ -38,7 +40,8 @@ struct JWTSubscriptionTierExtractorTests {
 
   @Test func extractTier_returnsFree_whenClaimIsAbsent() {
     // JWT payload: {"sub": "auth0|123"} -- no subscription_tier
-    let jwt = Self.header
+    let jwt =
+      Self.header
       + ".eyJzdWIiOiAiYXV0aDB8MTIzIn0"
       + ".fakesignature"
 
@@ -49,7 +52,8 @@ struct JWTSubscriptionTierExtractorTests {
 
   @Test func extractTier_returnsFree_whenClaimIsUnrecognised() {
     // JWT payload: {"subscription_tier": "enterprise", "sub": "auth0|123"}
-    let jwt = Self.header
+    let jwt =
+      Self.header
       + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJlbnRlcnByaXNlIiwgInN1YiI6ICJhdXRoMHwxMjMifQ"
       + ".fakesignature"
 

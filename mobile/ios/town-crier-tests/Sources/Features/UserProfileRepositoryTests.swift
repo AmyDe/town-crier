@@ -7,13 +7,14 @@ struct UserProfileRepositoryTests {
   @Test("protocol requires create method returning ServerProfile")
   func createReturnsServerProfile() async throws {
     let spy = SpyUserProfileRepository()
-    spy.createResult = .success(ServerProfile(
-      userId: "auth0|user-001",
-      tier: .free,
-      pushEnabled: true,
-      digestDay: .monday,
-      emailDigestEnabled: true
-    ))
+    spy.createResult = .success(
+      ServerProfile(
+        userId: "auth0|user-001",
+        tier: .free,
+        pushEnabled: true,
+        digestDay: .monday,
+        emailDigestEnabled: true
+      ))
 
     let profile = try await spy.create()
 
@@ -25,13 +26,14 @@ struct UserProfileRepositoryTests {
   @Test("protocol requires fetch method returning optional ServerProfile")
   func fetchReturnsOptionalServerProfile() async throws {
     let spy = SpyUserProfileRepository()
-    spy.fetchResult = .success(ServerProfile(
-      userId: "auth0|user-001",
-      tier: .personal,
-      pushEnabled: false,
-      digestDay: .friday,
-      emailDigestEnabled: true
-    ))
+    spy.fetchResult = .success(
+      ServerProfile(
+        userId: "auth0|user-001",
+        tier: .personal,
+        pushEnabled: false,
+        digestDay: .friday,
+        emailDigestEnabled: true
+      ))
 
     let profile = try await spy.fetch()
 
@@ -52,13 +54,14 @@ struct UserProfileRepositoryTests {
   @Test("protocol requires update method with mutable preferences")
   func updateSendsPreferences() async throws {
     let spy = SpyUserProfileRepository()
-    spy.updateResult = .success(ServerProfile(
-      userId: "auth0|user-001",
-      tier: .personal,
-      pushEnabled: false,
-      digestDay: .wednesday,
-      emailDigestEnabled: false
-    ))
+    spy.updateResult = .success(
+      ServerProfile(
+        userId: "auth0|user-001",
+        tier: .personal,
+        pushEnabled: false,
+        digestDay: .wednesday,
+        emailDigestEnabled: false
+      ))
 
     let updated = try await spy.update(
       pushEnabled: false,

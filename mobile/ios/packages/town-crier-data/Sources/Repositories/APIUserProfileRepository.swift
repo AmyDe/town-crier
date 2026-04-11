@@ -89,7 +89,8 @@ struct ServerProfileDTO: Decodable, Sendable {
     tier = try container.decode(String.self, forKey: .tier)
     pushEnabled = try container.decode(Bool.self, forKey: .pushEnabled)
     digestDay = try container.decodeIfPresent(String.self, forKey: .digestDay) ?? "Monday"
-    emailDigestEnabled = try container.decodeIfPresent(Bool.self, forKey: .emailDigestEnabled)
+    emailDigestEnabled =
+      try container.decodeIfPresent(Bool.self, forKey: .emailDigestEnabled)
       ?? true
   }
 

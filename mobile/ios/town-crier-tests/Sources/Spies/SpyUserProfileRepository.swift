@@ -47,11 +47,12 @@ final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable
     digestDay: DayOfWeek,
     emailDigestEnabled: Bool
   ) async throws -> ServerProfile {
-    updateCalls.append(UpdateCall(
-      pushEnabled: pushEnabled,
-      digestDay: digestDay,
-      emailDigestEnabled: emailDigestEnabled
-    ))
+    updateCalls.append(
+      UpdateCall(
+        pushEnabled: pushEnabled,
+        digestDay: digestDay,
+        emailDigestEnabled: emailDigestEnabled
+      ))
     return try updateResult.get()
   }
 

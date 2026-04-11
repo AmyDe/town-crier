@@ -36,7 +36,7 @@ struct SavedApplicationRepositoryProtocolTests {
       SavedApplication(
         applicationUid: "UID-1",
         savedAt: Date(timeIntervalSince1970: 1_700_000_000)
-      ),
+      )
     ]
     spy.loadAllResult = .success(expected)
 

@@ -47,7 +47,7 @@ struct APISearchRepositoryTests {
       { "applications": [], "total": 0, "page": 1 }
       """
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     _ = try await sut.search(query: "extension", authorityId: 123, page: 2)
@@ -96,7 +96,7 @@ struct APISearchRepositoryTests {
       }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.search(query: "extension", authorityId: 123, page: 1)
@@ -117,7 +117,7 @@ struct APISearchRepositoryTests {
       { "applications": [], "total": 0, "page": 1 }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.search(query: "nothing", authorityId: 123, page: 1)
@@ -153,7 +153,7 @@ struct APISearchRepositoryTests {
       { "error": "insufficient_entitlement", "required": "searchApplications" }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 403)),
+      (Data(json.utf8), httpResponse(statusCode: 403))
     ])
 
     await #expect(
@@ -171,7 +171,7 @@ struct APISearchRepositoryTests {
       { "applications": [], "total": 0, "page": 1 }
       """
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     _ = try await sut.search(query: "rear extension & garage", authorityId: 123, page: 1)

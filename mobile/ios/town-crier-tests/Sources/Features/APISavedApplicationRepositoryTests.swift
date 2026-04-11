@@ -44,7 +44,7 @@ struct APISavedApplicationRepositoryTests {
   @Test("save sends PUT /v1/me/saved-applications/{uid} with no body")
   func save_sendsCorrectRequest() async throws {
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(), httpResponse(statusCode: 204)),
+      (Data(), httpResponse(statusCode: 204))
     ])
 
     try await sut.save(applicationUid: "BK/2026/0042")
@@ -80,7 +80,7 @@ struct APISavedApplicationRepositoryTests {
   @Test("remove sends DELETE /v1/me/saved-applications/{uid}")
   func remove_sendsCorrectRequest() async throws {
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(), httpResponse(statusCode: 204)),
+      (Data(), httpResponse(statusCode: 204))
     ])
 
     try await sut.remove(applicationUid: "BK/2026/0042")
@@ -118,7 +118,7 @@ struct APISavedApplicationRepositoryTests {
       { "savedApplications": [] }
       """
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     _ = try await sut.loadAll()
@@ -163,7 +163,7 @@ struct APISavedApplicationRepositoryTests {
       }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.loadAll()
@@ -180,7 +180,7 @@ struct APISavedApplicationRepositoryTests {
       { "savedApplications": [] }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.loadAll()
@@ -213,7 +213,7 @@ struct APISavedApplicationRepositoryTests {
     authService.refreshSessionResult = .failure(DomainError.sessionExpired)
     let transport = StubHTTPTransport()
     transport.responses = [
-      (Data("{}".utf8), httpResponse(statusCode: 401)),
+      (Data("{}".utf8), httpResponse(statusCode: 401))
     ]
     let apiClient = URLSessionAPIClient(
       baseURL: baseURL,

@@ -19,7 +19,9 @@ public struct Auth0Config: Sendable {
   }
 }
 
-public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationService, @unchecked Sendable {
+public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationService,
+  @unchecked Sendable
+{
   private let config: Auth0Config
   private let credentialsManager: CredentialsManager
 

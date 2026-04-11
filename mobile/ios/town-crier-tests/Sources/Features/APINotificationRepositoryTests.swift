@@ -47,7 +47,7 @@ struct APINotificationRepositoryTests {
       { "notifications": [], "total": 0, "page": 1 }
       """
     let (sut, _, transport) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     _ = try await sut.fetch(page: 2, pageSize: 15)
@@ -83,7 +83,7 @@ struct APINotificationRepositoryTests {
       }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.fetch(page: 1, pageSize: 20)
@@ -105,7 +105,7 @@ struct APINotificationRepositoryTests {
       { "notifications": [], "total": 0, "page": 1 }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.fetch(page: 1, pageSize: 20)
@@ -142,7 +142,7 @@ struct APINotificationRepositoryTests {
       }
       """
     let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200)),
+      (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
     let result = try await sut.fetch(page: 1, pageSize: 20)
@@ -180,7 +180,7 @@ struct APINotificationRepositoryTests {
     authService.refreshSessionResult = .failure(DomainError.sessionExpired)
     let transport = StubHTTPTransport()
     transport.responses = [
-      (Data("{}".utf8), httpResponse(statusCode: 401)),
+      (Data("{}".utf8), httpResponse(statusCode: 401))
     ]
     let apiClient = URLSessionAPIClient(
       baseURL: baseURL,

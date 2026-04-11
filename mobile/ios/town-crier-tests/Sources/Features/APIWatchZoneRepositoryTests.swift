@@ -74,7 +74,7 @@ struct APIWatchZoneRepositoryTests {
       postcode: Postcode("CB1 2AD"),
       centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
       radiusMetres: 2000
-      // authorityId defaults to 0
+        // authorityId defaults to 0
     )
     let (sut, _, transport) = makeSUT(responses: [
       (Data("{}".utf8), httpResponse(statusCode: 201))
