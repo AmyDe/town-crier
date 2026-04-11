@@ -16,6 +16,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case productNotFound(String)
     case restoreFailed(String)
     case unexpected(String)
+    case insufficientEntitlement(required: String)
 
     /// User-facing title for display in error states.
     public var userTitle: String {
@@ -32,6 +33,8 @@ public enum DomainError: Error, Equatable, Sendable {
             return "Purchase Error"
         case .applicationNotFound:
             return "Not Found"
+        case .insufficientEntitlement:
+            return "Upgrade Required"
         case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
              .invalidStatusTransition, .geocodingFailed,
              .notificationPermissionDenied, .unexpected:
@@ -56,6 +59,8 @@ public enum DomainError: Error, Equatable, Sendable {
             return "Notification permission is required. Enable it in Settings."
         case .purchaseFailed, .purchaseCancelled, .restoreFailed, .productNotFound:
             return "There was a problem with your purchase. Please try again."
+        case .insufficientEntitlement:
+            return "This feature requires a higher subscription tier. Upgrade to unlock it."
         case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
              .invalidStatusTransition, .geocodingFailed, .unexpected:
             return "An unexpected error occurred. Please try again."
@@ -71,7 +76,7 @@ public enum DomainError: Error, Equatable, Sendable {
         case .sessionExpired, .authenticationFailed, .invalidPostcode,
              .invalidCoordinate, .invalidWatchZoneRadius, .invalidStatusTransition,
              .applicationNotFound, .notificationPermissionDenied,
-             .purchaseCancelled, .productNotFound:
+             .purchaseCancelled, .productNotFound, .insufficientEntitlement:
             return false
         }
     }
