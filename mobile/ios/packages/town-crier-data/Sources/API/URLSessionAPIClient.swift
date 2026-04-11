@@ -105,6 +105,8 @@ public final class URLSessionAPIClient: Sendable {
             return
         case 401:
             throw APIError.unauthorized
+        case 403:
+            try mapForbidden(data: data)
         case 404:
             throw APIError.notFound
         default:
@@ -113,5 +115,14 @@ public final class URLSessionAPIClient: Sendable {
                 throw APIError.serverError(statusCode: statusCode, message: message)
             }
         }
+    }
+
+    private func mapForbidden(data: Data) throws {
+        if let body = try? decoder.decode(InsufficientEntitlementBody.self, from: data),
+            body.error == "insufficient_entitlement" {
+            throw DomainError.insufficientEntitlement(required: body.required)
+        }
+        let message = String(data: data, encoding: .utf8)
+        throw APIError.serverError(statusCode: 403, message: message)
     }
 }
