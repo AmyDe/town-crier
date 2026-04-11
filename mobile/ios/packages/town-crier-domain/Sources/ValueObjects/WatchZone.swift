@@ -6,12 +6,14 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let postcode: Postcode
   public let centre: Coordinate
   public let radiusMetres: Double
+  public let authorityId: Int
 
   public init(
     id: WatchZoneId = WatchZoneId(),
     postcode: Postcode,
     centre: Coordinate,
-    radiusMetres: Double
+    radiusMetres: Double,
+    authorityId: Int = 0
   ) throws {
     guard radiusMetres > 0 else {
       throw DomainError.invalidWatchZoneRadius
@@ -20,6 +22,7 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.postcode = postcode
     self.centre = centre
     self.radiusMetres = radiusMetres
+    self.authorityId = authorityId
   }
 
   /// Returns true if the given coordinate falls within this watch zone.
