@@ -11,8 +11,10 @@ public struct TimelineItem: Equatable, Sendable {
 }
 
 /// ViewModel exposing display-ready properties for a planning application detail screen.
+///
+/// Optionally supports save/unsave when a ``SavedApplicationRepository`` is injected.
 @MainActor
-public final class ApplicationDetailViewModel {
+public final class ApplicationDetailViewModel: ObservableObject {
   public let description: String
   public let address: String
   public let reference: String
@@ -24,8 +26,16 @@ public final class ApplicationDetailViewModel {
   public let portalUrl: URL?
   public let timelineItems: [TimelineItem]
 
+  /// Whether the application is currently saved/bookmarked by the user.
+  @Published public private(set) var isSaved: Bool
+
   public var onOpenPortal: ((URL) -> Void)?
   public var onDismiss: (() -> Void)?
+
+  /// Whether the save/unsave action is available (repository was provided).
+  public var canSave: Bool {
+    savedApplicationRepository != nil
+  }
 
   public var hasPortalUrl: Bool {
     portalUrl != nil
@@ -35,7 +45,17 @@ public final class ApplicationDetailViewModel {
     !timelineItems.isEmpty
   }
 
-  public init(application: PlanningApplication) {
+  private let applicationId: PlanningApplicationId
+  private let savedApplicationRepository: SavedApplicationRepository?
+
+  public init(
+    application: PlanningApplication,
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    isSaved: Bool = false
+  ) {
+    self.applicationId = application.id
+    self.savedApplicationRepository = savedApplicationRepository
+    self.isSaved = isSaved
     description = application.description
     address = application.address
     reference = application.reference.value
@@ -71,5 +91,27 @@ public final class ApplicationDetailViewModel {
 
   public func dismiss() {
     onDismiss?()
+  }
+
+  /// Toggles the saved state, calling the repository to persist the change.
+  /// No-op if no repository was provided.
+  public func toggleSave() async {
+    guard let repository = savedApplicationRepository else { return }
+
+    if isSaved {
+      do {
+        try await repository.remove(applicationUid: applicationId.value)
+        isSaved = false
+      } catch {
+        // Preserve current state on failure
+      }
+    } else {
+      do {
+        try await repository.save(applicationUid: applicationId.value)
+        isSaved = true
+      } catch {
+        // Preserve current state on failure
+      }
+    }
   }
 }
