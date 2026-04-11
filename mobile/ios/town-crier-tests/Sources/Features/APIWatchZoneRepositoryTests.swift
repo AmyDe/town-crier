@@ -119,6 +119,7 @@ struct APIWatchZoneRepositoryTests {
     let expectedCentre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     #expect(zone.centre == expectedCentre)
     #expect(zone.radiusMetres == 2000)
+    #expect(zone.authorityId == 123)
   }
 
   @Test("loadAll returns empty array when no zones")
