@@ -88,7 +88,8 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       id: WatchZoneId(id),
       postcode: postcode,
       centre: centre,
-      radiusMetres: radiusMetres
+      radiusMetres: radiusMetres,
+      authorityId: authorityId
     )
   }
 }
