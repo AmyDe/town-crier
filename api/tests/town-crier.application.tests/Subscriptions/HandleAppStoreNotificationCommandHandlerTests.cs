@@ -20,7 +20,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
     {
         // Arrange
         var deps = CreateDependencies();
-        var profile = CreateProfileWithTransaction(deps.Repository);
+        CreateProfileWithTransaction(deps.Repository);
         SetupNotification(deps, "SUBSCRIBED", "INITIAL_BUY");
 
         var handler = CreateHandler(deps);
@@ -39,7 +39,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
     {
         // Arrange
         var deps = CreateDependencies();
-        var profile = CreateProfileWithTransaction(deps.Repository);
+        CreateProfileWithTransaction(deps.Repository);
         SetupNotification(deps, "SUBSCRIBED", "RESUBSCRIBE");
 
         var handler = CreateHandler(deps);
@@ -114,7 +114,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
         await deps.Repository.SaveAsync(profile, CancellationToken.None);
 
         var gracePeriodExpiry = new DateTimeOffset(2026, 4, 27, 0, 0, 0, TimeSpan.Zero);
-        SetupNotification(deps, "DID_FAIL_TO_RENEW", "GRACE_PERIOD", gracePeriodExpiresDate: gracePeriodExpiry);
+        SetupNotification(deps, "DID_FAIL_TO_RENEW", "GRACE_PERIOD", expiresDateOverride: gracePeriodExpiry);
 
         var handler = CreateHandler(deps);
         var command = new HandleAppStoreNotificationCommand(SignedPayload);
@@ -254,7 +254,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
     {
         // Arrange
         var deps = CreateDependencies();
-        var profile = CreateProfileWithTransaction(deps.Repository);
+        CreateProfileWithTransaction(deps.Repository);
         SetupNotification(deps, "TEST", null);
 
         var handler = CreateHandler(deps);
@@ -402,7 +402,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
         string notificationType,
         string? subtype,
         string productId = "uk.co.towncrier.personal.monthly",
-        DateTimeOffset? gracePeriodExpiresDate = null)
+        DateTimeOffset? expiresDateOverride = null)
     {
         var notification = new DecodedNotification(
             NotificationType: notificationType,
@@ -413,21 +413,19 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
 
         deps.NotificationDecoder.Register(OuterJson, notification);
 
+        var expiresDate = expiresDateOverride
+            ?? new DateTimeOffset(2026, 5, 11, 0, 0, 0, TimeSpan.Zero);
+
         var transaction = new DecodedTransaction(
             TransactionId: "txn-1",
             OriginalTransactionId: OriginalTxnId,
             ProductId: productId,
             BundleId: "uk.co.towncrier.ios",
             PurchaseDate: new DateTimeOffset(2026, 4, 11, 0, 0, 0, TimeSpan.Zero),
-            ExpiresDate: new DateTimeOffset(2026, 5, 11, 0, 0, 0, TimeSpan.Zero),
+            ExpiresDate: expiresDate,
             Environment: "Production");
 
         deps.TransactionDecoder.Register(TxnJson, transaction);
-
-        if (gracePeriodExpiresDate.HasValue)
-        {
-            deps.GracePeriodExpiresDate = gracePeriodExpiresDate.Value;
-        }
     }
 
     private static HandleAppStoreNotificationCommandHandler CreateHandler(TestDependencies deps)
@@ -438,8 +436,7 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
             deps.TransactionDecoder,
             deps.Repository,
             deps.Auth0,
-            deps.IdempotencyStore,
-            deps.Settings);
+            deps.IdempotencyStore);
     }
 
     private static TestDependencies CreateDependencies()
@@ -456,11 +453,6 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
             Repository = new FakeUserProfileRepository(),
             Auth0 = new FakeAuth0ManagementClient(),
             IdempotencyStore = new FakeNotificationIdempotencyStore(),
-            Settings = new AppleSettings
-            {
-                BundleId = "uk.co.towncrier.ios",
-                Environment = "Production",
-            },
         };
     }
 
@@ -477,9 +469,5 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
         public required FakeAuth0ManagementClient Auth0 { get; init; }
 
         public required FakeNotificationIdempotencyStore IdempotencyStore { get; init; }
-
-        public required AppleSettings Settings { get; init; }
-
-        public DateTimeOffset GracePeriodExpiresDate { get; set; }
     }
 }
