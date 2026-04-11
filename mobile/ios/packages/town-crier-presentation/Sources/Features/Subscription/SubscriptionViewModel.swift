@@ -2,6 +2,11 @@ import Combine
 import TownCrierDomain
 
 /// ViewModel managing subscription product display, purchasing, and restoration.
+///
+/// After a successful purchase or restore, refreshes the Auth0 token so the
+/// `subscription_tier` JWT claim reflects the new tier. The refreshed session
+/// is published via `refreshedSession` for observing ViewModels to pick up.
+/// Token refresh is best-effort — a failure does not affect the purchase outcome.
 @MainActor
 public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var products: [SubscriptionProduct] = []
@@ -10,15 +15,21 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public private(set) var isRestoring = false
   @Published public internal(set) var error: DomainError?
   @Published public private(set) var currentEntitlement: SubscriptionEntitlement?
+  @Published public private(set) var refreshedSession: AuthSession?
 
   private let subscriptionService: SubscriptionService
+  private let authenticationService: AuthenticationService
 
   public var isSubscribed: Bool {
     currentEntitlement != nil
   }
 
-  public init(subscriptionService: SubscriptionService) {
+  public init(
+    subscriptionService: SubscriptionService,
+    authenticationService: AuthenticationService
+  ) {
     self.subscriptionService = subscriptionService
+    self.authenticationService = authenticationService
   }
 
   /// Loads available subscription products and current entitlement.
@@ -35,11 +46,15 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   }
 
   /// Initiates purchase of the given product.
+  /// On success, refreshes the auth token so the JWT `subscription_tier` claim
+  /// reflects the new tier. Token refresh is best-effort — failure does not
+  /// affect the purchase outcome.
   public func purchase(productId: String) async {
     isPurchasing = true
     error = nil
     do {
       currentEntitlement = try await subscriptionService.purchase(productId)
+      await refreshAuthSession()
     } catch DomainError.purchaseCancelled {
       // User cancelled — not an error
     } catch {
@@ -49,15 +64,33 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   }
 
   /// Restores previously purchased subscriptions (App Store requirement).
+  /// On success with an active entitlement, refreshes the auth token so the JWT
+  /// `subscription_tier` claim reflects the restored tier.
   public func restorePurchases() async {
     isRestoring = true
     error = nil
     do {
-      currentEntitlement = try await subscriptionService.restorePurchases()
+      let entitlement = try await subscriptionService.restorePurchases()
+      currentEntitlement = entitlement
+      if entitlement != nil {
+        await refreshAuthSession()
+      }
     } catch {
       handleError(error) { .restoreFailed($0) }
     }
     isRestoring = false
+  }
+
+  // MARK: - Token refresh
+
+  /// Refreshes the auth session to pick up an updated `subscription_tier` claim.
+  /// Best-effort: failure is silently absorbed so the purchase/restore is not affected.
+  private func refreshAuthSession() async {
+    do {
+      refreshedSession = try await authenticationService.refreshSession()
+    } catch {
+      refreshedSession = nil
+    }
   }
 
   /// Returns subscription disclosure text for App Store compliance.
