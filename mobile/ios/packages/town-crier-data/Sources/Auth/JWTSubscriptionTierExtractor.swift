@@ -1,15 +1,15 @@
 import Foundation
 import TownCrierDomain
 
-/// Extracts the `subscription_tier` custom claim from a JWT access token.
+/// Decodes JWT payloads and extracts custom claims.
 ///
-/// The Auth0 Post-Login Action adds `subscription_tier` to the access token.
-/// This extractor decodes the JWT payload (without signature verification --
-/// the token has already been verified by Auth0 SDK) and maps the claim to
-/// a `SubscriptionTier` value. Returns `.free` when the claim is absent,
-/// unrecognised, or the token is malformed.
+/// Performs base64url decoding of the JWT payload segment without
+/// signature verification -- tokens are already verified by Auth0 SDK.
 enum JWTSubscriptionTierExtractor {
 
+  /// Extracts the `subscription_tier` custom claim from a JWT access token.
+  /// Returns `.free` when the claim is absent, unrecognised, or the token
+  /// is malformed.
   static func extractTier(from accessToken: String) -> SubscriptionTier {
     guard let payload = decodePayload(from: accessToken),
       let tierString = payload["subscription_tier"] as? String,
@@ -20,9 +20,9 @@ enum JWTSubscriptionTierExtractor {
     return tier
   }
 
-  private static func decodePayload(
-    from token: String
-  ) -> [String: Any]? {
+  /// Decodes the payload segment of a JWT token into a dictionary.
+  /// Returns `nil` if the token is malformed or the payload is not valid JSON.
+  static func decodePayload(from token: String) -> [String: Any]? {
     let segments = token.split(separator: ".")
     guard segments.count >= 2 else { return nil }
 
