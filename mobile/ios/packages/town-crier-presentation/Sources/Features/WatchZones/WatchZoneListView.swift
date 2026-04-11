@@ -2,6 +2,9 @@ import SwiftUI
 import TownCrierDomain
 
 /// Displays the user's watch zones with add/edit/delete actions.
+///
+/// When the user has reached their tier's zone limit, the add button is replaced
+/// with an ``UpgradeBadgeView`` and tapping it triggers the upgrade flow.
 public struct WatchZoneListView: View {
   @StateObject private var viewModel: WatchZoneListViewModel
 
@@ -29,10 +32,18 @@ public struct WatchZoneListView: View {
     .navigationTitle("Watch Zones")
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        Button {
-          viewModel.addZone()
-        } label: {
-          Image(systemName: "plus")
+        if viewModel.showUpgradeBadge {
+          Button {
+            viewModel.addZone()
+          } label: {
+            UpgradeBadgeView()
+          }
+        } else {
+          Button {
+            viewModel.addZone()
+          } label: {
+            Image(systemName: "plus")
+          }
         }
       }
     }
@@ -54,10 +65,12 @@ public struct WatchZoneListView: View {
           .foregroundStyle(Color.tcTextTertiary)
         Text("No Watch Zones")
           .font(.system(.headline).weight(.semibold))
-        Text("Add a watch zone to start monitoring planning applications in your area.")
-          .font(.system(.body))
-          .foregroundStyle(Color.tcTextSecondary)
-          .multilineTextAlignment(.center)
+        Text(
+          "Add a watch zone to start monitoring planning applications in your area."
+        )
+        .font(.system(.body))
+        .foregroundStyle(Color.tcTextSecondary)
+        .multilineTextAlignment(.center)
         Button {
           viewModel.addZone()
         } label: {
