@@ -7,16 +7,14 @@ import Testing
 @MainActor
 @Suite("WatchZoneListViewModel")
 struct WatchZoneListViewModelTests {
-  private var spyRepository: SpyWatchZoneRepository!
-  private var spySubscriptionService: SpySubscriptionService!
-  private var sut: WatchZoneListViewModel!
+  private var spyRepository: SpyWatchZoneRepository
+  private var sut: WatchZoneListViewModel
 
   init() {
     spyRepository = SpyWatchZoneRepository()
-    spySubscriptionService = SpySubscriptionService()
     sut = WatchZoneListViewModel(
       repository: spyRepository,
-      subscriptionService: spySubscriptionService
+      featureGate: FeatureGate(tier: .free)
     )
   }
 
@@ -41,26 +39,13 @@ struct WatchZoneListViewModelTests {
     #expect(sut.error == .networkUnavailable)
   }
 
-  @Test func load_resolvesCurrentTier() async {
-    spySubscriptionService.currentEntitlementResult = .personalActive
-
-    await sut.load()
-
-    #expect(sut.currentTier == .personal)
-  }
-
-  @Test func load_noEntitlement_defaultsToFree() async {
-    spySubscriptionService.currentEntitlementResult = nil
-
-    await sut.load()
-
-    #expect(sut.currentTier == .free)
-  }
-
-  // MARK: - Tier limits
+  // MARK: - Tier-based quota gating
 
   @Test func canAddZone_freeWithNoZones_returnsTrue() async {
-    spySubscriptionService.currentEntitlementResult = nil
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
     spyRepository.loadAllResult = .success([])
 
     await sut.load()
@@ -69,7 +54,10 @@ struct WatchZoneListViewModelTests {
   }
 
   @Test func canAddZone_freeWithOneZone_returnsFalse() async {
-    spySubscriptionService.currentEntitlementResult = nil
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
     spyRepository.loadAllResult = .success([.cambridge])
 
     await sut.load()
@@ -77,13 +65,78 @@ struct WatchZoneListViewModelTests {
     #expect(!sut.canAddZone)
   }
 
+  @Test func canAddZone_personalWithThreeZones_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .personal)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london, .cambridge])
+
+    await sut.load()
+
+    #expect(!sut.canAddZone)
+  }
+
   @Test func canAddZone_proWithManyZones_returnsTrue() async {
-    spySubscriptionService.currentEntitlementResult = .proActive
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .pro)
+    )
     spyRepository.loadAllResult = .success([.cambridge, .london])
 
     await sut.load()
 
     #expect(sut.canAddZone)
+  }
+
+  // MARK: - Upgrade badge
+
+  @Test func showUpgradeBadge_freeAtLimit_returnsTrue() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+
+    await sut.load()
+
+    #expect(sut.showUpgradeBadge)
+  }
+
+  @Test func showUpgradeBadge_freeNotAtLimit_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([])
+
+    await sut.load()
+
+    #expect(!sut.showUpgradeBadge)
+  }
+
+  @Test func showUpgradeBadge_proNeverShows_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .pro)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london])
+
+    await sut.load()
+
+    #expect(!sut.showUpgradeBadge)
+  }
+
+  // MARK: - Feature gate exposure
+
+  @Test func featureGate_exposesInjectedGate() {
+    let gate = FeatureGate(tier: .personal)
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: gate
+    )
+
+    #expect(sut.featureGate == gate)
   }
 
   // MARK: - Delete
@@ -130,7 +183,10 @@ struct WatchZoneListViewModelTests {
   }
 
   @Test func addZone_atLimit_invokesOnUpgradeRequired() async {
-    spySubscriptionService.currentEntitlementResult = nil
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
     spyRepository.loadAllResult = .success([.cambridge])
     await sut.load()
     var upgradeCalled = false
