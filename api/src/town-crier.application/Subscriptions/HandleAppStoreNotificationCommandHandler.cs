@@ -81,52 +81,52 @@ public sealed class HandleAppStoreNotificationCommandHandler
         {
             case "SUBSCRIBED":
             case "OFFER_REDEEMED":
-            {
-                var tier = ProductMapping.ToTier(transaction.ProductId);
-                profile.ActivateSubscription(tier, transaction.ExpiresDate);
-                return true;
-            }
-
-            case "DID_RENEW":
-            {
-                profile.RenewSubscription(transaction.ExpiresDate);
-                return true;
-            }
-
-            case "DID_CHANGE_RENEWAL_PREF":
-            {
-                if (string.Equals(notification.Subtype, "UPGRADE", StringComparison.Ordinal))
                 {
                     var tier = ProductMapping.ToTier(transaction.ProductId);
                     profile.ActivateSubscription(tier, transaction.ExpiresDate);
                     return true;
                 }
 
-                // DOWNGRADE: no state change — takes effect at next renewal
-                return false;
-            }
-
-            case "DID_FAIL_TO_RENEW":
-            {
-                if (string.Equals(notification.Subtype, "GRACE_PERIOD", StringComparison.Ordinal))
+            case "DID_RENEW":
                 {
-                    // Use the expires date from the transaction as the grace period end
-                    profile.EnterGracePeriod(transaction.ExpiresDate);
+                    profile.RenewSubscription(transaction.ExpiresDate);
                     return true;
                 }
 
-                profile.ExpireSubscription();
-                return true;
-            }
+            case "DID_CHANGE_RENEWAL_PREF":
+                {
+                    if (string.Equals(notification.Subtype, "UPGRADE", StringComparison.Ordinal))
+                    {
+                        var tier = ProductMapping.ToTier(transaction.ProductId);
+                        profile.ActivateSubscription(tier, transaction.ExpiresDate);
+                        return true;
+                    }
+
+                    // DOWNGRADE: no state change — takes effect at next renewal
+                    return false;
+                }
+
+            case "DID_FAIL_TO_RENEW":
+                {
+                    if (string.Equals(notification.Subtype, "GRACE_PERIOD", StringComparison.Ordinal))
+                    {
+                        // Use the expires date from the transaction as the grace period end
+                        profile.EnterGracePeriod(transaction.ExpiresDate);
+                        return true;
+                    }
+
+                    profile.ExpireSubscription();
+                    return true;
+                }
 
             case "EXPIRED":
             case "GRACE_PERIOD_EXPIRED":
             case "REFUND":
             case "REVOKE":
-            {
-                profile.ExpireSubscription();
-                return true;
-            }
+                {
+                    profile.ExpireSubscription();
+                    return true;
+                }
 
             default:
                 // TEST, PRICE_INCREASE, REFUND_DECLINED, etc. — log and ignore
