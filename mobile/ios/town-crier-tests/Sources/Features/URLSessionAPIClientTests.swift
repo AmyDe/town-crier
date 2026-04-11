@@ -188,6 +188,80 @@ struct URLSessionAPIClientTests {
 
     // MARK: - Network errors
 
+    // MARK: - 403 insufficient_entitlement
+
+    @Test("403 with insufficient_entitlement body throws DomainError.insufficientEntitlement")
+    func insufficientEntitlementResponse() async throws {
+        let transport = StubHTTPTransport()
+        let authService = SpyAuthenticationService()
+        authService.currentSessionResult = .valid
+
+        let body = #"{"error":"insufficient_entitlement","required":"searchApplications"}"#
+        transport.responses = [
+            (Data(body.utf8), httpResponse(url: baseURL, statusCode: 403)),
+        ]
+
+        let sut = URLSessionAPIClient(
+            baseURL: baseURL,
+            authService: authService,
+            transport: transport
+        )
+
+        await #expect(
+            throws: DomainError.insufficientEntitlement(required: "searchApplications")
+        ) {
+            let _: TestResponse = try await sut.request(.get("/search"))
+        }
+    }
+
+    @Test("403 without insufficient_entitlement body throws APIError.serverError")
+    func genericForbiddenResponse() async throws {
+        let transport = StubHTTPTransport()
+        let authService = SpyAuthenticationService()
+        authService.currentSessionResult = .valid
+
+        let body = #"{"error":"forbidden","message":"Access denied"}"#
+        transport.responses = [
+            (Data(body.utf8), httpResponse(url: baseURL, statusCode: 403)),
+        ]
+
+        let sut = URLSessionAPIClient(
+            baseURL: baseURL,
+            authService: authService,
+            transport: transport
+        )
+
+        await #expect(throws: APIError.self) {
+            let _: TestResponse = try await sut.request(.get("/admin"))
+        }
+    }
+
+    @Test("403 with insufficient_entitlement preserves required field value")
+    func insufficientEntitlementPreservesRequiredField() async throws {
+        let transport = StubHTTPTransport()
+        let authService = SpyAuthenticationService()
+        authService.currentSessionResult = .valid
+
+        let body = #"{"error":"insufficient_entitlement","required":"statusChangeAlerts"}"#
+        transport.responses = [
+            (Data(body.utf8), httpResponse(url: baseURL, statusCode: 403)),
+        ]
+
+        let sut = URLSessionAPIClient(
+            baseURL: baseURL,
+            authService: authService,
+            transport: transport
+        )
+
+        await #expect(
+            throws: DomainError.insufficientEntitlement(required: "statusChangeAlerts")
+        ) {
+            let _: TestResponse = try await sut.request(.get("/preferences"))
+        }
+    }
+
+    // MARK: - Network errors
+
     @Test("Network error maps to DomainError.networkUnavailable")
     func networkErrorMapping() async throws {
         let transport = StubHTTPTransport()
