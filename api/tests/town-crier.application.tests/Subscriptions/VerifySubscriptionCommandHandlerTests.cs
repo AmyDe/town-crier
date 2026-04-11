@@ -13,38 +13,6 @@ public sealed class VerifySubscriptionCommandHandlerTests
     private const string BundleId = "uk.co.towncrier.ios";
     private const string UserId = "auth0|user-1";
 
-    private static DecodedTransaction CreateTransaction(
-        string productId = "uk.co.towncrier.personal.monthly",
-        string bundleId = BundleId,
-        string environment = "Production") =>
-        new(
-            TransactionId: "txn-1",
-            OriginalTransactionId: "orig-txn-1",
-            ProductId: productId,
-            BundleId: bundleId,
-            PurchaseDate: new DateTimeOffset(2026, 4, 11, 0, 0, 0, TimeSpan.Zero),
-            ExpiresDate: new DateTimeOffset(2026, 5, 11, 0, 0, 0, TimeSpan.Zero),
-            Environment: environment);
-
-    private static (FakeAppleJwsVerifier Verifier, FakeTransactionDecoder Decoder, FakeUserProfileRepository Repository, FakeAuth0ManagementClient Auth0, AppleSettings Settings) CreateDependencies()
-    {
-        var verifier = new FakeAppleJwsVerifier();
-        verifier.SetPayload(SignedTransaction, DecodedJson);
-
-        var decoder = new FakeTransactionDecoder();
-
-        var repository = new FakeUserProfileRepository();
-        var auth0 = new FakeAuth0ManagementClient();
-
-        var settings = new AppleSettings
-        {
-            BundleId = BundleId,
-            Environment = "Production",
-        };
-
-        return (verifier, decoder, repository, auth0, settings);
-    }
-
     [Test]
     public async Task Should_ActivatePersonalSubscription_When_ValidTransaction()
     {
@@ -210,5 +178,37 @@ public sealed class VerifySubscriptionCommandHandlerTests
         // Act & Assert
         await Assert.ThrowsAsync<UserProfileNotFoundException>(
             () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    private static DecodedTransaction CreateTransaction(
+        string productId = "uk.co.towncrier.personal.monthly",
+        string bundleId = BundleId,
+        string environment = "Production") =>
+        new(
+            TransactionId: "txn-1",
+            OriginalTransactionId: "orig-txn-1",
+            ProductId: productId,
+            BundleId: bundleId,
+            PurchaseDate: new DateTimeOffset(2026, 4, 11, 0, 0, 0, TimeSpan.Zero),
+            ExpiresDate: new DateTimeOffset(2026, 5, 11, 0, 0, 0, TimeSpan.Zero),
+            Environment: environment);
+
+    private static (FakeAppleJwsVerifier Verifier, FakeTransactionDecoder Decoder, FakeUserProfileRepository Repository, FakeAuth0ManagementClient Auth0, AppleSettings Settings) CreateDependencies()
+    {
+        var verifier = new FakeAppleJwsVerifier();
+        verifier.SetPayload(SignedTransaction, DecodedJson);
+
+        var decoder = new FakeTransactionDecoder();
+
+        var repository = new FakeUserProfileRepository();
+        var auth0 = new FakeAuth0ManagementClient();
+
+        var settings = new AppleSettings
+        {
+            BundleId = BundleId,
+            Environment = "Production",
+        };
+
+        return (verifier, decoder, repository, auth0, settings);
     }
 }
