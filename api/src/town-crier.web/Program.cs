@@ -19,7 +19,6 @@ var otel = builder.Services.AddOpenTelemetry()
     .WithTracing(tracing =>
     {
         tracing
-            .SetErrorStatusOnException()
             .AddAspNetCoreInstrumentation(options => options.RecordException = true)
             .AddHttpClientInstrumentation(options => options.RecordException = true)
             .AddSource(PollingInstrumentation.ActivitySourceName)
