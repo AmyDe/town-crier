@@ -59,7 +59,7 @@ struct MapViewModelTests {
     let refused = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
     let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
 
-    #expect(pending?.status == .underReview)
+    #expect(pending?.status == .undecided)
     #expect(approved?.status == .approved)
     #expect(refused?.status == .refused)
     #expect(withdrawn?.status == .withdrawn)
@@ -70,7 +70,7 @@ struct MapViewModelTests {
       id: PlanningApplicationId("APP-NO-LOC"),
       reference: ApplicationReference("2026/0300"),
       authority: .cambridge,
-      status: .underReview,
+      status: .undecided,
       receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
       description: "No location",
       address: "Unknown",

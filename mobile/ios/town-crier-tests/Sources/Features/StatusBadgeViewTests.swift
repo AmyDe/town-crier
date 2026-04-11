@@ -11,7 +11,7 @@ struct StatusBadgeViewTests {
   // MARK: - Initialization
 
   @Test func init_withStatus_createsView() {
-    let sut = StatusBadgeView(status: .underReview)
+    let sut = StatusBadgeView(status: .undecided)
     _ = sut.body
   }
 
@@ -43,7 +43,8 @@ struct StatusBadgeViewTests {
   // MARK: - All statuses render without crashing
 
   @Test(arguments: [
-    ApplicationStatus.underReview,
+    ApplicationStatus.undecided,
+    ApplicationStatus.notAvailable,
     ApplicationStatus.approved,
     ApplicationStatus.refused,
     ApplicationStatus.withdrawn,

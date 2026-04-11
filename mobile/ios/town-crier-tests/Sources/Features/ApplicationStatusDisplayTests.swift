@@ -8,8 +8,12 @@ struct ApplicationStatusDisplayTests {
 
   // MARK: - displayLabel
 
-  @Test func displayLabel_underReview_returnsPending() {
-    #expect(ApplicationStatus.underReview.displayLabel == "Pending")
+  @Test func displayLabel_undecided_returnsPending() {
+    #expect(ApplicationStatus.undecided.displayLabel == "Pending")
+  }
+
+  @Test func displayLabel_notAvailable_returnsNotAvailable() {
+    #expect(ApplicationStatus.notAvailable.displayLabel == "Not Available")
   }
 
   @Test func displayLabel_approved_returnsApproved() {
@@ -34,8 +38,12 @@ struct ApplicationStatusDisplayTests {
 
   // MARK: - displayIcon
 
-  @Test func displayIcon_underReview_returnsClock() {
-    #expect(ApplicationStatus.underReview.displayIcon == "clock")
+  @Test func displayIcon_undecided_returnsClock() {
+    #expect(ApplicationStatus.undecided.displayIcon == "clock")
+  }
+
+  @Test func displayIcon_notAvailable_returnsMinusCircle() {
+    #expect(ApplicationStatus.notAvailable.displayIcon == "minus.circle")
   }
 
   @Test func displayIcon_approved_returnsCheckmarkCircle() {
@@ -62,7 +70,7 @@ struct ApplicationStatusDisplayTests {
 
   @Test func displayColor_allStatusesReturnColor() {
     let allStatuses: [ApplicationStatus] = [
-      .underReview, .approved, .refused, .withdrawn, .appealed, .unknown,
+      .undecided, .notAvailable, .approved, .refused, .withdrawn, .appealed, .unknown,
     ]
     for status in allStatuses {
       // Verify each status produces a color without crashing.

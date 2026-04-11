@@ -72,7 +72,7 @@ struct APIPlanningApplicationRepositoryTests {
               "postcode": "CB1 2AD",
               "description": "Erection of two-storey rear extension",
               "appType": "Full",
-              "appState": "Under Review",
+              "appState": "Undecided",
               "appSize": null,
               "startDate": "2026-01-15",
               "decidedDate": null,
@@ -98,7 +98,7 @@ struct APIPlanningApplicationRepositoryTests {
     #expect(app.reference == ApplicationReference("2026/0042"))
     #expect(app.authority.code == "123")
     #expect(app.authority.name == "Cambridge")
-    #expect(app.status == ApplicationStatus.underReview)
+    #expect(app.status == ApplicationStatus.undecided)
     #expect(app.description == "Erection of two-storey rear extension")
     #expect(app.address == "12 Mill Road, Cambridge, CB1 2AD")
     let expectedLocation = try Coordinate(latitude: 52.2043, longitude: 0.1243)
@@ -141,7 +141,7 @@ struct APIPlanningApplicationRepositoryTests {
 
     let app = result[0]
     #expect(app.statusHistory.count == 2)
-    #expect(app.statusHistory[0].status == ApplicationStatus.underReview)
+    #expect(app.statusHistory[0].status == ApplicationStatus.undecided)
     #expect(app.statusHistory[1].status == ApplicationStatus.approved)
   }
 
@@ -178,7 +178,7 @@ struct APIPlanningApplicationRepositoryTests {
           "postcode": "CB1 2AD",
           "description": "Erection of two-storey rear extension",
           "appType": "Full",
-          "appState": "Under Review",
+          "appState": "Undecided",
           "appSize": null,
           "startDate": "2026-01-15",
           "decidedDate": null,
@@ -257,7 +257,8 @@ struct APIPlanningApplicationRepositoryTests {
   @Test(
     "maps known AppState strings to ApplicationStatus",
     arguments: [
-      ("Under Review", ApplicationStatus.underReview),
+      ("Undecided", ApplicationStatus.undecided),
+      ("Not Available", ApplicationStatus.notAvailable),
       ("Approved", ApplicationStatus.approved),
       ("Refused", ApplicationStatus.refused),
       ("Withdrawn", ApplicationStatus.withdrawn),

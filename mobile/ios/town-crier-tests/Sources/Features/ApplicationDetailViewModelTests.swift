@@ -45,7 +45,7 @@ struct ApplicationDetailViewModelTests {
 
   // MARK: - Status Display
 
-  @Test func statusLabel_underReview_returnsPending() {
+  @Test func statusLabel_undecided_returnsPending() {
     let sut = ApplicationDetailViewModel(application: .pendingReview)
 
     #expect(sut.statusLabel == "Pending")
@@ -69,7 +69,7 @@ struct ApplicationDetailViewModelTests {
     #expect(sut.statusLabel == "Withdrawn")
   }
 
-  @Test func statusIcon_underReview_returnsClock() {
+  @Test func statusIcon_undecided_returnsClock() {
     let sut = ApplicationDetailViewModel(application: .pendingReview)
 
     #expect(sut.statusIcon == "clock")

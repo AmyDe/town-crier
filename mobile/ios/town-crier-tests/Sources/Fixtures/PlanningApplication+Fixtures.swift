@@ -8,7 +8,7 @@ extension PlanningApplication {
     id: PlanningApplicationId("APP-001"),
     reference: ApplicationReference("2026/0042"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .underReview,
+    status: .undecided,
     receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
     description: "Erection of two-storey rear extension",
     address: "12 Mill Road, Cambridge, CB1 2AD",
@@ -58,7 +58,7 @@ extension PlanningApplication {
     address: "5 Cherry Hinton Road, Cambridge, CB1 7AA",
     location: try! Coordinate(latitude: 52.1980, longitude: 0.1350),
     statusHistory: [
-      StatusEvent(status: .underReview, date: Date(timeIntervalSince1970: 1_700_000_000)),
+      StatusEvent(status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000)),
       StatusEvent(status: .approved, date: Date(timeIntervalSince1970: 1_700_500_000)),
     ]
   )
@@ -73,7 +73,7 @@ extension PlanningApplication {
     address: "10 Grange Road, Cambridge, CB3 9DT",
     location: try! Coordinate(latitude: 52.2000, longitude: 0.1100),
     statusHistory: [
-      StatusEvent(status: .underReview, date: Date(timeIntervalSince1970: 1_700_000_000)),
+      StatusEvent(status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000)),
       StatusEvent(status: .refused, date: Date(timeIntervalSince1970: 1_700_600_000)),
     ]
   )
@@ -82,7 +82,7 @@ extension PlanningApplication {
     id: PlanningApplicationId("APP-005"),
     reference: ApplicationReference("2026/0042"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .underReview,
+    status: .undecided,
     receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
     description: "Erection of two-storey rear extension",
     address: "12 Mill Road, Cambridge, CB1 2AD",

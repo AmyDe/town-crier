@@ -7,9 +7,9 @@ struct StatusEventTests {
 
   @Test func init_capturesStatusAndDate() {
     let date = Date(timeIntervalSince1970: 1_700_000_000)
-    let event = StatusEvent(status: .underReview, date: date)
+    let event = StatusEvent(status: .undecided, date: date)
 
-    #expect(event.status == .underReview)
+    #expect(event.status == .undecided)
     #expect(event.date == date)
   }
 
@@ -30,7 +30,7 @@ struct StatusEventTests {
   }
 
   @Test func chronologicalOrder_sortsOldestFirst() {
-    let early = StatusEvent(status: .underReview, date: Date(timeIntervalSince1970: 1_700_000_000))
+    let early = StatusEvent(status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000))
     let late = StatusEvent(status: .approved, date: Date(timeIntervalSince1970: 1_700_100_000))
     let events = [late, early].sorted()
 
