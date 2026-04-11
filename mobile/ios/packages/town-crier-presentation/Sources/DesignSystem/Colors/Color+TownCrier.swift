@@ -3,70 +3,72 @@ import SwiftUI
 // MARK: - Brand
 
 extension Color {
-    /// Primary accent. Warm gold evoking town crier bells.
-    public static let tcAmber = Color.themed(light: 0xD4910A, dark: 0xE9A620, oled: 0xE9A620)
+  /// Primary accent. Warm gold evoking town crier bells.
+  public static let tcAmber = Color.themed(light: 0xD4910A, dark: 0xE9A620, oled: 0xE9A620)
 
-    /// Lower-emphasis accent for secondary buttons and tags.
-    public static let tcAmberMuted = tcAmber.opacity(0.15)
+  /// Lower-emphasis accent for secondary buttons and tags.
+  public static let tcAmberMuted = tcAmber.opacity(0.15)
 }
 
 // MARK: - Surfaces
 
 extension Color {
-    /// Page-level background.
-    public static let tcBackground = Color.themed(light: 0xFAF8F5, dark: 0x1A1A1E, oled: 0x000000)
+  /// Page-level background.
+  public static let tcBackground = Color.themed(light: 0xFAF8F5, dark: 0x1A1A1E, oled: 0x000000)
 
-    /// Card and component background.
-    public static let tcSurface = Color.themed(light: 0xFFFFFF, dark: 0x242428, oled: 0x0A0A0A)
+  /// Card and component background.
+  public static let tcSurface = Color.themed(light: 0xFFFFFF, dark: 0x242428, oled: 0x0A0A0A)
 
-    /// Modals, bottom sheets, popovers.
-    public static let tcSurfaceElevated = Color.themed(light: 0xFFFFFF, dark: 0x2E2E33, oled: 0x161616)
+  /// Modals, bottom sheets, popovers.
+  public static let tcSurfaceElevated = Color.themed(
+    light: 0xFFFFFF, dark: 0x2E2E33, oled: 0x161616)
 }
 
 // MARK: - Text
 
 extension Color {
-    /// Body text and headings.
-    public static let tcTextPrimary = Color.themed(light: 0x1C1917, dark: 0xF1EFE9, oled: 0xF1EFE9)
+  /// Body text and headings.
+  public static let tcTextPrimary = Color.themed(light: 0x1C1917, dark: 0xF1EFE9, oled: 0xF1EFE9)
 
-    /// Captions, metadata, timestamps.
-    public static let tcTextSecondary = Color.themed(light: 0x6B6560, dark: 0x9B9590, oled: 0x9B9590)
+  /// Captions, metadata, timestamps.
+  public static let tcTextSecondary = Color.themed(light: 0x6B6560, dark: 0x9B9590, oled: 0x9B9590)
 
-    /// Placeholder text, disabled labels.
-    public static let tcTextTertiary = Color.themed(light: 0xA39E98, dark: 0x5C5852, oled: 0x5C5852)
+  /// Placeholder text, disabled labels.
+  public static let tcTextTertiary = Color.themed(light: 0xA39E98, dark: 0x5C5852, oled: 0x5C5852)
 
-    /// Text rendered on tcAmber backgrounds.
-    public static let tcTextOnAccent = Color.themed(light: 0xFFFFFF, dark: 0x1C1917, oled: 0x1C1917)
+  /// Text rendered on tcAmber backgrounds.
+  public static let tcTextOnAccent = Color.themed(light: 0xFFFFFF, dark: 0x1C1917, oled: 0x1C1917)
 }
 
 // MARK: - Status
 
 extension Color {
-    /// Application approved/granted.
-    public static let tcStatusApproved = Color.themed(light: 0x1A7D37, dark: 0x34C759, oled: 0x34C759)
+  /// Application approved/granted.
+  public static let tcStatusApproved = Color.themed(light: 0x1A7D37, dark: 0x34C759, oled: 0x34C759)
 
-    /// Application refused.
-    public static let tcStatusRefused = Color.themed(light: 0xC42B2B, dark: 0xFF453A, oled: 0xFF453A)
+  /// Application refused.
+  public static let tcStatusRefused = Color.themed(light: 0xC42B2B, dark: 0xFF453A, oled: 0xFF453A)
 
-    /// Awaiting decision / under review.
-    public static let tcStatusPending = Color.themed(light: 0xC27A0A, dark: 0xFFB340, oled: 0xFFB340)
+  /// Awaiting decision / under review.
+  public static let tcStatusPending = Color.themed(light: 0xC27A0A, dark: 0xFFB340, oled: 0xFFB340)
 
-    /// Application withdrawn.
-    public static let tcStatusWithdrawn = Color.themed(light: 0x7A7570, dark: 0x8E8A85, oled: 0x8E8A85)
+  /// Application withdrawn.
+  public static let tcStatusWithdrawn = Color.themed(
+    light: 0x7A7570, dark: 0x8E8A85, oled: 0x8E8A85)
 
-    /// Decision under appeal.
-    public static let tcStatusAppealed = Color.themed(light: 0x7C3AED, dark: 0xA78BFA, oled: 0xA78BFA)
+  /// Decision under appeal.
+  public static let tcStatusAppealed = Color.themed(light: 0x7C3AED, dark: 0xA78BFA, oled: 0xA78BFA)
 }
 
 // MARK: - Utility
 
 extension Color {
-    /// Subtle dividers and card outlines.
-    public static let tcBorder = Color.themed(light: 0xE8E4DF, dark: 0x3A3A3F, oled: 0x1E1E22)
+  /// Subtle dividers and card outlines.
+  public static let tcBorder = Color.themed(light: 0xE8E4DF, dark: 0x3A3A3F, oled: 0x1E1E22)
 
-    /// Focus rings and active input borders.
-    public static let tcBorderFocused = tcAmber
+  /// Focus rings and active input borders.
+  public static let tcBorderFocused = tcAmber
 
-    /// Semi-transparent scrim behind modals.
-    public static let tcOverlay = Color.black.opacity(0.4)
+  /// Semi-transparent scrim behind modals.
+  public static let tcOverlay = Color.black.opacity(0.4)
 }

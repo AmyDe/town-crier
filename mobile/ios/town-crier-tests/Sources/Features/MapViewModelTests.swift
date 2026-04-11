@@ -7,189 +7,189 @@ import TownCrierDomain
 @Suite("MapViewModel")
 @MainActor
 struct MapViewModelTests {
-    private func makeSUT(
-        applications: [PlanningApplication] = [],
-        watchZone: WatchZone = .cambridge
-    ) -> (MapViewModel, SpyPlanningApplicationRepository) {
-        let spy = SpyPlanningApplicationRepository()
-        spy.fetchApplicationsResult = .success(applications)
-        let vm = MapViewModel(repository: spy, watchZone: watchZone)
-        return (vm, spy)
-    }
+  private func makeSUT(
+    applications: [PlanningApplication] = [],
+    watchZone: WatchZone = .cambridge
+  ) -> (MapViewModel, SpyPlanningApplicationRepository) {
+    let spy = SpyPlanningApplicationRepository()
+    spy.fetchApplicationsResult = .success(applications)
+    let vm = MapViewModel(repository: spy, watchZone: watchZone)
+    return (vm, spy)
+  }
 
-    // MARK: - Loading
+  // MARK: - Loading
 
-    @Test func loadApplications_populatesAnnotations() async {
-        let apps = [PlanningApplication.pendingReview, .approved, .refused, .withdrawn]
-        let (sut, _) = makeSUT(applications: apps)
+  @Test func loadApplications_populatesAnnotations() async {
+    let apps = [PlanningApplication.pendingReview, .approved, .refused, .withdrawn]
+    let (sut, _) = makeSUT(applications: apps)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.annotations.count == 4)
-    }
+    #expect(sut.annotations.count == 4)
+  }
 
-    @Test func loadApplications_setsIsLoadingDuringFetch() async {
-        let (sut, _) = makeSUT()
+  @Test func loadApplications_setsIsLoadingDuringFetch() async {
+    let (sut, _) = makeSUT()
 
-        #expect(!sut.isLoading)
-        await sut.loadApplications()
-        #expect(!sut.isLoading)
-    }
+    #expect(!sut.isLoading)
+    await sut.loadApplications()
+    #expect(!sut.isLoading)
+  }
 
-    @Test func loadApplications_setsErrorOnFailure() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+  @Test func loadApplications_setsErrorOnFailure() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.error == .networkUnavailable)
-        #expect(sut.annotations.isEmpty)
-    }
+    #expect(sut.error == .networkUnavailable)
+    #expect(sut.annotations.isEmpty)
+  }
 
-    // MARK: - Annotations
+  // MARK: - Annotations
 
-    @Test func annotations_haveCorrectStatus() async {
-        let apps: [PlanningApplication] = [.pendingReview, .approved, .refused, .withdrawn]
-        let (sut, _) = makeSUT(applications: apps)
+  @Test func annotations_haveCorrectStatus() async {
+    let apps: [PlanningApplication] = [.pendingReview, .approved, .refused, .withdrawn]
+    let (sut, _) = makeSUT(applications: apps)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        let pending = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-001") }
-        let approved = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-002") }
-        let refused = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
-        let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
+    let pending = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-001") }
+    let approved = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-002") }
+    let refused = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
+    let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
 
-        #expect(pending?.status == .underReview)
-        #expect(approved?.status == .approved)
-        #expect(refused?.status == .refused)
-        #expect(withdrawn?.status == .withdrawn)
-    }
+    #expect(pending?.status == .undecided)
+    #expect(approved?.status == .approved)
+    #expect(refused?.status == .refused)
+    #expect(withdrawn?.status == .withdrawn)
+  }
 
-    @Test func annotations_onlyIncludeApplicationsWithLocations() async {
-        let noLocation = PlanningApplication(
-            id: PlanningApplicationId("APP-NO-LOC"),
-            reference: ApplicationReference("2026/0300"),
-            authority: .cambridge,
-            status: .underReview,
-            receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
-            description: "No location",
-            address: "Unknown",
-            location: nil
-        )
-        let (sut, _) = makeSUT(applications: [.pendingReview, noLocation])
+  @Test func annotations_onlyIncludeApplicationsWithLocations() async {
+    let noLocation = PlanningApplication(
+      id: PlanningApplicationId("APP-NO-LOC"),
+      reference: ApplicationReference("2026/0300"),
+      authority: .cambridge,
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+      description: "No location",
+      address: "Unknown",
+      location: nil
+    )
+    let (sut, _) = makeSUT(applications: [.pendingReview, noLocation])
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.annotations.count == 1)
-        #expect(sut.annotations.first?.applicationId == PlanningApplicationId("APP-001"))
-    }
+    #expect(sut.annotations.count == 1)
+    #expect(sut.annotations.first?.applicationId == PlanningApplicationId("APP-001"))
+  }
 
-    // MARK: - Watch zone
+  // MARK: - Watch zone
 
-    @Test func watchZoneCentre_matchesProvidedZone() throws {
-        let zone = try WatchZone(
-            postcode: Postcode("SW1A 1AA"),
-            centre: Coordinate(latitude: 51.5, longitude: -0.1),
-            radiusMetres: 3000
-        )
-        let (sut, _) = makeSUT(watchZone: zone)
+  @Test func watchZoneCentre_matchesProvidedZone() throws {
+    let zone = try WatchZone(
+      postcode: Postcode("SW1A 1AA"),
+      centre: Coordinate(latitude: 51.5, longitude: -0.1),
+      radiusMetres: 3000
+    )
+    let (sut, _) = makeSUT(watchZone: zone)
 
-        #expect(sut.centreLat == 51.5)
-        #expect(sut.centreLon == -0.1)
-        #expect(sut.radiusMetres == 3000)
-    }
+    #expect(sut.centreLat == 51.5)
+    #expect(sut.centreLon == -0.1)
+    #expect(sut.radiusMetres == 3000)
+  }
 
-    // MARK: - Selection
+  // MARK: - Selection
 
-    @Test func selectAnnotation_setsSelectedApplication() async {
-        let apps = [PlanningApplication.pendingReview]
-        let (sut, _) = makeSUT(applications: apps)
+  @Test func selectAnnotation_setsSelectedApplication() async {
+    let apps = [PlanningApplication.pendingReview]
+    let (sut, _) = makeSUT(applications: apps)
 
-        await sut.loadApplications()
-        sut.selectApplication(PlanningApplicationId("APP-001"))
+    await sut.loadApplications()
+    sut.selectApplication(PlanningApplicationId("APP-001"))
 
-        #expect(sut.selectedApplication?.id == PlanningApplicationId("APP-001"))
-    }
+    #expect(sut.selectedApplication?.id == PlanningApplicationId("APP-001"))
+  }
 
-    @Test func selectAnnotation_nilClearsSelection() async {
-        let apps = [PlanningApplication.pendingReview]
-        let (sut, _) = makeSUT(applications: apps)
+  @Test func selectAnnotation_nilClearsSelection() async {
+    let apps = [PlanningApplication.pendingReview]
+    let (sut, _) = makeSUT(applications: apps)
 
-        await sut.loadApplications()
-        sut.selectApplication(PlanningApplicationId("APP-001"))
-        sut.clearSelection()
+    await sut.loadApplications()
+    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.clearSelection()
 
-        #expect(sut.selectedApplication == nil)
-    }
+    #expect(sut.selectedApplication == nil)
+  }
 
-    // MARK: - Empty State
+  // MARK: - Empty State
 
-    @Test func isEmpty_trueWhenNoAnnotationsAfterLoad() async {
-        let (sut, _) = makeSUT(applications: [])
+  @Test func isEmpty_trueWhenNoAnnotationsAfterLoad() async {
+    let (sut, _) = makeSUT(applications: [])
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.isEmpty)
-    }
+    #expect(sut.isEmpty)
+  }
 
-    @Test func isEmpty_falseWhenAnnotationsExist() async {
-        let (sut, _) = makeSUT(applications: [.pendingReview])
+  @Test func isEmpty_falseWhenAnnotationsExist() async {
+    let (sut, _) = makeSUT(applications: [.pendingReview])
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(!sut.isEmpty)
-    }
+    #expect(!sut.isEmpty)
+  }
 
-    @Test func isEmpty_falseWhileLoading() async {
-        let (sut, _) = makeSUT()
+  @Test func isEmpty_falseWhileLoading() async {
+    let (sut, _) = makeSUT()
 
-        #expect(!sut.isEmpty)
-    }
+    #expect(!sut.isEmpty)
+  }
 
-    @Test func isEmpty_falseWhenErrorOccurred() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+  @Test func isEmpty_falseWhenErrorOccurred() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(!sut.isEmpty)
-    }
+    #expect(!sut.isEmpty)
+  }
 
-    // MARK: - Error Classification
+  // MARK: - Error Classification
 
-    @Test func isNetworkError_trueForNetworkUnavailable() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+  @Test func isNetworkError_trueForNetworkUnavailable() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.isNetworkError)
-    }
+    #expect(sut.isNetworkError)
+  }
 
-    @Test func isNetworkError_falseForOtherErrors() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
+  @Test func isNetworkError_falseForOtherErrors() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(!sut.isNetworkError)
-    }
+    #expect(!sut.isNetworkError)
+  }
 
-    @Test func isSessionExpired_trueForSessionExpired() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
+  @Test func isSessionExpired_trueForSessionExpired() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(sut.isSessionExpired)
-    }
+    #expect(sut.isSessionExpired)
+  }
 
-    @Test func isSessionExpired_falseForOtherErrors() async {
-        let (sut, spy) = makeSUT()
-        spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+  @Test func isSessionExpired_falseForOtherErrors() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
-        await sut.loadApplications()
+    await sut.loadApplications()
 
-        #expect(!sut.isSessionExpired)
-    }
+    #expect(!sut.isSessionExpired)
+  }
 }

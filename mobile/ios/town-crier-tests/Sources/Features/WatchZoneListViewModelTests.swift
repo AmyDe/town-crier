@@ -1,142 +1,199 @@
 import Foundation
 import Testing
+
 @testable import TownCrierDomain
 @testable import TownCrierPresentation
 
 @MainActor
 @Suite("WatchZoneListViewModel")
 struct WatchZoneListViewModelTests {
-    private var spyRepository: SpyWatchZoneRepository!
-    private var spySubscriptionService: SpySubscriptionService!
-    private var sut: WatchZoneListViewModel!
+  private var spyRepository: SpyWatchZoneRepository
+  private var sut: WatchZoneListViewModel
 
-    init() {
-        spyRepository = SpyWatchZoneRepository()
-        spySubscriptionService = SpySubscriptionService()
-        sut = WatchZoneListViewModel(
-            repository: spyRepository,
-            subscriptionService: spySubscriptionService
-        )
-    }
+  init() {
+    spyRepository = SpyWatchZoneRepository()
+    sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+  }
 
-    // MARK: - Loading
+  // MARK: - Loading
 
-    @Test func load_populatesZones() async {
-        spyRepository.loadAllResult = .success([.cambridge])
+  @Test func load_populatesZones() async {
+    spyRepository.loadAllResult = .success([.cambridge])
 
-        await sut.load()
+    await sut.load()
 
-        #expect(sut.zones == [.cambridge])
-        #expect(!sut.isLoading)
-        #expect(sut.error == nil)
-    }
+    #expect(sut.zones == [.cambridge])
+    #expect(!sut.isLoading)
+    #expect(sut.error == nil)
+  }
 
-    @Test func load_setsErrorOnFailure() async {
-        spyRepository.loadAllResult = .failure(DomainError.networkUnavailable)
+  @Test func load_setsErrorOnFailure() async {
+    spyRepository.loadAllResult = .failure(DomainError.networkUnavailable)
 
-        await sut.load()
+    await sut.load()
 
-        #expect(sut.zones.isEmpty)
-        #expect(sut.error == .networkUnavailable)
-    }
+    #expect(sut.zones.isEmpty)
+    #expect(sut.error == .networkUnavailable)
+  }
 
-    @Test func load_resolvesCurrentTier() async {
-        spySubscriptionService.currentEntitlementResult = .personalActive
+  // MARK: - Tier-based quota gating
 
-        await sut.load()
+  @Test func canAddZone_freeWithNoZones_returnsTrue() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([])
 
-        #expect(sut.currentTier == .personal)
-    }
+    await sut.load()
 
-    @Test func load_noEntitlement_defaultsToFree() async {
-        spySubscriptionService.currentEntitlementResult = nil
+    #expect(sut.canAddZone)
+  }
 
-        await sut.load()
+  @Test func canAddZone_freeWithOneZone_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
 
-        #expect(sut.currentTier == .free)
-    }
+    await sut.load()
 
-    // MARK: - Tier limits
+    #expect(!sut.canAddZone)
+  }
 
-    @Test func canAddZone_freeWithNoZones_returnsTrue() async {
-        spySubscriptionService.currentEntitlementResult = nil
-        spyRepository.loadAllResult = .success([])
+  @Test func canAddZone_personalWithThreeZones_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .personal)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london, .cambridge])
 
-        await sut.load()
+    await sut.load()
 
-        #expect(sut.canAddZone)
-    }
+    #expect(!sut.canAddZone)
+  }
 
-    @Test func canAddZone_freeWithOneZone_returnsFalse() async {
-        spySubscriptionService.currentEntitlementResult = nil
-        spyRepository.loadAllResult = .success([.cambridge])
+  @Test func canAddZone_proWithManyZones_returnsTrue() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .pro)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london])
 
-        await sut.load()
+    await sut.load()
 
-        #expect(!sut.canAddZone)
-    }
+    #expect(sut.canAddZone)
+  }
 
-    @Test func canAddZone_proWithManyZones_returnsTrue() async {
-        spySubscriptionService.currentEntitlementResult = .proActive
-        spyRepository.loadAllResult = .success([.cambridge, .london])
+  // MARK: - Upgrade badge
 
-        await sut.load()
+  @Test func showUpgradeBadge_freeAtLimit_returnsTrue() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
 
-        #expect(sut.canAddZone)
-    }
+    await sut.load()
 
-    // MARK: - Delete
+    #expect(sut.showUpgradeBadge)
+  }
 
-    @Test func deleteZone_callsRepositoryAndRemovesFromList() async {
-        spyRepository.loadAllResult = .success([.cambridge, .london])
-        await sut.load()
+  @Test func showUpgradeBadge_freeNotAtLimit_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([])
 
-        await sut.deleteZone(.cambridge)
+    await sut.load()
 
-        #expect(spyRepository.deleteCalls == [WatchZoneId("zone-001")])
-        #expect(sut.zones == [.london])
-    }
+    #expect(!sut.showUpgradeBadge)
+  }
 
-    @Test func deleteZone_onFailure_setsError() async {
-        spyRepository.loadAllResult = .success([.cambridge])
-        await sut.load()
-        spyRepository.deleteResult = .failure(DomainError.networkUnavailable)
+  @Test func showUpgradeBadge_proNeverShows_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .pro)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london])
 
-        await sut.deleteZone(.cambridge)
+    await sut.load()
 
-        #expect(sut.error == .networkUnavailable)
-        #expect(sut.zones == [.cambridge])
-    }
+    #expect(!sut.showUpgradeBadge)
+  }
 
-    // MARK: - Navigation callbacks
+  // MARK: - Feature gate exposure
 
-    @Test func addZone_invokesOnAddZone() async {
-        var addCalled = false
-        sut.onAddZone = { addCalled = true }
+  @Test func featureGate_exposesInjectedGate() {
+    let gate = FeatureGate(tier: .personal)
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: gate
+    )
 
-        sut.addZone()
+    #expect(sut.featureGate == gate)
+  }
 
-        #expect(addCalled)
-    }
+  // MARK: - Delete
 
-    @Test func editZone_invokesOnEditZone() async {
-        var editedZone: WatchZone?
-        sut.onEditZone = { editedZone = $0 }
+  @Test func deleteZone_callsRepositoryAndRemovesFromList() async {
+    spyRepository.loadAllResult = .success([.cambridge, .london])
+    await sut.load()
 
-        sut.editZone(.cambridge)
+    await sut.deleteZone(.cambridge)
 
-        #expect(editedZone == .cambridge)
-    }
+    #expect(spyRepository.deleteCalls == [WatchZoneId("zone-001")])
+    #expect(sut.zones == [.london])
+  }
 
-    @Test func addZone_atLimit_invokesOnUpgradeRequired() async {
-        spySubscriptionService.currentEntitlementResult = nil
-        spyRepository.loadAllResult = .success([.cambridge])
-        await sut.load()
-        var upgradeCalled = false
-        sut.onUpgradeRequired = { upgradeCalled = true }
+  @Test func deleteZone_onFailure_setsError() async {
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+    spyRepository.deleteResult = .failure(DomainError.networkUnavailable)
 
-        sut.addZone()
+    await sut.deleteZone(.cambridge)
 
-        #expect(upgradeCalled)
-    }
+    #expect(sut.error == .networkUnavailable)
+    #expect(sut.zones == [.cambridge])
+  }
+
+  // MARK: - Navigation callbacks
+
+  @Test func addZone_invokesOnAddZone() async {
+    var addCalled = false
+    sut.onAddZone = { addCalled = true }
+
+    sut.addZone()
+
+    #expect(addCalled)
+  }
+
+  @Test func editZone_invokesOnEditZone() async {
+    var editedZone: WatchZone?
+    sut.onEditZone = { editedZone = $0 }
+
+    sut.editZone(.cambridge)
+
+    #expect(editedZone == .cambridge)
+  }
+
+  @Test func addZone_atLimit_invokesOnUpgradeRequired() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+    var upgradeCalled = false
+    sut.onUpgradeRequired = { upgradeCalled = true }
+
+    sut.addZone()
+
+    #expect(upgradeCalled)
+  }
 }

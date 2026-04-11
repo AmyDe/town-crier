@@ -341,6 +341,12 @@ public static class EnvironmentStack
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
             appInsightsConnectionString, acsConnectionString, tags);
 
+        CreateWorkerJob("digest-hourly", "0 * * * *", replicaTimeout: 300, workerMode: "hourly-digest",
+            env, resourceGroup.Name, containerAppsEnvironmentId,
+            acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+            cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+            appInsightsConnectionString, acsConnectionString, tags);
+
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
         {

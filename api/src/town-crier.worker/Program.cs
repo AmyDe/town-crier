@@ -130,6 +130,7 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
 
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
+builder.Services.AddSingleton<GenerateHourlyDigestsCommandHandler>();
 
 using var host = builder.Build();
 
@@ -206,6 +207,32 @@ switch (mode)
                 digestActivity?.AddException(ex);
                 digestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 WorkerLog.DigestCycleFailed(logger, ex);
+                exitCode = 1;
+            }
+
+            break;
+        }
+
+    case "hourly-digest":
+        {
+            using var hourlyDigestActivity = PollingInstrumentation.Source.StartActivity("Hourly Digest Cycle");
+            try
+            {
+                WorkerLog.HourlyDigestCycleStarting(logger);
+
+                var hourlyDigestHandler = host.Services.GetRequiredService<GenerateHourlyDigestsCommandHandler>();
+                await hourlyDigestHandler.HandleAsync(new GenerateHourlyDigestsCommand(), CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                WorkerLog.HourlyDigestCycleCompleted(logger);
+            }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                hourlyDigestActivity?.AddException(ex);
+                hourlyDigestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                WorkerLog.HourlyDigestCycleFailed(logger, ex);
                 exitCode = 1;
             }
 
