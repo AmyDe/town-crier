@@ -2,43 +2,49 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// Manages the list of user's watch zones with tier-based limits.
+/// Manages the list of user's watch zones with proactive tier-based gating.
+///
+/// The ``FeatureGate`` is injected at construction time from the session's
+/// subscription tier, enabling quota checks and upgrade badge logic without
+/// a network round-trip.
 @MainActor
 public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var zones: [WatchZone] = []
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
-  @Published public private(set) var currentTier: SubscriptionTier = .free
+
+  /// The proactive feature gate derived from the user's subscription tier.
+  public let featureGate: FeatureGate
 
   var onAddZone: (() -> Void)?
   var onEditZone: ((WatchZone) -> Void)?
   var onUpgradeRequired: (() -> Void)?
 
   private let repository: WatchZoneRepository
-  private let subscriptionService: SubscriptionService
 
   public init(
     repository: WatchZoneRepository,
-    subscriptionService: SubscriptionService
+    featureGate: FeatureGate
   ) {
     self.repository = repository
-    self.subscriptionService = subscriptionService
+    self.featureGate = featureGate
   }
 
+  /// Whether the user can add another watch zone given their tier and current count.
   public var canAddZone: Bool {
-    let limits = WatchZoneLimits(tier: currentTier)
-    return limits.canAddZone(currentCount: zones.count)
+    featureGate.canAdd(quota: .watchZones, currentCount: zones.count)
+  }
+
+  /// Whether the "Upgrade" badge should be shown on the add-zone button.
+  ///
+  /// True when the user has reached their tier's zone limit.
+  public var showUpgradeBadge: Bool {
+    featureGate.shouldShowUpgradeBadge(for: .watchZones, currentCount: zones.count)
   }
 
   public func load() async {
     isLoading = true
     error = nil
-
-    if let entitlement = await subscriptionService.currentEntitlement() {
-      currentTier = entitlement.tier
-    } else {
-      currentTier = .free
-    }
 
     do {
       zones = try await repository.loadAll()
