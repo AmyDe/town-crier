@@ -7,11 +7,11 @@ import TownCrierDomain
 
 /// Full detail view for a planning application.
 public struct ApplicationDetailView: View {
-  private let viewModel: ApplicationDetailViewModel
+  @ObservedObject private var viewModel: ApplicationDetailViewModel
   @State private var showingSafari = false
 
   public init(viewModel: ApplicationDetailViewModel) {
-    self.viewModel = viewModel
+    _viewModel = ObservedObject(wrappedValue: viewModel)
   }
 
   public var body: some View {
@@ -52,6 +52,19 @@ public struct ApplicationDetailView: View {
         }
       }
     #endif
+    .toolbar {
+      if viewModel.canSave {
+        ToolbarItem(placement: .automatic) {
+          Button {
+            Task { await viewModel.toggleSave() }
+          } label: {
+            Image(systemName: viewModel.isSaved ? "bookmark.fill" : "bookmark")
+              .foregroundStyle(viewModel.isSaved ? Color.tcAmber : Color.tcTextSecondary)
+          }
+          .accessibilityLabel(viewModel.isSaved ? "Unsave" : "Save")
+        }
+      }
+    }
   }
 
   // MARK: - Detail Card
