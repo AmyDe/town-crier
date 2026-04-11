@@ -11,11 +11,11 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
 
   public func save(_ zone: WatchZone) async throws {
     let body = CreateWatchZoneRequest(
-      zoneId: zone.id.value,
       name: zone.postcode.value,
       latitude: zone.centre.latitude,
       longitude: zone.centre.longitude,
-      radiusMetres: zone.radiusMetres
+      radiusMetres: zone.radiusMetres,
+      authorityId: zone.authorityId > 0 ? zone.authorityId : nil
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
@@ -59,11 +59,11 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
 // MARK: - Request/Response DTOs
 
 struct CreateWatchZoneRequest: Encodable, Sendable {
-  let zoneId: String
   let name: String
   let latitude: Double
   let longitude: Double
   let radiusMetres: Double
+  let authorityId: Int?
 }
 
 struct ListWatchZonesResponse: Decodable, Sendable {
