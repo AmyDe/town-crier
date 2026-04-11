@@ -5,11 +5,11 @@ import TownCrierDomain
 
 @Suite("NWPathConnectivityMonitor")
 struct NWPathConnectivityMonitorTests {
-    @Test func init_defaultsToConnected() {
-        let sut = NWPathConnectivityMonitor()
+  @Test func init_defaultsToConnected() {
+    let sut = NWPathConnectivityMonitor()
 
-        // Before any NWPathMonitor update, we assume connected
-        // to avoid false offline on app launch
-        #expect(sut.isConnected)
-    }
+    // Before any NWPathMonitor update, we assume connected
+    // to avoid false offline on app launch
+    #expect(sut.isConnected)
+  }
 }

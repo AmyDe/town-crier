@@ -5,120 +5,120 @@ import TownCrierDomain
 /// ViewModel managing the settings and account screen.
 @MainActor
 public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
-    @Published public private(set) var userEmail: String?
-    @Published public private(set) var userName: String?
-    @Published public private(set) var authMethod: AuthMethod?
-    @Published public private(set) var subscriptionTier: SubscriptionTier = .free
-    @Published public private(set) var isTrialPeriod = false
-    @Published public private(set) var isLoading = false
-    @Published public internal(set) var error: DomainError?
-    @Published public var isShowingDeleteConfirmation = false
+  @Published public private(set) var userEmail: String?
+  @Published public private(set) var userName: String?
+  @Published public private(set) var authMethod: AuthMethod?
+  @Published public private(set) var subscriptionTier: SubscriptionTier = .free
+  @Published public private(set) var isTrialPeriod = false
+  @Published public private(set) var isLoading = false
+  @Published public internal(set) var error: DomainError?
+  @Published public var isShowingDeleteConfirmation = false
 
-    public var onLogout: (() -> Void)?
+  public var onLogout: (() -> Void)?
 
-    private let authService: AuthenticationService
-    private let subscriptionService: SubscriptionService
-    private let appVersionProvider: AppVersionProvider
-    private let notificationService: NotificationService
+  private let authService: AuthenticationService
+  private let subscriptionService: SubscriptionService
+  private let appVersionProvider: AppVersionProvider
+  private let notificationService: NotificationService
 
-    public init(
-        authService: AuthenticationService,
-        subscriptionService: SubscriptionService,
-        appVersionProvider: AppVersionProvider,
-        notificationService: NotificationService
-    ) {
-        self.authService = authService
-        self.subscriptionService = subscriptionService
-        self.appVersionProvider = appVersionProvider
-        self.notificationService = notificationService
+  public init(
+    authService: AuthenticationService,
+    subscriptionService: SubscriptionService,
+    appVersionProvider: AppVersionProvider,
+    notificationService: NotificationService
+  ) {
+    self.authService = authService
+    self.subscriptionService = subscriptionService
+    self.appVersionProvider = appVersionProvider
+    self.notificationService = notificationService
+  }
+
+  public var appVersion: String {
+    "\(appVersionProvider.version) (\(appVersionProvider.buildNumber))"
+  }
+
+  public var attributionItems: [AttributionItem] {
+    [
+      AttributionItem(
+        name: "PlanIt",
+        detail: "Planning application data",
+        url: URL(string: "https://www.planit.org.uk")
+      ),
+      AttributionItem(
+        name: "Crown Copyright",
+        detail: "Contains public sector information"
+      ),
+      AttributionItem(
+        name: "Ordnance Survey",
+        detail: "Mapping data"
+      ),
+      AttributionItem(
+        name: "OpenStreetMap",
+        detail: "Map tiles and geodata",
+        url: URL(string: "https://www.openstreetmap.org")
+      ),
+    ]
+  }
+
+  public func load() async {
+    isLoading = true
+    error = nil
+
+    if let session = await authService.currentSession() {
+      userEmail = session.userProfile.email
+      userName = session.userProfile.name
+      authMethod = session.userProfile.authMethod
     }
 
-    public var appVersion: String {
-        "\(appVersionProvider.version) (\(appVersionProvider.buildNumber))"
+    if let entitlement = await subscriptionService.currentEntitlement() {
+      subscriptionTier = entitlement.tier
+      isTrialPeriod = entitlement.isTrialPeriod
+    } else {
+      subscriptionTier = .free
+      isTrialPeriod = false
     }
 
-    public var attributionItems: [AttributionItem] {
-        [
-            AttributionItem(
-                name: "PlanIt",
-                detail: "Planning application data",
-                url: URL(string: "https://www.planit.org.uk")
-            ),
-            AttributionItem(
-                name: "Crown Copyright",
-                detail: "Contains public sector information"
-            ),
-            AttributionItem(
-                name: "Ordnance Survey",
-                detail: "Mapping data"
-            ),
-            AttributionItem(
-                name: "OpenStreetMap",
-                detail: "Map tiles and geodata",
-                url: URL(string: "https://www.openstreetmap.org")
-            ),
-        ]
+    isLoading = false
+  }
+
+  public func logout() async {
+    error = nil
+    do {
+      try? await notificationService.removeDeviceToken()
+      try await authService.logout()
+      clearSession()
+      onLogout?()
+    } catch {
+      handleError(error) { .logoutFailed($0) }
     }
+  }
 
-    public func load() async {
-        isLoading = true
-        error = nil
+  public func requestAccountDeletion() {
+    isShowingDeleteConfirmation = true
+  }
 
-        if let session = await authService.currentSession() {
-            userEmail = session.userProfile.email
-            userName = session.userProfile.name
-            authMethod = session.userProfile.authMethod
-        }
+  public func cancelDeletion() {
+    isShowingDeleteConfirmation = false
+  }
 
-        if let entitlement = await subscriptionService.currentEntitlement() {
-            subscriptionTier = entitlement.tier
-            isTrialPeriod = entitlement.isTrialPeriod
-        } else {
-            subscriptionTier = .free
-            isTrialPeriod = false
-        }
-
-        isLoading = false
+  public func confirmDeleteAccount() async {
+    isShowingDeleteConfirmation = false
+    error = nil
+    do {
+      try? await notificationService.removeDeviceToken()
+      try await authService.deleteAccount()
+      clearSession()
+      onLogout?()
+    } catch {
+      handleError(error)
     }
+  }
 
-    public func logout() async {
-        error = nil
-        do {
-            try? await notificationService.removeDeviceToken()
-            try await authService.logout()
-            clearSession()
-            onLogout?()
-        } catch {
-            handleError(error) { .logoutFailed($0) }
-        }
-    }
-
-    public func requestAccountDeletion() {
-        isShowingDeleteConfirmation = true
-    }
-
-    public func cancelDeletion() {
-        isShowingDeleteConfirmation = false
-    }
-
-    public func confirmDeleteAccount() async {
-        isShowingDeleteConfirmation = false
-        error = nil
-        do {
-            try? await notificationService.removeDeviceToken()
-            try await authService.deleteAccount()
-            clearSession()
-            onLogout?()
-        } catch {
-            handleError(error)
-        }
-    }
-
-    private func clearSession() {
-        userEmail = nil
-        userName = nil
-        authMethod = nil
-        subscriptionTier = .free
-        isTrialPeriod = false
-    }
+  private func clearSession() {
+    userEmail = nil
+    userName = nil
+    authMethod = nil
+    subscriptionTier = .free
+    isTrialPeriod = false
+  }
 }

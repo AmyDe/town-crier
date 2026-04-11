@@ -8,35 +8,35 @@ import TownCrierDomain
 /// The `strokeWidth` parameter allows callers to adjust circle border
 /// thickness for different display contexts (compact vs. large).
 struct ZoneMapPreview: View {
-    let centre: Coordinate
-    let radiusMetres: Double
-    let strokeWidth: CGFloat
+  let centre: Coordinate
+  let radiusMetres: Double
+  let strokeWidth: CGFloat
 
-    init(centre: Coordinate, radiusMetres: Double, strokeWidth: CGFloat = 1) {
-        self.centre = centre
-        self.radiusMetres = radiusMetres
-        self.strokeWidth = strokeWidth
-    }
+  init(centre: Coordinate, radiusMetres: Double, strokeWidth: CGFloat = 1) {
+    self.centre = centre
+    self.radiusMetres = radiusMetres
+    self.strokeWidth = strokeWidth
+  }
 
-    var body: some View {
-        Map(initialPosition: .region(region)) {
-            MapCircle(center: clLocation, radius: radiusMetres)
-                .foregroundStyle(Color.tcAmber.opacity(0.2))
-                .stroke(Color.tcAmber, lineWidth: strokeWidth)
-        }
-        .mapStyle(.standard(elevation: .flat))
-        .allowsHitTesting(false)
+  var body: some View {
+    Map(initialPosition: .region(region)) {
+      MapCircle(center: clLocation, radius: radiusMetres)
+        .foregroundStyle(Color.tcAmber.opacity(0.2))
+        .stroke(Color.tcAmber, lineWidth: strokeWidth)
     }
+    .mapStyle(.standard(elevation: .flat))
+    .allowsHitTesting(false)
+  }
 
-    private var clLocation: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: centre.latitude, longitude: centre.longitude)
-    }
+  private var clLocation: CLLocationCoordinate2D {
+    CLLocationCoordinate2D(latitude: centre.latitude, longitude: centre.longitude)
+  }
 
-    private var region: MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: clLocation,
-            latitudinalMeters: radiusMetres * 2.5,
-            longitudinalMeters: radiusMetres * 2.5
-        )
-    }
+  private var region: MKCoordinateRegion {
+    MKCoordinateRegion(
+      center: clLocation,
+      latitudinalMeters: radiusMetres * 2.5,
+      longitudinalMeters: radiusMetres * 2.5
+    )
+  }
 }

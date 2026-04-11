@@ -12,78 +12,78 @@ import TownCrierDomain
 /// Presented via `.sheet(item:)` binding on a `@Published var entitlementGate: Entitlement?`
 /// property on ViewModels that need gating.
 public struct SubscriptionUpsellSheet: View {
-    private let entitlement: Entitlement
-    private let onViewPlans: () -> Void
-    private let onDismiss: () -> Void
+  private let entitlement: Entitlement
+  private let onViewPlans: () -> Void
+  private let onDismiss: () -> Void
 
-    public init(
-        entitlement: Entitlement,
-        onViewPlans: @escaping () -> Void,
-        onDismiss: @escaping () -> Void
-    ) {
-        self.entitlement = entitlement
-        self.onViewPlans = onViewPlans
-        self.onDismiss = onDismiss
-    }
+  public init(
+    entitlement: Entitlement,
+    onViewPlans: @escaping () -> Void,
+    onDismiss: @escaping () -> Void
+  ) {
+    self.entitlement = entitlement
+    self.onViewPlans = onViewPlans
+    self.onDismiss = onDismiss
+  }
 
-    public var body: some View {
-        VStack(spacing: TCSpacing.large) {
-            Spacer()
-                .frame(height: TCSpacing.medium)
+  public var body: some View {
+    VStack(spacing: TCSpacing.large) {
+      Spacer()
+        .frame(height: TCSpacing.medium)
 
-            // Icon
-            Image(systemName: "lock.fill")
-                .font(.system(.largeTitle))
-                .foregroundStyle(Color.tcAmber)
+      // Icon
+      Image(systemName: "lock.fill")
+        .font(.system(.largeTitle))
+        .foregroundStyle(Color.tcAmber)
 
-            // Title
-            Text("Upgrade to unlock")
-                .font(TCTypography.displaySmall)
-                .foregroundStyle(Color.tcTextPrimary)
+      // Title
+      Text("Upgrade to unlock")
+        .font(TCTypography.displaySmall)
+        .foregroundStyle(Color.tcTextPrimary)
 
-            // Feature name
-            Text(entitlement.displayName)
-                .font(TCTypography.headline)
-                .foregroundStyle(Color.tcAmber)
+      // Feature name
+      Text(entitlement.displayName)
+        .font(TCTypography.headline)
+        .foregroundStyle(Color.tcAmber)
 
-            // Feature description
-            Text(entitlement.featureDescription)
-                .font(TCTypography.body)
-                .foregroundStyle(Color.tcTextSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, TCSpacing.medium)
-
-            Spacer()
-                .frame(height: TCSpacing.small)
-
-            // Primary CTA
-            PrimaryButton("View Plans", action: onViewPlans)
-                .padding(.horizontal, TCSpacing.medium)
-
-            // Secondary dismiss
-            Button(action: onDismiss) {
-                Text("Not now")
-                    .font(TCTypography.body)
-                    .foregroundStyle(Color.tcTextSecondary)
-            }
-            .frame(minHeight: 44)
-
-            Spacer()
-                .frame(height: TCSpacing.medium)
-        }
+      // Feature description
+      Text(entitlement.featureDescription)
+        .font(TCTypography.body)
+        .foregroundStyle(Color.tcTextSecondary)
+        .multilineTextAlignment(.center)
         .padding(.horizontal, TCSpacing.medium)
-        .background(Color.tcSurfaceElevated)
-    }
 
-    // MARK: - Test Helpers
+      Spacer()
+        .frame(height: TCSpacing.small)
 
-    /// Simulates tapping "View Plans" for unit testing.
-    func simulateViewPlansTap() {
-        onViewPlans()
-    }
+      // Primary CTA
+      PrimaryButton("View Plans", action: onViewPlans)
+        .padding(.horizontal, TCSpacing.medium)
 
-    /// Simulates tapping "Not now" for unit testing.
-    func simulateDismissTap() {
-        onDismiss()
+      // Secondary dismiss
+      Button(action: onDismiss) {
+        Text("Not now")
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcTextSecondary)
+      }
+      .frame(minHeight: 44)
+
+      Spacer()
+        .frame(height: TCSpacing.medium)
     }
+    .padding(.horizontal, TCSpacing.medium)
+    .background(Color.tcSurfaceElevated)
+  }
+
+  // MARK: - Test Helpers
+
+  /// Simulates tapping "View Plans" for unit testing.
+  func simulateViewPlansTap() {
+    onViewPlans()
+  }
+
+  /// Simulates tapping "Not now" for unit testing.
+  func simulateDismissTap() {
+    onDismiss()
+  }
 }

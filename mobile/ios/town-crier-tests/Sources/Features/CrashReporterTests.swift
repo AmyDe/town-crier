@@ -4,20 +4,20 @@ import Testing
 
 @Suite("CrashReporter protocol")
 struct CrashReporterTests {
-    @Test func start_canBeCalledOnSpy() {
-        let spy = SpyCrashReporter()
+  @Test func start_canBeCalledOnSpy() {
+    let spy = SpyCrashReporter()
 
-        spy.start()
+    spy.start()
 
-        #expect(spy.startCallCount == 1)
-    }
+    #expect(spy.startCallCount == 1)
+  }
 
-    @Test func start_calledMultipleTimes_incrementsCount() {
-        let spy = SpyCrashReporter()
+  @Test func start_calledMultipleTimes_incrementsCount() {
+    let spy = SpyCrashReporter()
 
-        spy.start()
-        spy.start()
+    spy.start()
+    spy.start()
 
-        #expect(spy.startCallCount == 2)
-    }
+    #expect(spy.startCallCount == 2)
+  }
 }

@@ -1,168 +1,169 @@
 import Testing
 import TownCrierDomain
+
 @testable import TownCrierPresentation
 
 @Suite("LoginViewModel")
 @MainActor
 struct LoginViewModelTests {
-    private func makeSUT() -> (LoginViewModel, SpyAuthenticationService) {
-        let spy = SpyAuthenticationService()
-        let sut = LoginViewModel(authService: spy)
-        return (sut, spy)
-    }
+  private func makeSUT() -> (LoginViewModel, SpyAuthenticationService) {
+    let spy = SpyAuthenticationService()
+    let sut = LoginViewModel(authService: spy)
+    return (sut, spy)
+  }
 
-    // MARK: - Initial state
+  // MARK: - Initial state
 
-    @Test func init_isNotLoading() {
-        let (sut, _) = makeSUT()
-        #expect(!sut.isLoading)
-    }
+  @Test func init_isNotLoading() {
+    let (sut, _) = makeSUT()
+    #expect(!sut.isLoading)
+  }
 
-    @Test func init_hasNoError() {
-        let (sut, _) = makeSUT()
-        #expect(sut.error == nil)
-    }
+  @Test func init_hasNoError() {
+    let (sut, _) = makeSUT()
+    #expect(sut.error == nil)
+  }
 
-    @Test func init_isNotAuthenticated() {
-        let (sut, _) = makeSUT()
-        #expect(!sut.isAuthenticated)
-    }
+  @Test func init_isNotAuthenticated() {
+    let (sut, _) = makeSUT()
+    #expect(!sut.isAuthenticated)
+  }
 
-    @Test func init_hasNoSession() {
-        let (sut, _) = makeSUT()
-        #expect(sut.session == nil)
-    }
+  @Test func init_hasNoSession() {
+    let (sut, _) = makeSUT()
+    #expect(sut.session == nil)
+  }
 
-    // MARK: - Login
+  // MARK: - Login
 
-    @Test func login_setsIsLoadingTrue_thenFalse() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
+  @Test func login_setsIsLoadingTrue_thenFalse() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
 
-        await sut.login()
+    await sut.login()
 
-        #expect(!sut.isLoading)
-    }
+    #expect(!sut.isLoading)
+  }
 
-    @Test func login_setsSession_onSuccess() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
+  @Test func login_setsSession_onSuccess() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
 
-        await sut.login()
+    await sut.login()
 
-        #expect(sut.session == .valid)
-        #expect(sut.isAuthenticated)
-    }
+    #expect(sut.session == .valid)
+    #expect(sut.isAuthenticated)
+  }
 
-    @Test func login_callsAuthServiceLogin() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
+  @Test func login_callsAuthServiceLogin() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
 
-        await sut.login()
+    await sut.login()
 
-        #expect(spy.loginCallCount == 1)
-    }
+    #expect(spy.loginCallCount == 1)
+  }
 
-    @Test func login_setsError_onFailure() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .failure(DomainError.authenticationFailed("cancelled"))
+  @Test func login_setsError_onFailure() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .failure(DomainError.authenticationFailed("cancelled"))
 
-        await sut.login()
+    await sut.login()
 
-        #expect(sut.error == .authenticationFailed("cancelled"))
-        #expect(!sut.isAuthenticated)
-    }
+    #expect(sut.error == .authenticationFailed("cancelled"))
+    #expect(!sut.isAuthenticated)
+  }
 
-    @Test func login_clearsError_beforeAttempt() async {
-        let (sut, spy) = makeSUT()
-        // First login fails
-        spy.loginResult = .failure(DomainError.authenticationFailed("fail"))
-        await sut.login()
-        #expect(sut.error != nil)
+  @Test func login_clearsError_beforeAttempt() async {
+    let (sut, spy) = makeSUT()
+    // First login fails
+    spy.loginResult = .failure(DomainError.authenticationFailed("fail"))
+    await sut.login()
+    #expect(sut.error != nil)
 
-        // Second login succeeds
-        spy.loginResult = .success(.valid)
-        await sut.login()
+    // Second login succeeds
+    spy.loginResult = .success(.valid)
+    await sut.login()
 
-        #expect(sut.error == nil)
-    }
+    #expect(sut.error == nil)
+  }
 
-    // MARK: - Logout
+  // MARK: - Logout
 
-    @Test func logout_clearsSession() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
-        await sut.login()
-        #expect(sut.isAuthenticated)
+  @Test func logout_clearsSession() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
+    await sut.login()
+    #expect(sut.isAuthenticated)
 
-        await sut.logout()
+    await sut.logout()
 
-        #expect(!sut.isAuthenticated)
-        #expect(sut.session == nil)
-    }
+    #expect(!sut.isAuthenticated)
+    #expect(sut.session == nil)
+  }
 
-    @Test func logout_callsAuthServiceLogout() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
-        await sut.login()
+  @Test func logout_callsAuthServiceLogout() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
+    await sut.login()
 
-        await sut.logout()
+    await sut.logout()
 
-        #expect(spy.logoutCallCount == 1)
-    }
+    #expect(spy.logoutCallCount == 1)
+  }
 
-    @Test func logout_setsError_onFailure() async {
-        let (sut, spy) = makeSUT()
-        spy.loginResult = .success(.valid)
-        await sut.login()
-        spy.logoutResult = .failure(DomainError.logoutFailed("network"))
+  @Test func logout_setsError_onFailure() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
+    await sut.login()
+    spy.logoutResult = .failure(DomainError.logoutFailed("network"))
 
-        await sut.logout()
+    await sut.logout()
 
-        #expect(sut.error == .logoutFailed("network"))
-    }
+    #expect(sut.error == .logoutFailed("network"))
+  }
 
-    // MARK: - Check existing session
+  // MARK: - Check existing session
 
-    @Test func checkExistingSession_setsSession_whenAvailable() async {
-        let (sut, spy) = makeSUT()
-        spy.currentSessionResult = .valid
+  @Test func checkExistingSession_setsSession_whenAvailable() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = .valid
 
-        await sut.checkExistingSession()
+    await sut.checkExistingSession()
 
-        #expect(sut.isAuthenticated)
-        #expect(sut.session == .valid)
-    }
+    #expect(sut.isAuthenticated)
+    #expect(sut.session == .valid)
+  }
 
-    @Test func checkExistingSession_remainsUnauthenticated_whenNoSession() async {
-        let (sut, spy) = makeSUT()
-        spy.currentSessionResult = nil
+  @Test func checkExistingSession_remainsUnauthenticated_whenNoSession() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = nil
 
-        await sut.checkExistingSession()
+    await sut.checkExistingSession()
 
-        #expect(!sut.isAuthenticated)
-    }
+    #expect(!sut.isAuthenticated)
+  }
 
-    @Test func checkExistingSession_refreshesExpiredSession() async {
-        let (sut, spy) = makeSUT()
-        spy.currentSessionResult = .expired
-        spy.refreshSessionResult = .success(.valid)
+  @Test func checkExistingSession_refreshesExpiredSession() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = .expired
+    spy.refreshSessionResult = .success(.valid)
 
-        await sut.checkExistingSession()
+    await sut.checkExistingSession()
 
-        #expect(spy.refreshSessionCallCount == 1)
-        #expect(sut.session == .valid)
-        #expect(sut.isAuthenticated)
-    }
+    #expect(spy.refreshSessionCallCount == 1)
+    #expect(sut.session == .valid)
+    #expect(sut.isAuthenticated)
+  }
 
-    @Test func checkExistingSession_clearsSession_whenRefreshFails() async {
-        let (sut, spy) = makeSUT()
-        spy.currentSessionResult = .expired
-        spy.refreshSessionResult = .failure(DomainError.sessionExpired)
+  @Test func checkExistingSession_clearsSession_whenRefreshFails() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = .expired
+    spy.refreshSessionResult = .failure(DomainError.sessionExpired)
 
-        await sut.checkExistingSession()
+    await sut.checkExistingSession()
 
-        #expect(!sut.isAuthenticated)
-        #expect(sut.session == nil)
-    }
+    #expect(!sut.isAuthenticated)
+    #expect(sut.session == nil)
+  }
 }

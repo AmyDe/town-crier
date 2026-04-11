@@ -16,18 +16,18 @@ import TownCrierDomain
 /// the appropriate `DomainError` case (defaulting to `.unexpected`).
 @MainActor
 protocol ErrorHandlingViewModel: AnyObject {
-    var error: DomainError? { get set }
+  var error: DomainError? { get set }
 }
 
 extension ErrorHandlingViewModel {
-    func handleError(
-        _ error: Error,
-        fallback: (String) -> DomainError = { .unexpected($0) }
-    ) {
-        if let domainError = error as? DomainError {
-            self.error = domainError
-        } else {
-            self.error = fallback(error.localizedDescription)
-        }
+  func handleError(
+    _ error: Error,
+    fallback: (String) -> DomainError = { .unexpected($0) }
+  ) {
+    if let domainError = error as? DomainError {
+      self.error = domainError
+    } else {
+      self.error = fallback(error.localizedDescription)
     }
+  }
 }
