@@ -84,8 +84,8 @@ struct APIWatchZoneRepositoryTests {
 
     let body = try #require(transport.requests[0].httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-    // When authorityId is 0 (default/unknown), it should be sent as null
-    #expect(json["authorityId"] is NSNull, "authorityId should be null when zone has default value")
+    // When authorityId is 0 (default/unknown), the key should be absent
+    #expect(json["authorityId"] == nil, "authorityId should be omitted when zone has default value")
     #expect(json["zoneId"] == nil, "zoneId must not be sent to the API")
   }
 
