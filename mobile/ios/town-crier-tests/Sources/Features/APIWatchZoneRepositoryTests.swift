@@ -66,6 +66,29 @@ struct APIWatchZoneRepositoryTests {
     #expect(json["authorityId"] as? Int == 123)
   }
 
+  @Test("save omits authorityId when zone has default authorityId of 0")
+  func save_omitsAuthorityIdWhenZero() async throws {
+    // swiftlint:disable:next force_try
+    let zone = try! WatchZone(
+      id: WatchZoneId("zone-no-authority"),
+      postcode: Postcode("CB1 2AD"),
+      centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
+      radiusMetres: 2000
+      // authorityId defaults to 0
+    )
+    let (sut, _, transport) = makeSUT(responses: [
+      (Data("{}".utf8), httpResponse(statusCode: 201))
+    ])
+
+    try await sut.save(zone)
+
+    let body = try #require(transport.requests[0].httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    // When authorityId is 0 (default/unknown), it should be sent as null
+    #expect(json["authorityId"] is NSNull, "authorityId should be null when zone has default value")
+    #expect(json["zoneId"] == nil, "zoneId must not be sent to the API")
+  }
+
   @Test("save with network error throws networkUnavailable")
   func save_networkError_throwsNetworkUnavailable() async {
     let authService = SpyAuthenticationService()
