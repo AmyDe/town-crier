@@ -27,6 +27,10 @@ public struct APIEndpoint: Sendable {
     APIEndpoint(method: .post, path: path, body: body)
   }
 
+  public static func post(_ path: String) -> APIEndpoint {
+    APIEndpoint(method: .post, path: path)
+  }
+
   public static func put(_ path: String, body: some Encodable & Sendable) -> APIEndpoint {
     APIEndpoint(method: .put, path: path, body: body)
   }
