@@ -8,9 +8,9 @@ struct WatchZoneLimitsTests {
         #expect(limits.maxZones == 1)
     }
 
-    @Test func personalTier_maxZonesIsOne() {
+    @Test func personalTier_maxZonesIsThree() {
         let limits = WatchZoneLimits(tier: .personal)
-        #expect(limits.maxZones == 1)
+        #expect(limits.maxZones == 3)
     }
 
     @Test func proTier_maxZonesIsUnlimited() {
@@ -40,7 +40,7 @@ struct WatchZoneLimitsTests {
 
     @Test func canAddZone_atLimit_returnsFalse() {
         let limits = WatchZoneLimits(tier: .personal)
-        #expect(!limits.canAddZone(currentCount: 1))
+        #expect(!limits.canAddZone(currentCount: 3))
     }
 
     @Test func canAddZone_proWithMany_returnsTrue() {
