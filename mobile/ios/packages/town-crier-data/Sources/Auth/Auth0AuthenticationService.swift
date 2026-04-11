@@ -19,9 +19,7 @@ public struct Auth0Config: Sendable {
   }
 }
 
-public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationService,
-  @unchecked Sendable
-{
+public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationService, @unchecked Sendable {
   private let config: Auth0Config
   private let credentialsManager: CredentialsManager
 
@@ -105,11 +103,16 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       name: extractName(from: credentials)
     )
 
+    let tier = JWTSubscriptionTierExtractor.extractTier(
+      from: credentials.accessToken
+    )
+
     return AuthSession(
       accessToken: credentials.accessToken,
       idToken: credentials.idToken,
       expiresAt: credentials.expiresIn,
-      userProfile: profile
+      userProfile: profile,
+      subscriptionTier: tier
     )
   }
 
