@@ -68,7 +68,7 @@ public struct ApplicationListView: View {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
           filterChip(label: "All", status: nil)
-          filterChip(label: "Pending", status: .underReview)
+          filterChip(label: "Pending", status: .undecided)
           filterChip(label: "Approved", status: .approved)
           filterChip(label: "Refused", status: .refused)
           filterChip(label: "Withdrawn", status: .withdrawn)

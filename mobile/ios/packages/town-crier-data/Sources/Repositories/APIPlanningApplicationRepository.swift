@@ -86,8 +86,10 @@ struct PlanningApplicationDTO: Decodable, Sendable {
 
   private func mapAppState(_ state: String) -> ApplicationStatus {
     switch state {
-    case "Under Review":
-      return .underReview
+    case "Undecided":
+      return .undecided
+    case "Not Available":
+      return .notAvailable
     case "Approved":
       return .approved
     case "Refused":
@@ -113,7 +115,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
     var history: [StatusEvent] = []
 
     if startDate != nil {
-      history.append(StatusEvent(status: .underReview, date: receivedDate))
+      history.append(StatusEvent(status: .undecided, date: receivedDate))
     }
 
     if let decidedDateString = decidedDate, let decidedDate = parseDate(decidedDateString) {
@@ -128,7 +130,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
       default:
         decidedStatus = status
       }
-      if decidedStatus != .underReview {
+      if decidedStatus != .undecided {
         history.append(StatusEvent(status: decidedStatus, date: decidedDate))
       }
     }

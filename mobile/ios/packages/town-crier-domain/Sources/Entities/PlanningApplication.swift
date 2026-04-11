@@ -38,7 +38,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
   }
 
   public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {
-    guard status == .underReview else {
+    guard status == .undecided else {
       throw DomainError.invalidStatusTransition(
         from: status,
         to: decision == .approved ? .approved : .refused

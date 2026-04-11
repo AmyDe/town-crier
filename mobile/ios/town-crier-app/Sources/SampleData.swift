@@ -19,14 +19,14 @@
           id: PlanningApplicationId("app-001"),
           reference: ApplicationReference("2026/0142/P"),
           authority: camden,
-          status: .underReview,
+          status: .undecided,
           receivedDate: daysAgo(3),
           description: "Erection of single-storey rear extension and associated landscaping",
           address: "14 Dartmouth Park Road, London NW5 1SU",
           location: try? Coordinate(latitude: 51.5615, longitude: -0.1378),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example1"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(3))
+            StatusEvent(status: .undecided, date: daysAgo(3))
           ]
         ),
         PlanningApplication(
@@ -42,7 +42,7 @@
           location: try? Coordinate(latitude: 51.5475, longitude: -0.1420),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example2"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(45)),
+            StatusEvent(status: .undecided, date: daysAgo(45)),
             StatusEvent(status: .approved, date: daysAgo(5)),
           ]
         ),
@@ -50,7 +50,7 @@
           id: PlanningApplicationId("app-003"),
           reference: ApplicationReference("2026/0201/P"),
           authority: camden,
-          status: .underReview,
+          status: .undecided,
           receivedDate: daysAgo(7),
           description:
             "Conversion of existing loft space including rear dormer window and two front rooflights",
@@ -58,7 +58,7 @@
           location: try? Coordinate(latitude: 51.5560, longitude: -0.1445),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example3"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(7))
+            StatusEvent(status: .undecided, date: daysAgo(7))
           ]
         ),
         PlanningApplication(
@@ -72,7 +72,7 @@
           location: try? Coordinate(latitude: 51.5680, longitude: -0.1490),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example4"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(90)),
+            StatusEvent(status: .undecided, date: daysAgo(90)),
             StatusEvent(status: .refused, date: daysAgo(12)),
           ]
         ),
@@ -89,7 +89,7 @@
           location: try? Coordinate(latitude: 51.5575, longitude: -0.1775),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example5"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(60)),
+            StatusEvent(status: .undecided, date: daysAgo(60)),
             StatusEvent(status: .approved, date: daysAgo(8)),
           ]
         ),
@@ -97,7 +97,7 @@
           id: PlanningApplicationId("app-006"),
           reference: ApplicationReference("2026/0178/P"),
           authority: camden,
-          status: .underReview,
+          status: .undecided,
           receivedDate: daysAgo(10),
           description:
             "Installation of replacement windows to front and rear elevations (conservation area)",
@@ -105,7 +105,7 @@
           location: try? Coordinate(latitude: 51.5530, longitude: -0.1465),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example6"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(10))
+            StatusEvent(status: .undecided, date: daysAgo(10))
           ]
         ),
         PlanningApplication(
@@ -119,7 +119,7 @@
           location: try? Coordinate(latitude: 51.5390, longitude: -0.1465),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example7"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(55)),
+            StatusEvent(status: .undecided, date: daysAgo(55)),
             StatusEvent(status: .withdrawn, date: daysAgo(20)),
           ]
         ),
@@ -127,7 +127,7 @@
           id: PlanningApplicationId("app-008"),
           reference: ApplicationReference("2026/0210/P"),
           authority: camden,
-          status: .underReview,
+          status: .undecided,
           receivedDate: daysAgo(2),
           // swiftlint:disable:next line_length
           description:
@@ -136,7 +136,7 @@
           location: try? Coordinate(latitude: 51.5635, longitude: -0.1540),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example8"),
           statusHistory: [
-            StatusEvent(status: .underReview, date: daysAgo(2))
+            StatusEvent(status: .undecided, date: daysAgo(2))
           ]
         ),
       ]

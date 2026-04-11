@@ -6,8 +6,10 @@ extension ApplicationStatus {
   /// The user-facing label for this status (e.g. "Pending", "Approved").
   public var displayLabel: String {
     switch self {
-    case .underReview:
+    case .undecided:
       "Pending"
+    case .notAvailable:
+      "Not Available"
     case .approved:
       "Approved"
     case .refused:
@@ -24,8 +26,10 @@ extension ApplicationStatus {
   /// The SF Symbol name representing this status.
   public var displayIcon: String {
     switch self {
-    case .underReview:
+    case .undecided:
       "clock"
+    case .notAvailable:
+      "minus.circle"
     case .approved:
       "checkmark.circle"
     case .refused:
@@ -42,8 +46,10 @@ extension ApplicationStatus {
   /// The design-system color associated with this status.
   public var displayColor: Color {
     switch self {
-    case .underReview:
+    case .undecided:
       .tcStatusPending
+    case .notAvailable:
+      .tcTextTertiary
     case .approved:
       .tcStatusApproved
     case .refused:
