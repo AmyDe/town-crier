@@ -41,7 +41,7 @@ struct APIWatchZoneRepositoryTests {
 
   // MARK: - save
 
-  @Test("save sends POST /v1/me/watch-zones with correct body")
+  @Test("save sends POST /v1/me/watch-zones with correct body (no zoneId, includes authorityId)")
   func save_sendsCorrectRequest() async throws {
     let zone = WatchZone.cambridge
     let (sut, _, transport) = makeSUT(responses: [
@@ -57,11 +57,13 @@ struct APIWatchZoneRepositoryTests {
 
     let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-    #expect(json["zoneId"] as? String == "zone-001")
+    // zoneId must NOT be sent — the API generates IDs server-side
+    #expect(json["zoneId"] == nil, "zoneId must not be sent to the API")
     #expect(json["name"] as? String == "CB1 2AD")
     #expect(json["latitude"] as? Double == 52.2053)
     #expect(json["longitude"] as? Double == 0.1218)
     #expect(json["radiusMetres"] as? Double == 2000)
+    #expect(json["authorityId"] as? Int == 123)
   }
 
   @Test("save with network error throws networkUnavailable")
