@@ -1,4 +1,7 @@
 /// Encodes the watch zone limits for a subscription tier.
+///
+/// Zone count limits delegate to ``EntitlementMap`` so there is a single source of truth
+/// that stays in sync with the API's `EntitlementMap.cs`.
 public struct WatchZoneLimits: Equatable, Sendable {
     public let tier: SubscriptionTier
     public let maxZones: Int
@@ -6,15 +9,13 @@ public struct WatchZoneLimits: Equatable, Sendable {
 
     public init(tier: SubscriptionTier) {
         self.tier = tier
+        maxZones = EntitlementMap.limit(for: tier, quota: .watchZones)
         switch tier {
         case .free:
-            maxZones = 1
             maxRadiusMetres = 2000
         case .personal:
-            maxZones = 1
             maxRadiusMetres = 5000
         case .pro:
-            maxZones = .max
             maxRadiusMetres = 10000
         }
     }
