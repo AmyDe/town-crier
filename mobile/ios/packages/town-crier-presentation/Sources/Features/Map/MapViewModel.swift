@@ -29,6 +29,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     error == .networkUnavailable
   }
 
+  public var isServerError: Bool {
+    if case .serverError = error { return true }
+    return false
+  }
+
   public var isSessionExpired: Bool {
     error == .sessionExpired
   }
