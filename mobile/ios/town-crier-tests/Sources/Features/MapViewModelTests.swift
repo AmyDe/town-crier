@@ -17,6 +17,25 @@ struct MapViewModelTests {
     return (vm, spy)
   }
 
+  private func makeSUTWithAuthorities(
+    authorities: [LocalAuthority] = [.cambridge],
+    applicationsByAuthority: [String: [PlanningApplication]] = [:],
+    watchZone: WatchZone = .cambridge
+  ) -> (MapViewModel, SpyApplicationAuthorityRepository, SpyPlanningApplicationRepository) {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(authorities: authorities, count: authorities.count)
+    )
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsByAuthority = applicationsByAuthority
+    let vm = MapViewModel(
+      authorityRepository: authoritySpy,
+      applicationRepository: appSpy,
+      watchZone: watchZone
+    )
+    return (vm, authoritySpy, appSpy)
+  }
+
   // MARK: - Loading
 
   @Test func loadApplications_populatesAnnotations() async {
@@ -191,5 +210,73 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(!sut.isSessionExpired)
+  }
+
+  // MARK: - Authority-based loading
+
+  @Test func loadApplications_fetchesAuthoritiesThenApplications() async {
+    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
+    let apps = [PlanningApplication.pendingReview]
+    let (sut, authSpy, appSpy) = makeSUTWithAuthorities(
+      authorities: [cambridge],
+      applicationsByAuthority: ["CAM": apps]
+    )
+
+    await sut.loadApplications()
+
+    #expect(authSpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(sut.annotations.count == 1)
+  }
+
+  @Test func loadApplications_combinesApplicationsFromMultipleAuthorities() async {
+    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
+    let oxford = LocalAuthority(code: "OXF", name: "Oxford")
+    let (sut, _, _) = makeSUTWithAuthorities(
+      authorities: [cambridge, oxford],
+      applicationsByAuthority: [
+        "CAM": [.pendingReview],
+        "OXF": [.approved],
+      ]
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.annotations.count == 2)
+  }
+
+  @Test func loadApplications_authorityFetchFailure_setsError() async {
+    let (sut, authSpy, _) = makeSUTWithAuthorities()
+    authSpy.fetchAuthoritiesResult = .failure(DomainError.networkUnavailable)
+
+    await sut.loadApplications()
+
+    #expect(sut.error == .networkUnavailable)
+    #expect(sut.annotations.isEmpty)
+  }
+
+  @Test func loadApplications_noAuthorities_resultsInEmptyAnnotations() async {
+    let (sut, _, _) = makeSUTWithAuthorities(authorities: [])
+
+    await sut.loadApplications()
+
+    #expect(sut.annotations.isEmpty)
+    #expect(sut.isEmpty)
+  }
+
+  @Test func loadApplications_partialAuthorityFailure_showsPartialResults() async {
+    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
+    let oxford = LocalAuthority(code: "OXF", name: "Oxford")
+    let (sut, _, appSpy) = makeSUTWithAuthorities(
+      authorities: [cambridge, oxford],
+      applicationsByAuthority: [
+        "CAM": [.pendingReview]
+      ]
+    )
+    appSpy.fetchApplicationsFailureAuthorities = ["OXF"]
+
+    await sut.loadApplications()
+
+    #expect(sut.annotations.count == 1)
   }
 }
