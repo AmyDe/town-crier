@@ -14,6 +14,7 @@ public final class AppCoordinator: ObservableObject {
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
+  private let userProfileRepository: UserProfileRepository
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
@@ -24,6 +25,7 @@ public final class AppCoordinator: ObservableObject {
     repository: PlanningApplicationRepository,
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
+    userProfileRepository: UserProfileRepository,
     offlineRepository: OfflineAwareRepository? = nil,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
@@ -33,6 +35,7 @@ public final class AppCoordinator: ObservableObject {
     self.repository = repository
     self.authService = authService
     self.subscriptionService = subscriptionService
+    self.userProfileRepository = userProfileRepository
     self.offlineRepository = offlineRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
@@ -71,6 +74,7 @@ public final class AppCoordinator: ObservableObject {
     SettingsViewModel(
       authService: authService,
       subscriptionService: subscriptionService,
+      userProfileRepository: userProfileRepository,
       appVersionProvider: appVersionProvider,
       notificationService: notificationService
     )

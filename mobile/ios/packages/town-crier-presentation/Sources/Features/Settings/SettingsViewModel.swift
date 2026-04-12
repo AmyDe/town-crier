@@ -18,17 +18,20 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
 
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
+  private let userProfileRepository: UserProfileRepository
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
 
   public init(
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
+    userProfileRepository: UserProfileRepository,
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService
   ) {
     self.authService = authService
     self.subscriptionService = subscriptionService
+    self.userProfileRepository = userProfileRepository
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
   }
@@ -70,13 +73,9 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       authMethod = session.userProfile.authMethod
     }
 
-    if let entitlement = await subscriptionService.currentEntitlement() {
-      subscriptionTier = entitlement.tier
-      isTrialPeriod = entitlement.isTrialPeriod
-    } else {
-      subscriptionTier = .free
-      isTrialPeriod = false
-    }
+    let resolvedTier = await resolveSubscriptionTier()
+    subscriptionTier = resolvedTier.tier
+    isTrialPeriod = resolvedTier.isTrialPeriod
 
     isLoading = false
   }
@@ -111,6 +110,37 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       onLogout?()
     } catch {
       handleError(error)
+    }
+  }
+
+  /// Resolves the subscription tier by consulting the backend API profile
+  /// (source of truth) and StoreKit (for App Store purchases), then picking
+  /// the higher tier. This handles web-purchased subscriptions that StoreKit
+  /// does not know about, and recently App-Store-purchased subscriptions
+  /// that the server may not have synced yet.
+  private func resolveSubscriptionTier() async -> (tier: SubscriptionTier, isTrialPeriod: Bool) {
+    let serverTier = await fetchServerTier()
+    let storeKitEntitlement = await subscriptionService.currentEntitlement()
+
+    let storeKitTier = storeKitEntitlement?.tier ?? .free
+    let highestTier = max(serverTier, storeKitTier)
+
+    // Only report trial status from StoreKit — the server profile doesn't
+    // carry trial information. Trial period is only meaningful when the
+    // StoreKit tier is the one that won.
+    let isTrialPeriod = storeKitEntitlement?.isTrialPeriod == true && storeKitTier >= serverTier
+
+    return (highestTier, isTrialPeriod)
+  }
+
+  private func fetchServerTier() async -> SubscriptionTier {
+    do {
+      if let profile = try await userProfileRepository.fetch() {
+        return profile.tier
+      }
+      return .free
+    } catch {
+      return .free
     }
   }
 

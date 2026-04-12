@@ -28,10 +28,13 @@ struct CompositionRootTests {
       apiService: APINotificationService(apiClient: apiClient)
     )
 
+    let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
+
     let coordinator = AppCoordinator(
       repository: repository,
       authService: authService,
       subscriptionService: subscriptionService,
+      userProfileRepository: userProfileRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -73,6 +76,7 @@ struct CompositionRootTests {
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
       onboardingRepository: onboardingRepo,
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
@@ -115,6 +119,7 @@ struct CompositionRootTests {
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),

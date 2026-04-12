@@ -42,10 +42,13 @@ struct TownCrierApp: App {
       connectivity: connectivityMonitor
     )
 
+    let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
+
     let appCoordinator = AppCoordinator(
       repository: repository,
       authService: authService,
       subscriptionService: subscriptionService,
+      userProfileRepository: userProfileRepository,
       offlineRepository: offlineRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
