@@ -6,6 +6,8 @@ import TownCrierDomain
 public final class AppCoordinator: ObservableObject {
   @Published public var detailApplication: PlanningApplication?
   @Published public var deepLinkError: DomainError?
+  @Published public var presentedLegalDocument: LegalDocumentType?
+  @Published public var isManageSubscriptionPresented = false
 
   public var isOnboardingComplete: Bool {
     onboardingRepository.isOnboardingComplete
@@ -123,6 +125,20 @@ public final class AppCoordinator: ObservableObject {
       self?.detailApplication = nil
     }
     return viewModel
+  }
+
+  // MARK: - Settings Navigation
+
+  public func showPrivacyPolicy() {
+    presentedLegalDocument = .privacyPolicy
+  }
+
+  public func showTermsOfService() {
+    presentedLegalDocument = .termsOfService
+  }
+
+  public func showManageSubscription() {
+    isManageSubscriptionPresented = true
   }
 
   public func handleDeepLink(_ deepLink: DeepLink) {
