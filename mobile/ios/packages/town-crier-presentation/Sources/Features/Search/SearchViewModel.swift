@@ -22,8 +22,7 @@ public final class SearchViewModel: ObservableObject, EntitlementGatingViewModel
 
   private let repository: SearchRepository
   private let featureGate: FeatureGate
-  private var currentPage = 1
-  private var lastPageHadMore = false
+  private var pagination = PaginationState()
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
@@ -34,7 +33,7 @@ public final class SearchViewModel: ObservableObject, EntitlementGatingViewModel
 
   /// Whether more pages of results are available.
   public var hasMore: Bool {
-    lastPageHadMore
+    pagination.hasMore
   }
 
   /// Whether the search returned zero results after a completed search.
@@ -66,8 +65,7 @@ public final class SearchViewModel: ObservableObject, EntitlementGatingViewModel
     isLoading = true
     error = nil
     applications = []
-    currentPage = 1
-    lastPageHadMore = false
+    pagination.reset()
     hasSearched = true
 
     do {
@@ -78,7 +76,7 @@ public final class SearchViewModel: ObservableObject, EntitlementGatingViewModel
       )
       applications = result.applications
       total = result.total
-      lastPageHadMore = result.hasMore
+      pagination.startInitialLoad(hasMore: result.hasMore)
     } catch {
       handleError(error)
     }
@@ -92,19 +90,17 @@ public final class SearchViewModel: ObservableObject, EntitlementGatingViewModel
     let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
     guard !trimmedQuery.isEmpty else { return }
 
-    let nextPage = currentPage + 1
     isLoading = true
 
     do {
       let result = try await repository.search(
         query: trimmedQuery,
         authorityId: authorityId,
-        page: nextPage
+        page: pagination.nextPage
       )
       applications.append(contentsOf: result.applications)
       total = result.total
-      currentPage = nextPage
-      lastPageHadMore = result.hasMore
+      pagination.advance(hasMore: result.hasMore)
     } catch {
       handleError(error)
     }
