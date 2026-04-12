@@ -18,6 +18,7 @@ public final class AppCoordinator: ObservableObject {
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
+  private let authorityRepository: ApplicationAuthorityRepository?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
 
@@ -27,6 +28,7 @@ public final class AppCoordinator: ObservableObject {
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
     offlineRepository: OfflineAwareRepository? = nil,
+    authorityRepository: ApplicationAuthorityRepository? = nil,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
@@ -37,6 +39,7 @@ public final class AppCoordinator: ObservableObject {
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
     self.offlineRepository = offlineRepository
+    self.authorityRepository = authorityRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
@@ -48,6 +51,13 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
+    if let authorityRepository {
+      return MapViewModel(
+        authorityRepository: authorityRepository,
+        applicationRepository: repository,
+        watchZone: watchZone
+      )
+    }
     if let offlineRepository {
       return MapViewModel(offlineRepository: offlineRepository, watchZone: watchZone)
     }
