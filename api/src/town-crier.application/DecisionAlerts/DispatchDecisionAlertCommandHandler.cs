@@ -77,7 +77,7 @@ public sealed class DispatchDecisionAlertCommandHandler
             applicationUid: application.Uid,
             applicationName: application.Name,
             applicationAddress: application.Address,
-            decision: application.AppState,
+            decision: application.AppState ?? "Unknown",
             now: now);
 
         // Check push preferences

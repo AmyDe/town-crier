@@ -82,7 +82,7 @@ public sealed class AcsEmailSender : IEmailSender
                   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:6px;">
                     <tr><td style="padding:12px;">
                       <div style="font-weight:600;color:#1a1a2e;">{HtmlEncode(n.ApplicationAddress)}</div>
-                      <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(n.ApplicationType)}</div>
+                      <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(n.ApplicationType ?? "Planning Application")}</div>
                       <div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(n.ApplicationDescription, 120))}</div>
                     </td></tr>
                   </table>
@@ -140,7 +140,7 @@ public sealed class AcsEmailSender : IEmailSender
               </td></tr>
               <tr><td style="padding:24px;">
                 <div style="font-size:18px;font-weight:600;color:#1a1a2e;">{HtmlEncode(notification.ApplicationAddress)}</div>
-                <div style="color:#4a6cf7;font-size:14px;margin-top:4px;">{HtmlEncode(notification.ApplicationType)}</div>
+                <div style="color:#4a6cf7;font-size:14px;margin-top:4px;">{HtmlEncode(notification.ApplicationType ?? "Planning Application")}</div>
                 <div style="color:#666;font-size:14px;margin-top:12px;">{HtmlEncode(notification.ApplicationDescription)}</div>
                 <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                   <tr><td align="center">

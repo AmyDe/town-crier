@@ -10,8 +10,8 @@ public sealed record PlanningApplicationSummary(
     string Address,
     string? Postcode,
     string Description,
-    string AppType,
-    string AppState,
+    string? AppType,
+    string? AppState,
     string AreaName,
     DateOnly? StartDate,
     string? Url);

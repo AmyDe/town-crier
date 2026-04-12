@@ -13,8 +13,8 @@ public sealed class PlanningApplication
         string address,
         string? postcode,
         string description,
-        string appType,
-        string appState,
+        string? appType,
+        string? appState,
         string? appSize,
         DateOnly? startDate,
         DateOnly? decidedDate,
@@ -59,9 +59,9 @@ public sealed class PlanningApplication
 
     public string Description { get; }
 
-    public string AppType { get; }
+    public string? AppType { get; }
 
-    public string AppState { get; }
+    public string? AppState { get; }
 
     public string? AppSize { get; }
 
