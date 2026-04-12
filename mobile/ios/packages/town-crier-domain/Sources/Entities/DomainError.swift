@@ -6,6 +6,7 @@ public enum DomainError: Error, Equatable, Sendable {
   case invalidCoordinate
   case invalidWatchZoneRadius
   case networkUnavailable
+  case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
   case sessionExpired
   case logoutFailed(String)
@@ -23,6 +24,8 @@ public enum DomainError: Error, Equatable, Sendable {
     switch self {
     case .networkUnavailable:
       return "No Connection"
+    case .serverError:
+      return "Server Error"
     case .sessionExpired:
       return "Session Expired"
     case .authenticationFailed:
@@ -47,6 +50,8 @@ public enum DomainError: Error, Equatable, Sendable {
     switch self {
     case .networkUnavailable:
       return "Check your internet connection and try again."
+    case .serverError:
+      return "The server encountered an error. Please try again later."
     case .sessionExpired:
       return "Your session has expired. Please sign in again."
     case .authenticationFailed:
@@ -70,7 +75,7 @@ public enum DomainError: Error, Equatable, Sendable {
   /// Whether the error is transient and retrying may succeed.
   public var isRetryable: Bool {
     switch self {
-    case .networkUnavailable, .unexpected, .geocodingFailed,
+    case .networkUnavailable, .serverError, .unexpected, .geocodingFailed,
       .purchaseFailed, .restoreFailed, .logoutFailed:
       return true
     case .sessionExpired, .authenticationFailed, .invalidPostcode,
