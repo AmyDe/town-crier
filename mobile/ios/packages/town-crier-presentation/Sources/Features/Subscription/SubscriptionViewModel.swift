@@ -4,8 +4,7 @@ import TownCrierDomain
 /// ViewModel managing subscription product display, purchasing, and restoration.
 ///
 /// After a successful purchase or restore, refreshes the Auth0 token so the
-/// `subscription_tier` JWT claim reflects the new tier. The refreshed session
-/// is published via `refreshedSession` for observing ViewModels to pick up.
+/// `subscription_tier` JWT claim reflects the new tier.
 /// Token refresh is best-effort — a failure does not affect the purchase outcome.
 @MainActor
 public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewModel {
@@ -15,7 +14,6 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public private(set) var isRestoring = false
   @Published public internal(set) var error: DomainError?
   @Published public private(set) var currentEntitlement: SubscriptionEntitlement?
-  @Published public private(set) var refreshedSession: AuthSession?
 
   private let subscriptionService: SubscriptionService
   private let authenticationService: AuthenticationService
@@ -86,11 +84,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   /// Refreshes the auth session to pick up an updated `subscription_tier` claim.
   /// Best-effort: failure is silently absorbed so the purchase/restore is not affected.
   private func refreshAuthSession() async {
-    do {
-      refreshedSession = try await authenticationService.refreshSession()
-    } catch {
-      refreshedSession = nil
-    }
+    _ = try? await authenticationService.refreshSession()
   }
 
   /// Returns subscription disclosure text for App Store compliance.

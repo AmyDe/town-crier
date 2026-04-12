@@ -242,16 +242,6 @@ struct SubscriptionViewModelTests {
     #expect(authSpy.refreshSessionCallCount == 1)
   }
 
-  @Test func purchase_exposesRefreshedSession() async {
-    let (sut, subscriptionSpy, authSpy) = makeSUT()
-    subscriptionSpy.purchaseResult = .success(.personalActive)
-    authSpy.refreshSessionResult = .success(.personal)
-
-    await sut.purchase(productId: "uk.co.towncrier.personal.monthly")
-
-    #expect(sut.refreshedSession == .personal)
-  }
-
   @Test func purchase_doesNotRefreshSession_onFailure() async {
     let (sut, subscriptionSpy, authSpy) = makeSUT()
     subscriptionSpy.purchaseResult = .failure(DomainError.purchaseFailed("declined"))
@@ -279,18 +269,6 @@ struct SubscriptionViewModelTests {
 
     #expect(sut.currentEntitlement == .personalActive)
     #expect(sut.error == nil)
-    #expect(sut.refreshedSession == nil)
-  }
-
-  @Test func purchase_setsRefreshedSessionNil_whenTokenRefreshFails() async {
-    let (sut, subscriptionSpy, authSpy) = makeSUT()
-    subscriptionSpy.purchaseResult = .success(.personalActive)
-    authSpy.refreshSessionResult = .failure(DomainError.sessionExpired)
-
-    await sut.purchase(productId: "uk.co.towncrier.personal.monthly")
-
-    #expect(sut.refreshedSession == nil)
-    #expect(authSpy.refreshSessionCallCount == 1)
   }
 
   // MARK: - Post-restore token refresh
@@ -303,16 +281,6 @@ struct SubscriptionViewModelTests {
     await sut.restorePurchases()
 
     #expect(authSpy.refreshSessionCallCount == 1)
-  }
-
-  @Test func restorePurchases_exposesRefreshedSession() async {
-    let (sut, subscriptionSpy, authSpy) = makeSUT()
-    subscriptionSpy.restorePurchasesResult = .success(.proActive)
-    authSpy.refreshSessionResult = .success(.pro)
-
-    await sut.restorePurchases()
-
-    #expect(sut.refreshedSession == .pro)
   }
 
   @Test func restorePurchases_doesNotRefreshSession_whenNoneFound() async {
@@ -333,6 +301,5 @@ struct SubscriptionViewModelTests {
 
     #expect(sut.currentEntitlement == .proActive)
     #expect(sut.error == nil)
-    #expect(sut.refreshedSession == nil)
   }
 }
