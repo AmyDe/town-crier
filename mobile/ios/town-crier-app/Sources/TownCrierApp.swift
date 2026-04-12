@@ -68,7 +68,15 @@ struct TownCrierApp: App {
     )
 
     let listVM = appCoordinator.makeApplicationListViewModel()
-    let mapVM = appCoordinator.makeMapViewModel(watchZone: SampleData.defaultWatchZone)
+    // swiftlint:disable force_try
+    let mapVM = appCoordinator.makeMapViewModel(
+      watchZone: try! WatchZone(
+        postcode: try! Postcode("NW5 1SU"),
+        centre: try! Coordinate(latitude: 51.5550, longitude: -0.1450),
+        radiusMetres: 2000
+      )
+    )
+    // swiftlint:enable force_try
 
     _applicationListViewModel = StateObject(wrappedValue: listVM)
     _mapViewModel = StateObject(wrappedValue: mapVM)
