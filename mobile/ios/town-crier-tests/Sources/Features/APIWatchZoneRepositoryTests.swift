@@ -107,6 +107,17 @@ struct APIWatchZoneRepositoryTests {
     }
   }
 
+  @Test("save with server error throws serverError not networkUnavailable")
+  func save_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      try await sut.save(.cambridge)
+    }
+  }
+
   // MARK: - loadAll
 
   @Test("loadAll sends GET /v1/me/watch-zones and maps response to domain models")

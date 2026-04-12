@@ -173,6 +173,17 @@ struct APINotificationRepositoryTests {
     }
   }
 
+  @Test("fetch with server error throws serverError not networkUnavailable")
+  func fetch_serverError_throwsServerError() async throws {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      _ = try await sut.fetch(page: 1, pageSize: 20)
+    }
+  }
+
   @Test("fetch with 401 throws sessionExpired")
   func fetch_401_throwsSessionExpired() async throws {
     let authService = SpyAuthenticationService()

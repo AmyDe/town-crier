@@ -147,6 +147,17 @@ struct APISearchRepositoryTests {
     }
   }
 
+  @Test("search with server error throws serverError not networkUnavailable")
+  func search_serverError_throwsServerError() async throws {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      _ = try await sut.search(query: "test", authorityId: 123, page: 1)
+    }
+  }
+
   @Test("search with 403 insufficient_entitlement throws insufficientEntitlement")
   func search_403_throwsInsufficientEntitlement() async throws {
     let json = """
