@@ -272,7 +272,7 @@ performanceCounters
 ```
 
 Watch for:
-- `# of Exceps Thrown / sec` > 0 when the `exceptions` table is empty — means exceptions are being thrown but not captured by OTel (actionable finding)
+- `# of Exceps Thrown / sec` > 0 when the `exceptions` table is empty — **but cross-reference with failed dependencies before concluding the OTel pipeline is broken.** The CLR counter counts ALL exceptions including first-chance exceptions caught internally by the .NET runtime (HTTP client retries, DNS resolution, SSL negotiation, connection pooling). These never reach application catch blocks and are not actionable. Only file a bead if there are also failed dependencies (`dependencies | where success == false`) or non-200 HTTP status codes in `customMetrics` that should be producing exception records but aren't.
 - `% Processor Time` sustained > 80% — CPU pressure
 - `Available Bytes` trending down — memory leak
 - Short runtime windows (firstSeen to lastSeen) — container churn or crash loops
@@ -338,9 +338,62 @@ traces
 
 Severity levels: 0=Verbose, 1=Information, 2=Warning, 3=Error, 4=Critical. Anything at 2+ deserves a look; 3+ is almost certainly actionable.
 
+### Phase 5b: Reconcile Existing SRE Beads
+
+Before filing new findings, check whether previously filed SRE issues have been resolved. This prevents orphaned beads and epics from accumulating across runs.
+
+**Step 1 — List open SRE beads:**
+```bash
+bd search "[SRE]"
+```
+
+Filter the results to **open** and **in_progress** beads. Separate them into two groups: individual finding beads and parent epics (titles matching `[SRE] Observatory run`).
+
+For each open SRE finding bead (not epics), run `bd show <id>` to read its description and understand what issue it tracks.
+
+**Step 2 — Check each bead against current telemetry:**
+
+For each open SRE finding bead, determine whether the underlying issue is still present in the data collected during Phases 1–5. Apply the appropriate resolution test:
+
+| Bead category | Resolution test |
+|---------------|----------------|
+| Exception-based (unhandled errors, new exception types) | Zero occurrences of the exception type/pattern in the current window |
+| Latency regression | Current p99 within 20% of baseline |
+| Dependency failure (429s, timeouts, error rates) | Failure rate dropped below the filing threshold (e.g., rate limiting < 20%, dependency failure < 5%) |
+| Configuration (missing OTEL_SERVICE_NAME, OTel gaps) | The specific misconfiguration signal is no longer present |
+| Polling / business metric (skip ratio, RU spikes) | Metric returned to acceptable range |
+| Structural (no availability monitoring, missing instrumentation) | Only close if a code change was deployed that addresses it — check git log or deployment history |
+
+**Step 3 — Close resolved beads:**
+
+For each bead whose issue is no longer present:
+```bash
+bd close <id> --reason="Resolved: <what telemetry now shows, e.g., 'PlanIt 429 rate dropped from 41% to 2%'>"
+```
+
+Do **not** close a bead if:
+- The issue is intermittent — check the 7-day baseline for recurring patterns before concluding it's resolved
+- Request volume is too low to confirm resolution (< 5 requests in the analysis window)
+- The bead tracks a structural issue that requires a code change and no relevant deployment has occurred
+
+**Step 4 — Close empty SRE epics:**
+
+After reconciling individual beads, check all open SRE epics. For each one, run `bd show <epic-id>` and inspect its children. If **all** children are closed, close the epic:
+```bash
+bd close <epic-id> --reason="All findings resolved"
+```
+
+If some children are still open, leave the epic open — it will be cleaned up in a future run when the remaining findings resolve.
+
+**Step 5 — Carry forward the reconciliation context:**
+
+Keep a mental list of what you just closed. In Phase 6, do **not** re-file a finding for an issue you closed in this phase unless the current data shows it has **recurred at or above** the filing threshold (not just trace-level noise).
+
+---
+
 ### Phase 6: Triage & File Beads
 
-Now that you have the full picture, decide what's actionable.
+Now that you have the full picture and have reconciled prior findings, decide what's actionable.
 
 **Triage criteria — file a bead when:**
 
@@ -351,7 +404,7 @@ Now that you have the full picture, decide what's actionable.
 | P99 latency regression > 50% vs baseline | P2 | /v1/applications p99 jumped from 200ms to 400ms |
 | Dependency failure rate > 5% | P1-P2 | Cosmos 429s, PlanIt timeouts |
 | New exception type not seen in baseline | P2 | New HttpRequestException pattern |
-| CLR exception counter > 0 with empty exceptions table | P2 | OTel exception pipeline not wired |
+| CLR exception counter > 0 with empty exceptions table AND failed dependencies exist | P2 | OTel exception pipeline not wired (verify failed deps/non-200s exist that should produce exception records — CLR counter alone is not sufficient, as it includes first-chance runtime exceptions) |
 | OTel service name showing `unknown_service:` prefix | P2 | OTEL_SERVICE_NAME not configured |
 | Polling skip ratio > 50% | P2 | Most authorities skipped due to rate limiting |
 | Cosmos RU consumption spiking or throttling (429) | P2 | 60k RU consumed in 3 minutes |
@@ -367,8 +420,9 @@ Now that you have the full picture, decide what's actionable.
 - It's an OPTIONS preflight or health check endpoint
 
 **Before filing each bead:**
-1. Run `bd search "<key terms>"` to check for existing beads covering this issue
-2. If a match exists, update it with `bd update <id> --notes="..."` instead of creating a duplicate
+1. Check whether you closed this exact issue in Phase 5b. If so, only re-file if the current data shows it has **recurred at or above** the filing threshold — not just trace-level noise.
+2. Run `bd search "<key terms>"` to check for other existing open beads covering this issue.
+3. If a match exists, update it with `bd update <id> --notes="..."` instead of creating a duplicate.
 
 #### Filing workflow: parent epic + child beads
 
@@ -406,7 +460,8 @@ After filing all beads:
 
 1. Print a brief SRE summary to the conversation:
    - Overall system health assessment (healthy / degraded / impaired)
-   - Number of findings filed as beads
+   - Reconciliation: number of prior SRE beads closed as resolved, number of epics closed
+   - New findings: number of new beads filed this run
    - Top risk if any (the one thing you'd page someone about)
 2. Sync beads: `bd dolt push`
 3. That's it. Don't suggest fixes, don't open PRs, don't touch code.
