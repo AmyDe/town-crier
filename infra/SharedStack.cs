@@ -16,6 +16,8 @@ using Pulumi.AzureNative.Communication.Inputs;
 
 public static class SharedStack
 {
+    private const int DashboardTimespan24HoursMs = 86400000;
+
     public static Dictionary<string, object?> Run(Config config, InputMap<string> tags)
     {
         var ciServicePrincipalId = config.Require("ciServicePrincipalId");
@@ -318,6 +320,7 @@ public static class SharedStack
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
+            ["appInsightsId"] = appInsights.Id,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
             ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationService.Name)
                 .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
@@ -370,7 +373,7 @@ public static class SharedStack
                             {
                                 ["relative"] = new Dictionary<string, object>
                                 {
-                                    ["duration"] = 86400000,
+                                    ["duration"] = DashboardTimespan24HoursMs,
                                 },
                             },
                         },
@@ -438,7 +441,7 @@ public static class SharedStack
                             {
                                 ["relative"] = new Dictionary<string, object>
                                 {
-                                    ["duration"] = 86400000,
+                                    ["duration"] = DashboardTimespan24HoursMs,
                                 },
                             },
                         },

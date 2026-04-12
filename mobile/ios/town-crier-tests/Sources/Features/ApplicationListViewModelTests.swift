@@ -146,6 +146,94 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.isEmpty)
   }
 
+  // MARK: - Authority-aware loading
+
+  @Test func loadApplications_viaAuthorityRepository_fetchesAuthoritiesThenApplications() async {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    let authority = LocalAuthority(code: "123", name: "Bath")
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(authorities: [authority], count: 1)
+    )
+    appSpy.fetchApplicationsByAuthority = ["123": [.pendingReview]]
+
+    let sut = ApplicationListViewModel(
+      authorityRepository: authoritySpy,
+      applicationRepository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.count == 1)
+    #expect(appSpy.fetchApplicationsCalls.first?.code == "123")
+    #expect(sut.filteredApplications.count == 1)
+    #expect(sut.error == nil)
+  }
+
+  @Test func loadApplications_viaAuthorityRepository_mergesMultipleAuthorities() async {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    let auth1 = LocalAuthority(code: "123", name: "Bath")
+    let auth2 = LocalAuthority(code: "456", name: "Cambridge")
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(authorities: [auth1, auth2], count: 2)
+    )
+    appSpy.fetchApplicationsByAuthority = [
+      "123": [.pendingReview],
+      "456": [.approved],
+    ]
+
+    let sut = ApplicationListViewModel(
+      authorityRepository: authoritySpy,
+      applicationRepository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.filteredApplications.count == 2)
+  }
+
+  @Test func loadApplications_viaAuthorityRepository_serverError_showsError() async {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    authoritySpy.fetchAuthoritiesResult = .failure(
+      DomainError.serverError(statusCode: 500, message: "down")
+    )
+
+    let sut = ApplicationListViewModel(
+      authorityRepository: authoritySpy,
+      applicationRepository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.error == .serverError(statusCode: 500, message: "down"))
+    #expect(!sut.isNetworkError)
+  }
+
+  @Test func isServerError_trueForServerError() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(
+      DomainError.serverError(statusCode: 500, message: nil)
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.isServerError)
+    #expect(!sut.isNetworkError)
+  }
+
+  @Test func isServerError_falseForNetworkError() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+    await sut.loadApplications()
+
+    #expect(!sut.isServerError)
+    #expect(sut.isNetworkError)
+  }
+
   // MARK: - Error Classification
 
   @Test func isNetworkError_trueForNetworkUnavailable() async {

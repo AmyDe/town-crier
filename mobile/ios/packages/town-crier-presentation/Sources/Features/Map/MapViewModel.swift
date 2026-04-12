@@ -16,6 +16,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
+  private let authorityRepository: ApplicationAuthorityRepository?
+  private let applicationRepository: PlanningApplicationRepository?
   private let watchZone: WatchZone
   private var applications: [PlanningApplication] = []
 
@@ -27,6 +29,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     error == .networkUnavailable
   }
 
+  public var isServerError: Bool {
+    if case .serverError = error { return true }
+    return false
+  }
+
   public var isSessionExpired: Bool {
     error == .sessionExpired
   }
@@ -36,6 +43,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public init(repository: PlanningApplicationRepository, watchZone: WatchZone) {
     self.repository = repository
     self.offlineRepository = nil
+    self.authorityRepository = nil
+    self.applicationRepository = nil
     self.watchZone = watchZone
     self.centreLat = watchZone.centre.latitude
     self.centreLon = watchZone.centre.longitude
@@ -45,6 +54,23 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public init(offlineRepository: OfflineAwareRepository, watchZone: WatchZone) {
     self.repository = nil
     self.offlineRepository = offlineRepository
+    self.authorityRepository = nil
+    self.applicationRepository = nil
+    self.watchZone = watchZone
+    self.centreLat = watchZone.centre.latitude
+    self.centreLon = watchZone.centre.longitude
+    self.radiusMetres = watchZone.radiusMetres
+  }
+
+  public init(
+    authorityRepository: ApplicationAuthorityRepository,
+    applicationRepository: PlanningApplicationRepository,
+    watchZone: WatchZone
+  ) {
+    self.repository = nil
+    self.offlineRepository = nil
+    self.authorityRepository = authorityRepository
+    self.applicationRepository = applicationRepository
     self.watchZone = watchZone
     self.centreLat = watchZone.centre.latitude
     self.centreLon = watchZone.centre.longitude
@@ -56,7 +82,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     error = nil
     do {
       let fetched: [PlanningApplication]
-      if let offlineRepository {
+      if let authorityRepository, let applicationRepository {
+        fetched = try await fetchViaAuthorities(
+          authorityRepository: authorityRepository,
+          applicationRepository: applicationRepository
+        )
+      } else if let offlineRepository {
         let entry = try await offlineRepository.fetchApplications(
           for: LocalAuthority(code: "", name: ""))
         fetched = entry.data
@@ -75,6 +106,24 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     }
     isLoading = false
     hasLoaded = true
+  }
+
+  private func fetchViaAuthorities(
+    authorityRepository: ApplicationAuthorityRepository,
+    applicationRepository: PlanningApplicationRepository
+  ) async throws -> [PlanningApplication] {
+    let result = try await authorityRepository.fetchAuthorities()
+    var allApplications: [PlanningApplication] = []
+    for authority in result.authorities {
+      do {
+        let apps = try await applicationRepository.fetchApplications(for: authority)
+        allApplications.append(contentsOf: apps)
+      } catch {
+        // Partial failure: skip this authority, continue with others
+        continue
+      }
+    }
+    return allApplications
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {

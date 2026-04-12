@@ -18,7 +18,7 @@ public final class APIApplicationAuthorityRepository: ApplicationAuthorityReposi
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 }

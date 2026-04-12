@@ -84,6 +84,19 @@ struct APIUserProfileRepositoryTests {
     }
   }
 
+  @Test("create with server error throws serverError not networkUnavailable")
+  func create_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Internal Server Error".utf8), httpResponse(statusCode: 500))
+    ])
+
+    await #expect(
+      throws: DomainError.serverError(statusCode: 500, message: "Internal Server Error")
+    ) {
+      _ = try await sut.create()
+    }
+  }
+
   // MARK: - fetch (GET /v1/me)
 
   @Test("fetch sends GET /v1/me and maps full response")

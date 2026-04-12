@@ -6,6 +6,8 @@ import TownCrierDomain
 public final class AppCoordinator: ObservableObject {
   @Published public var detailApplication: PlanningApplication?
   @Published public var deepLinkError: DomainError?
+  @Published public var presentedLegalDocument: LegalDocumentType?
+  @Published public var isManageSubscriptionPresented = false
 
   public var isOnboardingComplete: Bool {
     onboardingRepository.isOnboardingComplete
@@ -14,9 +16,11 @@ public final class AppCoordinator: ObservableObject {
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
+  private let userProfileRepository: UserProfileRepository
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
+  private let authorityRepository: ApplicationAuthorityRepository?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
 
@@ -24,7 +28,9 @@ public final class AppCoordinator: ObservableObject {
     repository: PlanningApplicationRepository,
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
+    userProfileRepository: UserProfileRepository,
     offlineRepository: OfflineAwareRepository? = nil,
+    authorityRepository: ApplicationAuthorityRepository? = nil,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
@@ -33,7 +39,9 @@ public final class AppCoordinator: ObservableObject {
     self.repository = repository
     self.authService = authService
     self.subscriptionService = subscriptionService
+    self.userProfileRepository = userProfileRepository
     self.offlineRepository = offlineRepository
+    self.authorityRepository = authorityRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
@@ -45,6 +53,13 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
+    if let authorityRepository {
+      return MapViewModel(
+        authorityRepository: authorityRepository,
+        applicationRepository: repository,
+        watchZone: watchZone
+      )
+    }
     if let offlineRepository {
       return MapViewModel(offlineRepository: offlineRepository, watchZone: watchZone)
     }
@@ -67,10 +82,29 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
+  public func makeApplicationListViewModel() -> ApplicationListViewModel {
+    let viewModel: ApplicationListViewModel
+    if let authorityRepository {
+      viewModel = ApplicationListViewModel(
+        authorityRepository: authorityRepository,
+        applicationRepository: repository
+      )
+    } else {
+      viewModel = makeApplicationListViewModel(
+        authority: LocalAuthority(code: "", name: "")
+      )
+    }
+    viewModel.onApplicationSelected = { [weak self] id in
+      self?.showApplicationDetail(id)
+    }
+    return viewModel
+  }
+
   public func makeSettingsViewModel() -> SettingsViewModel {
     SettingsViewModel(
       authService: authService,
       subscriptionService: subscriptionService,
+      userProfileRepository: userProfileRepository,
       appVersionProvider: appVersionProvider,
       notificationService: notificationService
     )
@@ -91,6 +125,20 @@ public final class AppCoordinator: ObservableObject {
       self?.detailApplication = nil
     }
     return viewModel
+  }
+
+  // MARK: - Settings Navigation
+
+  public func showPrivacyPolicy() {
+    presentedLegalDocument = .privacyPolicy
+  }
+
+  public func showTermsOfService() {
+    presentedLegalDocument = .termsOfService
+  }
+
+  public func showManageSubscription() {
+    isManageSubscriptionPresented = true
   }
 
   public func handleDeepLink(_ deepLink: DeepLink) {

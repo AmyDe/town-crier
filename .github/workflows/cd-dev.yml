@@ -221,12 +221,9 @@ jobs:
 
       - name: Get SWA deployment token
         id: swa-token
-        run: |
-          TOKEN=$(az staticwebapp secrets list \
-            --name "swa-town-crier-dev" \
-            --query "properties.apiKey" -o tsv)
-          echo "::add-mask::$TOKEN"
-          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/get-swa-token
+        with:
+          swa-name: swa-town-crier-dev
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

@@ -20,6 +20,13 @@ enum JWTSubscriptionTierExtractor {
     return tier
   }
 
+  /// Extracts the `sub` claim from a JWT token.
+  /// Returns `nil` when the claim is absent or the token is malformed.
+  static func extractSubject(from token: String) -> String? {
+    guard let payload = decodePayload(from: token) else { return nil }
+    return payload["sub"] as? String
+  }
+
   /// Decodes the payload segment of a JWT token into a dictionary.
   /// Returns `nil` if the token is malformed or the payload is not valid JSON.
   static func decodePayload(from token: String) -> [String: Any]? {

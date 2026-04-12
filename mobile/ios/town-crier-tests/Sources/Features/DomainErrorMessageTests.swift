@@ -71,4 +71,36 @@ struct DomainErrorMessageTests {
       Issue.record("Expected insufficientEntitlement case")
     }
   }
+
+  // MARK: - serverError
+
+  @Test func serverError_hasServerErrorTitle() {
+    let error = DomainError.serverError(statusCode: 500, message: "Internal Server Error")
+    #expect(error.userTitle == "Server Error")
+  }
+
+  @Test func serverError_hasServerErrorMessage() {
+    let error = DomainError.serverError(statusCode: 500, message: "Internal Server Error")
+    #expect(error.userMessage == "The server encountered an error. Please try again later.")
+  }
+
+  @Test func serverError_isRetryable() {
+    #expect(DomainError.serverError(statusCode: 500, message: nil).isRetryable)
+  }
+
+  @Test func serverError_preservesStatusCode() {
+    let error = DomainError.serverError(statusCode: 400, message: "Bad Request")
+    if case .serverError(let statusCode, let message) = error {
+      #expect(statusCode == 400)
+      #expect(message == "Bad Request")
+    } else {
+      Issue.record("Expected serverError case")
+    }
+  }
+
+  @Test func serverError_isNotEqualToNetworkUnavailable() {
+    let server = DomainError.serverError(statusCode: 400, message: nil)
+    let network = DomainError.networkUnavailable
+    #expect(server != network)
+  }
 }

@@ -19,7 +19,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return dtos.map { $0.toDomain() }
   }
@@ -35,7 +35,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return dto.toDomain()
   }

@@ -28,7 +28,7 @@ public final class APISearchRepository: SearchRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return dto.toDomain()
   }

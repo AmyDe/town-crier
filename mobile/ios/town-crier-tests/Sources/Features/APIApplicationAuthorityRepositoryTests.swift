@@ -128,6 +128,17 @@ struct APIApplicationAuthorityRepositoryTests {
     }
   }
 
+  @Test("fetchAuthorities with server error throws serverError not networkUnavailable")
+  func fetchAuthorities_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      _ = try await sut.fetchAuthorities()
+    }
+  }
+
   @Test("fetchAuthorities with 403 insufficient entitlement throws insufficientEntitlement")
   func fetchAuthorities_insufficientEntitlement() async {
     let json = """

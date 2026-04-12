@@ -1,0 +1,28 @@
+# Retrieves the deployment API key for an Azure Static Web App,
+# masks it in logs, and exposes it as an output.
+# Requires an active Azure CLI session (see azure-login action).
+name: Get SWA Deployment Token
+description: Retrieve and mask the deployment token for an Azure Static Web App
+
+inputs:
+  swa-name:
+    description: Name of the Azure Static Web App resource
+    required: true
+
+outputs:
+  token:
+    description: Masked SWA deployment API key
+    value: ${{ steps.retrieve.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Retrieve SWA deployment token
+      id: retrieve
+      shell: bash
+      run: |
+        TOKEN=$(az staticwebapp secrets list \
+          --name "${{ inputs.swa-name }}" \
+          --query "properties.apiKey" -o tsv)
+        echo "::add-mask::$TOKEN"
+        echo "token=$TOKEN" >> "$GITHUB_OUTPUT"

@@ -100,7 +100,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
 
   private func mapToSession(_ credentials: Credentials) -> AuthSession {
     let profile = UserProfile(
-      userId: credentials.idToken,
+      userId: extractUserId(from: credentials) ?? credentials.idToken,
       email: extractEmail(from: credentials) ?? "",
       name: extractName(from: credentials)
     )
@@ -116,6 +116,10 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       userProfile: profile,
       subscriptionTier: tier
     )
+  }
+
+  private func extractUserId(from credentials: Credentials) -> String? {
+    JWTSubscriptionTierExtractor.extractSubject(from: credentials.idToken)
   }
 
   private func extractEmail(from credentials: Credentials) -> String? {

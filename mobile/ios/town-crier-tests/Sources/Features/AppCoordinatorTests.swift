@@ -13,6 +13,7 @@ struct AppCoordinatorTests {
       repository: spy,
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -66,6 +67,36 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
+  @Test func makeApplicationListViewModel_usesAuthorityRepository_whenAvailable() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(
+        authorities: [.cambridge],
+        count: 1
+      )
+    )
+    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    let coordinator = AppCoordinator(
+      repository: appSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    let vm = coordinator.makeApplicationListViewModel()
+
+    await vm.loadApplications()
+
+    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(vm.filteredApplications.count == 1)
+  }
+
   @Test func isOnboardingComplete_falseByDefault() {
     let (sut, _) = makeSUT()
 
@@ -79,6 +110,7 @@ struct AppCoordinatorTests {
       repository: SpyPlanningApplicationRepository(),
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
       onboardingRepository: onboardingRepoSpy,
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -86,6 +118,38 @@ struct AppCoordinatorTests {
     )
 
     #expect(sut.isOnboardingComplete)
+  }
+
+  // MARK: - Map ViewModel Factory
+
+  @Test func makeMapViewModel_usesAuthorityRepository() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(
+        authorities: [.cambridge],
+        count: 1
+      )
+    )
+    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    let coordinator = AppCoordinator(
+      repository: appSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    let vm = coordinator.makeMapViewModel(watchZone: .cambridge)
+
+    await vm.loadApplications()
+
+    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(vm.annotations.count == 1)
   }
 
   // MARK: - Settings ViewModel Factory
@@ -106,5 +170,45 @@ struct AppCoordinatorTests {
     let vm = sut.makeForceUpdateViewModel()
 
     #expect(!vm.requiresUpdate)
+  }
+
+  // MARK: - Settings Navigation (Legal Documents)
+
+  @Test func showPrivacyPolicy_setsPresentedLegalDocumentToPrivacyPolicy() {
+    let (sut, _) = makeSUT()
+
+    sut.showPrivacyPolicy()
+
+    #expect(sut.presentedLegalDocument == .privacyPolicy)
+  }
+
+  @Test func showTermsOfService_setsPresentedLegalDocumentToTermsOfService() {
+    let (sut, _) = makeSUT()
+
+    sut.showTermsOfService()
+
+    #expect(sut.presentedLegalDocument == .termsOfService)
+  }
+
+  @Test func presentedLegalDocument_isNilByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(sut.presentedLegalDocument == nil)
+  }
+
+  // MARK: - Settings Navigation (Manage Subscription)
+
+  @Test func showManageSubscription_setsIsManageSubscriptionPresentedToTrue() {
+    let (sut, _) = makeSUT()
+
+    sut.showManageSubscription()
+
+    #expect(sut.isManageSubscriptionPresented)
+  }
+
+  @Test func isManageSubscriptionPresented_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isManageSubscriptionPresented)
   }
 }

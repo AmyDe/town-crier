@@ -164,6 +164,42 @@ struct APIPlanningApplicationRepositoryTests {
     }
   }
 
+  @Test("fetchApplications with server error throws serverError not networkUnavailable")
+  func fetchApplications_serverError_throwsServerError() async throws {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+    let authority = LocalAuthority(code: "123", name: "Cambridge")
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      _ = try await sut.fetchApplications(for: authority)
+    }
+  }
+
+  @Test("fetchApplications with decoding error throws unexpected not networkUnavailable")
+  func fetchApplications_decodingError_throwsUnexpected() async throws {
+    // Return invalid JSON that can't be decoded to [PlanningApplicationDTO]
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("not json".utf8), httpResponse(statusCode: 200))
+    ])
+    let authority = LocalAuthority(code: "123", name: "Cambridge")
+
+    do {
+      _ = try await sut.fetchApplications(for: authority)
+      Issue.record("Expected error to be thrown")
+    } catch let error as DomainError {
+      // Should be .unexpected, not .networkUnavailable
+      #expect(error != DomainError.networkUnavailable)
+      if case .unexpected = error {
+        // correct
+      } else if case .serverError = error {
+        // also acceptable -- the point is it must NOT be networkUnavailable
+      } else {
+        Issue.record("Expected .unexpected or .serverError, got \(error)")
+      }
+    }
+  }
+
   // MARK: - fetchApplication
 
   @Test("fetchApplication sends GET /v1/applications/{uid}")
@@ -249,6 +285,19 @@ struct APIPlanningApplicationRepositoryTests {
 
     await #expect(throws: DomainError.applicationNotFound(PlanningApplicationId("missing"))) {
       _ = try await sut.fetchApplication(by: PlanningApplicationId("missing"))
+    }
+  }
+
+  @Test("fetchApplication with server error throws serverError not networkUnavailable")
+  func fetchApplication_serverError_throwsServerError() async throws {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Internal Server Error".utf8), httpResponse(statusCode: 500))
+    ])
+
+    await #expect(
+      throws: DomainError.serverError(statusCode: 500, message: "Internal Server Error")
+    ) {
+      _ = try await sut.fetchApplication(by: PlanningApplicationId("app-001"))
     }
   }
 

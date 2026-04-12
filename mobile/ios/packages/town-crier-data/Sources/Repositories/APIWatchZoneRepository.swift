@@ -19,12 +19,10 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
-    } catch is URLError {
-      throw DomainError.networkUnavailable
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 
@@ -35,7 +33,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return result.zones.compactMap { $0.toDomain() }
   }
@@ -51,7 +49,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 }

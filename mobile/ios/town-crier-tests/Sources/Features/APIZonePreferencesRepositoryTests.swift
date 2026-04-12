@@ -107,6 +107,19 @@ struct APIZonePreferencesRepositoryTests {
     }
   }
 
+  @Test("fetchPreferences with server error throws serverError not networkUnavailable")
+  func fetchPreferences_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Internal Server Error".utf8), httpResponse(statusCode: 500))
+    ])
+
+    await #expect(
+      throws: DomainError.serverError(statusCode: 500, message: "Internal Server Error")
+    ) {
+      _ = try await sut.fetchPreferences(zoneId: "zone-001")
+    }
+  }
+
   // MARK: - updatePreferences
 
   @Test("updatePreferences sends PUT /v1/me/watch-zones/{zoneId}/preferences with correct body")

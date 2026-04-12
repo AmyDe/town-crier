@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import TownCrierData
 import TownCrierDomain
@@ -42,11 +43,16 @@ struct TownCrierApp: App {
       connectivity: connectivityMonitor
     )
 
+    let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
+    let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
+
     let appCoordinator = AppCoordinator(
       repository: repository,
       authService: authService,
       subscriptionService: subscriptionService,
+      userProfileRepository: userProfileRepository,
       offlineRepository: offlineRepository,
+      authorityRepository: authorityRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -67,9 +73,7 @@ struct TownCrierApp: App {
       )
       let mapVM = appCoordinator.makeMapViewModel(watchZone: SampleData.watchZone)
     #else
-      let listVM = appCoordinator.makeApplicationListViewModel(
-        authority: LocalAuthority(code: "", name: "")
-      )
+      let listVM = appCoordinator.makeApplicationListViewModel()
       // swiftlint:disable force_try
       let mapVM = appCoordinator.makeMapViewModel(
         watchZone: try! WatchZone(
@@ -166,8 +170,27 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
-        SettingsView(viewModel: settingsViewModel)
+        SettingsView(
+          viewModel: settingsViewModel,
+          onManageSubscription: {
+            coordinator.showManageSubscription()
+          },
+          onPrivacyPolicy: {
+            coordinator.showPrivacyPolicy()
+          },
+          onTermsOfService: {
+            coordinator.showTermsOfService()
+          }
+        )
       }
+      .sheet(item: $coordinator.presentedLegalDocument) { documentType in
+        NavigationStack {
+          LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+        }
+      }
+      #if os(iOS)
+        .manageSubscriptionsSheet(isPresented: $coordinator.isManageSubscriptionPresented)
+      #endif
       .tabItem {
         Label("Settings", systemImage: "gearshape")
       }

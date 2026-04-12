@@ -13,6 +13,7 @@ struct DeepLinkTests {
       repository: spy,
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),

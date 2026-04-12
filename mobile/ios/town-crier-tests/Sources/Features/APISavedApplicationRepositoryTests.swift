@@ -75,6 +75,17 @@ struct APISavedApplicationRepositoryTests {
     }
   }
 
+  @Test("save with server error throws serverError not networkUnavailable")
+  func save_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      try await sut.save(applicationUid: "UID-1")
+    }
+  }
+
   // MARK: - remove
 
   @Test("remove sends DELETE /v1/me/saved-applications/{uid}")

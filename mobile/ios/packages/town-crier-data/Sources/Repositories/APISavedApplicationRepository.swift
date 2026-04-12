@@ -25,7 +25,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 
@@ -37,7 +37,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 
@@ -50,7 +50,7 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return dto.toDomain()
   }

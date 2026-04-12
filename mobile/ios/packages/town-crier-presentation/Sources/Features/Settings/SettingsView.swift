@@ -4,13 +4,23 @@ import TownCrierDomain
 /// Centralised settings screen: account, notifications, subscription, attribution, and account management.
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
-  var onNotificationPreferences: (() -> Void)?
-  var onManageSubscription: (() -> Void)?
-  var onPrivacyPolicy: (() -> Void)?
-  var onTermsOfService: (() -> Void)?
+  private var onNotificationPreferences: (() -> Void)?
+  private var onManageSubscription: (() -> Void)?
+  private var onPrivacyPolicy: (() -> Void)?
+  private var onTermsOfService: (() -> Void)?
 
-  public init(viewModel: SettingsViewModel) {
+  public init(
+    viewModel: SettingsViewModel,
+    onNotificationPreferences: (() -> Void)? = nil,
+    onManageSubscription: (() -> Void)? = nil,
+    onPrivacyPolicy: (() -> Void)? = nil,
+    onTermsOfService: (() -> Void)? = nil
+  ) {
     _viewModel = StateObject(wrappedValue: viewModel)
+    self.onNotificationPreferences = onNotificationPreferences
+    self.onManageSubscription = onManageSubscription
+    self.onPrivacyPolicy = onPrivacyPolicy
+    self.onTermsOfService = onTermsOfService
   }
 
   public var body: some View {
@@ -74,9 +84,9 @@ public struct SettingsView: View {
   }
 
   /// A tappable row with a label, SF Symbol icon, and trailing chevron disclosure indicator.
-  private func navigationRow(_ title: String, systemImage: String, action: @escaping () -> Void)
-    -> some View
-  {
+  private func navigationRow(
+    _ title: String, systemImage: String, action: @escaping () -> Void
+  ) -> some View {
     Button(action: action) {
       HStack {
         Label(title, systemImage: systemImage)
