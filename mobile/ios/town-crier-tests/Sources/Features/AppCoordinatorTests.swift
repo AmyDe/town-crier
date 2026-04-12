@@ -90,6 +90,38 @@ struct AppCoordinatorTests {
     #expect(sut.isOnboardingComplete)
   }
 
+  // MARK: - Map ViewModel Factory
+
+  @Test func makeMapViewModel_usesAuthorityRepository() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(
+        authorities: [.cambridge],
+        count: 1
+      )
+    )
+    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    let coordinator = AppCoordinator(
+      repository: appSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    let vm = coordinator.makeMapViewModel(watchZone: .cambridge)
+
+    await vm.loadApplications()
+
+    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(vm.annotations.count == 1)
+  }
+
   // MARK: - Settings ViewModel Factory
 
   @Test func makeSettingsViewModel_withRequiredDeps_createsViewModel() {
