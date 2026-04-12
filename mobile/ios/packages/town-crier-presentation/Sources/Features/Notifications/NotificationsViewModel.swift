@@ -18,12 +18,11 @@ public final class NotificationsViewModel: ObservableObject, ErrorHandlingViewMo
 
   private let repository: NotificationRepository
   private let pageSize: Int
-  private var currentPage = 1
-  private var lastPageHadMore = false
+  private var pagination = PaginationState()
 
   /// Whether more pages of results are available.
   public var hasMore: Bool {
-    lastPageHadMore
+    pagination.hasMore
   }
 
   /// Whether the load returned zero results after a completed load.
@@ -41,15 +40,14 @@ public final class NotificationsViewModel: ObservableObject, ErrorHandlingViewMo
     isLoading = true
     error = nil
     notifications = []
-    currentPage = 1
-    lastPageHadMore = false
+    pagination.reset()
     hasLoaded = true
 
     do {
       let page = try await repository.fetch(page: 1, pageSize: pageSize)
       notifications = page.notifications
       total = page.total
-      lastPageHadMore = page.hasMore
+      pagination.startInitialLoad(hasMore: page.hasMore)
     } catch {
       handleError(error)
     }
@@ -60,15 +58,13 @@ public final class NotificationsViewModel: ObservableObject, ErrorHandlingViewMo
   public func loadMore() async {
     guard hasMore else { return }
 
-    let nextPage = currentPage + 1
     isLoading = true
 
     do {
-      let page = try await repository.fetch(page: nextPage, pageSize: pageSize)
+      let page = try await repository.fetch(page: pagination.nextPage, pageSize: pageSize)
       notifications.append(contentsOf: page.notifications)
       total = page.total
-      currentPage = nextPage
-      lastPageHadMore = page.hasMore
+      pagination.advance(hasMore: page.hasMore)
     } catch {
       handleError(error)
     }
