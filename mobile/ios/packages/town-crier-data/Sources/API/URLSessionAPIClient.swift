@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TownCrierDomain
 
 /// Foundation HTTP client that injects Auth0 bearer tokens and handles
@@ -9,6 +10,10 @@ public final class URLSessionAPIClient: Sendable {
   private let transport: HTTPTransport
   private let decoder: JSONDecoder
   private let encoder: JSONEncoder
+
+  #if DEBUG
+    private static let logger = Logger(subsystem: "uk.towncrierapp", category: "APIClient")
+  #endif
 
   public init(
     baseURL: URL,
@@ -23,20 +28,41 @@ public final class URLSessionAPIClient: Sendable {
   }
 
   public func request<T: Decodable & Sendable>(_ endpoint: APIEndpoint) async throws -> T {
+    #if DEBUG
+      Self.logger.debug("▶ \(endpoint.method.rawValue) \(endpoint.path)")
+    #endif
+
     guard let session = await authService.currentSession() else {
+      #if DEBUG
+        Self.logger.error("✗ No active session — currentSession() returned nil")
+      #endif
       throw DomainError.sessionExpired
     }
+
+    #if DEBUG
+      let tokenPrefix = String(session.accessToken.prefix(20))
+      Self.logger.debug("✓ Session found (token: \(tokenPrefix)…)")
+    #endif
 
     do {
       return try await executeRequest(endpoint, accessToken: session.accessToken)
     } catch APIError.unauthorized {
+      #if DEBUG
+        Self.logger.warning("↻ Got 401 — refreshing token")
+      #endif
       do {
         let refreshed = try await authService.refreshSession()
         return try await executeRequest(endpoint, accessToken: refreshed.accessToken)
       } catch {
+        #if DEBUG
+          Self.logger.error("✗ Token refresh failed: \(error.localizedDescription)")
+        #endif
         throw DomainError.sessionExpired
       }
-    } catch is URLError {
+    } catch let urlError as URLError {
+      #if DEBUG
+        Self.logger.error("✗ URLError (network): \(urlError.localizedDescription)")
+      #endif
       throw DomainError.networkUnavailable
     }
   }
@@ -48,11 +74,25 @@ public final class URLSessionAPIClient: Sendable {
     accessToken: String
   ) async throws -> T {
     let urlRequest = try buildRequest(endpoint, accessToken: accessToken)
+
+    #if DEBUG
+      Self.logger.debug("→ \(urlRequest.httpMethod ?? "?") \(urlRequest.url?.absoluteString ?? "?")")
+    #endif
+
     let (data, response) = try await transport.data(for: urlRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
+      #if DEBUG
+        Self.logger.error("✗ Response is not HTTPURLResponse")
+      #endif
       throw APIError.serverError(statusCode: 0, message: "Invalid response")
     }
+
+    #if DEBUG
+      let statusCode = httpResponse.statusCode
+      let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
+      Self.logger.debug("← HTTP \(statusCode) (\(data.count) bytes): \(bodyPreview)")
+    #endif
 
     try mapHTTPStatus(httpResponse.statusCode, data: data)
 
@@ -64,6 +104,9 @@ public final class URLSessionAPIClient: Sendable {
     do {
       return try decoder.decode(T.self, from: data)
     } catch {
+      #if DEBUG
+        Self.logger.error("✗ Decoding failed: \(error.localizedDescription)")
+      #endif
       throw APIError.decodingFailed(error.localizedDescription)
     }
   }
@@ -121,8 +164,7 @@ public final class URLSessionAPIClient: Sendable {
 
   private func mapForbidden(data: Data) throws {
     if let body = try? decoder.decode(InsufficientEntitlementBody.self, from: data),
-      body.error == "insufficient_entitlement"
-    {
+      body.error == "insufficient_entitlement" {
       throw DomainError.insufficientEntitlement(required: body.required)
     }
     let message = String(data: data, encoding: .utf8)
