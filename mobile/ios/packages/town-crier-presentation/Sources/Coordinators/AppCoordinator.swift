@@ -80,6 +80,24 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
+  public func makeApplicationListViewModel() -> ApplicationListViewModel {
+    let viewModel: ApplicationListViewModel
+    if let authorityRepository {
+      viewModel = ApplicationListViewModel(
+        authorityRepository: authorityRepository,
+        applicationRepository: repository
+      )
+    } else {
+      viewModel = makeApplicationListViewModel(
+        authority: LocalAuthority(code: "", name: "")
+      )
+    }
+    viewModel.onApplicationSelected = { [weak self] id in
+      self?.showApplicationDetail(id)
+    }
+    return viewModel
+  }
+
   public func makeSettingsViewModel() -> SettingsViewModel {
     SettingsViewModel(
       authService: authService,
