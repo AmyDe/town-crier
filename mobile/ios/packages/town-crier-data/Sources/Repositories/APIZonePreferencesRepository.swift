@@ -16,7 +16,7 @@ public final class APIZonePreferencesRepository: ZonePreferencesRepository, Send
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
     return dto.toDomain()
   }
@@ -35,7 +35,7 @@ public final class APIZonePreferencesRepository: ZonePreferencesRepository, Send
     } catch let domainError as DomainError {
       throw domainError
     } catch {
-      throw DomainError.networkUnavailable
+      throw error.toDomainError()
     }
   }
 }
