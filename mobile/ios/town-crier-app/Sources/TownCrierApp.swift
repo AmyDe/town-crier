@@ -43,6 +43,7 @@ struct TownCrierApp: App {
     )
 
     let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
+    let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -50,6 +51,7 @@ struct TownCrierApp: App {
       subscriptionService: subscriptionService,
       userProfileRepository: userProfileRepository,
       offlineRepository: offlineRepository,
+      authorityRepository: authorityRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
