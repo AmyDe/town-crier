@@ -67,6 +67,36 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
+  @Test func makeApplicationListViewModel_usesAuthorityRepository_whenAvailable() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(
+        authorities: [.cambridge],
+        count: 1
+      )
+    )
+    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    let coordinator = AppCoordinator(
+      repository: appSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    let vm = coordinator.makeApplicationListViewModel()
+
+    await vm.loadApplications()
+
+    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(vm.filteredApplications.count == 1)
+  }
+
   @Test func isOnboardingComplete_falseByDefault() {
     let (sut, _) = makeSUT()
 
