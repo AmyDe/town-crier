@@ -9,7 +9,7 @@ public sealed class Notification
         string watchZoneId,
         string applicationAddress,
         string applicationDescription,
-        string applicationType,
+        string? applicationType,
         int authorityId,
         bool pushSent,
         bool emailSent,
@@ -40,7 +40,7 @@ public sealed class Notification
 
     public string ApplicationDescription { get; }
 
-    public string ApplicationType { get; }
+    public string? ApplicationType { get; }
 
     public int AuthorityId { get; }
 
@@ -56,7 +56,7 @@ public sealed class Notification
         string watchZoneId,
         string applicationAddress,
         string applicationDescription,
-        string applicationType,
+        string? applicationType,
         int authorityId,
         DateTimeOffset now)
     {
@@ -95,7 +95,7 @@ public sealed class Notification
         string watchZoneId,
         string applicationAddress,
         string applicationDescription,
-        string applicationType,
+        string? applicationType,
         int authorityId,
         bool pushSent,
         bool emailSent,

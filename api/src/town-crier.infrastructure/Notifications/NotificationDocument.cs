@@ -26,7 +26,7 @@ internal sealed class NotificationDocument
     public required string ApplicationDescription { get; init; }
 
     [JsonPropertyName("applicationType")]
-    public required string ApplicationType { get; init; }
+    public required string? ApplicationType { get; init; }
 
     [JsonPropertyName("authorityId")]
     public required int AuthorityId { get; init; }

@@ -5,5 +5,5 @@ public sealed record DemoApplicationResult(
     string Name,
     string Address,
     string Description,
-    string AppType,
-    string AppState);
+    string? AppType,
+    string? AppState);

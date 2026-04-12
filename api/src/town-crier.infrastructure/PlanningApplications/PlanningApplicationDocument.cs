@@ -23,9 +23,9 @@ internal sealed class PlanningApplicationDocument
 
     public required string Description { get; init; }
 
-    public required string AppType { get; init; }
+    public required string? AppType { get; init; }
 
-    public required string AppState { get; init; }
+    public required string? AppState { get; init; }
 
     public string? AppSize { get; init; }
 

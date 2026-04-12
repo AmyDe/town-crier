@@ -9,8 +9,8 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     self.apiClient = apiClient
   }
 
-  public func fetchApplications(for authority: LocalAuthority) async throws -> [PlanningApplication]
-  {
+  public func fetchApplications(for authority: LocalAuthority) async throws
+    -> [PlanningApplication] {
     let dtos: [PlanningApplicationDTO]
     do {
       dtos = try await apiClient.request(
@@ -51,8 +51,8 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let address: String
   let postcode: String?
   let description: String
-  let appType: String
-  let appState: String
+  let appType: String?
+  let appState: String?
   let appSize: String?
   let startDate: String?
   let decidedDate: String?
@@ -64,7 +64,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let lastDifferent: String
 
   func toDomain() -> PlanningApplication {
-    let status = mapAppState(appState)
+    let status = mapAppState(appState ?? "")
     let location = mapLocation()
     let portalUrl = url.flatMap { URL(string: $0) }
     let receivedDate = parseDate(startDate) ?? Date()
