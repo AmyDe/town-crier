@@ -329,7 +329,7 @@ public static class EnvironmentStack
 
         // Container Apps Jobs — polling and digest workers share the same shape,
         // differing only in name suffix, cron schedule, timeout, and WORKER_MODE.
-        var pollingJob = CreateWorkerJob("poll", "*/15 * * * *", replicaTimeout: 120, workerMode: null,
+        _ = CreateWorkerJob("poll", "*/15 * * * *", replicaTimeout: 120, workerMode: null,
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
@@ -381,7 +381,7 @@ public static class EnvironmentStack
             swaCustomDomainArgs.ValidationMethod = "dns-txt-token";
         }
 
-        var staticWebAppCustomDomain = new StaticSiteCustomDomain($"swa-domain-{env}", swaCustomDomainArgs);
+        _ = new StaticSiteCustomDomain($"swa-domain-{env}", swaCustomDomainArgs);
 
         return new Dictionary<string, object?>
         {
