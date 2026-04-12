@@ -171,4 +171,44 @@ struct AppCoordinatorTests {
 
     #expect(!vm.requiresUpdate)
   }
+
+  // MARK: - Settings Navigation (Legal Documents)
+
+  @Test func showPrivacyPolicy_setsPresentedLegalDocumentToPrivacyPolicy() {
+    let (sut, _) = makeSUT()
+
+    sut.showPrivacyPolicy()
+
+    #expect(sut.presentedLegalDocument == .privacyPolicy)
+  }
+
+  @Test func showTermsOfService_setsPresentedLegalDocumentToTermsOfService() {
+    let (sut, _) = makeSUT()
+
+    sut.showTermsOfService()
+
+    #expect(sut.presentedLegalDocument == .termsOfService)
+  }
+
+  @Test func presentedLegalDocument_isNilByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(sut.presentedLegalDocument == nil)
+  }
+
+  // MARK: - Settings Navigation (Manage Subscription)
+
+  @Test func showManageSubscription_setsIsManageSubscriptionPresentedToTrue() {
+    let (sut, _) = makeSUT()
+
+    sut.showManageSubscription()
+
+    #expect(sut.isManageSubscriptionPresented)
+  }
+
+  @Test func isManageSubscriptionPresented_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isManageSubscriptionPresented)
+  }
 }
