@@ -194,6 +194,28 @@ struct MapViewModelTests {
     #expect(!sut.isNetworkError)
   }
 
+  @Test func isServerError_trueForServerError() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(
+      DomainError.serverError(statusCode: 500, message: nil)
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.isServerError)
+    #expect(!sut.isNetworkError)
+  }
+
+  @Test func isServerError_falseForNetworkError() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+
+    await sut.loadApplications()
+
+    #expect(!sut.isServerError)
+    #expect(sut.isNetworkError)
+  }
+
   @Test func isSessionExpired_trueForSessionExpired() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
