@@ -19,8 +19,6 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
-    } catch let urlError as URLError {
-      throw urlError.toDomainError()
     } catch let domainError as DomainError {
       throw domainError
     } catch {
