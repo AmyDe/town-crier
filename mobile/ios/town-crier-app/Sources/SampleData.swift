@@ -1,8 +1,19 @@
-#if DEBUG
-  import Foundation
-  import TownCrierDomain
+import Foundation
+import TownCrierDomain
 
-  enum SampleData {
+enum SampleData {
+  // swiftlint:disable force_try
+  static let defaultWatchZone: WatchZone = {
+    let centre = try! Coordinate(latitude: 51.5550, longitude: -0.1450)
+    let postcode = try! Postcode("NW5 1SU")
+    let zone = try! WatchZone(postcode: postcode, centre: centre, radiusMetres: 2000)
+    return zone
+  }()
+  // swiftlint:enable force_try
+}
+
+#if DEBUG
+  extension SampleData {
     static let camden = LocalAuthority(code: "CMD", name: "Camden")
 
     static let applications: [PlanningApplication] = {
@@ -35,7 +46,6 @@
           authority: camden,
           status: .approved,
           receivedDate: daysAgo(45),
-          // swiftlint:disable:next line_length
           description:
             "Change of use from retail (Class E) to restaurant (Sui Generis) with extraction flue to rear",
           address: "87 Kentish Town Road, London NW1 8NY",
@@ -83,8 +93,7 @@
           status: .approved,
           receivedDate: daysAgo(60),
           // swiftlint:disable:next line_length
-          description:
-            "Listed building consent for internal alterations including removal of non-original partition walls and installation of new kitchen",
+          description: "Listed building consent for internal alterations including removal of non-original partition walls and installation of new kitchen",
           address: "12 Church Row, Hampstead, London NW3 6UP",
           location: try? Coordinate(latitude: 51.5575, longitude: -0.1775),
           portalUrl: URL(string: "https://planit.org.uk/planapplic/example5"),
@@ -129,7 +138,6 @@
           authority: camden,
           status: .undecided,
           receivedDate: daysAgo(2),
-          // swiftlint:disable:next line_length
           description:
             "Construction of basement level beneath existing garden for use as home gym and cinema room",
           address: "8 Nassington Road, London NW3 2TY",
@@ -140,15 +148,6 @@
           ]
         ),
       ]
-    }()
-
-    static let watchZone: WatchZone = {
-      // swiftlint:disable force_try
-      let centre = try! Coordinate(latitude: 51.5550, longitude: -0.1450)
-      let postcode = try! Postcode("NW5 1SU")
-      let zone = try! WatchZone(postcode: postcode, centre: centre, radiusMetres: 2000)
-      // swiftlint:enable force_try
-      return zone
     }()
   }
 #endif
