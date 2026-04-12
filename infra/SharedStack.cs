@@ -320,6 +320,7 @@ public static class SharedStack
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
+            ["appInsightsId"] = appInsights.Id,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
             ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationService.Name)
                 .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
