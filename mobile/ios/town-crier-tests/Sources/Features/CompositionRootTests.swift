@@ -126,6 +126,33 @@ struct CompositionRootTests {
     #expect(vm.annotations.isEmpty)
   }
 
+  @Test func coordinatorCreatesApplicationListViewModelWithAuthorityRepository() async {
+    let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+    let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
+
+    let coordinator = AppCoordinator(
+      repository: APIPlanningApplicationRepository(apiClient: apiClient),
+      authService: authService,
+      subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      authorityRepository: authorityRepository,
+      onboardingRepository: UserDefaultsOnboardingRepository(),
+      notificationService: CompositeNotificationService(
+        permissionProvider: SpyNotificationPermissionProvider(),
+        apiService: APINotificationService(apiClient: apiClient)
+      ),
+      appVersionProvider: BundleAppVersionProvider(),
+      versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+    )
+
+    let vm = coordinator.makeApplicationListViewModel()
+    #expect(vm.filteredApplications.isEmpty)
+    #expect(vm.error == nil)
+  }
+
   // MARK: - Helpers
 
   private func makeTestAuth0Config() -> Auth0Config {

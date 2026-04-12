@@ -72,9 +72,7 @@ struct TownCrierApp: App {
       )
       let mapVM = appCoordinator.makeMapViewModel(watchZone: SampleData.watchZone)
     #else
-      let listVM = appCoordinator.makeApplicationListViewModel(
-        authority: LocalAuthority(code: "", name: "")
-      )
+      let listVM = appCoordinator.makeApplicationListViewModel()
       // swiftlint:disable force_try
       let mapVM = appCoordinator.makeMapViewModel(
         watchZone: try! WatchZone(
