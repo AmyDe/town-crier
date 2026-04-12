@@ -78,4 +78,66 @@ struct JWTSubscriptionTierExtractorTests {
     let tier = JWTSubscriptionTierExtractor.extractTier(from: "header.!!!invalid!!!.signature")
     #expect(tier == .free)
   }
+
+  // MARK: - Subject (userId) extraction
+
+  @Test func extractSubject_returnsSubClaim_forAuth0User() {
+    // JWT payload: {"sub": "auth0|abc123", "email": "user@example.com"}
+    let jwt =
+      Self.header
+      + ".eyJzdWIiOiAiYXV0aDB8YWJjMTIzIiwgImVtYWlsIjogInVzZXJAZXhhbXBsZS5jb20ifQ"
+      + ".fakesignature"
+
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: jwt)
+
+    #expect(subject == "auth0|abc123")
+  }
+
+  @Test func extractSubject_returnsSubClaim_forGoogleUser() {
+    // JWT payload: {"sub": "google-oauth2|112233", "email": "user@gmail.com"}
+    let jwt =
+      Self.header
+      + ".eyJzdWIiOiAiZ29vZ2xlLW9hdXRoMnwxMTIyMzMiLCAiZW1haWwiOiAidXNlckBnbWFpbC5jb20ifQ"
+      + ".fakesignature"
+
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: jwt)
+
+    #expect(subject == "google-oauth2|112233")
+  }
+
+  @Test func extractSubject_returnsSubClaim_forAppleUser() {
+    // JWT payload: {"sub": "apple|001122", "email": "user@privaterelay.appleid.com"}
+    let jwt =
+      Self.header
+      + ".eyJzdWIiOiAiYXBwbGV8MDAxMTIyIiwgImVtYWlsIjogInVzZXJAcHJpdmF0ZXJlbGF5LmFwcGxlaWQuY29tIn0"
+      + ".fakesignature"
+
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: jwt)
+
+    #expect(subject == "apple|001122")
+  }
+
+  @Test func extractSubject_returnsNil_whenSubClaimIsMissing() {
+    // JWT payload: {"email": "user@example.com"}
+    let jwt =
+      Self.header
+      + ".eyJlbWFpbCI6ICJ1c2VyQGV4YW1wbGUuY29tIn0"
+      + ".fakesignature"
+
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: jwt)
+
+    #expect(subject == nil)
+  }
+
+  @Test func extractSubject_returnsNil_whenTokenIsMalformed() {
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: "not-a-jwt")
+
+    #expect(subject == nil)
+  }
+
+  @Test func extractSubject_returnsNil_whenTokenIsEmpty() {
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: "")
+
+    #expect(subject == nil)
+  }
 }
