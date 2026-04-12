@@ -140,4 +140,33 @@ struct JWTSubscriptionTierExtractorTests {
 
     #expect(subject == nil)
   }
+
+  // MARK: - Subject produces correct AuthMethod
+
+  @Test func extractedSubject_producesCorrectAuthMethod() {
+    // JWT payload: {"sub": "auth0|abc123", "email": "user@example.com"}
+    let jwt =
+      Self.header
+      + ".eyJzdWIiOiAiYXV0aDB8YWJjMTIzIiwgImVtYWlsIjogInVzZXJAZXhhbXBsZS5jb20ifQ"
+      + ".fakesignature"
+
+    let subject = JWTSubscriptionTierExtractor.extractSubject(from: jwt)
+    let profile = UserProfile(userId: subject ?? "", email: "user@example.com")
+
+    #expect(profile.authMethod == .emailPassword)
+  }
+
+  @Test func rawJWTAsUserId_producesUnknownAuthMethod() {
+    // This documents the bug: passing a raw JWT string as userId
+    // results in .unknown because JWT strings start with "eyJ", not
+    // a recognised provider prefix like "auth0|".
+    let rawJWT =
+      Self.header
+      + ".eyJzdWIiOiAiYXV0aDB8YWJjMTIzIn0"
+      + ".fakesignature"
+
+    let profile = UserProfile(userId: rawJWT, email: "user@example.com")
+
+    #expect(profile.authMethod == .unknown)
+  }
 }
