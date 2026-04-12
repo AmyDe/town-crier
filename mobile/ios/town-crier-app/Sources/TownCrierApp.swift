@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import TownCrierData
 import TownCrierDomain
@@ -169,8 +170,27 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
-        SettingsView(viewModel: settingsViewModel)
+        SettingsView(
+          viewModel: settingsViewModel,
+          onManageSubscription: {
+            coordinator.showManageSubscription()
+          },
+          onPrivacyPolicy: {
+            coordinator.showPrivacyPolicy()
+          },
+          onTermsOfService: {
+            coordinator.showTermsOfService()
+          }
+        )
       }
+      .sheet(item: $coordinator.presentedLegalDocument) { documentType in
+        NavigationStack {
+          LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+        }
+      }
+      #if os(iOS)
+        .manageSubscriptionsSheet(isPresented: $coordinator.isManageSubscriptionPresented)
+      #endif
       .tabItem {
         Label("Settings", systemImage: "gearshape")
       }
