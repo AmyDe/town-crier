@@ -41,22 +41,27 @@ struct APIPlanningApplicationRepositoryTests {
 
   // MARK: - fetchApplications
 
-  @Test("fetchApplications sends GET /v1/applications with authorityId query param")
+  @Test("fetchApplications sends GET /v1/me/watch-zones/{zoneId}/applications")
   func fetchApplications_sendsCorrectRequest() async throws {
     let json = "[]"
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-123"),
+      name: "Camden",
+      centre: Coordinate(latitude: 51.539, longitude: -0.1426),
+      radiusMetres: 1000,
+      authorityId: 42
+    )
     let (sut, _, transport) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    _ = try await sut.fetchApplications(for: authority)
+    _ = try await sut.fetchApplications(for: zone)
 
     #expect(transport.requests.count == 1)
     let request = transport.requests[0]
     #expect(request.httpMethod == "GET")
     let url = try #require(request.url)
-    #expect(url.path().contains("/v1/applications"))
-    #expect(url.query()?.contains("authorityId=123") == true)
+    #expect(url.path() == "/v1/me/watch-zones/zone-123/applications")
   }
 
   @Test("fetchApplications maps API response to domain models")
