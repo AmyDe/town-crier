@@ -13,7 +13,7 @@ enum JWTSubscriptionTierExtractor {
   static func extractTier(from accessToken: String) -> SubscriptionTier {
     guard let payload = decodePayload(from: accessToken),
       let tierString = payload["subscription_tier"] as? String,
-      let tier = SubscriptionTier(rawValue: tierString)
+      let tier = SubscriptionTier(rawValue: tierString.lowercased())
     else {
       return .free
     }
