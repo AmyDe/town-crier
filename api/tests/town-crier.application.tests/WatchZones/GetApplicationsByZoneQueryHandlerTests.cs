@@ -52,4 +52,47 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
         await Assert.That(result!.Count).IsEqualTo(1);
         await Assert.That(result[0].Uid).IsEqualTo("uid-nearby");
     }
+
+    [Test]
+    public async Task Should_ReturnNull_When_ZoneNotFound()
+    {
+        // Arrange
+        var watchZoneRepo = new FakeWatchZoneRepository();
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new GetApplicationsByZoneQueryHandler(watchZoneRepo, appRepo);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetApplicationsByZoneQuery("user-1", "nonexistent"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_ZoneOwnedByDifferentUser()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("other-user")
+            .WithName("Their Zone")
+            .WithCentre(51.5390, -0.1426)
+            .WithRadiusMetres(1000)
+            .WithAuthorityId(42)
+            .Build();
+
+        var watchZoneRepo = new FakeWatchZoneRepository();
+        watchZoneRepo.Add(zone);
+
+        var appRepo = new FakePlanningApplicationRepository();
+        var handler = new GetApplicationsByZoneQueryHandler(watchZoneRepo, appRepo);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetApplicationsByZoneQuery("user-1", "zone-1"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
 }
