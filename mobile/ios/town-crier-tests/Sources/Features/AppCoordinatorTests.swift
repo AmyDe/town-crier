@@ -14,6 +14,7 @@ struct AppCoordinatorTests {
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -83,6 +84,7 @@ struct AppCoordinatorTests {
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
       authorityRepository: authoritySpy,
+      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -111,6 +113,7 @@ struct AppCoordinatorTests {
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: onboardingRepoSpy,
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -138,12 +141,13 @@ struct AppCoordinatorTests {
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
       authorityRepository: authoritySpy,
+      watchZoneRepository: SpyWatchZoneRepository(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService()
     )
-    let vm = coordinator.makeMapViewModel(watchZone: .cambridge)
+    let vm = coordinator.makeMapViewModel()
 
     await vm.loadApplications()
 

@@ -10,15 +10,15 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var selectedApplication: PlanningApplication?
   @Published private(set) var hasLoaded = false
 
-  let centreLat: Double
-  let centreLon: Double
-  let radiusMetres: Double
+  @Published private(set) var centreLat: Double = 51.5074
+  @Published private(set) var centreLon: Double = -0.1278
+  @Published private(set) var radiusMetres: Double = 2000
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
   private let authorityRepository: ApplicationAuthorityRepository?
   private let applicationRepository: PlanningApplicationRepository?
-  private let watchZone: WatchZone
+  private let watchZoneRepository: WatchZoneRepository
   private var applications: [PlanningApplication] = []
 
   public var isEmpty: Bool {
@@ -40,47 +40,44 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
-  public init(repository: PlanningApplicationRepository, watchZone: WatchZone) {
+  public init(repository: PlanningApplicationRepository, watchZoneRepository: WatchZoneRepository) {
     self.repository = repository
     self.offlineRepository = nil
     self.authorityRepository = nil
     self.applicationRepository = nil
-    self.watchZone = watchZone
-    self.centreLat = watchZone.centre.latitude
-    self.centreLon = watchZone.centre.longitude
-    self.radiusMetres = watchZone.radiusMetres
+    self.watchZoneRepository = watchZoneRepository
   }
 
-  public init(offlineRepository: OfflineAwareRepository, watchZone: WatchZone) {
+  public init(offlineRepository: OfflineAwareRepository, watchZoneRepository: WatchZoneRepository) {
     self.repository = nil
     self.offlineRepository = offlineRepository
     self.authorityRepository = nil
     self.applicationRepository = nil
-    self.watchZone = watchZone
-    self.centreLat = watchZone.centre.latitude
-    self.centreLon = watchZone.centre.longitude
-    self.radiusMetres = watchZone.radiusMetres
+    self.watchZoneRepository = watchZoneRepository
   }
 
   public init(
     authorityRepository: ApplicationAuthorityRepository,
     applicationRepository: PlanningApplicationRepository,
-    watchZone: WatchZone
+    watchZoneRepository: WatchZoneRepository
   ) {
     self.repository = nil
     self.offlineRepository = nil
     self.authorityRepository = authorityRepository
     self.applicationRepository = applicationRepository
-    self.watchZone = watchZone
-    self.centreLat = watchZone.centre.latitude
-    self.centreLon = watchZone.centre.longitude
-    self.radiusMetres = watchZone.radiusMetres
+    self.watchZoneRepository = watchZoneRepository
   }
 
   public func loadApplications() async {
     isLoading = true
     error = nil
     do {
+      if let zone = try? await watchZoneRepository.loadAll().first {
+        centreLat = zone.centre.latitude
+        centreLon = zone.centre.longitude
+        radiusMetres = zone.radiusMetres
+      }
+
       let fetched: [PlanningApplication]
       if let authorityRepository, let applicationRepository {
         fetched = try await fetchViaAuthorities(

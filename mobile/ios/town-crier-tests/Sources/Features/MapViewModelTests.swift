@@ -9,18 +9,20 @@ import TownCrierDomain
 struct MapViewModelTests {
   private func makeSUT(
     applications: [PlanningApplication] = [],
-    watchZone: WatchZone = .cambridge
-  ) -> (MapViewModel, SpyPlanningApplicationRepository) {
+    watchZones: [WatchZone] = [.cambridge]
+  ) -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository) {
     let spy = SpyPlanningApplicationRepository()
     spy.fetchApplicationsResult = .success(applications)
-    let vm = MapViewModel(repository: spy, watchZone: watchZone)
-    return (vm, spy)
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success(watchZones)
+    let vm = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
+    return (vm, spy, watchZoneSpy)
   }
 
   private func makeSUTWithAuthorities(
     authorities: [LocalAuthority] = [.cambridge],
     applicationsByAuthority: [String: [PlanningApplication]] = [:],
-    watchZone: WatchZone = .cambridge
+    watchZones: [WatchZone] = [.cambridge]
   ) -> (MapViewModel, SpyApplicationAuthorityRepository, SpyPlanningApplicationRepository) {
     let authoritySpy = SpyApplicationAuthorityRepository()
     authoritySpy.fetchAuthoritiesResult = .success(
@@ -28,10 +30,12 @@ struct MapViewModelTests {
     )
     let appSpy = SpyPlanningApplicationRepository()
     appSpy.fetchApplicationsByAuthority = applicationsByAuthority
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success(watchZones)
     let vm = MapViewModel(
       authorityRepository: authoritySpy,
       applicationRepository: appSpy,
-      watchZone: watchZone
+      watchZoneRepository: watchZoneSpy
     )
     return (vm, authoritySpy, appSpy)
   }
@@ -40,7 +44,7 @@ struct MapViewModelTests {
 
   @Test func loadApplications_populatesAnnotations() async {
     let apps = [PlanningApplication.pendingReview, .approved, .refused, .withdrawn]
-    let (sut, _) = makeSUT(applications: apps)
+    let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
 
@@ -48,7 +52,7 @@ struct MapViewModelTests {
   }
 
   @Test func loadApplications_setsIsLoadingDuringFetch() async {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     #expect(!sut.isLoading)
     await sut.loadApplications()
@@ -56,7 +60,7 @@ struct MapViewModelTests {
   }
 
   @Test func loadApplications_setsErrorOnFailure() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -69,7 +73,7 @@ struct MapViewModelTests {
 
   @Test func annotations_haveCorrectStatus() async {
     let apps: [PlanningApplication] = [.pendingReview, .approved, .refused, .withdrawn]
-    let (sut, _) = makeSUT(applications: apps)
+    let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
 
@@ -95,7 +99,7 @@ struct MapViewModelTests {
       address: "Unknown",
       location: nil
     )
-    let (sut, _) = makeSUT(applications: [.pendingReview, noLocation])
+    let (sut, _, _) = makeSUT(applications: [.pendingReview, noLocation])
 
     await sut.loadApplications()
 
@@ -105,24 +109,47 @@ struct MapViewModelTests {
 
   // MARK: - Watch zone
 
-  @Test func watchZoneCentre_matchesProvidedZone() throws {
+  @Test func loadApplications_setsCentreFromWatchZone() async throws {
     let zone = try WatchZone(
       postcode: Postcode("SW1A 1AA"),
       centre: Coordinate(latitude: 51.5, longitude: -0.1),
       radiusMetres: 3000
     )
-    let (sut, _) = makeSUT(watchZone: zone)
+    let (sut, _, _) = makeSUT(watchZones: [zone])
+
+    await sut.loadApplications()
 
     #expect(sut.centreLat == 51.5)
     #expect(sut.centreLon == -0.1)
     #expect(sut.radiusMetres == 3000)
   }
 
+  @Test func loadApplications_usesDefaultCentre_whenWatchZoneFetchFails() async {
+    let (sut, _, watchZoneSpy) = makeSUT()
+    watchZoneSpy.loadAllResult = .failure(DomainError.networkUnavailable)
+
+    await sut.loadApplications()
+
+    // Falls back to London defaults
+    #expect(sut.centreLat == 51.5074)
+    #expect(sut.centreLon == -0.1278)
+    #expect(sut.radiusMetres == 2000)
+    #expect(sut.error == nil)
+  }
+
+  @Test func loadApplications_fetchesWatchZone() async {
+    let (sut, _, watchZoneSpy) = makeSUT()
+
+    await sut.loadApplications()
+
+    #expect(watchZoneSpy.loadAllCallCount == 1)
+  }
+
   // MARK: - Selection
 
   @Test func selectAnnotation_setsSelectedApplication() async {
     let apps = [PlanningApplication.pendingReview]
-    let (sut, _) = makeSUT(applications: apps)
+    let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
     sut.selectApplication(PlanningApplicationId("APP-001"))
@@ -132,7 +159,7 @@ struct MapViewModelTests {
 
   @Test func selectAnnotation_nilClearsSelection() async {
     let apps = [PlanningApplication.pendingReview]
-    let (sut, _) = makeSUT(applications: apps)
+    let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
     sut.selectApplication(PlanningApplicationId("APP-001"))
@@ -144,7 +171,7 @@ struct MapViewModelTests {
   // MARK: - Empty State
 
   @Test func isEmpty_trueWhenNoAnnotationsAfterLoad() async {
-    let (sut, _) = makeSUT(applications: [])
+    let (sut, _, _) = makeSUT(applications: [])
 
     await sut.loadApplications()
 
@@ -152,7 +179,7 @@ struct MapViewModelTests {
   }
 
   @Test func isEmpty_falseWhenAnnotationsExist() async {
-    let (sut, _) = makeSUT(applications: [.pendingReview])
+    let (sut, _, _) = makeSUT(applications: [.pendingReview])
 
     await sut.loadApplications()
 
@@ -160,13 +187,13 @@ struct MapViewModelTests {
   }
 
   @Test func isEmpty_falseWhileLoading() async {
-    let (sut, _) = makeSUT()
+    let (sut, _, _) = makeSUT()
 
     #expect(!sut.isEmpty)
   }
 
   @Test func isEmpty_falseWhenErrorOccurred() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -177,7 +204,7 @@ struct MapViewModelTests {
   // MARK: - Error Classification
 
   @Test func isNetworkError_trueForNetworkUnavailable() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -186,7 +213,7 @@ struct MapViewModelTests {
   }
 
   @Test func isNetworkError_falseForOtherErrors() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
 
     await sut.loadApplications()
@@ -195,7 +222,7 @@ struct MapViewModelTests {
   }
 
   @Test func isServerError_trueForServerError() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(
       DomainError.serverError(statusCode: 500, message: nil)
     )
@@ -207,7 +234,7 @@ struct MapViewModelTests {
   }
 
   @Test func isServerError_falseForNetworkError() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -217,7 +244,7 @@ struct MapViewModelTests {
   }
 
   @Test func isSessionExpired_trueForSessionExpired() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
 
     await sut.loadApplications()
@@ -226,7 +253,7 @@ struct MapViewModelTests {
   }
 
   @Test func isSessionExpired_falseForOtherErrors() async {
-    let (sut, spy) = makeSUT()
+    let (sut, spy, _) = makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()

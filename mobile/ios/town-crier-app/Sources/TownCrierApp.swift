@@ -45,6 +45,7 @@ struct TownCrierApp: App {
 
     let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
+    let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -53,6 +54,7 @@ struct TownCrierApp: App {
       userProfileRepository: userProfileRepository,
       offlineRepository: offlineRepository,
       authorityRepository: authorityRepository,
+      watchZoneRepository: watchZoneRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -68,15 +70,7 @@ struct TownCrierApp: App {
     )
 
     let listVM = appCoordinator.makeApplicationListViewModel()
-    // swiftlint:disable force_try
-    let mapVM = appCoordinator.makeMapViewModel(
-      watchZone: try! WatchZone(
-        postcode: try! Postcode("NW5 1SU"),
-        centre: try! Coordinate(latitude: 51.5550, longitude: -0.1450),
-        radiusMetres: 2000
-      )
-    )
-    // swiftlint:enable force_try
+    let mapVM = appCoordinator.makeMapViewModel()
 
     _applicationListViewModel = StateObject(wrappedValue: listVM)
     _mapViewModel = StateObject(wrappedValue: mapVM)
