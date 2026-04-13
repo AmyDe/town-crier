@@ -37,18 +37,29 @@ function makeToggle(
 export function useMapData(port: MapPort) {
   const { data, isLoading, error, refresh } = useFetchData<MapData>(
     async () => {
-      const [authorities, savedApps] = await Promise.all([
-        port.fetchMyAuthorities(),
+      const [zones, savedApps] = await Promise.all([
+        port.fetchMyZones(),
         port.fetchSavedApplications(),
       ]);
 
-      const uniqueAuthorityIds = [...new Set(authorities.map(a => a.id))];
       const applicationArrays = await Promise.all(
-        uniqueAuthorityIds.map(id => port.fetchApplicationsByAuthority(id)),
+        zones.map(z => port.fetchApplicationsByZone(z.id)),
       );
 
+      // Deduplicate across zones (applications may appear in overlapping zones)
+      const seen = new Set<string>();
+      const deduped: PlanningApplication[] = [];
+      for (const apps of applicationArrays) {
+        for (const app of apps) {
+          if (!seen.has(app.uid as string)) {
+            seen.add(app.uid as string);
+            deduped.push(app);
+          }
+        }
+      }
+
       return {
-        applications: applicationArrays.flat(),
+        applications: deduped,
         fetchedSavedUids: new Set(savedApps.map(s => s.applicationUid)),
       };
     },
