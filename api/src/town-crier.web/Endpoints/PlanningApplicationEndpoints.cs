@@ -18,16 +18,6 @@ internal static class PlanningApplicationEndpoints
             return Results.Ok(result);
         });
 
-        group.MapGet("/applications", async (
-            int authorityId,
-            GetApplicationsByAuthorityQueryHandler handler,
-            CancellationToken ct) =>
-        {
-            var result = await handler.HandleAsync(
-                new GetApplicationsByAuthorityQuery(authorityId), ct).ConfigureAwait(false);
-            return Results.Ok(result);
-        });
-
         group.MapGet("/applications/{**uid}", async (
             string uid,
             GetApplicationByUidQueryHandler handler,

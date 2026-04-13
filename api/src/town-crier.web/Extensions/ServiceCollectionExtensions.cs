@@ -155,7 +155,6 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
         services.AddTransient<GetApplicationByUidQueryHandler>();
-        services.AddTransient<GetApplicationsByAuthorityQueryHandler>();
         services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
         services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 

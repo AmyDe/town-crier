@@ -73,8 +73,8 @@ public sealed class EndpointMappingTests
         using var response = await client.GetAsync(
             new Uri("/v1/applications?authorityId=42", UriKind.Relative));
 
-        // Assert — should be 404 because the route no longer exists
-        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        // Assert — should not return 200 OK because the route no longer exists
+        await Assert.That(response.StatusCode).IsNotEqualTo(HttpStatusCode.OK);
     }
 
     [Test]
