@@ -13,6 +13,7 @@ struct TownCrierApp: App {
   @StateObject private var settingsViewModel: SettingsViewModel
   @StateObject private var applicationListViewModel: ApplicationListViewModel
   @StateObject private var mapViewModel: MapViewModel
+  @StateObject private var watchZoneListViewModel: WatchZoneListViewModel
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
 
@@ -46,6 +47,7 @@ struct TownCrierApp: App {
     let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
+    let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -55,6 +57,7 @@ struct TownCrierApp: App {
       offlineRepository: offlineRepository,
       authorityRepository: authorityRepository,
       watchZoneRepository: watchZoneRepository,
+      geocoder: geocoder,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -74,6 +77,9 @@ struct TownCrierApp: App {
 
     _applicationListViewModel = StateObject(wrappedValue: listVM)
     _mapViewModel = StateObject(wrappedValue: mapVM)
+
+    let watchZoneListVM = appCoordinator.makeWatchZoneListViewModel()
+    _watchZoneListViewModel = StateObject(wrappedValue: watchZoneListVM)
 
     let settingsVM = appCoordinator.makeSettingsViewModel()
     settingsVM.onLogout = {
@@ -154,6 +160,23 @@ struct TownCrierApp: App {
       }
       .tabItem {
         Label("Map", systemImage: "map")
+      }
+
+      NavigationStack {
+        WatchZoneListView(viewModel: watchZoneListViewModel)
+      }
+      .sheet(isPresented: $coordinator.isAddingWatchZone) {
+        WatchZoneEditorView(
+          viewModel: coordinator.makeWatchZoneEditorViewModel()
+        )
+      }
+      .sheet(item: $coordinator.editingWatchZone) { zone in
+        WatchZoneEditorView(
+          viewModel: coordinator.makeWatchZoneEditorViewModel(editing: zone)
+        )
+      }
+      .tabItem {
+        Label("Zones", systemImage: "mappin.and.ellipse")
       }
 
       NavigationStack {
