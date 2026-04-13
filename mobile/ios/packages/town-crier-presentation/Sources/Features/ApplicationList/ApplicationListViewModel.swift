@@ -11,7 +11,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
-  private let zone: WatchZone
+  private let watchZoneRepository: WatchZoneRepository?
+  private var zone: WatchZone?
   private let tier: SubscriptionTier
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
@@ -51,6 +52,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   ) {
     self.repository = repository
     self.offlineRepository = nil
+    self.watchZoneRepository = nil
     self.zone = zone
     self.tier = tier
   }
@@ -62,7 +64,32 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
+    self.watchZoneRepository = nil
     self.zone = zone
+    self.tier = tier
+  }
+
+  public init(
+    watchZoneRepository: WatchZoneRepository,
+    repository: PlanningApplicationRepository,
+    tier: SubscriptionTier = .free
+  ) {
+    self.repository = repository
+    self.offlineRepository = nil
+    self.watchZoneRepository = watchZoneRepository
+    self.zone = nil
+    self.tier = tier
+  }
+
+  public init(
+    watchZoneRepository: WatchZoneRepository,
+    offlineRepository: OfflineAwareRepository,
+    tier: SubscriptionTier = .free
+  ) {
+    self.repository = nil
+    self.offlineRepository = offlineRepository
+    self.watchZoneRepository = watchZoneRepository
+    self.zone = nil
     self.tier = tier
   }
 
@@ -70,6 +97,17 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = true
     error = nil
     do {
+      if zone == nil, let watchZoneRepository {
+        let zones = try await watchZoneRepository.loadAll()
+        zone = zones.first
+      }
+
+      guard let zone else {
+        applications = []
+        isLoading = false
+        return
+      }
+
       let fetched: [PlanningApplication]
       if let offlineRepository {
         let entry = try await offlineRepository.fetchApplications(for: zone)

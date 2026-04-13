@@ -69,14 +69,28 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
-  @Test func makeApplicationListViewModel_noArgUsesPlaceholderZone() async {
-    let (sut, spy) = makeSUT()
-    spy.fetchApplicationsResult = .success([.pendingReview])
-    let vm = sut.makeApplicationListViewModel()
+  @Test func makeApplicationListViewModel_noArg_resolvesZoneFromRepository() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([.pendingReview])
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let coordinator = AppCoordinator(
+      repository: appSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: zoneSpy,
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    let vm = coordinator.makeApplicationListViewModel()
 
     await vm.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.count == 1)
+    #expect(zoneSpy.loadAllCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
     #expect(vm.filteredApplications.count == 1)
   }
 

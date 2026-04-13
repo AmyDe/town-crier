@@ -206,6 +206,74 @@ struct ApplicationListViewModelTests {
     #expect(!sut.isSessionExpired)
   }
 
+  // MARK: - Zone Resolution
+
+  @Test func loadApplications_withWatchZoneRepository_resolvesFirstZoneAndFetches() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([.pendingReview])
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(zoneSpy.loadAllCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.count == 1)
+    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(sut.filteredApplications.count == 1)
+  }
+
+  @Test func loadApplications_withWatchZoneRepository_noZones_showsEmptyNotError() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.filteredApplications.isEmpty)
+    #expect(sut.error == nil)
+    #expect(!sut.isLoading)
+  }
+
+  @Test func loadApplications_withWatchZoneRepository_zoneFetchFails_setsError() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .failure(DomainError.networkUnavailable)
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.error == .networkUnavailable)
+    #expect(appSpy.fetchApplicationsCalls.isEmpty)
+  }
+
+  @Test func loadApplications_withWatchZoneRepository_cachesResolvedZoneOnRetry() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([.pendingReview])
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy
+    )
+
+    await sut.loadApplications()
+    await sut.loadApplications()
+
+    #expect(zoneSpy.loadAllCallCount == 1)
+    #expect(appSpy.fetchApplicationsCalls.count == 2)
+  }
+
   // MARK: - Empty State
 
   @Test func isEmpty_trueWhenNoApplicationsLoaded() async throws {

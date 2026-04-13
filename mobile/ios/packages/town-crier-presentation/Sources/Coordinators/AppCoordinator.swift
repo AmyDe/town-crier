@@ -85,16 +85,24 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
-  /// Creates a list view model using a placeholder zone.
-  /// Callers should prefer `makeApplicationListViewModel(zone:)` when a real zone is available.
+  /// Creates a list view model that resolves the user's first watch zone at load time.
+  /// Callers should prefer `makeApplicationListViewModel(zone:)` when a specific zone is known.
   public func makeApplicationListViewModel() -> ApplicationListViewModel {
-    // swiftlint:disable:next force_try
-    let placeholder = try! WatchZone(
-      name: "Default",
-      centre: Coordinate(latitude: 0, longitude: 0),
-      radiusMetres: 1
-    )
-    let viewModel = makeApplicationListViewModel(zone: placeholder)
+    let viewModel: ApplicationListViewModel
+    if let offlineRepository {
+      viewModel = ApplicationListViewModel(
+        watchZoneRepository: watchZoneRepository,
+        offlineRepository: offlineRepository
+      )
+    } else {
+      viewModel = ApplicationListViewModel(
+        watchZoneRepository: watchZoneRepository,
+        repository: repository
+      )
+    }
+    viewModel.onApplicationSelected = { [weak self] id in
+      self?.showApplicationDetail(id)
+    }
     return viewModel
   }
 
