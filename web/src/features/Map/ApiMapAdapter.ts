@@ -1,24 +1,27 @@
 import type { ApiClient } from '../../api/client';
-import type { ApplicationUid, AuthorityId, AuthorityListItem, PlanningApplication, SavedApplication } from '../../domain/types';
+import type { ApplicationUid, WatchZoneId, WatchZoneSummary, PlanningApplication, SavedApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { applicationsApi } from '../../api/applications';
+import { watchZonesApi } from '../../api/watchZones';
 import { savedApplicationsApi } from '../../api/savedApplications';
 
 export class ApiMapAdapter implements MapPort {
   private readonly apps: ReturnType<typeof applicationsApi>;
+  private readonly zones: ReturnType<typeof watchZonesApi>;
   private readonly saved: ReturnType<typeof savedApplicationsApi>;
 
   constructor(client: ApiClient) {
     this.apps = applicationsApi(client);
+    this.zones = watchZonesApi(client);
     this.saved = savedApplicationsApi(client);
   }
 
-  async fetchMyAuthorities(): Promise<readonly AuthorityListItem[]> {
-    return this.apps.getMyAuthorities();
+  async fetchMyZones(): Promise<readonly WatchZoneSummary[]> {
+    return this.zones.list();
   }
 
-  async fetchApplicationsByAuthority(authorityId: AuthorityId): Promise<readonly PlanningApplication[]> {
-    return this.apps.getByAuthority(authorityId as number);
+  async fetchApplicationsByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplication[]> {
+    return this.apps.getByZone(zoneId as string);
   }
 
   async fetchSavedApplications(): Promise<readonly SavedApplication[]> {

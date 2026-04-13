@@ -1,6 +1,6 @@
-import type { AuthorityId, PlanningApplicationSummary, WatchZoneSummary } from '../types';
+import type { WatchZoneId, PlanningApplicationSummary, WatchZoneSummary } from '../types';
 
 export interface DashboardPort {
   fetchWatchZones(): Promise<readonly WatchZoneSummary[]>;
-  fetchRecentApplications(authorityId: AuthorityId): Promise<readonly PlanningApplicationSummary[]>;
+  fetchRecentApplications(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]>;
 }
