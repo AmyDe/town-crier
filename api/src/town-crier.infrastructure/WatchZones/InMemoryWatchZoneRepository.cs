@@ -22,6 +22,12 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
     }
 
+    public Task<WatchZone?> GetByUserAndZoneIdAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        var zone = this.zones.Values.FirstOrDefault(z => z.UserId == userId && z.Id == zoneId);
+        return Task.FromResult(zone);
+    }
+
     public Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
     {
         var key = this.zones.Keys.FirstOrDefault(k => this.zones[k].Id == zoneId && this.zones[k].UserId == userId);

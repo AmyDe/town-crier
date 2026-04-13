@@ -31,6 +31,12 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
     }
 
+    public Task<WatchZone?> GetByUserAndZoneIdAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        var zone = this.zones.Find(z => z.UserId == userId && z.Id == zoneId);
+        return Task.FromResult(zone);
+    }
+
     public Task DeleteAsync(string userId, string zoneId, CancellationToken ct)
     {
         var removed = this.zones.RemoveAll(z => z.Id == zoneId && z.UserId == userId);
