@@ -276,4 +276,26 @@ struct AppCoordinatorTests {
     #expect(vm.isEditing)
     #expect(vm.postcodeInput == "CB1 2AD")
   }
+
+  @Test func makeWatchZoneEditorViewModel_onSave_dismissesEditor() {
+    let (sut, _) = makeSUT()
+    sut.isAddingWatchZone = true
+    let vm = sut.makeWatchZoneEditorViewModel()
+
+    vm.onSave?(.cambridge)
+
+    #expect(!sut.isAddingWatchZone)
+    #expect(sut.editingWatchZone == nil)
+  }
+
+  @Test func makeWatchZoneEditorViewModel_forEdit_onSave_dismissesEditor() {
+    let (sut, _) = makeSUT()
+    sut.editingWatchZone = .cambridge
+    let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+
+    vm.onSave?(.cambridge)
+
+    #expect(sut.editingWatchZone == nil)
+    #expect(!sut.isAddingWatchZone)
+  }
 }
