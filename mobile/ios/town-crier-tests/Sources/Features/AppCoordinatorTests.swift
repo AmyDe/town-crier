@@ -46,20 +46,20 @@ struct AppCoordinatorTests {
 
   // MARK: - Application List Factory
 
-  @Test func makeApplicationListViewModel_createsViewModelWithAuthority() async {
+  @Test func makeApplicationListViewModel_createsViewModelWithZone() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationsResult = .success([.pendingReview])
-    let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     await vm.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.first?.code == "CAM")
+    #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
   }
 
   @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.approved)
-    let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
@@ -69,34 +69,14 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
-  @Test func makeApplicationListViewModel_usesAuthorityRepository_whenAvailable() async {
-    let appSpy = SpyPlanningApplicationRepository()
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(
-        authorities: [.cambridge],
-        count: 1
-      )
-    )
-    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
-    let coordinator = AppCoordinator(
-      repository: appSpy,
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-    let vm = coordinator.makeApplicationListViewModel()
+  @Test func makeApplicationListViewModel_noArgUsesPlaceholderZone() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .success([.pendingReview])
+    let vm = sut.makeApplicationListViewModel()
 
     await vm.loadApplications()
 
-    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(spy.fetchApplicationsCalls.count == 1)
     #expect(vm.filteredApplications.count == 1)
   }
 
@@ -126,23 +106,17 @@ struct AppCoordinatorTests {
 
   // MARK: - Map ViewModel Factory
 
-  @Test func makeMapViewModel_usesAuthorityRepository() async {
+  @Test func makeMapViewModel_fetchesByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(
-        authorities: [.cambridge],
-        count: 1
-      )
-    )
-    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    appSpy.fetchApplicationsByZone = ["zone-001": [.pendingReview]]
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
     let coordinator = AppCoordinator(
       repository: appSpy,
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
+      watchZoneRepository: watchZoneSpy,
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -152,8 +126,8 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(appSpy.fetchApplicationsCalls.count == 1)
+    #expect(appSpy.fetchApplicationsCalls.first?.id.value == "zone-001")
     #expect(vm.annotations.count == 1)
   }
 

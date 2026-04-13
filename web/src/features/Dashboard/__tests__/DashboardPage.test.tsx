@@ -8,7 +8,6 @@ import {
   recentApplication,
   anotherRecentApplication,
 } from './fixtures/dashboard.fixtures';
-import { asAuthorityId } from '../../../domain/types';
 
 function renderDashboard(spy: SpyDashboardPort) {
   return render(
@@ -32,7 +31,7 @@ describe('DashboardPage', () => {
   it('renders recent applications using ApplicationCard', async () => {
     const spy = new SpyDashboardPort();
     spy.fetchWatchZonesResult = [cambridgeZone()];
-    spy.fetchRecentApplicationsResults.set(asAuthorityId(42), [
+    spy.fetchRecentApplicationsResults.set('zone-001', [
       recentApplication(),
       anotherRecentApplication(),
     ]);

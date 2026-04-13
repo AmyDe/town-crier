@@ -7,7 +7,7 @@ import {
   recentApplication,
   anotherRecentApplication,
 } from './fixtures/dashboard.fixtures';
-import { asAuthorityId } from '../../../domain/types';
+import { asWatchZoneId } from '../../../domain/types';
 
 describe('useDashboard', () => {
   it('loads watch zones on mount', async () => {
@@ -26,11 +26,11 @@ describe('useDashboard', () => {
     expect(spy.fetchWatchZonesCalls).toBe(1);
   });
 
-  it('fetches recent applications for each unique authority after loading zones', async () => {
+  it('fetches recent applications for each zone after loading zones', async () => {
     const spy = new SpyDashboardPort();
     spy.fetchWatchZonesResult = [cambridgeZone(), oxfordZone()];
-    spy.fetchRecentApplicationsResults.set(asAuthorityId(42), [recentApplication()]);
-    spy.fetchRecentApplicationsResults.set(asAuthorityId(99), [anotherRecentApplication()]);
+    spy.fetchRecentApplicationsResults.set('zone-001', [recentApplication()]);
+    spy.fetchRecentApplicationsResults.set('zone-002', [anotherRecentApplication()]);
 
     const { result } = renderHook(() => useDashboard(spy));
 
@@ -39,27 +39,8 @@ describe('useDashboard', () => {
     });
 
     expect(spy.fetchRecentApplicationsCalls).toHaveLength(2);
-    expect(spy.fetchRecentApplicationsCalls).toContain(asAuthorityId(42));
-    expect(spy.fetchRecentApplicationsCalls).toContain(asAuthorityId(99));
-  });
-
-  it('deduplicates authority IDs when multiple zones share an authority', async () => {
-    const spy = new SpyDashboardPort();
-    const sharedAuthority = asAuthorityId(42);
-    spy.fetchWatchZonesResult = [
-      cambridgeZone({ authorityId: sharedAuthority }),
-      oxfordZone({ authorityId: sharedAuthority }),
-    ];
-    spy.fetchRecentApplicationsResults.set(sharedAuthority, [recentApplication()]);
-
-    const { result } = renderHook(() => useDashboard(spy));
-
-    await waitFor(() => {
-      expect(result.current.recentApplications).toHaveLength(1);
-    });
-
-    expect(spy.fetchRecentApplicationsCalls).toHaveLength(1);
-    expect(spy.fetchRecentApplicationsCalls[0]).toBe(sharedAuthority);
+    expect(spy.fetchRecentApplicationsCalls).toContain(asWatchZoneId('zone-001'));
+    expect(spy.fetchRecentApplicationsCalls).toContain(asWatchZoneId('zone-002'));
   });
 
   it('sets error when watch zones fetch fails', async () => {

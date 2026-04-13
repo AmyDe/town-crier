@@ -8,6 +8,8 @@ public interface IWatchZoneRepository
 
     Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct);
 
+    Task<WatchZone?> GetByUserAndZoneIdAsync(string userId, string zoneId, CancellationToken ct);
+
     Task DeleteAsync(string userId, string zoneId, CancellationToken ct);
 
     Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(

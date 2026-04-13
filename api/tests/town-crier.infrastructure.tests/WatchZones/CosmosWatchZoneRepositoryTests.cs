@@ -163,4 +163,38 @@ public sealed class CosmosWatchZoneRepositoryTests
         await Assert.That(result[1]).IsEqualTo(5);
         await Assert.That(result[2]).IsEqualTo(4);
     }
+
+    [Test]
+    public async Task Should_ReturnZone_When_GetByUserAndZoneIdCalledWithMatchingZone()
+    {
+        // Arrange
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosWatchZoneRepository(client);
+
+        var zone = new WatchZone("zone-1", "user-1", "Home", new Coordinates(51.5, -0.1), 500, 100, DateTimeOffset.MinValue);
+        await repo.SaveAsync(zone, CancellationToken.None);
+
+        // Act
+        var result = await repo.GetByUserAndZoneIdAsync("user-1", "zone-1", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.Id).IsEqualTo("zone-1");
+        await Assert.That(result.UserId).IsEqualTo("user-1");
+        await Assert.That(result.Name).IsEqualTo("Home");
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_GetByUserAndZoneIdCalledWithNonexistentZone()
+    {
+        // Arrange
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosWatchZoneRepository(client);
+
+        // Act
+        var result = await repo.GetByUserAndZoneIdAsync("user-1", "nonexistent", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
 }

@@ -2,16 +2,16 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useMapData } from '../useMapData';
 import { SpyMapPort } from './spies/spy-map-port';
-import { anAuthority, aSecondAuthority, anApplication, aSecondApplication, aSavedApplication } from './fixtures/map.fixtures';
-import { asAuthorityId, asApplicationUid } from '../../../domain/types';
+import { aZone, aSecondZone, anApplication, aSecondApplication, aSavedApplication } from './fixtures/map.fixtures';
+import { asWatchZoneId, asApplicationUid } from '../../../domain/types';
 
 describe('useMapData', () => {
   it('fetches saved application UIDs alongside applications', async () => {
     const spy = new SpyMapPort();
-    const auth = anAuthority();
+    const zone = aZone();
     const app = anApplication();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(1, [app]);
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [app]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -27,8 +27,8 @@ describe('useMapData', () => {
 
   it('returns empty savedUids when no applications are saved', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -40,16 +40,16 @@ describe('useMapData', () => {
     expect(result.current.savedUids.size).toBe(0);
   });
 
-  it('fetches authorities and applications per authority', async () => {
+  it('fetches zones and applications per zone', async () => {
     const spy = new SpyMapPort();
-    const auth1 = anAuthority();
-    const auth2 = aSecondAuthority();
-    spy.fetchMyAuthoritiesResult = [auth1, auth2];
+    const zone1 = aZone();
+    const zone2 = aSecondZone();
+    spy.fetchMyZonesResult = [zone1, zone2];
 
     const app1 = anApplication();
     const app2 = aSecondApplication();
-    spy.fetchApplicationsByAuthorityResults.set(1, [app1]);
-    spy.fetchApplicationsByAuthorityResults.set(2, [app2]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [app1]);
+    spy.fetchApplicationsByZoneResults.set('zone-002', [app2]);
 
     const { result } = renderHook(() => useMapData(spy));
 
@@ -59,14 +59,14 @@ describe('useMapData', () => {
 
     expect(result.current.applications).toEqual([app1, app2]);
     expect(result.current.error).toBeNull();
-    expect(spy.fetchMyAuthoritiesCalls).toBe(1);
-    expect(spy.fetchApplicationsByAuthorityCalls).toContainEqual(asAuthorityId(1));
-    expect(spy.fetchApplicationsByAuthorityCalls).toContainEqual(asAuthorityId(2));
+    expect(spy.fetchMyZonesCalls).toBe(1);
+    expect(spy.fetchApplicationsByZoneCalls).toContainEqual(asWatchZoneId('zone-001'));
+    expect(spy.fetchApplicationsByZoneCalls).toContainEqual(asWatchZoneId('zone-002'));
   });
 
-  it('sets error state when authority fetch fails', async () => {
+  it('sets error state when zone fetch fails', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesError = new Error('Network unavailable');
+    spy.fetchMyZonesError = new Error('Network unavailable');
 
     const { result } = renderHook(() => useMapData(spy));
 
@@ -80,7 +80,7 @@ describe('useMapData', () => {
 
   it('returns loading state while fetching', () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [];
+    spy.fetchMyZonesResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
 
@@ -89,14 +89,15 @@ describe('useMapData', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('deduplicates authority IDs', async () => {
+  it('deduplicates applications across overlapping zones', async () => {
     const spy = new SpyMapPort();
-    const auth1 = anAuthority({ id: asAuthorityId(1) });
-    const auth2 = aSecondAuthority({ id: asAuthorityId(1) });
-    spy.fetchMyAuthoritiesResult = [auth1, auth2];
+    const zone1 = aZone();
+    const zone2 = aSecondZone();
+    spy.fetchMyZonesResult = [zone1, zone2];
 
-    const app1 = anApplication();
-    spy.fetchApplicationsByAuthorityResults.set(1, [app1]);
+    const sharedApp = anApplication();
+    spy.fetchApplicationsByZoneResults.set('zone-001', [sharedApp]);
+    spy.fetchApplicationsByZoneResults.set('zone-002', [sharedApp]);
 
     const { result } = renderHook(() => useMapData(spy));
 
@@ -104,14 +105,14 @@ describe('useMapData', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    expect(spy.fetchApplicationsByAuthorityCalls).toHaveLength(1);
-    expect(spy.fetchApplicationsByAuthorityCalls[0]).toEqual(asAuthorityId(1));
+    expect(result.current.applications).toHaveLength(1);
+    expect(spy.fetchApplicationsByZoneCalls).toHaveLength(2);
   });
 
   it('adds uid to savedUids on save', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -130,8 +131,8 @@ describe('useMapData', () => {
 
   it('removes uid from savedUids on unsave', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -150,8 +151,8 @@ describe('useMapData', () => {
 
   it('reverts savedUids when save fails', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
     spy.saveApplicationError = new Error('Server error');
 
@@ -170,8 +171,8 @@ describe('useMapData', () => {
 
   it('reverts savedUids when unsave fails', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
     spy.unsaveApplicationError = new Error('Server error');
 
@@ -190,8 +191,8 @@ describe('useMapData', () => {
 
   it('shows uid as saved after save-unsave-save toggle sequence', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -220,8 +221,8 @@ describe('useMapData', () => {
 
   it('shows uid as unsaved after unsave-save-unsave toggle sequence on initially saved item', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [anApplication()]);
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -250,8 +251,8 @@ describe('useMapData', () => {
 
   it('handles save and unsave of different UIDs independently', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
-    spy.fetchApplicationsByAuthorityResults.set(1, [
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationsByZoneResults.set('zone-001', [
       anApplication(),
       aSecondApplication(),
     ]);

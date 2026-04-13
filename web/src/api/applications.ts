@@ -12,8 +12,8 @@ export function applicationsApi(client: ApiClient) {
       client
         .get<UserApplicationAuthoritiesResponse>('/v1/me/application-authorities')
         .then((r) => r.authorities),
-    getByAuthority: (authorityId: number) =>
-      client.get<readonly PlanningApplication[]>('/v1/applications', { authorityId: String(authorityId) }),
+    getByZone: (zoneId: string) =>
+      client.get<readonly PlanningApplication[]>(`/v1/me/watch-zones/${zoneId}/applications`),
     getByUid: (uid: string) =>
       client.get<PlanningApplication>(`/v1/applications/${uid}`),
   };

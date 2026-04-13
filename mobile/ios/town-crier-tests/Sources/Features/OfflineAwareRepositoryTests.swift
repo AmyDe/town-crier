@@ -31,7 +31,7 @@ struct OfflineAwareRepositoryTests {
     let apps = [PlanningApplication.pendingReview, .approved]
     let (sut, remote, cache, _) = makeSUT(remoteApplications: apps)
 
-    let result = try await sut.fetchApplications(for: .cambridge)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 2)
     #expect(result.isFresh())
@@ -53,7 +53,7 @@ struct OfflineAwareRepositoryTests {
       cachedEntry: staleEntry
     )
 
-    let result = try await sut.fetchApplications(for: .cambridge)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
     #expect(result.data.first?.id == PlanningApplication.pendingReview.id)
@@ -71,7 +71,7 @@ struct OfflineAwareRepositoryTests {
     )
     let (sut, remote, _, _) = makeSUT(cachedEntry: freshEntry)
 
-    let result = try await sut.fetchApplications(for: .cambridge)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
     #expect(result.isFresh())
@@ -88,7 +88,7 @@ struct OfflineAwareRepositoryTests {
     )
     let (sut, remote, _, _) = makeSUT(cachedEntry: cachedEntry, isConnected: false)
 
-    let result = try await sut.fetchApplications(for: .cambridge)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
     #expect(result.data.first?.id == PlanningApplication.approved.id)
@@ -101,7 +101,7 @@ struct OfflineAwareRepositoryTests {
     let (sut, _, _, _) = makeSUT(isConnected: false)
 
     await #expect(throws: DomainError.networkUnavailable) {
-      _ = try await sut.fetchApplications(for: .cambridge)
+      _ = try await sut.fetchApplications(for: WatchZone.cambridge)
     }
   }
 
@@ -116,7 +116,7 @@ struct OfflineAwareRepositoryTests {
     let (sut, remote, _, _) = makeSUT(cachedEntry: cachedEntry)
     remote.fetchApplicationsResult = .failure(DomainError.unexpected("server error"))
 
-    let result = try await sut.fetchApplications(for: .cambridge)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
     #expect(result.data.first?.id == PlanningApplication.refused.id)
@@ -129,7 +129,7 @@ struct OfflineAwareRepositoryTests {
     remote.fetchApplicationsResult = .failure(DomainError.unexpected("server error"))
 
     await #expect(throws: DomainError.self) {
-      _ = try await sut.fetchApplications(for: .cambridge)
+      _ = try await sut.fetchApplications(for: WatchZone.cambridge)
     }
   }
 

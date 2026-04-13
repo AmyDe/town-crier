@@ -14,10 +14,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var centreLon: Double = -0.1278
   @Published private(set) var radiusMetres: Double = 2000
 
-  private let repository: PlanningApplicationRepository?
-  private let offlineRepository: OfflineAwareRepository?
-  private let authorityRepository: ApplicationAuthorityRepository?
-  private let applicationRepository: PlanningApplicationRepository?
+  private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
   private var applications: [PlanningApplication] = []
 
@@ -42,29 +39,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   public init(repository: PlanningApplicationRepository, watchZoneRepository: WatchZoneRepository) {
     self.repository = repository
-    self.offlineRepository = nil
-    self.authorityRepository = nil
-    self.applicationRepository = nil
-    self.watchZoneRepository = watchZoneRepository
-  }
-
-  public init(offlineRepository: OfflineAwareRepository, watchZoneRepository: WatchZoneRepository) {
-    self.repository = nil
-    self.offlineRepository = offlineRepository
-    self.authorityRepository = nil
-    self.applicationRepository = nil
-    self.watchZoneRepository = watchZoneRepository
-  }
-
-  public init(
-    authorityRepository: ApplicationAuthorityRepository,
-    applicationRepository: PlanningApplicationRepository,
-    watchZoneRepository: WatchZoneRepository
-  ) {
-    self.repository = nil
-    self.offlineRepository = nil
-    self.authorityRepository = authorityRepository
-    self.applicationRepository = applicationRepository
     self.watchZoneRepository = watchZoneRepository
   }
 
@@ -72,27 +46,18 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     isLoading = true
     error = nil
     do {
-      if let zone = try? await watchZoneRepository.loadAll().first {
-        centreLat = zone.centre.latitude
-        centreLon = zone.centre.longitude
-        radiusMetres = zone.radiusMetres
+      let zones = try await watchZoneRepository.loadAll()
+      guard let zone = zones.first else {
+        isLoading = false
+        hasLoaded = true
+        return
       }
 
-      let fetched: [PlanningApplication]
-      if let authorityRepository, let applicationRepository {
-        fetched = try await fetchViaAuthorities(
-          authorityRepository: authorityRepository,
-          applicationRepository: applicationRepository
-        )
-      } else if let offlineRepository {
-        let entry = try await offlineRepository.fetchApplications(
-          for: LocalAuthority(code: "", name: ""))
-        fetched = entry.data
-      } else if let repository {
-        fetched = try await repository.fetchApplications(for: LocalAuthority(code: "", name: ""))
-      } else {
-        fetched = []
-      }
+      centreLat = zone.centre.latitude
+      centreLon = zone.centre.longitude
+      radiusMetres = zone.radiusMetres
+
+      let fetched = try await repository.fetchApplications(for: zone)
       applications = fetched
       annotations = fetched.compactMap { app in
         guard let location = app.location else { return nil }
@@ -103,24 +68,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     }
     isLoading = false
     hasLoaded = true
-  }
-
-  private func fetchViaAuthorities(
-    authorityRepository: ApplicationAuthorityRepository,
-    applicationRepository: PlanningApplicationRepository
-  ) async throws -> [PlanningApplication] {
-    let result = try await authorityRepository.fetchAuthorities()
-    var allApplications: [PlanningApplication] = []
-    for authority in result.authorities {
-      do {
-        let apps = try await applicationRepository.fetchApplications(for: authority)
-        allApplications.append(contentsOf: apps)
-      } catch {
-        // Partial failure: skip this authority, continue with others
-        continue
-      }
-    }
-    return allApplications
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {

@@ -58,4 +58,37 @@ public sealed class EndpointMappingTests
         // Assert
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
+
+    [Test]
+    public async Task Should_ReturnNotFound_When_OldAuthorityApplicationsEndpointCalled()
+    {
+        // Arrange — the old GET /v1/applications?authorityId= endpoint has been removed
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+        var token = TestJwtToken.Generate();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        using var response = await client.GetAsync(
+            new Uri("/v1/applications?authorityId=42", UriKind.Relative));
+
+        // Assert — should not return 200 OK because the route no longer exists
+        await Assert.That(response.StatusCode).IsNotEqualTo(HttpStatusCode.OK);
+    }
+
+    [Test]
+    public async Task Should_MapZoneApplicationsEndpoint_When_CalledWithoutToken()
+    {
+        // Arrange — verifies the route is mapped by checking for 401 (not 404)
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        // Act
+        using var response = await client.GetAsync(
+            new Uri("/v1/me/watch-zones/zone-1/applications", UriKind.Relative));
+
+        // Assert — 401 proves the route exists and requires auth
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
+    }
 }

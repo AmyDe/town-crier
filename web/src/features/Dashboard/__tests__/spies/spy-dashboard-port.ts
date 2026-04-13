@@ -1,5 +1,5 @@
 import type { DashboardPort } from '../../../../domain/ports/dashboard-port';
-import type { AuthorityId, PlanningApplicationSummary, WatchZoneSummary } from '../../../../domain/types';
+import type { WatchZoneId, PlanningApplicationSummary, WatchZoneSummary } from '../../../../domain/types';
 
 export class SpyDashboardPort implements DashboardPort {
   fetchWatchZonesCalls = 0;
@@ -10,11 +10,11 @@ export class SpyDashboardPort implements DashboardPort {
     return this.fetchWatchZonesResult;
   }
 
-  fetchRecentApplicationsCalls: AuthorityId[] = [];
-  fetchRecentApplicationsResults: Map<AuthorityId, readonly PlanningApplicationSummary[]> = new Map();
+  fetchRecentApplicationsCalls: WatchZoneId[] = [];
+  fetchRecentApplicationsResults: Map<string, readonly PlanningApplicationSummary[]> = new Map();
 
-  async fetchRecentApplications(authorityId: AuthorityId): Promise<readonly PlanningApplicationSummary[]> {
-    this.fetchRecentApplicationsCalls.push(authorityId);
-    return this.fetchRecentApplicationsResults.get(authorityId) ?? [];
+  async fetchRecentApplications(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]> {
+    this.fetchRecentApplicationsCalls.push(zoneId);
+    return this.fetchRecentApplicationsResults.get(zoneId as string) ?? [];
   }
 }

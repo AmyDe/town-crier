@@ -11,9 +11,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
-  private let authorityRepository: ApplicationAuthorityRepository?
-  private let applicationRepository: PlanningApplicationRepository?
-  private let authority: LocalAuthority?
+  private let zone: WatchZone
   private let tier: SubscriptionTier
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
@@ -48,40 +46,23 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   public init(
     repository: PlanningApplicationRepository,
-    authority: LocalAuthority,
+    zone: WatchZone,
     tier: SubscriptionTier = .free
   ) {
     self.repository = repository
     self.offlineRepository = nil
-    self.authorityRepository = nil
-    self.applicationRepository = nil
-    self.authority = authority
+    self.zone = zone
     self.tier = tier
   }
 
   public init(
     offlineRepository: OfflineAwareRepository,
-    authority: LocalAuthority,
+    zone: WatchZone,
     tier: SubscriptionTier = .free
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
-    self.authorityRepository = nil
-    self.applicationRepository = nil
-    self.authority = authority
-    self.tier = tier
-  }
-
-  public init(
-    authorityRepository: ApplicationAuthorityRepository,
-    applicationRepository: PlanningApplicationRepository,
-    tier: SubscriptionTier = .free
-  ) {
-    self.repository = nil
-    self.offlineRepository = nil
-    self.authorityRepository = authorityRepository
-    self.applicationRepository = applicationRepository
-    self.authority = nil
+    self.zone = zone
     self.tier = tier
   }
 
@@ -90,16 +71,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     error = nil
     do {
       let fetched: [PlanningApplication]
-      if let authorityRepository, let applicationRepository {
-        fetched = try await fetchViaAuthorities(
-          authorityRepository: authorityRepository,
-          applicationRepository: applicationRepository
-        )
-      } else if let authority, let offlineRepository {
-        let entry = try await offlineRepository.fetchApplications(for: authority)
+      if let offlineRepository {
+        let entry = try await offlineRepository.fetchApplications(for: zone)
         fetched = entry.data
-      } else if let authority, let repository {
-        fetched = try await repository.fetchApplications(for: authority)
+      } else if let repository {
+        fetched = try await repository.fetchApplications(for: zone)
       } else {
         fetched = []
       }
@@ -108,19 +84,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       handleError(error)
     }
     isLoading = false
-  }
-
-  private func fetchViaAuthorities(
-    authorityRepository: ApplicationAuthorityRepository,
-    applicationRepository: PlanningApplicationRepository
-  ) async throws -> [PlanningApplication] {
-    let result = try await authorityRepository.fetchAuthorities()
-    var allApplications: [PlanningApplication] = []
-    for authority in result.authorities {
-      let apps = try await applicationRepository.fetchApplications(for: authority)
-      allApplications.append(contentsOf: apps)
-    }
-    return allApplications
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {

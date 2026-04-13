@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useApiClient } from '../../api/useApiClient';
 import { applicationsApi } from '../../api/applications';
+import { watchZonesApi } from '../../api/watchZones';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import type { UserAuthoritiesPort } from '../../domain/ports/user-authorities-port';
 import { ApplicationsPage } from './ApplicationsPage';
 
 export function ConnectedApplicationsPage() {
@@ -10,18 +10,18 @@ export function ConnectedApplicationsPage() {
 
   const browsePort: ApplicationsBrowsePort = useMemo(
     () => ({
-      fetchByAuthority: (authorityId) =>
-        applicationsApi(client).getByAuthority(authorityId),
+      fetchByZone: (zoneId) =>
+        applicationsApi(client).getByZone(zoneId as string),
     }),
     [client],
   );
 
-  const userAuthoritiesPort: UserAuthoritiesPort = useMemo(
+  const zonesPort = useMemo(
     () => ({
-      fetchMyAuthorities: () => applicationsApi(client).getMyAuthorities(),
+      fetchZones: () => watchZonesApi(client).list(),
     }),
     [client],
   );
 
-  return <ApplicationsPage userAuthoritiesPort={userAuthoritiesPort} browsePort={browsePort} />;
+  return <ApplicationsPage zonesPort={zonesPort} browsePort={browsePort} />;
 }

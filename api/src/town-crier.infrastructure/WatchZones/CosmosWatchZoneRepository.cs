@@ -27,6 +27,21 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task<WatchZone?> GetByUserAndZoneIdAsync(string userId, string zoneId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
+
+        var document = await this.client.ReadDocumentAsync(
+            CosmosContainerNames.WatchZones,
+            zoneId,
+            userId,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
+
+        return document?.ToDomain();
+    }
+
     public async Task<IReadOnlyCollection<WatchZone>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);

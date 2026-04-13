@@ -12,11 +12,10 @@ export function useDashboard(port: DashboardPort) {
     async () => {
       const zones = await port.fetchWatchZones();
 
-      const uniqueAuthorityIds = [...new Set(zones.map(z => z.authorityId))];
-      const applicationsByAuthority = await Promise.all(
-        uniqueAuthorityIds.map(id => port.fetchRecentApplications(id)),
+      const applicationsByZone = await Promise.all(
+        zones.map(z => port.fetchRecentApplications(z.id)),
       );
-      const recentApplications = applicationsByAuthority.flat();
+      const recentApplications = applicationsByZone.flat();
 
       return { zones, recentApplications };
     },
