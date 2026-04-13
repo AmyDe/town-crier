@@ -308,7 +308,7 @@ jobs:
           xcodebuild build
           -project TownCrier.xcodeproj
           -scheme TownCrierApp
-          -destination 'platform=iOS Simulator,name=iPhone 16'
+          -destination 'generic/platform=iOS Simulator'
           -derivedDataPath .derivedData
         working-directory: mobile/ios
       - run: swift test
