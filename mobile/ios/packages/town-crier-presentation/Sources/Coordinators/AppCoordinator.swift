@@ -8,6 +8,8 @@ public final class AppCoordinator: ObservableObject {
   @Published public var deepLinkError: DomainError?
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
+  @Published public var isAddingWatchZone = false
+  @Published public var editingWatchZone: WatchZone?
 
   public var isOnboardingComplete: Bool {
     onboardingRepository.isOnboardingComplete
@@ -22,6 +24,7 @@ public final class AppCoordinator: ObservableObject {
   private let offlineRepository: OfflineAwareRepository?
   private let authorityRepository: ApplicationAuthorityRepository?
   private let watchZoneRepository: WatchZoneRepository
+  private let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
 
@@ -33,6 +36,7 @@ public final class AppCoordinator: ObservableObject {
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
     watchZoneRepository: WatchZoneRepository,
+    geocoder: PostcodeGeocoder? = nil,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
@@ -45,6 +49,7 @@ public final class AppCoordinator: ObservableObject {
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository
+    self.geocoder = geocoder
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
@@ -128,6 +133,37 @@ public final class AppCoordinator: ObservableObject {
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
     }
+    return viewModel
+  }
+
+  // MARK: - Watch Zone Factories
+
+  public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
+    let viewModel = WatchZoneListViewModel(
+      repository: watchZoneRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    viewModel.onAddZone = { [weak self] in
+      self?.isAddingWatchZone = true
+    }
+    viewModel.onEditZone = { [weak self] zone in
+      self?.editingWatchZone = zone
+    }
+    return viewModel
+  }
+
+  public func makeWatchZoneEditorViewModel(
+    editing zone: WatchZone? = nil
+  ) -> WatchZoneEditorViewModel {
+    guard let geocoder else {
+      fatalError("PostcodeGeocoder must be injected to create WatchZoneEditorViewModel")
+    }
+    let viewModel = WatchZoneEditorViewModel(
+      geocoder: geocoder,
+      repository: watchZoneRepository,
+      tier: .free,
+      editing: zone
+    )
     return viewModel
   }
 

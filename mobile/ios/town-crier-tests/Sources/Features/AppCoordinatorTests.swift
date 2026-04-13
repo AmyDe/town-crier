@@ -15,6 +15,7 @@ struct AppCoordinatorTests {
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
       watchZoneRepository: SpyWatchZoneRepository(),
+      geocoder: SpyPostcodeGeocoder(),
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
