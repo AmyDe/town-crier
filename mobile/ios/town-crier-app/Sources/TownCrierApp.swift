@@ -13,7 +13,6 @@ struct TownCrierApp: App {
   @StateObject private var settingsViewModel: SettingsViewModel
   @StateObject private var applicationListViewModel: ApplicationListViewModel
   @StateObject private var mapViewModel: MapViewModel
-  @StateObject private var watchZoneListViewModel: WatchZoneListViewModel
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
 
@@ -78,9 +77,6 @@ struct TownCrierApp: App {
     _applicationListViewModel = StateObject(wrappedValue: listVM)
     _mapViewModel = StateObject(wrappedValue: mapVM)
 
-    let watchZoneListVM = appCoordinator.makeWatchZoneListViewModel()
-    _watchZoneListViewModel = StateObject(wrappedValue: watchZoneListVM)
-
     let settingsVM = appCoordinator.makeSettingsViewModel()
     settingsVM.onLogout = {
       Task { @MainActor in
@@ -115,6 +111,7 @@ struct TownCrierApp: App {
         AuthCallbackHandler.handle(url: url)
       }
       .task {
+        await coordinator.resolveSubscriptionTier()
         await forceUpdateViewModel.checkVersion()
       }
       .alert(
@@ -163,7 +160,8 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
-        WatchZoneListView(viewModel: watchZoneListViewModel)
+        WatchZoneListView(viewModel: coordinator.makeWatchZoneListViewModel())
+          .id(coordinator.subscriptionTier)
       }
       .sheet(isPresented: $coordinator.isAddingWatchZone) {
         WatchZoneEditorView(
@@ -200,14 +198,7 @@ struct TownCrierApp: App {
       }
       #if os(iOS)
         .manageSubscriptionsSheet(
-          isPresented: Binding(
-            get: { coordinator.isManageSubscriptionPresented },
-            set: { newValue in
-              Task { @MainActor in
-                coordinator.isManageSubscriptionPresented = newValue
-              }
-            }
-          )
+          isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
         )
       #endif
       .tabItem {

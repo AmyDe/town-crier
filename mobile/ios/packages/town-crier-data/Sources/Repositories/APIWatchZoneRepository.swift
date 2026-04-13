@@ -11,7 +11,7 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
 
   public func save(_ zone: WatchZone) async throws {
     let body = CreateWatchZoneRequest(
-      name: zone.postcode.value,
+      name: zone.name,
       latitude: zone.centre.latitude,
       longitude: zone.centre.longitude,
       radiusMetres: zone.radiusMetres,
@@ -77,14 +77,12 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let authorityId: Int
 
   func toDomain() -> WatchZone? {
-    guard let postcode = try? Postcode(name),
-      let centre = try? Coordinate(latitude: latitude, longitude: longitude)
-    else {
+    guard let centre = try? Coordinate(latitude: latitude, longitude: longitude) else {
       return nil
     }
     return try? WatchZone(
       id: WatchZoneId(id),
-      postcode: postcode,
+      name: name,
       centre: centre,
       radiusMetres: radiusMetres,
       authorityId: authorityId

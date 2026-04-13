@@ -1,10 +1,13 @@
 import Combine
 import Foundation
 import TownCrierDomain
+import os
 
 /// ViewModel managing the settings and account screen.
 @MainActor
 public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
+  private static let logger = Logger(subsystem: "uk.towncrierapp", category: "SettingsViewModel")
+
   @Published public private(set) var userEmail: String?
   @Published public private(set) var userName: String?
   @Published public private(set) var authMethod: AuthMethod?
@@ -67,13 +70,15 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     isLoading = true
     error = nil
 
+    var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
       userEmail = session.userProfile.email
       userName = session.userProfile.name
       authMethod = session.userProfile.authMethod
+      jwtTier = session.subscriptionTier
     }
 
-    let resolvedTier = await resolveSubscriptionTier()
+    let resolvedTier = await resolveSubscriptionTier(jwtTier: jwtTier)
     subscriptionTier = resolvedTier.tier
     isTrialPeriod = resolvedTier.isTrialPeriod
 
@@ -114,21 +119,25 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   /// Resolves the subscription tier by consulting the backend API profile
-  /// (source of truth) and StoreKit (for App Store purchases), then picking
-  /// the higher tier. This handles web-purchased subscriptions that StoreKit
-  /// does not know about, and recently App-Store-purchased subscriptions
-  /// that the server may not have synced yet.
-  private func resolveSubscriptionTier() async -> (tier: SubscriptionTier, isTrialPeriod: Bool) {
+  /// (source of truth), StoreKit (for App Store purchases), and the JWT
+  /// access token claim, then picking the highest tier. This handles
+  /// web-purchased subscriptions that StoreKit does not know about, recently
+  /// App-Store-purchased subscriptions that the server may not have synced
+  /// yet, and API failures where the JWT claim provides a viable fallback.
+  private func resolveSubscriptionTier(
+    jwtTier: SubscriptionTier
+  ) async -> (tier: SubscriptionTier, isTrialPeriod: Bool) {
     let serverTier = await fetchServerTier()
     let storeKitEntitlement = await subscriptionService.currentEntitlement()
 
     let storeKitTier = storeKitEntitlement?.tier ?? .free
-    let highestTier = max(serverTier, storeKitTier)
+    let highestTier = max(serverTier, max(storeKitTier, jwtTier))
 
     // Only report trial status from StoreKit — the server profile doesn't
     // carry trial information. Trial period is only meaningful when the
     // StoreKit tier is the one that won.
-    let isTrialPeriod = storeKitEntitlement?.isTrialPeriod == true && storeKitTier >= serverTier
+    let isTrialPeriod =
+      storeKitEntitlement?.isTrialPeriod == true && storeKitTier >= max(serverTier, jwtTier)
 
     return (highestTier, isTrialPeriod)
   }
@@ -140,6 +149,9 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       }
       return .free
     } catch {
+      Self.logger.error(
+        "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
+      )
       return .free
     }
   }

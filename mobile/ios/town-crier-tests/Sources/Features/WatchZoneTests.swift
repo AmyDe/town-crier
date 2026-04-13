@@ -10,7 +10,7 @@ struct WatchZoneTests {
     let zone = try WatchZone(postcode: postcode, centre: centre, radiusMetres: 1000)
     #expect(zone.centre == centre)
     #expect(zone.radiusMetres == 1000)
-    #expect(zone.postcode == postcode)
+    #expect(zone.name == postcode.value)
   }
 
   @Test func init_zeroRadius_throws() throws {
@@ -70,5 +70,39 @@ struct WatchZoneTests {
     let postcode = try Postcode("CB1 2AD")
     let zone = try WatchZone(postcode: postcode, centre: centre, radiusMetres: 1000)
     #expect(zone.authorityId == 0)
+  }
+
+  // MARK: - Freeform name support (tc-y39l)
+
+  @Test func init_acceptsFreeformName() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "My Home Zone", centre: centre, radiusMetres: 1000)
+    #expect(zone.name == "My Home Zone")
+  }
+
+  @Test func init_freeformName_nonPostcodeName_succeeds() throws {
+    let centre = try Coordinate(latitude: 51.5014, longitude: -0.1419)
+    let zone = try WatchZone(
+      name: "Office near Westminster",
+      centre: centre,
+      radiusMetres: 2000,
+      authorityId: 456
+    )
+    #expect(zone.name == "Office near Westminster")
+    #expect(zone.authorityId == 456)
+  }
+
+  @Test func init_freeformName_emptyName_throws() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    #expect(throws: DomainError.invalidWatchZoneName) {
+      try WatchZone(name: "", centre: centre, radiusMetres: 1000)
+    }
+  }
+
+  @Test func init_freeformName_whitespaceOnlyName_throws() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    #expect(throws: DomainError.invalidWatchZoneName) {
+      try WatchZone(name: "   ", centre: centre, radiusMetres: 1000)
+    }
   }
 }

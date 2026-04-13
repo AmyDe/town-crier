@@ -33,7 +33,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     self.existingId = zone?.id
 
     if let zone {
-      self.postcodeInput = zone.postcode.value
+      self.postcodeInput = zone.name
       self.selectedRadiusMetres = zone.radiusMetres
       self.geocodedCoordinate = zone.centre
     }
@@ -69,6 +69,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     guard let coordinate = geocodedCoordinate else { return }
     error = nil
 
+    // Validate the postcode input before saving
     let postcode: Postcode
     do {
       postcode = try Postcode(postcodeInput)
@@ -82,7 +83,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     do {
       let zone = try WatchZone(
         id: existingId ?? WatchZoneId(),
-        postcode: postcode,
+        name: postcode.value,
         centre: coordinate,
         radiusMetres: clampedRadius
       )

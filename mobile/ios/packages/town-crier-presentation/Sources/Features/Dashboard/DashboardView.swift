@@ -213,7 +213,7 @@ private struct DashboardZoneRow: View {
         .foregroundStyle(Color.tcAmber)
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.postcode.value)
+        Text(zone.name)
           .font(TCTypography.bodyEmphasis)
           .foregroundStyle(Color.tcTextPrimary)
 

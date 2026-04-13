@@ -1,9 +1,12 @@
 import Combine
 import TownCrierDomain
+import os
 
 /// Root coordinator managing top-level navigation.
 @MainActor
 public final class AppCoordinator: ObservableObject {
+  private static let logger = Logger(subsystem: "uk.towncrierapp", category: "AppCoordinator")
+
   @Published public var detailApplication: PlanningApplication?
   @Published public var deepLinkError: DomainError?
   @Published public var presentedLegalDocument: LegalDocumentType?
@@ -11,6 +14,7 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isSubscriptionPresented = false
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
+  @Published public private(set) var subscriptionTier: SubscriptionTier = .free
 
   public var isOnboardingComplete: Bool {
     onboardingRepository.isOnboardingComplete
@@ -137,12 +141,42 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
+  // MARK: - Subscription Tier Resolution
+
+  /// Resolves the subscription tier by consulting the JWT session, StoreKit,
+  /// and the server profile, then picks the highest tier. Mirrors the same
+  /// triple-source resolution used by ``SettingsViewModel``.
+  public func resolveSubscriptionTier() async {
+    var jwtTier: SubscriptionTier = .free
+    if let session = await authService.currentSession() {
+      jwtTier = session.subscriptionTier
+    }
+
+    let serverTier = await fetchServerTier()
+    let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
+    subscriptionTier = max(serverTier, max(storeKitTier, jwtTier))
+  }
+
+  private func fetchServerTier() async -> SubscriptionTier {
+    do {
+      if let profile = try await userProfileRepository.fetch() {
+        return profile.tier
+      }
+      return .free
+    } catch {
+      Self.logger.error(
+        "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
+      )
+      return .free
+    }
+  }
+
   // MARK: - Watch Zone Factories
 
   public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
     let viewModel = WatchZoneListViewModel(
       repository: watchZoneRepository,
-      featureGate: FeatureGate(tier: .free)
+      featureGate: FeatureGate(tier: subscriptionTier)
     )
     viewModel.onAddZone = { [weak self] in
       self?.isAddingWatchZone = true
@@ -165,7 +199,7 @@ public final class AppCoordinator: ObservableObject {
     let viewModel = WatchZoneEditorViewModel(
       geocoder: geocoder,
       repository: watchZoneRepository,
-      tier: .free,
+      tier: subscriptionTier,
       editing: zone
     )
     viewModel.onSave = { [weak self] _ in

@@ -82,7 +82,7 @@ struct WatchZoneEditorCreateTests {
 
     #expect(spyRepository.saveCalls.count == 1)
     let saved = spyRepository.saveCalls.first
-    #expect(saved?.postcode == .cambridge)
+    #expect(saved?.name == "CB1 2AD")
     #expect(saved?.centre == .cambridge)
     #expect(saved?.radiusMetres == 2000)
   }
