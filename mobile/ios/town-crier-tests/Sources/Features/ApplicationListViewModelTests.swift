@@ -10,12 +10,12 @@ struct ApplicationListViewModelTests {
   private func makeSUT(
     applications: [PlanningApplication] = [],
     tier: SubscriptionTier = .free
-  ) -> (ApplicationListViewModel, SpyPlanningApplicationRepository) {
+  ) throws -> (ApplicationListViewModel, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     spy.fetchApplicationsResult = .success(applications)
     let vm = ApplicationListViewModel(
       repository: spy,
-      authority: .cambridge,
+      zone: .cambridge,
       tier: tier
     )
     return (vm, spy)
@@ -27,11 +27,11 @@ struct ApplicationListViewModelTests {
 
   // MARK: - Loading
 
-  @Test func loadApplications_populatesApplicationsSortedByDateDescending() async {
+  @Test func loadApplications_populatesApplicationsSortedByDateDescending() async throws {
     let older = PlanningApplication.pendingReview  // 1_700_000_000
     let newer = PlanningApplication.approved  // 1_700_100_000
     let newest = PlanningApplication.refused  // 1_700_200_000
-    let (sut, _) = makeSUT(applications: [older, newest, newer])
+    let (sut, _) = try makeSUT(applications: [older, newest, newer])
 
     await sut.loadApplications()
 
@@ -41,16 +41,16 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications[2].id == older.id)
   }
 
-  @Test func loadApplications_setsIsLoadingFalseAfterFetch() async {
-    let (sut, _) = makeSUT()
+  @Test func loadApplications_setsIsLoadingFalseAfterFetch() async throws {
+    let (sut, _) = try makeSUT()
 
     #expect(!sut.isLoading)
     await sut.loadApplications()
     #expect(!sut.isLoading)
   }
 
-  @Test func loadApplications_setsErrorOnFailure() async {
-    let (sut, spy) = makeSUT()
+  @Test func loadApplications_setsErrorOnFailure() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -59,8 +59,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.isEmpty)
   }
 
-  @Test func loadApplications_clearsErrorOnRetry() async {
-    let (sut, spy) = makeSUT()
+  @Test func loadApplications_clearsErrorOnRetry() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
     await sut.loadApplications()
 
@@ -71,20 +71,20 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.count == 1)
   }
 
-  @Test func loadApplications_callsRepositoryWithAuthority() async {
-    let (sut, spy) = makeSUT()
+  @Test func loadApplications_callsRepositoryWithZone() async throws {
+    let (sut, spy) = try makeSUT()
 
     await sut.loadApplications()
 
     #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsCalls.first?.id.value == "CAM")
+    #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
   }
 
   // MARK: - Selection
 
-  @Test func selectApplication_notifiesCallback() async {
+  @Test func selectApplication_notifiesCallback() async throws {
     var selectedId: PlanningApplicationId?
-    let (sut, _) = makeSUT(applications: [.pendingReview])
+    let (sut, _) = try makeSUT(applications: [.pendingReview])
     sut.onApplicationSelected = { selectedId = $0 }
 
     sut.selectApplication(PlanningApplicationId("APP-001"))
@@ -94,16 +94,16 @@ struct ApplicationListViewModelTests {
 
   // MARK: - Status Filtering
 
-  @Test func filterByStatus_freeTier_cannotFilter() async {
-    let (sut, _) = makeSUT(applications: Self.allApps, tier: .free)
+  @Test func filterByStatus_freeTier_cannotFilter() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .free)
     await sut.loadApplications()
 
     #expect(!sut.canFilter)
     #expect(sut.filteredApplications.count == 4)
   }
 
-  @Test func filterByStatus_personalTier_canFilter() async {
-    let (sut, _) = makeSUT(applications: Self.allApps, tier: .personal)
+  @Test func filterByStatus_personalTier_canFilter() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .personal)
     await sut.loadApplications()
 
     #expect(sut.canFilter)
@@ -113,8 +113,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.first?.status == .approved)
   }
 
-  @Test func filterByStatus_proTier_canFilter() async {
-    let (sut, _) = makeSUT(applications: Self.allApps, tier: .pro)
+  @Test func filterByStatus_proTier_canFilter() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .pro)
     await sut.loadApplications()
 
     #expect(sut.canFilter)
@@ -124,8 +124,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.first?.status == .refused)
   }
 
-  @Test func filterByStatus_nilFilter_showsAll() async {
-    let (sut, _) = makeSUT(applications: Self.allApps, tier: .personal)
+  @Test func filterByStatus_nilFilter_showsAll() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .personal)
     await sut.loadApplications()
 
     sut.selectedStatusFilter = .approved
@@ -135,8 +135,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.filteredApplications.count == 4)
   }
 
-  @Test func filterByStatus_noMatchingResults_returnsEmpty() async {
-    let (sut, _) = makeSUT(
+  @Test func filterByStatus_noMatchingResults_returnsEmpty() async throws {
+    let (sut, _) = try makeSUT(
       applications: [.pendingReview],
       tier: .personal
     )
@@ -212,8 +212,8 @@ struct ApplicationListViewModelTests {
     #expect(!sut.isNetworkError)
   }
 
-  @Test func isServerError_trueForServerError() async {
-    let (sut, spy) = makeSUT()
+  @Test func isServerError_trueForServerError() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(
       DomainError.serverError(statusCode: 500, message: nil)
     )
@@ -224,8 +224,8 @@ struct ApplicationListViewModelTests {
     #expect(!sut.isNetworkError)
   }
 
-  @Test func isServerError_falseForNetworkError() async {
-    let (sut, spy) = makeSUT()
+  @Test func isServerError_falseForNetworkError() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -236,8 +236,8 @@ struct ApplicationListViewModelTests {
 
   // MARK: - Error Classification
 
-  @Test func isNetworkError_trueForNetworkUnavailable() async {
-    let (sut, spy) = makeSUT()
+  @Test func isNetworkError_trueForNetworkUnavailable() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -245,8 +245,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.isNetworkError)
   }
 
-  @Test func isNetworkError_falseForOtherErrors() async {
-    let (sut, spy) = makeSUT()
+  @Test func isNetworkError_falseForOtherErrors() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
 
     await sut.loadApplications()
@@ -254,8 +254,8 @@ struct ApplicationListViewModelTests {
     #expect(!sut.isNetworkError)
   }
 
-  @Test func isSessionExpired_trueForSessionExpired() async {
-    let (sut, spy) = makeSUT()
+  @Test func isSessionExpired_trueForSessionExpired() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
 
     await sut.loadApplications()
@@ -263,8 +263,8 @@ struct ApplicationListViewModelTests {
     #expect(sut.isSessionExpired)
   }
 
-  @Test func isSessionExpired_falseForOtherErrors() async {
-    let (sut, spy) = makeSUT()
+  @Test func isSessionExpired_falseForOtherErrors() async throws {
+    let (sut, spy) = try makeSUT()
     spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
@@ -274,15 +274,15 @@ struct ApplicationListViewModelTests {
 
   // MARK: - Empty State
 
-  @Test func isEmpty_trueWhenNoApplicationsLoaded() async {
-    let (sut, _) = makeSUT()
+  @Test func isEmpty_trueWhenNoApplicationsLoaded() async throws {
+    let (sut, _) = try makeSUT()
     await sut.loadApplications()
 
     #expect(sut.isEmpty)
   }
 
-  @Test func isEmpty_falseWhenApplicationsExist() async {
-    let (sut, _) = makeSUT(applications: [.pendingReview])
+  @Test func isEmpty_falseWhenApplicationsExist() async throws {
+    let (sut, _) = try makeSUT(applications: [.pendingReview])
     await sut.loadApplications()
 
     #expect(!sut.isEmpty)
