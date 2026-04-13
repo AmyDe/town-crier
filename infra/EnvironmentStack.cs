@@ -621,9 +621,9 @@ public static class EnvironmentStack
             envVars.Insert(1, new EnvironmentVarArgs { Name = "WORKER_MODE", Value = workerMode });
         }
 
-        return new Job($"job-town-crier-{nameSuffix}-{env}", new JobArgs
+        return new Job($"job-tc-{nameSuffix}-{env}", new JobArgs
         {
-            JobName = $"job-town-crier-{nameSuffix}-{env}",
+            JobName = $"job-tc-{nameSuffix}-{env}",
             ResourceGroupName = resourceGroupName,
             EnvironmentId = environmentId,
             Configuration = new JobConfigurationArgs
