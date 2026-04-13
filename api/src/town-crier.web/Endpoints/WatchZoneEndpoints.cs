@@ -71,6 +71,18 @@ internal static class WatchZoneEndpoints
             }
         });
 
+        group.MapGet("/me/watch-zones/{zoneId}/applications", async (
+            ClaimsPrincipal user,
+            string zoneId,
+            GetApplicationsByZoneQueryHandler handler,
+            CancellationToken ct) =>
+        {
+            var userId = user.FindFirstValue("sub")!;
+            var result = await handler.HandleAsync(
+                new GetApplicationsByZoneQuery(userId, zoneId), ct).ConfigureAwait(false);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         group.MapGet("/me/watch-zones/{zoneId}/preferences", async (
             ClaimsPrincipal user,
             string zoneId,

@@ -28,7 +28,6 @@ public sealed class EndpointMappingTests
     [Arguments("/v1/me", "POST")]
     [Arguments("/api/me", "GET")]
     [Arguments("/v1/me/application-authorities", "GET")]
-    [Arguments("/v1/me/watch-zones/zone-1/applications", "GET")]
     public async Task Should_MapAuthenticatedEndpoints_When_MapAllEndpointsCalled(string path, string method)
     {
         // Arrange
@@ -57,6 +56,21 @@ public sealed class EndpointMappingTests
         using var response = await client.GetAsync(new Uri("/v1/me", UriKind.Relative));
 
         // Assert
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
+    }
+
+    [Test]
+    public async Task Should_MapZoneApplicationsEndpoint_When_CalledWithoutToken()
+    {
+        // Arrange — verifies the route is mapped by checking for 401 (not 404)
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        // Act
+        using var response = await client.GetAsync(
+            new Uri("/v1/me/watch-zones/zone-1/applications", UriKind.Relative));
+
+        // Assert — 401 proves the route exists and requires auth
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 }
