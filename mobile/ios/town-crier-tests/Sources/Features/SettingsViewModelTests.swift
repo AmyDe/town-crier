@@ -156,8 +156,46 @@ struct SettingsViewModelTests {
     #expect(sut.subscriptionTier == .personal)
   }
 
-  @Test func load_defaultsToFree_whenBothSourcesFail() async {
+  @Test func load_usesJWTTier_whenServerAndStoreKitBothUnavailable() async {
     let (sut, _, _, _, _, _) = makeSUT(
+      session: .pro,
+      entitlement: nil,
+      serverProfile: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .pro)
+  }
+
+  @Test func load_usesJWTTier_whenServerFailsAndStoreKitNil() async {
+    let (sut, _, _, _, _, _) = makeSUT(
+      session: .personal,
+      entitlement: nil,
+      serverProfile: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .personal)
+  }
+
+  @Test func load_picksHighestAcrossAllThreeSources() async {
+    // JWT says pro, server says free, StoreKit says personal — take pro
+    let (sut, _, _, _, _, _) = makeSUT(
+      session: .pro,
+      entitlement: .personalActive,
+      serverProfile: .success(.freeUser)
+    )
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .pro)
+  }
+
+  @Test func load_defaultsToFree_whenAllSourcesReturnFree() async {
+    let (sut, _, _, _, _, _) = makeSUT(
+      session: .valid,
       entitlement: nil,
       serverProfile: .failure(DomainError.networkUnavailable)
     )
