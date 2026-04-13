@@ -176,7 +176,16 @@ struct TownCrierApp: App {
         }
       }
       #if os(iOS)
-        .manageSubscriptionsSheet(isPresented: $coordinator.isManageSubscriptionPresented)
+        .manageSubscriptionsSheet(
+          isPresented: Binding(
+            get: { coordinator.isManageSubscriptionPresented },
+            set: { newValue in
+              Task { @MainActor in
+                coordinator.isManageSubscriptionPresented = newValue
+              }
+            }
+          )
+        )
       #endif
       .tabItem {
         Label("Settings", systemImage: "gearshape")
