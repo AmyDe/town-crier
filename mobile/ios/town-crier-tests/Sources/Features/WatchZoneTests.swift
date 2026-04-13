@@ -10,7 +10,7 @@ struct WatchZoneTests {
     let zone = try WatchZone(postcode: postcode, centre: centre, radiusMetres: 1000)
     #expect(zone.centre == centre)
     #expect(zone.radiusMetres == 1000)
-    #expect(zone.postcode == postcode)
+    #expect(zone.name == postcode.value)
   }
 
   @Test func init_zeroRadius_throws() throws {

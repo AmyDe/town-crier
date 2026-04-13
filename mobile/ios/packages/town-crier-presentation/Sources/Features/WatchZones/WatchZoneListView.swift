@@ -105,7 +105,7 @@ private struct WatchZoneRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.small))
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text(zone.postcode.value)
+        Text(zone.name)
           .font(.system(.headline).weight(.semibold))
         Text(formatRadius(zone.radiusMetres))
           .font(.system(.caption))

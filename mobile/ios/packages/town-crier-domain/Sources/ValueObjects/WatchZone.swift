@@ -3,11 +3,33 @@ import Foundation
 /// A circular geographic area that a user monitors for planning applications.
 public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let id: WatchZoneId
-  public let postcode: Postcode
+  public let name: String
   public let centre: Coordinate
   public let radiusMetres: Double
   public let authorityId: Int
 
+  public init(
+    id: WatchZoneId = WatchZoneId(),
+    name: String,
+    centre: Coordinate,
+    radiusMetres: Double,
+    authorityId: Int = 0
+  ) throws {
+    let trimmed = name.trimmingCharacters(in: .whitespaces)
+    guard !trimmed.isEmpty else {
+      throw DomainError.invalidWatchZoneName
+    }
+    guard radiusMetres > 0 else {
+      throw DomainError.invalidWatchZoneRadius
+    }
+    self.id = id
+    self.name = trimmed
+    self.centre = centre
+    self.radiusMetres = radiusMetres
+    self.authorityId = authorityId
+  }
+
+  /// Convenience initializer that derives the zone name from a validated postcode.
   public init(
     id: WatchZoneId = WatchZoneId(),
     postcode: Postcode,
@@ -15,14 +37,13 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     radiusMetres: Double,
     authorityId: Int = 0
   ) throws {
-    guard radiusMetres > 0 else {
-      throw DomainError.invalidWatchZoneRadius
-    }
-    self.id = id
-    self.postcode = postcode
-    self.centre = centre
-    self.radiusMetres = radiusMetres
-    self.authorityId = authorityId
+    try self.init(
+      id: id,
+      name: postcode.value,
+      centre: centre,
+      radiusMetres: radiusMetres,
+      authorityId: authorityId
+    )
   }
 
   /// Returns true if the given coordinate falls within this watch zone.

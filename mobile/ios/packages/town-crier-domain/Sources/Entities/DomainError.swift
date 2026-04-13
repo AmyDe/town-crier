@@ -5,6 +5,7 @@ public enum DomainError: Error, Equatable, Sendable {
   case applicationNotFound(PlanningApplicationId)
   case invalidCoordinate
   case invalidWatchZoneRadius
+  case invalidWatchZoneName
   case networkUnavailable
   case serverError(statusCode: Int, message: String?)
   case authenticationFailed(String)
@@ -39,7 +40,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .insufficientEntitlement:
       return "Upgrade Required"
     case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
-      .invalidStatusTransition, .geocodingFailed,
+      .invalidWatchZoneName, .invalidStatusTransition, .geocodingFailed,
       .notificationPermissionDenied, .unexpected:
       return "Something Went Wrong"
     }
@@ -67,7 +68,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .insufficientEntitlement:
       return "This feature requires a higher subscription tier. Upgrade to unlock it."
     case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
-      .invalidStatusTransition, .geocodingFailed, .unexpected:
+      .invalidWatchZoneName, .invalidStatusTransition, .geocodingFailed, .unexpected:
       return "An unexpected error occurred. Please try again."
     }
   }
@@ -79,8 +80,8 @@ public enum DomainError: Error, Equatable, Sendable {
       .purchaseFailed, .restoreFailed, .logoutFailed:
       return true
     case .sessionExpired, .authenticationFailed, .invalidPostcode,
-      .invalidCoordinate, .invalidWatchZoneRadius, .invalidStatusTransition,
-      .applicationNotFound, .notificationPermissionDenied,
+      .invalidCoordinate, .invalidWatchZoneRadius, .invalidWatchZoneName,
+      .invalidStatusTransition, .applicationNotFound, .notificationPermissionDenied,
       .purchaseCancelled, .productNotFound, .insufficientEntitlement:
       return false
     }

@@ -150,8 +150,7 @@ struct APIWatchZoneRepositoryTests {
     #expect(zones.count == 1)
     let zone = zones[0]
     #expect(zone.id == WatchZoneId("zone-001"))
-    let expectedPostcode = try Postcode("CB1 2AD")
-    #expect(zone.postcode == expectedPostcode)
+    #expect(zone.name == "CB1 2AD")
     let expectedCentre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     #expect(zone.centre == expectedCentre)
     #expect(zone.radiusMetres == 2000)
