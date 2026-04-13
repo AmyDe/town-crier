@@ -215,4 +215,64 @@ struct AppCoordinatorTests {
 
     #expect(!sut.isManageSubscriptionPresented)
   }
+
+  // MARK: - Watch Zone List Factory
+
+  @Test func makeWatchZoneListViewModel_createsViewModel() {
+    let (sut, _) = makeSUT()
+
+    let vm = sut.makeWatchZoneListViewModel()
+
+    #expect(vm.zones.isEmpty)
+    #expect(!vm.isLoading)
+  }
+
+  @Test func makeWatchZoneListViewModel_onAddZone_setsIsAddingWatchZone() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeWatchZoneListViewModel()
+
+    vm.addZone()
+
+    #expect(sut.isAddingWatchZone)
+  }
+
+  @Test func makeWatchZoneListViewModel_onEditZone_setsEditingWatchZone() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeWatchZoneListViewModel()
+
+    vm.editZone(.cambridge)
+
+    #expect(sut.editingWatchZone == .cambridge)
+  }
+
+  @Test func isAddingWatchZone_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isAddingWatchZone)
+  }
+
+  @Test func editingWatchZone_isNilByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(sut.editingWatchZone == nil)
+  }
+
+  // MARK: - Watch Zone Editor Factory
+
+  @Test func makeWatchZoneEditorViewModel_forAdd_createsNonEditingViewModel() {
+    let (sut, _) = makeSUT()
+
+    let vm = sut.makeWatchZoneEditorViewModel()
+
+    #expect(!vm.isEditing)
+  }
+
+  @Test func makeWatchZoneEditorViewModel_forEdit_createsEditingViewModel() {
+    let (sut, _) = makeSUT()
+
+    let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+
+    #expect(vm.isEditing)
+    #expect(vm.postcodeInput == "CB1 2AD")
+  }
 }
