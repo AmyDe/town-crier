@@ -85,6 +85,7 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<SaveApplicationCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetSavedApplicationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetDemoAccountQueryHandler>()).IsNotNull();
+        await Assert.That(provider.GetService<GetApplicationsByZoneQueryHandler>()).IsNotNull();
     }
 
     [Test]

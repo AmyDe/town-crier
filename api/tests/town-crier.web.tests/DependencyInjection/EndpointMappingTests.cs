@@ -28,6 +28,7 @@ public sealed class EndpointMappingTests
     [Arguments("/v1/me", "POST")]
     [Arguments("/api/me", "GET")]
     [Arguments("/v1/me/application-authorities", "GET")]
+    [Arguments("/v1/me/watch-zones/zone-1/applications", "GET")]
     public async Task Should_MapAuthenticatedEndpoints_When_MapAllEndpointsCalled(string path, string method)
     {
         // Arrange
