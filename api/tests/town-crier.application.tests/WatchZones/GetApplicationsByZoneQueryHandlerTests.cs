@@ -23,6 +23,7 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
 
         // Application ~200m from centre (inside zone)
         var nearby = new PlanningApplicationBuilder()
+            .WithName("nearby-app")
             .WithUid("uid-nearby")
             .WithAreaId(42)
             .WithCoordinates(51.5380, -0.1410)
@@ -30,6 +31,7 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
 
         // Application ~5km from centre (outside zone)
         var far = new PlanningApplicationBuilder()
+            .WithName("far-app")
             .WithUid("uid-far")
             .WithAreaId(42)
             .WithCoordinates(51.5074, -0.1278)
