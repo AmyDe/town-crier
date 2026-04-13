@@ -21,6 +21,7 @@ public final class AppCoordinator: ObservableObject {
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
   private let authorityRepository: ApplicationAuthorityRepository?
+  private let watchZoneRepository: WatchZoneRepository
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
 
@@ -31,6 +32,7 @@ public final class AppCoordinator: ObservableObject {
     userProfileRepository: UserProfileRepository,
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
+    watchZoneRepository: WatchZoneRepository,
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
@@ -42,6 +44,7 @@ public final class AppCoordinator: ObservableObject {
     self.userProfileRepository = userProfileRepository
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
+    self.watchZoneRepository = watchZoneRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
@@ -52,18 +55,19 @@ public final class AppCoordinator: ObservableObject {
     LoginViewModel(authService: authService)
   }
 
-  public func makeMapViewModel(watchZone: WatchZone) -> MapViewModel {
+  public func makeMapViewModel() -> MapViewModel {
     if let authorityRepository {
       return MapViewModel(
         authorityRepository: authorityRepository,
         applicationRepository: repository,
-        watchZone: watchZone
+        watchZoneRepository: watchZoneRepository
       )
     }
     if let offlineRepository {
-      return MapViewModel(offlineRepository: offlineRepository, watchZone: watchZone)
+      return MapViewModel(
+        offlineRepository: offlineRepository, watchZoneRepository: watchZoneRepository)
     }
-    return MapViewModel(repository: repository, watchZone: watchZone)
+    return MapViewModel(repository: repository, watchZoneRepository: watchZoneRepository)
   }
 
   public func makeApplicationListViewModel(

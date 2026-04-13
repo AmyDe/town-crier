@@ -30,11 +30,13 @@ struct CompositionRootTests {
 
     let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
 
+    let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let coordinator = AppCoordinator(
       repository: repository,
       authService: authService,
       subscriptionService: subscriptionService,
       userProfileRepository: userProfileRepository,
+      watchZoneRepository: watchZoneRepository,
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
@@ -77,6 +79,7 @@ struct CompositionRootTests {
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: onboardingRepo,
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
@@ -107,12 +110,14 @@ struct CompositionRootTests {
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
 
+    let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let coordinator = AppCoordinator(
       repository: APIPlanningApplicationRepository(apiClient: apiClient),
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
       authorityRepository: authorityRepository,
+      watchZoneRepository: watchZoneRepository,
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
@@ -122,7 +127,7 @@ struct CompositionRootTests {
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
     )
 
-    let vm = coordinator.makeMapViewModel(watchZone: .cambridge)
+    let vm = coordinator.makeMapViewModel()
     #expect(vm.annotations.isEmpty)
   }
 
@@ -139,6 +144,7 @@ struct CompositionRootTests {
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
       authorityRepository: authorityRepository,
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
@@ -173,6 +179,7 @@ struct CompositionRootTests {
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
