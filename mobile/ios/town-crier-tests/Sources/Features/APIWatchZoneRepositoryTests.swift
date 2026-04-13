@@ -157,6 +157,70 @@ struct APIWatchZoneRepositoryTests {
     #expect(zone.authorityId == 123)
   }
 
+  @Test("loadAll includes zones with freeform names (web-created)")
+  func loadAll_freeformName_includesZone() async throws {
+    let json = """
+      {
+          "zones": [
+              {
+                  "id": "zone-web-001",
+                  "name": "My Home Zone",
+                  "latitude": 51.5014,
+                  "longitude": -0.1419,
+                  "radiusMetres": 1500,
+                  "authorityId": 456
+              }
+          ]
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let zones = try await sut.loadAll()
+
+    #expect(zones.count == 1)
+    let zone = zones[0]
+    #expect(zone.id == WatchZoneId("zone-web-001"))
+    #expect(zone.name == "My Home Zone")
+    #expect(zone.authorityId == 456)
+  }
+
+  @Test("loadAll returns mix of postcode and freeform-named zones")
+  func loadAll_mixedNames_returnsAll() async throws {
+    let json = """
+      {
+          "zones": [
+              {
+                  "id": "zone-ios",
+                  "name": "CB1 2AD",
+                  "latitude": 52.2053,
+                  "longitude": 0.1218,
+                  "radiusMetres": 2000,
+                  "authorityId": 123
+              },
+              {
+                  "id": "zone-web",
+                  "name": "Office near Westminster",
+                  "latitude": 51.5014,
+                  "longitude": -0.1419,
+                  "radiusMetres": 1500,
+                  "authorityId": 456
+              }
+          ]
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let zones = try await sut.loadAll()
+
+    #expect(zones.count == 2)
+    #expect(zones[0].name == "CB1 2AD")
+    #expect(zones[1].name == "Office near Westminster")
+  }
+
   @Test("loadAll returns empty array when no zones")
   func loadAll_emptyZones_returnsEmptyArray() async throws {
     let json = """
