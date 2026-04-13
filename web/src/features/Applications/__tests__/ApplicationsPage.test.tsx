@@ -3,52 +3,66 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApplicationsPage } from '../ApplicationsPage';
-import { SpyUserAuthoritiesPort } from './spies/spy-user-authorities-port';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
-import { cornwallAuthority, bathAuthority } from './fixtures/authority.fixtures';
+import { cambridgeZone, oxfordZone } from './fixtures/zone.fixtures';
 import {
   undecidedApplication,
   approvedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
+import type { WatchZoneSummary } from '../../../domain/types';
+
+class SpyZonesPort {
+  fetchZonesCalls = 0;
+  fetchZonesResult: readonly WatchZoneSummary[] = [];
+  fetchZonesError: Error | null = null;
+
+  async fetchZones(): Promise<readonly WatchZoneSummary[]> {
+    this.fetchZonesCalls++;
+    if (this.fetchZonesError) {
+      throw this.fetchZonesError;
+    }
+    return this.fetchZonesResult;
+  }
+}
 
 function renderPage(
-  userAuthoritiesPort: SpyUserAuthoritiesPort,
+  zonesPort: SpyZonesPort,
   browsePort: SpyApplicationsBrowsePort,
 ) {
   return render(
     <MemoryRouter>
-      <ApplicationsPage userAuthoritiesPort={userAuthoritiesPort} browsePort={browsePort} />
+      <ApplicationsPage zonesPort={zonesPort} browsePort={browsePort} />
     </MemoryRouter>,
   );
 }
 
 describe('ApplicationsPage', () => {
-  let userAuthoritiesPort: SpyUserAuthoritiesPort;
+  let zonesPort: SpyZonesPort;
   let browsePort: SpyApplicationsBrowsePort;
 
   beforeEach(() => {
-    userAuthoritiesPort = new SpyUserAuthoritiesPort();
+    zonesPort = new SpyZonesPort();
     browsePort = new SpyApplicationsBrowsePort();
   });
 
   it('renders page heading', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [];
-    renderPage(userAuthoritiesPort, browsePort);
+    zonesPort.fetchZonesResult = [];
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Applications' })).toBeInTheDocument();
     });
   });
 
-  it('shows loading state while fetching authorities', () => {
-    renderPage(userAuthoritiesPort, browsePort);
+  it('shows loading state while fetching zones', () => {
+    renderPage(zonesPort, browsePort);
 
-    expect(screen.getByText('Loading authorities...')).toBeInTheDocument();
+    expect(screen.getByText('Loading zones...')).toBeInTheDocument();
   });
 
   it('shows empty state when user has no watch zones', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [];
-    renderPage(userAuthoritiesPort, browsePort);
+    zonesPort.fetchZonesResult = [];
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
       expect(
@@ -57,98 +71,98 @@ describe('ApplicationsPage', () => {
     });
   });
 
-  it('shows authority cards when user has watch zones', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority(), bathAuthority()];
-    renderPage(userAuthoritiesPort, browsePort);
+  it('shows zone cards when user has watch zones', async () => {
+    zonesPort.fetchZonesResult = [cambridgeZone(), oxfordZone()];
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+      expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
     });
-    expect(screen.getByText('Bath and NE Somerset')).toBeInTheDocument();
+    expect(screen.getByText('Office - Oxford')).toBeInTheDocument();
   });
 
-  it('shows applications when authority card is clicked', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
-    browsePort.fetchByAuthorityResult = [undecidedApplication(), approvedApplication()];
+  it('shows applications when zone card is clicked', async () => {
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    browsePort.fetchByZoneResult = [undecidedApplication(), approvedApplication()];
     const user = userEvent.setup();
 
-    renderPage(userAuthoritiesPort, browsePort);
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+      expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Cornwall Council'));
+    await user.click(screen.getByText('Home - Cambridge'));
 
     await waitFor(() => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
     expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
-    expect(browsePort.fetchByAuthorityCalls).toEqual([cornwallAuthority().id]);
+    expect(browsePort.fetchByZoneCalls).toEqual([cambridgeZone().id]);
   });
 
   it('shows breadcrumb when viewing applications', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
-    browsePort.fetchByAuthorityResult = [undecidedApplication()];
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    browsePort.fetchByZoneResult = [undecidedApplication()];
     const user = userEvent.setup();
 
-    renderPage(userAuthoritiesPort, browsePort);
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+      expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Cornwall Council'));
+    await user.click(screen.getByText('Home - Cambridge'));
 
     await waitFor(() => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
-    expect(screen.getByRole('button', { name: 'Authorities' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Watch Zones' })).toBeInTheDocument();
   });
 
-  it('returns to authority list when breadcrumb is clicked', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority(), bathAuthority()];
-    browsePort.fetchByAuthorityResult = [undecidedApplication()];
+  it('returns to zone list when breadcrumb is clicked', async () => {
+    zonesPort.fetchZonesResult = [cambridgeZone(), oxfordZone()];
+    browsePort.fetchByZoneResult = [undecidedApplication()];
     const user = userEvent.setup();
 
-    renderPage(userAuthoritiesPort, browsePort);
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+      expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Cornwall Council'));
+    await user.click(screen.getByText('Home - Cambridge'));
 
     await waitFor(() => {
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Authorities' }));
+    await user.click(screen.getByRole('button', { name: 'Watch Zones' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Bath and NE Somerset')).toBeInTheDocument();
+      expect(screen.getByText('Office - Oxford')).toBeInTheDocument();
     });
-    expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+    expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
   });
 
-  it('shows empty state when authority has no applications', async () => {
-    userAuthoritiesPort.fetchMyAuthoritiesResult = [cornwallAuthority()];
-    browsePort.fetchByAuthorityResult = [];
+  it('shows empty state when zone has no applications', async () => {
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    browsePort.fetchByZoneResult = [];
     const user = userEvent.setup();
 
-    renderPage(userAuthoritiesPort, browsePort);
+    renderPage(zonesPort, browsePort);
 
     await waitFor(() => {
-      expect(screen.getByText('Cornwall Council')).toBeInTheDocument();
+      expect(screen.getByText('Home - Cambridge')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText('Cornwall Council'));
+    await user.click(screen.getByText('Home - Cambridge'));
 
     await waitFor(() => {
       expect(
-        screen.getByText('No applications found for this authority.'),
+        screen.getByText('No applications found in this zone.'),
       ).toBeInTheDocument();
     });
   });
