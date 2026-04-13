@@ -28,19 +28,11 @@ internal sealed class FakePlanItHandler : HttpMessageHandler
         this.statusCodeResponses[urlContains] = statusCode;
     }
 
-    /// <summary>
-    /// Returns <paramref name="statusCode"/> for the first <paramref name="failCount"/> requests
-    /// matching <paramref name="urlContains"/>, then returns 200 with <paramref name="successJson"/>.
-    /// </summary>
     public void SetupTransientFailure(string urlContains, int failCount, HttpStatusCode statusCode, string successJson)
     {
         this.transientFailures[urlContains] = (failCount, statusCode, successJson);
     }
 
-    /// <summary>
-    /// Returns 429 for the first <paramref name="failCount"/> requests matching <paramref name="urlContains"/>,
-    /// then returns 200 with <paramref name="successJson"/>.
-    /// </summary>
     public void SetupTransientRateLimit(string urlContains, int failCount, string successJson)
     {
         this.transientFailures[urlContains] = (failCount, HttpStatusCode.TooManyRequests, successJson);
