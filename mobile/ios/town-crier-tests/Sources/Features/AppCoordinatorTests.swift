@@ -106,23 +106,17 @@ struct AppCoordinatorTests {
 
   // MARK: - Map ViewModel Factory
 
-  @Test func makeMapViewModel_usesAuthorityRepository() async {
+  @Test func makeMapViewModel_fetchesByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(
-        authorities: [.cambridge],
-        count: 1
-      )
-    )
-    appSpy.fetchApplicationsByZone = ["CAM": [.pendingReview]]
+    appSpy.fetchApplicationsByZone = ["zone-001": [.pendingReview]]
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
     let coordinator = AppCoordinator(
       repository: appSpy,
       authService: SpyAuthenticationService(),
       subscriptionService: SpySubscriptionService(),
       userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
+      watchZoneRepository: watchZoneSpy,
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
@@ -132,8 +126,8 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
+    #expect(appSpy.fetchApplicationsCalls.count == 1)
+    #expect(appSpy.fetchApplicationsCalls.first?.id.value == "zone-001")
     #expect(vm.annotations.count == 1)
   }
 

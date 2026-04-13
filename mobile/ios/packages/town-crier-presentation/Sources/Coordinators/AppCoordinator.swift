@@ -66,18 +66,7 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeMapViewModel() -> MapViewModel {
-    if let authorityRepository {
-      return MapViewModel(
-        authorityRepository: authorityRepository,
-        applicationRepository: repository,
-        watchZoneRepository: watchZoneRepository
-      )
-    }
-    if let offlineRepository {
-      return MapViewModel(
-        offlineRepository: offlineRepository, watchZoneRepository: watchZoneRepository)
-    }
-    return MapViewModel(repository: repository, watchZoneRepository: watchZoneRepository)
+    MapViewModel(repository: repository, watchZoneRepository: watchZoneRepository)
   }
 
   public func makeApplicationListViewModel(
