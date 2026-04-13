@@ -55,6 +55,15 @@ public struct WatchZoneListView: View {
     .task {
       await viewModel.load()
     }
+    .sheet(isPresented: $viewModel.isUpgradePromptPresented) {
+      WatchZoneUpsellView(
+        valueProposition: viewModel.upgradeValueProposition,
+        onViewPlans: { viewModel.viewPlans() },
+        onDismiss: { viewModel.dismissUpgradePrompt() }
+      )
+      .presentationDetents([.medium])
+      .presentationDragIndicator(.visible)
+    }
   }
 
   private var emptyState: some View {
