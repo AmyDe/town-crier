@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';
-import { anAuthority, anApplication, aSavedApplication } from './fixtures/map.fixtures';
+import { aZone, anApplication, aSavedApplication } from './fixtures/map.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
 vi.mock('react-leaflet', () => ({
@@ -39,7 +39,7 @@ describe('MapPage', () => {
   });
 
   it('renders map heading and container', async () => {
-    spy.fetchMyAuthoritiesResult = [anAuthority()];
+    spy.fetchMyZonesResult = [aZone()];
 
     render(
       <MemoryRouter>
@@ -65,7 +65,7 @@ describe('MapPage', () => {
   });
 
   it('renders error state on failure', async () => {
-    spy.fetchMyAuthoritiesError = new Error('Network unavailable');
+    spy.fetchMyZonesError = new Error('Network unavailable');
 
     render(
       <MemoryRouter>
@@ -79,10 +79,10 @@ describe('MapPage', () => {
   });
 
   it('renders application markers with popups showing summary info', async () => {
-    const auth = anAuthority();
+    const zone = aZone();
     const app = anApplication();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [app]);
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [app]);
 
     render(
       <MemoryRouter>
@@ -103,15 +103,15 @@ describe('MapPage', () => {
   });
 
   it('skips applications without coordinates', async () => {
-    const auth = anAuthority();
+    const zone = aZone();
     const appWithCoords = anApplication();
     const appWithoutCoords = anApplication({
       uid: 'no-coords' as never,
       latitude: null,
       longitude: null,
     });
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [
       appWithCoords,
       appWithoutCoords,
     ]);
@@ -128,9 +128,9 @@ describe('MapPage', () => {
   });
 
   it('renders "Save application" button for unsaved apps', async () => {
-    const auth = anAuthority();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    const zone = aZone();
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
 
     render(
@@ -145,9 +145,9 @@ describe('MapPage', () => {
   });
 
   it('renders "Unsave application" button for saved apps', async () => {
-    const auth = anAuthority();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    const zone = aZone();
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     render(
@@ -162,9 +162,9 @@ describe('MapPage', () => {
   });
 
   it('calls saveApplication when save button is clicked', async () => {
-    const auth = anAuthority();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    const zone = aZone();
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
     spy.fetchSavedApplicationsResult = [];
 
     render(
@@ -185,9 +185,9 @@ describe('MapPage', () => {
   });
 
   it('calls unsaveApplication when unsave button is clicked', async () => {
-    const auth = anAuthority();
-    spy.fetchMyAuthoritiesResult = [auth];
-    spy.fetchApplicationsByAuthorityResults.set(auth.id as number, [anApplication()]);
+    const zone = aZone();
+    spy.fetchMyZonesResult = [zone];
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     render(
