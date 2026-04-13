@@ -8,6 +8,7 @@ public final class AppCoordinator: ObservableObject {
   @Published public var deepLinkError: DomainError?
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
+  @Published public var isSubscriptionPresented = false
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
 
@@ -148,6 +149,9 @@ public final class AppCoordinator: ObservableObject {
     }
     viewModel.onEditZone = { [weak self] zone in
       self?.editingWatchZone = zone
+    }
+    viewModel.onViewPlans = { [weak self] in
+      self?.isSubscriptionPresented = true
     }
     return viewModel
   }
