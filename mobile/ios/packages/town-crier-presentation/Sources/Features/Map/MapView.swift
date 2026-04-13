@@ -5,40 +5,28 @@ import TownCrierDomain
 /// Map view displaying planning application pins colour-coded by status.
 public struct MapView: View {
   @StateObject private var viewModel: MapViewModel
+  @State private var mapPosition: MapCameraPosition = .automatic
 
   public init(viewModel: MapViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
   }
 
   public var body: some View {
-    ZStack {
-      if viewModel.isLoading && !viewModel.hasLoaded {
-        mapPlaceholder
-      } else if let error = viewModel.error {
-        ErrorStateView(error: error) {
-          await viewModel.loadApplications()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.tcBackground)
-      } else if viewModel.isEmpty {
-        EmptyStateView(
-          icon: "map",
-          title: "No Applications",
-          description: "No planning applications found in your watch zone yet. Check back soon."
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.tcBackground)
-      } else {
-        mapContent
-        if viewModel.isLoading {
-          ProgressView()
-            .controlSize(.large)
-        }
+    VStack(spacing: 0) {
+      if viewModel.showZonePicker {
+        zonePickerSection
       }
+      mapBody
     }
     .background(Color.tcBackground)
     .task {
       await viewModel.loadApplications()
+      updateMapPosition()
+    }
+    .onChange(of: viewModel.selectedZone?.id) { _, _ in
+      withAnimation {
+        updateMapPosition()
+      }
     }
     .sheet(
       item: Binding(
@@ -52,18 +40,7 @@ public struct MapView: View {
 
   @ViewBuilder
   private var mapContent: some View {
-    Map(
-      initialPosition: .region(
-        MKCoordinateRegion(
-          center: CLLocationCoordinate2D(
-            latitude: viewModel.centreLat,
-            longitude: viewModel.centreLon
-          ),
-          latitudinalMeters: viewModel.radiusMetres * 2.5,
-          longitudinalMeters: viewModel.radiusMetres * 2.5
-        )
-      )
-    ) {
+    Map(position: $mapPosition) {
       ForEach(viewModel.annotations) { annotation in
         Annotation(
           annotation.title,
@@ -105,6 +82,48 @@ public struct MapView: View {
       .accessibilityLabel("\(annotation.title), \(annotation.status.displayLabel)")
   }
 
+  // MARK: - Zone Picker
+
+  private var zonePickerSection: some View {
+    ZonePickerView(
+      zones: viewModel.zones,
+      selectedZoneId: viewModel.selectedZone?.id
+    ) { zone in
+      Task {
+        await viewModel.selectZone(zone)
+      }
+    }
+    .background(Color.tcBackground)
+  }
+
+  private var mapBody: some View {
+    ZStack {
+      if viewModel.isLoading && !viewModel.hasLoaded {
+        mapPlaceholder
+      } else if let error = viewModel.error {
+        ErrorStateView(error: error) {
+          await viewModel.loadApplications()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.tcBackground)
+      } else if viewModel.isEmpty {
+        EmptyStateView(
+          icon: "map",
+          title: "No Applications",
+          description: "No planning applications found in your watch zone yet. Check back soon."
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.tcBackground)
+      } else {
+        mapContent
+        if viewModel.isLoading {
+          ProgressView()
+            .controlSize(.large)
+        }
+      }
+    }
+  }
+
   private var mapPlaceholder: some View {
     ZStack {
       Color.tcBackground.ignoresSafeArea()
@@ -112,5 +131,18 @@ public struct MapView: View {
       ProgressView()
         .controlSize(.large)
     }
+  }
+
+  private func updateMapPosition() {
+    mapPosition = .region(
+      MKCoordinateRegion(
+        center: CLLocationCoordinate2D(
+          latitude: viewModel.centreLat,
+          longitude: viewModel.centreLon
+        ),
+        latitudinalMeters: viewModel.radiusMetres * 2.5,
+        longitudinalMeters: viewModel.radiusMetres * 2.5
+      )
+    )
   }
 }

@@ -275,4 +275,105 @@ struct MapViewModelTests {
     #expect(sut.annotations.isEmpty)
     #expect(sut.isEmpty)
   }
+
+  // MARK: - Zone Selection
+
+  private func makeSUTWithZones(
+    zones: [WatchZone] = [.cambridge, .london],
+    applications: [PlanningApplication] = [.pendingReview],
+    persistedZoneId: String? = nil
+  ) throws -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults) {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(applications)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success(zones)
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    if let persistedZoneId {
+      defaults.set(persistedZoneId, forKey: "test.zone")
+    }
+    let vm = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone"
+    )
+    return (vm, appSpy, zoneSpy, defaults)
+  }
+
+  @Test func loadApplications_populatesZones() async throws {
+    let (sut, _, _, _) = try makeSUTWithZones()
+
+    await sut.loadApplications()
+
+    #expect(sut.zones.count == 2)
+    #expect(sut.zones[0].id == WatchZone.cambridge.id)
+    #expect(sut.zones[1].id == WatchZone.london.id)
+  }
+
+  @Test func loadApplications_selectsFirstZoneByDefault() async throws {
+    let (sut, appSpy, _, _) = try makeSUTWithZones()
+
+    await sut.loadApplications()
+
+    #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+  }
+
+  @Test func loadApplications_restoresPersistedZoneSelection() async throws {
+    let (sut, appSpy, _, _) = try makeSUTWithZones(persistedZoneId: "zone-002")
+
+    await sut.loadApplications()
+
+    #expect(sut.selectedZone?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.london.id)
+    #expect(sut.centreLat == WatchZone.london.centre.latitude)
+    #expect(sut.centreLon == WatchZone.london.centre.longitude)
+  }
+
+  @Test func loadApplications_fallsBackToFirstZone_whenPersistedZoneDeleted() async throws {
+    let (sut, appSpy, _, _) = try makeSUTWithZones(persistedZoneId: "zone-deleted")
+
+    await sut.loadApplications()
+
+    #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+  }
+
+  @Test func selectZone_fetchesApplicationsAndUpdatesCentre() async throws {
+    let (sut, appSpy, _, _) = try makeSUTWithZones()
+    await sut.loadApplications()
+    let initialCallCount = appSpy.fetchApplicationsCalls.count
+
+    await sut.selectZone(.london)
+
+    #expect(sut.selectedZone?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsCalls.count == initialCallCount + 1)
+    #expect(appSpy.fetchApplicationsCalls.last?.id == WatchZone.london.id)
+    #expect(sut.centreLat == WatchZone.london.centre.latitude)
+    #expect(sut.centreLon == WatchZone.london.centre.longitude)
+    #expect(sut.radiusMetres == WatchZone.london.radiusMetres)
+  }
+
+  @Test func selectZone_persistsSelectionToUserDefaults() async throws {
+    let (sut, _, _, defaults) = try makeSUTWithZones()
+    await sut.loadApplications()
+
+    await sut.selectZone(.london)
+
+    #expect(defaults.string(forKey: "test.zone") == "zone-002")
+  }
+
+  @Test func showZonePicker_trueWhenMultipleZones() async throws {
+    let (sut, _, _, _) = try makeSUTWithZones()
+    await sut.loadApplications()
+
+    #expect(sut.showZonePicker)
+  }
+
+  @Test func showZonePicker_falseWhenSingleZone() async throws {
+    let (sut, _, _, _) = try makeSUTWithZones(zones: [.cambridge])
+    await sut.loadApplications()
+
+    #expect(!sut.showZonePicker)
+  }
 }
