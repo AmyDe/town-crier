@@ -81,14 +81,14 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeApplicationListViewModel(
-    authority: LocalAuthority
+    zone: WatchZone
   ) -> ApplicationListViewModel {
     let viewModel: ApplicationListViewModel
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
-        offlineRepository: offlineRepository, authority: authority)
+        offlineRepository: offlineRepository, zone: zone)
     } else {
-      viewModel = ApplicationListViewModel(repository: repository, authority: authority)
+      viewModel = ApplicationListViewModel(repository: repository, zone: zone)
     }
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
@@ -96,21 +96,16 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
+  /// Creates a list view model using a placeholder zone.
+  /// Callers should prefer `makeApplicationListViewModel(zone:)` when a real zone is available.
   public func makeApplicationListViewModel() -> ApplicationListViewModel {
-    let viewModel: ApplicationListViewModel
-    if let authorityRepository {
-      viewModel = ApplicationListViewModel(
-        authorityRepository: authorityRepository,
-        applicationRepository: repository
-      )
-    } else {
-      viewModel = makeApplicationListViewModel(
-        authority: LocalAuthority(code: "", name: "")
-      )
-    }
-    viewModel.onApplicationSelected = { [weak self] id in
-      self?.showApplicationDetail(id)
-    }
+    // swiftlint:disable:next force_try
+    let placeholder = try! WatchZone(
+      name: "Default",
+      centre: Coordinate(latitude: 0, longitude: 0),
+      radiusMetres: 1
+    )
+    let viewModel = makeApplicationListViewModel(zone: placeholder)
     return viewModel
   }
 

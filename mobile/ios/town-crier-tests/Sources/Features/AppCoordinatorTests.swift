@@ -46,20 +46,20 @@ struct AppCoordinatorTests {
 
   // MARK: - Application List Factory
 
-  @Test func makeApplicationListViewModel_createsViewModelWithAuthority() async {
+  @Test func makeApplicationListViewModel_createsViewModelWithZone() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationsResult = .success([.pendingReview])
-    let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     await vm.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.first?.id.value == "CAM")
+    #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
   }
 
   @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.approved)
-    let vm = sut.makeApplicationListViewModel(authority: .cambridge)
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
@@ -69,34 +69,14 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
-  @Test func makeApplicationListViewModel_usesAuthorityRepository_whenAvailable() async {
-    let appSpy = SpyPlanningApplicationRepository()
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(
-        authorities: [.cambridge],
-        count: 1
-      )
-    )
-    appSpy.fetchApplicationsByZone = ["CAM": [.pendingReview]]
-    let coordinator = AppCoordinator(
-      repository: appSpy,
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-    let vm = coordinator.makeApplicationListViewModel()
+  @Test func makeApplicationListViewModel_noArgUsesPlaceholderZone() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationsResult = .success([.pendingReview])
+    let vm = sut.makeApplicationListViewModel()
 
     await vm.loadApplications()
 
-    #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
+    #expect(spy.fetchApplicationsCalls.count == 1)
     #expect(vm.filteredApplications.count == 1)
   }
 

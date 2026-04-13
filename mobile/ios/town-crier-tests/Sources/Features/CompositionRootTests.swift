@@ -146,7 +146,7 @@ struct CompositionRootTests {
     #expect(vm.annotations.isEmpty)
   }
 
-  @Test func coordinatorCreatesApplicationListViewModelWithAuthorityRepository() async {
+  @Test func coordinatorCreatesApplicationListViewModelWithPlaceholderZone() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
