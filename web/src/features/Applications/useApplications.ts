@@ -1,31 +1,31 @@
 import { useState, useCallback } from 'react';
-import type { AuthorityListItem, PlanningApplicationSummary } from '../../domain/types';
+import type { WatchZoneSummary, PlanningApplicationSummary } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import { useFetchData } from '../../hooks/useFetchData';
 
 export function useApplications(port: ApplicationsBrowsePort) {
-  const [selectedAuthority, setSelectedAuthority] = useState<AuthorityListItem | null>(null);
+  const [selectedZone, setSelectedZone] = useState<WatchZoneSummary | null>(null);
   const [fetchKey, setFetchKey] = useState(0);
 
   const { data, isLoading, error } = useFetchData<readonly PlanningApplicationSummary[]>(
-    () => port.fetchByAuthority(selectedAuthority!.id),
-    [selectedAuthority?.id, fetchKey],
-    { enabled: selectedAuthority !== null },
+    () => port.fetchByZone(selectedZone!.id),
+    [selectedZone?.id, fetchKey],
+    { enabled: selectedZone !== null },
   );
 
-  const selectAuthority = useCallback(
-    (authority: AuthorityListItem | null) => {
-      setSelectedAuthority(authority);
+  const selectZone = useCallback(
+    (zone: WatchZoneSummary | null) => {
+      setSelectedZone(zone);
       setFetchKey((k) => k + 1);
     },
     [],
   );
 
   return {
-    selectedAuthority,
+    selectedZone,
     applications: data ?? [],
     isLoading,
     error,
-    selectAuthority,
+    selectZone,
   };
 }
