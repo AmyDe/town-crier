@@ -19,27 +19,6 @@ struct MapViewModelTests {
     return (vm, spy, watchZoneSpy)
   }
 
-  private func makeSUTWithAuthorities(
-    authorities: [LocalAuthority] = [.cambridge],
-    applicationsByAuthority: [String: [PlanningApplication]] = [:],
-    watchZones: [WatchZone] = [.cambridge]
-  ) -> (MapViewModel, SpyApplicationAuthorityRepository, SpyPlanningApplicationRepository) {
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(authorities: authorities, count: authorities.count)
-    )
-    let appSpy = SpyPlanningApplicationRepository()
-    appSpy.fetchApplicationsByZone = applicationsByAuthority
-    let watchZoneSpy = SpyWatchZoneRepository()
-    watchZoneSpy.loadAllResult = .success(watchZones)
-    let vm = MapViewModel(
-      authorityRepository: authoritySpy,
-      applicationRepository: appSpy,
-      watchZoneRepository: watchZoneSpy
-    )
-    return (vm, authoritySpy, appSpy)
-  }
-
   // MARK: - Loading
 
   @Test func loadApplications_populatesAnnotations() async {
@@ -124,17 +103,17 @@ struct MapViewModelTests {
     #expect(sut.radiusMetres == 3000)
   }
 
-  @Test func loadApplications_usesDefaultCentre_whenWatchZoneFetchFails() async {
+  @Test func loadApplications_setsError_whenWatchZoneFetchFails() async {
     let (sut, _, watchZoneSpy) = makeSUT()
     watchZoneSpy.loadAllResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
 
-    // Falls back to London defaults
+    #expect(sut.error == .networkUnavailable)
+    // Keeps London defaults when zone fetch fails
     #expect(sut.centreLat == 51.5074)
     #expect(sut.centreLon == -0.1278)
     #expect(sut.radiusMetres == 2000)
-    #expect(sut.error == nil)
   }
 
   @Test func loadApplications_fetchesWatchZone() async {

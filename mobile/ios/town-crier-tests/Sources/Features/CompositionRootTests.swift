@@ -118,12 +118,11 @@ struct CompositionRootTests {
     #expect(!vm.isEditing)
   }
 
-  @Test func coordinatorCreatesMapViewModelWithAuthorityRepository() async {
+  @Test func coordinatorCreatesMapViewModelWithZoneRepository() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     // swiftlint:disable:next force_unwrapping
     let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
-    let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
 
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let coordinator = AppCoordinator(
@@ -131,7 +130,6 @@ struct CompositionRootTests {
       authService: authService,
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
-      authorityRepository: authorityRepository,
       watchZoneRepository: watchZoneRepository,
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
