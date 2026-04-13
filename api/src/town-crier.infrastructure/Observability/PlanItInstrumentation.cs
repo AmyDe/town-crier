@@ -13,5 +13,10 @@ public static class PlanItInstrumentation
         Meter.CreateCounter<long>(
             "towncrier.planit.http_errors",
             description: "Non-2xx HTTP responses from PlanIt API");
+
+    public static readonly Counter<long> Retries =
+        Meter.CreateCounter<long>(
+            "towncrier.planit.retries",
+            description: "Retry attempts for transient PlanIt API failures");
 }
 #pragma warning restore SA1202
