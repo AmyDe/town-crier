@@ -36,6 +36,82 @@ struct JWTSubscriptionTierExtractorTests {
     #expect(tier == .pro)
   }
 
+  // MARK: - PascalCase tier values (Auth0 default casing)
+
+  @Test func extractTier_returnsPro_whenClaimIsPascalCasePro() {
+    // JWT payload: {"subscription_tier": "Pro", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJQcm8iLCAic3ViIjogImF1dGgwfDEyMyJ9"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .pro)
+  }
+
+  @Test func extractTier_returnsPersonal_whenClaimIsPascalCasePersonal() {
+    // JWT payload: {"subscription_tier": "Personal", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJQZXJzb25hbCIsICJzdWIiOiAiYXV0aDB8MTIzIn0"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .personal)
+  }
+
+  @Test func extractTier_returnsFree_whenClaimIsPascalCaseFree() {
+    // JWT payload: {"subscription_tier": "Free", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJGcmVlIiwgInN1YiI6ICJhdXRoMHwxMjMifQ"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .free)
+  }
+
+  // MARK: - UPPERCASE tier values
+
+  @Test func extractTier_returnsPro_whenClaimIsUppercasePRO() {
+    // JWT payload: {"subscription_tier": "PRO", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJQUk8iLCAic3ViIjogImF1dGgwfDEyMyJ9"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .pro)
+  }
+
+  @Test func extractTier_returnsPersonal_whenClaimIsUppercasePERSONAL() {
+    // JWT payload: {"subscription_tier": "PERSONAL", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJQRVJTT05BTCIsICJzdWIiOiAiYXV0aDB8MTIzIn0"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .personal)
+  }
+
+  @Test func extractTier_returnsFree_whenClaimIsUppercaseFREE() {
+    // JWT payload: {"subscription_tier": "FREE", "sub": "auth0|123"}
+    let jwt =
+      Self.header
+      + ".eyJzdWJzY3JpcHRpb25fdGllciI6ICJGUkVFIiwgInN1YiI6ICJhdXRoMHwxMjMifQ"
+      + ".fakesignature"
+
+    let tier = JWTSubscriptionTierExtractor.extractTier(from: jwt)
+
+    #expect(tier == .free)
+  }
+
   // MARK: - Missing or invalid claim defaults to free
 
   @Test func extractTier_returnsFree_whenClaimIsAbsent() {
