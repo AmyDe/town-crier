@@ -193,6 +193,21 @@ struct SettingsViewModelTests {
     #expect(sut.subscriptionTier == .pro)
   }
 
+  @Test func load_noTrialFlag_whenJWTTierHigherThanStoreKitTrial() async {
+    // JWT says pro, StoreKit says personal trial — trial is not meaningful
+    // because the user's actual tier (pro) is above the trial tier
+    let (sut, _, _, _, _, _) = makeSUT(
+      session: .pro,
+      entitlement: .personalTrial,
+      serverProfile: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.subscriptionTier == .pro)
+    #expect(!sut.isTrialPeriod)
+  }
+
   @Test func load_defaultsToFree_whenAllSourcesReturnFree() async {
     let (sut, _, _, _, _, _) = makeSUT(
       session: .valid,
