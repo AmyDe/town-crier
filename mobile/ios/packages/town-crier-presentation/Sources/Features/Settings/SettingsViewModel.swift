@@ -7,6 +7,7 @@ import os
 @MainActor
 public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private static let logger = Logger(subsystem: "uk.towncrierapp", category: "SettingsViewModel")
+
   @Published public private(set) var userEmail: String?
   @Published public private(set) var userName: String?
   @Published public private(set) var authMethod: AuthMethod?
