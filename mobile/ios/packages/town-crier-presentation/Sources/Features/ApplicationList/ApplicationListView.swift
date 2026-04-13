@@ -45,6 +45,10 @@ public struct ApplicationListView: View {
 
   private var applicationList: some View {
     List {
+      if viewModel.showZonePicker {
+        zonePickerSection
+      }
+
       if viewModel.canFilter {
         filterSection
       }
@@ -59,6 +63,23 @@ public struct ApplicationListView: View {
       }
     }
     .listStyle(.plain)
+  }
+
+  // MARK: - Zone Picker
+
+  private var zonePickerSection: some View {
+    Section {
+      ZonePickerView(
+        zones: viewModel.zones,
+        selectedZoneId: viewModel.selectedZone?.id
+      ) { zone in
+        Task {
+          await viewModel.selectZone(zone)
+        }
+      }
+    }
+    .listRowInsets(EdgeInsets())
+    .listRowBackground(Color.tcBackground)
   }
 
   // MARK: - Filter Section
