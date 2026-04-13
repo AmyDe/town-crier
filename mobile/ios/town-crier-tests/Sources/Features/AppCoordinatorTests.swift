@@ -298,4 +298,21 @@ struct AppCoordinatorTests {
     #expect(sut.editingWatchZone == nil)
     #expect(!sut.isAddingWatchZone)
   }
+
+  // MARK: - Watch Zone Upsell
+
+  @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeWatchZoneListViewModel()
+
+    vm.viewPlans()
+
+    #expect(sut.isSubscriptionPresented)
+  }
+
+  @Test func isSubscriptionPresented_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isSubscriptionPresented)
+  }
 }
