@@ -56,6 +56,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.authorityRepository = nil
     self.applicationRepository = nil
     self.authority = authority
+
     self.tier = tier
   }
 
@@ -69,6 +70,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.authorityRepository = nil
     self.applicationRepository = nil
     self.authority = authority
+
     self.tier = tier
   }
 
@@ -82,6 +84,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.authorityRepository = authorityRepository
     self.applicationRepository = applicationRepository
     self.authority = nil
+
     self.tier = tier
   }
 
@@ -96,10 +99,22 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
           applicationRepository: applicationRepository
         )
       } else if let authority, let offlineRepository {
-        let entry = try await offlineRepository.fetchApplications(for: authority)
+        let zone = try WatchZone(
+          id: WatchZoneId(authority.code),
+          name: authority.name.isEmpty ? "Default" : authority.name,
+          centre: Coordinate(latitude: 0, longitude: 0),
+          radiusMetres: 1
+        )
+        let entry = try await offlineRepository.fetchApplications(for: zone)
         fetched = entry.data
       } else if let authority, let repository {
-        fetched = try await repository.fetchApplications(for: authority)
+        let zone = try WatchZone(
+          id: WatchZoneId(authority.code),
+          name: authority.name.isEmpty ? "Default" : authority.name,
+          centre: Coordinate(latitude: 0, longitude: 0),
+          radiusMetres: 1
+        )
+        fetched = try await repository.fetchApplications(for: zone)
       } else {
         fetched = []
       }
@@ -117,7 +132,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     let result = try await authorityRepository.fetchAuthorities()
     var allApplications: [PlanningApplication] = []
     for authority in result.authorities {
-      let apps = try await applicationRepository.fetchApplications(for: authority)
+      let zone = try WatchZone(
+        id: WatchZoneId(authority.code),
+        name: authority.name,
+        centre: Coordinate(latitude: 0, longitude: 0),
+        radiusMetres: 1
+      )
+      let apps = try await applicationRepository.fetchApplications(for: zone)
       allApplications.append(contentsOf: apps)
     }
     return allApplications

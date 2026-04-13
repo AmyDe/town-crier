@@ -9,12 +9,12 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     self.apiClient = apiClient
   }
 
-  public func fetchApplications(for authority: LocalAuthority) async throws
+  public func fetchApplications(for zone: WatchZone) async throws
     -> [PlanningApplication] {
     let dtos: [PlanningApplicationDTO]
     do {
       dtos = try await apiClient.request(
-        .get("/v1/applications", query: [URLQueryItem(name: "authorityId", value: authority.code)])
+        .get("/v1/me/watch-zones/\(zone.id.value)/applications")
       )
     } catch let domainError as DomainError {
       throw domainError

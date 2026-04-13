@@ -7,11 +7,11 @@ public actor InMemoryApplicationCacheStore: ApplicationCacheStore {
 
   public init() {}
 
-  public func store(_ entry: CacheEntry<[PlanningApplication]>, for authority: LocalAuthority) {
-    entries[authority.code] = entry
+  public func store(_ entry: CacheEntry<[PlanningApplication]>, for zone: WatchZone) {
+    entries[zone.id.value] = entry
   }
 
-  public func retrieve(for authority: LocalAuthority) -> CacheEntry<[PlanningApplication]>? {
-    entries[authority.code]
+  public func retrieve(for zone: WatchZone) -> CacheEntry<[PlanningApplication]>? {
+    entries[zone.id.value]
   }
 }

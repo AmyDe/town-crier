@@ -12,6 +12,15 @@ struct APIPlanningApplicationRepositoryTests {
   // swiftlint:disable:next force_unwrapping
   private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")!
 
+  // swiftlint:disable:next force_try
+  private let testZone = try! WatchZone(
+    id: WatchZoneId("zone-123"),
+    name: "Cambridge",
+    centre: Coordinate(latitude: 52.2053, longitude: 0.1218),
+    radiusMetres: 2000,
+    authorityId: 123
+  )
+
   private func makeSUT(
     responses: [(Data, URLResponse)]
   ) -> (APIPlanningApplicationRepository, SpyAuthenticationService, StubHTTPTransport) {
@@ -90,12 +99,11 @@ struct APIPlanningApplicationRepositoryTests {
           }
       ]
       """
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
     let (sut, _, _) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    let result = try await sut.fetchApplications(for: authority)
+    let result = try await sut.fetchApplications(for: testZone)
 
     #expect(result.count == 1)
     let app = result[0]
@@ -137,12 +145,11 @@ struct APIPlanningApplicationRepositoryTests {
           }
       ]
       """
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
     let (sut, _, _) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    let result = try await sut.fetchApplications(for: authority)
+    let result = try await sut.fetchApplications(for: testZone)
 
     let app = result[0]
     #expect(app.statusHistory.count == 2)
@@ -162,10 +169,9 @@ struct APIPlanningApplicationRepositoryTests {
       transport: transport
     )
     let sut = APIPlanningApplicationRepository(apiClient: apiClient)
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
 
     await #expect(throws: DomainError.networkUnavailable) {
-      _ = try await sut.fetchApplications(for: authority)
+      _ = try await sut.fetchApplications(for: testZone)
     }
   }
 
@@ -174,10 +180,9 @@ struct APIPlanningApplicationRepositoryTests {
     let (sut, _, _) = makeSUT(responses: [
       (Data("Bad Request".utf8), httpResponse(statusCode: 400))
     ])
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
 
     await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
-      _ = try await sut.fetchApplications(for: authority)
+      _ = try await sut.fetchApplications(for: testZone)
     }
   }
 
@@ -187,10 +192,9 @@ struct APIPlanningApplicationRepositoryTests {
     let (sut, _, _) = makeSUT(responses: [
       (Data("not json".utf8), httpResponse(statusCode: 200))
     ])
-    let authority = LocalAuthority(code: "123", name: "Cambridge")
 
     do {
-      _ = try await sut.fetchApplications(for: authority)
+      _ = try await sut.fetchApplications(for: testZone)
       Issue.record("Expected error to be thrown")
     } catch let error as DomainError {
       // Should be .unexpected, not .networkUnavailable

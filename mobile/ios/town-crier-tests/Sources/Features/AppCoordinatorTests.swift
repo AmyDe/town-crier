@@ -53,7 +53,7 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.first?.code == "CAM")
+    #expect(spy.fetchApplicationsCalls.first?.id.value == "CAM")
   }
 
   @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
@@ -78,7 +78,7 @@ struct AppCoordinatorTests {
         count: 1
       )
     )
-    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    appSpy.fetchApplicationsByZone = ["CAM": [.pendingReview]]
     let coordinator = AppCoordinator(
       repository: appSpy,
       authService: SpyAuthenticationService(),
@@ -96,7 +96,7 @@ struct AppCoordinatorTests {
     await vm.loadApplications()
 
     #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
     #expect(vm.filteredApplications.count == 1)
   }
 
@@ -135,7 +135,7 @@ struct AppCoordinatorTests {
         count: 1
       )
     )
-    appSpy.fetchApplicationsByAuthority = ["CAM": [.pendingReview]]
+    appSpy.fetchApplicationsByZone = ["CAM": [.pendingReview]]
     let coordinator = AppCoordinator(
       repository: appSpy,
       authService: SpyAuthenticationService(),
@@ -153,7 +153,7 @@ struct AppCoordinatorTests {
     await vm.loadApplications()
 
     #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
     #expect(vm.annotations.count == 1)
   }
 

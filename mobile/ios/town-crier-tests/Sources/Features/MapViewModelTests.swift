@@ -29,7 +29,7 @@ struct MapViewModelTests {
       ApplicationAuthorityResult(authorities: authorities, count: authorities.count)
     )
     let appSpy = SpyPlanningApplicationRepository()
-    appSpy.fetchApplicationsByAuthority = applicationsByAuthority
+    appSpy.fetchApplicationsByZone = applicationsByAuthority
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success(watchZones)
     let vm = MapViewModel(
@@ -274,7 +274,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(authSpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.code) == ["CAM"])
+    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
     #expect(sut.annotations.count == 1)
   }
 
@@ -322,7 +322,7 @@ struct MapViewModelTests {
         "CAM": [.pendingReview]
       ]
     )
-    appSpy.fetchApplicationsFailureAuthorities = ["OXF"]
+    appSpy.fetchApplicationsFailureZones = ["OXF"]
 
     await sut.loadApplications()
 

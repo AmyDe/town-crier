@@ -72,10 +72,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     isLoading = true
     error = nil
     do {
-      if let zone = try? await watchZoneRepository.loadAll().first {
-        centreLat = zone.centre.latitude
-        centreLon = zone.centre.longitude
-        radiusMetres = zone.radiusMetres
+      let watchZone = try? await watchZoneRepository.loadAll().first
+      if let watchZone {
+        centreLat = watchZone.centre.latitude
+        centreLon = watchZone.centre.longitude
+        radiusMetres = watchZone.radiusMetres
       }
 
       let fetched: [PlanningApplication]
@@ -84,12 +85,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
           authorityRepository: authorityRepository,
           applicationRepository: applicationRepository
         )
-      } else if let offlineRepository {
-        let entry = try await offlineRepository.fetchApplications(
-          for: LocalAuthority(code: "", name: ""))
+      } else if let watchZone, let offlineRepository {
+        let entry = try await offlineRepository.fetchApplications(for: watchZone)
         fetched = entry.data
-      } else if let repository {
-        fetched = try await repository.fetchApplications(for: LocalAuthority(code: "", name: ""))
+      } else if let watchZone, let repository {
+        fetched = try await repository.fetchApplications(for: watchZone)
       } else {
         fetched = []
       }
@@ -113,7 +113,13 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     var allApplications: [PlanningApplication] = []
     for authority in result.authorities {
       do {
-        let apps = try await applicationRepository.fetchApplications(for: authority)
+        let zone = try WatchZone(
+          id: WatchZoneId(authority.code),
+          name: authority.name.isEmpty ? "Default" : authority.name,
+          centre: Coordinate(latitude: 0, longitude: 0),
+          radiusMetres: 1
+        )
+        let apps = try await applicationRepository.fetchApplications(for: zone)
         allApplications.append(contentsOf: apps)
       } catch {
         // Partial failure: skip this authority, continue with others

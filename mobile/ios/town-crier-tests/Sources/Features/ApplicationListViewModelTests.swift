@@ -77,7 +77,7 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
 
     #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsCalls.first?.code == "CAM")
+    #expect(spy.fetchApplicationsCalls.first?.id.value == "CAM")
   }
 
   // MARK: - Selection
@@ -155,7 +155,7 @@ struct ApplicationListViewModelTests {
     authoritySpy.fetchAuthoritiesResult = .success(
       ApplicationAuthorityResult(authorities: [authority], count: 1)
     )
-    appSpy.fetchApplicationsByAuthority = ["123": [.pendingReview]]
+    appSpy.fetchApplicationsByZone = ["123": [.pendingReview]]
 
     let sut = ApplicationListViewModel(
       authorityRepository: authoritySpy,
@@ -166,7 +166,7 @@ struct ApplicationListViewModelTests {
 
     #expect(authoritySpy.fetchAuthoritiesCallCount == 1)
     #expect(appSpy.fetchApplicationsCalls.count == 1)
-    #expect(appSpy.fetchApplicationsCalls.first?.code == "123")
+    #expect(appSpy.fetchApplicationsCalls.first?.id.value == "123")
     #expect(sut.filteredApplications.count == 1)
     #expect(sut.error == nil)
   }
@@ -179,7 +179,7 @@ struct ApplicationListViewModelTests {
     authoritySpy.fetchAuthoritiesResult = .success(
       ApplicationAuthorityResult(authorities: [auth1, auth2], count: 2)
     )
-    appSpy.fetchApplicationsByAuthority = [
+    appSpy.fetchApplicationsByZone = [
       "123": [.pendingReview],
       "456": [.approved],
     ]

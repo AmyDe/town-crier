@@ -16,11 +16,11 @@ public final class OfflineAwareRepository: Sendable {
     self.connectivity = connectivity
   }
 
-  public func fetchApplications(for authority: LocalAuthority) async throws -> CacheEntry<
+  public func fetchApplications(for zone: WatchZone) async throws -> CacheEntry<
     [PlanningApplication]
   > {
     // Check cache first
-    let cached = await cache.retrieve(for: authority)
+    let cached = await cache.retrieve(for: zone)
 
     // If we have a fresh cache hit, return it without a network call
     if let cached, cached.isFresh() {
@@ -37,9 +37,9 @@ public final class OfflineAwareRepository: Sendable {
 
     // Online — try remote
     do {
-      let applications = try await remote.fetchApplications(for: authority)
+      let applications = try await remote.fetchApplications(for: zone)
       let entry = CacheEntry(data: applications, fetchedAt: Date())
-      await cache.store(entry, for: authority)
+      await cache.store(entry, for: zone)
       return entry
     } catch {
       // Remote failed — fall back to cache if available
