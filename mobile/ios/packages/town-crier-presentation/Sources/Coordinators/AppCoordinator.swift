@@ -164,6 +164,10 @@ public final class AppCoordinator: ObservableObject {
       tier: .free,
       editing: zone
     )
+    viewModel.onSave = { [weak self] _ in
+      self?.isAddingWatchZone = false
+      self?.editingWatchZone = nil
+    }
     return viewModel
   }
 
