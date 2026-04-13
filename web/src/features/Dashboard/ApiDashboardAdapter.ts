@@ -1,6 +1,6 @@
 import type { ApiClient } from '../../api/client';
 import type { DashboardPort } from '../../domain/ports/dashboard-port';
-import type { AuthorityId, PlanningApplication, PlanningApplicationSummary, WatchZoneSummary } from '../../domain/types';
+import type { WatchZoneId, PlanningApplication, PlanningApplicationSummary, WatchZoneSummary } from '../../domain/types';
 import { watchZonesApi } from '../../api/watchZones';
 import { applicationsApi } from '../../api/applications';
 
@@ -32,8 +32,8 @@ export class ApiDashboardAdapter implements DashboardPort {
     return this.watchZones.list();
   }
 
-  async fetchRecentApplications(authorityId: AuthorityId): Promise<readonly PlanningApplicationSummary[]> {
-    const apps = await this.applications.getByAuthority(authorityId);
+  async fetchRecentApplications(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]> {
+    const apps = await this.applications.getByZone(zoneId as string);
     return apps.map(toSummary);
   }
 }
