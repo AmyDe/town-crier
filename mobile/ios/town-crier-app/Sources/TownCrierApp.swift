@@ -200,14 +200,7 @@ struct TownCrierApp: App {
       }
       #if os(iOS)
         .manageSubscriptionsSheet(
-          isPresented: Binding(
-            get: { coordinator.isManageSubscriptionPresented },
-            set: { newValue in
-              Task { @MainActor in
-                coordinator.isManageSubscriptionPresented = newValue
-              }
-            }
-          )
+          isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
         )
       #endif
       .tabItem {
