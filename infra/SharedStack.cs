@@ -13,6 +13,7 @@ using Pulumi.AzureNative.Portal;
 using Pulumi.AzureNative.Portal.Inputs;
 using Pulumi.AzureNative.Communication;
 using Pulumi.AzureNative.Communication.Inputs;
+using Pulumi.AzureNative.Monitor;
 
 public static class SharedStack
 {
@@ -200,6 +201,33 @@ public static class SharedStack
             Tags = tags,
         });
 
+        // Action Group — shared notification target for availability and other alerts.
+        // The alert email is optional; when not configured, the action group is created
+        // but with no receivers (alerts still fire and appear in the portal).
+        var alertEmail = config.Get("alertEmail");
+
+        var actionGroupReceivers = new List<Pulumi.AzureNative.Monitor.Inputs.EmailReceiverArgs>();
+        if (!string.IsNullOrEmpty(alertEmail))
+        {
+            actionGroupReceivers.Add(new Pulumi.AzureNative.Monitor.Inputs.EmailReceiverArgs
+            {
+                Name = "town-crier-alerts",
+                EmailAddress = alertEmail,
+                UseCommonAlertSchema = true,
+            });
+        }
+
+        var actionGroup = new ActionGroup("ag-town-crier-availability", new ActionGroupArgs
+        {
+            ActionGroupName = "ag-town-crier-availability",
+            ResourceGroupName = resourceGroup.Name,
+            Location = "global",
+            GroupShortName = "tc-avail",
+            Enabled = true,
+            EmailReceivers = actionGroupReceivers,
+            Tags = tags,
+        });
+
         // Operational Dashboard
         var dashboard = new Dashboard("dash-towncrier-operational", new DashboardArgs
         {
@@ -322,6 +350,7 @@ public static class SharedStack
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["appInsightsId"] = appInsights.Id,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
+            ["actionGroupId"] = actionGroup.Id,
             ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationService.Name)
                 .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
                 {

@@ -103,6 +103,21 @@ struct CompositionRootTests {
     #expect(config.audience == "https://api-test.example.com")
   }
 
+  @Test func coordinatorCreatesWatchZoneListViewModel() {
+    let coordinator = makeCoordinator()
+    let vm = coordinator.makeWatchZoneListViewModel()
+
+    #expect(vm.zones.isEmpty)
+    #expect(!vm.isLoading)
+  }
+
+  @Test func coordinatorCreatesWatchZoneEditorViewModel() {
+    let coordinator = makeCoordinatorWithGeocoder()
+    let vm = coordinator.makeWatchZoneEditorViewModel()
+
+    #expect(!vm.isEditing)
+  }
+
   @Test func coordinatorCreatesMapViewModelWithAuthorityRepository() async {
     let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
     // swiftlint:disable:next force_unwrapping
@@ -180,6 +195,28 @@ struct CompositionRootTests {
       subscriptionService: StoreKitSubscriptionService(),
       userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
       watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+      onboardingRepository: UserDefaultsOnboardingRepository(),
+      notificationService: CompositeNotificationService(
+        permissionProvider: SpyNotificationPermissionProvider(),
+        apiService: APINotificationService(apiClient: apiClient)
+      ),
+      appVersionProvider: BundleAppVersionProvider(),
+      versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+    )
+  }
+
+  private func makeCoordinatorWithGeocoder() -> AppCoordinator {
+    let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+    return AppCoordinator(
+      repository: APIPlanningApplicationRepository(apiClient: apiClient),
+      authService: authService,
+      subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+      geocoder: APIPostcodeGeocoder(apiClient: apiClient),
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),

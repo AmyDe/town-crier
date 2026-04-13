@@ -196,4 +196,79 @@ struct WatchZoneListViewModelTests {
 
     #expect(upgradeCalled)
   }
+
+  // MARK: - Upsell prompt
+
+  @Test func addZone_atLimit_setsIsUpgradePromptPresented() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+
+    sut.addZone()
+
+    #expect(sut.isUpgradePromptPresented)
+  }
+
+  @Test func addZone_underLimit_doesNotSetIsUpgradePromptPresented() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([])
+    await sut.load()
+
+    sut.addZone()
+
+    #expect(!sut.isUpgradePromptPresented)
+  }
+
+  @Test func isUpgradePromptPresented_isFalseByDefault() {
+    #expect(!sut.isUpgradePromptPresented)
+  }
+
+  @Test func dismissUpgradePrompt_setsIsUpgradePromptPresentedToFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+    sut.addZone()
+    #expect(sut.isUpgradePromptPresented)
+
+    sut.dismissUpgradePrompt()
+
+    #expect(!sut.isUpgradePromptPresented)
+  }
+
+  @Test func viewPlans_invokesOnViewPlansAndDismissesPrompt() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+    sut.addZone()
+    var viewPlansCalled = false
+    sut.onViewPlans = { viewPlansCalled = true }
+
+    sut.viewPlans()
+
+    #expect(viewPlansCalled)
+    #expect(!sut.isUpgradePromptPresented)
+  }
+
+  @Test func upgradeValueProposition_returnsNonEmptyString() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+    await sut.load()
+
+    #expect(!sut.upgradeValueProposition.isEmpty)
+  }
 }

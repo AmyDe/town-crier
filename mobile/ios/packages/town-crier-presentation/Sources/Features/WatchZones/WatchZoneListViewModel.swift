@@ -12,6 +12,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   @Published public private(set) var zones: [WatchZone] = []
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
+  @Published public var isUpgradePromptPresented = false
 
   /// The proactive feature gate derived from the user's subscription tier.
   public let featureGate: FeatureGate
@@ -19,6 +20,7 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
   var onAddZone: (() -> Void)?
   var onEditZone: ((WatchZone) -> Void)?
   var onUpgradeRequired: (() -> Void)?
+  var onViewPlans: (() -> Void)?
 
   private let repository: WatchZoneRepository
 
@@ -69,8 +71,25 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
     if canAddZone {
       onAddZone?()
     } else {
+      isUpgradePromptPresented = true
       onUpgradeRequired?()
     }
+  }
+
+  /// Dismisses the upgrade prompt without navigating to subscription plans.
+  public func dismissUpgradePrompt() {
+    isUpgradePromptPresented = false
+  }
+
+  /// Navigates to subscription plans and dismisses the upgrade prompt.
+  public func viewPlans() {
+    isUpgradePromptPresented = false
+    onViewPlans?()
+  }
+
+  /// Value proposition text shown in the upsell prompt.
+  public var upgradeValueProposition: String {
+    "Monitor multiple areas at once. Upgrade to add more watch zones and never miss a planning application near you."
   }
 
   public func editZone(_ zone: WatchZone) {
