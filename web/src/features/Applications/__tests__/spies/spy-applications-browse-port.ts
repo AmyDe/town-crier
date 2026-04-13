@@ -1,20 +1,20 @@
-import type { AuthorityId, PlanningApplicationSummary } from '../../../../domain/types';
+import type { WatchZoneId, PlanningApplicationSummary } from '../../../../domain/types';
 import type { ApplicationsBrowsePort } from '../../../../domain/ports/applications-browse-port';
 
 export class SpyApplicationsBrowsePort implements ApplicationsBrowsePort {
-  fetchByAuthorityCalls: AuthorityId[] = [];
-  fetchByAuthorityResult: readonly PlanningApplicationSummary[] = [];
-  fetchByAuthorityError: Error | null = null;
-  fetchByAuthorityOverride: ((authorityId: AuthorityId) => Promise<readonly PlanningApplicationSummary[]>) | null = null;
+  fetchByZoneCalls: WatchZoneId[] = [];
+  fetchByZoneResult: readonly PlanningApplicationSummary[] = [];
+  fetchByZoneError: Error | null = null;
+  fetchByZoneOverride: ((zoneId: WatchZoneId) => Promise<readonly PlanningApplicationSummary[]>) | null = null;
 
-  async fetchByAuthority(authorityId: AuthorityId): Promise<readonly PlanningApplicationSummary[]> {
-    this.fetchByAuthorityCalls.push(authorityId);
-    if (this.fetchByAuthorityOverride) {
-      return this.fetchByAuthorityOverride(authorityId);
+  async fetchByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]> {
+    this.fetchByZoneCalls.push(zoneId);
+    if (this.fetchByZoneOverride) {
+      return this.fetchByZoneOverride(zoneId);
     }
-    if (this.fetchByAuthorityError) {
-      throw this.fetchByAuthorityError;
+    if (this.fetchByZoneError) {
+      throw this.fetchByZoneError;
     }
-    return this.fetchByAuthorityResult;
+    return this.fetchByZoneResult;
   }
 }

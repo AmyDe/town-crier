@@ -1,5 +1,5 @@
-import type { AuthorityId, PlanningApplicationSummary } from '../types';
+import type { WatchZoneId, PlanningApplicationSummary } from '../types';
 
 export interface ApplicationsBrowsePort {
-  fetchByAuthority(authorityId: AuthorityId): Promise<readonly PlanningApplicationSummary[]>;
+  fetchByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplicationSummary[]>;
 }

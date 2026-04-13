@@ -7,9 +7,7 @@ import {
   undecidedApplication,
   approvedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
-import {
-  cambridgeAuthority,
-} from '../../../components/AuthoritySelector/__tests__/fixtures/authority.fixtures';
+import { cambridgeZone } from './fixtures/zone.fixtures';
 
 describe('useApplications', () => {
   it('starts with no applications and no loading', () => {
@@ -20,19 +18,19 @@ describe('useApplications', () => {
     expect(result.current.applications).toEqual([]);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(result.current.selectedAuthority).toBeNull();
-    expect(spy.fetchByAuthorityCalls).toHaveLength(0);
+    expect(result.current.selectedZone).toBeNull();
+    expect(spy.fetchByZoneCalls).toHaveLength(0);
   });
 
-  it('fetches applications when authority is selected', async () => {
+  it('fetches applications when zone is selected', async () => {
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityResult = [undecidedApplication(), approvedApplication()];
-    const authority = cambridgeAuthority();
+    spy.fetchByZoneResult = [undecidedApplication(), approvedApplication()];
+    const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
 
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
@@ -40,23 +38,23 @@ describe('useApplications', () => {
     });
 
     expect(result.current.applications).toHaveLength(2);
-    expect(result.current.selectedAuthority).toEqual(authority);
-    expect(spy.fetchByAuthorityCalls).toEqual([authority.id]);
+    expect(result.current.selectedZone).toEqual(zone);
+    expect(spy.fetchByZoneCalls).toEqual([zone.id]);
   });
 
   it('sets loading to true while fetching', async () => {
     let resolvePromise: (value: readonly PlanningApplicationSummary[]) => void;
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityOverride = () =>
+    spy.fetchByZoneOverride = () =>
       new Promise((resolve) => {
         resolvePromise = resolve;
       });
-    const authority = cambridgeAuthority();
+    const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
 
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
@@ -73,13 +71,13 @@ describe('useApplications', () => {
 
   it('sets error when fetch fails', async () => {
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityError = new Error('Network unavailable');
-    const authority = cambridgeAuthority();
+    spy.fetchByZoneError = new Error('Network unavailable');
+    const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
 
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
@@ -91,15 +89,15 @@ describe('useApplications', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('returns empty applications when authority has none', async () => {
+  it('returns empty applications when zone has none', async () => {
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityResult = [];
-    const authority = cambridgeAuthority();
+    spy.fetchByZoneResult = [];
+    const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
 
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
@@ -108,19 +106,19 @@ describe('useApplications', () => {
 
     expect(result.current.applications).toEqual([]);
     expect(result.current.error).toBeNull();
-    expect(result.current.selectedAuthority).toEqual(authority);
+    expect(result.current.selectedZone).toEqual(zone);
   });
 
   it('clears previous error on new fetch', async () => {
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByAuthorityError = new Error('First error');
-    const authority = cambridgeAuthority();
+    spy.fetchByZoneError = new Error('First error');
+    const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
 
     // First fetch fails
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
@@ -128,11 +126,11 @@ describe('useApplications', () => {
     });
 
     // Second fetch succeeds
-    spy.fetchByAuthorityError = null;
-    spy.fetchByAuthorityResult = [undecidedApplication()];
+    spy.fetchByZoneError = null;
+    spy.fetchByZoneResult = [undecidedApplication()];
 
     act(() => {
-      result.current.selectAuthority(authority);
+      result.current.selectZone(zone);
     });
 
     await waitFor(() => {
