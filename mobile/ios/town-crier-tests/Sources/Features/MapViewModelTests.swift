@@ -261,71 +261,39 @@ struct MapViewModelTests {
     #expect(!sut.isSessionExpired)
   }
 
-  // MARK: - Authority-based loading
+  // MARK: - Zone-based loading
 
-  @Test func loadApplications_fetchesAuthoritiesThenApplications() async {
-    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
-    let apps = [PlanningApplication.pendingReview]
-    let (sut, authSpy, appSpy) = makeSUTWithAuthorities(
-      authorities: [cambridge],
-      applicationsByAuthority: ["CAM": apps]
+  @Test func loadApplications_fetchesBySelectedZone() async throws {
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-1"),
+      name: "Camden",
+      centre: Coordinate(latitude: 51.539, longitude: -0.1426),
+      radiusMetres: 1000,
+      authorityId: 42
     )
+    let spy = SpyPlanningApplicationRepository()
+    spy.fetchApplicationsByZone = ["zone-1": [.pendingReview]]
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([zone])
 
+    let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(authSpy.fetchAuthoritiesCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.map(\.id.value) == ["CAM"])
+    #expect(spy.fetchApplicationsCalls.count == 1)
+    #expect(spy.fetchApplicationsCalls[0].id == zone.id)
     #expect(sut.annotations.count == 1)
   }
 
-  @Test func loadApplications_combinesApplicationsFromMultipleAuthorities() async {
-    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
-    let oxford = LocalAuthority(code: "OXF", name: "Oxford")
-    let (sut, _, _) = makeSUTWithAuthorities(
-      authorities: [cambridge, oxford],
-      applicationsByAuthority: [
-        "CAM": [.pendingReview],
-        "OXF": [.approved],
-      ]
-    )
+  @Test func loadApplications_returnsEmpty_whenNoZones() async {
+    let spy = SpyPlanningApplicationRepository()
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([])
 
+    let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(sut.annotations.count == 2)
-  }
-
-  @Test func loadApplications_authorityFetchFailure_setsError() async {
-    let (sut, authSpy, _) = makeSUTWithAuthorities()
-    authSpy.fetchAuthoritiesResult = .failure(DomainError.networkUnavailable)
-
-    await sut.loadApplications()
-
-    #expect(sut.error == .networkUnavailable)
-    #expect(sut.annotations.isEmpty)
-  }
-
-  @Test func loadApplications_noAuthorities_resultsInEmptyAnnotations() async {
-    let (sut, _, _) = makeSUTWithAuthorities(authorities: [])
-
-    await sut.loadApplications()
-
+    #expect(spy.fetchApplicationsCalls.isEmpty)
     #expect(sut.annotations.isEmpty)
     #expect(sut.isEmpty)
-  }
-
-  @Test func loadApplications_partialAuthorityFailure_showsPartialResults() async {
-    let cambridge = LocalAuthority(code: "CAM", name: "Cambridge")
-    let oxford = LocalAuthority(code: "OXF", name: "Oxford")
-    let (sut, _, appSpy) = makeSUTWithAuthorities(
-      authorities: [cambridge, oxford],
-      applicationsByAuthority: [
-        "CAM": [.pendingReview]
-      ]
-    )
-    appSpy.fetchApplicationsFailureZones = ["OXF"]
-
-    await sut.loadApplications()
-
-    #expect(sut.annotations.count == 1)
   }
 }
