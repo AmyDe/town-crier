@@ -1,66 +1,55 @@
 import { useNavigate } from 'react-router-dom';
-import type { AuthorityListItem } from '../../domain/types';
+import type { WatchZoneSummary } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import type { UserAuthoritiesPort } from '../../domain/ports/user-authorities-port';
-import { useUserAuthorities } from './useUserAuthorities';
 import { useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
+import { useFetchData } from '../../hooks/useFetchData';
 import styles from './ApplicationsPage.module.css';
 
+interface ZonesPort {
+  fetchZones(): Promise<readonly WatchZoneSummary[]>;
+}
+
 interface Props {
-  userAuthoritiesPort: UserAuthoritiesPort;
+  zonesPort: ZonesPort;
   browsePort: ApplicationsBrowsePort;
 }
 
-export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
+export function ApplicationsPage({ zonesPort, browsePort }: Props) {
   const navigate = useNavigate();
-  const { authorities, isLoading: isLoadingAuthorities, error: authoritiesError } =
-    useUserAuthorities(userAuthoritiesPort);
-  const { selectedAuthority, applications, isLoading: isLoadingApps, error: appsError, selectAuthority } =
+  const { data: zones, isLoading: isLoadingZones, error: zonesError } =
+    useFetchData(() => zonesPort.fetchZones(), [zonesPort]);
+  const { selectedZone, applications, isLoading: isLoadingApps, error: appsError, selectZone } =
     useApplications(browsePort);
-
-  function handleAuthorityClick(authority: AuthorityListItem) {
-    selectAuthority(authority);
-  }
-
-  function handleBackToAuthorities() {
-    selectAuthority(null);
-  }
 
   return (
     <div className={styles.container}>
       <h1 className={styles.heading}>Applications</h1>
 
-      {selectedAuthority !== null && (
+      {selectedZone !== null && (
         <nav className={styles.breadcrumb} aria-label="Breadcrumb">
-          <button
-            className={styles.breadcrumbLink}
-            onClick={handleBackToAuthorities}
-          >
-            Authorities
+          <button className={styles.breadcrumbLink} onClick={() => selectZone(null)}>
+            Watch Zones
           </button>
           <span aria-hidden="true">&rsaquo;</span>
-          <span className={styles.breadcrumbCurrent}>{selectedAuthority.name}</span>
+          <span className={styles.breadcrumbCurrent}>{selectedZone.name}</span>
         </nav>
       )}
 
-      {selectedAuthority === null && (
+      {selectedZone === null && (
         <>
-          {isLoadingAuthorities && (
-            <div className={styles.loading} aria-live="polite">Loading authorities...</div>
+          {isLoadingZones && (
+            <div className={styles.loading} aria-live="polite">Loading zones...</div>
           )}
 
-          {authoritiesError !== null && (
-            <EmptyState
-              title="Something went wrong"
-              message={authoritiesError.message}
-            />
+          {zonesError !== null && (
+            <EmptyState title="Something went wrong" message={zonesError} />
           )}
 
-          {!isLoadingAuthorities && authoritiesError === null && authorities.length === 0 && (
+          {!isLoadingZones && zonesError === null && (zones ?? []).length === 0 && (
             <EmptyState
-              icon="🏛️"
+              icon="📍"
               title="No watch zones yet"
               message="Set up a watch zone to start browsing applications."
               actionLabel="Create watch zone"
@@ -68,16 +57,15 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
             />
           )}
 
-          {!isLoadingAuthorities && authoritiesError === null && authorities.length > 0 && (
+          {!isLoadingZones && zonesError === null && (zones ?? []).length > 0 && (
             <div className={styles.authorityGrid}>
-              {authorities.map((authority) => (
+              {(zones ?? []).map((zone) => (
                 <button
-                  key={authority.id}
+                  key={zone.id}
                   className={styles.authorityCard}
-                  onClick={() => handleAuthorityClick(authority)}
+                  onClick={() => selectZone(zone)}
                 >
-                  <span className={styles.authorityName}>{authority.name}</span>
-                  <span className={styles.authorityType}>{authority.areaType}</span>
+                  <span className={styles.authorityName}>{zone.name}</span>
                 </button>
               ))}
             </div>
@@ -85,7 +73,7 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
         </>
       )}
 
-      {selectedAuthority !== null && (
+      {selectedZone !== null && (
         <>
           {isLoadingApps && (
             <div className={styles.loading} aria-live="polite">Loading applications...</div>
@@ -96,7 +84,7 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
               title="Something went wrong"
               message={appsError}
               actionLabel="Try again"
-              onAction={() => selectAuthority(selectedAuthority)}
+              onAction={() => selectZone(selectedZone)}
             />
           )}
 
@@ -104,7 +92,7 @@ export function ApplicationsPage({ userAuthoritiesPort, browsePort }: Props) {
             <EmptyState
               icon="📋"
               title="No applications"
-              message="No applications found for this authority."
+              message="No applications found in this zone."
             />
           )}
 
