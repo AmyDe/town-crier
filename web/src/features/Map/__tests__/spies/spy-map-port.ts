@@ -1,29 +1,29 @@
-import type { ApplicationUid, AuthorityId, AuthorityListItem, PlanningApplication, SavedApplication } from '../../../../domain/types';
+import type { ApplicationUid, WatchZoneId, WatchZoneSummary, PlanningApplication, SavedApplication } from '../../../../domain/types';
 import type { MapPort } from '../../../../domain/ports/map-port';
 
 export class SpyMapPort implements MapPort {
-  fetchMyAuthoritiesCalls = 0;
-  fetchMyAuthoritiesResult: readonly AuthorityListItem[] = [];
-  fetchMyAuthoritiesError: Error | null = null;
+  fetchMyZonesCalls = 0;
+  fetchMyZonesResult: readonly WatchZoneSummary[] = [];
+  fetchMyZonesError: Error | null = null;
 
-  async fetchMyAuthorities(): Promise<readonly AuthorityListItem[]> {
-    this.fetchMyAuthoritiesCalls++;
-    if (this.fetchMyAuthoritiesError) {
-      throw this.fetchMyAuthoritiesError;
+  async fetchMyZones(): Promise<readonly WatchZoneSummary[]> {
+    this.fetchMyZonesCalls++;
+    if (this.fetchMyZonesError) {
+      throw this.fetchMyZonesError;
     }
-    return this.fetchMyAuthoritiesResult;
+    return this.fetchMyZonesResult;
   }
 
-  fetchApplicationsByAuthorityCalls: AuthorityId[] = [];
-  fetchApplicationsByAuthorityResults: Map<number, readonly PlanningApplication[]> = new Map();
-  fetchApplicationsByAuthorityError: Error | null = null;
+  fetchApplicationsByZoneCalls: WatchZoneId[] = [];
+  fetchApplicationsByZoneResults: Map<string, readonly PlanningApplication[]> = new Map();
+  fetchApplicationsByZoneError: Error | null = null;
 
-  async fetchApplicationsByAuthority(authorityId: AuthorityId): Promise<readonly PlanningApplication[]> {
-    this.fetchApplicationsByAuthorityCalls.push(authorityId);
-    if (this.fetchApplicationsByAuthorityError) {
-      throw this.fetchApplicationsByAuthorityError;
+  async fetchApplicationsByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplication[]> {
+    this.fetchApplicationsByZoneCalls.push(zoneId);
+    if (this.fetchApplicationsByZoneError) {
+      throw this.fetchApplicationsByZoneError;
     }
-    return this.fetchApplicationsByAuthorityResults.get(authorityId as number) ?? [];
+    return this.fetchApplicationsByZoneResults.get(zoneId as string) ?? [];
   }
 
   fetchSavedApplicationsCalls = 0;

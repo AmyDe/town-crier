@@ -1,20 +1,26 @@
-import type { AuthorityListItem, PlanningApplication, SavedApplication } from '../../../../domain/types';
-import { asAuthorityId, asApplicationUid } from '../../../../domain/types';
+import type { WatchZoneSummary, PlanningApplication, SavedApplication } from '../../../../domain/types';
+import { asWatchZoneId, asAuthorityId, asApplicationUid } from '../../../../domain/types';
 
-export function anAuthority(overrides?: Partial<AuthorityListItem>): AuthorityListItem {
+export function aZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSummary {
   return {
-    id: asAuthorityId(1),
+    id: asWatchZoneId('zone-001'),
     name: 'Cambridge City Council',
-    areaType: 'District',
+    latitude: 52.2053,
+    longitude: 0.1218,
+    radiusMetres: 1000,
+    authorityId: asAuthorityId(1),
     ...overrides,
   };
 }
 
-export function aSecondAuthority(overrides?: Partial<AuthorityListItem>): AuthorityListItem {
+export function aSecondZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSummary {
   return {
-    id: asAuthorityId(2),
+    id: asWatchZoneId('zone-002'),
     name: 'Westminster City Council',
-    areaType: 'London Borough',
+    latitude: 51.4975,
+    longitude: -0.1357,
+    radiusMetres: 500,
+    authorityId: asAuthorityId(2),
     ...overrides,
   };
 }

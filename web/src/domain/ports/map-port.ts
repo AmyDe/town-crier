@@ -1,8 +1,8 @@
-import type { ApplicationUid, AuthorityId, AuthorityListItem, PlanningApplication, SavedApplication } from '../types';
+import type { ApplicationUid, WatchZoneId, WatchZoneSummary, PlanningApplication, SavedApplication } from '../types';
 
 export interface MapPort {
-  fetchMyAuthorities(): Promise<readonly AuthorityListItem[]>;
-  fetchApplicationsByAuthority(authorityId: AuthorityId): Promise<readonly PlanningApplication[]>;
+  fetchMyZones(): Promise<readonly WatchZoneSummary[]>;
+  fetchApplicationsByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplication[]>;
   fetchSavedApplications(): Promise<readonly SavedApplication[]>;
   saveApplication(uid: ApplicationUid): Promise<void>;
   unsaveApplication(uid: ApplicationUid): Promise<void>;
