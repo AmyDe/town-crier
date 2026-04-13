@@ -3,9 +3,9 @@ import TownCrierDomain
 
 /// Horizontal scrollable pill bar for switching between watch zones.
 public struct ZonePickerView: View {
-  let zones: [WatchZone]
-  let selectedZoneId: WatchZoneId?
-  let onSelect: (WatchZone) -> Void
+  private let zones: [WatchZone]
+  private let selectedZoneId: WatchZoneId?
+  private let onSelect: (WatchZone) -> Void
 
   public init(
     zones: [WatchZone],
