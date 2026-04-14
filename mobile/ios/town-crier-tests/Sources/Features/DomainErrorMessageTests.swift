@@ -103,4 +103,36 @@ struct DomainErrorMessageTests {
     let network = DomainError.networkUnavailable
     #expect(server != network)
   }
+
+  // MARK: - invalidPostcode (tc-y5ee)
+
+  @Test func invalidPostcode_hasSpecificTitle() {
+    let error = DomainError.invalidPostcode("NOPE")
+    #expect(error.userTitle == "Invalid Postcode")
+  }
+
+  @Test func invalidPostcode_hasSpecificMessage() {
+    let error = DomainError.invalidPostcode("NOPE")
+    #expect(error.userMessage == "The postcode 'NOPE' doesn't look right. Please enter a valid UK postcode.")
+  }
+
+  @Test func invalidPostcode_isNotRetryable() {
+    #expect(!DomainError.invalidPostcode("XYZ").isRetryable)
+  }
+
+  // MARK: - geocodingFailed (tc-y5ee)
+
+  @Test func geocodingFailed_hasSpecificTitle() {
+    let error = DomainError.geocodingFailed("SW1A 1AA")
+    #expect(error.userTitle == "Postcode Not Found")
+  }
+
+  @Test func geocodingFailed_hasSpecificMessage() {
+    let error = DomainError.geocodingFailed("SW1A 1AA")
+    #expect(error.userMessage == "We couldn't find the location for that postcode. Please check and try again.")
+  }
+
+  @Test func geocodingFailed_isRetryable() {
+    #expect(DomainError.geocodingFailed("SW1A 1AA").isRetryable)
+  }
 }
