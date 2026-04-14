@@ -387,4 +387,188 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
     #expect(!sut.showZonePicker)
   }
+
+  // MARK: - Saved Filter
+
+  @Test func savedFilter_isNotActiveByDefault() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps)
+    await sut.loadApplications()
+
+    #expect(!sut.isSavedFilterActive)
+  }
+
+  @Test func savedFilter_canSaveAlwaysTrue() throws {
+    let savedSpy = SpySavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([])
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    #expect(sut.canSave)
+  }
+
+  @Test func savedFilter_canSaveFalseWithoutRepository() throws {
+    let (sut, _) = try makeSUT()
+
+    #expect(!sut.canSave)
+  }
+
+  @Test func savedFilter_activatingFilter_showsOnlySavedApps() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(sut.isSavedFilterActive)
+    #expect(sut.filteredApplications.count == 1)
+    #expect(sut.filteredApplications.first?.id == PlanningApplicationId("APP-001"))
+  }
+
+  @Test func savedFilter_deactivatingFilter_showsAll() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    sut.deactivateSavedFilter()
+
+    #expect(!sut.isSavedFilterActive)
+    #expect(sut.filteredApplications.count == 4)
+  }
+
+  @Test func savedFilter_activating_clearsStatusFilter() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .personal,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    sut.selectedStatusFilter = .approved
+    await sut.activateSavedFilter()
+
+    #expect(sut.selectedStatusFilter == nil)
+    #expect(sut.isSavedFilterActive)
+  }
+
+  @Test func savedFilter_settingStatusFilter_deactivatesSavedFilter() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .personal,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    sut.selectedStatusFilter = .approved
+
+    #expect(!sut.isSavedFilterActive)
+    #expect(sut.filteredApplications.count == 1)
+    #expect(sut.filteredApplications.first?.status == .approved)
+  }
+
+  @Test func savedFilter_updatesSavedUids() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date()),
+      SavedApplication(applicationUid: "APP-002", savedAt: Date()),
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(sut.savedApplicationUids.count == 2)
+    #expect(sut.savedApplicationUids.contains("APP-001"))
+    #expect(sut.savedApplicationUids.contains("APP-002"))
+  }
+
+  @Test func savedFilter_emptyState_whenNoSavedApps() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(sut.isSavedFilterActive)
+    #expect(sut.filteredApplications.isEmpty)
+    #expect(sut.isEmpty)
+  }
+
+  @Test func savedFilter_selectZone_deactivatesSavedFilter() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    #expect(sut.isSavedFilterActive)
+
+    await sut.selectZone(.london)
+
+    #expect(!sut.isSavedFilterActive)
+  }
 }
