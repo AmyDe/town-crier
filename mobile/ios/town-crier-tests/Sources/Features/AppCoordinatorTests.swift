@@ -7,7 +7,9 @@ import TownCrierDomain
 @Suite("AppCoordinator")
 @MainActor
 struct AppCoordinatorTests {
-  private func makeSUT() -> (AppCoordinator, SpyPlanningApplicationRepository) {
+  private func makeSUT(
+    savedApplicationRepository: SavedApplicationRepository? = nil
+  ) -> (AppCoordinator, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     let coordinator = AppCoordinator(
       repository: spy,
@@ -19,7 +21,8 @@ struct AppCoordinatorTests {
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
+      versionConfigService: SpyVersionConfigService(),
+      savedApplicationRepository: savedApplicationRepository
     )
     return (coordinator, spy)
   }
@@ -32,6 +35,21 @@ struct AppCoordinatorTests {
 
     #expect(vm.reference == "2026/0042")
     #expect(vm.address == "12 Mill Road, Cambridge, CB1 2AD")
+  }
+
+  @Test func makeApplicationDetailViewModel_passesRepository_enablesCanSave() {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(vm.canSave)
+  }
+
+  @Test func makeApplicationDetailViewModel_withoutRepository_canSaveIsFalse() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(!vm.canSave)
   }
 
   @Test func makeApplicationDetailViewModel_dismissClearsDetailApplication() {
