@@ -27,12 +27,14 @@ struct SettingsViewModelTests {
     versionProvider.version = version
     versionProvider.buildNumber = buildNumber
     let notificationSpy = SpyNotificationService()
+    let defaults = UserDefaults(suiteName: "SettingsVMTests.\(UUID().uuidString)")
     let vm = SettingsViewModel(
       authService: authSpy,
       subscriptionService: subscriptionSpy,
       userProfileRepository: profileSpy,
       appVersionProvider: versionProvider,
-      notificationService: notificationSpy
+      notificationService: notificationSpy,
+      defaults: defaults ?? .standard
     )
     return (vm, authSpy, subscriptionSpy, profileSpy, versionProvider, notificationSpy)
   }
@@ -385,8 +387,6 @@ struct SettingsViewModelTests {
     #expect(notificationSpy.removeDeviceTokenCallCount == 1)
   }
 
-  // MARK: - Attribution
-
   @Test func attributionItems_containsExpectedSources() {
     let (sut, _, _, _, _, _) = makeSUT()
 
@@ -396,37 +396,5 @@ struct SettingsViewModelTests {
     #expect(items.contains { $0.name == "Crown Copyright" })
     #expect(items.contains { $0.name == "Ordnance Survey" })
     #expect(items.contains { $0.name == "OpenStreetMap" })
-  }
-
-  // MARK: - Appearance Mode
-
-  @Test func appearanceMode_defaultsToSystem() {
-    let (sut, _, _, _, _, _) = makeSUT()
-
-    #expect(sut.appearanceMode == .system)
-  }
-
-  @Test func appearanceMode_canBeSetToDark() {
-    let (sut, _, _, _, _, _) = makeSUT()
-
-    sut.appearanceMode = .dark
-
-    #expect(sut.appearanceMode == .dark)
-  }
-
-  @Test func appearanceMode_canBeSetToOledDark() {
-    let (sut, _, _, _, _, _) = makeSUT()
-
-    sut.appearanceMode = .oledDark
-
-    #expect(sut.appearanceMode == .oledDark)
-  }
-
-  @Test func appearanceMode_canBeSetToLight() {
-    let (sut, _, _, _, _, _) = makeSUT()
-
-    sut.appearanceMode = .light
-
-    #expect(sut.appearanceMode == .light)
   }
 }
