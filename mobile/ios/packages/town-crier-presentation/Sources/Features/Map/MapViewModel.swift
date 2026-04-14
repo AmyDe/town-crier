@@ -145,6 +145,18 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     isSavedFilterActive = false
   }
 
+  /// Loads the set of saved application UIDs so `isSelectedApplicationSaved` can be checked.
+  /// Does not activate the saved filter. No-op if no repository was provided.
+  public func loadSavedStateForSelectedApplication() async {
+    guard let repository = savedApplicationRepository else { return }
+    do {
+      let saved = try await repository.loadAll()
+      savedApplicationUids = Set(saved.map(\.applicationUid))
+    } catch {
+      savedApplicationUids = []
+    }
+  }
+
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
