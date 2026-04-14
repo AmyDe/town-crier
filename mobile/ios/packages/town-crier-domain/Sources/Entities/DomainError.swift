@@ -39,8 +39,12 @@ public enum DomainError: Error, Equatable, Sendable {
       return "Not Found"
     case .insufficientEntitlement:
       return "Upgrade Required"
-    case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
-      .invalidWatchZoneName, .invalidStatusTransition, .geocodingFailed,
+    case .invalidPostcode:
+      return "Invalid Postcode"
+    case .geocodingFailed:
+      return "Postcode Not Found"
+    case .invalidCoordinate, .invalidWatchZoneRadius,
+      .invalidWatchZoneName, .invalidStatusTransition,
       .notificationPermissionDenied, .unexpected:
       return "Something Went Wrong"
     }
@@ -67,8 +71,12 @@ public enum DomainError: Error, Equatable, Sendable {
       return "There was a problem with your purchase. Please try again."
     case .insufficientEntitlement:
       return "This feature requires a higher subscription tier. Upgrade to unlock it."
-    case .invalidPostcode, .invalidCoordinate, .invalidWatchZoneRadius,
-      .invalidWatchZoneName, .invalidStatusTransition, .geocodingFailed, .unexpected:
+    case .invalidPostcode(let raw):
+      return "The postcode '\(raw)' doesn't look right. Please enter a valid UK postcode."
+    case .geocodingFailed:
+      return "We couldn't find the location for that postcode. Please check and try again."
+    case .invalidCoordinate, .invalidWatchZoneRadius,
+      .invalidWatchZoneName, .invalidStatusTransition, .unexpected:
       return "An unexpected error occurred. Please try again."
     }
   }
