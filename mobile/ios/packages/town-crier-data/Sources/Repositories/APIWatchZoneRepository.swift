@@ -1,8 +1,13 @@
 import Foundation
 import TownCrierDomain
+import os
 
 /// Persists and retrieves watch zones via the Town Crier API.
 public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
+  #if DEBUG
+    private static let logger = Logger(subsystem: "uk.towncrierapp", category: "WatchZoneRepository")
+  #endif
+
   private let apiClient: URLSessionAPIClient
 
   public init(apiClient: URLSessionAPIClient) {
@@ -35,7 +40,18 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     } catch {
       throw error.toDomainError()
     }
-    return result.zones.compactMap { $0.toDomain() }
+    return result.zones.compactMap { dto in
+      do {
+        return try dto.toDomain()
+      } catch {
+        #if DEBUG
+          Self.logger.warning(
+            "Skipping zone '\(dto.id)' ('\(dto.name)'): \(error.localizedDescription)"
+          )
+        #endif
+        return nil
+      }
+    }
   }
 
   public func delete(_ id: WatchZoneId) async throws {
@@ -76,11 +92,9 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let radiusMetres: Double
   let authorityId: Int
 
-  func toDomain() -> WatchZone? {
-    guard let centre = try? Coordinate(latitude: latitude, longitude: longitude) else {
-      return nil
-    }
-    return try? WatchZone(
+  func toDomain() throws -> WatchZone {
+    let centre = try Coordinate(latitude: latitude, longitude: longitude)
+    return try WatchZone(
       id: WatchZoneId(id),
       name: name,
       centre: centre,
