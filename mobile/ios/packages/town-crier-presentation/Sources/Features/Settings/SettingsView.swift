@@ -26,6 +26,7 @@ public struct SettingsView: View {
   public var body: some View {
     List {
       accountSection
+      appearanceSection
       notificationSection
       subscriptionSection
       attributionSection
@@ -122,6 +123,25 @@ public struct SettingsView: View {
       }
     } header: {
       Text("Account")
+        .font(TCTypography.captionEmphasis)
+    }
+  }
+
+  // MARK: - Appearance
+
+  private var appearanceSection: some View {
+    Section {
+      Picker(selection: $viewModel.appearanceMode) {
+        ForEach(AppearanceMode.allCases, id: \.self) { mode in
+          Text(mode.displayName).tag(mode)
+        }
+      } label: {
+        Label("Appearance", systemImage: "paintbrush")
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcTextPrimary)
+      }
+    } header: {
+      Text("Appearance")
         .font(TCTypography.captionEmphasis)
     }
   }
