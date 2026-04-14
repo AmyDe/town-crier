@@ -397,4 +397,5 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
     #expect(!sut.showZonePicker)
   }
+
 }
