@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// User's preferred appearance mode, persisted via `@AppStorage`.
 public enum AppearanceMode: String, CaseIterable, Sendable {
@@ -18,6 +18,19 @@ public enum AppearanceMode: String, CaseIterable, Sendable {
       "Dark"
     case .oledDark:
       "OLED Dark"
+    }
+  }
+
+  /// The `ColorScheme` override to apply via `.preferredColorScheme()`.
+  /// Returns `nil` for `.system` to follow the device setting.
+  public var preferredColorScheme: ColorScheme? {
+    switch self {
+    case .system:
+      nil
+    case .light:
+      .light
+    case .dark, .oledDark:
+      .dark
     }
   }
 }
