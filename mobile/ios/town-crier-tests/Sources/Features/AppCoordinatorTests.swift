@@ -283,7 +283,8 @@ struct AppCoordinatorTests {
     let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
 
     #expect(vm.isEditing)
-    #expect(vm.postcodeInput == "CB1 2AD")
+    #expect(vm.nameInput == "CB1 2AD")
+    #expect(vm.postcodeInput.isEmpty)
   }
 
   @Test func makeWatchZoneEditorViewModel_onSave_dismissesEditor() {
