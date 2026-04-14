@@ -280,6 +280,28 @@ struct URLSessionAPIClientTests {
     }
   }
 
+  @Test("On 401, when token refresh fails due to network error, throws networkUnavailable not sessionExpired")
+  func refreshNetworkFailureThrowsNetworkUnavailable() async throws {
+    let transport = StubHTTPTransport()
+    let authService = SpyAuthenticationService()
+    authService.currentSessionResult = .valid
+    authService.refreshSessionResult = .failure(URLError(.notConnectedToInternet))
+
+    transport.responses = [
+      (Data(), httpResponse(url: baseURL, statusCode: 401))
+    ]
+
+    let sut = URLSessionAPIClient(
+      baseURL: baseURL,
+      authService: authService,
+      transport: transport
+    )
+
+    await #expect(throws: DomainError.networkUnavailable) {
+      let _: TestResponse = try await sut.request(.get("/applications"))
+    }
+  }
+
   // MARK: - POST with body
 
   @Test("POST request encodes body as JSON")
