@@ -32,6 +32,7 @@ public final class AppCoordinator: ObservableObject {
   private let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
+  private let savedApplicationRepository: SavedApplicationRepository?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -45,7 +46,8 @@ public final class AppCoordinator: ObservableObject {
     onboardingRepository: OnboardingRepository,
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
-    versionConfigService: VersionConfigService
+    versionConfigService: VersionConfigService,
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -59,6 +61,7 @@ public final class AppCoordinator: ObservableObject {
     self.notificationService = notificationService
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
+    self.savedApplicationRepository = savedApplicationRepository
   }
 
   public func makeLoginViewModel() -> LoginViewModel {
@@ -133,7 +136,10 @@ public final class AppCoordinator: ObservableObject {
   public func makeApplicationDetailViewModel(
     application: PlanningApplication
   ) -> ApplicationDetailViewModel {
-    let viewModel = ApplicationDetailViewModel(application: application)
+    let viewModel = ApplicationDetailViewModel(
+      application: application,
+      savedApplicationRepository: savedApplicationRepository
+    )
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
     }
