@@ -11,8 +11,6 @@ struct TownCrierApp: App {
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
-  @StateObject private var applicationListViewModel: ApplicationListViewModel
-  @StateObject private var mapViewModel: MapViewModel
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
 
@@ -47,6 +45,7 @@ struct TownCrierApp: App {
     let authorityRepository = APIApplicationAuthorityRepository(apiClient: apiClient)
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
+    let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -60,7 +59,8 @@ struct TownCrierApp: App {
       onboardingRepository: onboardingRepository,
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
-      versionConfigService: versionConfigService
+      versionConfigService: versionConfigService,
+      savedApplicationRepository: savedApplicationRepository
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
@@ -70,12 +70,6 @@ struct TownCrierApp: App {
     _forceUpdateViewModel = StateObject(
       wrappedValue: appCoordinator.makeForceUpdateViewModel()
     )
-
-    let listVM = appCoordinator.makeApplicationListViewModel()
-    let mapVM = appCoordinator.makeMapViewModel()
-
-    _applicationListViewModel = StateObject(wrappedValue: listVM)
-    _mapViewModel = StateObject(wrappedValue: mapVM)
 
     let settingsVM = appCoordinator.makeSettingsViewModel()
     settingsVM.onLogout = {
@@ -133,7 +127,8 @@ struct TownCrierApp: App {
   private var mainTabView: some View {
     TabView {
       NavigationStack {
-        ApplicationListView(viewModel: applicationListViewModel)
+        ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
+          .id(coordinator.subscriptionTier)
       }
       .sheet(item: $coordinator.detailApplication) { application in
         NavigationStack {
@@ -149,7 +144,8 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
-        MapView(viewModel: mapViewModel)
+        MapView(viewModel: coordinator.makeMapViewModel())
+          .id(coordinator.subscriptionTier)
           .navigationTitle("Map")
           #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

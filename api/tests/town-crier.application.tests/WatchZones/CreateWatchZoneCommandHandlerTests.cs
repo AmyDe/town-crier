@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Domain.WatchZones;
 
 namespace TownCrier.Application.Tests.WatchZones;
 
@@ -422,6 +424,183 @@ public sealed class CreateWatchZoneCommandHandlerTests
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_ThrowQuotaExceeded_When_FreeUserAlreadyHasOneZone()
+    {
+        // Arrange — Free user already has their one allowed zone
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var existingZone = new WatchZone(
+            "existing-zone",
+            "user-1",
+            "Existing Zone",
+            new Coordinates(51.5074, -0.1278),
+            5000,
+            42,
+            FixedNow);
+        await this.watchZoneRepository.SaveAsync(existingZone, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-2",
+            Name: "Second Zone",
+            Latitude: 51.51,
+            Longitude: -0.13,
+            RadiusMetres: 3000,
+            AuthorityId: 42);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<WatchZoneQuotaExceededException>(
+            () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_ThrowQuotaExceeded_When_PersonalUserAlreadyHasThreeZones()
+    {
+        // Arrange — Personal user already has 3 zones (the limit)
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Personal, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        for (var i = 1; i <= 3; i++)
+        {
+            var zone = new WatchZone(
+                $"zone-{i}",
+                "user-1",
+                $"Zone {i}",
+                new Coordinates(51.5074 + (i * 0.01), -0.1278),
+                5000,
+                42,
+                FixedNow);
+            await this.watchZoneRepository.SaveAsync(zone, CancellationToken.None);
+        }
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-4",
+            Name: "Fourth Zone",
+            Latitude: 51.55,
+            Longitude: -0.14,
+            RadiusMetres: 3000,
+            AuthorityId: 42);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<WatchZoneQuotaExceededException>(
+            () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_AllowCreation_When_PersonalUserHasFewerThanThreeZones()
+    {
+        // Arrange — Personal user has 2 zones (under the limit of 3)
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Personal, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        for (var i = 1; i <= 2; i++)
+        {
+            var zone = new WatchZone(
+                $"zone-{i}",
+                "user-1",
+                $"Zone {i}",
+                new Coordinates(51.5074 + (i * 0.01), -0.1278),
+                5000,
+                42,
+                FixedNow);
+            await this.watchZoneRepository.SaveAsync(zone, CancellationToken.None);
+        }
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-3",
+            Name: "Third Zone",
+            Latitude: 51.55,
+            Longitude: -0.14,
+            RadiusMetres: 3000,
+            AuthorityId: 42);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — zone was created (no exception thrown)
+        var zones = await this.watchZoneRepository.GetByUserIdAsync("user-1", CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_AllowCreation_When_ProUserHasManyZones()
+    {
+        // Arrange — Pro user already has 10 zones (no limit)
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        for (var i = 1; i <= 10; i++)
+        {
+            var zone = new WatchZone(
+                $"zone-{i}",
+                "user-1",
+                $"Zone {i}",
+                new Coordinates(51.5074 + (i * 0.001), -0.1278),
+                5000,
+                42,
+                FixedNow);
+            await this.watchZoneRepository.SaveAsync(zone, CancellationToken.None);
+        }
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-11",
+            Name: "Eleventh Zone",
+            Latitude: 51.52,
+            Longitude: -0.15,
+            RadiusMetres: 3000,
+            AuthorityId: 42);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — zone was created (no exception thrown)
+        var zones = await this.watchZoneRepository.GetByUserIdAsync("user-1", CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(11);
+    }
+
+    [Test]
+    public async Task Should_NotCountOtherUsersZones_When_EnforcingQuota()
+    {
+        // Arrange — Free user-1 has no zones, but user-2 has 5 zones
+        var profile1 = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile1, CancellationToken.None);
+
+        for (var i = 1; i <= 5; i++)
+        {
+            var zone = new WatchZone(
+                $"other-zone-{i}",
+                "user-2",
+                $"Other Zone {i}",
+                new Coordinates(51.5074, -0.1278),
+                5000,
+                42,
+                FixedNow);
+            await this.watchZoneRepository.SaveAsync(zone, CancellationToken.None);
+        }
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act — user-1 should be allowed because they have 0 zones
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var zones = await this.watchZoneRepository.GetByUserIdAsync("user-1", CancellationToken.None);
+        await Assert.That(zones).HasCount().EqualTo(1);
     }
 
     private static CreateWatchZoneCommand CreateCommand(string userId = "user-1")

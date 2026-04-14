@@ -7,7 +7,9 @@ import TownCrierDomain
 @Suite("AppCoordinator")
 @MainActor
 struct AppCoordinatorTests {
-  private func makeSUT() -> (AppCoordinator, SpyPlanningApplicationRepository) {
+  private func makeSUT(
+    savedApplicationRepository: SavedApplicationRepository? = nil
+  ) -> (AppCoordinator, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     let coordinator = AppCoordinator(
       repository: spy,
@@ -19,7 +21,8 @@ struct AppCoordinatorTests {
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
+      versionConfigService: SpyVersionConfigService(),
+      savedApplicationRepository: savedApplicationRepository
     )
     return (coordinator, spy)
   }
@@ -34,6 +37,21 @@ struct AppCoordinatorTests {
     #expect(vm.address == "12 Mill Road, Cambridge, CB1 2AD")
   }
 
+  @Test func makeApplicationDetailViewModel_passesRepository_enablesCanSave() {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(vm.canSave)
+  }
+
+  @Test func makeApplicationDetailViewModel_withoutRepository_canSaveIsFalse() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(!vm.canSave)
+  }
+
   @Test func makeApplicationDetailViewModel_dismissClearsDetailApplication() {
     let (sut, _) = makeSUT()
     sut.detailApplication = .pendingReview
@@ -45,6 +63,21 @@ struct AppCoordinatorTests {
   }
 
   // MARK: - Application List Factory
+
+  @Test func makeApplicationListViewModel_passesRepository_enablesCanSave() {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
+
+    #expect(vm.canSave)
+  }
+
+  @Test func makeApplicationListViewModel_withoutRepository_canSaveIsFalse() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
+
+    #expect(!vm.canSave)
+  }
 
   @Test func makeApplicationListViewModel_createsViewModelWithZone() async {
     let (sut, spy) = makeSUT()
@@ -119,6 +152,42 @@ struct AppCoordinatorTests {
   }
 
   // MARK: - Map ViewModel Factory
+
+  @Test func makeMapViewModel_passesRepository_enablesCanSave() {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeMapViewModel()
+
+    #expect(vm.canSave)
+  }
+
+  @Test func makeMapViewModel_withoutRepository_canSaveIsFalse() {
+    let (sut, _) = makeSUT()
+    let vm = sut.makeMapViewModel()
+
+    #expect(!vm.canSave)
+  }
+
+  @Test func makeMapViewModel_passesSubscriptionTier() async {
+    let authSpy = SpyAuthenticationService()
+    authSpy.currentSessionResult = AuthSession.personal
+    let coordinator = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: authSpy,
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    await coordinator.resolveSubscriptionTier()
+
+    let vm = coordinator.makeMapViewModel()
+
+    #expect(vm.canFilter)
+  }
 
   @Test func makeMapViewModel_fetchesByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
@@ -262,7 +331,8 @@ struct AppCoordinatorTests {
     let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
 
     #expect(vm.isEditing)
-    #expect(vm.postcodeInput == "CB1 2AD")
+    #expect(vm.nameInput == "CB1 2AD")
+    #expect(vm.postcodeInput.isEmpty)
   }
 
   @Test func makeWatchZoneEditorViewModel_onSave_dismissesEditor() {

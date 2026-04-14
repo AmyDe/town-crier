@@ -5,6 +5,7 @@ import TownCrierDomain
 /// Drives create/edit of a single watch zone with postcode geocoding and tier-based radius limits.
 @MainActor
 public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingViewModel {
+  @Published public var nameInput: String = ""
   @Published public var postcodeInput: String = ""
   @Published public var selectedRadiusMetres: Double = 1000
   @Published public private(set) var geocodedCoordinate: Coordinate?
@@ -33,7 +34,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     self.existingId = zone?.id
 
     if let zone {
-      self.postcodeInput = zone.name
+      self.nameInput = zone.name
       self.selectedRadiusMetres = zone.radiusMetres
       self.geocodedCoordinate = zone.centre
     }
@@ -58,6 +59,9 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
 
     do {
       geocodedCoordinate = try await geocoder.geocode(postcode)
+      if nameInput.trimmingCharacters(in: .whitespaces).isEmpty {
+        nameInput = postcode.value
+      }
     } catch {
       handleError(error)
     }
@@ -69,21 +73,12 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     guard let coordinate = geocodedCoordinate else { return }
     error = nil
 
-    // Validate the postcode input before saving
-    let postcode: Postcode
-    do {
-      postcode = try Postcode(postcodeInput)
-    } catch {
-      self.error = .invalidPostcode(postcodeInput)
-      return
-    }
-
     let clampedRadius = limits.clampRadius(selectedRadiusMetres)
 
     do {
       let zone = try WatchZone(
         id: existingId ?? WatchZoneId(),
-        name: postcode.value,
+        name: nameInput,
         centre: coordinate,
         radiusMetres: clampedRadius
       )

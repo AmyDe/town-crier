@@ -4,6 +4,7 @@ using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.Entitlements;
 using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.UserProfiles;
 using TownCrier.Domain.WatchZones;
@@ -50,6 +51,16 @@ public sealed partial class CreateWatchZoneCommandHandler
 
         var profile = await this.userProfileRepository.GetByUserIdAsync(command.UserId, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"User profile not found: {command.UserId}");
+
+        var maxZones = EntitlementMap.LimitFor(profile.Tier, Quota.WatchZones);
+        if (maxZones < int.MaxValue)
+        {
+            var existingZones = await this.watchZoneRepository.GetByUserIdAsync(command.UserId, ct).ConfigureAwait(false);
+            if (existingZones.Count >= maxZones)
+            {
+                throw new WatchZoneQuotaExceededException(maxZones);
+            }
+        }
 
         var authorityId = command.AuthorityId
             ?? await this.authorityResolver.ResolveFromCoordinatesAsync(command.Latitude, command.Longitude, ct).ConfigureAwait(false);
