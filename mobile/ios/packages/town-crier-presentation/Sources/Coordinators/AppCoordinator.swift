@@ -162,6 +162,12 @@ public final class AppCoordinator: ObservableObject {
   /// Resolves the subscription tier by consulting the JWT session, StoreKit,
   /// and the server profile, then picks the highest tier. Mirrors the same
   /// triple-source resolution used by ``SettingsViewModel``.
+  ///
+  /// When the server profile fetch fails (network error, auth issue, etc.),
+  /// the previously resolved tier is preserved rather than silently falling
+  /// back to `.free`. This prevents paying users from losing feature access
+  /// due to transient failures — a common scenario on the simulator where
+  /// JWT and StoreKit always return `.free`.
   public func resolveSubscriptionTier() async {
     var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
@@ -170,10 +176,19 @@ public final class AppCoordinator: ObservableObject {
 
     let serverTier = await fetchServerTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
-    subscriptionTier = max(serverTier, max(storeKitTier, jwtTier))
+
+    // When the server profile fetch failed (nil), fall back to the current
+    // tier so we don't downgrade a paying user due to a transient error.
+    let effectiveServerTier = serverTier ?? subscriptionTier
+    subscriptionTier = max(effectiveServerTier, max(storeKitTier, jwtTier))
   }
 
-  private func fetchServerTier() async -> SubscriptionTier {
+  /// Fetches the subscription tier from the server profile.
+  ///
+  /// Returns `nil` when the fetch fails due to a network or server error,
+  /// distinguishing "fetch failed" from "user is genuinely on free tier."
+  /// Returns `.free` when the profile does not exist (HTTP 404).
+  private func fetchServerTier() async -> SubscriptionTier? {
     do {
       if let profile = try await userProfileRepository.fetch() {
         return profile.tier
@@ -183,7 +198,7 @@ public final class AppCoordinator: ObservableObject {
       Self.logger.error(
         "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
       )
-      return .free
+      return nil
     }
   }
 
