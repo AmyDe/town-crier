@@ -15,7 +15,7 @@ struct AppCoordinatorTierResolutionTests {
     entitlement: SubscriptionEntitlement? = nil,
     serverProfile: ServerProfile? = nil,
     serverProfileError: Error? = nil,
-    tierCache: UserDefaults? = nil
+    tierCache: UserDefaults = UserDefaults(suiteName: UUID().uuidString) ?? .standard
   ) -> (AppCoordinator, SpyAuthenticationService, SpySubscriptionService, SpyUserProfileRepository) {
     let authSpy = SpyAuthenticationService()
     authSpy.currentSessionResult = authSession
