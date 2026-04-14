@@ -184,4 +184,29 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public func clearSelection() {
     selectedApplication = nil
   }
+
+  /// Toggles the saved state of the currently selected application.
+  /// No-op if no application is selected or no repository was provided.
+  public func toggleSaveSelectedApplication() async {
+    guard let repository = savedApplicationRepository,
+          let selected = selectedApplication else { return }
+
+    let uid = selected.id.value
+
+    if savedApplicationUids.contains(uid) {
+      do {
+        try await repository.remove(applicationUid: uid)
+        savedApplicationUids.remove(uid)
+      } catch {
+        // Preserve current state on failure
+      }
+    } else {
+      do {
+        try await repository.save(applicationUid: uid)
+        savedApplicationUids.insert(uid)
+      } catch {
+        // Preserve current state on failure
+      }
+    }
+  }
 }
