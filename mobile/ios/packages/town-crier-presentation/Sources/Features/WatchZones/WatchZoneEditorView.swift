@@ -13,6 +13,7 @@ public struct WatchZoneEditorView: View {
   public var body: some View {
     NavigationStack {
       Form {
+        nameSection
         postcodeSection
         if viewModel.geocodedCoordinate != nil {
           radiusSection
@@ -37,9 +38,25 @@ public struct WatchZoneEditorView: View {
               dismiss()
             }
           }
-          .disabled(viewModel.geocodedCoordinate == nil || viewModel.isLoading)
+          .disabled(
+            viewModel.geocodedCoordinate == nil || viewModel.isLoading
+              || viewModel.nameInput.trimmingCharacters(in: .whitespaces).isEmpty
+          )
         }
       }
+    }
+  }
+
+  private var nameSection: some View {
+    Section {
+      TextField("e.g. My Home, Office", text: $viewModel.nameInput)
+        .autocorrectionDisabled()
+    } header: {
+      Text("Zone Name")
+    } footer: {
+      Text("A friendly name to identify this watch zone.")
+        .font(.system(.caption))
+        .foregroundStyle(Color.tcTextSecondary)
     }
   }
 
