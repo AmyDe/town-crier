@@ -6,15 +6,24 @@ import TownCrierDomain
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var applications: [PlanningApplication] = []
-  @Published var selectedStatusFilter: ApplicationStatus?
+  @Published var selectedStatusFilter: ApplicationStatus? {
+    didSet {
+      if selectedStatusFilter != nil {
+        isSavedFilterActive = false
+      }
+    }
+  }
   @Published private(set) var isLoading = false
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
+  @Published private(set) var isSavedFilterActive = false
+  @Published private(set) var savedApplicationUids: Set<String> = []
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
   private let watchZoneRepository: WatchZoneRepository?
+  private let savedApplicationRepository: SavedApplicationRepository?
   private var zone: WatchZone?
   private let tier: SubscriptionTier
   private let userDefaults: UserDefaults
@@ -26,11 +35,18 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     tier != .free
   }
 
+  public var canSave: Bool {
+    savedApplicationRepository != nil
+  }
+
   public var showZonePicker: Bool {
     zones.count > 1
   }
 
   public var filteredApplications: [PlanningApplication] {
+    if isSavedFilterActive {
+      return applications.filter { savedApplicationUids.contains($0.id.value) }
+    }
     guard canFilter, let filter = selectedStatusFilter else {
       return applications
     }
@@ -57,11 +73,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   public init(
     repository: PlanningApplicationRepository,
     zone: WatchZone,
-    tier: SubscriptionTier = .free
+    tier: SubscriptionTier = .free,
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = repository
     self.offlineRepository = nil
     self.watchZoneRepository = nil
+    self.savedApplicationRepository = savedApplicationRepository
     self.zone = zone
     self.tier = tier
     self.userDefaults = .standard
@@ -71,11 +89,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   public init(
     offlineRepository: OfflineAwareRepository,
     zone: WatchZone,
-    tier: SubscriptionTier = .free
+    tier: SubscriptionTier = .free,
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = nil
+    self.savedApplicationRepository = savedApplicationRepository
     self.zone = zone
     self.tier = tier
     self.userDefaults = .standard
@@ -87,11 +107,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     repository: PlanningApplicationRepository,
     tier: SubscriptionTier = .free,
     userDefaults: UserDefaults = .standard,
-    zoneSelectionKey: String = "lastSelectedZone.applications"
+    zoneSelectionKey: String = "lastSelectedZone.applications",
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = repository
     self.offlineRepository = nil
     self.watchZoneRepository = watchZoneRepository
+    self.savedApplicationRepository = savedApplicationRepository
     self.zone = nil
     self.tier = tier
     self.userDefaults = userDefaults
@@ -103,11 +125,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     offlineRepository: OfflineAwareRepository,
     tier: SubscriptionTier = .free,
     userDefaults: UserDefaults = .standard,
-    zoneSelectionKey: String = "lastSelectedZone.applications"
+    zoneSelectionKey: String = "lastSelectedZone.applications",
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = watchZoneRepository
+    self.savedApplicationRepository = savedApplicationRepository
     self.zone = nil
     self.tier = tier
     self.userDefaults = userDefaults
@@ -138,9 +162,26 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = false
   }
 
+  public func activateSavedFilter() async {
+    guard let repository = savedApplicationRepository else { return }
+    selectedStatusFilter = nil
+    isSavedFilterActive = true
+    do {
+      let saved = try await repository.loadAll()
+      savedApplicationUids = Set(saved.map(\.applicationUid))
+    } catch {
+      savedApplicationUids = []
+    }
+  }
+
+  public func deactivateSavedFilter() {
+    isSavedFilterActive = false
+  }
+
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
+    isSavedFilterActive = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
     isLoading = true
     error = nil
