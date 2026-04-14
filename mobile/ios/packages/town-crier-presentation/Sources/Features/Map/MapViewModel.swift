@@ -12,6 +12,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
+  @Published var selectedStatusFilter: ApplicationStatus?
 
   @Published private(set) var centreLat: Double = 51.5074
   @Published private(set) var centreLon: Double = -0.1278
@@ -19,12 +20,24 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
+  private let tier: SubscriptionTier
   private var applications: [PlanningApplication] = []
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
 
+  public var canFilter: Bool {
+    tier != .free
+  }
+
+  public var filteredAnnotations: [MapAnnotationItem] {
+    guard canFilter, let filter = selectedStatusFilter else {
+      return annotations
+    }
+    return annotations.filter { $0.status == filter }
+  }
+
   public var isEmpty: Bool {
-    hasLoaded && annotations.isEmpty && error == nil && !isLoading
+    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
   }
 
   public var showZonePicker: Bool {
@@ -49,11 +62,13 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public init(
     repository: PlanningApplicationRepository,
     watchZoneRepository: WatchZoneRepository,
+    tier: SubscriptionTier = .free,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.map"
   ) {
     self.repository = repository
     self.watchZoneRepository = watchZoneRepository
+    self.tier = tier
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
   }
@@ -92,6 +107,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
+    selectedStatusFilter = nil
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude
