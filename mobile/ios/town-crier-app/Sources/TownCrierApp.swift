@@ -11,8 +11,6 @@ struct TownCrierApp: App {
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
-  @StateObject private var applicationListViewModel: ApplicationListViewModel
-  @StateObject private var mapViewModel: MapViewModel
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
 
@@ -71,12 +69,6 @@ struct TownCrierApp: App {
       wrappedValue: appCoordinator.makeForceUpdateViewModel()
     )
 
-    let listVM = appCoordinator.makeApplicationListViewModel()
-    let mapVM = appCoordinator.makeMapViewModel()
-
-    _applicationListViewModel = StateObject(wrappedValue: listVM)
-    _mapViewModel = StateObject(wrappedValue: mapVM)
-
     let settingsVM = appCoordinator.makeSettingsViewModel()
     settingsVM.onLogout = {
       Task { @MainActor in
@@ -133,7 +125,8 @@ struct TownCrierApp: App {
   private var mainTabView: some View {
     TabView {
       NavigationStack {
-        ApplicationListView(viewModel: applicationListViewModel)
+        ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
+          .id(coordinator.subscriptionTier)
       }
       .sheet(item: $coordinator.detailApplication) { application in
         NavigationStack {
@@ -149,7 +142,8 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
-        MapView(viewModel: mapViewModel)
+        MapView(viewModel: coordinator.makeMapViewModel())
+          .id(coordinator.subscriptionTier)
           .navigationTitle("Map")
           #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
