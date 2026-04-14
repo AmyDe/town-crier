@@ -50,14 +50,27 @@ public final class URLSessionAPIClient: Sendable {
       #if DEBUG
         Self.logger.warning("↻ Got 401 — refreshing token")
       #endif
+      let refreshed: AuthSession
       do {
-        let refreshed = try await authService.refreshSession()
-        return try await executeRequest(endpoint, accessToken: refreshed.accessToken)
+        refreshed = try await authService.refreshSession()
+      } catch let urlError as URLError {
+        #if DEBUG
+          Self.logger.error("✗ Token refresh failed (network): \(urlError.localizedDescription)")
+        #endif
+        throw DomainError.networkUnavailable
       } catch {
         #if DEBUG
           Self.logger.error("✗ Token refresh failed: \(error.localizedDescription)")
         #endif
         throw DomainError.sessionExpired
+      }
+      do {
+        return try await executeRequest(endpoint, accessToken: refreshed.accessToken)
+      } catch let urlError as URLError {
+        #if DEBUG
+          Self.logger.error("✗ Retry URLError (network): \(urlError.localizedDescription)")
+        #endif
+        throw DomainError.networkUnavailable
       }
     } catch let urlError as URLError {
       #if DEBUG

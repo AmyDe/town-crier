@@ -1,4 +1,5 @@
 import Combine
+import Foundation
 import TownCrierDomain
 import os
 
@@ -20,6 +21,8 @@ public final class AppCoordinator: ObservableObject {
     onboardingRepository.isOnboardingComplete
   }
 
+  private static let tierCacheKey = "cachedSubscriptionTier"
+
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
@@ -33,6 +36,7 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
+  private let tierCache: UserDefaults
 
   public init(
     repository: PlanningApplicationRepository,
@@ -47,7 +51,8 @@ public final class AppCoordinator: ObservableObject {
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
-    savedApplicationRepository: SavedApplicationRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    tierCache: UserDefaults? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -62,6 +67,15 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
+    self.tierCache = tierCache ?? .standard
+
+    // Restore the last successfully resolved tier so that paying users
+    // retain feature access immediately, even before the live resolution
+    // completes (or when it fails on simulator).
+    if let cached = self.tierCache.string(forKey: Self.tierCacheKey),
+      let tier = SubscriptionTier(rawValue: cached) {
+      subscriptionTier = tier
+    }
   }
 
   public func makeLoginViewModel() -> LoginViewModel {
@@ -162,6 +176,12 @@ public final class AppCoordinator: ObservableObject {
   /// Resolves the subscription tier by consulting the JWT session, StoreKit,
   /// and the server profile, then picks the highest tier. Mirrors the same
   /// triple-source resolution used by ``SettingsViewModel``.
+  ///
+  /// When the server profile fetch fails (network error, auth issue, etc.),
+  /// the previously resolved tier is preserved rather than silently falling
+  /// back to `.free`. This prevents paying users from losing feature access
+  /// due to transient failures — a common scenario on the simulator where
+  /// JWT and StoreKit always return `.free`.
   public func resolveSubscriptionTier() async {
     var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
@@ -170,10 +190,21 @@ public final class AppCoordinator: ObservableObject {
 
     let serverTier = await fetchServerTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
-    subscriptionTier = max(serverTier, max(storeKitTier, jwtTier))
+
+    // When the server profile fetch failed (nil), fall back to the current
+    // tier so we don't downgrade a paying user due to a transient error.
+    let effectiveServerTier = serverTier ?? subscriptionTier
+    let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
+    subscriptionTier = resolved
+    tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
   }
 
-  private func fetchServerTier() async -> SubscriptionTier {
+  /// Fetches the subscription tier from the server profile.
+  ///
+  /// Returns `nil` when the fetch fails due to a network or server error,
+  /// distinguishing "fetch failed" from "user is genuinely on free tier."
+  /// Returns `.free` when the profile does not exist (HTTP 404).
+  private func fetchServerTier() async -> SubscriptionTier? {
     do {
       if let profile = try await userProfileRepository.fetch() {
         return profile.tier
@@ -183,7 +214,7 @@ public final class AppCoordinator: ObservableObject {
       Self.logger.error(
         "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
       )
-      return .free
+      return nil
     }
   }
 

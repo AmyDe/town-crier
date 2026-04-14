@@ -35,8 +35,8 @@ struct DomainErrorMessageTests {
     #expect(DomainError.unexpected("err").isRetryable)
   }
 
-  @Test func isRetryable_falseForSessionExpired() {
-    #expect(!DomainError.sessionExpired.isRetryable)
+  @Test func isRetryable_trueForSessionExpired() {
+    #expect(DomainError.sessionExpired.isRetryable)
   }
 
   @Test func isRetryable_falseForAuthFailed() {

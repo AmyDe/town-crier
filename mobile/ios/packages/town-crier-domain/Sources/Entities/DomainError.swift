@@ -85,9 +85,9 @@ public enum DomainError: Error, Equatable, Sendable {
   public var isRetryable: Bool {
     switch self {
     case .networkUnavailable, .serverError, .unexpected, .geocodingFailed,
-      .purchaseFailed, .restoreFailed, .logoutFailed:
+      .purchaseFailed, .restoreFailed, .logoutFailed, .sessionExpired:
       return true
-    case .sessionExpired, .authenticationFailed, .invalidPostcode,
+    case .authenticationFailed, .invalidPostcode,
       .invalidCoordinate, .invalidWatchZoneRadius, .invalidWatchZoneName,
       .invalidStatusTransition, .applicationNotFound, .notificationPermissionDenied,
       .purchaseCancelled, .productNotFound, .insufficientEntitlement:

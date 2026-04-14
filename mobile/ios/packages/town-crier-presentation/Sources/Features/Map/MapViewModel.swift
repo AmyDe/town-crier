@@ -56,6 +56,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
   }
 
+  /// Whether the currently selected application is in the user's saved set.
+  public var isSelectedApplicationSaved: Bool {
+    guard let selected = selectedApplication else { return false }
+    return savedApplicationUids.contains(selected.id.value)
+  }
+
   public var showZonePicker: Bool {
     zones.count > 1
   }
@@ -139,6 +145,18 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     isSavedFilterActive = false
   }
 
+  /// Loads the set of saved application UIDs so `isSelectedApplicationSaved` can be checked.
+  /// Does not activate the saved filter. No-op if no repository was provided.
+  public func loadSavedStateForSelectedApplication() async {
+    guard let repository = savedApplicationRepository else { return }
+    do {
+      let saved = try await repository.loadAll()
+      savedApplicationUids = Set(saved.map(\.applicationUid))
+    } catch {
+      savedApplicationUids = []
+    }
+  }
+
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
@@ -177,5 +195,30 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   public func clearSelection() {
     selectedApplication = nil
+  }
+
+  /// Toggles the saved state of the currently selected application.
+  /// No-op if no application is selected or no repository was provided.
+  public func toggleSaveSelectedApplication() async {
+    guard let repository = savedApplicationRepository,
+          let selected = selectedApplication else { return }
+
+    let uid = selected.id.value
+
+    if savedApplicationUids.contains(uid) {
+      do {
+        try await repository.remove(applicationUid: uid)
+        savedApplicationUids.remove(uid)
+      } catch {
+        // Preserve current state on failure
+      }
+    } else {
+      do {
+        try await repository.save(applicationUid: uid)
+        savedApplicationUids.insert(uid)
+      } catch {
+        // Preserve current state on failure
+      }
+    }
   }
 }

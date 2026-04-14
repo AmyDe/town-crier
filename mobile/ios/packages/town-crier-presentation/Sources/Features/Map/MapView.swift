@@ -37,7 +37,7 @@ public struct MapView: View {
         set: { _ in viewModel.clearSelection() }
       )
     ) { application in
-      ApplicationSummarySheet(application: application)
+      ApplicationSummarySheet(application: application, viewModel: viewModel)
     }
   }
 
