@@ -62,6 +62,24 @@ struct AppCoordinatorTests {
     #expect(sut.detailApplication == nil)
   }
 
+  @Test func makeApplicationDetailViewModel_loadSavedState_reflectsServerState() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(
+        applicationUid: PlanningApplication.pendingReview.id.value,
+        savedAt: Date()
+      ),
+    ])
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(!vm.isSaved)
+
+    await vm.loadSavedState()
+
+    #expect(vm.isSaved)
+  }
+
   // MARK: - Application List Factory
 
   @Test func makeApplicationListViewModel_passesRepository_enablesCanSave() {
