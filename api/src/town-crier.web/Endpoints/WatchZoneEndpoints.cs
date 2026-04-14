@@ -37,8 +37,19 @@ internal static class WatchZoneEndpoints
                 request.Longitude,
                 request.RadiusMetres,
                 request.AuthorityId);
-            var result = await handler.HandleAsync(command, ct).ConfigureAwait(false);
-            return Results.Created($"/v1/me/watch-zones/{zoneId}", result);
+
+            try
+            {
+                var result = await handler.HandleAsync(command, ct).ConfigureAwait(false);
+                return Results.Created($"/v1/me/watch-zones/{zoneId}", result);
+            }
+            catch (WatchZoneQuotaExceededException)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("Watch zone quota exceeded. Upgrade your subscription for more zones."),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 403);
+            }
         });
 
         group.MapGet("/me/watch-zones", async (
