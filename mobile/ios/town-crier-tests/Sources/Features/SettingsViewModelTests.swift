@@ -397,4 +397,36 @@ struct SettingsViewModelTests {
     #expect(items.contains { $0.name == "Ordnance Survey" })
     #expect(items.contains { $0.name == "OpenStreetMap" })
   }
+
+  // MARK: - Appearance Mode
+
+  @Test func appearanceMode_defaultsToSystem() {
+    let (sut, _, _, _, _, _) = makeSUT()
+
+    #expect(sut.appearanceMode == .system)
+  }
+
+  @Test func appearanceMode_canBeSetToDark() {
+    let (sut, _, _, _, _, _) = makeSUT()
+
+    sut.appearanceMode = .dark
+
+    #expect(sut.appearanceMode == .dark)
+  }
+
+  @Test func appearanceMode_canBeSetToOledDark() {
+    let (sut, _, _, _, _, _) = makeSUT()
+
+    sut.appearanceMode = .oledDark
+
+    #expect(sut.appearanceMode == .oledDark)
+  }
+
+  @Test func appearanceMode_canBeSetToLight() {
+    let (sut, _, _, _, _, _) = makeSUT()
+
+    sut.appearanceMode = .light
+
+    #expect(sut.appearanceMode == .light)
+  }
 }
