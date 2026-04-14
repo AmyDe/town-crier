@@ -213,9 +213,12 @@ struct ApplicationListViewModelTests {
     appSpy.fetchApplicationsResult = .success([.pendingReview])
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
-      repository: appSpy
+      repository: appSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone"
     )
 
     await sut.loadApplications()
@@ -230,9 +233,12 @@ struct ApplicationListViewModelTests {
     let appSpy = SpyPlanningApplicationRepository()
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success([])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
-      repository: appSpy
+      repository: appSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone"
     )
 
     await sut.loadApplications()
@@ -246,9 +252,12 @@ struct ApplicationListViewModelTests {
     let appSpy = SpyPlanningApplicationRepository()
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .failure(DomainError.networkUnavailable)
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
-      repository: appSpy
+      repository: appSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone"
     )
 
     await sut.loadApplications()
@@ -262,9 +271,12 @@ struct ApplicationListViewModelTests {
     appSpy.fetchApplicationsResult = .success([.pendingReview])
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success([.cambridge])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
-      repository: appSpy
+      repository: appSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone"
     )
 
     await sut.loadApplications()
@@ -556,10 +568,13 @@ struct ApplicationListViewModelTests {
     appSpy.fetchApplicationsResult = .success(Self.allApps)
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
     let sut = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
       repository: appSpy,
       tier: .free,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone",
       savedApplicationRepository: savedSpy
     )
 

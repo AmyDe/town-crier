@@ -12,7 +12,15 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
-  @Published var selectedStatusFilter: ApplicationStatus?
+  @Published var selectedStatusFilter: ApplicationStatus? {
+    didSet {
+      if selectedStatusFilter != nil {
+        isSavedFilterActive = false
+      }
+    }
+  }
+  @Published private(set) var isSavedFilterActive = false
+  @Published private(set) var savedApplicationUids: Set<String> = []
 
   @Published private(set) var centreLat: Double = 51.5074
   @Published private(set) var centreLon: Double = -0.1278
@@ -20,6 +28,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
+  private let savedApplicationRepository: SavedApplicationRepository?
   private let tier: SubscriptionTier
   private var applications: [PlanningApplication] = []
   private let userDefaults: UserDefaults
@@ -29,7 +38,14 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     tier != .free
   }
 
+  public var canSave: Bool {
+    savedApplicationRepository != nil
+  }
+
   public var filteredAnnotations: [MapAnnotationItem] {
+    if isSavedFilterActive {
+      return annotations.filter { savedApplicationUids.contains($0.applicationId.value) }
+    }
     guard canFilter, let filter = selectedStatusFilter else {
       return annotations
     }
@@ -64,10 +80,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     watchZoneRepository: WatchZoneRepository,
     tier: SubscriptionTier = .free,
     userDefaults: UserDefaults = .standard,
-    zoneSelectionKey: String = "lastSelectedZone.map"
+    zoneSelectionKey: String = "lastSelectedZone.map",
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) {
     self.repository = repository
     self.watchZoneRepository = watchZoneRepository
+    self.savedApplicationRepository = savedApplicationRepository
     self.tier = tier
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
@@ -105,9 +123,26 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded = true
   }
 
+  public func activateSavedFilter() async {
+    guard let repository = savedApplicationRepository else { return }
+    selectedStatusFilter = nil
+    isSavedFilterActive = true
+    do {
+      let saved = try await repository.loadAll()
+      savedApplicationUids = Set(saved.map(\.applicationUid))
+    } catch {
+      savedApplicationUids = []
+    }
+  }
+
+  public func deactivateSavedFilter() {
+    isSavedFilterActive = false
+  }
+
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
+    isSavedFilterActive = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude
