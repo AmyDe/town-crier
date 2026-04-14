@@ -24,6 +24,7 @@ struct WatchZoneEditorCreateTests {
   @Test func initialState_isCreate() {
     #expect(!sut.isEditing)
     #expect(sut.postcodeInput.isEmpty)
+    #expect(sut.nameInput.isEmpty)
     #expect(sut.selectedRadiusMetres == 1000)
     #expect(sut.geocodedCoordinate == nil)
   }
@@ -70,6 +71,41 @@ struct WatchZoneEditorCreateTests {
     )
     let limits = WatchZoneLimits(tier: .free)
     #expect(freeSut.availableRadiusOptions == limits.availableRadiusOptions)
+  }
+
+  @Test func submitPostcode_autoFillsNameFromPostcode_whenNameEmpty() async {
+    sut.postcodeInput = "CB1 2AD"
+    spyGeocoder.geocodeResult = .success(.cambridge)
+
+    await sut.submitPostcode()
+
+    #expect(sut.nameInput == "CB1 2AD")
+  }
+
+  @Test func submitPostcode_doesNotOverwriteName_whenAlreadySet() async {
+    sut.nameInput = "My Home"
+    sut.postcodeInput = "CB1 2AD"
+    spyGeocoder.geocodeResult = .success(.cambridge)
+
+    await sut.submitPostcode()
+
+    #expect(sut.nameInput == "My Home")
+  }
+
+  @Test func save_usesNameInput_notPostcode() async {
+    sut.postcodeInput = "CB1 2AD"
+    sut.nameInput = "My Home Zone"
+    spyGeocoder.geocodeResult = .success(.cambridge)
+    await sut.submitPostcode()
+    sut.selectedRadiusMetres = 2000
+
+    await sut.save()
+
+    #expect(spyRepository.saveCalls.count == 1)
+    let saved = spyRepository.saveCalls.first
+    #expect(saved?.name == "My Home Zone")
+    #expect(saved?.centre == .cambridge)
+    #expect(saved?.radiusMetres == 2000)
   }
 
   @Test func save_createsZoneAndCallsRepository() async {
@@ -154,9 +190,28 @@ struct WatchZoneEditorEditTests {
 
   @Test func initialState_populatedFromExistingZone() {
     #expect(sut.isEditing)
-    #expect(sut.postcodeInput == "CB1 2AD")
+    #expect(sut.nameInput == "CB1 2AD")
+    #expect(sut.postcodeInput.isEmpty)
     #expect(sut.selectedRadiusMetres == 2000)
     #expect(sut.geocodedCoordinate == .cambridge)
+  }
+
+  @Test func initialState_freeformName_populatesNameInput() throws {
+    let freeformZone = try WatchZone(
+      id: WatchZoneId("zone-003"),
+      name: "My Home Zone",
+      centre: .cambridge,
+      radiusMetres: 1500
+    )
+    let vm = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .personal,
+      editing: freeformZone
+    )
+    #expect(vm.nameInput == "My Home Zone")
+    #expect(vm.postcodeInput.isEmpty)
+    #expect(vm.geocodedCoordinate == .cambridge)
   }
 
   @Test func save_preservesExistingId() async {
