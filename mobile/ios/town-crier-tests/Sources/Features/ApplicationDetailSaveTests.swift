@@ -125,4 +125,66 @@ struct ApplicationDetailSaveTests {
 
     #expect(!sut.canSave)
   }
+
+  // MARK: - Lazy saved state loading
+
+  @Test("loadSavedState calls loadAll and sets isSaved true when application is saved")
+  func loadSavedState_whenApplicationIsSaved_setsIsSavedTrue() async {
+    let spy = SpySavedApplicationRepository()
+    spy.loadAllResult = .success([
+      SavedApplication(
+        applicationUid: PlanningApplication.pendingReview.id.value,
+        savedAt: Date()
+      ),
+    ])
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      savedApplicationRepository: spy
+    )
+
+    await sut.loadSavedState()
+
+    #expect(sut.isSaved)
+    #expect(spy.loadAllCallCount == 1)
+  }
+
+  @Test("loadSavedState leaves isSaved false when application is not in saved list")
+  func loadSavedState_whenApplicationNotSaved_leavesIsSavedFalse() async {
+    let spy = SpySavedApplicationRepository()
+    spy.loadAllResult = .success([
+      SavedApplication(applicationUid: "OTHER-APP", savedAt: Date()),
+    ])
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      savedApplicationRepository: spy
+    )
+
+    await sut.loadSavedState()
+
+    #expect(!sut.isSaved)
+    #expect(spy.loadAllCallCount == 1)
+  }
+
+  @Test("loadSavedState leaves isSaved false when loadAll fails")
+  func loadSavedState_whenLoadAllFails_leavesIsSavedFalse() async {
+    let spy = SpySavedApplicationRepository()
+    spy.loadAllResult = .failure(DomainError.networkUnavailable)
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      savedApplicationRepository: spy
+    )
+
+    await sut.loadSavedState()
+
+    #expect(!sut.isSaved)
+  }
+
+  @Test("loadSavedState is no-op when repository is nil")
+  func loadSavedState_withoutRepository_isNoOp() async {
+    let sut = ApplicationDetailViewModel(application: .pendingReview)
+
+    await sut.loadSavedState()
+
+    #expect(!sut.isSaved)
+  }
 }
