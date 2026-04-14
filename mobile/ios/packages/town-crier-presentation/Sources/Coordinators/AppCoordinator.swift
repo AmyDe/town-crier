@@ -75,9 +75,10 @@ public final class AppCoordinator: ObservableObject {
     let viewModel: ApplicationListViewModel
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
-        offlineRepository: offlineRepository, zone: zone)
+        offlineRepository: offlineRepository, zone: zone, tier: subscriptionTier)
     } else {
-      viewModel = ApplicationListViewModel(repository: repository, zone: zone)
+      viewModel = ApplicationListViewModel(
+        repository: repository, zone: zone, tier: subscriptionTier)
     }
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
@@ -92,12 +93,14 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        offlineRepository: offlineRepository
+        offlineRepository: offlineRepository,
+        tier: subscriptionTier
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        repository: repository
+        repository: repository,
+        tier: subscriptionTier
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in

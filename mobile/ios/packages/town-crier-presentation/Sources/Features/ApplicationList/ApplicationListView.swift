@@ -10,6 +10,33 @@ public struct ApplicationListView: View {
   }
 
   public var body: some View {
+    VStack(spacing: 0) {
+      if viewModel.showZonePicker {
+        zonePickerHeader
+      }
+
+      if viewModel.canFilter {
+        filterHeader
+      }
+
+      listBody
+    }
+    .background(Color.tcBackground)
+    .navigationTitle("Applications")
+    #if os(iOS)
+      .navigationBarTitleDisplayMode(.large)
+    #endif
+    .task {
+      await viewModel.loadApplications()
+    }
+    .refreshable {
+      await viewModel.loadApplications()
+    }
+  }
+
+  // MARK: - List Body
+
+  private var listBody: some View {
     ZStack {
       Color.tcBackground.ignoresSafeArea()
 
@@ -26,81 +53,51 @@ public struct ApplicationListView: View {
           description: "No planning applications found in your watch zone yet."
         )
       } else {
-        applicationList
-      }
-    }
-    .navigationTitle("Applications")
-    #if os(iOS)
-      .navigationBarTitleDisplayMode(.large)
-    #endif
-    .task {
-      await viewModel.loadApplications()
-    }
-    .refreshable {
-      await viewModel.loadApplications()
-    }
-  }
-
-  // MARK: - Application List
-
-  private var applicationList: some View {
-    List {
-      if viewModel.showZonePicker {
-        zonePickerSection
-      }
-
-      if viewModel.canFilter {
-        filterSection
-      }
-
-      ForEach(viewModel.filteredApplications) { application in
-        ApplicationListRow(application: application)
-          .listRowBackground(Color.tcSurface)
-          .contentShape(Rectangle())
-          .onTapGesture {
-            viewModel.selectApplication(application.id)
+        List {
+          ForEach(viewModel.filteredApplications) { application in
+            ApplicationListRow(application: application)
+              .listRowBackground(Color.tcSurface)
+              .contentShape(Rectangle())
+              .onTapGesture {
+                viewModel.selectApplication(application.id)
+              }
           }
+        }
+        .listStyle(.plain)
       }
     }
-    .listStyle(.plain)
   }
 
   // MARK: - Zone Picker
 
-  private var zonePickerSection: some View {
-    Section {
-      ZonePickerView(
-        zones: viewModel.zones,
-        selectedZoneId: viewModel.selectedZone?.id
-      ) { zone in
-        Task {
-          await viewModel.selectZone(zone)
-        }
+  private var zonePickerHeader: some View {
+    ZonePickerView(
+      zones: viewModel.zones,
+      selectedZoneId: viewModel.selectedZone?.id
+    ) { zone in
+      Task {
+        await viewModel.selectZone(zone)
       }
     }
-    .listRowInsets(EdgeInsets())
-    .listRowBackground(Color.tcBackground)
+    .background(Color.tcBackground)
   }
 
   // MARK: - Filter Section
 
-  private var filterSection: some View {
-    Section {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: TCSpacing.small) {
-          filterChip(label: "All", status: nil)
-          filterChip(label: "Pending", status: .undecided)
-          filterChip(label: "Approved", status: .approved)
-          filterChip(label: "Refused", status: .refused)
-          filterChip(label: "Withdrawn", status: .withdrawn)
-          filterChip(label: "Appealed", status: .appealed)
-        }
-        .padding(.horizontal, TCSpacing.medium)
-        .padding(.vertical, TCSpacing.small)
+  private var filterHeader: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: TCSpacing.small) {
+        filterChip(label: "All", status: nil)
+        filterChip(label: "Pending", status: .undecided)
+        filterChip(label: "Approved", status: .approved)
+        filterChip(label: "Refused", status: .refused)
+        filterChip(label: "Withdrawn", status: .withdrawn)
+        filterChip(label: "Appealed", status: .appealed)
       }
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.vertical, TCSpacing.small)
     }
-    .listRowInsets(EdgeInsets())
-    .listRowBackground(Color.tcBackground)
+    .background(Color.tcBackground)
   }
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
