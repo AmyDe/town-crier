@@ -176,6 +176,93 @@ struct ApplicationListSavedFilterTests {
     #expect(!sut.isSavedFilterActive)
   }
 
+  // MARK: - Cross-Zone Saved Applications
+
+  @Test func savedFilter_showsSavedAppsNotInCurrentList() async {
+    // The current zone's applications list contains only APP-001 and APP-002
+    let currentZoneApps: [PlanningApplication] = [.pendingReview, .approved]
+    // A saved application from a different zone — not in the current applications list
+    let otherZoneApp = PlanningApplication(
+      id: PlanningApplicationId("APP-OTHER-ZONE"),
+      reference: ApplicationReference("2026/0500"),
+      authority: LocalAuthority(code: "LDN", name: "London"),
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_400_000),
+      description: "New shopfront",
+      address: "1 Oxford Street, London, W1D 1AN"
+    )
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date(), application: .pendingReview),
+      SavedApplication(
+        applicationUid: "APP-OTHER-ZONE", savedAt: Date(), application: otherZoneApp),
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(currentZoneApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    // Both saved apps should appear — including the one from another zone
+    #expect(sut.filteredApplications.count == 2)
+    let ids = Set(sut.filteredApplications.map(\.id.value))
+    #expect(ids.contains("APP-001"))
+    #expect(ids.contains("APP-OTHER-ZONE"))
+  }
+
+  @Test func savedFilter_doesNotDuplicateAppsAlreadyInList() async {
+    // APP-001 is in both the current list and the saved applications
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date(), application: .pendingReview)
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    // APP-001 should appear exactly once — no duplicates
+    let matchingApps = sut.filteredApplications.filter { $0.id.value == "APP-001" }
+    #expect(matchingApps.count == 1)
+    #expect(sut.filteredApplications.count == 1)
+  }
+
+  @Test func savedFilter_ignoresSavedAppsWithoutEmbeddedData() async {
+    // A saved application that has no embedded application data should not appear
+    // if it's also not in the current applications list
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-UNKNOWN", savedAt: Date(), application: nil)
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    // APP-UNKNOWN is not in the current list and has no embedded data, so it shouldn't appear
+    #expect(sut.filteredApplications.isEmpty)
+  }
+
   // MARK: - Helpers
 
   private func makeSUT(
