@@ -16,6 +16,9 @@ public struct MapView: View {
       if viewModel.showZonePicker {
         zonePickerSection
       }
+      if viewModel.canFilter {
+        filterHeader
+      }
       mapBody
     }
     .background(Color.tcBackground)
@@ -41,7 +44,7 @@ public struct MapView: View {
   @ViewBuilder
   private var mapContent: some View {
     Map(position: $mapPosition) {
-      ForEach(viewModel.annotations) { annotation in
+      ForEach(viewModel.filteredAnnotations) { annotation in
         Annotation(
           annotation.title,
           coordinate: CLLocationCoordinate2D(
@@ -95,6 +98,46 @@ public struct MapView: View {
     }
     .background(Color.tcBackground)
   }
+
+  // MARK: - Filter Section
+
+  private var filterHeader: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: TCSpacing.small) {
+        filterChip(label: "All", status: nil)
+        filterChip(label: "Pending", status: .undecided)
+        filterChip(label: "Approved", status: .approved)
+        filterChip(label: "Refused", status: .refused)
+        filterChip(label: "Withdrawn", status: .withdrawn)
+        filterChip(label: "Appealed", status: .appealed)
+      }
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.vertical, TCSpacing.small)
+    }
+    .background(Color.tcBackground)
+  }
+
+  private func filterChip(label: String, status: ApplicationStatus?) -> some View {
+    let isSelected = viewModel.selectedStatusFilter == status
+    return Button {
+      viewModel.selectedStatusFilter = status
+    } label: {
+      Text(label)
+        .font(TCTypography.captionEmphasis)
+        .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
+        .padding(.horizontal, TCSpacing.small)
+        .padding(.vertical, TCSpacing.extraSmall)
+        .background(isSelected ? Color.tcAmber : Color.tcSurface)
+        .clipShape(Capsule())
+        .overlay(
+          Capsule()
+            .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
+        )
+    }
+    .buttonStyle(.plain)
+  }
+
+  // MARK: - Map Body
 
   private var mapBody: some View {
     ZStack {
