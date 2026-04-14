@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.UserProfiles;
+using TownCrier.Domain.WatchZones;
 
 namespace TownCrier.Application.Tests.WatchZones;
 
@@ -421,6 +423,38 @@ public sealed class CreateWatchZoneCommandHandlerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.HandleAsync(command, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task Should_ThrowQuotaExceeded_When_FreeUserAlreadyHasOneZone()
+    {
+        // Arrange — Free user already has their one allowed zone
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var existingZone = new WatchZone(
+            "existing-zone",
+            "user-1",
+            "Existing Zone",
+            new Coordinates(51.5074, -0.1278),
+            5000,
+            42,
+            FixedNow);
+        await this.watchZoneRepository.SaveAsync(existingZone, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-2",
+            Name: "Second Zone",
+            Latitude: 51.51,
+            Longitude: -0.13,
+            RadiusMetres: 3000,
+            AuthorityId: 42);
+
+        // Act & Assert
+        await Assert.ThrowsAsync<WatchZoneQuotaExceededException>(
             () => handler.HandleAsync(command, CancellationToken.None));
     }
 
