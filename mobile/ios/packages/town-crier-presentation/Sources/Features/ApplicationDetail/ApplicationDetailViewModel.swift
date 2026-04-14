@@ -84,6 +84,19 @@ public final class ApplicationDetailViewModel: ObservableObject {
     }
   }
 
+  /// Loads the saved state from the repository and updates `isSaved` accordingly.
+  /// Call this after creating the ViewModel to reflect the server-side saved state.
+  /// No-op if no repository was provided.
+  public func loadSavedState() async {
+    guard let repository = savedApplicationRepository else { return }
+    do {
+      let saved = try await repository.loadAll()
+      isSaved = saved.contains { $0.applicationUid == applicationId.value }
+    } catch {
+      // Leave isSaved at its current value (false) on failure
+    }
+  }
+
   public func openPortal() {
     guard let url = portalUrl else { return }
     onOpenPortal?(url)
