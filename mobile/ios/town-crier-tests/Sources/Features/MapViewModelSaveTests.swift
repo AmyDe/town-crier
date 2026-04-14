@@ -124,6 +124,50 @@ struct MapViewModelSaveTests {
     #expect(sut.isSelectedApplicationSaved)
   }
 
+  // MARK: - loadSavedStateForSelectedApplication
+
+  @Test("loadSavedStateForSelectedApplication populates savedApplicationUids without activating filter")
+  func loadSavedState_populatesUids_withoutActivatingFilter() async {
+    let (sut, spy) = makeSUT()
+    spy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date()),
+    ])
+    await sut.loadApplications()
+
+    await sut.loadSavedStateForSelectedApplication()
+
+    #expect(sut.savedApplicationUids.contains("APP-001"))
+    #expect(!sut.isSavedFilterActive)
+  }
+
+  @Test("loadSavedStateForSelectedApplication is no-op without repository")
+  func loadSavedState_noRepository_isNoOp() async {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy
+    )
+    await sut.loadApplications()
+
+    await sut.loadSavedStateForSelectedApplication()
+
+    #expect(sut.savedApplicationUids.isEmpty)
+  }
+
+  @Test("loadSavedStateForSelectedApplication leaves empty set on failure")
+  func loadSavedState_failure_leavesEmpty() async {
+    let (sut, spy) = makeSUT()
+    spy.loadAllResult = .failure(DomainError.networkUnavailable)
+    await sut.loadApplications()
+
+    await sut.loadSavedStateForSelectedApplication()
+
+    #expect(sut.savedApplicationUids.isEmpty)
+  }
+
   // MARK: - No repository
 
   @Test("toggleSaveSelectedApplication is no-op without repository")
