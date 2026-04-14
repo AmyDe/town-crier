@@ -14,7 +14,8 @@ struct AppCoordinatorTierResolutionTests {
     authSession: AuthSession? = nil,
     entitlement: SubscriptionEntitlement? = nil,
     serverProfile: ServerProfile? = nil,
-    serverProfileError: Error? = nil
+    serverProfileError: Error? = nil,
+    tierCache: UserDefaults? = nil
   ) -> (AppCoordinator, SpyAuthenticationService, SpySubscriptionService, SpyUserProfileRepository) {
     let authSpy = SpyAuthenticationService()
     authSpy.currentSessionResult = authSession
@@ -36,7 +37,8 @@ struct AppCoordinatorTierResolutionTests {
       onboardingRepository: SpyOnboardingRepository(),
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
+      versionConfigService: SpyVersionConfigService(),
+      tierCache: tierCache
     )
     return (coordinator, authSpy, subscriptionSpy, profileSpy)
   }
@@ -186,5 +188,44 @@ struct AppCoordinatorTierResolutionTests {
     // Profile not found (404) means the profile was deleted -- this is a genuine
     // state change, so tier should update to .free
     #expect(sut.subscriptionTier == .free)
+  }
+
+  // MARK: - Persistent tier caching
+
+  @Test func resolveSubscriptionTier_persistsResolvedTier() async throws {
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let (sut, _, _, _) = makeSUT(
+      authSession: .valid,
+      serverProfile: makeServerProfile(tier: .pro),
+      tierCache: defaults
+    )
+
+    await sut.resolveSubscriptionTier()
+
+    #expect(defaults.string(forKey: "cachedSubscriptionTier") == "pro")
+  }
+
+  @Test func init_restoresCachedTier() throws {
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    defaults.set("pro", forKey: "cachedSubscriptionTier")
+
+    let (sut, _, _, _) = makeSUT(tierCache: defaults)
+
+    #expect(sut.subscriptionTier == .pro)
+  }
+
+  @Test func resolveSubscriptionTier_usesCachedTier_whenAllSourcesFail() async throws {
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    defaults.set("pro", forKey: "cachedSubscriptionTier")
+
+    let (sut, _, _, _) = makeSUT(
+      serverProfileError: DomainError.networkUnavailable,
+      tierCache: defaults
+    )
+
+    await sut.resolveSubscriptionTier()
+
+    // Cached tier should be used when all live sources fail
+    #expect(sut.subscriptionTier == .pro)
   }
 }
