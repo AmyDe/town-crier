@@ -106,4 +106,154 @@ struct MapViewModelStatusFilterTests {
 
     #expect(sut.selectedStatusFilter == nil)
   }
+
+  // MARK: - Saved Filter
+
+  @Test func savedFilter_isNotActiveByDefault() async {
+    let (sut, _, _) = makeSUT(applications: Self.allApps)
+    await sut.loadApplications()
+
+    #expect(!sut.isSavedFilterActive)
+  }
+
+  @Test func savedFilter_canSaveTrue_whenRepositoryProvided() {
+    let savedSpy = SpySavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    #expect(sut.canSave)
+  }
+
+  @Test func savedFilter_canSaveFalse_withoutRepository() {
+    let (sut, _, _) = makeSUT()
+
+    #expect(!sut.canSave)
+  }
+
+  @Test func savedFilter_activating_showsOnlySavedAnnotations() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(sut.isSavedFilterActive)
+    #expect(sut.filteredAnnotations.count == 1)
+    #expect(sut.filteredAnnotations.first?.applicationId == PlanningApplicationId("APP-001"))
+  }
+
+  @Test func savedFilter_deactivating_showsAll() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    sut.deactivateSavedFilter()
+
+    #expect(!sut.isSavedFilterActive)
+    #expect(sut.filteredAnnotations.count == 4)
+  }
+
+  @Test func savedFilter_activating_clearsStatusFilter() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      tier: .personal,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    sut.selectedStatusFilter = .approved
+    await sut.activateSavedFilter()
+
+    #expect(sut.selectedStatusFilter == nil)
+    #expect(sut.isSavedFilterActive)
+  }
+
+  @Test func savedFilter_settingStatusFilter_deactivatesSavedFilter() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      tier: .personal,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    sut.selectedStatusFilter = .approved
+
+    #expect(!sut.isSavedFilterActive)
+    #expect(sut.filteredAnnotations.count == 1)
+    #expect(sut.filteredAnnotations.first?.status == .approved)
+  }
+
+  @Test func savedFilter_selectZone_deactivatesSavedFilter() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      tier: .free,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone",
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+    #expect(sut.isSavedFilterActive)
+
+    await sut.selectZone(.london)
+
+    #expect(!sut.isSavedFilterActive)
+  }
 }
