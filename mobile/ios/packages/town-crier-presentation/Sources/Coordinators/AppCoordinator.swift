@@ -1,4 +1,5 @@
 import Combine
+import Foundation
 import TownCrierDomain
 import os
 
@@ -20,6 +21,8 @@ public final class AppCoordinator: ObservableObject {
     onboardingRepository.isOnboardingComplete
   }
 
+  private static let tierCacheKey = "cachedSubscriptionTier"
+
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
@@ -33,6 +36,7 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
+  private let tierCache: UserDefaults
 
   public init(
     repository: PlanningApplicationRepository,
@@ -47,7 +51,8 @@ public final class AppCoordinator: ObservableObject {
     notificationService: NotificationService,
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
-    savedApplicationRepository: SavedApplicationRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    tierCache: UserDefaults? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -62,6 +67,15 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
+    self.tierCache = tierCache ?? .standard
+
+    // Restore the last successfully resolved tier so that paying users
+    // retain feature access immediately, even before the live resolution
+    // completes (or when it fails on simulator).
+    if let cached = self.tierCache.string(forKey: Self.tierCacheKey),
+      let tier = SubscriptionTier(rawValue: cached) {
+      subscriptionTier = tier
+    }
   }
 
   public func makeLoginViewModel() -> LoginViewModel {
@@ -180,7 +194,9 @@ public final class AppCoordinator: ObservableObject {
     // When the server profile fetch failed (nil), fall back to the current
     // tier so we don't downgrade a paying user due to a transient error.
     let effectiveServerTier = serverTier ?? subscriptionTier
-    subscriptionTier = max(effectiveServerTier, max(storeKitTier, jwtTier))
+    let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
+    subscriptionTier = resolved
+    tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
   }
 
   /// Fetches the subscription tier from the server profile.
