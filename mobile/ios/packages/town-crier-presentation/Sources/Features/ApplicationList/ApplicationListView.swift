@@ -15,7 +15,7 @@ public struct ApplicationListView: View {
         zonePickerHeader
       }
 
-      if viewModel.canFilter {
+      if viewModel.canFilter || viewModel.canSave {
         filterHeader
       }
 
@@ -47,11 +47,20 @@ public struct ApplicationListView: View {
           await viewModel.loadApplications()
         }
       } else if viewModel.isEmpty {
-        EmptyStateView(
-          icon: "doc.text.magnifyingglass",
-          title: "No Applications",
-          description: "No planning applications found in your watch zone yet."
-        )
+        if viewModel.isSavedFilterActive {
+          EmptyStateView(
+            icon: "bookmark",
+            title: "No Saved Applications",
+            description:
+              "No saved applications. Tap the bookmark icon on any application to save it."
+          )
+        } else {
+          EmptyStateView(
+            icon: "doc.text.magnifyingglass",
+            title: "No Applications",
+            description: "No planning applications found in your watch zone yet."
+          )
+        }
       } else {
         List {
           ForEach(viewModel.filteredApplications) { application in
@@ -87,12 +96,17 @@ public struct ApplicationListView: View {
   private var filterHeader: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: TCSpacing.small) {
-        filterChip(label: "All", status: nil)
-        filterChip(label: "Pending", status: .undecided)
-        filterChip(label: "Approved", status: .approved)
-        filterChip(label: "Refused", status: .refused)
-        filterChip(label: "Withdrawn", status: .withdrawn)
-        filterChip(label: "Appealed", status: .appealed)
+        if viewModel.canSave {
+          savedFilterChip
+        }
+        if viewModel.canFilter {
+          filterChip(label: "All", status: nil)
+          filterChip(label: "Pending", status: .undecided)
+          filterChip(label: "Approved", status: .approved)
+          filterChip(label: "Refused", status: .refused)
+          filterChip(label: "Withdrawn", status: .withdrawn)
+          filterChip(label: "Appealed", status: .appealed)
+        }
       }
       .padding(.horizontal, TCSpacing.medium)
       .padding(.vertical, TCSpacing.small)
@@ -100,8 +114,34 @@ public struct ApplicationListView: View {
     .background(Color.tcBackground)
   }
 
+  private var savedFilterChip: some View {
+    Button {
+      if viewModel.isSavedFilterActive {
+        viewModel.deactivateSavedFilter()
+      } else {
+        Task { await viewModel.activateSavedFilter() }
+      }
+    } label: {
+      Label("Saved", systemImage: "bookmark.fill")
+        .font(TCTypography.captionEmphasis)
+        .foregroundStyle(
+          viewModel.isSavedFilterActive ? Color.tcTextOnAccent : Color.tcTextPrimary
+        )
+        .padding(.horizontal, TCSpacing.small)
+        .padding(.vertical, TCSpacing.extraSmall)
+        .background(viewModel.isSavedFilterActive ? Color.tcAmber : Color.tcSurface)
+        .clipShape(Capsule())
+        .overlay(
+          Capsule()
+            .stroke(Color.tcBorder, lineWidth: viewModel.isSavedFilterActive ? 0 : 1)
+        )
+    }
+    .buttonStyle(.plain)
+  }
+
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     let isSelected = viewModel.selectedStatusFilter == status
+      && !viewModel.isSavedFilterActive
     return Button {
       viewModel.selectedStatusFilter = status
     } label: {
