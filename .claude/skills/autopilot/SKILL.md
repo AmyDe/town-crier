@@ -37,7 +37,11 @@ bd worktree list --json | jq -r '.[] | select(.path | contains(".claude/worktree
 done
 ```
 
-Invoke `/beads:ready`. No beads? Report `Autopilot: no ready beads — idle` and return.
+Invoke `/beads:ready`. No beads? **Stop the loop:**
+
+1. **Cancel cron job (if any):** Run `CronList`. If a job exists, `CronDelete` it.
+2. **Do NOT call `ScheduleWakeup`.** Omitting the call ends a dynamic loop.
+3. Report `Autopilot: no ready beads — loop stopped.` and return.
 
 Walk highest priority first. For each candidate, `/beads:show`:
 
