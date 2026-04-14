@@ -120,6 +120,27 @@ struct AppCoordinatorTests {
 
   // MARK: - Map ViewModel Factory
 
+  @Test func makeMapViewModel_passesSubscriptionTier() async {
+    let authSpy = SpyAuthenticationService()
+    authSpy.currentSessionResult = AuthSession.personal
+    let coordinator = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: authSpy,
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+    await coordinator.resolveSubscriptionTier()
+
+    let vm = coordinator.makeMapViewModel()
+
+    #expect(vm.canFilter)
+  }
+
   @Test func makeMapViewModel_fetchesByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
     appSpy.fetchApplicationsByZone = ["zone-001": [.pendingReview]]
