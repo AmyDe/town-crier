@@ -4,12 +4,27 @@ import TownCrierDomain
 /// A bottom sheet showing a summary of a selected planning application.
 struct ApplicationSummarySheet: View {
   let application: PlanningApplication
+  @ObservedObject var viewModel: MapViewModel
 
   var body: some View {
     VStack(alignment: .leading, spacing: TCSpacing.medium) {
       HStack {
         StatusBadgeView(status: application.status)
         Spacer()
+        if viewModel.canSave {
+          Button {
+            Task { await viewModel.toggleSaveSelectedApplication() }
+          } label: {
+            Image(
+              systemName: viewModel.isSelectedApplicationSaved ? "bookmark.fill" : "bookmark"
+            )
+            .foregroundStyle(
+              viewModel.isSelectedApplicationSaved ? Color.tcAmber : Color.tcTextSecondary
+            )
+            .font(.system(.body))
+          }
+          .accessibilityLabel(viewModel.isSelectedApplicationSaved ? "Unsave" : "Save")
+        }
         Text(application.reference.value)
           .font(.system(.caption))
           .foregroundStyle(Color.tcTextSecondary)
@@ -32,6 +47,9 @@ struct ApplicationSummarySheet: View {
     .background(Color.tcSurfaceElevated)
     .presentationDetents([.medium, .fraction(0.3)])
     .presentationDragIndicator(.visible)
+    .task {
+      await viewModel.loadSavedStateForSelectedApplication()
+    }
   }
 
 }
