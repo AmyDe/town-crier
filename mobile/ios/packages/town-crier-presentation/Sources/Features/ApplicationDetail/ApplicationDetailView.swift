@@ -52,6 +52,9 @@ public struct ApplicationDetailView: View {
         }
       }
     #endif
+    .task {
+      await viewModel.loadSavedState()
+    }
     .toolbar {
       if viewModel.canSave {
         ToolbarItem(placement: .automatic) {
