@@ -172,6 +172,27 @@ struct CompositionRootTests {
     #expect(vm.error == nil)
   }
 
+  @Test func coordinatorCreatesDetailViewModelWithSavedRepository() {
+    let coordinator = makeCoordinatorWithSavedRepository()
+    let vm = coordinator.makeApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(vm.canSave)
+  }
+
+  @Test func coordinatorCreatesListViewModelWithSavedRepository() {
+    let coordinator = makeCoordinatorWithSavedRepository()
+    let vm = coordinator.makeApplicationListViewModel(zone: .cambridge)
+
+    #expect(vm.canSave)
+  }
+
+  @Test func coordinatorCreatesMapViewModelWithSavedRepository() {
+    let coordinator = makeCoordinatorWithSavedRepository()
+    let vm = coordinator.makeMapViewModel()
+
+    #expect(vm.canSave)
+  }
+
   // MARK: - Helpers
 
   private func makeTestAuth0Config() -> Auth0Config {
@@ -200,6 +221,28 @@ struct CompositionRootTests {
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
+    )
+  }
+
+  private func makeCoordinatorWithSavedRepository() -> AppCoordinator {
+    let authService = Auth0AuthenticationService(config: makeTestAuth0Config())
+    // swiftlint:disable:next force_unwrapping
+    let apiBaseURL = URL(string: "https://api.towncrierapp.uk")!
+    let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+    return AppCoordinator(
+      repository: APIPlanningApplicationRepository(apiClient: apiClient),
+      authService: authService,
+      subscriptionService: StoreKitSubscriptionService(),
+      userProfileRepository: APIUserProfileRepository(apiClient: apiClient),
+      watchZoneRepository: APIWatchZoneRepository(apiClient: apiClient),
+      onboardingRepository: UserDefaultsOnboardingRepository(),
+      notificationService: CompositeNotificationService(
+        permissionProvider: SpyNotificationPermissionProvider(),
+        apiService: APINotificationService(apiClient: apiClient)
+      ),
+      appVersionProvider: BundleAppVersionProvider(),
+      versionConfigService: APIVersionConfigService(baseURL: apiBaseURL),
+      savedApplicationRepository: APISavedApplicationRepository(apiClient: apiClient)
     )
   }
 
