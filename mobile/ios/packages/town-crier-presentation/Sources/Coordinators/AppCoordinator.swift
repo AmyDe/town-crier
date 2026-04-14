@@ -66,7 +66,11 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeMapViewModel() -> MapViewModel {
-    MapViewModel(repository: repository, watchZoneRepository: watchZoneRepository)
+    MapViewModel(
+      repository: repository,
+      watchZoneRepository: watchZoneRepository,
+      tier: subscriptionTier
+    )
   }
 
   public func makeApplicationListViewModel(
