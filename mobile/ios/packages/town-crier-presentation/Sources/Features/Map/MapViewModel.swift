@@ -56,6 +56,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
   }
 
+  /// Whether the currently selected application is in the user's saved set.
+  public var isSelectedApplicationSaved: Bool {
+    guard let selected = selectedApplication else { return false }
+    return savedApplicationUids.contains(selected.id.value)
+  }
+
   public var showZonePicker: Bool {
     zones.count > 1
   }
