@@ -38,6 +38,7 @@ var otel = builder.Services.AddOpenTelemetry()
     .WithTracing(tracing =>
     {
         tracing
+            .AddProcessor<SuccessfulCosmosDependencyFilter>()
             .AddHttpClientInstrumentation(options => options.RecordException = true)
             .AddSource(PollingInstrumentation.ActivitySourceName)
             .AddSource(CosmosInstrumentation.ActivitySourceName);
