@@ -1,6 +1,7 @@
 import type {
   WatchZoneSummary,
   CreateWatchZoneRequest,
+  UpdateWatchZoneRequest,
   ZoneNotificationPreferences,
   UpdateZonePreferencesRequest,
 } from '../../../../domain/types';
@@ -29,6 +30,18 @@ export class SpyWatchZoneRepository implements WatchZoneRepository {
       throw this.createError;
     }
     return this.createResult!;
+  }
+
+  updateZoneCalls: Array<{ zoneId: string; data: UpdateWatchZoneRequest }> = [];
+  updateZoneResult: WatchZoneSummary | null = null;
+  updateZoneError: Error | null = null;
+
+  async updateZone(zoneId: string, data: UpdateWatchZoneRequest): Promise<WatchZoneSummary> {
+    this.updateZoneCalls.push({ zoneId, data });
+    if (this.updateZoneError) {
+      throw this.updateZoneError;
+    }
+    return this.updateZoneResult!;
   }
 
   deleteCalls: string[] = [];

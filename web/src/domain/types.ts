@@ -230,6 +230,11 @@ export interface UpdateProfileRequest {
   readonly digestDay: DayOfWeek;
 }
 
+export interface UpdateWatchZoneRequest {
+  readonly name?: string;
+  readonly radiusMetres?: number;
+}
+
 export interface UpdateZonePreferencesRequest {
   readonly newApplications: boolean;
   readonly statusChanges: boolean;
