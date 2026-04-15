@@ -14,6 +14,9 @@ dotnet_diagnostic.SA1601.severity = none
 dotnet_diagnostic.SA1602.severity = none
 dotnet_diagnostic.SA1200.severity = none
 
+# CA1303: CLI is English-only — no localisation resources required
+dotnet_diagnostic.CA1303.severity = none
+
 # IL trim/AOT warnings are false positives in dotnet format (source generators handle them at build time)
 dotnet_diagnostic.IL2026.severity = none
 dotnet_diagnostic.IL3050.severity = none

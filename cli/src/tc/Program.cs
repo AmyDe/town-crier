@@ -40,6 +40,7 @@ Console.CancelKeyPress += (_, e) =>
 return parsed.Command switch
 {
     "grant-subscription" => await GrantSubscriptionCommand.RunAsync(client, parsed, cts.Token).ConfigureAwait(false),
+    "list-users" => await ListUsersCommand.RunAsync(client, parsed, cts.Token).ConfigureAwait(false),
     _ => await UnknownCommandAsync(parsed.Command).ConfigureAwait(false),
 };
 
@@ -59,8 +60,13 @@ static async Task PrintHelpAsync()
 
         Commands:
           grant-subscription   Grant or change a user's subscription tier
+          list-users           List users with email, ID, and subscription tier
           help                 Show this help message
           version              Print version
+
+        list-users options:
+          --search <term>      Filter by email substring (case-insensitive)
+          --page-size <n>      Results per page (default: 20)
 
         Global options:
           --url <url>          API base URL (overrides config file)
