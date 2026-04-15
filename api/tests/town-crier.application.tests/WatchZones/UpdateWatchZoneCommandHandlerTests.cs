@@ -59,4 +59,90 @@ public sealed class UpdateWatchZoneCommandHandlerTests
         await Assert.ThrowsAsync<WatchZoneNotFoundException>(
             () => handler.HandleAsync(command, CancellationToken.None));
     }
+
+    [Test]
+    public async Task Should_ApplyPartialUpdate_When_OnlyRadiusProvided()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("My Zone")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(1000)
+            .WithAuthorityId(42)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "zone-1", RadiusMetres: 2500);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — only radius changed, everything else preserved
+        await Assert.That(result.Zone.RadiusMetres).IsEqualTo(2500);
+        await Assert.That(result.Zone.Name).IsEqualTo("My Zone");
+        await Assert.That(result.Zone.Latitude).IsEqualTo(51.5074);
+        await Assert.That(result.Zone.Longitude).IsEqualTo(-0.1278);
+        await Assert.That(result.Zone.AuthorityId).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task Should_UpdateAllFields_When_AllFieldsProvided()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("Original")
+            .WithCentre(51.5074, -0.1278)
+            .WithRadiusMetres(1000)
+            .WithAuthorityId(10)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand(
+            "user-1",
+            "zone-1",
+            Name: "Renamed",
+            Latitude: 52.0,
+            Longitude: -1.0,
+            RadiusMetres: 3000,
+            AuthorityId: 99);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.Zone.Name).IsEqualTo("Renamed");
+        await Assert.That(result.Zone.Latitude).IsEqualTo(52.0);
+        await Assert.That(result.Zone.Longitude).IsEqualTo(-1.0);
+        await Assert.That(result.Zone.RadiusMetres).IsEqualTo(3000);
+        await Assert.That(result.Zone.AuthorityId).IsEqualTo(99);
+    }
+
+    [Test]
+    public async Task Should_PersistUpdatedZone_When_UpdateSucceeds()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("Old Name")
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "zone-1", Name: "New Name");
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — verify the repository was actually updated
+        var saved = await this.watchZoneRepository.GetByUserAndZoneIdAsync("user-1", "zone-1", CancellationToken.None);
+        await Assert.That(saved).IsNotNull();
+        await Assert.That(saved!.Name).IsEqualTo("New Name");
+    }
 }
