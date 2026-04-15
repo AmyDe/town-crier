@@ -232,7 +232,7 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         activity?.SetTag("db.cosmosdb.container", collection);
         activity?.SetTag("db.operation.name", "QueryPage");
 
-#pragma warning disable CA2000
+#pragma warning disable CA2000 // using var disposes request on all paths
         using var request = this.BuildQueryRequest(collection, sql, parameters);
 #pragma warning restore CA2000
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);

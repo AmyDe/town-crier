@@ -57,6 +57,7 @@ public sealed class InMemoryUserProfileRepository : IUserProfileRepository
         return Task.CompletedTask;
     }
 
+    // pageSize and continuationToken are not emulated — returns all matching profiles in one page.
     public Task<UserProfilePage> ListAsync(
         string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)
     {

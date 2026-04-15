@@ -6,5 +6,4 @@ namespace Tc.Json;
 [JsonSerializable(typeof(ConfigFile))]
 [JsonSerializable(typeof(GrantSubscriptionRequest))]
 [JsonSerializable(typeof(ListUsersResponse))]
-[JsonSerializable(typeof(ListUsersItemResponse))]
 internal sealed partial class TcJsonContext : JsonSerializerContext;
