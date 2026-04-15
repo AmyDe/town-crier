@@ -221,6 +221,23 @@ struct WatchZoneEditorEditTests {
     #expect(saved?.id == WatchZoneId("zone-001"))
   }
 
+  @Test func save_callsRepositoryUpdate_notSave() async {
+    await sut.save()
+
+    #expect(spyRepository.updateCalls.count == 1)
+    #expect(spyRepository.saveCalls.isEmpty)
+    let updated = spyRepository.updateCalls.first
+    #expect(updated?.id == WatchZoneId("zone-001"))
+  }
+
+  @Test func save_repositoryUpdateFails_setsError() async {
+    spyRepository.updateResult = .failure(DomainError.networkUnavailable)
+
+    await sut.save()
+
+    #expect(sut.error == .networkUnavailable)
+  }
+
   @Test func submitPostcode_updatesCoordinateForNewPostcode() async throws {
     sut.postcodeInput = "SW1A 1AA"
     let london = try Coordinate(latitude: 51.5014, longitude: -0.1419)
