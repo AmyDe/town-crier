@@ -37,6 +37,9 @@ outputs:
   api:
     description: "true if api/ changed"
     value: ${{ steps.detect.outputs.api }}
+  cli:
+    description: "true if cli/ changed"
+    value: ${{ steps.detect.outputs.cli }}
   ios:
     description: "true if mobile/ios/ changed"
     value: ${{ steps.detect.outputs.ios }}
@@ -97,6 +100,7 @@ runs:
           [[ -z "$file" ]] && continue
           case "$file" in
             api/*) [[ -v "flags[api]" ]] && flags[api]=true ;;
+            cli/*) [[ -v "flags[cli]" ]] && flags[cli]=true ;;
             mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
             web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
             infra/*) [[ -v "flags[infra]" ]] && flags[infra]=true ;;

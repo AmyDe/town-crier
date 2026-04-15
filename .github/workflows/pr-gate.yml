@@ -40,6 +40,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       api: ${{ steps.detect.outputs.api }}
+      cli: ${{ steps.detect.outputs.cli }}
       ios: ${{ steps.detect.outputs.ios }}
       web: ${{ steps.detect.outputs.web }}
       infra: ${{ steps.detect.outputs.infra }}
@@ -53,9 +54,9 @@ jobs:
         with:
           mode: pr
           base-ref: ${{ github.base_ref }}
-          categories: api,ios,web,infra
+          categories: api,cli,ios,web,infra
           trigger-files: |
-            .github/workflows/pr-gate.yml:api,ios,web,infra
+            .github/workflows/pr-gate.yml:api,cli,ios,web,infra
             .github/workflows/cd-dev.yml:api,web,infra
             .github/workflows/cd-prod.yml:infra
 
@@ -274,6 +275,46 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
+  # ── CLI ──────────────────────────────────────────────
+
+  cli-format:
+    name: "CLI: Format"
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: cli/global.json
+      - run: dotnet format --verify-no-changes
+        working-directory: cli
+
+  cli-build-test:
+    name: "CLI: Build & test"
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: cli/global.json
+      - uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-cli-${{ runner.os }}-${{ hashFiles('cli/**/*.csproj', 'cli/**/Directory.Build.props') }}
+          restore-keys: nuget-cli-${{ runner.os }}-
+      - run: dotnet restore
+        working-directory: cli
+      - run: dotnet build --no-restore --configuration Release
+        working-directory: cli
+      - name: Run tests
+        run: dotnet test tests/tc.tests --no-build --configuration Release
+        working-directory: cli
+
   # ── iOS ──────────────────────────────────────────────
 
   ios-lint:
@@ -403,7 +444,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -416,6 +457,8 @@ jobs:
             "${{ needs.api-staging.result }}"
             "${{ needs.api-integration-test.result }}"
             "${{ needs.api-staging-cleanup.result }}"
+            "${{ needs.cli-format.result }}"
+            "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
             "${{ needs.web-lint.result }}"
