@@ -217,8 +217,8 @@ struct WatchZoneEditorEditTests {
   @Test func save_preservesExistingId() async {
     await sut.save()
 
-    let saved = spyRepository.saveCalls.first
-    #expect(saved?.id == WatchZoneId("zone-001"))
+    let updated = spyRepository.updateCalls.first
+    #expect(updated?.id == WatchZoneId("zone-001"))
   }
 
   @Test func save_callsRepositoryUpdate_notSave() async {
