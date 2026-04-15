@@ -101,7 +101,7 @@ public static class SharedStack
             ApplicationType = "web",
             Kind = "web",
             IngestionMode = IngestionMode.LogAnalytics,
-            RetentionInDays = 14,
+            RetentionInDays = 30, // Minimum allowed by Azure (30, 60, 90, 120, etc.)
             Tags = tags,
         });
 
