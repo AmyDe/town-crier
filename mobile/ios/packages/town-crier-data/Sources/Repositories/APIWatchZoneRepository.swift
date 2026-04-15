@@ -31,6 +31,10 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     }
   }
 
+  public func update(_ zone: WatchZone) async throws {
+    // TODO: implement PATCH
+  }
+
   public func loadAll() async throws -> [WatchZone] {
     let result: ListWatchZonesResponse
     do {
