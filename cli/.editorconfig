@@ -1,0 +1,26 @@
+root = true
+
+[*]
+indent_style = space
+
+[*.cs]
+indent_size = 4
+
+# StyleCop — disable file header requirement and XML doc analysis
+dotnet_diagnostic.SA1633.severity = none
+dotnet_diagnostic.SA0001.severity = none
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1602.severity = none
+dotnet_diagnostic.SA1200.severity = none
+
+# IL trim/AOT warnings are false positives in dotnet format (source generators handle them at build time)
+dotnet_diagnostic.IL2026.severity = none
+dotnet_diagnostic.IL3050.severity = none
+
+# Test projects
+[tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1515.severity = none
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA1812.severity = none
