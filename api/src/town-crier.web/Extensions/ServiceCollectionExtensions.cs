@@ -147,6 +147,7 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetZonePreferencesQueryHandler>();
 
         services.AddTransient<CreateWatchZoneCommandHandler>();
+        services.AddTransient<UpdateWatchZoneCommandHandler>();
         services.AddTransient<ListWatchZonesQueryHandler>();
         services.AddTransient<DeleteWatchZoneCommandHandler>();
         services.AddTransient<GetApplicationsByZoneQueryHandler>();

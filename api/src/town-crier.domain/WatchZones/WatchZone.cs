@@ -35,4 +35,29 @@ public sealed class WatchZone
     public int AuthorityId { get; }
 
     public DateTimeOffset CreatedAt { get; }
+
+    public WatchZone WithUpdates(
+        string? name = null,
+        Coordinates? centre = null,
+        double? radiusMetres = null,
+        int? authorityId = null)
+    {
+        var newName = name ?? this.Name;
+        var newCentre = centre ?? this.Centre;
+        var newRadius = radiusMetres ?? this.RadiusMetres;
+        var newAuthorityId = authorityId ?? this.AuthorityId;
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(newRadius);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(newAuthorityId);
+
+        return new WatchZone(
+            this.Id,
+            this.UserId,
+            newName,
+            newCentre,
+            newRadius,
+            newAuthorityId,
+            this.CreatedAt);
+    }
 }

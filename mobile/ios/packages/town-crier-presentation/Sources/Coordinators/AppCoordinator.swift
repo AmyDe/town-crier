@@ -252,6 +252,9 @@ public final class AppCoordinator: ObservableObject {
     viewModel.onSave = { [weak self] _ in
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
+      Task { [weak self] in
+        _ = try? await self?.watchZoneRepository.loadAll()
+      }
     }
     return viewModel
   }

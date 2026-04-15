@@ -108,6 +108,7 @@ struct TownCrierApp: App {
         await coordinator.resolveSubscriptionTier()
         await forceUpdateViewModel.checkVersion()
       }
+      .preferredColorScheme(settingsViewModel.appearanceMode.preferredColorScheme)
       .alert(
         coordinator.deepLinkError?.userTitle ?? "Error",
         isPresented: Binding(

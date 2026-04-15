@@ -2,6 +2,7 @@ import type { ApiClient } from './client';
 import type {
   WatchZoneSummary,
   CreateWatchZoneRequest,
+  UpdateWatchZoneRequest,
   ZoneNotificationPreferences,
   UpdateZonePreferencesRequest,
 } from '../domain/types';
@@ -14,6 +15,8 @@ export function watchZonesApi(client: ApiClient) {
     },
     create: (data: CreateWatchZoneRequest) =>
       client.post<WatchZoneSummary>('/v1/me/watch-zones', data),
+    updateZone: (zoneId: string, data: UpdateWatchZoneRequest) =>
+      client.patch<WatchZoneSummary>(`/v1/me/watch-zones/${zoneId}`, data),
     delete: (zoneId: string) => client.delete(`/v1/me/watch-zones/${zoneId}`),
     getPreferences: (zoneId: string) =>
       client.get<ZoneNotificationPreferences>(`/v1/me/watch-zones/${zoneId}/preferences`),

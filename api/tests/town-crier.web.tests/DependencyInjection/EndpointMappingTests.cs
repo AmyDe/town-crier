@@ -91,4 +91,25 @@ public sealed class EndpointMappingTests
         // Assert — 401 proves the route exists and requires auth
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
+
+    [Test]
+    public async Task Should_MapPatchWatchZoneEndpoint_When_CalledWithToken()
+    {
+        // Arrange — verifies the PATCH route is mapped by checking for non-404 response
+        await using var factory = new TestWebApplicationFactory();
+        using var client = factory.CreateClient();
+        var token = TestJwtToken.Generate();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        // Act
+        using var request = new HttpRequestMessage(
+            HttpMethod.Patch,
+            new Uri("/v1/me/watch-zones/zone-1", UriKind.Relative));
+        using var response = await client.SendAsync(request);
+
+        // Assert — anything other than 404/405 proves the route exists
+        await Assert.That(response.StatusCode).IsNotEqualTo(HttpStatusCode.NotFound);
+        await Assert.That(response.StatusCode).IsNotEqualTo(HttpStatusCode.MethodNotAllowed);
+    }
 }

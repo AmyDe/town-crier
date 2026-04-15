@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom';
 import type { WatchZoneSummary } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useZonePreferences } from './useZonePreferences';
+import { useZoneEdit } from './useZoneEdit';
+import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
 import styles from './WatchZoneEditPage.module.css';
 
 interface Props {
@@ -9,15 +11,13 @@ interface Props {
   zone: WatchZoneSummary;
 }
 
-function formatRadius(metres: number): string {
-  return `${metres / 1000} km radius`;
-}
-
 export function WatchZoneEditPage({ repository, zone }: Props) {
   const { preferences, isLoading, error, updatePreferences } = useZonePreferences(
     repository,
     zone.id,
   );
+
+  const zoneEdit = useZoneEdit(repository, zone);
 
   function handleToggle(field: 'newApplications' | 'statusChanges' | 'decisionUpdates') {
     if (!preferences) return;
@@ -36,10 +36,47 @@ export function WatchZoneEditPage({ repository, zone }: Props) {
         </Link>
       </div>
 
-      <div className={styles.zoneInfo}>
-        <h1 className={styles.title}>{zone.name}</h1>
-        <p className={styles.radius}>{formatRadius(zone.radiusMetres)}</p>
-      </div>
+      <section className={styles.zonePropertiesSection}>
+        <h2 className={styles.sectionTitle}>Zone Details</h2>
+
+        <div className={styles.field}>
+          <label htmlFor="zone-name" className={styles.fieldLabel}>
+            Zone name
+          </label>
+          <input
+            id="zone-name"
+            type="text"
+            className={styles.textInput}
+            value={zoneEdit.name}
+            onChange={(e) => zoneEdit.setName(e.target.value)}
+            aria-label="Zone name"
+          />
+          {zoneEdit.nameError && (
+            <p className={styles.fieldError}>{zoneEdit.nameError}</p>
+          )}
+        </div>
+
+        <RadiusPicker
+          selectedMetres={zoneEdit.radiusMetres}
+          onSelect={zoneEdit.setRadiusMetres}
+        />
+
+        {zoneEdit.isDirty && (
+          <button
+            type="button"
+            className={styles.saveButton}
+            onClick={zoneEdit.save}
+            disabled={!zoneEdit.canSave || zoneEdit.isSaving}
+            aria-label="Save zone changes"
+          >
+            {zoneEdit.isSaving ? 'Saving...' : 'Save'}
+          </button>
+        )}
+
+        {zoneEdit.error && (
+          <p className={styles.error}>{zoneEdit.error}</p>
+        )}
+      </section>
 
       {isLoading && <p className={styles.loading}>Loading...</p>}
 

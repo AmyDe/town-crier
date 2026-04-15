@@ -24,7 +24,8 @@ describe('WatchZoneEditPage', () => {
       <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
     );
 
-    expect(screen.getByText('Home')).toBeInTheDocument();
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    expect(nameInput).toHaveValue('Home');
 
     // Wait for preferences to load
     const newAppsCheckbox = await screen.findByRole('checkbox', { name: /new applications/i });
@@ -80,11 +81,12 @@ describe('WatchZoneEditPage', () => {
     spy.getPreferencesResult = zonePreferences();
 
     renderWithRouter(
-      <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
     );
 
     await screen.findByRole('checkbox', { name: /new applications/i });
-    expect(screen.getByText('2 km radius')).toBeInTheDocument();
+    const selectedRadio = screen.getByRole('radio', { name: '2 km' });
+    expect(selectedRadio).toBeChecked();
   });
 
   it('has a back link to the list', () => {
@@ -96,5 +98,106 @@ describe('WatchZoneEditPage', () => {
 
     const backLink = screen.getByRole('link', { name: /back to watch zones/i });
     expect(backLink).toHaveAttribute('href', '/watch-zones');
+  });
+
+  it('renders zone name in an editable text input', async () => {
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ name: 'Home' })} />,
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    expect(nameInput).toHaveValue('Home');
+  });
+
+  it('renders radius as an editable radio group', async () => {
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
+    );
+
+    const radiusGroup = screen.getByRole('radiogroup', { name: /radius/i });
+    expect(radiusGroup).toBeInTheDocument();
+
+    const selectedRadio = screen.getByRole('radio', { name: '2 km' });
+    expect(selectedRadio).toBeChecked();
+  });
+
+  it('shows save button when name changes', async () => {
+    const user = userEvent.setup();
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ name: 'Home' })} />,
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Office');
+
+    const saveButton = screen.getByRole('button', { name: /save/i });
+    expect(saveButton).toBeInTheDocument();
+    expect(saveButton).toBeEnabled();
+  });
+
+  it('hides save button when no changes are made', () => {
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
+    );
+
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+  });
+
+  it('calls updateZone on save', async () => {
+    const user = userEvent.setup();
+    spy.getPreferencesResult = zonePreferences();
+    spy.updateZoneResult = aWatchZone({ name: 'Office' });
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ name: 'Home' })} />,
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Office');
+
+    const saveButton = screen.getByRole('button', { name: /save/i });
+    await user.click(saveButton);
+
+    expect(spy.updateZoneCalls).toHaveLength(1);
+    expect(spy.updateZoneCalls[0]?.data).toEqual({ name: 'Office' });
+  });
+
+  it('shows validation error for empty zone name', async () => {
+    const user = userEvent.setup();
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ name: 'Home' })} />,
+    );
+
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    await user.clear(nameInput);
+
+    expect(screen.getByText('Zone name is required')).toBeInTheDocument();
+  });
+
+  it('shows save button when radius changes', async () => {
+    const user = userEvent.setup();
+    spy.getPreferencesResult = zonePreferences();
+
+    renderWithRouter(
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
+    );
+
+    const fiveKmRadio = screen.getByRole('radio', { name: '5 km' });
+    await user.click(fiveKmRadio);
+
+    const saveButton = screen.getByRole('button', { name: /save/i });
+    expect(saveButton).toBeInTheDocument();
   });
 });

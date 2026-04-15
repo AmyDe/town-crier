@@ -10,6 +10,14 @@ final class SpyWatchZoneRepository: WatchZoneRepository, @unchecked Sendable {
     try saveResult.get()
   }
 
+  private(set) var updateCalls: [WatchZone] = []
+  var updateResult: Result<Void, Error> = .success(())
+
+  func update(_ zone: WatchZone) async throws {
+    updateCalls.append(zone)
+    try updateResult.get()
+  }
+
   private(set) var loadAllCallCount = 0
   var loadAllResult: Result<[WatchZone], Error> = .success([])
 

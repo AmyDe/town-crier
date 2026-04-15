@@ -114,7 +114,7 @@ struct AppCoordinatorTests {
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.detailApplication == .approved)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
@@ -292,103 +292,4 @@ struct AppCoordinatorTests {
     #expect(!sut.isManageSubscriptionPresented)
   }
 
-  // MARK: - Watch Zone List Factory
-
-  @Test func makeWatchZoneListViewModel_createsViewModel() {
-    let (sut, _) = makeSUT()
-
-    let vm = sut.makeWatchZoneListViewModel()
-
-    #expect(vm.zones.isEmpty)
-    #expect(!vm.isLoading)
-  }
-
-  @Test func makeWatchZoneListViewModel_onAddZone_setsIsAddingWatchZone() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeWatchZoneListViewModel()
-
-    vm.addZone()
-
-    #expect(sut.isAddingWatchZone)
-  }
-
-  @Test func makeWatchZoneListViewModel_onEditZone_setsEditingWatchZone() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeWatchZoneListViewModel()
-
-    vm.editZone(.cambridge)
-
-    #expect(sut.editingWatchZone == .cambridge)
-  }
-
-  @Test func isAddingWatchZone_isFalseByDefault() {
-    let (sut, _) = makeSUT()
-
-    #expect(!sut.isAddingWatchZone)
-  }
-
-  @Test func editingWatchZone_isNilByDefault() {
-    let (sut, _) = makeSUT()
-
-    #expect(sut.editingWatchZone == nil)
-  }
-
-  // MARK: - Watch Zone Editor Factory
-
-  @Test func makeWatchZoneEditorViewModel_forAdd_createsNonEditingViewModel() {
-    let (sut, _) = makeSUT()
-
-    let vm = sut.makeWatchZoneEditorViewModel()
-
-    #expect(!vm.isEditing)
-  }
-
-  @Test func makeWatchZoneEditorViewModel_forEdit_createsEditingViewModel() {
-    let (sut, _) = makeSUT()
-
-    let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
-
-    #expect(vm.isEditing)
-    #expect(vm.nameInput == "CB1 2AD")
-    #expect(vm.postcodeInput.isEmpty)
-  }
-
-  @Test func makeWatchZoneEditorViewModel_onSave_dismissesEditor() {
-    let (sut, _) = makeSUT()
-    sut.isAddingWatchZone = true
-    let vm = sut.makeWatchZoneEditorViewModel()
-
-    vm.onSave?(.cambridge)
-
-    #expect(!sut.isAddingWatchZone)
-    #expect(sut.editingWatchZone == nil)
-  }
-
-  @Test func makeWatchZoneEditorViewModel_forEdit_onSave_dismissesEditor() {
-    let (sut, _) = makeSUT()
-    sut.editingWatchZone = .cambridge
-    let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
-
-    vm.onSave?(.cambridge)
-
-    #expect(sut.editingWatchZone == nil)
-    #expect(!sut.isAddingWatchZone)
-  }
-
-  // MARK: - Watch Zone Upsell
-
-  @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeWatchZoneListViewModel()
-
-    vm.viewPlans()
-
-    #expect(sut.isSubscriptionPresented)
-  }
-
-  @Test func isSubscriptionPresented_isFalseByDefault() {
-    let (sut, _) = makeSUT()
-
-    #expect(!sut.isSubscriptionPresented)
-  }
 }

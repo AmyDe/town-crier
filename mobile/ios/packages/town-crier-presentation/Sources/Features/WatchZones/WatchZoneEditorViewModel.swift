@@ -82,7 +82,11 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
         centre: coordinate,
         radiusMetres: clampedRadius
       )
-      try await repository.save(zone)
+      if isEditing {
+        try await repository.update(zone)
+      } else {
+        try await repository.save(zone)
+      }
       onSave?(zone)
     } catch {
       handleError(error)

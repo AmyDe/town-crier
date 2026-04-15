@@ -82,6 +82,46 @@ internal static class WatchZoneEndpoints
             }
         });
 
+        group.MapPatch("/me/watch-zones/{zoneId}", async (
+            ClaimsPrincipal user,
+            string zoneId,
+            UpdateWatchZoneRequest request,
+            UpdateWatchZoneCommandHandler handler,
+            CancellationToken ct) =>
+        {
+            var userId = user.FindFirstValue("sub")!;
+
+            if (request.Latitude is < -90 or > 90 ||
+                request.Longitude is < -180 or > 180 ||
+                request.RadiusMetres is <= 0 ||
+                request.AuthorityId is <= 0)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("Invalid watch zone payload."),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 400);
+            }
+
+            var command = new UpdateWatchZoneCommand(
+                userId,
+                zoneId,
+                request.Name,
+                request.Latitude,
+                request.Longitude,
+                request.RadiusMetres,
+                request.AuthorityId);
+
+            try
+            {
+                var result = await handler.HandleAsync(command, ct).ConfigureAwait(false);
+                return Results.Ok(result);
+            }
+            catch (WatchZoneNotFoundException)
+            {
+                return Results.NotFound();
+            }
+        });
+
         group.MapGet("/me/watch-zones/{zoneId}/applications", async (
             ClaimsPrincipal user,
             string zoneId,

@@ -118,6 +118,59 @@ struct APIWatchZoneRepositoryTests {
     }
   }
 
+  // MARK: - update
+
+  @Test("update sends PATCH /v1/me/watch-zones/{zoneId} with correct body")
+  func update_sendsCorrectRequest() async throws {
+    let zone = WatchZone.cambridge
+    let (sut, _, transport) = makeSUT(responses: [
+      (Data("{}".utf8), httpResponse(statusCode: 200))
+    ])
+
+    try await sut.update(zone)
+
+    #expect(transport.requests.count == 1)
+    let request = transport.requests[0]
+    #expect(request.httpMethod == "PATCH")
+    #expect(request.url?.path().contains("/v1/me/watch-zones/zone-001") == true)
+
+    let body = try #require(request.httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    #expect(json["name"] as? String == "CB1 2AD")
+    #expect(json["latitude"] as? Double == 52.2053)
+    #expect(json["longitude"] as? Double == 0.1218)
+    #expect(json["radiusMetres"] as? Double == 2000)
+  }
+
+  @Test("update with network error throws networkUnavailable")
+  func update_networkError_throwsNetworkUnavailable() async {
+    let authService = SpyAuthenticationService()
+    authService.currentSessionResult = .valid
+    let transport = StubHTTPTransport()
+    transport.error = URLError(.notConnectedToInternet)
+    let apiClient = URLSessionAPIClient(
+      baseURL: baseURL,
+      authService: authService,
+      transport: transport
+    )
+    let sut = APIWatchZoneRepository(apiClient: apiClient)
+
+    await #expect(throws: DomainError.networkUnavailable) {
+      try await sut.update(.cambridge)
+    }
+  }
+
+  @Test("update with server error throws serverError")
+  func update_serverError_throwsServerError() async {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data("Bad Request".utf8), httpResponse(statusCode: 400))
+    ])
+
+    await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
+      try await sut.update(.cambridge)
+    }
+  }
+
   // MARK: - loadAll
 
   @Test("loadAll sends GET /v1/me/watch-zones and maps response to domain models")

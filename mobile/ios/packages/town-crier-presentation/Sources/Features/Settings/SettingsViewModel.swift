@@ -16,27 +16,40 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public var isShowingDeleteConfirmation = false
+  @Published public var appearanceMode: AppearanceMode {
+    didSet {
+      defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
+    }
+  }
 
   public var onLogout: (() -> Void)?
+
+  static let appearanceModeKey = "appearanceMode"
 
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
+  private let defaults: UserDefaults
 
   public init(
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
     appVersionProvider: AppVersionProvider,
-    notificationService: NotificationService
+    notificationService: NotificationService,
+    defaults: UserDefaults = .standard
   ) {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
+    self.defaults = defaults
+
+    let storedRaw = defaults.string(forKey: Self.appearanceModeKey) ?? ""
+    self.appearanceMode = AppearanceMode(rawValue: storedRaw) ?? .system
   }
 
   public var appVersion: String {

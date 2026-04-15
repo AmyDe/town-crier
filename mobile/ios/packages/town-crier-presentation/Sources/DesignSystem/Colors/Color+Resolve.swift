@@ -1,15 +1,35 @@
 import SwiftUI
+#if canImport(UIKit)
+  import UIKit
+#endif
 
 extension Color {
   /// Creates a theme-aware color from hex values for light, dark, and OLED dark modes.
   ///
-  /// The OLED dark variant activates when the system is in dark mode and
-  /// the user has enabled "True Black" via `@AppStorage("oledDarkEnabled")`.
+  /// Uses `UIColor(dynamicProvider:)` so the color resolves at render time
+  /// based on the current `UITraitCollection` and the user's OLED preference
+  /// stored in `UserDefaults`.
   static func themed(light: UInt32, dark: UInt32, oled: UInt32) -> Color {
-    // For the scaffolding phase, return a static color based on the light hex.
-    // Full theme resolution (including OLED toggle) will be wired once
-    // the settings infrastructure is in place.
-    Color(hex: light)
+    #if canImport(UIKit)
+      Color(uiColor: UIColor { traitCollection in
+        let isDark = traitCollection.userInterfaceStyle == .dark
+        let hex = ThemeColorResolver.resolveHex(
+          light: light,
+          dark: dark,
+          oled: oled,
+          isDarkMode: isDark,
+          isOledEnabled: isDark && ThemeColorResolver.isOledEnabled()
+        )
+        return UIColor(
+          red: CGFloat((hex >> 16) & 0xFF) / 255.0,
+          green: CGFloat((hex >> 8) & 0xFF) / 255.0,
+          blue: CGFloat(hex & 0xFF) / 255.0,
+          alpha: 1.0
+        )
+      })
+    #else
+      Color(hex: light)
+    #endif
   }
 }
 

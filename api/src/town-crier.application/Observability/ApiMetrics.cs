@@ -26,6 +26,9 @@ public static class ApiMetrics
     public static readonly Counter<long> UsersRegistered =
         Meter.CreateCounter<long>("towncrier.users.registered");
 
+    public static readonly Counter<long> WatchZonesUpdated =
+        Meter.CreateCounter<long>("towncrier.watchzones.updated");
+
     public static readonly Counter<long> WatchZonesDeleted =
         Meter.CreateCounter<long>("towncrier.watchzones.deleted");
 

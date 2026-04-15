@@ -27,12 +27,14 @@ struct SettingsViewModelTests {
     versionProvider.version = version
     versionProvider.buildNumber = buildNumber
     let notificationSpy = SpyNotificationService()
+    let defaults = UserDefaults(suiteName: "SettingsVMTests.\(UUID().uuidString)")
     let vm = SettingsViewModel(
       authService: authSpy,
       subscriptionService: subscriptionSpy,
       userProfileRepository: profileSpy,
       appVersionProvider: versionProvider,
-      notificationService: notificationSpy
+      notificationService: notificationSpy,
+      defaults: defaults ?? .standard
     )
     return (vm, authSpy, subscriptionSpy, profileSpy, versionProvider, notificationSpy)
   }
@@ -384,8 +386,6 @@ struct SettingsViewModelTests {
 
     #expect(notificationSpy.removeDeviceTokenCallCount == 1)
   }
-
-  // MARK: - Attribution
 
   @Test func attributionItems_containsExpectedSources() {
     let (sut, _, _, _, _, _) = makeSUT()
