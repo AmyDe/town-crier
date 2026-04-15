@@ -24,7 +24,8 @@ describe('WatchZoneEditPage', () => {
       <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
     );
 
-    expect(screen.getByText('Home')).toBeInTheDocument();
+    const nameInput = screen.getByRole('textbox', { name: /zone name/i });
+    expect(nameInput).toHaveValue('Home');
 
     // Wait for preferences to load
     const newAppsCheckbox = await screen.findByRole('checkbox', { name: /new applications/i });
@@ -80,11 +81,12 @@ describe('WatchZoneEditPage', () => {
     spy.getPreferencesResult = zonePreferences();
 
     renderWithRouter(
-      <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
+      <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
     );
 
     await screen.findByRole('checkbox', { name: /new applications/i });
-    expect(screen.getByText('2 km radius')).toBeInTheDocument();
+    const selectedRadio = screen.getByRole('radio', { name: '2 km' });
+    expect(selectedRadio).toBeChecked();
   });
 
   it('has a back link to the list', () => {
