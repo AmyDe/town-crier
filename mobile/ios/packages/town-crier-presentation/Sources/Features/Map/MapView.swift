@@ -88,15 +88,36 @@ public struct MapView: View {
   // MARK: - Zone Picker
 
   private var zonePickerSection: some View {
-    ZonePickerView(
-      zones: viewModel.zones,
-      selectedZoneId: viewModel.selectedZone?.id
-    ) { zone in
-      Task {
-        await viewModel.selectZone(zone)
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: TCSpacing.small) {
+        ForEach(viewModel.zones) { zone in
+          zoneChip(zone: zone, isSelected: zone.id == viewModel.selectedZone?.id)
+        }
       }
+      .padding(.horizontal, TCSpacing.medium)
+      .padding(.vertical, TCSpacing.small)
     }
     .background(Color.tcBackground)
+  }
+
+  private func zoneChip(zone: WatchZone, isSelected: Bool) -> some View {
+    Text(zone.name)
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
+      .padding(.horizontal, TCSpacing.small)
+      .padding(.vertical, TCSpacing.extraSmall)
+      .background(isSelected ? Color.tcAmber : Color.tcSurface)
+      .clipShape(Capsule())
+      .overlay(
+        Capsule()
+          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
+      )
+      .contentShape(Capsule())
+      .onTapGesture {
+        Task {
+          await viewModel.selectZone(zone)
+        }
+      }
   }
 
   // MARK: - Filter Section
@@ -123,49 +144,47 @@ public struct MapView: View {
   }
 
   private var savedFilterChip: some View {
-    Button {
-      if viewModel.isSavedFilterActive {
-        viewModel.deactivateSavedFilter()
-      } else {
-        Task { await viewModel.activateSavedFilter() }
+    Label("Saved", systemImage: "bookmark.fill")
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(
+        viewModel.isSavedFilterActive ? Color.tcTextOnAccent : Color.tcTextPrimary
+      )
+      .padding(.horizontal, TCSpacing.small)
+      .padding(.vertical, TCSpacing.extraSmall)
+      .background(viewModel.isSavedFilterActive ? Color.tcAmber : Color.tcSurface)
+      .clipShape(Capsule())
+      .overlay(
+        Capsule()
+          .stroke(Color.tcBorder, lineWidth: viewModel.isSavedFilterActive ? 0 : 1)
+      )
+      .contentShape(Capsule())
+      .onTapGesture {
+        if viewModel.isSavedFilterActive {
+          viewModel.deactivateSavedFilter()
+        } else {
+          Task { await viewModel.activateSavedFilter() }
+        }
       }
-    } label: {
-      Label("Saved", systemImage: "bookmark.fill")
-        .font(TCTypography.captionEmphasis)
-        .foregroundStyle(
-          viewModel.isSavedFilterActive ? Color.tcTextOnAccent : Color.tcTextPrimary
-        )
-        .padding(.horizontal, TCSpacing.small)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .background(viewModel.isSavedFilterActive ? Color.tcAmber : Color.tcSurface)
-        .clipShape(Capsule())
-        .overlay(
-          Capsule()
-            .stroke(Color.tcBorder, lineWidth: viewModel.isSavedFilterActive ? 0 : 1)
-        )
-    }
-    .buttonStyle(.plain)
   }
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     let isSelected = viewModel.selectedStatusFilter == status
       && !viewModel.isSavedFilterActive
-    return Button {
-      viewModel.selectedStatusFilter = status
-    } label: {
-      Text(label)
-        .font(TCTypography.captionEmphasis)
-        .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
-        .padding(.horizontal, TCSpacing.small)
-        .padding(.vertical, TCSpacing.extraSmall)
-        .background(isSelected ? Color.tcAmber : Color.tcSurface)
-        .clipShape(Capsule())
-        .overlay(
-          Capsule()
-            .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
-        )
-    }
-    .buttonStyle(.plain)
+    return Text(label)
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
+      .padding(.horizontal, TCSpacing.small)
+      .padding(.vertical, TCSpacing.extraSmall)
+      .background(isSelected ? Color.tcAmber : Color.tcSurface)
+      .clipShape(Capsule())
+      .overlay(
+        Capsule()
+          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
+      )
+      .contentShape(Capsule())
+      .onTapGesture {
+        viewModel.selectedStatusFilter = status
+      }
   }
 
   // MARK: - Map Body
