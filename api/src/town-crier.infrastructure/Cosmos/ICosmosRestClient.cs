@@ -39,6 +39,16 @@ public interface ICosmosRestClient
         string? partitionKey,
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct);
+
+    Task<PagedQueryResult<T>> QueryPageAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        string? partitionKey,
+        int maxItemCount,
+        string? continuationToken,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct);
 }
 
 public readonly record struct QueryParameter(string Name, object Value);

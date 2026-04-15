@@ -27,6 +27,23 @@ internal sealed class ApiClient : IDisposable
         return await this.client.PutAsJsonAsync(path, body, typeInfo, ct).ConfigureAwait(false);
     }
 
+    public async Task<TResponse?> GetFromJsonAsync<TResponse>(
+        string path,
+        JsonTypeInfo<TResponse> typeInfo,
+        CancellationToken ct)
+    {
+        using var response = await this.client.GetAsync(new Uri(path, UriKind.Relative), ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException(
+                $"API error ({(int)response.StatusCode}): {body}");
+        }
+
+        return await response.Content.ReadFromJsonAsync(typeInfo, ct).ConfigureAwait(false);
+    }
+
     public void Dispose()
     {
         this.client.Dispose();

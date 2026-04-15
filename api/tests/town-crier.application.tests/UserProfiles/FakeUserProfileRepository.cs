@@ -57,6 +57,22 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.CompletedTask;
     }
 
+    public Task<UserProfilePage> ListAsync(
+        string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)
+    {
+        var profiles = this.store.Values.AsEnumerable();
+
+        if (emailSearch is not null)
+        {
+            profiles = profiles.Where(p =>
+                p.Email is not null &&
+                p.Email.Contains(emailSearch, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var result = profiles.OrderBy(p => p.Email, StringComparer.OrdinalIgnoreCase).ToList();
+        return Task.FromResult(new UserProfilePage(result, null));
+    }
+
     public UserProfile? GetByUserId(string userId)
     {
         this.store.TryGetValue(userId, out var profile);

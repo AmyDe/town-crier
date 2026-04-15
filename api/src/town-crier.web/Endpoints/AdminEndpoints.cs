@@ -26,5 +26,17 @@ internal static class AdminEndpoints
                 return Results.NotFound();
             }
         });
+
+        admin.MapGet("/users", async (
+            string? search,
+            int? pageSize,
+            string? continuationToken,
+            ListUsersQueryHandler handler,
+            CancellationToken ct) =>
+        {
+            var query = new ListUsersQuery(search, pageSize ?? 20, continuationToken);
+            var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
+            return Results.Ok(result);
+        });
     }
 }

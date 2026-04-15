@@ -168,6 +168,7 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetDemoAccountQueryHandler>();
 
         services.AddTransient<GrantSubscriptionCommandHandler>();
+        services.AddTransient<ListUsersQueryHandler>();
 
         return services;
     }

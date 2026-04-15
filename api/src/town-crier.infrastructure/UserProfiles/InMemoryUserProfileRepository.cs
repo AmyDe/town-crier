@@ -56,4 +56,21 @@ public sealed class InMemoryUserProfileRepository : IUserProfileRepository
         this.store.TryRemove(userId, out _);
         return Task.CompletedTask;
     }
+
+    // pageSize and continuationToken are not emulated — returns all matching profiles in one page.
+    public Task<UserProfilePage> ListAsync(
+        string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)
+    {
+        var profiles = this.store.Values.AsEnumerable();
+
+        if (emailSearch is not null)
+        {
+            profiles = profiles.Where(p =>
+                p.Email is not null &&
+                p.Email.Contains(emailSearch, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var result = profiles.OrderBy(p => p.Email, StringComparer.OrdinalIgnoreCase).ToList();
+        return Task.FromResult(new UserProfilePage(result, null));
+    }
 }
