@@ -42,6 +42,8 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]
 [JsonSerializable(typeof(CreateWatchZoneRequest))]
 [JsonSerializable(typeof(CreateWatchZoneResult))]
+[JsonSerializable(typeof(UpdateWatchZoneRequest))]
+[JsonSerializable(typeof(UpdateWatchZoneResult))]
 [JsonSerializable(typeof(ListWatchZonesResult))]
 [JsonSerializable(typeof(UpdateZonePreferencesCommand))]
 [JsonSerializable(typeof(UpdateZonePreferencesResult))]
