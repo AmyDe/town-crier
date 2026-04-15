@@ -80,6 +80,34 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
+    public async Task<UserProfilePage> ListAsync(
+        string? emailSearch,
+        int pageSize,
+        string? continuationToken,
+        CancellationToken ct)
+    {
+        var sql = emailSearch is not null
+            ? "SELECT * FROM c WHERE CONTAINS(c.email, @search, true) ORDER BY c.email"
+            : "SELECT * FROM c ORDER BY c.email";
+
+        var parameters = emailSearch is not null
+            ? new[] { new QueryParameter("@search", emailSearch) }
+            : Array.Empty<QueryParameter>();
+
+        var result = await this.client.QueryPageAsync(
+            CosmosContainerNames.Users,
+            sql,
+            parameters,
+            partitionKey: null,
+            pageSize,
+            continuationToken,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
+
+        var profiles = result.Items.Select(doc => doc.ToDomain()).ToList();
+        return new UserProfilePage(profiles, result.ContinuationToken);
+    }
+
     public async Task SaveAsync(UserProfile profile, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(profile);

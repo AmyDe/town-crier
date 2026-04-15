@@ -188,5 +188,9 @@ public sealed class ServerRequestTracingTests
 
         public Task DeleteAsync(string userId, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<UserProfilePage> ListAsync(
+            string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
     }
 }
