@@ -8,8 +8,7 @@ import os
 /// MetricKit delivers crash diagnostic payloads up to 24 hours after the crash occurs.
 /// Call `start()` once during app launch to subscribe to diagnostics.
 public final class MetricKitCrashReporter: NSObject, CrashReporter, MXMetricManagerSubscriber,
-  @unchecked Sendable
-{
+  @unchecked Sendable {
   private let logger = Logger(
     subsystem: "uk.co.towncrier",
     category: "CrashReporting"

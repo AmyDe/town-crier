@@ -2,8 +2,7 @@ import TownCrierDomain
 
 /// An in-memory repository for development and testing.
 public final class InMemoryPlanningApplicationRepository: PlanningApplicationRepository,
-  @unchecked Sendable
-{
+  @unchecked Sendable {
   private var applications: [PlanningApplication]
 
   public init(applications: [PlanningApplication] = []) {
