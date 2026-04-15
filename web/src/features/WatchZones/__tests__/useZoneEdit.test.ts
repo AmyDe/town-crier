@@ -1,4 +1,4 @@
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useZoneEdit } from '../useZoneEdit';
 import { SpyWatchZoneRepository } from './spies/spy-watch-zone-repository';
