@@ -2,6 +2,7 @@ import type { ApiClient } from '../../api/client';
 import type {
   WatchZoneSummary,
   CreateWatchZoneRequest,
+  UpdateWatchZoneRequest,
   ZoneNotificationPreferences,
   UpdateZonePreferencesRequest,
 } from '../../domain/types';
@@ -21,6 +22,10 @@ export class ApiWatchZoneRepository implements WatchZoneRepository {
 
   async create(data: CreateWatchZoneRequest): Promise<WatchZoneSummary> {
     return this.api.create(data);
+  }
+
+  async updateZone(zoneId: string, data: UpdateWatchZoneRequest): Promise<WatchZoneSummary> {
+    return this.api.updateZone(zoneId, data);
   }
 
   async delete(zoneId: string): Promise<void> {
