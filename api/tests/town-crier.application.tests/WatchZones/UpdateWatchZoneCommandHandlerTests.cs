@@ -28,4 +28,16 @@ public sealed class UpdateWatchZoneCommandHandlerTests
         await Assert.That(result.Zone.Name).IsEqualTo("Updated Name");
         await Assert.That(result.Zone.Id).IsEqualTo("zone-1");
     }
+
+    [Test]
+    public async Task Should_ThrowWatchZoneNotFound_When_ZoneDoesNotExist()
+    {
+        // Arrange
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "nonexistent-zone", Name: "Updated");
+
+        // Act & Assert
+        await Assert.ThrowsAsync<WatchZoneNotFoundException>(
+            () => handler.HandleAsync(command, CancellationToken.None));
+    }
 }
