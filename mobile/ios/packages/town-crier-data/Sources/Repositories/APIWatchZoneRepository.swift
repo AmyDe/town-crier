@@ -32,7 +32,21 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
   }
 
   public func update(_ zone: WatchZone) async throws {
-    // TODO: implement PATCH
+    let body = UpdateWatchZoneRequest(
+      name: zone.name,
+      latitude: zone.centre.latitude,
+      longitude: zone.centre.longitude,
+      radiusMetres: zone.radiusMetres
+    )
+    do {
+      let _: EmptyResponse = try await apiClient.request(
+        .patch("/v1/me/watch-zones/\(zone.id.value)", body: body)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
   }
 
   public func loadAll() async throws -> [WatchZone] {
@@ -82,6 +96,13 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let longitude: Double
   let radiusMetres: Double
   let authorityId: Int?
+}
+
+struct UpdateWatchZoneRequest: Encodable, Sendable {
+  let name: String
+  let latitude: Double
+  let longitude: Double
+  let radiusMetres: Double
 }
 
 struct ListWatchZonesResponse: Decodable, Sendable {
