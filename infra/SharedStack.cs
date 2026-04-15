@@ -84,7 +84,7 @@ public static class SharedStack
             {
                 Name = WorkspaceSkuNameEnum.PerGB2018,
             },
-            RetentionInDays = 14,
+            RetentionInDays = 30, // PerGB2018 SKU minimum is 30 days
             WorkspaceCapping = new Pulumi.AzureNative.OperationalInsights.Inputs.WorkspaceCappingArgs
             {
                 DailyQuotaGb = 1.0,
