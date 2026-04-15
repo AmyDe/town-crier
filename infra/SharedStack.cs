@@ -84,7 +84,7 @@ public static class SharedStack
             {
                 Name = WorkspaceSkuNameEnum.PerGB2018,
             },
-            RetentionInDays = 30,
+            RetentionInDays = 14,
             Tags = tags,
         });
 
@@ -97,6 +97,7 @@ public static class SharedStack
             ApplicationType = "web",
             Kind = "web",
             IngestionMode = IngestionMode.LogAnalytics,
+            RetentionInDays = 14,
             Tags = tags,
         });
 
