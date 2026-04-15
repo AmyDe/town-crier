@@ -85,6 +85,10 @@ public static class SharedStack
                 Name = WorkspaceSkuNameEnum.PerGB2018,
             },
             RetentionInDays = 14,
+            WorkspaceCapping = new Pulumi.AzureNative.OperationalInsights.Inputs.WorkspaceCappingArgs
+            {
+                DailyQuotaGb = 1.0,
+            },
             Tags = tags,
         });
 
