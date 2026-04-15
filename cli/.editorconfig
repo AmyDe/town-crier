@@ -24,3 +24,5 @@ dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1515.severity = none
 dotnet_diagnostic.CA2007.severity = none
 dotnet_diagnostic.CA1812.severity = none
+# S6966: Assert.Throws is correct for synchronous throws in async test methods
+dotnet_diagnostic.S6966.severity = none
