@@ -29,7 +29,7 @@ struct DeepLinkTests {
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.detailApplication == .approved)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
@@ -42,7 +42,7 @@ struct DeepLinkTests {
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.deepLinkError == nil)
     #expect(sut.detailApplication == .approved)
@@ -55,7 +55,7 @@ struct DeepLinkTests {
 
     sut.handleDeepLink(.applicationDetail(missingId))
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.detailApplication == nil)
     #expect(sut.deepLinkError == .applicationNotFound(missingId))

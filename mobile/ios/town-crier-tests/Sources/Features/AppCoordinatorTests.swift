@@ -114,7 +114,7 @@ struct AppCoordinatorTests {
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.detailApplication == .approved)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])

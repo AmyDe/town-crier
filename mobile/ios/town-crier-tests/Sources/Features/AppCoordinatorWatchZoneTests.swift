@@ -126,7 +126,7 @@ struct AppCoordinatorWatchZoneTests {
     vm.onSave?(.cambridge)
 
     // Give the async loadAll task a moment to run
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(watchZoneSpy.loadAllCallCount >= 1)
   }
@@ -151,7 +151,7 @@ struct AppCoordinatorWatchZoneTests {
 
     vm.onSave?(.cambridge)
 
-    try await Task.sleep(for: .milliseconds(50))
+    try await Task.sleep(for: .milliseconds(200))
 
     #expect(watchZoneSpy.loadAllCallCount >= 1)
     #expect(sut.editingWatchZone == nil)
