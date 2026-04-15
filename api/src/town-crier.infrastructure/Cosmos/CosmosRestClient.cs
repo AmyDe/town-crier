@@ -217,6 +217,58 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             : throw new InvalidOperationException("Query returned no results.");
     }
 
+    public async Task<PagedQueryResult<T>> QueryPageAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        string? partitionKey,
+        int maxItemCount,
+        string? continuationToken,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos QueryPage");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "QueryPage");
+
+#pragma warning disable CA2000
+        using var request = this.BuildQueryRequest(collection, sql, parameters);
+#pragma warning restore CA2000
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+        AddQueryHeaders(request, partitionKey);
+        request.Headers.TryAddWithoutValidation(
+            "x-ms-max-item-count", maxItemCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+        if (continuationToken is not null)
+        {
+            request.Headers.TryAddWithoutValidation("x-ms-continuation", continuationToken);
+        }
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        await ThrowOnCosmosErrorAsync(response, sql, ct).ConfigureAwait(false);
+        RecordResponseMetrics(activity, response);
+
+        var items = new List<T>();
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            foreach (var element in doc.RootElement.GetProperty("Documents").EnumerateArray())
+            {
+                items.Add(element.Deserialize(typeInfo)!);
+            }
+        }
+
+        var nextContinuation = response.Headers.TryGetValues("x-ms-continuation", out var values)
+            ? values.FirstOrDefault()
+            : null;
+
+        return new PagedQueryResult<T>(items, nextContinuation);
+    }
+
     private static bool RequiresFanOut(string sql) =>
         sql.Contains("DISTINCT", StringComparison.OrdinalIgnoreCase) ||
         sql.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase);

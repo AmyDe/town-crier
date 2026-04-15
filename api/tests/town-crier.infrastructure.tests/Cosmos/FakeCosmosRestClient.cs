@@ -12,6 +12,7 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
 {
     private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> store = new();
     private readonly Dictionary<string, object> cannedQueryResults = new();
+    private readonly Dictionary<string, (object Results, string? ContinuationToken)> cannedPageResults = new();
 
     /// <summary>
     /// Registers a pre-canned result list that <see cref="QueryAsync{T}"/> will return
@@ -25,6 +26,11 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
     public void SetQueryResults<T>(string sqlPrefix, List<T> results)
     {
         this.cannedQueryResults[sqlPrefix] = results;
+    }
+
+    public void SetPageQueryResults<T>(string sqlPrefix, List<T> results, string? continuationToken = null)
+    {
+        this.cannedPageResults[sqlPrefix] = (results, continuationToken);
     }
 
     public Task<T?> ReadDocumentAsync<T>(
@@ -146,6 +152,47 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         // Convert count to T (works for int, long, etc.)
         var result = (T)(object)count;
         return Task.FromResult(result);
+    }
+
+    public Task<PagedQueryResult<T>> QueryPageAsync<T>(
+        string collection,
+        string sql,
+        IReadOnlyList<QueryParameter>? parameters,
+        string? partitionKey,
+        int maxItemCount,
+        string? continuationToken,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        foreach (var (prefix, (value, token)) in this.cannedPageResults)
+        {
+            if (sql.StartsWith(prefix, StringComparison.Ordinal) && value is List<T> canned)
+            {
+                return Task.FromResult(new PagedQueryResult<T>(canned, token));
+            }
+        }
+
+        var results = new List<T>();
+        foreach (var ((c, _, pk), json) in this.store)
+        {
+            if (c != collection)
+            {
+                continue;
+            }
+
+            if (partitionKey is not null && pk != partitionKey)
+            {
+                continue;
+            }
+
+            var item = JsonSerializer.Deserialize(json, typeInfo);
+            if (item is not null)
+            {
+                results.Add(item);
+            }
+        }
+
+        return Task.FromResult(new PagedQueryResult<T>(results, null));
     }
 
     private static string ExtractId(JsonDocument doc)
