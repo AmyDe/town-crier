@@ -120,6 +120,8 @@ struct AppCoordinatorWatchZoneTests {
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService()
     )
+    let listVM = sut.makeWatchZoneListViewModel()
+    _ = listVM
     sut.isAddingWatchZone = true
     let vm = sut.makeWatchZoneEditorViewModel()
 
@@ -146,6 +148,8 @@ struct AppCoordinatorWatchZoneTests {
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService()
     )
+    let listVM = sut.makeWatchZoneListViewModel()
+    _ = listVM
     sut.editingWatchZone = .cambridge
     let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
 
@@ -155,6 +159,44 @@ struct AppCoordinatorWatchZoneTests {
 
     #expect(watchZoneSpy.loadAllCallCount >= 1)
     #expect(sut.editingWatchZone == nil)
+  }
+
+  @Test func makeWatchZoneEditorViewModel_onSave_refreshesListViewModelZones() async throws {
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
+    let sut = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: watchZoneSpy,
+      geocoder: SpyPostcodeGeocoder(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+
+    let listVM = sut.makeWatchZoneListViewModel()
+    await listVM.load()
+    #expect(listVM.zones == [.cambridge])
+
+    let renamed = try WatchZone(
+      id: WatchZone.cambridge.id,
+      name: "My New Name",
+      centre: WatchZone.cambridge.centre,
+      radiusMetres: WatchZone.cambridge.radiusMetres,
+      authorityId: WatchZone.cambridge.authorityId
+    )
+    watchZoneSpy.loadAllResult = .success([renamed])
+
+    sut.editingWatchZone = .cambridge
+    let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+    editorVM.onSave?(renamed)
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(listVM.zones == [renamed])
   }
 
   // MARK: - Watch Zone Upsell

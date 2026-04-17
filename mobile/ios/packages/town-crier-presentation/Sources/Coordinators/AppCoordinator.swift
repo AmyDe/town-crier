@@ -37,6 +37,7 @@ public final class AppCoordinator: ObservableObject {
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
   private let tierCache: UserDefaults
+  private weak var watchZoneListViewModel: WatchZoneListViewModel?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -234,6 +235,7 @@ public final class AppCoordinator: ObservableObject {
     viewModel.onViewPlans = { [weak self] in
       self?.isSubscriptionPresented = true
     }
+    watchZoneListViewModel = viewModel
     return viewModel
   }
 
@@ -253,7 +255,7 @@ public final class AppCoordinator: ObservableObject {
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
       Task { [weak self] in
-        _ = try? await self?.watchZoneRepository.loadAll()
+        await self?.watchZoneListViewModel?.load()
       }
     }
     return viewModel
