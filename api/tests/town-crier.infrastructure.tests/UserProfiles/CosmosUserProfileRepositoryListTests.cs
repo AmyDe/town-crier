@@ -18,7 +18,7 @@ public sealed class CosmosUserProfileRepositoryListTests
             CreateDocument("user-1", "alice@example.com", "Pro"),
             CreateDocument("user-2", "bob@example.com", "Free"),
         };
-        client.SetPageQueryResults("SELECT * FROM c ORDER BY", docs);
+        client.SetPageQueryResults("SELECT * FROM c", docs);
 
         // Act
         var result = await repo.ListAsync(null, 20, null, CancellationToken.None);
@@ -51,6 +51,34 @@ public sealed class CosmosUserProfileRepositoryListTests
     }
 
     [Test]
+    public async Task Should_NotUseOrderBy_When_QueryingUsers()
+    {
+        // Cosmos rejects cross-partition ORDER BY at the gateway with a 400 that
+        // expects clients to execute a returned query plan per partition. Our
+        // CosmosRestClient does not implement that handshake, so ORDER BY must
+        // stay out of user-profile list queries.
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosUserProfileRepository(client);
+
+        await repo.ListAsync(null, 20, null, CancellationToken.None);
+
+        await Assert.That(client.LastPageQuerySql).IsNotNull();
+        await Assert.That(client.LastPageQuerySql!).DoesNotContain("ORDER BY");
+    }
+
+    [Test]
+    public async Task Should_NotUseOrderBy_When_QueryingUsersWithSearch()
+    {
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosUserProfileRepository(client);
+
+        await repo.ListAsync("gmail", 20, null, CancellationToken.None);
+
+        await Assert.That(client.LastPageQuerySql).IsNotNull();
+        await Assert.That(client.LastPageQuerySql!).DoesNotContain("ORDER BY");
+    }
+
+    [Test]
     public async Task Should_ForwardContinuationToken_When_MorePagesExist()
     {
         // Arrange
@@ -61,7 +89,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         {
             CreateDocument("user-1", "alice@example.com", "Free"),
         };
-        client.SetPageQueryResults("SELECT * FROM c ORDER BY", docs, "next-page-token");
+        client.SetPageQueryResults("SELECT * FROM c", docs, "next-page-token");
 
         // Act
         var result = await repo.ListAsync(null, 1, null, CancellationToken.None);

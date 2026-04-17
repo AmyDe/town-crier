@@ -86,9 +86,12 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         string? continuationToken,
         CancellationToken ct)
     {
+        // No ORDER BY: cross-partition ordering requires the Cosmos query-plan
+        // handshake (gateway returns 400 with a rewritten per-partition query),
+        // which CosmosRestClient does not implement.
         var sql = emailSearch is not null
-            ? "SELECT * FROM c WHERE CONTAINS(c.email, @search, true) ORDER BY c.email"
-            : "SELECT * FROM c ORDER BY c.email";
+            ? "SELECT * FROM c WHERE CONTAINS(c.email, @search, true)"
+            : "SELECT * FROM c";
 
         var parameters = emailSearch is not null
             ? new[] { new QueryParameter("@search", emailSearch) }
