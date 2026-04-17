@@ -14,6 +14,8 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
     private readonly Dictionary<string, object> cannedQueryResults = new();
     private readonly Dictionary<string, (object Results, string? ContinuationToken)> cannedPageResults = new();
 
+    public string? LastPageQuerySql { get; private set; }
+
     /// <summary>
     /// Registers a pre-canned result list that <see cref="QueryAsync{T}"/> will return
     /// when the SQL query starts with <paramref name="sqlPrefix"/>. This bypasses
@@ -164,6 +166,8 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        this.LastPageQuerySql = sql;
+
         foreach (var (prefix, (value, token)) in this.cannedPageResults)
         {
             if (sql.StartsWith(prefix, StringComparison.Ordinal) && value is List<T> canned)

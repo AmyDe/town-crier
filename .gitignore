@@ -1,3 +1,6 @@
+# Beads stray backup (beads may export to repo root in worktrees)
+/issues.jsonl
+
 # macOS
 .DS_Store
 .AppleDouble
