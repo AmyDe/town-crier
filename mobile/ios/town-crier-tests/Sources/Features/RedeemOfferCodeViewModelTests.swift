@@ -154,4 +154,105 @@ struct RedeemOfferCodeViewModelTests {
 
     #expect(sut.isLoading == false)
   }
+
+  // MARK: - Server error mapping
+
+  @Test("maps .invalidFormat from service to the format message")
+  func redeem_serviceInvalidFormat_showsFormatMessage() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.invalidFormat))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.errorMessage == "Please check the code and try again.")
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("maps .notFound to the invalid-code message")
+  func redeem_serviceNotFound_showsInvalidCodeMessage() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.notFound))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.errorMessage == "This code isn't valid.")
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("maps .alreadyRedeemed to the already-used message")
+  func redeem_serviceAlreadyRedeemed_showsAlreadyUsedMessage() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.alreadyRedeemed))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.errorMessage == "This code has already been used.")
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("maps .alreadySubscribed to the existing-subscription message")
+  func redeem_serviceAlreadySubscribed_showsAlreadySubscribedMessage() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.alreadySubscribed))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(
+      sut.errorMessage
+        == "You already have an active subscription. Offer codes are only for new subscribers."
+    )
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("maps .network to the generic try-again message")
+  func redeem_serviceNetwork_showsGenericMessage() async {
+    let (sut, _) = makeSUT(
+      redeemResult: .failure(OfferCodeError.network("HTTP 500"))
+    )
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(
+      sut.errorMessage == "Something went wrong redeeming that code. Please try again."
+    )
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("maps non-OfferCodeError errors to the generic try-again message")
+  func redeem_unexpectedErrorType_showsGenericMessage() async {
+    struct BoomError: Error {}
+    let (sut, _) = makeSUT(redeemResult: .failure(BoomError()))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(
+      sut.errorMessage == "Something went wrong redeeming that code. Please try again."
+    )
+    #expect(sut.redemption == nil)
+  }
+
+  @Test("server failure does not invoke onRedeemed")
+  func redeem_serviceFailure_doesNotInvokeOnRedeemed() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.notFound))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    var callCount = 0
+    sut.onRedeemed = { _ in callCount += 1 }
+
+    await sut.redeem()
+
+    #expect(callCount == 0)
+  }
+
+  @Test("failure resets isLoading to false")
+  func redeem_failure_resetsIsLoading() async {
+    let (sut, _) = makeSUT(redeemResult: .failure(OfferCodeError.notFound))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.isLoading == false)
+  }
 }
