@@ -15,6 +15,7 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isSubscriptionPresented = false
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
+  @Published public var isRedeemOfferCodePresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
 
   public var isOnboardingComplete: Bool {
@@ -36,12 +37,16 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
+  private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
   // re-evaluates the factory argument each time) does not leave the
   // coordinator holding a dangling reference. The editor's `onSave`
   // callback needs a live VM to trigger a reload against.
   private var watchZoneListViewModel: WatchZoneListViewModel?
+  // Tracks the in-flight post-redemption refresh task so tests can await it
+  // and SwiftUI's dismiss happens after session + tier are up to date.
+  private var pendingOfferCodeRefresh: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -57,6 +62,7 @@ public final class AppCoordinator: ObservableObject {
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
+    offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil
   ) {
     self.repository = repository
@@ -72,6 +78,7 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
+    self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
 
     // Restore the last successfully resolved tier so that paying users
@@ -280,6 +287,56 @@ public final class AppCoordinator: ObservableObject {
 
   public func showManageSubscription() {
     isManageSubscriptionPresented = true
+  }
+
+  // MARK: - Offer Codes
+
+  /// Presents the "Redeem Offer Code" sheet from Settings. Has no effect if
+  /// the Coordinator was constructed without an `OfferCodeService` (i.e. the
+  /// feature is not wired).
+  public func showRedeemOfferCode() {
+    guard offerCodeService != nil else { return }
+    isRedeemOfferCodePresented = true
+  }
+
+  /// Creates a `RedeemOfferCodeViewModel` wired to dismiss the sheet and
+  /// refresh the subscription tier on successful redemption.
+  ///
+  /// Returns `nil` when no `OfferCodeService` was injected — callers should
+  /// hide the Settings entry point in that case.
+  public func makeRedeemOfferCodeViewModel() -> RedeemOfferCodeViewModel? {
+    guard let offerCodeService else { return nil }
+    let viewModel = RedeemOfferCodeViewModel(offerCodeService: offerCodeService)
+    viewModel.onRedeemed = { [weak self] _ in
+      self?.handleOfferCodeRedeemed()
+    }
+    return viewModel
+  }
+
+  /// Test-only synchronisation: await the most recently kicked-off
+  /// post-redemption refresh so assertions happen after the session has been
+  /// rotated and the tier re-resolved.
+  public func waitForPendingOfferCodeRefresh() async {
+    await pendingOfferCodeRefresh?.value
+  }
+
+  private func handleOfferCodeRedeemed() {
+    isRedeemOfferCodePresented = false
+    // Kick off the refresh on a detached task so we can await it in tests.
+    // Session refresh rotates the JWT so the next server call sees the new
+    // `subscription_tier` claim; re-resolving the tier pulls the updated
+    // profile and updates `subscriptionTier` for all tier-gated views.
+    pendingOfferCodeRefresh = Task { [weak self] in
+      guard let self else { return }
+      do {
+        _ = try await authService.refreshSession()
+      } catch {
+        Self.logger.error(
+          "Offer-code session refresh failed: \(error.localizedDescription)"
+        )
+      }
+      await resolveSubscriptionTier()
+    }
   }
 
   public func handleDeepLink(_ deepLink: DeepLink) {

@@ -8,19 +8,30 @@ public struct SettingsView: View {
   private var onManageSubscription: (() -> Void)?
   private var onPrivacyPolicy: (() -> Void)?
   private var onTermsOfService: (() -> Void)?
+  private var onRedeemOfferCode: (() -> Void)?
 
   public init(
     viewModel: SettingsViewModel,
     onNotificationPreferences: (() -> Void)? = nil,
     onManageSubscription: (() -> Void)? = nil,
     onPrivacyPolicy: (() -> Void)? = nil,
-    onTermsOfService: (() -> Void)? = nil
+    onTermsOfService: (() -> Void)? = nil,
+    onRedeemOfferCode: (() -> Void)? = nil
   ) {
     _viewModel = StateObject(wrappedValue: viewModel)
     self.onNotificationPreferences = onNotificationPreferences
     self.onManageSubscription = onManageSubscription
     self.onPrivacyPolicy = onPrivacyPolicy
     self.onTermsOfService = onTermsOfService
+    self.onRedeemOfferCode = onRedeemOfferCode
+  }
+
+  /// Test-only seam: invoke the redeem-offer-code callback as if the user had
+  /// tapped the row in Settings. Production code routes through SwiftUI's
+  /// `Button` action; this mirror keeps the callback testable without
+  /// requiring ViewInspector or UI-level automation.
+  public func requestRedeemOfferCode() {
+    onRedeemOfferCode?()
   }
 
   public var body: some View {
@@ -180,6 +191,12 @@ public struct SettingsView: View {
 
       navigationRow("Manage Subscription", systemImage: "creditcard") {
         onManageSubscription?()
+      }
+
+      if onRedeemOfferCode != nil {
+        navigationRow("Redeem Offer Code", systemImage: "ticket") {
+          onRedeemOfferCode?()
+        }
       }
     } header: {
       Text("Subscription")
