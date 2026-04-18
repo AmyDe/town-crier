@@ -76,6 +76,26 @@ public sealed class CreateWatchZoneCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_NotCallPlanIt_When_ProUserCreatesZone()
+    {
+        // Arrange — Pro users previously triggered a synchronous PlanIt backfill that timed out 100%
+        // of the time. Zone creation now defers to the polling service; PlanIt must not be called.
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(this.planItClient.AuthorityIdsRequested).HasCount().EqualTo(0);
+        await Assert.That(this.planningApplicationRepository.GetAll()).HasCount().EqualTo(0);
+    }
+
+    [Test]
     public async Task Should_BackfillApplications_When_ProUserCreatesZone()
     {
         // Arrange
