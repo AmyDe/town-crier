@@ -198,4 +198,107 @@ describe('useRedeemOfferCode', () => {
       expect(onSuccessCalls).toEqual([]);
     });
   });
+
+  describe('editing clears error state', () => {
+    it('clears errorMessage and returns to idle when the user edits the code after an error', async () => {
+      spy.error = new RedeemError('invalid_code', 'nope');
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(result.current.status).toBe('error');
+      expect(result.current.errorMessage).not.toBeNull();
+
+      act(() => {
+        result.current.setCode('NEW-INPUT');
+      });
+
+      expect(result.current.status).toBe('idle');
+      expect(result.current.errorMessage).toBeNull();
+      expect(result.current.code).toBe('NEW-INPUT');
+    });
+  });
+
+  describe('reset', () => {
+    it('restores initial state after a successful redemption', async () => {
+      spy.result = PRO_RESULT;
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(result.current.status).toBe('success');
+
+      act(() => {
+        result.current.reset();
+      });
+
+      expect(result.current.status).toBe('idle');
+      expect(result.current.code).toBe('');
+      expect(result.current.result).toBeNull();
+      expect(result.current.errorMessage).toBeNull();
+    });
+
+    it('restores initial state after an error', async () => {
+      spy.error = new RedeemError('invalid_code', 'nope');
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('BAD');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(result.current.status).toBe('error');
+
+      act(() => {
+        result.current.reset();
+      });
+
+      expect(result.current.status).toBe('idle');
+      expect(result.current.code).toBe('');
+      expect(result.current.errorMessage).toBeNull();
+    });
+  });
+
+  describe('submit guards', () => {
+    it('does not call the client when already submitting', async () => {
+      spy.deferNext();
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      let firstSubmit: Promise<void> = Promise.resolve();
+      act(() => {
+        firstSubmit = result.current.submit();
+      });
+
+      // While the first call is in flight, a second submit should be a no-op.
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(spy.calls).toEqual(['A7KM-ZQR3-FNXP']);
+
+      await act(async () => {
+        spy.resolvePending(PRO_RESULT);
+        await firstSubmit;
+      });
+    });
+  });
 });
