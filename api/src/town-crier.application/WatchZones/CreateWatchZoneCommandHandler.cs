@@ -1,25 +1,16 @@
-using Microsoft.Extensions.Logging;
 using TownCrier.Application.Authorities;
 using TownCrier.Application.Observability;
-using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.Entitlements;
 using TownCrier.Domain.Geocoding;
-using TownCrier.Domain.UserProfiles;
 using TownCrier.Domain.WatchZones;
 
 namespace TownCrier.Application.WatchZones;
 
-public sealed partial class CreateWatchZoneCommandHandler
+public sealed class CreateWatchZoneCommandHandler
 {
-    private static readonly TimeSpan BackfillWindow = TimeSpan.FromDays(90);
-    private static readonly TimeSpan DefaultBackfillTimeout = TimeSpan.FromSeconds(10);
-
     private readonly IAuthorityResolver authorityResolver;
-    private readonly TimeSpan backfillTimeout;
-    private readonly ILogger<CreateWatchZoneCommandHandler> logger;
-    private readonly IPlanItClient planItClient;
     private readonly IPlanningApplicationRepository planningApplicationRepository;
     private readonly TimeProvider timeProvider;
     private readonly IUserProfileRepository userProfileRepository;
@@ -28,21 +19,15 @@ public sealed partial class CreateWatchZoneCommandHandler
     public CreateWatchZoneCommandHandler(
         IWatchZoneRepository watchZoneRepository,
         IUserProfileRepository userProfileRepository,
-        IPlanItClient planItClient,
         IPlanningApplicationRepository planningApplicationRepository,
         IAuthorityResolver authorityResolver,
-        TimeProvider timeProvider,
-        ILogger<CreateWatchZoneCommandHandler> logger,
-        TimeSpan? backfillTimeout = null)
+        TimeProvider timeProvider)
     {
         this.watchZoneRepository = watchZoneRepository;
         this.userProfileRepository = userProfileRepository;
-        this.planItClient = planItClient;
         this.planningApplicationRepository = planningApplicationRepository;
         this.authorityResolver = authorityResolver;
         this.timeProvider = timeProvider;
-        this.logger = logger;
-        this.backfillTimeout = backfillTimeout ?? DefaultBackfillTimeout;
     }
 
     public async Task<CreateWatchZoneResult> HandleAsync(CreateWatchZoneCommand command, CancellationToken ct)
@@ -77,36 +62,10 @@ public sealed partial class CreateWatchZoneCommandHandler
         await this.watchZoneRepository.SaveAsync(zone, ct).ConfigureAwait(false);
         ApiMetrics.WatchZonesCreated.Add(1);
 
-        if (profile.Tier != SubscriptionTier.Free)
-        {
-            try
-            {
-                using var backfillCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                backfillCts.CancelAfter(this.backfillTimeout);
-
-                var backfillSince = this.timeProvider.GetUtcNow() - BackfillWindow;
-
-                await foreach (var application in this.planItClient.FetchApplicationsAsync(
-                    authorityId, backfillSince, backfillCts.Token).ConfigureAwait(false))
-                {
-                    await this.planningApplicationRepository.UpsertAsync(application, backfillCts.Token).ConfigureAwait(false);
-                }
-            }
-#pragma warning disable CA1031 // Best-effort backfill — polling service provides the safety net
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                LogBackfillFailed(this.logger, authorityId, this.backfillTimeout, ex);
-            }
-        }
-
         var authorityCode = authorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var nearbyApplications = await this.planningApplicationRepository.FindNearbyAsync(
             authorityCode, command.Latitude, command.Longitude, command.RadiusMetres, ct).ConfigureAwait(false);
 
         return new CreateWatchZoneResult(nearbyApplications);
     }
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PlanIt backfill failed for authority {AuthorityId} (timeout={BackfillTimeout}); zone was created, polling will backfill later")]
-    private static partial void LogBackfillFailed(ILogger logger, int authorityId, TimeSpan backfillTimeout, Exception exception);
 }
