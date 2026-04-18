@@ -42,9 +42,9 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
   }
 
   public func loadAll() async throws -> [SavedApplication] {
-    let dto: SavedApplicationsResponseDTO
+    let dtos: [SavedApplicationDTO]
     do {
-      dto = try await apiClient.request(
+      dtos = try await apiClient.request(
         .get("/v1/me/saved-applications")
       )
     } catch let domainError as DomainError {
@@ -52,20 +52,11 @@ public final class APISavedApplicationRepository: SavedApplicationRepository, Se
     } catch {
       throw error.toDomainError()
     }
-    return dto.toDomain()
+    return dtos.map { $0.toDomain() }
   }
 }
 
 // MARK: - Response DTOs
-
-/// Wraps the response from `GET /v1/me/saved-applications`.
-struct SavedApplicationsResponseDTO: Decodable, Sendable {
-  let savedApplications: [SavedApplicationDTO]
-
-  func toDomain() -> [SavedApplication] {
-    savedApplications.map { $0.toDomain() }
-  }
-}
 
 /// Individual saved application item from the API response.
 struct SavedApplicationDTO: Decodable, Sendable {

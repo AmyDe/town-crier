@@ -125,9 +125,7 @@ struct APISavedApplicationRepositoryTests {
 
   @Test("loadAll sends GET /v1/me/saved-applications")
   func loadAll_sendsCorrectRequest() async throws {
-    let json = """
-      { "savedApplications": [] }
-      """
+    let json = "[]"
     let (sut, _, transport) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
@@ -144,34 +142,32 @@ struct APISavedApplicationRepositoryTests {
   @Test("loadAll maps response to SavedApplication array")
   func loadAll_mapsResponse() async throws {
     let json = """
-      {
-        "savedApplications": [
-          {
-            "applicationUid": "BK/2026/0042",
-            "savedAt": "2026-04-10T14:30:00Z",
-            "application": {
-              "name": "Rear extension at 12 Mill Road",
-              "uid": "BK/2026/0042",
-              "areaName": "Cambridge",
-              "areaId": 123,
-              "address": "12 Mill Road, Cambridge, CB1 2AD",
-              "postcode": "CB1 2AD",
-              "description": "Erection of two-storey rear extension",
-              "appType": "Full Planning Application",
-              "appState": "Undecided",
-              "appSize": null,
-              "startDate": "2026-04-01",
-              "decidedDate": null,
-              "consultedDate": null,
-              "longitude": 0.1243,
-              "latitude": 52.2043,
-              "url": "https://planning.cambridge.gov.uk/2026/0042",
-              "link": null,
-              "lastDifferent": "2026-04-09"
-            }
+      [
+        {
+          "applicationUid": "BK/2026/0042",
+          "savedAt": "2026-04-10T14:30:00Z",
+          "application": {
+            "name": "Rear extension at 12 Mill Road",
+            "uid": "BK/2026/0042",
+            "areaName": "Cambridge",
+            "areaId": 123,
+            "address": "12 Mill Road, Cambridge, CB1 2AD",
+            "postcode": "CB1 2AD",
+            "description": "Erection of two-storey rear extension",
+            "appType": "Full Planning Application",
+            "appState": "Undecided",
+            "appSize": null,
+            "startDate": "2026-04-01",
+            "decidedDate": null,
+            "consultedDate": null,
+            "longitude": 0.1243,
+            "latitude": 52.2043,
+            "url": "https://planning.cambridge.gov.uk/2026/0042",
+            "link": null,
+            "lastDifferent": "2026-04-09"
           }
-        ]
-      }
+        }
+      ]
       """
     let (sut, _, _) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
@@ -187,9 +183,7 @@ struct APISavedApplicationRepositoryTests {
 
   @Test("loadAll returns empty array for empty response")
   func loadAll_emptyResponse() async throws {
-    let json = """
-      { "savedApplications": [] }
-      """
+    let json = "[]"
     let (sut, _, _) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
