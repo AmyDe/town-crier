@@ -68,13 +68,22 @@ export function useRedeemOfferCode(
   const { onSuccess } = options;
 
   const setCode = useCallback((raw: string) => {
-    setState((prev) => ({
-      ...prev,
-      code: normalizeCodeInput(raw),
-    }));
+    setState((prev) => {
+      const next = normalizeCodeInput(raw);
+      // If we're showing an error from a previous submit, clear it as soon as
+      // the user edits the code — they're taking corrective action and shouldn't
+      // keep seeing the stale message.
+      if (prev.status === 'error') {
+        return { ...INITIAL_STATE, code: next };
+      }
+      return { ...prev, code: next };
+    });
   }, []);
 
   const submit = useCallback(async () => {
+    // Guard against double-submits while a request is in flight.
+    if (state.status === 'submitting') return;
+
     const submittedCode = state.code;
     setState((prev) => ({ ...prev, status: 'submitting', errorMessage: null }));
 
@@ -96,7 +105,11 @@ export function useRedeemOfferCode(
         errorMessage,
       }));
     }
-  }, [client, onSuccess, state.code]);
+  }, [client, onSuccess, state.code, state.status]);
+
+  const reset = useCallback(() => {
+    setState(INITIAL_STATE);
+  }, []);
 
   return {
     status: state.status,
@@ -105,5 +118,6 @@ export function useRedeemOfferCode(
     errorMessage: state.errorMessage,
     setCode,
     submit,
+    reset,
   };
 }
