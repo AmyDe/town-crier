@@ -144,14 +144,34 @@ public static class SharedStack
         // Basic Logs is ~$0.50/GB vs Analytics ~$2.76/GB but limits queries to 8-day retention,
         // disallows summarize/joins, and charges $0.005/GB scanned on search. Acceptable for
         // application stdout/stderr where we mostly tail-read recent rows.
-        // Azure pre-creates this table's schema in the workspace, so plan can be set before
-        // any rows arrive. Pulumi issues a PATCH against the existing table resource.
+        //
+        // Azure pre-creates this table's schema in the workspace when ManagedEnvironment
+        // destination=azure-monitor is applied, so the native table already exists on the
+        // default (Analytics) plan before Pulumi reaches this resource. Declaring the
+        // resource with ImportId below causes the first `pulumi up` to adopt the existing
+        // table into Pulumi state and then PATCH the plan to Basic. Subsequent updates
+        // manage plan only.
+        //
+        // FOLLOW-UP: Remove the ImportId (and the armSubscriptionId lookup) once CD has
+        // successfully imported the table into state — leaving ImportId in place is a no-op
+        // on subsequent runs but is noise. Tracked under the tc-i103 follow-ups.
+        //
+        // ImportId must be a plain string (not Output<string>) because the Pulumi engine
+        // needs it at planning time before any Output has resolved. We read the subscription
+        // from the ARM_SUBSCRIPTION_ID env var that CI (and local `pulumi up`) sets via the
+        // Azure login step; resource group and workspace names are static literals.
+        var armSubscriptionId = Environment.GetEnvironmentVariable("ARM_SUBSCRIPTION_ID")
+            ?? throw new InvalidOperationException("ARM_SUBSCRIPTION_ID must be set to import the ContainerAppConsoleLogs table.");
+        var tableImportId = $"/subscriptions/{armSubscriptionId}/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/ContainerAppConsoleLogs";
         _ = new Table("table-containerappconsolelogs-basic", new TableArgs
         {
             ResourceGroupName = resourceGroup.Name,
             WorkspaceName = logAnalytics.Name,
             TableName = "ContainerAppConsoleLogs",
             Plan = TablePlanEnum.Basic,
+        }, new CustomResourceOptions
+        {
+            ImportId = tableImportId,
         });
 
         // User-assigned managed identity for Cosmos DB data access
