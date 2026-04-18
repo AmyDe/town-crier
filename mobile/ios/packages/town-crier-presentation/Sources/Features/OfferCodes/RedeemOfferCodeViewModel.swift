@@ -59,14 +59,13 @@ public final class RedeemOfferCodeViewModel: ObservableObject {
 
   // MARK: - Normalisation / validation
 
+  private static let separators = CharacterSet.whitespacesAndNewlines.union(
+    CharacterSet(charactersIn: "-")
+  )
+
   private static func normalise(_ raw: String) -> String {
-    raw
-      .uppercased()
-      .unicodeScalars
-      .filter { !CharacterSet.whitespacesAndNewlines.contains($0) && $0 != "-" }
-      .reduce(into: "") { accumulator, scalar in
-        accumulator.unicodeScalars.append(scalar)
-      }
+    let stripped = raw.unicodeScalars.filter { !separators.contains($0) }
+    return String(String.UnicodeScalarView(stripped)).uppercased()
   }
 
   private static let crockfordAlphabet: Set<Character> = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
