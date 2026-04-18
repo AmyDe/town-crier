@@ -39,6 +39,7 @@ Console.CancelKeyPress += (_, e) =>
 
 return parsed.Command switch
 {
+    "generate-offer-codes" => await GenerateOfferCodesCommand.RunAsync(client, parsed, cts.Token).ConfigureAwait(false),
     "grant-subscription" => await GrantSubscriptionCommand.RunAsync(client, parsed, cts.Token).ConfigureAwait(false),
     "list-users" => await ListUsersCommand.RunAsync(client, parsed, cts.Token).ConfigureAwait(false),
     _ => await UnknownCommandAsync(parsed.Command).ConfigureAwait(false),
@@ -59,10 +60,16 @@ static async Task PrintHelpAsync()
         Usage: tc <command> [options]
 
         Commands:
+          generate-offer-codes Bulk-generate single-use offer codes
           grant-subscription   Grant or change a user's subscription tier
           list-users           List users with email, ID, and subscription tier
           help                 Show this help message
           version              Print version
+
+        generate-offer-codes options:
+          --count <n>           Number of codes to generate (1-1000, required)
+          --tier <tier>         Subscription tier (Personal|Pro, required)
+          --duration-days <d>   Duration in days (1-365, required)
 
         list-users options:
           --search <term>      Filter by email substring (case-insensitive)
