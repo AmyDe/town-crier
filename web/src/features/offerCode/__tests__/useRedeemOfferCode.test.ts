@@ -123,4 +123,79 @@ describe('useRedeemOfferCode', () => {
       expect(onSuccessCalls).toEqual([PRO_RESULT]);
     });
   });
+
+  describe('submit — error mapping', () => {
+    it.each<[RedeemErrorCode, string]>([
+      ['invalid_code_format', 'Please check the code and try again.'],
+      ['invalid_code', "This code isn't valid."],
+      ['code_already_redeemed', 'This code has already been used.'],
+      [
+        'already_subscribed',
+        'You already have an active subscription. Offer codes are only for new subscribers.',
+      ],
+      [
+        'network',
+        "Something went wrong. Please check your connection and try again.",
+      ],
+    ])('maps RedeemError code %s to the expected user-facing message', async (code, expectedMessage) => {
+      spy.error = new RedeemError(code, 'server said no');
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(result.current.status).toBe('error');
+      expect(result.current.errorMessage).toBe(expectedMessage);
+      expect(result.current.result).toBeNull();
+    });
+
+    it('falls back to a generic message for non-RedeemError exceptions', async () => {
+      spy.error = Object.assign(new Error('boom'), {});
+      // Any non-RedeemError thrown by the client should surface as a generic error.
+      spy.client; // eslint-disable-line @typescript-eslint/no-unused-expressions
+      const customSpy = new SpyRedeemOfferCodeClient();
+      // Override the spy so it rejects with a plain Error, not a RedeemError.
+      const clientThatThrowsPlainError: typeof customSpy.client = async (code) => {
+        customSpy.calls.push(code);
+        throw new Error('unexpected');
+      };
+      const { result } = renderHook(() => useRedeemOfferCode(clientThatThrowsPlainError));
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(result.current.status).toBe('error');
+      expect(result.current.errorMessage).toBe(
+        'Something went wrong. Please check your connection and try again.',
+      );
+    });
+
+    it('does not invoke onSuccess when submit fails', async () => {
+      spy.error = new RedeemError('invalid_code', 'nope');
+      const onSuccessCalls: RedeemResult[] = [];
+      const { result } = renderHook(() =>
+        useRedeemOfferCode(spy.client, { onSuccess: (r) => { onSuccessCalls.push(r); } }),
+      );
+
+      act(() => {
+        result.current.setCode('A7KM-ZQR3-FNXP');
+      });
+
+      await act(async () => {
+        await result.current.submit();
+      });
+
+      expect(onSuccessCalls).toEqual([]);
+    });
+  });
 });
