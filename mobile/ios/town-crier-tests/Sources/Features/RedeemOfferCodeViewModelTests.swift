@@ -90,4 +90,68 @@ struct RedeemOfferCodeViewModelTests {
     #expect(spy.redeemCalls.isEmpty)
     #expect(sut.errorMessage == "Please check the code and try again.")
   }
+
+  // MARK: - Happy path
+
+  @Test("redeem exposes the redemption result on success")
+  func redeem_success_publishesRedemption() async {
+    let expected = OfferCodeRedemption(
+      tier: .pro,
+      expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
+    )
+    let (sut, _) = makeSUT(redeemResult: .success(expected))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.redemption == expected)
+    #expect(sut.errorMessage == nil)
+  }
+
+  @Test("redeem invokes onRedeemed with the result on success")
+  func redeem_success_invokesOnRedeemed() async {
+    let expected = OfferCodeRedemption(
+      tier: .pro,
+      expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
+    )
+    let (sut, _) = makeSUT(redeemResult: .success(expected))
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    var received: OfferCodeRedemption?
+    sut.onRedeemed = { received = $0 }
+
+    await sut.redeem()
+
+    #expect(received == expected)
+  }
+
+  @Test("redeem clears any previous errorMessage on retry")
+  func redeem_clearsPreviousErrorOnSuccess() async {
+    let (sut, spy) = makeSUT()
+    sut.code = "bad"
+    await sut.redeem()
+    #expect(sut.errorMessage != nil)
+
+    // Switch to a valid code and a successful service result.
+    spy.redeemResult = .success(
+      OfferCodeRedemption(
+        tier: .personal,
+        expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
+      )
+    )
+    sut.code = "A7KM-ZQR3-FNXP"
+    await sut.redeem()
+
+    #expect(sut.errorMessage == nil)
+  }
+
+  @Test("redeem resets isLoading to false after the call returns")
+  func redeem_resetsLoadingAfterCall() async {
+    let (sut, _) = makeSUT()
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    await sut.redeem()
+
+    #expect(sut.isLoading == false)
+  }
 }
