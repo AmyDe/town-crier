@@ -389,12 +389,12 @@ struct SettingsViewModelTests {
 
   @Test func attributionItems_containsExpectedSources() {
     let (sut, _, _, _, _, _) = makeSUT()
-
     let items = sut.attributionItems
     #expect(items.count == 4)
     #expect(items.contains { $0.name == "PlanIt" })
     #expect(items.contains { $0.name == "Crown Copyright" })
     #expect(items.contains { $0.name == "Ordnance Survey" })
-    #expect(items.contains { $0.name == "OpenStreetMap" })
+    #expect(items.contains { $0.name == "Apple Maps" })
+    #expect(!items.contains { $0.name == "OpenStreetMap" })
   }
 }

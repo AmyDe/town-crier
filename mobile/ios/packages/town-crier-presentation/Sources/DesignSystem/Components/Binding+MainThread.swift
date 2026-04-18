@@ -1,7 +1,5 @@
 import SwiftUI
 
-extension Binding: @retroactive @unchecked Sendable {}
-
 extension Binding where Value: Sendable {
   /// Returns a new binding that dispatches its setter onto the main thread.
   ///

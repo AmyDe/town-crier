@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Application.WatchZones;
@@ -13,7 +12,6 @@ public sealed class CreateWatchZoneCommandHandlerTests
     private static readonly DateTimeOffset FixedNow = new(2026, 3, 17, 12, 0, 0, TimeSpan.Zero);
 
     private readonly FakeAuthorityResolver authorityResolver = new();
-    private readonly FakePlanItClient planItClient = new();
     private readonly FakePlanningApplicationRepository planningApplicationRepository = new();
     private readonly FakeUserProfileRepository userProfileRepository = new();
     private readonly FakeWatchZoneRepository watchZoneRepository = new();
@@ -58,10 +56,29 @@ public sealed class CreateWatchZoneCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_NotCallPlanIt_When_FreeUserCreatesZone()
+    public async Task Should_NotUpsertApplications_When_FreeUserCreatesZone()
     {
         // Arrange
         var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — zone creation must not ingest new planning applications; the poller is the sole ingest path.
+        await Assert.That(this.planningApplicationRepository.GetAll()).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_NotUpsertApplications_When_ProUserCreatesZone()
+    {
+        // Arrange — Pro users previously triggered a synchronous PlanIt backfill that timed out 100%
+        // of the time. Zone creation now defers to the polling service; no backfill occurs here.
+        var profile = UserProfile.Register("user-1");
+        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
         await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
 
         var handler = this.CreateHandler();
@@ -71,62 +88,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        await Assert.That(this.planItClient.AuthorityIdsRequested).HasCount().EqualTo(0);
         await Assert.That(this.planningApplicationRepository.GetAll()).HasCount().EqualTo(0);
-    }
-
-    [Test]
-    public async Task Should_BackfillApplications_When_ProUserCreatesZone()
-    {
-        // Arrange
-        var profile = UserProfile.Register("user-1");
-        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
-
-        var app1 = new PlanningApplicationBuilder()
-            .WithUid("app-1")
-            .WithName("App One")
-            .WithAreaId(42)
-            .WithCoordinates(51.5074, -0.1278)
-            .Build();
-        var app2 = new PlanningApplicationBuilder()
-            .WithUid("app-2")
-            .WithName("App Two")
-            .WithAreaId(42)
-            .WithCoordinates(51.5080, -0.1280)
-            .Build();
-        this.planItClient.Add(42, app1);
-        this.planItClient.Add(42, app2);
-
-        var handler = this.CreateHandler();
-        var command = CreateCommand();
-
-        // Act
-        var result = await handler.HandleAsync(command, CancellationToken.None);
-
-        // Assert — backfilled apps are upserted and returned as nearby
-        await Assert.That(this.planItClient.AuthorityIdsRequested).Contains(42);
-        await Assert.That(this.planningApplicationRepository.GetAll()).HasCount().EqualTo(2);
-        await Assert.That(result.NearbyApplications).HasCount().EqualTo(2);
-    }
-
-    [Test]
-    public async Task Should_UseNinetyDayBackfillWindow_When_ProUserCreatesZone()
-    {
-        // Arrange
-        var profile = UserProfile.Register("user-1");
-        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
-
-        var handler = this.CreateHandler();
-        var command = CreateCommand();
-
-        // Act
-        await handler.HandleAsync(command, CancellationToken.None);
-
-        // Assert — differentStart should be 90 days before 2026-03-17T12:00:00Z
-        var expected = new DateTimeOffset(2025, 12, 17, 12, 0, 0, TimeSpan.Zero);
-        await Assert.That(this.planItClient.LastDifferentStartUsed).IsEqualTo(expected);
     }
 
     [Test]
@@ -264,81 +226,6 @@ public sealed class CreateWatchZoneCommandHandlerTests
         // Assert — only the matching authority's app should be returned
         await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
         await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("matching-app");
-    }
-
-    [Test]
-    public async Task Should_SaveZoneAndReturnCachedApps_When_BackfillExceedsTimeout()
-    {
-        // Arrange — Pro user with a slow PlanIt that exceeds the backfill timeout
-        var profile = UserProfile.Register("user-1");
-        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
-
-        // Pre-seed a cached nearby application (from a previous poll)
-        var cachedApp = new PlanningApplicationBuilder()
-            .WithName("cached-app")
-            .WithAreaId(42)
-            .WithCoordinates(51.5074, -0.1278)
-            .Build();
-        await this.planningApplicationRepository.UpsertAsync(cachedApp, CancellationToken.None);
-
-        // PlanIt will block for 30 seconds — far longer than the 1s test timeout
-        this.planItClient.FetchDelay = TimeSpan.FromSeconds(30);
-
-        var handler = this.CreateHandler(backfillTimeout: TimeSpan.FromSeconds(1));
-        var command = CreateCommand();
-
-        // Act — measure wall-clock time to confirm the backfill timeout is enforced
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var result = await handler.HandleAsync(command, CancellationToken.None);
-        stopwatch.Stop();
-
-        // Assert — handler returned within the backfill timeout, not after 30s
-        await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(5));
-
-        // Assert — zone was saved despite backfill timeout
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
-        await Assert.That(zones).HasCount().EqualTo(1);
-
-        // Assert — cached nearby apps are still returned
-        await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
-        await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("cached-app");
-    }
-
-    [Test]
-    public async Task Should_SaveZoneAndReturnCachedApps_When_BackfillThrowsHttpError()
-    {
-        // Arrange — Pro user where PlanIt returns 400 Bad Request
-        var profile = UserProfile.Register("user-1");
-        profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
-
-        // Pre-seed a cached nearby application
-        var cachedApp = new PlanningApplicationBuilder()
-            .WithName("cached-app")
-            .WithAreaId(42)
-            .WithCoordinates(51.5074, -0.1278)
-            .Build();
-        await this.planningApplicationRepository.UpsertAsync(cachedApp, CancellationToken.None);
-
-        // PlanIt will throw an HttpRequestException (simulating 400 Bad Request)
-        this.planItClient.ThrowForAuthority(
-            42,
-            new HttpRequestException("Response status code does not indicate success: 400 (Bad Request)."));
-
-        var handler = this.CreateHandler();
-        var command = CreateCommand();
-
-        // Act
-        var result = await handler.HandleAsync(command, CancellationToken.None);
-
-        // Assert — zone was saved despite PlanIt error
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
-        await Assert.That(zones).HasCount().EqualTo(1);
-
-        // Assert — cached nearby apps are still returned
-        await Assert.That(result.NearbyApplications).HasCount().EqualTo(1);
-        await Assert.That(result.NearbyApplications.First().Name).IsEqualTo("cached-app");
     }
 
     [Test]
@@ -615,16 +502,13 @@ public sealed class CreateWatchZoneCommandHandlerTests
             AuthorityId: 42);
     }
 
-    private CreateWatchZoneCommandHandler CreateHandler(TimeSpan? backfillTimeout = null)
+    private CreateWatchZoneCommandHandler CreateHandler()
     {
         return new CreateWatchZoneCommandHandler(
             this.watchZoneRepository,
             this.userProfileRepository,
-            this.planItClient,
             this.planningApplicationRepository,
             this.authorityResolver,
-            new FakeTimeProvider(FixedNow),
-            NullLogger<CreateWatchZoneCommandHandler>.Instance,
-            backfillTimeout);
+            new FakeTimeProvider(FixedNow));
     }
 }
