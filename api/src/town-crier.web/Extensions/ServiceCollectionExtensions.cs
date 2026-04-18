@@ -175,6 +175,7 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<ListUsersQueryHandler>();
 
         services.AddTransient<GenerateOfferCodesCommandHandler>();
+        services.AddTransient<RedeemOfferCodeCommandHandler>();
 
         return services;
     }
