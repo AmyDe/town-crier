@@ -46,7 +46,15 @@ public final class RedeemOfferCodeViewModel: ObservableObject {
     errorMessage = nil
     isLoading = true
     defer { isLoading = false }
-    _ = try? await offerCodeService.redeem(code: canonical)
+    do {
+      let result = try await offerCodeService.redeem(code: canonical)
+      redemption = result
+      onRedeemed?(result)
+    } catch let offerCodeError as OfferCodeError {
+      errorMessage = Self.message(for: offerCodeError)
+    } catch {
+      errorMessage = Self.unexpectedMessage
+    }
   }
 
   // MARK: - Normalisation / validation
@@ -70,4 +78,25 @@ public final class RedeemOfferCodeViewModel: ObservableObject {
   // MARK: - Error messages
 
   private static let invalidFormatMessage = "Please check the code and try again."
+  private static let notFoundMessage = "This code isn't valid."
+  private static let alreadyRedeemedMessage = "This code has already been used."
+  private static let alreadySubscribedMessage =
+    "You already have an active subscription. Offer codes are only for new subscribers."
+  private static let unexpectedMessage =
+    "Something went wrong redeeming that code. Please try again."
+
+  private static func message(for error: OfferCodeError) -> String {
+    switch error {
+    case .invalidFormat:
+      return invalidFormatMessage
+    case .notFound:
+      return notFoundMessage
+    case .alreadyRedeemed:
+      return alreadyRedeemedMessage
+    case .alreadySubscribed:
+      return alreadySubscribedMessage
+    case .network:
+      return unexpectedMessage
+    }
+  }
 }
