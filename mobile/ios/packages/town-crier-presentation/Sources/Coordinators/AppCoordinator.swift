@@ -37,7 +37,11 @@ public final class AppCoordinator: ObservableObject {
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
   private let tierCache: UserDefaults
-  private weak var watchZoneListViewModel: WatchZoneListViewModel?
+  // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
+  // re-evaluates the factory argument each time) does not leave the
+  // coordinator holding a dangling reference. The editor's `onSave`
+  // callback needs a live VM to trigger a reload against.
+  private var watchZoneListViewModel: WatchZoneListViewModel?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -222,6 +226,9 @@ public final class AppCoordinator: ObservableObject {
   // MARK: - Watch Zone Factories
 
   public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
+    if let cached = watchZoneListViewModel {
+      return cached
+    }
     let viewModel = WatchZoneListViewModel(
       repository: watchZoneRepository,
       featureGate: FeatureGate(tier: subscriptionTier)
