@@ -33,7 +33,7 @@ struct OfferCodeErrorTests {
   func unknownCode_mapsToNetworkWithContext() {
     let error = OfferCodeError(serverErrorCode: "mystery_meat")
 
-    guard case let .network(message) = error else {
+    guard case .network(let message) = error else {
       Issue.record("Expected .network case, got \(error)")
       return
     }
