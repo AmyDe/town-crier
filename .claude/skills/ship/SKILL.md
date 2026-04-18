@@ -180,17 +180,18 @@ bd worktree list
    git branch -D <branch-name>
    ```
 
-**Then, from the primary worktree (on `main`), pull and prune:**
+**Then, from the primary worktree (on `main`), reset and prune:**
 
 1. Stash any uncommitted changes first (other in-progress work on main):
    ```bash
    git status --short
    # Only if there are changes:
-   git stash
+   git stash -u
    ```
-2. Pull with rebase to handle divergent local commits (e.g., spec/doc commits made before the worktree):
+2. Hard-reset to origin/main. Squash-merge means any local commits on main are already represented in the remote squash commit — rebasing them creates guaranteed conflicts on files like `.beads/issues.jsonl` that both branches touched. Reset is the correct move:
    ```bash
-   git pull --rebase origin main
+   git fetch origin
+   git reset --hard origin/main
    ```
 3. Restore stashed changes:
    ```bash

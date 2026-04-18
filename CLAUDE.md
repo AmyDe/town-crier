@@ -196,6 +196,17 @@ When a task involves any of these services, use the corresponding CLI directly. 
 
 NEVER deploy code directly using `az`, `pulumi`, or any other CLI tool. ALL code changes MUST be shipped via pull requests and deployed through CI/CD (GitHub Actions). Direct deployments bypass review, testing, and audit trails.
 
+## Beads JSONL Merge Driver (one-time setup)
+
+`.beads/issues.jsonl` is a derived Dolt snapshot rewritten on every bead mutation, so any two branches that touched beads will conflict on merge/rebase. `.gitattributes` marks the file with `merge=theirs`. The driver itself is per-clone — register it once:
+
+```bash
+git config --local merge.theirs.driver 'cp -f "%B" "%A"'
+git config --local merge.theirs.name 'always take incoming version'
+```
+
+After squash-merge, never `git pull --rebase` local main onto origin/main — the local auto-export commits will conflict with the squashed version. Use `git fetch origin && git reset --hard origin/main` instead.
+
 ## Shell Commands — Non-Interactive Mode
 
 Always use non-interactive flags with file operations to avoid hanging on confirmation prompts (some systems alias `cp`, `mv`, `rm` to include `-i`):

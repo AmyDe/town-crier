@@ -17,9 +17,19 @@ Always work on a branch, never main.
 
 **On `main`:**
 ```bash
+# If the working tree is dirty (typically auto-exported .beads/issues.jsonl from a
+# prior session's bd mutations), stash instead of committing. Creating a standalone
+# `chore(beads): sync` commit here causes rebase conflicts at the end of ship, because
+# squash-merge of the PR will replay a different jsonl snapshot on top of it.
+if ! git diff-index --quiet HEAD --; then
+  git stash -u -m "autopilot-phase0"
+  _stashed=1
+fi
 git pull --rebase
 git checkout -b "autopilot/$(date -u +%Y-%m-%dT%H%M%SZ)"
 git push -u origin HEAD
+# Drop the stash — it's pre-mutation bd state that the worker's own commits will supersede.
+if [ "$_stashed" = "1" ]; then git stash drop; fi
 ```
 
 **On `autopilot/*`:** Continue using it.
@@ -100,7 +110,14 @@ All files must be under the allowed path. Any outside -> failure.
 
 ### Check 3: Merge
 ```bash
+# Stash any auto-exported .beads/issues.jsonl / .gitignore churn first — those files
+# get re-touched by bd worktree create / bd close in the parent tree during Phase 2,
+# and block the merge even though they're not conflicts.
+git stash -u -m "autopilot-phase3" 2>/dev/null
 git merge <worker-branch> --no-edit
+# Drop the stash — worker's commits (and the `merge=theirs` driver on .beads/issues.jsonl)
+# are now authoritative.
+git stash drop 2>/dev/null
 ```
 Conflicts -> `git merge --abort` -> failure.
 
