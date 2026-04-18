@@ -52,8 +52,8 @@ public sealed class InMemoryOfferCodeRepositoryTests
         await repo.CreateAsync(code, CancellationToken.None);
 
         // Act & Assert
-        await Assert.That(async () => await repo.CreateAsync(code, CancellationToken.None))
-            .Throws<InvalidOperationException>();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => repo.CreateAsync(code, CancellationToken.None));
     }
 
     [Test]
