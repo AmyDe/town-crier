@@ -39,6 +39,7 @@ internal static class WebApplicationExtensions
         v1.MapWatchZoneEndpoints();
         v1.MapDemoAccountEndpoints();
         v1.MapAdminEndpoints();
+        v1.MapOfferCodeEndpoints();
 
         app.MapApiEndpoints();
     }
