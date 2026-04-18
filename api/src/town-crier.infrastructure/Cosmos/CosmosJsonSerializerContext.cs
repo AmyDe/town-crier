@@ -4,6 +4,7 @@ using TownCrier.Domain.UserProfiles;
 using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
+using TownCrier.Infrastructure.OfferCodes;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.SavedApplications;
@@ -31,6 +32,8 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(GeoJsonPoint))]
 [JsonSerializable(typeof(UserProfileDocument))]
 [JsonSerializable(typeof(List<UserProfileDocument>))]
+[JsonSerializable(typeof(OfferCodeDocument))]
+[JsonSerializable(typeof(List<OfferCodeDocument>))]
 [JsonSerializable(typeof(DecisionAlertDocument))]
 [JsonSerializable(typeof(PollStateDocument))]
 [JsonSerializable(typeof(List<PollStateDocument>))]
