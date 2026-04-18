@@ -10,6 +10,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Microsoft.NET.Sdk (non-Web) does not auto-copy appsettings*.json to publish output.
+         Without this, Host.CreateApplicationBuilder falls back to Default: Information and
+         Logging:LogLevel:System.Net.Http.HttpClient / Polly overrides are silently ignored. -->
+    <Content Include="appsettings*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\town-crier.infrastructure\town-crier.infrastructure.csproj" />
   </ItemGroup>
 
