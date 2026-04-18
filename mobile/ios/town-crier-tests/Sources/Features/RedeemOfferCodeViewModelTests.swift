@@ -255,4 +255,58 @@ struct RedeemOfferCodeViewModelTests {
 
     #expect(sut.isLoading == false)
   }
+
+  @Test("isLoading is true while the service call is in flight")
+  func redeem_duringCall_isLoadingIsTrue() async {
+    let pausing = PausingOfferCodeService(
+      result: OfferCodeRedemption(
+        tier: .personal,
+        expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
+      )
+    )
+    let sut = RedeemOfferCodeViewModel(offerCodeService: pausing)
+    sut.code = "A7KM-ZQR3-FNXP"
+
+    // Start the redeem without awaiting so we can observe the mid-flight state.
+    let task = Task { await sut.redeem() }
+
+    // Wait for the service to signal that it was entered.
+    await pausing.waitForEntry()
+
+    #expect(sut.isLoading == true)
+
+    pausing.resume()
+    await task.value
+
+    #expect(sut.isLoading == false)
+  }
+}
+
+/// A test double that blocks inside `redeem` until the test explicitly resumes
+/// it, letting the test observe the `isLoading == true` state between call
+/// entry and completion.
+private final class PausingOfferCodeService: OfferCodeService, @unchecked Sendable {
+  private let result: OfferCodeRedemption
+  private let entered = AsyncStream<Void>.makeStream()
+  private let gate = AsyncStream<Void>.makeStream()
+
+  init(result: OfferCodeRedemption) {
+    self.result = result
+  }
+
+  func redeem(code: String) async throws -> OfferCodeRedemption {
+    entered.continuation.yield()
+    var iterator = gate.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    return result
+  }
+
+  func waitForEntry() async {
+    var iterator = entered.stream.makeAsyncIterator()
+    _ = await iterator.next()
+  }
+
+  func resume() {
+    gate.continuation.yield()
+  }
 }
