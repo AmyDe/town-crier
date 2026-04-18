@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { RedeemOfferCodeClient } from './api/redeemOfferCode';
-import type { RedeemResult } from './api/types';
+import { RedeemError, type RedeemErrorCode, type RedeemResult } from './api/types';
 
 export type RedeemStatus = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -39,6 +39,27 @@ function normalizeCodeInput(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
+/**
+ * Maps a `RedeemErrorCode` to a user-facing message. Copy is kept in sync with
+ * the iOS implementation per docs/specs/offer-codes.md §"iOS — Redemption in
+ * Settings" / §"Web — Redemption in Settings".
+ */
+const ERROR_MESSAGES: Record<RedeemErrorCode, string> = {
+  invalid_code_format: 'Please check the code and try again.',
+  invalid_code: "This code isn't valid.",
+  code_already_redeemed: 'This code has already been used.',
+  already_subscribed:
+    'You already have an active subscription. Offer codes are only for new subscribers.',
+  network: 'Something went wrong. Please check your connection and try again.',
+};
+
+function messageForError(err: unknown): string {
+  if (err instanceof RedeemError) {
+    return ERROR_MESSAGES[err.code];
+  }
+  return ERROR_MESSAGES.network;
+}
+
 export function useRedeemOfferCode(
   client: RedeemOfferCodeClient,
   options: UseRedeemOfferCodeOptions = {},
@@ -57,14 +78,24 @@ export function useRedeemOfferCode(
     const submittedCode = state.code;
     setState((prev) => ({ ...prev, status: 'submitting', errorMessage: null }));
 
-    const result = await client(submittedCode);
-    setState((prev) => ({
-      ...prev,
-      status: 'success',
-      result,
-      errorMessage: null,
-    }));
-    onSuccess?.(result);
+    try {
+      const result = await client(submittedCode);
+      setState((prev) => ({
+        ...prev,
+        status: 'success',
+        result,
+        errorMessage: null,
+      }));
+      onSuccess?.(result);
+    } catch (err: unknown) {
+      const errorMessage = messageForError(err);
+      setState((prev) => ({
+        ...prev,
+        status: 'error',
+        result: null,
+        errorMessage,
+      }));
+    }
   }, [client, onSuccess, state.code]);
 
   return {
