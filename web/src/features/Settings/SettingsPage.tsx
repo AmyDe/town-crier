@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/auth-context';
 import { useTheme } from '../../hooks/useTheme';
@@ -8,13 +8,28 @@ import { ConfirmDialog } from '../../components/ConfirmDialog/ConfirmDialog';
 import { Toggle } from '../../components/Toggle/Toggle';
 import { DAY_OF_WEEK_LABELS, type DayOfWeek } from '../../domain/types';
 import type { SettingsRepository } from '../../domain/ports/settings-repository';
+import { RedeemOfferCode } from '../offerCode/RedeemOfferCode';
+import type { RedeemOfferCodeClient } from '../offerCode/api/redeemOfferCode';
+import type { RedeemResult } from '../offerCode/api/types';
 import styles from './SettingsPage.module.css';
 
 interface Props {
   repository: SettingsRepository;
+  /**
+   * Optional offer-code redemption client. When provided, a "Redeem offer
+   * code" section is rendered under the profile/subscription summary.
+   */
+  redeemOfferCodeClient?: RedeemOfferCodeClient;
+  /**
+   * Side-effect callback invoked on a successful redemption. Consumers use
+   * this to refresh the Auth0 access token (`getAccessTokenSilently({
+   * cacheMode: 'off' })`) so the new subscription claim is picked up.
+   * The Settings page always re-fetches its own profile query on success.
+   */
+  onRedeemSuccess?: (result: RedeemResult) => void;
 }
 
-export function SettingsPage({ repository }: Props) {
+export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSuccess }: Props) {
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const {
@@ -26,9 +41,19 @@ export function SettingsPage({ repository }: Props) {
     exportData,
     deleteAccount,
     updatePreferences,
+    refresh,
   } = useUserProfile(repository, () => logout());
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const handleRedeemSuccess = useCallback(
+    (result: RedeemResult) => {
+      // Re-fetch the profile so the tier summary reflects the new entitlement.
+      refresh();
+      onRedeemSuccess?.(result);
+    },
+    [refresh, onRedeemSuccess],
+  );
 
   if (isLoading) {
     return (
@@ -65,6 +90,19 @@ export function SettingsPage({ repository }: Props) {
           </div>
         </div>
       </section>
+
+      {/* Redeem offer code section (only rendered when a client is wired) */}
+      {redeemOfferCodeClient && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Redeem offer code</h2>
+          <div className={styles.card}>
+            <RedeemOfferCode
+              client={redeemOfferCodeClient}
+              onSuccess={handleRedeemSuccess}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Notifications section */}
       <section className={styles.section}>
