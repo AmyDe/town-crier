@@ -48,4 +48,32 @@ public sealed class OfferCodeTests
         await Assert.ThrowsAsync<ArgumentException>(
             () => Task.FromResult(new OfferCode(code, SubscriptionTier.Pro, 30, DateTimeOffset.UtcNow)));
     }
+
+    [Test]
+    public async Task Should_RecordRedemption_When_RedeemCalled()
+    {
+        var now = new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero);
+        var code = new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Pro, 30, now.AddDays(-1));
+
+        code.Redeem("auth0|user-1", now);
+
+        await Assert.That(code.RedeemedByUserId).IsEqualTo("auth0|user-1");
+        await Assert.That(code.RedeemedAt).IsEqualTo(now);
+        await Assert.That(code.IsRedeemed).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_Throw_When_RedeemCalledTwice()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var code = new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Pro, 30, now);
+        code.Redeem("auth0|user-1", now);
+
+        await Assert.ThrowsAsync<OfferCodeAlreadyRedeemedException>(
+            () =>
+            {
+                code.Redeem("auth0|user-2", now);
+                return Task.CompletedTask;
+            });
+    }
 }
