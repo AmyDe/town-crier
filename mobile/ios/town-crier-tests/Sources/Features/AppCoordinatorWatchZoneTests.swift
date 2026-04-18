@@ -199,6 +199,69 @@ struct AppCoordinatorWatchZoneTests {
     #expect(listVM.zones == [renamed])
   }
 
+  /// Reproduces the real-world bug where SwiftUI re-evaluates the view
+  /// hierarchy (e.g. when the coordinator publishes a sheet state change),
+  /// calling ``makeWatchZoneListViewModel()`` again before the editor's
+  /// `onSave` fires. The original list VM must still be refreshed rather
+  /// than a short-lived, unretained replacement.
+  @Test func editorOnSave_refreshesListViewModel_afterReRender() async throws {
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
+    let sut = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: watchZoneSpy,
+      geocoder: SpyPostcodeGeocoder(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+
+    // First render: the View retains this VM via @StateObject.
+    let listVM = sut.makeWatchZoneListViewModel()
+    await listVM.load()
+    #expect(listVM.zones == [.cambridge])
+
+    // Simulate SwiftUI re-rendering the view hierarchy during sheet
+    // presentation. Each call constructs a fresh VM that is *not* retained
+    // by any caller (matching what happens when @StateObject ignores the
+    // parameter on re-renders).
+    _ = sut.makeWatchZoneListViewModel()
+    _ = sut.makeWatchZoneListViewModel()
+
+    let renamed = try WatchZone(
+      id: WatchZone.cambridge.id,
+      name: "My New Name",
+      centre: WatchZone.cambridge.centre,
+      radiusMetres: WatchZone.cambridge.radiusMetres,
+      authorityId: WatchZone.cambridge.authorityId
+    )
+    watchZoneSpy.loadAllResult = .success([renamed])
+
+    sut.editingWatchZone = .cambridge
+    let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+    editorVM.onSave?(renamed)
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(listVM.zones == [renamed])
+  }
+
+  /// ``makeWatchZoneListViewModel()`` must return a stable instance so that
+  /// SwiftUI's `@StateObject` binding and the coordinator's refresh path
+  /// both converge on the same VM.
+  @Test func makeWatchZoneListViewModel_returnsStableInstanceAcrossCalls() {
+    let sut = makeSUT()
+
+    let first = sut.makeWatchZoneListViewModel()
+    let second = sut.makeWatchZoneListViewModel()
+
+    #expect(first === second)
+  }
+
   // MARK: - Watch Zone Upsell
 
   @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
