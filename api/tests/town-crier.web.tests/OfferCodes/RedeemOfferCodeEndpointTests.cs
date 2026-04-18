@@ -53,6 +53,124 @@ public sealed class RedeemOfferCodeEndpointTests
     }
 
     [Test]
+    public async Task Should_Return400_WithInvalidCodeFormat_When_CodeMalformed()
+    {
+        var fixedNow = new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero);
+        var repo = new InMemoryOfferCodeRepository();
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(builder =>
+            ConfigureOfferCodeHost(builder, repo, fixedNow));
+
+        await SeedFreeUserAsync(factory, UserId).ConfigureAwait(false);
+        using var client = CreateAuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            new Uri("/v1/offer-codes/redeem", UriKind.Relative),
+            new RedeemOfferCodeRequest("TOO-SHORT"),
+            AppJsonSerializerContext.Default.RedeemOfferCodeRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.Default.ApiErrorResponse).ConfigureAwait(false);
+        await Assert.That(body).IsNotNull();
+        await Assert.That(body!.Error).IsEqualTo("invalid_code_format");
+        await Assert.That(body.Message).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_Return404_WithInvalidCode_When_CodeNotFound()
+    {
+        var fixedNow = new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero);
+        var repo = new InMemoryOfferCodeRepository();
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(builder =>
+            ConfigureOfferCodeHost(builder, repo, fixedNow));
+
+        await SeedFreeUserAsync(factory, UserId).ConfigureAwait(false);
+        using var client = CreateAuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            new Uri("/v1/offer-codes/redeem", UriKind.Relative),
+            new RedeemOfferCodeRequest(DisplayCode),
+            AppJsonSerializerContext.Default.RedeemOfferCodeRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        var body = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.Default.ApiErrorResponse).ConfigureAwait(false);
+        await Assert.That(body).IsNotNull();
+        await Assert.That(body!.Error).IsEqualTo("invalid_code");
+        await Assert.That(body.Message).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_Return409_WithCodeAlreadyRedeemed_When_CodeAlreadyUsed()
+    {
+        var fixedNow = new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero);
+        var repo = new InMemoryOfferCodeRepository();
+        var redeemed = new OfferCode(
+            CanonicalCode,
+            SubscriptionTier.Pro,
+            30,
+            fixedNow.AddDays(-1));
+        redeemed.Redeem("auth0|other-user", fixedNow.AddMinutes(-5));
+        await repo.CreateAsync(redeemed, CancellationToken.None).ConfigureAwait(false);
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(builder =>
+            ConfigureOfferCodeHost(builder, repo, fixedNow));
+
+        await SeedFreeUserAsync(factory, UserId).ConfigureAwait(false);
+        using var client = CreateAuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            new Uri("/v1/offer-codes/redeem", UriKind.Relative),
+            new RedeemOfferCodeRequest(DisplayCode),
+            AppJsonSerializerContext.Default.RedeemOfferCodeRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.Default.ApiErrorResponse).ConfigureAwait(false);
+        await Assert.That(body).IsNotNull();
+        await Assert.That(body!.Error).IsEqualTo("code_already_redeemed");
+        await Assert.That(body.Message).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_Return409_WithAlreadySubscribed_When_UserIsNotFreeTier()
+    {
+        var fixedNow = new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero);
+        var repo = new InMemoryOfferCodeRepository();
+        await repo.CreateAsync(
+            new OfferCode(CanonicalCode, SubscriptionTier.Pro, 30, fixedNow.AddDays(-1)),
+            CancellationToken.None).ConfigureAwait(false);
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(builder =>
+            ConfigureOfferCodeHost(builder, repo, fixedNow));
+
+        var profileRepo = factory.Services.GetRequiredService<IUserProfileRepository>();
+        var profile = UserProfile.Register(UserId, $"{UserId}@example.com");
+        profile.ActivateSubscription(SubscriptionTier.Personal, fixedNow.AddDays(60));
+        await profileRepo.SaveAsync(profile, CancellationToken.None).ConfigureAwait(false);
+
+        using var client = CreateAuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            new Uri("/v1/offer-codes/redeem", UriKind.Relative),
+            new RedeemOfferCodeRequest(DisplayCode),
+            AppJsonSerializerContext.Default.RedeemOfferCodeRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadFromJsonAsync(
+            AppJsonSerializerContext.Default.ApiErrorResponse).ConfigureAwait(false);
+        await Assert.That(body).IsNotNull();
+        await Assert.That(body!.Error).IsEqualTo("already_subscribed");
+        await Assert.That(body.Message).IsNotNull();
+    }
+
+    [Test]
     public async Task Should_Return401_When_NoJwtProvided()
     {
         await using var baseFactory = new TestWebApplicationFactory();
