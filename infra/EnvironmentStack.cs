@@ -159,6 +159,9 @@ public static class EnvironmentStack
 
             // PollState — single document storing last poll timestamp
             new("PollState", "/id"),
+
+            // OfferCodes — partitioned by code for point reads on redemption
+            new("OfferCodes", "/code"),
         };
 
         foreach (var container in containerDefinitions)
