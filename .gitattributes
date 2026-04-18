@@ -1,0 +1,5 @@
+# .beads/issues.jsonl is a derived snapshot of the Dolt DB, not hand-written source.
+# During merges/rebases, always take the incoming version — Dolt is the source of truth,
+# and any divergence will be reconciled by the next `bd dolt pull` / `bd export`.
+# Eliminates spurious merge conflicts that every autopilot cycle was hitting.
+.beads/issues.jsonl merge=theirs
