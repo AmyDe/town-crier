@@ -30,4 +30,44 @@ public final class RedeemOfferCodeViewModel: ObservableObject {
   public init(offerCodeService: OfferCodeService) {
     self.offerCodeService = offerCodeService
   }
+
+  /// Validates and submits `code` to the backend.
+  ///
+  /// Normalisation mirrors the server's rule set: strip whitespace and `-`,
+  /// uppercase, then check the result is 12 chars drawn from the Crockford
+  /// base32 alphabet (`0-9A-Z` excluding `I L O U`). Ill-formed input is
+  /// rejected locally so we don't waste a network round-trip.
+  public func redeem() async {
+    let canonical = Self.normalise(code)
+    guard Self.isValidCanonical(canonical) else {
+      errorMessage = Self.invalidFormatMessage
+      return
+    }
+    errorMessage = nil
+    isLoading = true
+    defer { isLoading = false }
+    _ = try? await offerCodeService.redeem(code: canonical)
+  }
+
+  // MARK: - Normalisation / validation
+
+  private static func normalise(_ raw: String) -> String {
+    raw
+      .uppercased()
+      .unicodeScalars
+      .filter { !CharacterSet.whitespacesAndNewlines.contains($0) && $0 != "-" }
+      .reduce(into: "") { accumulator, scalar in
+        accumulator.unicodeScalars.append(scalar)
+      }
+  }
+
+  private static let crockfordAlphabet: Set<Character> = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+
+  private static func isValidCanonical(_ value: String) -> Bool {
+    value.count == 12 && value.allSatisfy(crockfordAlphabet.contains)
+  }
+
+  // MARK: - Error messages
+
+  private static let invalidFormatMessage = "Please check the code and try again."
 }
