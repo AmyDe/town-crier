@@ -123,9 +123,11 @@ Flow:
 8. Persist both (`IOfferCodeRepository.SaveAsync`, `IUserProfileRepository.SaveAsync`) and `IAuth0ManagementClient.UpdateSubscriptionTierAsync` — same pattern as `GrantSubscriptionCommandHandler`.
 9. Return `RedeemOfferCodeResult(profile.Tier, profile.SubscriptionExpiry!.Value)`.
 
-**Race-condition handling:** `CosmosOfferCodeRepository` uses Cosmos ETag optimistic concurrency — `GetAsync` returns both the aggregate and its `_etag`; `SaveAsync` passes `ItemRequestOptions { IfMatchEtag = etag }`. A concurrent redemption of the same code triggers a `412 Precondition Failed`, which the repository surfaces as `OfferCodeConcurrencyException`; the handler catches it, re-reads, and either returns `code_already_redeemed` (the common case — somebody else won) or retries once (unlikely, but the repository contract allows it).
+**Race-condition handling:** `CosmosOfferCodeRepository` uses last-writer-wins, matching the convention of existing repositories (which all go through `ICosmosRestClient`, a custom wrapper with no ETag-aware methods). This means two simultaneous redemptions of the same code could both observe `RedeemedByUserId = null`, both call `ActivateSubscription`, and both write back — the later upsert wins the `redeemedByUserId` field, but both users' profiles have been granted the subscription.
 
-This is the first Cosmos repository in the codebase to use ETag concurrency. Existing repositories (`CosmosUserProfileRepository` etc.) rely on last-writer-wins, which is acceptable there because a user only writes their own profile. Offer codes are the first aggregate where multiple requesters race for the same row, so the pattern is new — not a convention to inherit.
+Accepted because: (a) the race requires two humans typing identical 12-char codes within milliseconds; (b) even a leaked/shared code only grants the tier the code encoded, so the "damage" is at most one extra successful redemption; (c) extending `ICosmosRestClient` for ETag support is unbounded scope for a 0-user system.
+
+**Deferred:** if abuse materialises (e.g. codes leak to a scraper), add ETag optimistic concurrency to `ICosmosRestClient` and the offer-code repository as a follow-up. The necessary surface area is documented here so the migration is mechanical when needed.
 
 ### Web Layer — Endpoints
 
@@ -282,7 +284,7 @@ Per `dotnet-coding-standards`, `ios-coding-standards`, `react-coding-standards`.
 
 **Infrastructure (`town-crier.infrastructure.tests`)**
 
-- `CosmosOfferCodeRepositoryTests` — create, get-by-code (point read), save (with ETag concurrency test), mirroring existing Cosmos repo tests.
+- `CosmosOfferCodeRepositoryTests` — create, get-by-code (point read), save (round-trip of redeemed state), mirroring existing Cosmos repo tests.
 
 **Web (`town-crier.web.tests`)**
 
