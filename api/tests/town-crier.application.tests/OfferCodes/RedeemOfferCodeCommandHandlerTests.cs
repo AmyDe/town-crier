@@ -39,11 +39,10 @@ public sealed class RedeemOfferCodeCommandHandlerTests
     {
         var (handler, _, _, _) = BuildHandlerWithCode("A7KMZQR3FNXP", SubscriptionTier.Pro, 30);
 
-        var act = () => handler.HandleAsync(
-            new RedeemOfferCodeCommand(UserId, "not-a-code"),
-            CancellationToken.None);
-
-        await Assert.That(act).ThrowsAsync<InvalidOfferCodeFormatException>();
+        await Assert.ThrowsAsync<InvalidOfferCodeFormatException>(
+            () => handler.HandleAsync(
+                new RedeemOfferCodeCommand(UserId, "not-a-code"),
+                CancellationToken.None));
     }
 
     [Test]
@@ -54,29 +53,29 @@ public sealed class RedeemOfferCodeCommandHandlerTests
             UserProfile.Register(UserId, "user@example.com"),
             CancellationToken.None);
 
-        var act = () => handler.HandleAsync(
-            new RedeemOfferCodeCommand(UserId, "BBBBBBBBBBBB"),
-            CancellationToken.None);
-
-        await Assert.That(act).ThrowsAsync<OfferCodeNotFoundException>();
+        await Assert.ThrowsAsync<OfferCodeNotFoundException>(
+            () => handler.HandleAsync(
+                new RedeemOfferCodeCommand(UserId, "BBBBBBBBBBBB"),
+                CancellationToken.None));
     }
 
     [Test]
     public async Task Should_Throw_When_CodeAlreadyRedeemed()
     {
         var (handler, codeRepo, profileRepo, _) = BuildHandlerWithCode(
-            "A7KMZQR3FNXP", SubscriptionTier.Pro, 30);
+            "A7KMZQR3FNXP",
+            SubscriptionTier.Pro,
+            30);
         await profileRepo.SaveAsync(UserProfile.Register(UserId, "user@example.com"), CancellationToken.None);
 
         var existing = codeRepo.Snapshot().Single();
         existing.Redeem("auth0|other-user", DateTimeOffset.UtcNow);
         await codeRepo.SaveAsync(existing, CancellationToken.None);
 
-        var act = () => handler.HandleAsync(
-            new RedeemOfferCodeCommand(UserId, "A7KMZQR3FNXP"),
-            CancellationToken.None);
-
-        await Assert.That(act).ThrowsAsync<OfferCodeAlreadyRedeemedException>();
+        await Assert.ThrowsAsync<OfferCodeAlreadyRedeemedException>(
+            () => handler.HandleAsync(
+                new RedeemOfferCodeCommand(UserId, "A7KMZQR3FNXP"),
+                CancellationToken.None));
     }
 
     [Test]
@@ -88,11 +87,10 @@ public sealed class RedeemOfferCodeCommandHandlerTests
         profile.ActivateSubscription(SubscriptionTier.Personal, DateTimeOffset.UtcNow.AddDays(30));
         await profileRepo.SaveAsync(profile, CancellationToken.None);
 
-        var act = () => handler.HandleAsync(
-            new RedeemOfferCodeCommand(UserId, "A7KMZQR3FNXP"),
-            CancellationToken.None);
-
-        await Assert.That(act).ThrowsAsync<AlreadySubscribedException>();
+        await Assert.ThrowsAsync<AlreadySubscribedException>(
+            () => handler.HandleAsync(
+                new RedeemOfferCodeCommand(UserId, "A7KMZQR3FNXP"),
+                CancellationToken.None));
     }
 
     [Test]
@@ -100,11 +98,10 @@ public sealed class RedeemOfferCodeCommandHandlerTests
     {
         var (handler, _, _, _) = BuildHandlerWithCode("A7KMZQR3FNXP", SubscriptionTier.Pro, 30);
 
-        var act = () => handler.HandleAsync(
-            new RedeemOfferCodeCommand("auth0|missing", "A7KMZQR3FNXP"),
-            CancellationToken.None);
-
-        await Assert.That(act).ThrowsAsync<UserProfileNotFoundException>();
+        await Assert.ThrowsAsync<UserProfileNotFoundException>(
+            () => handler.HandleAsync(
+                new RedeemOfferCodeCommand("auth0|missing", "A7KMZQR3FNXP"),
+                CancellationToken.None));
     }
 
     private static (
@@ -117,7 +114,10 @@ public sealed class RedeemOfferCodeCommandHandlerTests
             int durationDays)
     {
         var codeRepo = new FakeOfferCodeRepository();
-        var offerCode = new OfferCode(code, tier, durationDays,
+        var offerCode = new OfferCode(
+            code,
+            tier,
+            durationDays,
             new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.Zero));
         codeRepo.CreateAsync(offerCode, CancellationToken.None).GetAwaiter().GetResult();
 
