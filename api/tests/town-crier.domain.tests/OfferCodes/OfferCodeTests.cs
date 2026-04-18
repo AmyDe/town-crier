@@ -23,8 +23,8 @@ public sealed class OfferCodeTests
     [Test]
     public async Task Should_Throw_When_TierIsFree()
     {
-        var act = () => new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Free, 30, DateTimeOffset.UtcNow);
-        await Assert.That(act).Throws<ArgumentException>();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => Task.FromResult(new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Free, 30, DateTimeOffset.UtcNow)));
     }
 
     [Test]
@@ -33,19 +33,19 @@ public sealed class OfferCodeTests
     [Arguments(366)]
     public async Task Should_Throw_When_DurationOutOfRange(int duration)
     {
-        var act = () => new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Pro, duration, DateTimeOffset.UtcNow);
-        await Assert.That(act).Throws<ArgumentOutOfRangeException>();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => Task.FromResult(new OfferCode("A7KMZQR3FNXP", SubscriptionTier.Pro, duration, DateTimeOffset.UtcNow)));
     }
 
     [Test]
-    [Arguments("SHORT")]                  // too short
-    [Arguments("A7KMZQR3FNXPTOOLONG")]    // too long
-    [Arguments("a7kmzqr3fnxp")]           // lowercase
-    [Arguments("A7KM-ZQR3-FNXP")]         // has separators
-    [Arguments("A7KMZQR3FNXI")]           // contains excluded letter I
+    [Arguments("SHORT")] // too short
+    [Arguments("A7KMZQR3FNXPTOOLONG")] // too long
+    [Arguments("a7kmzqr3fnxp")] // lowercase
+    [Arguments("A7KM-ZQR3-FNXP")] // has separators
+    [Arguments("A7KMZQR3FNXI")] // contains excluded letter I
     public async Task Should_Throw_When_CodeMalformed(string code)
     {
-        var act = () => new OfferCode(code, SubscriptionTier.Pro, 30, DateTimeOffset.UtcNow);
-        await Assert.That(act).Throws<ArgumentException>();
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => Task.FromResult(new OfferCode(code, SubscriptionTier.Pro, 30, DateTimeOffset.UtcNow)));
     }
 }
