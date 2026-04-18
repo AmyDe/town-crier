@@ -3,12 +3,9 @@ using Pulumi;
 using Pulumi.AzureNative.Resources;
 using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
-using Pulumi.AzureNative.ApplicationInsights;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
 using Pulumi.AzureNative.Web;
-using Pulumi.AzureNative.Monitor;
-using Pulumi.AzureNative.Monitor.Inputs;
 using ManagedServiceIdentityType = Pulumi.AzureNative.App.ManagedServiceIdentityType;
 
 /// <summary>
@@ -64,7 +61,6 @@ public static class EnvironmentStack
         var appInsightsId = shared.GetOutput("appInsightsId").Apply(o => o?.ToString() ?? "");
         var appInsightsConnectionString = shared.GetOutput("appInsightsConnectionString").Apply(o => o?.ToString() ?? "");
         var acsConnectionString = shared.GetOutput("acsConnectionString").Apply(o => o?.ToString() ?? "");
-        var actionGroupId = shared.GetOutput("actionGroupId").Apply(o => o?.ToString() ?? "");
         // Extract the CAE name from its resource ID to avoid
         // requiring a shared stack deploy before the env stack can preview.
         // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
@@ -372,30 +368,6 @@ public static class EnvironmentStack
             Tags = tags,
         });
 
-        // Availability Tests — standard web tests pinging /health on API and frontend.
-        // These populate the availabilityResults table in App Insights and enable
-        // downtime alerting. Particularly important for a scale-to-zero architecture
-        // where the container may be inactive between requests.
-        var apiWebTest = CreateAvailabilityTest(
-            "api-health", env, $"https://{apiDomain}/health", "API Health",
-            sharedResourceGroupName, appInsightsId, tags);
-
-        var webWebTest = CreateAvailabilityTest(
-            "web-health", env, $"https://{frontendDomain}/health", "Web Health",
-            sharedResourceGroupName, appInsightsId, tags);
-
-        // Availability Alert Rules — fire when 2+ test locations report failure.
-        // Linked to the shared action group for email notifications.
-        CreateAvailabilityAlert(
-            "api-health", env, apiWebTest.Id,
-            "API availability degraded — health check failing from multiple locations.",
-            sharedResourceGroupName, appInsightsId, actionGroupId, tags);
-
-        CreateAvailabilityAlert(
-            "web-health", env, webWebTest.Id,
-            "Web availability degraded — health check failing from multiple locations.",
-            sharedResourceGroupName, appInsightsId, actionGroupId, tags);
-
         // Static Web App Custom Domain
         // Apex domains (no subdomain) require TXT validation; subdomains use default CNAME.
         var isApexDomain = frontendDomain.Split('.').Length == 2;
@@ -439,149 +411,6 @@ public static class EnvironmentStack
                 DomainControlValidation = "CNAME",
             },
         }, options);
-    }
-
-    /// <summary>
-    /// Creates a standard availability web test that pings a URL at regular intervals
-    /// from multiple geo-locations. Results appear in the App Insights availabilityResults table.
-    /// </summary>
-    /// <param name="nameSuffix">Short identifier for the test (e.g. "api-health").</param>
-    /// <param name="env">Environment name (dev/prod).</param>
-    /// <param name="url">The full URL to ping (e.g. "https://api.towncrierapp.uk/health").</param>
-    /// <param name="displayName">Human-readable name shown in App Insights.</param>
-    /// <param name="resourceGroupName">Resource group where the App Insights instance lives.</param>
-    /// <param name="appInsightsId">Resource ID of the App Insights component.</param>
-    /// <param name="tags">Standard resource tags.</param>
-    /// <returns>The created WebTest resource, for use as a scope in alert rules.</returns>
-    private static WebTest CreateAvailabilityTest(
-        string nameSuffix,
-        string env,
-        string url,
-        string displayName,
-        Output<string> resourceGroupName,
-        Output<string> appInsightsId,
-        InputMap<string> tags)
-    {
-        var testName = $"webtest-{nameSuffix}-{env}";
-
-        // The hidden-link tag is required by Azure to associate the web test
-        // with its Application Insights component. We must build the tag map via
-        // Output.Apply because the App Insights ID is an Output<string>.
-        var webTestTags = appInsightsId.Apply(id =>
-        {
-            var merged = new Dictionary<string, string>
-            {
-                { "project", "town-crier" },
-                { "managedBy", "pulumi" },
-                { $"hidden-link:{id}", "Resource" },
-            };
-            return merged;
-        });
-
-        return new WebTest(testName, new WebTestArgs
-        {
-            WebTestName = testName,
-            ResourceGroupName = resourceGroupName,
-            SyntheticMonitorId = testName,
-            WebTestKind = WebTestKind.Standard,
-            Kind = WebTestKind.Standard,
-            Enabled = true,
-            Frequency = 300,  // Every 5 minutes
-            Timeout = 30,     // 30-second timeout
-            RetryEnabled = true,
-            Locations = new[]
-            {
-                // UK South — closest to the uksouth deployment
-                new Pulumi.AzureNative.ApplicationInsights.Inputs.WebTestGeolocationArgs
-                {
-                    Location = "emea-gb-db3-azr",
-                },
-                // North Europe (Ireland) — secondary within EMEA
-                new Pulumi.AzureNative.ApplicationInsights.Inputs.WebTestGeolocationArgs
-                {
-                    Location = "emea-nl-ams-azr",
-                },
-                // US East — cross-region baseline
-                new Pulumi.AzureNative.ApplicationInsights.Inputs.WebTestGeolocationArgs
-                {
-                    Location = "us-va-ash-azr",
-                },
-            },
-            Request = new Pulumi.AzureNative.ApplicationInsights.Inputs.WebTestPropertiesRequestArgs
-            {
-                RequestUrl = url,
-                HttpVerb = "GET",
-                ParseDependentRequests = false,
-                FollowRedirects = true,
-            },
-            ValidationRules = new Pulumi.AzureNative.ApplicationInsights.Inputs.WebTestPropertiesValidationRulesArgs
-            {
-                ExpectedHttpStatusCode = 200,
-                SSLCheck = true,
-                SSLCertRemainingLifetimeCheck = 7,
-            },
-            Tags = webTestTags.Apply(t => (IDictionary<string, string>)t),
-        });
-    }
-
-    /// <summary>
-    /// Creates a metric alert rule that fires when an availability test fails from
-    /// 2 or more geo-locations. Uses the <c>WebtestLocationAvailabilityCriteria</c>
-    /// which links an App Insights component with a specific web test.
-    /// </summary>
-    /// <param name="nameSuffix">Short identifier matching the web test (e.g. "api-health").</param>
-    /// <param name="env">Environment name (dev/prod).</param>
-    /// <param name="webTestId">Resource ID of the web test to monitor.</param>
-    /// <param name="description">Alert description shown in notifications.</param>
-    /// <param name="resourceGroupName">Resource group where the App Insights instance lives.</param>
-    /// <param name="appInsightsId">Resource ID of the App Insights component.</param>
-    /// <param name="actionGroupId">Resource ID of the action group to notify.</param>
-    /// <param name="tags">Standard resource tags.</param>
-    private static void CreateAvailabilityAlert(
-        string nameSuffix,
-        string env,
-        Output<string> webTestId,
-        string description,
-        Output<string> resourceGroupName,
-        Output<string> appInsightsId,
-        Output<string> actionGroupId,
-        InputMap<string> tags)
-    {
-        var alertName = $"alert-{nameSuffix}-{env}";
-
-        _ = new MetricAlert(alertName, new MetricAlertArgs
-        {
-            RuleName = alertName,
-            ResourceGroupName = resourceGroupName,
-            Location = "global",
-            Description = description,
-            Severity = 1, // Sev 1 — Error
-            Enabled = true,
-            // Scopes must include both the App Insights component and the web test.
-            Scopes = new InputList<string>
-            {
-                appInsightsId,
-                webTestId,
-            },
-            EvaluationFrequency = "PT1M",  // Evaluate every 1 minute
-            WindowSize = "PT5M",           // Over a 5-minute window
-            Criteria = new WebtestLocationAvailabilityCriteriaArgs
-            {
-                OdataType = "Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria",
-                WebTestId = webTestId,
-                ComponentId = appInsightsId,
-                FailedLocationCount = 2,  // Alert when 2+ of 3 locations fail
-            },
-            Actions = new[]
-            {
-                new Pulumi.AzureNative.Monitor.Inputs.MetricAlertActionArgs
-                {
-                    ActionGroupId = actionGroupId,
-                },
-            },
-            AutoMitigate = true,
-            Tags = tags,
-        });
     }
 
     /// <summary>
