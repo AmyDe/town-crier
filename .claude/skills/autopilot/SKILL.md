@@ -47,11 +47,22 @@ bd worktree list --json | jq -r '.[] | select(.path | contains(".claude/worktree
 done
 ```
 
-Invoke `/beads:ready`. No beads? **Stop the loop:**
+Invoke `/beads:ready`. Found work? Proceed to the classification table below.
 
-1. **Cancel cron job (if any):** Run `CronList`. If a job exists, `CronDelete` it.
-2. **Do NOT call `ScheduleWakeup`.** Omitting the call ends a dynamic loop.
-3. Report `Autopilot: no ready beads — loop stopped.` and return.
+**No ready beads?** Do NOT reflexively stop the loop — first check whether anything is still in-flight:
+
+```bash
+bd list --status=in_progress --json | jq 'length'
+```
+
+- **In-progress count > 0:** A worker is still running (or a prior run left a claimed bead that will close soon). When it closes, dependent beads will unblock. Cancelling the cron now forces the user to manually restart the loop the moment work reappears — cheap empty ticks every 5 min beat that friction every time.
+  - **Keep the cron alive.** Do NOT call `CronDelete`.
+  - **Do NOT call `ScheduleWakeup`.**
+  - Report `Autopilot: no ready beads yet — N in-progress, loop continues.` and return.
+- **In-progress count = 0:** The session is fully idle. Stop the loop:
+  1. **Cancel cron job (if any):** Run `CronList`. If a job exists, `CronDelete` it.
+  2. **Do NOT call `ScheduleWakeup`.** Omitting the call ends a dynamic loop.
+  3. Report `Autopilot: no ready beads — loop stopped.` and return.
 
 Walk highest priority first. For each candidate, `/beads:show`:
 
@@ -181,3 +192,4 @@ Clean up worktree, sync beads (`bd dolt push`), report: `Autopilot: <bead-id> bl
 - **Always `--append-notes`** (never `--notes`, which overwrites).
 - **Always `bd dolt push`** after any bead state change.
 - **Return fast when idle.**
+- **Keep the cron alive while workers are in-flight.** Only cancel the cron when `bd ready` AND `bd list --status=in_progress` are BOTH empty. An empty ready queue with work still in-progress is a transient state — the loop should keep ticking until the session is genuinely idle.
