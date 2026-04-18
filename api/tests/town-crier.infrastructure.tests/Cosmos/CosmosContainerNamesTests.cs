@@ -21,6 +21,7 @@ public sealed class CosmosContainerNamesTests
         string savedApplications = CosmosContainerNames.SavedApplications;
         string watchZones = CosmosContainerNames.WatchZones;
         string applications = CosmosContainerNames.Applications;
+        string offerCodes = CosmosContainerNames.OfferCodes;
 
         await Assert.That(users).IsNotEmpty();
         await Assert.That(notifications).IsNotEmpty();
@@ -29,5 +30,6 @@ public sealed class CosmosContainerNamesTests
         await Assert.That(savedApplications).IsNotEmpty();
         await Assert.That(watchZones).IsNotEmpty();
         await Assert.That(applications).IsNotEmpty();
+        await Assert.That(offerCodes).IsEqualTo("OfferCodes");
     }
 }

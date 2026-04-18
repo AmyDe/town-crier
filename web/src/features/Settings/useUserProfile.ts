@@ -13,12 +13,18 @@ export function useUserProfile(
   const [actionError, setActionError] = useState<string | null>(null);
   const [optimisticProfile, setOptimisticProfile] = useState<UserProfile | null>(null);
 
-  const { data: fetchedProfile, isLoading, error: fetchError } = useFetchData<UserProfile>(
+  const { data: fetchedProfile, isLoading, error: fetchError, refresh: refetchProfile } = useFetchData<UserProfile>(
     () => repository.fetchProfile(),
     [repository],
   );
 
   const profile = optimisticProfile ?? fetchedProfile;
+
+  const refresh = useCallback(() => {
+    // Clear any optimistic overlay so the refetched profile is shown unaltered.
+    setOptimisticProfile(null);
+    refetchProfile();
+  }, [refetchProfile]);
   const error = actionError ?? fetchError;
 
   const updatePreferences = useCallback(async (changes: Partial<UpdateProfileRequest>) => {
@@ -89,5 +95,6 @@ export function useUserProfile(
     exportData,
     deleteAccount,
     updatePreferences,
+    refresh,
   };
 }

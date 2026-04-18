@@ -27,6 +27,15 @@ internal sealed class ApiClient : IDisposable
         return await this.client.PutAsJsonAsync(path, body, typeInfo, ct).ConfigureAwait(false);
     }
 
+    public async Task<HttpResponseMessage> PostAsJsonAsync<T>(
+        string path,
+        T body,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        return await this.client.PostAsJsonAsync(path, body, typeInfo, ct).ConfigureAwait(false);
+    }
+
     public async Task<TResponse?> GetFromJsonAsync<TResponse>(
         string path,
         JsonTypeInfo<TResponse> typeInfo,
