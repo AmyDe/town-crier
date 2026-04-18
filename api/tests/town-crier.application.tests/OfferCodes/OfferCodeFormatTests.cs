@@ -5,10 +5,10 @@ namespace TownCrier.Application.Tests.OfferCodes;
 public sealed class OfferCodeFormatTests
 {
     [Test]
-    [Arguments("A7KMZQR3FNXP", "A7KMZQR3FNXP")]   // already canonical
-    [Arguments("a7kmzqr3fnxp", "A7KMZQR3FNXP")]   // lowercase
-    [Arguments("A7KM-ZQR3-FNXP", "A7KMZQR3FNXP")]   // hyphens
-    [Arguments("  A7KM ZQR3 FNXP ", "A7KMZQR3FNXP")]   // whitespace + spaces
+    [Arguments("A7KMZQR3FNXP", "A7KMZQR3FNXP")]
+    [Arguments("a7kmzqr3fnxp", "A7KMZQR3FNXP")]
+    [Arguments("A7KM-ZQR3-FNXP", "A7KMZQR3FNXP")]
+    [Arguments("  A7KM ZQR3 FNXP ", "A7KMZQR3FNXP")]
     public async Task Normalize_Should_StripSeparatorsAndUppercase(string input, string expected)
     {
         var result = OfferCodeFormat.Normalize(input);
@@ -19,11 +19,10 @@ public sealed class OfferCodeFormatTests
     [Arguments("")]
     [Arguments("SHORT")]
     [Arguments("A7KMZQR3FNXPEXTRA")]
-    [Arguments("A7KMZQR3FNXI")]  // excluded letter I
-    public async Task Normalize_Should_Throw_When_InputInvalid(string input)
+    [Arguments("A7KMZQR3FNXI")]
+    public void Normalize_Should_Throw_When_InputInvalid(string input)
     {
-        var act = () => OfferCodeFormat.Normalize(input);
-        await Assert.That(act).Throws<InvalidOfferCodeFormatException>();
+        Assert.Throws<InvalidOfferCodeFormatException>(() => OfferCodeFormat.Normalize(input));
     }
 
     [Test]
