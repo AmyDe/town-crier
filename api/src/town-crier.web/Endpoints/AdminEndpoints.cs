@@ -1,4 +1,5 @@
 using TownCrier.Application.Admin;
+using TownCrier.Application.OfferCodes;
 using TownCrier.Application.UserProfiles;
 
 namespace TownCrier.Web.Endpoints;
@@ -37,6 +38,30 @@ internal static class AdminEndpoints
             var query = new ListUsersQuery(search, pageSize ?? 20, continuationToken);
             var result = await handler.HandleAsync(query, ct).ConfigureAwait(false);
             return Results.Ok(result);
+        });
+
+        admin.MapPost("/offer-codes", async (
+            GenerateOfferCodesRequest request,
+            GenerateOfferCodesCommandHandler handler,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var result = await handler.HandleAsync(
+                    new GenerateOfferCodesCommand(request.Count, request.Tier, request.DurationDays),
+                    ct).ConfigureAwait(false);
+
+                var body = string.Join('\n', result.Codes.Select(OfferCodeFormat.Format)) + "\n";
+                return Results.Text(body, contentType: "text/plain");
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                return Results.BadRequest(new ApiErrorResponse(ex.Message));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new ApiErrorResponse(ex.Message));
+            }
         });
     }
 }

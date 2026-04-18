@@ -53,4 +53,7 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(GrantSubscriptionCommand))]
 [JsonSerializable(typeof(GrantSubscriptionResult))]
 [JsonSerializable(typeof(ListUsersResult))]
+[JsonSerializable(typeof(GenerateOfferCodesRequest))]
+[JsonSerializable(typeof(RedeemOfferCodeRequest))]
+[JsonSerializable(typeof(RedeemOfferCodeResponse))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;
