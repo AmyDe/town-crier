@@ -1,6 +1,7 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useRedeemOfferCode } from '../useRedeemOfferCode';
+import type { RedeemOfferCodeClient } from '../api/redeemOfferCode';
 import { SpyRedeemOfferCodeClient } from './spies/spy-redeem-offer-code-client';
 import { RedeemError, type RedeemErrorCode, type RedeemResult } from '../api/types';
 
@@ -45,7 +46,6 @@ describe('useRedeemOfferCode', () => {
 
       expect(result.current.code).toBe('A7KM-ZQR3-FNXP');
     });
-
   });
 
   describe('submit — happy path', () => {
@@ -155,13 +155,10 @@ describe('useRedeemOfferCode', () => {
     });
 
     it('falls back to a generic message for non-RedeemError exceptions', async () => {
-      spy.error = Object.assign(new Error('boom'), {});
-      // Any non-RedeemError thrown by the client should surface as a generic error.
-      spy.client; // eslint-disable-line @typescript-eslint/no-unused-expressions
-      const customSpy = new SpyRedeemOfferCodeClient();
-      // Override the spy so it rejects with a plain Error, not a RedeemError.
-      const clientThatThrowsPlainError: typeof customSpy.client = async (code) => {
-        customSpy.calls.push(code);
+      // A non-RedeemError thrown by the client (e.g. an unexpected runtime
+      // error) should still surface cleanly to the user as a generic network-
+      // style message rather than leaking the raw exception.
+      const clientThatThrowsPlainError: RedeemOfferCodeClient = async () => {
         throw new Error('unexpected');
       };
       const { result } = renderHook(() => useRedeemOfferCode(clientThatThrowsPlainError));
