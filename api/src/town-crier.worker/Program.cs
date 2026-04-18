@@ -33,6 +33,15 @@ var builder = Host.CreateApplicationBuilder(args);
 var aiConnectionString = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
 var hasAppInsights = !string.IsNullOrEmpty(aiConnectionString);
 
+// Strip the default ILoggerProvider set (Console, Debug, EventSource, EventLog).
+// OpenTelemetry below is the sole logging provider — the Azure Monitor exporter
+// ships structured logs to App Insights AppTraces, where incident debugging
+// happens. The console provider is removed because every ILogger call would
+// otherwise duplicate into stdout and into Container Apps' priced
+// ContainerAppConsoleLogs_CL Log Analytics table (~0.3 GB/day duplicate
+// ingestion). See bead tc-lve1.
+builder.Logging.ClearProviders();
+
 var otel = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("town-crier-worker"))
     .WithTracing(tracing =>

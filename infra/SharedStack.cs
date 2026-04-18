@@ -9,6 +9,8 @@ using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
 using Pulumi.AzureNative.ApplicationInsights;
+using Pulumi.AzureNative.Monitor;
+using Pulumi.AzureNative.Monitor.Inputs;
 using Pulumi.AzureNative.Portal;
 using Pulumi.AzureNative.Portal.Inputs;
 using Pulumi.AzureNative.Communication;
@@ -104,28 +106,52 @@ public static class SharedStack
             Tags = tags,
         });
 
-        var logAnalyticsSharedKeys = Output.Tuple(resourceGroup.Name, logAnalytics.Name)
-            .Apply(names => GetSharedKeys.InvokeAsync(new GetSharedKeysArgs
-            {
-                ResourceGroupName = names.Item1,
-                WorkspaceName = names.Item2,
-            }));
-
-        // Container Apps Environment (shared across environments)
+        // Container Apps Environment (shared across environments).
+        // Destination "azure-monitor" routes logs through a Diagnostic Setting (DCR-based)
+        // into the native ContainerAppConsoleLogs table — not the legacy ContainerAppConsoleLogs_CL
+        // Classic Custom Log table written by the "log-analytics" destination. The DCR-backed
+        // native table can then be moved to the Basic Logs plan (~80% cheaper than Analytics).
         var containerAppsEnv = new ManagedEnvironment("cae-town-crier-shared", new ManagedEnvironmentArgs
         {
             EnvironmentName = "cae-town-crier-shared",
             ResourceGroupName = resourceGroup.Name,
             AppLogsConfiguration = new AppLogsConfigurationArgs
             {
-                Destination = "log-analytics",
-                LogAnalyticsConfiguration = new LogAnalyticsConfigurationArgs
-                {
-                    CustomerId = logAnalytics.CustomerId,
-                    SharedKey = logAnalyticsSharedKeys.Apply(keys => keys.PrimarySharedKey ?? ""),
-                },
+                Destination = "azure-monitor",
             },
             Tags = tags,
+        });
+
+        // Diagnostic Setting routes Container Apps Environment logs to the shared Log Analytics
+        // workspace via the platform's DCR pipeline. The "allLogs" category group includes
+        // ContainerAppConsoleLogs, ContainerAppSystemLogs, and any future categories Azure adds.
+        _ = new DiagnosticSetting("diag-cae-town-crier-shared", new DiagnosticSettingArgs
+        {
+            Name = "diag-cae-town-crier-shared",
+            ResourceUri = containerAppsEnv.Id,
+            WorkspaceId = logAnalytics.Id,
+            Logs = new[]
+            {
+                new LogSettingsArgs
+                {
+                    CategoryGroup = "allLogs",
+                    Enabled = true,
+                },
+            },
+        });
+
+        // Set the native ContainerAppConsoleLogs table to the Basic plan.
+        // Basic Logs is ~$0.50/GB vs Analytics ~$2.76/GB but limits queries to 8-day retention,
+        // disallows summarize/joins, and charges $0.005/GB scanned on search. Acceptable for
+        // application stdout/stderr where we mostly tail-read recent rows.
+        // Azure pre-creates this table's schema in the workspace, so plan can be set before
+        // any rows arrive. Pulumi issues a PATCH against the existing table resource.
+        _ = new Table("table-containerappconsolelogs-basic", new TableArgs
+        {
+            ResourceGroupName = resourceGroup.Name,
+            WorkspaceName = logAnalytics.Name,
+            TableName = "ContainerAppConsoleLogs",
+            Plan = TablePlanEnum.Basic,
         });
 
         // User-assigned managed identity for Cosmos DB data access
