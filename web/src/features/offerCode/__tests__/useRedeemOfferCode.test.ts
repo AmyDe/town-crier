@@ -19,4 +19,27 @@ describe('useRedeemOfferCode', () => {
     expect(result.current.result).toBeNull();
     expect(result.current.errorMessage).toBeNull();
   });
+
+  describe('setCode', () => {
+    it('stores the raw user input uppercased', () => {
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('a7km-zqr3-fnxp');
+      });
+
+      expect(result.current.code).toBe('A7KM-ZQR3-FNXP');
+    });
+
+    it('trims surrounding whitespace', () => {
+      const { result } = renderHook(() => useRedeemOfferCode(spy.client));
+
+      act(() => {
+        result.current.setCode('  a7km-zqr3-fnxp  ');
+      });
+
+      expect(result.current.code).toBe('A7KM-ZQR3-FNXP');
+    });
+
+  });
 });
