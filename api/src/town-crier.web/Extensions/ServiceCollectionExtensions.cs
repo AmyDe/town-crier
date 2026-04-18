@@ -8,6 +8,7 @@ using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.OfferCodes;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.RateLimiting;
@@ -23,6 +24,7 @@ using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
 using TownCrier.Infrastructure.Notifications;
+using TownCrier.Infrastructure.OfferCodes;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.RateLimiting;
@@ -46,6 +48,8 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
         services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
         services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
+        services.AddSingleton<IOfferCodeRepository, CosmosOfferCodeRepository>();
+        services.AddSingleton<IOfferCodeGenerator, OfferCodeGenerator>();
 
         var acsConnectionString = configuration["AzureCommunicationServices:ConnectionString"];
         if (!string.IsNullOrEmpty(acsConnectionString))
@@ -169,6 +173,8 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<GrantSubscriptionCommandHandler>();
         services.AddTransient<ListUsersQueryHandler>();
+
+        services.AddTransient<GenerateOfferCodesCommandHandler>();
 
         return services;
     }
