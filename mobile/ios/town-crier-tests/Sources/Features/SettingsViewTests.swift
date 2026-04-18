@@ -35,8 +35,9 @@ struct SettingsViewTests {
   @Test("SettingsView can be constructed with the offer-code callback")
   func construction_withOfferCodeCallback_succeeds() {
     let vm = makeViewModel()
+    let noop: () -> Void = {}
 
-    let view = SettingsView(viewModel: vm) {}
+    let view = SettingsView(viewModel: vm, onRedeemOfferCode: noop)
 
     _ = view
   }
@@ -45,7 +46,8 @@ struct SettingsViewTests {
   func redeemOfferCodeCallback_isInvokedOnRequest() {
     let vm = makeViewModel()
     var tapped = false
-    let view = SettingsView(viewModel: vm) { tapped = true }
+    let handler: () -> Void = { tapped = true }
+    let view = SettingsView(viewModel: vm, onRedeemOfferCode: handler)
 
     view.requestRedeemOfferCode()
 
