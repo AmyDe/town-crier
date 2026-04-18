@@ -72,9 +72,9 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
         detail: "Mapping data"
       ),
       AttributionItem(
-        name: "OpenStreetMap",
-        detail: "Map tiles and geodata",
-        url: URL(string: "https://www.openstreetmap.org")
+        name: "Apple Maps",
+        detail: "Map rendering and geocoding",
+        url: URL(string: "https://www.apple.com/maps/")
       ),
     ]
   }
