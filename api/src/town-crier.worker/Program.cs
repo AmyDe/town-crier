@@ -187,16 +187,43 @@ switch (mode)
 
                 WorkerLog.PollCycleStarting(logger);
 
+                // Bound the poll cycle to (replicaTimeout - grace) so the handler can unwind
+                // cleanly before Container Apps SIGTERMs us at replicaTimeout. Without this,
+                // seed cycles that legitimately take the full window get marked Failed even
+                // though they ingested thousands of applications. See bd tc-qdtu.
+                //
+                // Defaults mirror infra/EnvironmentStack.cs (replicaTimeout=600s). The env
+                // var overrides exist so infra changes don't silently drift from worker
+                // behaviour — redeploy with both in sync.
+                var replicaTimeoutSeconds = builder.Configuration.GetValue<int?>("POLL_REPLICA_TIMEOUT_SECONDS") ?? 600;
+                var shutdownGraceSeconds = builder.Configuration.GetValue<int?>("POLL_SHUTDOWN_GRACE_SECONDS") ?? 30;
+                var cycleBudget = TimeSpan.FromSeconds(Math.Max(1, replicaTimeoutSeconds - shutdownGraceSeconds));
+
+                using var cycleCts = new CancellationTokenSource(cycleBudget);
+
                 var pollHandler = host.Services.GetRequiredService<PollPlanItCommandHandler>();
-                var result = await pollHandler.HandleAsync(new PollPlanItCommand(), CancellationToken.None)
+                var result = await pollHandler.HandleAsync(new PollPlanItCommand(), cycleCts.Token)
                     .ConfigureAwait(false);
 
                 PollingMetrics.CycleDuration.Record(Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds);
 
                 activity?.SetTag("polling.authorities_polled", result.AuthoritiesPolled);
                 activity?.SetTag("polling.applications_ingested", result.ApplicationCount);
+                activity?.SetTag("polling.termination", result.TerminationReason.ToTelemetryValue());
+                activity?.SetTag("polling.authority_errors", result.AuthorityErrors);
 
                 WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
+
+                // Exit-code semantics redefined for bd tc-qdtu:
+                //   exit 0 when ApplicationCount > 0  (we did useful work), OR
+                //   exit 0 when AuthorityErrors == 0  (clean pass, even if nothing new).
+                //   exit 1 only when we did NO useful work AND hit per-authority errors.
+                // Rate-limited stops remain exit 0 — PlanIt throttling is an expected
+                // outcome for seed cycles, not a worker failure.
+                if (result.ApplicationCount == 0 && result.AuthorityErrors > 0)
+                {
+                    exitCode = 1;
+                }
             }
 #pragma warning disable CA1031 // Worker must return exit code on any failure
             catch (Exception ex)

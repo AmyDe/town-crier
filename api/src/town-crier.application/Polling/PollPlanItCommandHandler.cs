@@ -55,8 +55,20 @@ public sealed partial class PollPlanItCommandHandler
         var count = 0;
         var authoritiesPolled = 0;
         var rateLimited = false;
+        var authorityErrors = 0;
+        var timeBounded = false;
         foreach (var authorityId in sortedIds)
         {
+            // Graceful timeout: when the worker's CTS (bounded to replicaTimeout - grace) fires,
+            // break before starting a new authority so the partial result is returned cleanly.
+            // See bd tc-qdtu — Container Apps replicaTimeout was SIGTERM-ing mid-loop and marking
+            // otherwise-successful seed cycles as Failed.
+            if (ct.IsCancellationRequested)
+            {
+                timeBounded = true;
+                break;
+            }
+
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
             authorityActivity?.SetTag("polling.authority_code", authorityId);
             authorityActivity?.SetTag("cycle.type", cycleTypeValue);
@@ -122,6 +134,7 @@ public sealed partial class PollPlanItCommandHandler
             {
                 authorityActivity?.AddException(ex);
                 authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                authorityErrors++;
                 LogAuthorityError(this.logger, authorityId, ex);
             }
 
@@ -147,7 +160,31 @@ public sealed partial class PollPlanItCommandHandler
             }
         }
 
-        return new PollPlanItResult(count, authoritiesPolled, rateLimited);
+        PollTerminationReason terminationReason;
+        if (rateLimited)
+        {
+            terminationReason = PollTerminationReason.RateLimited;
+        }
+        else if (timeBounded)
+        {
+            terminationReason = PollTerminationReason.TimeBounded;
+        }
+        else
+        {
+            terminationReason = PollTerminationReason.Natural;
+        }
+
+        PollingMetrics.CyclesCompleted.Add(
+            1,
+            cycleTypeTag,
+            new KeyValuePair<string, object?>("termination", terminationReason.ToTelemetryValue()));
+
+        return new PollPlanItResult(
+            count,
+            authoritiesPolled,
+            rateLimited,
+            terminationReason,
+            authorityErrors);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]

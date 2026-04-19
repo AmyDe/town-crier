@@ -856,6 +856,132 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(1);
     }
 
+    [Test]
+    public async Task Should_SetTerminationNatural_When_AllAuthoritiesProcessed()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.Natural);
+        await Assert.That(result.AuthorityErrors).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_SetTerminationTimeBounded_When_CancellationRequestedMidLoop()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        using var cts = new CancellationTokenSource();
+        var pollStateStore = new FakePollStateStore
+        {
+            OnSave = (_, _) => cts.Cancel(),
+        };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), cts.Token);
+
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.TimeBounded);
+    }
+
+    [Test]
+    public async Task Should_SetTerminationRateLimited_When_429Hit()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.RateLimited);
+    }
+
+    [Test]
+    public async Task Should_CountAuthorityErrors_When_NonRateLimitExceptionsOccur()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.ThrowForAuthority(200, new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError));
+        planItClient.ThrowForAuthority(300, new InvalidOperationException("bad JSON"));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Two per-authority errors (500 + InvalidOp), authority 100 succeeded with one app.
+        await Assert.That(result.AuthorityErrors).IsEqualTo(2);
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.Natural);
+    }
+
+    [Test]
+    public async Task Should_BreakLoopAndReturnPartial_When_CancellationRequestedMidLoop()
+    {
+        // Arrange — three authorities, cancel after the first completes so only one is polled.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+        authorityProvider.Add(300);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+        planItClient.Add(300, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(300).Build());
+
+        using var cts = new CancellationTokenSource();
+
+        // Cancel as soon as the first authority's poll state is saved — simulating the
+        // infra replicaTimeout firing mid-loop between authorities.
+        var pollStateStore = new FakePollStateStore
+        {
+            OnSave = (_, _) => cts.Cancel(),
+        };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        // Act — must NOT throw, must return the partial PollPlanItResult.
+        var result = await handler.HandleAsync(new PollPlanItCommand(), cts.Token);
+
+        // Assert — only authority 100 was polled; 200 and 300 skipped cleanly.
+        await Assert.That(result.ApplicationCount).IsEqualTo(1);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+        await Assert.That(result.RateLimited).IsFalse();
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(200);
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
