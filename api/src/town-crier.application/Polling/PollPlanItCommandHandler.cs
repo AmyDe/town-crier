@@ -46,12 +46,7 @@ public sealed partial class PollPlanItCommandHandler
     {
         var now = this.timeProvider.GetUtcNow();
         var cycleType = this.cycleSelector.GetCurrent();
-        var cycleTypeValue = cycleType switch
-        {
-            CycleType.Seed => "seed",
-            CycleType.Watched => "watched",
-            _ => "watched",
-        };
+        var cycleTypeValue = cycleType.ToTelemetryValue();
         var cycleTypeTag = new KeyValuePair<string, object?>("cycle.type", cycleTypeValue);
         var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
         var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
