@@ -88,6 +88,8 @@ public sealed class PlanningApplication
     /// Used by the poll cycle to skip redundant upserts and zone lookups when PlanIt returns
     /// the same application with only a bumped LastDifferent timestamp.
     /// </summary>
+    /// <param name="other">The other instance to compare against.</param>
+    /// <returns>True when every business-material field matches; false otherwise.</returns>
     public bool HasSameBusinessFieldsAs(PlanningApplication other)
     {
         ArgumentNullException.ThrowIfNull(other);
