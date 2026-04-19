@@ -5,12 +5,12 @@ namespace TownCrier.Infrastructure.Notifications;
 
 public sealed class NoOpEmailSender : IEmailSender
 {
-    public Task SendDigestAsync(string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
+    public Task SendDigestAsync(string userId, string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
     {
         return Task.CompletedTask;
     }
 
-    public Task SendNotificationAsync(string email, Notification notification, CancellationToken ct)
+    public Task SendNotificationAsync(string userId, string email, Notification notification, CancellationToken ct)
     {
         return Task.CompletedTask;
     }

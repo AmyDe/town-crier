@@ -112,9 +112,25 @@ public sealed class EmailLogPiiTests
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            var kvps = state is IReadOnlyList<KeyValuePair<string, object?>> list
-                ? list
-                : [];
+            // Snapshot the state because LoggerMessage generator uses a pooled, thread-local
+            // state buffer that gets cleared after the Log call returns. We must materialize
+            // the KeyValuePair entries before returning.
+            var kvps = new List<KeyValuePair<string, object?>>();
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> list)
+            {
+                for (var i = 0; i < list.Count; i++)
+                {
+                    kvps.Add(list[i]);
+                }
+            }
+            else if (state is IEnumerable<KeyValuePair<string, object?>> enumerable)
+            {
+                foreach (var kvp in enumerable)
+                {
+                    kvps.Add(kvp);
+                }
+            }
+
             this.Entries.Add(new SpyLogEntry(logLevel, formatter(state, exception), kvps, exception));
         }
     }

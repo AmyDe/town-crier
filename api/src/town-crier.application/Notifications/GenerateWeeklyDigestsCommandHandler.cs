@@ -88,7 +88,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
                         g.ToList()))
                     .ToList();
 
-                await this.emailSender.SendDigestAsync(profile.Email!, digests, ct)
+                await this.emailSender.SendDigestAsync(profile.UserId, profile.Email!, digests, ct)
                     .ConfigureAwait(false);
             }
         }
