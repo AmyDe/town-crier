@@ -1,5 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { appInsights } from '../telemetry';
+import { Component, type ReactNode } from 'react';
 import styles from './ErrorBoundary.module.css';
 
 interface Props {
@@ -15,13 +14,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(): State {
     return { hasError: true };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    appInsights?.trackException({
-      exception: error,
-      properties: { componentStack: errorInfo.componentStack ?? '' },
-    });
   }
 
   render() {
