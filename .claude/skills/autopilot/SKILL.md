@@ -40,10 +40,12 @@ if [ "$_stashed" = "1" ]; then git stash drop; fi
 
 Clean orphaned worktrees:
 ```bash
-# Use bd worktree list to find orphans, bd worktree remove to clean them
-bd worktree list --json | jq -r '.[] | select(.path | contains(".claude/worktrees/")) | .path' | while read wt; do
-  echo "Autopilot: removing orphaned worktree $wt"
-  bd worktree remove "$wt" --force
+# `bd worktree remove` takes a NAME, not a path. Passing a path fails with
+# "cannot remove main repository as worktree" because bd can't resolve it and
+# falls back to the main repo. Filter out is_main and select .name.
+bd worktree list --json | jq -r '.[] | select(.is_main == false) | select(.path | contains(".claude/worktrees/")) | .name' | while read name; do
+  echo "Autopilot: removing orphaned worktree $name"
+  bd worktree remove "$name" --force
 done
 ```
 
@@ -159,9 +161,9 @@ Close and sync:
 bd dolt push
 ```
 
-Clean up:
+Clean up (pass the worktree NAME, not a path — bd rejects paths with "cannot remove main repository as worktree"):
 ```bash
-bd worktree remove <worktree-path> --force
+bd worktree remove "autopilot-<bead-id>" --force
 ```
 
 Report:
