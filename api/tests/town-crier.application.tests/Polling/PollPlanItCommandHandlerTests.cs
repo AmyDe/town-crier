@@ -700,7 +700,8 @@ public sealed class PollPlanItCommandHandlerTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ICycleSelector? cycleSelector = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -710,6 +711,7 @@ public sealed class PollPlanItCommandHandlerTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
+            cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

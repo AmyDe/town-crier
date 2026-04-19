@@ -2,7 +2,7 @@ using TownCrier.Application.WatchZones;
 
 namespace TownCrier.Application.Polling;
 
-public sealed class WatchZoneActiveAuthorityProvider : IActiveAuthorityProvider
+public sealed class WatchZoneActiveAuthorityProvider : IWatchZoneActiveAuthorityProvider
 {
     private readonly IWatchZoneRepository watchZoneRepository;
 

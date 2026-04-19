@@ -447,6 +447,49 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         await Assert.That(recorded.Sum()).IsEqualTo(0);
     }
 
+    [Test]
+    public async Task Should_TagAuthoritiesPolled_With_CycleType()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        var cycleSelector = new FakeCycleSelector(CycleType.Seed);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            cycleSelector: cycleSelector);
+
+        var recordedTags = new List<string?>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.authorities_polled")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "cycle.type")
+                {
+                    recordedTags.Add(tag.Value?.ToString());
+                }
+            }
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(recordedTags).HasCount().EqualTo(1);
+        await Assert.That(recordedTags[0]).IsEqualTo("seed");
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
@@ -454,7 +497,8 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ICycleSelector? cycleSelector = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -464,6 +508,7 @@ public sealed class PollPlanItCommandHandlerMetricsTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
+            cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }
