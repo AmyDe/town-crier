@@ -9,6 +9,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using TownCrier.Application.Authorities;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Observability;
@@ -17,6 +18,7 @@ using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
@@ -98,7 +100,11 @@ builder.Services.AddCosmosRestClient(builder.Configuration);
 builder.Services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
 builder.Services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
 builder.Services.AddSingleton<IPollStateStore, CosmosPollStateStore>();
-builder.Services.AddSingleton<IActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
+builder.Services.AddSingleton<IWatchZoneActiveAuthorityProvider, WatchZoneActiveAuthorityProvider>();
+builder.Services.AddSingleton<IAllAuthorityIdProvider, AllAuthorityIdProvider>();
+builder.Services.AddSingleton<IAuthorityProvider, StaticAuthorityProvider>();
+builder.Services.AddSingleton<ICycleSelector, MinuteBasedCycleSelector>();
+builder.Services.AddSingleton<IActiveAuthorityProvider, CycleAlternatingAuthorityProvider>();
 builder.Services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
@@ -173,6 +179,16 @@ switch (mode)
             try
             {
                 var cycleStart = Stopwatch.GetTimestamp();
+
+                var cycleSelector = host.Services.GetRequiredService<ICycleSelector>();
+                var cycleType = cycleSelector.GetCurrent();
+                var cycleTypeValue = cycleType switch
+                {
+                    CycleType.Seed => "seed",
+                    CycleType.Watched => "watched",
+                    _ => "watched",
+                };
+                activity?.SetTag("cycle.type", cycleTypeValue);
 
                 WorkerLog.PollCycleStarting(logger);
 
