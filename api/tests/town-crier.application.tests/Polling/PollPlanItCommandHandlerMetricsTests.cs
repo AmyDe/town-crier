@@ -488,7 +488,7 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         // Assert
         await Assert.That(recordedTags).HasCount().EqualTo(1);
         await Assert.That(recordedTags[0]).IsEqualTo("seed");
-        await Assert.That(cycleSelector.GetCurrentCallCount).IsEqualTo(99);
+        await Assert.That(cycleSelector.GetCurrentCallCount).IsEqualTo(1);
     }
 
     private static PollPlanItCommandHandler CreateHandler(
