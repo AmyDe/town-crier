@@ -55,6 +55,8 @@ public sealed partial class PollPlanItCommandHandler
         var count = 0;
         var authoritiesPolled = 0;
         var rateLimited = false;
+        var authorityErrors = 0;
+        var timeBounded = false;
         foreach (var authorityId in sortedIds)
         {
             // Graceful timeout: when the worker's CTS (bounded to replicaTimeout - grace) fires,
@@ -63,6 +65,7 @@ public sealed partial class PollPlanItCommandHandler
             // otherwise-successful seed cycles as Failed.
             if (ct.IsCancellationRequested)
             {
+                timeBounded = true;
                 break;
             }
 
@@ -131,6 +134,7 @@ public sealed partial class PollPlanItCommandHandler
             {
                 authorityActivity?.AddException(ex);
                 authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                authorityErrors++;
                 LogAuthorityError(this.logger, authorityId, ex);
             }
 
@@ -156,7 +160,26 @@ public sealed partial class PollPlanItCommandHandler
             }
         }
 
-        return new PollPlanItResult(count, authoritiesPolled, rateLimited);
+        PollTerminationReason terminationReason;
+        if (rateLimited)
+        {
+            terminationReason = PollTerminationReason.RateLimited;
+        }
+        else if (timeBounded)
+        {
+            terminationReason = PollTerminationReason.TimeBounded;
+        }
+        else
+        {
+            terminationReason = PollTerminationReason.Natural;
+        }
+
+        return new PollPlanItResult(
+            count,
+            authoritiesPolled,
+            rateLimited,
+            terminationReason,
+            authorityErrors);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]
