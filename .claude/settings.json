@@ -89,9 +89,26 @@
             "statusMessage": "ESLint pre-commit check...",
             "timeout": 30,
             "type": "command"
+          },
+          {
+            "command": "jq -r '.tool_input.command' | grep -qE '(^|[[:space:];&|])git[[:space:]]+worktree[[:space:]]+add([[:space:];&|]|$)' && jq -n '{\"decision\":\"block\",\"reason\":\"`git worktree add` is disabled in this project. Use `bd worktree create <name>` instead — it configures beads database sharing via git common-directory discovery and avoids beads bug GH#3311 (stray root `issues.jsonl` on every commit).\\n\\nExamples:\\n  bd worktree create feature-auth\\n  bd worktree create bugfix --branch fix-1\\n\\nSee `bd worktree --help`.\"}' || true",
+            "statusMessage": "Checking for git worktree add...",
+            "timeout": 5,
+            "type": "command"
           }
         ],
         "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": ".claude/require-bd-worktree.sh",
+            "statusMessage": "Checking bd worktree usage...",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "EnterWorktree"
       }
     ],
     "SessionStart": [
