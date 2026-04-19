@@ -6,6 +6,8 @@ public static class CycleTypeExtensions
     /// Maps a <see cref="CycleType"/> to the lowercase string value used as the
     /// <c>cycle.type</c> tag on polling metrics, spans, and structured logs.
     /// </summary>
+    /// <param name="cycleType">The cycle type to convert.</param>
+    /// <returns>The lowercase telemetry tag value for the given cycle type.</returns>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when a new <see cref="CycleType"/> member is added without updating
     /// this mapping. Fail-fast prevents silent telemetry misattribution.
