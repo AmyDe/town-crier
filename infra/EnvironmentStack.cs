@@ -334,7 +334,7 @@ public static class EnvironmentStack
         // Container Apps Jobs — polling and digest workers share the same shape,
         // differing only in name suffix, cron schedule, timeout, and WORKER_MODE.
         var pollCron = env == "dev" ? "0 */3 * * *" : "*/15 * * * *";
-        _ = CreateWorkerJob("poll", pollCron, replicaTimeout: 120, workerMode: null,
+        _ = CreateWorkerJob("poll", pollCron, replicaTimeout: 600, workerMode: null,
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
