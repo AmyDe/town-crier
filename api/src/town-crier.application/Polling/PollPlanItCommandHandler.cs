@@ -57,6 +57,15 @@ public sealed partial class PollPlanItCommandHandler
         var rateLimited = false;
         foreach (var authorityId in sortedIds)
         {
+            // Graceful timeout: when the worker's CTS (bounded to replicaTimeout - grace) fires,
+            // break before starting a new authority so the partial result is returned cleanly.
+            // See bd tc-qdtu — Container Apps replicaTimeout was SIGTERM-ing mid-loop and marking
+            // otherwise-successful seed cycles as Failed.
+            if (ct.IsCancellationRequested)
+            {
+                break;
+            }
+
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
             authorityActivity?.SetTag("polling.authority_code", authorityId);
             authorityActivity?.SetTag("cycle.type", cycleTypeValue);
