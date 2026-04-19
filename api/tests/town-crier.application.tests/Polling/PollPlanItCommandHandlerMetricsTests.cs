@@ -491,6 +491,144 @@ public sealed class PollPlanItCommandHandlerMetricsTests
         await Assert.That(cycleSelector.GetCurrentCallCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task Should_EmitCyclesCompleted_With_NaturalTermination()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+
+        var cycleSelector = new FakeCycleSelector(CycleType.Seed);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            cycleSelector: cycleSelector);
+
+        var recorded = new List<(long Value, string? CycleType, string? Termination)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.cycles_completed")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, _) =>
+        {
+            string? cycleType = null;
+            string? termination = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "cycle.type")
+                {
+                    cycleType = tag.Value?.ToString();
+                }
+                else if (tag.Key == "termination")
+                {
+                    termination = tag.Value?.ToString();
+                }
+            }
+
+            recorded.Add((measurement, cycleType, termination));
+        });
+        listener.Start();
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0].Value).IsEqualTo(1);
+        await Assert.That(recorded[0].CycleType).IsEqualTo("seed");
+        await Assert.That(recorded[0].Termination).IsEqualTo("natural");
+    }
+
+    [Test]
+    public async Task Should_EmitCyclesCompleted_With_TimeBoundedTermination()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+
+        using var cts = new CancellationTokenSource();
+        var pollStateStore = new FakePollStateStore { OnSave = (_, _) => cts.Cancel() };
+
+        var cycleSelector = new FakeCycleSelector(CycleType.Seed);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            cycleSelector: cycleSelector);
+
+        var terminations = new List<string?>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.cycles_completed")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "termination")
+                {
+                    terminations.Add(tag.Value?.ToString());
+                }
+            }
+        });
+        listener.Start();
+
+        await handler.HandleAsync(new PollPlanItCommand(), cts.Token);
+
+        await Assert.That(terminations).HasCount().EqualTo(1);
+        await Assert.That(terminations[0]).IsEqualTo("time_bounded");
+    }
+
+    [Test]
+    public async Task Should_EmitCyclesCompleted_With_RateLimitedTermination()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(100, new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+
+        var terminations = new List<string?>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.cycles_completed")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "termination")
+                {
+                    terminations.Add(tag.Value?.ToString());
+                }
+            }
+        });
+        listener.Start();
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(terminations).HasCount().EqualTo(1);
+        await Assert.That(terminations[0]).IsEqualTo("rate_limited");
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
