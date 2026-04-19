@@ -7,6 +7,8 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
 {
     private readonly Dictionary<string, PlanningApplication> store = [];
 
+    public int UpsertCallCount { get; private set; }
+
     public IReadOnlyCollection<PlanningApplication> GetAll() => this.store.Values.ToList();
 
     public PlanningApplication? GetByName(string name)
@@ -17,6 +19,7 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
 
     public Task UpsertAsync(PlanningApplication application, CancellationToken ct)
     {
+        this.UpsertCallCount++;
         this.store[application.Name] = application;
         return Task.CompletedTask;
     }

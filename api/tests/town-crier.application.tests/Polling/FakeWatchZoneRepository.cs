@@ -8,6 +8,8 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
 {
     private readonly List<WatchZone> zones = [];
 
+    public int FindZonesContainingCallCount { get; private set; }
+
     public void Add(WatchZone zone)
     {
         this.zones.Add(zone);
@@ -69,6 +71,7 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
     public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {
+        this.FindZonesContainingCallCount++;
         var matching = this.zones
             .Where(z => DistanceMetres(z.Centre, new Coordinates(latitude, longitude)) <= z.RadiusMetres)
             .ToList();

@@ -693,6 +693,40 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.RateLimited).IsTrue();
     }
 
+    [Test]
+    public async Task Should_SkipUpsert_When_SameApplicationReturnedTwiceWithUnchangedBusinessFields()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var existing = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var repository = new FakePlanningApplicationRepository();
+        await repository.UpsertAsync(existing, CancellationToken.None);
+        var upsertCountBeforePoll = repository.UpsertCallCount;
+
+        // Same business fields but new last_different (simulating PlanIt rescrape bump)
+        var rescraped = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithLastDifferent(new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, rescraped);
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(repository.UpsertCallCount).IsEqualTo(upsertCountBeforePoll);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
