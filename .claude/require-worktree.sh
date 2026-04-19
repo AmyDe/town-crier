@@ -26,5 +26,5 @@ git_dir=$(git rev-parse --git-dir 2>/dev/null)
 
 jq -n '{
   "decision": "block",
-  "reason": "Not in a worktree. Code changes must happen in an isolated worktree to avoid conflicts with parallel sessions.\n\nRun EnterWorktree to create one, then retry your edit."
+  "reason": "Not in a worktree. Code changes must happen in an isolated worktree to avoid conflicts with parallel sessions.\n\nTo create and enter one:\n  1. Bash: bd worktree create <name>\n     (or with a branch: bd worktree create <name> --branch <branch>)\n  2. EnterWorktree path: \"<path printed by the command>\" to switch in.\n\nPlain EnterWorktree name: / git worktree add trigger beads bug GH#3311; use bd worktree create instead."
 }'
