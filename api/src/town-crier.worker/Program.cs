@@ -182,12 +182,7 @@ switch (mode)
 
                 var cycleSelector = host.Services.GetRequiredService<ICycleSelector>();
                 var cycleType = cycleSelector.GetCurrent();
-                var cycleTypeValue = cycleType switch
-                {
-                    CycleType.Seed => "seed",
-                    CycleType.Watched => "watched",
-                    _ => "watched",
-                };
+                var cycleTypeValue = cycleType.ToTelemetryValue();
                 activity?.SetTag("cycle.type", cycleTypeValue);
 
                 WorkerLog.PollCycleStarting(logger);

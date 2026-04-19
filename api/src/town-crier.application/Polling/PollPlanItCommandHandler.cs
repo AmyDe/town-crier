@@ -46,12 +46,7 @@ public sealed partial class PollPlanItCommandHandler
     {
         var now = this.timeProvider.GetUtcNow();
         var cycleType = this.cycleSelector.GetCurrent();
-        var cycleTypeValue = cycleType switch
-        {
-            CycleType.Seed => "seed",
-            CycleType.Watched => "watched",
-            _ => "watched",
-        };
+        var cycleTypeValue = cycleType.ToTelemetryValue();
         var cycleTypeTag = new KeyValuePair<string, object?>("cycle.type", cycleTypeValue);
         var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
         var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
@@ -78,6 +73,22 @@ public sealed partial class PollPlanItCommandHandler
 
                 await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
                 {
+                    authorityAppCount++;
+
+                    if (application.LastDifferent > (highWaterMark ?? DateTimeOffset.MinValue))
+                    {
+                        highWaterMark = application.LastDifferent;
+                    }
+
+                    // Skip upsert + zone fan-out when the only change is PlanIt bookkeeping
+                    // (LastDifferent bumped by a rescrape). This is the load-bearing fix for
+                    // reindex floods — see bd tc-yt57.
+                    var existing = await this.applicationRepository.GetByUidAsync(application.Uid, ct).ConfigureAwait(false);
+                    if (existing is not null && existing.HasSameBusinessFieldsAs(application))
+                    {
+                        continue;
+                    }
+
                     await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
 
                     if (application.Latitude.HasValue && application.Longitude.HasValue)
@@ -94,13 +105,6 @@ public sealed partial class PollPlanItCommandHandler
 
                             await this.notificationEnqueuer.EnqueueAsync(application, zone, ct).ConfigureAwait(false);
                         }
-                    }
-
-                    authorityAppCount++;
-
-                    if (application.LastDifferent > (highWaterMark ?? DateTimeOffset.MinValue))
-                    {
-                        highWaterMark = application.LastDifferent;
                     }
                 }
 

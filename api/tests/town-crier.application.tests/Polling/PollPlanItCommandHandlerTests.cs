@@ -693,6 +693,169 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.RateLimited).IsTrue();
     }
 
+    [Test]
+    public async Task Should_SkipUpsert_When_SameApplicationReturnedTwiceWithUnchangedBusinessFields()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var existing = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var repository = new FakePlanningApplicationRepository();
+        await repository.UpsertAsync(existing, CancellationToken.None);
+        var upsertCountBeforePoll = repository.UpsertCallCount;
+
+        // Same business fields but new last_different (simulating PlanIt rescrape bump)
+        var rescraped = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithLastDifferent(new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, rescraped);
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(repository.UpsertCallCount).IsEqualTo(upsertCountBeforePoll);
+    }
+
+    [Test]
+    public async Task Should_SkipZoneLookup_When_SameApplicationReturnedTwiceWithUnchangedBusinessFields()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var existing = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithCoordinates(51.5074, -0.1278)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var repository = new FakePlanningApplicationRepository();
+        await repository.UpsertAsync(existing, CancellationToken.None);
+
+        var rescraped = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithCoordinates(51.5074, -0.1278)
+            .WithLastDifferent(new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, rescraped);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1").WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278).WithRadiusMetres(5000).WithAuthorityId(1).Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider,
+            watchZoneRepository: watchZoneRepository,
+            notificationEnqueuer: notificationEnqueuer);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(watchZoneRepository.FindZonesContainingCallCount).IsEqualTo(0);
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_UpsertAndFanOut_When_BusinessFieldsChanged()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var existing = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithAppState("Undecided")
+            .WithCoordinates(51.5074, -0.1278)
+            .WithLastDifferent(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var repository = new FakePlanningApplicationRepository();
+        await repository.UpsertAsync(existing, CancellationToken.None);
+        var upsertsBefore = repository.UpsertCallCount;
+
+        // AppState changed — this IS a material change
+        var updated = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithAppState("Decided")
+            .WithCoordinates(51.5074, -0.1278)
+            .WithLastDifferent(new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, updated);
+
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1").WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278).WithRadiusMetres(5000).WithAuthorityId(1).Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider,
+            watchZoneRepository: watchZoneRepository,
+            notificationEnqueuer: notificationEnqueuer);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(repository.UpsertCallCount).IsEqualTo(upsertsBefore + 1);
+        await Assert.That(watchZoneRepository.FindZonesContainingCallCount).IsEqualTo(1);
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_UpsertAndFanOut_When_NoExistingApplication()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var application = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1)
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, application);
+
+        var repository = new FakePlanningApplicationRepository();
+        var watchZoneRepository = new FakeWatchZoneRepository();
+        watchZoneRepository.Add(new WatchZoneBuilder()
+            .WithId("zone-1").WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278).WithRadiusMetres(5000).WithAuthorityId(1).Build());
+
+        var notificationEnqueuer = new FakeNotificationEnqueuer();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider,
+            watchZoneRepository: watchZoneRepository,
+            notificationEnqueuer: notificationEnqueuer);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(repository.UpsertCallCount).IsEqualTo(1);
+        await Assert.That(watchZoneRepository.FindZonesContainingCallCount).IsEqualTo(1);
+        await Assert.That(notificationEnqueuer.Enqueued).HasCount().EqualTo(1);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,

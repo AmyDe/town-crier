@@ -81,4 +81,35 @@ public sealed class PlanningApplication
     public string? Link { get; }
 
     public DateTimeOffset LastDifferent { get; }
+
+    /// <summary>
+    /// Compares business-material fields against another instance. Excludes PlanIt bookkeeping
+    /// (LastDifferent) which changes on every rescrape even when content is identical.
+    /// Used by the poll cycle to skip redundant upserts and zone lookups when PlanIt returns
+    /// the same application with only a bumped LastDifferent timestamp.
+    /// </summary>
+    /// <param name="other">The other instance to compare against.</param>
+    /// <returns>True when every business-material field matches; false otherwise.</returns>
+    public bool HasSameBusinessFieldsAs(PlanningApplication other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        return this.Name == other.Name
+            && this.Uid == other.Uid
+            && this.AreaName == other.AreaName
+            && this.AreaId == other.AreaId
+            && this.Address == other.Address
+            && this.Postcode == other.Postcode
+            && this.Description == other.Description
+            && this.AppType == other.AppType
+            && this.AppState == other.AppState
+            && this.AppSize == other.AppSize
+            && this.StartDate == other.StartDate
+            && this.DecidedDate == other.DecidedDate
+            && this.ConsultedDate == other.ConsultedDate
+            && Nullable.Equals(this.Longitude, other.Longitude)
+            && Nullable.Equals(this.Latitude, other.Latitude)
+            && this.Url == other.Url
+            && this.Link == other.Link;
+    }
 }
