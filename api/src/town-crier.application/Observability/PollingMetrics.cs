@@ -35,5 +35,10 @@ public static class PollingMetrics
             "towncrier.polling.cycle_duration_ms",
             unit: "ms",
             description: "Full polling cycle duration");
+
+    public static readonly Counter<long> CyclesCompleted =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.cycles_completed",
+            description: "Finished poll cycles, tagged by cycle.type and termination.");
 }
 #pragma warning restore SA1202

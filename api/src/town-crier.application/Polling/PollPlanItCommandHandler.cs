@@ -174,6 +174,11 @@ public sealed partial class PollPlanItCommandHandler
             terminationReason = PollTerminationReason.Natural;
         }
 
+        PollingMetrics.CyclesCompleted.Add(
+            1,
+            cycleTypeTag,
+            new KeyValuePair<string, object?>("termination", terminationReason.ToTelemetryValue()));
+
         return new PollPlanItResult(
             count,
             authoritiesPolled,
