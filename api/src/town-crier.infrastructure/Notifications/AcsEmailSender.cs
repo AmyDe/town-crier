@@ -19,7 +19,7 @@ public sealed class AcsEmailSender : IEmailSender
         this.logger = logger;
     }
 
-    public async Task SendDigestAsync(string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
+    public async Task SendDigestAsync(string userId, string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
     {
         var totalCount = digests.Sum(d => d.Notifications.Count);
         var htmlBody = BuildDigestHtml(digests, totalCount);
@@ -42,11 +42,11 @@ public sealed class AcsEmailSender : IEmailSender
 #pragma warning restore CA1031
         {
             ApiMetrics.EmailsFailed.Add(1, new KeyValuePair<string, object?>("email.type", "digest"));
-            EmailLog.DigestSendFailed(this.logger, email, ex);
+            EmailLog.DigestSendFailed(this.logger, userId, ex);
         }
     }
 
-    public async Task SendNotificationAsync(string email, Notification notification, CancellationToken ct)
+    public async Task SendNotificationAsync(string userId, string email, Notification notification, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(notification);
         var htmlBody = BuildNotificationHtml(notification);
@@ -69,7 +69,7 @@ public sealed class AcsEmailSender : IEmailSender
 #pragma warning restore CA1031
         {
             ApiMetrics.EmailsFailed.Add(1, new KeyValuePair<string, object?>("email.type", "instant"));
-            EmailLog.NotificationSendFailed(this.logger, email, ex);
+            EmailLog.NotificationSendFailed(this.logger, userId, ex);
         }
     }
 
