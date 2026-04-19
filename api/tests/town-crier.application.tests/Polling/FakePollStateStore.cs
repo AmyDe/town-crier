@@ -8,6 +8,12 @@ internal sealed class FakePollStateStore : IPollStateStore
 
     public int SaveCallCount { get; private set; }
 
+    /// <summary>
+    /// Gets or sets an optional callback invoked on every SaveLastPollTimeAsync.
+    /// Tests can use this to trigger cancellation between authorities.
+    /// </summary>
+    public Action<int, DateTimeOffset>? OnSave { get; set; }
+
     public DateTimeOffset? GetLastPollTimeFor(int authorityId)
     {
         return this.pollTimes.TryGetValue(authorityId, out var time) ? time : null;
@@ -28,6 +34,7 @@ internal sealed class FakePollStateStore : IPollStateStore
     {
         this.pollTimes[authorityId] = pollTime;
         this.SaveCallCount++;
+        this.OnSave?.Invoke(authorityId, pollTime);
         return Task.CompletedTask;
     }
 
