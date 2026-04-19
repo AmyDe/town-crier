@@ -17,6 +17,7 @@ public sealed partial class PollPlanItCommandHandler
     private readonly IActiveAuthorityProvider activeAuthorityProvider;
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
+    private readonly ICycleSelector cycleSelector;
     private readonly ILogger<PollPlanItCommandHandler> logger;
 
     public PollPlanItCommandHandler(
@@ -27,6 +28,7 @@ public sealed partial class PollPlanItCommandHandler
         IActiveAuthorityProvider activeAuthorityProvider,
         IWatchZoneRepository watchZoneRepository,
         INotificationEnqueuer notificationEnqueuer,
+        ICycleSelector cycleSelector,
         ILogger<PollPlanItCommandHandler> logger)
     {
         this.planItClient = planItClient;
@@ -36,12 +38,21 @@ public sealed partial class PollPlanItCommandHandler
         this.activeAuthorityProvider = activeAuthorityProvider;
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
+        this.cycleSelector = cycleSelector;
         this.logger = logger;
     }
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
     {
         var now = this.timeProvider.GetUtcNow();
+        var cycleType = this.cycleSelector.GetCurrent();
+        var cycleTypeValue = cycleType switch
+        {
+            CycleType.Seed => "seed",
+            CycleType.Watched => "watched",
+            _ => "watched",
+        };
+        var cycleTypeTag = new KeyValuePair<string, object?>("cycle.type", cycleTypeValue);
         var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
         var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
             activeIds.ToList(), ct).ConfigureAwait(false);
@@ -53,6 +64,7 @@ public sealed partial class PollPlanItCommandHandler
         {
             using var authorityActivity = PollingInstrumentation.Source.StartActivity("Poll Authority");
             authorityActivity?.SetTag("polling.authority_code", authorityId);
+            authorityActivity?.SetTag("cycle.type", cycleTypeValue);
             var authorityStart = Stopwatch.GetTimestamp();
 
             var authorityAppCount = 0;
@@ -98,7 +110,7 @@ public sealed partial class PollPlanItCommandHandler
             {
                 authorityActivity?.AddException(ex);
                 authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-                PollingMetrics.RateLimited.Add(1);
+                PollingMetrics.RateLimited.Add(1, cycleTypeTag);
                 rateLimited = true;
                 LogRateLimitStop(this.logger, authorityId, ex);
             }
@@ -109,20 +121,20 @@ public sealed partial class PollPlanItCommandHandler
                 LogAuthorityError(this.logger, authorityId, ex);
             }
 
-            PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds);
+            PollingMetrics.AuthorityProcessingDuration.Record(Stopwatch.GetElapsedTime(authorityStart).TotalMilliseconds, cycleTypeTag);
             authorityActivity?.SetTag("polling.applications_found", authorityAppCount);
 
             if (completedSuccessfully || authorityAppCount > 0)
             {
-                PollingMetrics.AuthoritiesPolled.Add(1);
-                PollingMetrics.ApplicationsIngested.Add(authorityAppCount);
+                PollingMetrics.AuthoritiesPolled.Add(1, cycleTypeTag);
+                PollingMetrics.ApplicationsIngested.Add(authorityAppCount, cycleTypeTag);
                 await this.pollStateStore.SaveLastPollTimeAsync(authorityId, highWaterMark ?? now, ct).ConfigureAwait(false);
                 authoritiesPolled++;
                 count += authorityAppCount;
             }
             else
             {
-                PollingMetrics.AuthoritiesSkipped.Add(1);
+                PollingMetrics.AuthoritiesSkipped.Add(1, cycleTypeTag);
             }
 
             if (rateLimited)
