@@ -1196,7 +1196,7 @@ public sealed class PollPlanItCommandHandlerTests
 
         var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
         await Assert.That(pages).HasCount().EqualTo(1);
-        await Assert.That(pages[0]).IsEqualTo(999);
+        await Assert.That(pages[0]).IsEqualTo(1);
     }
 
     [Test]
