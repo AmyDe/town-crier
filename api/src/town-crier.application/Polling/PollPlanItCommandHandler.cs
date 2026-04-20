@@ -191,8 +191,11 @@ public sealed partial class PollPlanItCommandHandler
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                authorityActivity?.AddException(ex);
-                authorityActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                // 429 is an expected, handled outcome — skip the authority, increment
+                // rate_limited, and (elsewhere below) save a resumable cursor so the
+                // next cycle picks up where this one left off. Do NOT call AddException
+                // or SetStatus(Error) here: that surfaces a routine throttle event as an
+                // unhandled exception in App Insights (see bd tc-qc65).
                 PollingMetrics.RateLimited.Add(1, cycleTypeTag);
                 rateLimited = true;
                 LogRateLimitStop(this.logger, authorityId, ex);
