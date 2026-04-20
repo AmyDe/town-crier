@@ -57,6 +57,14 @@ internal sealed class FakeUserProfileRepository : IUserProfileRepository
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct)
+    {
+        var profiles = this.store.Values
+            .Where(p => p.LastActiveAt < cutoff)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
+    }
+
     public Task<UserProfilePage> ListAsync(
         string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)
     {

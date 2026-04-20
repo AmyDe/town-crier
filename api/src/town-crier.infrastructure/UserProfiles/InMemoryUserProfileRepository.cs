@@ -57,6 +57,14 @@ public sealed class InMemoryUserProfileRepository : IUserProfileRepository
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct)
+    {
+        var profiles = this.store.Values
+            .Where(p => p.LastActiveAt < cutoff)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<UserProfile>>(profiles);
+    }
+
     // pageSize and continuationToken are not emulated — returns all matching profiles in one page.
     public Task<UserProfilePage> ListAsync(
         string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)

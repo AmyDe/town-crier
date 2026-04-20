@@ -83,6 +83,7 @@ public sealed class DormantAccountCleanupCommandHandlerTests
         await harness.Repository.SaveAsync(
             UserProfile.Register("auth0|dormant", email: null, now: Now.AddYears(-2)),
             CancellationToken.None);
+
         // Seed any cascade target — verifies the cleanup reuses the delete cascade.
         harness.NotificationRepository.Seed(
             TownCrier.Domain.Notifications.Notification.Create(
@@ -127,6 +128,7 @@ public sealed class DormantAccountCleanupCommandHandlerTests
         await harness.Repository.SaveAsync(
             UserProfile.Register("auth0|edge-old", email: null, now: Now.AddYears(-1).AddDays(-1)),
             CancellationToken.None);
+
         // Profile active exactly 11 months ago is not dormant.
         await harness.Repository.SaveAsync(
             UserProfile.Register("auth0|edge-new", email: null, now: Now.AddMonths(-11)),
