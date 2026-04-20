@@ -2,9 +2,13 @@ namespace TownCrier.Application.Polling;
 
 public interface IPollStateStore
 {
-    Task<DateTimeOffset?> GetLastPollTimeAsync(int authorityId, CancellationToken ct);
+    Task<PollState?> GetAsync(int authorityId, CancellationToken ct);
 
-    Task SaveLastPollTimeAsync(int authorityId, DateTimeOffset pollTime, CancellationToken ct);
+    Task SaveAsync(
+        int authorityId,
+        DateTimeOffset lastPollTime,
+        PollCursor? cursor,
+        CancellationToken ct);
 
     Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
         IReadOnlyList<int> candidateAuthorityIds,

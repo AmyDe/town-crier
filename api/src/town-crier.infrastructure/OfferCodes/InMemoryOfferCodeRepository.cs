@@ -32,4 +32,14 @@ public sealed class InMemoryOfferCodeRepository : IOfferCodeRepository
         this.store[code.Code] = code;
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var codes = this.store.Values
+            .Where(c => c.RedeemedByUserId == userId)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<OfferCode>>(codes);
+    }
 }

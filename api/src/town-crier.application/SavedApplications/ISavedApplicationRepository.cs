@@ -8,6 +8,8 @@ public interface ISavedApplicationRepository
 
     Task DeleteAsync(string userId, string applicationUid, CancellationToken ct);
 
+    Task DeleteAllByUserIdAsync(string userId, CancellationToken ct);
+
     Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct);
 
     Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct);

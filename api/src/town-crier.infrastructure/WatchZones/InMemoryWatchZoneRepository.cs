@@ -40,6 +40,23 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var keysToRemove = this.zones
+            .Where(kvp => kvp.Value.UserId == userId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            this.zones.TryRemove(key, out _);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {

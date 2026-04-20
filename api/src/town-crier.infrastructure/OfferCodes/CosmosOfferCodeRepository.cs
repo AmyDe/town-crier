@@ -43,4 +43,22 @@ public sealed class CosmosOfferCodeRepository : IOfferCodeRepository
             CosmosJsonSerializerContext.Default.OfferCodeDocument,
             ct).ConfigureAwait(false);
     }
+
+    // Cross-partition query: offer codes are partitioned by the code itself, so a lookup
+    // by redeemer requires scanning all partitions. Acceptable here because data export
+    // is a low-frequency operation per user.
+    public async Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.OfferCodes,
+            "SELECT * FROM c WHERE c.redeemedByUserId = @userId",
+            [new QueryParameter("@userId", userId)],
+            null,
+            CosmosJsonSerializerContext.Default.OfferCodeDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
 }

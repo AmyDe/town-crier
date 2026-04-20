@@ -83,6 +83,28 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.WatchZones,
+            "SELECT c.id FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.WatchZoneDocument,
+            ct).ConfigureAwait(false);
+
+        foreach (var document in documents)
+        {
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.WatchZones,
+                document.Id,
+                userId,
+                ct).ConfigureAwait(false);
+        }
+    }
+
     public async Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct)
     {

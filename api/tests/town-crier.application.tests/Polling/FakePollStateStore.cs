@@ -4,37 +4,56 @@ namespace TownCrier.Application.Tests.Polling;
 
 internal sealed class FakePollStateStore : IPollStateStore
 {
-    private readonly Dictionary<int, DateTimeOffset> pollTimes = [];
+    private readonly Dictionary<int, PollState> states = [];
 
     public int SaveCallCount { get; private set; }
 
     /// <summary>
-    /// Gets or sets an optional callback invoked on every SaveLastPollTimeAsync.
+    /// Gets or sets an optional callback invoked on every SaveAsync.
     /// Tests can use this to trigger cancellation between authorities.
     /// </summary>
     public Action<int, DateTimeOffset>? OnSave { get; set; }
 
+    public PollState? GetStateFor(int authorityId)
+    {
+        return this.states.TryGetValue(authorityId, out var state) ? state : null;
+    }
+
     public DateTimeOffset? GetLastPollTimeFor(int authorityId)
     {
-        return this.pollTimes.TryGetValue(authorityId, out var time) ? time : null;
+        return this.states.TryGetValue(authorityId, out var state) ? state.LastPollTime : null;
+    }
+
+    public PollCursor? GetCursorFor(int authorityId)
+    {
+        return this.states.TryGetValue(authorityId, out var state) ? state.Cursor : null;
+    }
+
+    public void SetState(int authorityId, PollState state)
+    {
+        this.states[authorityId] = state;
     }
 
     public void SetLastPollTime(int authorityId, DateTimeOffset pollTime)
     {
-        this.pollTimes[authorityId] = pollTime;
+        this.states[authorityId] = new PollState(pollTime, Cursor: null);
     }
 
-    public Task<DateTimeOffset?> GetLastPollTimeAsync(int authorityId, CancellationToken ct)
+    public Task<PollState?> GetAsync(int authorityId, CancellationToken ct)
     {
-        DateTimeOffset? result = this.pollTimes.TryGetValue(authorityId, out var time) ? time : null;
+        PollState? result = this.states.TryGetValue(authorityId, out var state) ? state : null;
         return Task.FromResult(result);
     }
 
-    public Task SaveLastPollTimeAsync(int authorityId, DateTimeOffset pollTime, CancellationToken ct)
+    public Task SaveAsync(
+        int authorityId,
+        DateTimeOffset lastPollTime,
+        PollCursor? cursor,
+        CancellationToken ct)
     {
-        this.pollTimes[authorityId] = pollTime;
+        this.states[authorityId] = new PollState(lastPollTime, cursor);
         this.SaveCallCount++;
-        this.OnSave?.Invoke(authorityId, pollTime);
+        this.OnSave?.Invoke(authorityId, lastPollTime);
         return Task.CompletedTask;
     }
 
@@ -43,8 +62,8 @@ internal sealed class FakePollStateStore : IPollStateStore
         CancellationToken ct)
     {
         IReadOnlyList<int> sorted = candidateAuthorityIds
-            .OrderBy(id => this.pollTimes.ContainsKey(id) ? 1 : 0)
-            .ThenBy(id => this.pollTimes.TryGetValue(id, out var time) ? time : DateTimeOffset.MinValue)
+            .OrderBy(id => this.states.ContainsKey(id) ? 1 : 0)
+            .ThenBy(id => this.states.TryGetValue(id, out var state) ? state.LastPollTime : DateTimeOffset.MinValue)
             .ToList();
         return Task.FromResult(sorted);
     }

@@ -20,4 +20,6 @@ public interface INotificationRepository
     Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsAsync(CancellationToken ct);
 
     Task SaveAsync(Notification notification, CancellationToken ct);
+
+    Task DeleteAllByUserIdAsync(string userId, CancellationToken ct);
 }

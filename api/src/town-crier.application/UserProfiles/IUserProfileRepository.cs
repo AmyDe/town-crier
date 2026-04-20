@@ -17,6 +17,12 @@ public interface IUserProfileRepository
     Task<UserProfilePage> ListAsync(
         string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct);
 
+    // Returns profiles whose LastActiveAt is strictly before the supplied cutoff
+    // (i.e. dormant relative to the retention policy). Used by the daily
+    // DormantAccountCleanup worker to enforce UK GDPR Art. 5(1)(e) storage
+    // limitation — the privacy policy commits to deleting inactive accounts.
+    Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct);
+
     Task SaveAsync(UserProfile profile, CancellationToken ct);
 
     Task DeleteAsync(string userId, CancellationToken ct);

@@ -61,4 +61,25 @@ public sealed class DeviceRegistrationDocumentTests
         // Assert
         await Assert.That(document.UserId).IsEqualTo("auth0|user-789");
     }
+
+    [Test]
+    public async Task Should_SetTtlTo180Days_When_ConvertingFromDomain()
+    {
+        // Arrange — Cosmos TTL is an integer number of seconds. Devices that stop
+        // refreshing (app uninstalled, logged out) are purged after 180 days so the
+        // push token store doesn't accumulate permanently-stale records. Active
+        // clients re-upsert on every PUT /me/device-token, restoring fresh _ts.
+        const int expectedTtlSeconds = 180 * 24 * 60 * 60;
+        var registration = DeviceRegistration.Create(
+            "auth0|user-ttl",
+            "apns-token-ttl",
+            DevicePlatform.Ios,
+            new DateTimeOffset(2026, 4, 20, 0, 0, 0, TimeSpan.Zero));
+
+        // Act
+        var document = DeviceRegistrationDocument.FromDomain(registration);
+
+        // Assert
+        await Assert.That(document.Ttl).IsEqualTo(expectedTtlSeconds);
+    }
 }

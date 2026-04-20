@@ -35,6 +35,21 @@ internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepo
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var tokens = this.store
+            .Where(kvp => kvp.Value.UserId == userId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var token in tokens)
+        {
+            this.store.Remove(token);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public DeviceRegistration? GetByToken(string token)
     {
         this.store.TryGetValue(token, out var registration);

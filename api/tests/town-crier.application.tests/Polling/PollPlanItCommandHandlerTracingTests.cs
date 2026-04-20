@@ -86,9 +86,12 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
     }
 
     [Test]
-    public async Task Should_RecordExceptionOnActivity_When_RateLimitHit()
+    public async Task Should_NotRecordExceptionOnActivity_When_RateLimitHit()
     {
-        // Arrange
+        // Arrange -- 429 is an expected, handled outcome (see bd tc-qc65).
+        // The handler skips the authority, increments rate_limited, and saves
+        // a resumable cursor (via tc-6l54). Emitting an exception event on the
+        // span mislabels this as an error in App Insights, so do not record it.
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
 
@@ -103,13 +106,16 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
         // Act
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Assert -- rate limit exceptions must also be recorded on the activity
+        // Assert -- rate limit must NOT produce an exception event or Error status
         var authorityActivity = this.stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull();
 
         var exceptionEvent = authorityActivity!.Events.FirstOrDefault(e => e.Name == "exception");
-        await Assert.That(exceptionEvent.Name).IsEqualTo("exception")
-            .Because("rate limit exceptions must be recorded for OTel visibility");
+        await Assert.That(exceptionEvent.Name).IsNull()
+            .Because("429 is an expected, handled outcome — it must not appear as an exception in App Insights");
+
+        await Assert.That(authorityActivity.Status).IsNotEqualTo(ActivityStatusCode.Error)
+            .Because("429 is an expected, handled outcome — the authority span status must not be Error");
     }
 
     private static PollPlanItCommandHandler CreateHandler(

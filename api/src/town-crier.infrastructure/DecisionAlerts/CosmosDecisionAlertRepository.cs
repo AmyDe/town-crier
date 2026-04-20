@@ -29,6 +29,21 @@ public sealed class CosmosDecisionAlertRepository : IDecisionAlertRepository
         return document?.ToDomain();
     }
 
+    public async Task<IReadOnlyList<DecisionAlert>> GetByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DecisionAlerts,
+            "SELECT * FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.DecisionAlertDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
+
     public async Task SaveAsync(DecisionAlert alert, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -41,5 +56,27 @@ public sealed class CosmosDecisionAlertRepository : IDecisionAlertRepository
             document.UserId,
             CosmosJsonSerializerContext.Default.DecisionAlertDocument,
             ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DecisionAlerts,
+            "SELECT c.id FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.DecisionAlertDocument,
+            ct).ConfigureAwait(false);
+
+        foreach (var document in documents)
+        {
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.DecisionAlerts,
+                document.Id,
+                userId,
+                ct).ConfigureAwait(false);
+        }
     }
 }

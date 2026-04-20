@@ -11,7 +11,8 @@ public sealed class UserProfile
         SubscriptionTier tier,
         DateTimeOffset? subscriptionExpiry,
         string? originalTransactionId,
-        DateTimeOffset? gracePeriodExpiry)
+        DateTimeOffset? gracePeriodExpiry,
+        DateTimeOffset lastActiveAt)
     {
         this.UserId = userId;
         this.Email = email;
@@ -20,6 +21,7 @@ public sealed class UserProfile
         this.SubscriptionExpiry = subscriptionExpiry;
         this.OriginalTransactionId = originalTransactionId;
         this.GracePeriodExpiry = gracePeriodExpiry;
+        this.LastActiveAt = lastActiveAt;
     }
 
     public string UserId { get; }
@@ -38,7 +40,9 @@ public sealed class UserProfile
 
     public DateTimeOffset? GracePeriodExpiry { get; private set; }
 
-    public static UserProfile Register(string userId, string? email = null)
+    public DateTimeOffset LastActiveAt { get; private set; }
+
+    public static UserProfile Register(string userId, string? email = null, DateTimeOffset? now = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 
@@ -49,7 +53,16 @@ public sealed class UserProfile
             tier: SubscriptionTier.Free,
             subscriptionExpiry: null,
             originalTransactionId: null,
-            gracePeriodExpiry: null);
+            gracePeriodExpiry: null,
+            lastActiveAt: now ?? DateTimeOffset.UtcNow);
+    }
+
+    public void RecordActivity(DateTimeOffset now)
+    {
+        if (now > this.LastActiveAt)
+        {
+            this.LastActiveAt = now;
+        }
     }
 
     public void BackfillEmail(string email)
@@ -134,7 +147,8 @@ public sealed class UserProfile
         SubscriptionTier tier,
         DateTimeOffset? subscriptionExpiry,
         string? originalTransactionId,
-        DateTimeOffset? gracePeriodExpiry)
+        DateTimeOffset? gracePeriodExpiry,
+        DateTimeOffset lastActiveAt)
     {
         var profile = new UserProfile(
             userId,
@@ -143,7 +157,8 @@ public sealed class UserProfile
             tier,
             subscriptionExpiry,
             originalTransactionId,
-            gracePeriodExpiry);
+            gracePeriodExpiry,
+            lastActiveAt);
 
         foreach (var (zoneId, prefs) in zonePreferences)
         {

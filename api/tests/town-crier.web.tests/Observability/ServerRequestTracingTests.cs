@@ -192,5 +192,8 @@ public sealed class ServerRequestTracingTests
         public Task<UserProfilePage> ListAsync(
             string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
+
+        public Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct) =>
+            throw new InvalidOperationException("Simulated repository failure");
     }
 }

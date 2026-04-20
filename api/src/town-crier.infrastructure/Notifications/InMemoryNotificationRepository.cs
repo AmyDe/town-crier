@@ -82,4 +82,20 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         this.store.Add(notification);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var remaining = this.store.Where(n => n.UserId != userId).ToList();
+        while (this.store.TryTake(out _))
+        {
+            // Drain the bag.
+        }
+
+        foreach (var notification in remaining)
+        {
+            this.store.Add(notification);
+        }
+
+        return Task.CompletedTask;
+    }
 }

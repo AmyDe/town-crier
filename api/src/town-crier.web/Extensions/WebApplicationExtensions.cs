@@ -2,6 +2,7 @@ using TownCrier.Application.Health;
 using TownCrier.Web.Endpoints;
 using TownCrier.Web.Observability;
 using TownCrier.Web.RateLimiting;
+using TownCrier.Web.UserProfiles;
 
 namespace TownCrier.Web.Extensions;
 
@@ -14,6 +15,7 @@ internal static class WebApplicationExtensions
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseMiddleware<RateLimitMiddleware>();
+        app.UseMiddleware<RecordUserActivityMiddleware>();
     }
 
     public static void MapAllEndpoints(this WebApplication app)

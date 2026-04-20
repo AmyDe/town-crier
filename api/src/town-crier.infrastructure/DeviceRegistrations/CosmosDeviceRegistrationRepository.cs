@@ -75,4 +75,26 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
                 ct).ConfigureAwait(false);
         }
     }
+
+    public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.DeviceRegistrations,
+            "SELECT c.id FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            ct).ConfigureAwait(false);
+
+        foreach (var document in documents)
+        {
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.DeviceRegistrations,
+                document.Id,
+                userId,
+                ct).ConfigureAwait(false);
+        }
+    }
 }

@@ -12,6 +12,8 @@ public interface IWatchZoneRepository
 
     Task DeleteAsync(string userId, string zoneId, CancellationToken ct);
 
+    Task DeleteAllByUserIdAsync(string userId, CancellationToken ct);
+
     Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
         double latitude, double longitude, CancellationToken ct);
 

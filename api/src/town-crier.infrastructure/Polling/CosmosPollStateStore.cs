@@ -14,7 +14,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
         this.client = client;
     }
 
-    public async Task<DateTimeOffset?> GetLastPollTimeAsync(int authorityId, CancellationToken ct)
+    public async Task<PollState?> GetAsync(int authorityId, CancellationToken ct)
     {
         var documentId = FormatDocumentId(authorityId);
         var doc = await this.client.ReadDocumentAsync(
@@ -29,17 +29,26 @@ public sealed class CosmosPollStateStore : IPollStateStore
             return null;
         }
 
-        return DateTimeOffset.Parse(doc.LastPollTime, CultureInfo.InvariantCulture);
+        var lastPollTime = DateTimeOffset.Parse(doc.LastPollTime, CultureInfo.InvariantCulture);
+        var cursor = ReadCursor(doc);
+        return new PollState(lastPollTime, cursor);
     }
 
-    public async Task SaveLastPollTimeAsync(int authorityId, DateTimeOffset pollTime, CancellationToken ct)
+    public async Task SaveAsync(
+        int authorityId,
+        DateTimeOffset lastPollTime,
+        PollCursor? cursor,
+        CancellationToken ct)
     {
         var documentId = FormatDocumentId(authorityId);
         var doc = new PollStateDocument
         {
             Id = documentId,
-            LastPollTime = pollTime.ToString("O", CultureInfo.InvariantCulture),
+            LastPollTime = lastPollTime.ToString("O", CultureInfo.InvariantCulture),
             AuthorityId = authorityId,
+            CursorDifferentStart = cursor?.DifferentStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            CursorNextPage = cursor?.NextPage,
+            CursorKnownTotal = cursor?.KnownTotal,
         };
 
         await this.client.UpsertDocumentAsync(
@@ -76,6 +85,21 @@ public sealed class CosmosPollStateStore : IPollStateStore
             .OrderBy(id => polledSet.ContainsKey(id) ? 1 : 0)
             .ThenBy(id => polledSet.TryGetValue(id, out var time) ? DateTimeOffset.Parse(time, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue)
             .ToList();
+    }
+
+    private static PollCursor? ReadCursor(PollStateDocument doc)
+    {
+        // All three cursor fields move as a set — if any is absent, there is no active cursor.
+        if (doc.CursorDifferentStart is null || doc.CursorNextPage is null)
+        {
+            return null;
+        }
+
+        var differentStart = DateOnly.ParseExact(
+            doc.CursorDifferentStart,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+        return new PollCursor(differentStart, doc.CursorNextPage.Value, doc.CursorKnownTotal);
     }
 
     private static string FormatDocumentId(int authorityId)

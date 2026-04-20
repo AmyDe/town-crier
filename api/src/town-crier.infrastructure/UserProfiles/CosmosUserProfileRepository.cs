@@ -80,6 +80,22 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
+    public async Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct)
+    {
+        // Cross-partition scan — only run by the daily DormantAccountCleanup worker
+        // against a small subset of inactive users. The cutoff is serialised as ISO-8601
+        // so the SQL comparison works against the stored string representation.
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Users,
+            "SELECT * FROM c WHERE c.lastActiveAt < @cutoff",
+            [new QueryParameter("@cutoff", cutoff.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture))],
+            partitionKey: null,
+            CosmosJsonSerializerContext.Default.UserProfileDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.ConvertAll(doc => doc.ToDomain());
+    }
+
     public async Task<UserProfilePage> ListAsync(
         string? emailSearch,
         int pageSize,

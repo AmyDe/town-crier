@@ -38,6 +38,28 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
             ct).ConfigureAwait(false);
     }
 
+    public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.SavedApplications,
+            "SELECT c.id FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.SavedApplicationDocument,
+            ct).ConfigureAwait(false);
+
+        foreach (var document in documents)
+        {
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.SavedApplications,
+                document.Id,
+                userId,
+                ct).ConfigureAwait(false);
+        }
+    }
+
     public async Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(

@@ -9,23 +9,29 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using TownCrier.Application.Auth;
 using TownCrier.Application.Authorities;
+using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.Polling;
+using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
+using TownCrier.Infrastructure.Auth;
 using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.Observability;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
+using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Worker;
@@ -108,7 +114,27 @@ builder.Services.AddSingleton<IActiveAuthorityProvider, CycleAlternatingAuthorit
 builder.Services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
+builder.Services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
+builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
 builder.Services.AddSingleton<IPushNotificationSender, NoOpPushNotificationSender>();
+
+// Dormant account cleanup needs the full delete-cascade pipeline. Auth0
+// management is configured identically to the web host — prefer the real
+// client when M2M credentials are present, fall back to a no-op otherwise.
+var workerAuth0M2mClientId = builder.Configuration["Auth0:M2M:ClientId"];
+var workerAuth0M2mClientSecret = builder.Configuration["Auth0:M2M:ClientSecret"];
+var workerAuth0Domain = builder.Configuration["Auth0:Domain"];
+if (!string.IsNullOrEmpty(workerAuth0M2mClientId)
+    && !string.IsNullOrEmpty(workerAuth0M2mClientSecret)
+    && !string.IsNullOrEmpty(workerAuth0Domain))
+{
+    builder.Services.AddHttpClient<IAuth0ManagementClient, Auth0ManagementClient>((httpClient, sp) =>
+        new Auth0ManagementClient(httpClient, workerAuth0Domain, workerAuth0M2mClientId, workerAuth0M2mClientSecret));
+}
+else
+{
+    builder.Services.AddSingleton<IAuth0ManagementClient, NoOpAuth0ManagementClient>();
+}
 
 var acsConnectionString = builder.Configuration["AzureCommunicationServices:ConnectionString"];
 if (!string.IsNullOrEmpty(acsConnectionString))
@@ -160,6 +186,8 @@ builder.Services.AddSingleton(pollingOptions);
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 builder.Services.AddSingleton<GenerateHourlyDigestsCommandHandler>();
+builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
+builder.Services.AddTransient<DormantAccountCleanupCommandHandler>();
 
 using var host = builder.Build();
 
@@ -294,6 +322,37 @@ switch (mode)
                 hourlyDigestActivity?.AddException(ex);
                 hourlyDigestActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 WorkerLog.HourlyDigestCycleFailed(logger, ex);
+                exitCode = 1;
+            }
+
+            break;
+        }
+
+    case "dormant-cleanup":
+        {
+            // Daily job that enforces UK GDPR Art. 5(1)(e) storage limitation —
+            // deletes accounts inactive for 12+ months (per privacy policy).
+            using var dormantActivity = PollingInstrumentation.Source.StartActivity("Dormant Cleanup Cycle");
+            try
+            {
+                WorkerLog.DormantCleanupStarting(logger);
+
+                var cleanupHandler = host.Services.GetRequiredService<DormantAccountCleanupCommandHandler>();
+                var timeProvider = host.Services.GetRequiredService<TimeProvider>();
+                var cleanupResult = await cleanupHandler
+                    .HandleAsync(new DormantAccountCleanupCommand(timeProvider.GetUtcNow()), CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                dormantActivity?.SetTag("dormant_cleanup.deleted_count", cleanupResult.DeletedCount);
+                WorkerLog.DormantCleanupCompleted(logger, cleanupResult.DeletedCount);
+            }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                dormantActivity?.AddException(ex);
+                dormantActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                WorkerLog.DormantCleanupFailed(logger, ex);
                 exitCode = 1;
             }
 

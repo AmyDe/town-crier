@@ -32,6 +32,12 @@ internal sealed class FakeSavedApplicationRepository : ISavedApplicationReposito
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        this.store.RemoveAll(s => s.UserId == userId);
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
         var results = this.store.Where(s => s.UserId == userId).ToList();
@@ -40,7 +46,7 @@ internal sealed class FakeSavedApplicationRepository : ISavedApplicationReposito
 
     public Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct)
     {
-        var exists = this.store.Any(s => s.UserId == userId && s.ApplicationUid == applicationUid);
+        var exists = this.store.Exists(s => s.UserId == userId && s.ApplicationUid == applicationUid);
         return Task.FromResult(exists);
     }
 

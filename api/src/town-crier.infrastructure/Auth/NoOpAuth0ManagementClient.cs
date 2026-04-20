@@ -8,4 +8,9 @@ public sealed class NoOpAuth0ManagementClient : IAuth0ManagementClient
     {
         return Task.CompletedTask;
     }
+
+    public Task DeleteUserAsync(string userId, CancellationToken ct)
+    {
+        return Task.CompletedTask;
+    }
 }

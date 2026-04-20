@@ -50,6 +50,12 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        this.zones.RemoveAll(z => z.UserId == userId);
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
     {
         var authorityIds = this.zones
