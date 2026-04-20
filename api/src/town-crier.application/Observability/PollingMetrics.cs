@@ -40,5 +40,20 @@ public static class PollingMetrics
         Meter.CreateCounter<long>(
             "towncrier.polling.cycles_completed",
             description: "Finished poll cycles, tagged by cycle.type and termination.");
+
+    public static readonly Gauge<long> AuthorityTotal =
+        Meter.CreateGauge<long>(
+            "towncrier.polling.authority_total",
+            description: "PlanIt-reported total matching applications for an authority at the start of a page-1 fetch. Tagged by cycle.type and polling.authority_code. See docs/specs/polling-resumable-cursor.md#telemetry-additions.");
+
+    public static readonly Counter<long> CursorAdvanced =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.cursor_advanced",
+            description: "Incremented when the handler persists a non-null cursor (cap hit or 429 mid-pagination). Tagged by cycle.type.");
+
+    public static readonly Counter<long> CursorCleared =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.cursor_cleared",
+            description: "Incremented when the handler clears a previously-active cursor after reaching a natural end. Tagged by cycle.type.");
 }
 #pragma warning restore SA1202

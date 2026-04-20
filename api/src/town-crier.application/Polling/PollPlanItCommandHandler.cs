@@ -85,10 +85,12 @@ public sealed partial class PollPlanItCommandHandler
             var lastPageFetched = 0;
             int? firstPageTotal = null;
 
+            var hadActiveCursor = false;
             try
             {
                 var existingState = await this.pollStateStore.GetAsync(authorityId, ct).ConfigureAwait(false);
                 lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
+                hadActiveCursor = existingState?.Cursor is not null;
 
                 // Resume from a previously-saved cursor only when its recorded date matches
                 // the date we're about to query. If the HWM has advanced past the cursor's
@@ -112,6 +114,19 @@ public sealed partial class PollPlanItCommandHandler
                     if (pagesFetched == 0)
                     {
                         firstPageTotal = pageResult.Total;
+
+                        // Emit authority_total gauge + span tag on the first page of this
+                        // authority's fetch (see docs/specs/polling-resumable-cursor.md#telemetry-additions).
+                        // PlanIt occasionally omits the total; skip emission in that case so
+                        // downstream dashboards don't see spurious zeros.
+                        if (pageResult.Total is { } totalValue)
+                        {
+                            PollingMetrics.AuthorityTotal.Record(
+                                totalValue,
+                                cycleTypeTag,
+                                new KeyValuePair<string, object?>("polling.authority_code", authorityId));
+                            authorityActivity?.SetTag("polling.authority_total", totalValue);
+                        }
                     }
 
                     foreach (var application in pageResult.Applications)
@@ -214,11 +229,21 @@ public sealed partial class PollPlanItCommandHandler
                             nextPage,
                             firstPageTotal),
                         ct).ConfigureAwait(false);
+                    PollingMetrics.CursorAdvanced.Add(1, cycleTypeTag);
+                    authorityActivity?.SetTag("polling.cursor.next_page", nextPage);
                 }
                 else
                 {
                     await this.pollStateStore.SaveAsync(
                         authorityId, highWaterMark ?? now, cursor: null, ct).ConfigureAwait(false);
+
+                    // Only emit cursor_cleared when we actually *cleared* something —
+                    // i.e., there was a previously-active cursor. Clearing "nothing"
+                    // would dilute the signal for alerting on stuck cursors.
+                    if (hadActiveCursor)
+                    {
+                        PollingMetrics.CursorCleared.Add(1, cycleTypeTag);
+                    }
                 }
 
                 authoritiesPolled++;

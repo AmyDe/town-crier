@@ -289,8 +289,8 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         // Assert
         var authorityActivity = stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull();
-        var nextPageTag = authorityActivity!.Tags.FirstOrDefault(t => t.Key == "polling.cursor.next_page");
-        await Assert.That(nextPageTag.Value).IsEqualTo("2");
+        var nextPageTag = authorityActivity!.TagObjects.FirstOrDefault(t => t.Key == "polling.cursor.next_page");
+        await Assert.That(nextPageTag.Value).IsEqualTo(2);
     }
 
     [Test]
@@ -321,8 +321,8 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         // Assert
         var authorityActivity = stoppedActivities.Find(a => a.DisplayName == "Poll Authority");
         await Assert.That(authorityActivity).IsNotNull();
-        var totalTag = authorityActivity!.Tags.FirstOrDefault(t => t.Key == "polling.authority_total");
-        await Assert.That(totalTag.Value).IsEqualTo("7200");
+        var totalTag = authorityActivity!.TagObjects.FirstOrDefault(t => t.Key == "polling.authority_total");
+        await Assert.That(totalTag.Value).IsEqualTo(7200);
     }
 
     private static PollPlanItCommandHandler CreateHandler(
