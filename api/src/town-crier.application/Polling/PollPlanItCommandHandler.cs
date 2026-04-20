@@ -83,8 +83,8 @@ public sealed partial class PollPlanItCommandHandler
 
             try
             {
-                var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
-                lastPollTime ??= now.AddDays(-1);
+                var existingState = await this.pollStateStore.GetAsync(authorityId, ct).ConfigureAwait(false);
+                var lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
 
                 var maxPages = this.options.MaxPagesPerAuthorityPerCycle;
                 var pagesFetched = 0;
@@ -175,7 +175,7 @@ public sealed partial class PollPlanItCommandHandler
             {
                 PollingMetrics.AuthoritiesPolled.Add(1, cycleTypeTag);
                 PollingMetrics.ApplicationsIngested.Add(authorityAppCount, cycleTypeTag);
-                await this.pollStateStore.SaveLastPollTimeAsync(authorityId, highWaterMark ?? now, ct).ConfigureAwait(false);
+                await this.pollStateStore.SaveAsync(authorityId, highWaterMark ?? now, cursor: null, ct).ConfigureAwait(false);
                 authoritiesPolled++;
                 count += authorityAppCount;
             }
