@@ -33,6 +33,17 @@ internal static partial class WorkerLog
     [LoggerMessage(Level = LogLevel.Error, Message = "Hourly digest generation failed")]
     internal static partial void HourlyDigestCycleFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll, digest, hourly-digest")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting dormant account cleanup")]
+    internal static partial void DormantCleanupStarting(ILogger logger);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Dormant account cleanup completed: {DeletedCount} profiles deleted")]
+    internal static partial void DormantCleanupCompleted(ILogger logger, int deletedCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Dormant account cleanup failed")]
+    internal static partial void DormantCleanupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll, digest, hourly-digest, dormant-cleanup")]
     internal static partial void UnknownWorkerMode(ILogger logger, string workerMode);
 }
