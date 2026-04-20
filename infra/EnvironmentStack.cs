@@ -352,6 +352,15 @@ public static class EnvironmentStack
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
             appInsightsConnectionString, acsConnectionString, tags);
 
+        // Dormant account cleanup — daily at 03:30 UTC (off-peak, avoids top-of-hour
+        // digest-hourly run). Cascades UK GDPR Art.5(1)(e) erasure for UserProfiles
+        // with LastActiveAt older than 12 months.
+        CreateWorkerJob("dormant-cleanup", "30 3 * * *", replicaTimeout: 600, workerMode: "dormant-cleanup",
+            env, resourceGroup.Name, containerAppsEnvironmentId,
+            acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+            cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+            appInsightsConnectionString, acsConnectionString, tags);
+
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
         {
