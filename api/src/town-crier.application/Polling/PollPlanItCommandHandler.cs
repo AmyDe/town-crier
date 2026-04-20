@@ -80,11 +80,15 @@ public sealed partial class PollPlanItCommandHandler
             var authorityAppCount = 0;
             DateTimeOffset? highWaterMark = null;
             var completedSuccessfully = false;
+            var capHit = false;
+            var lastPollTime = now.AddDays(-1);
+            var lastPageFetched = 0;
+            int? firstPageTotal = null;
 
             try
             {
                 var existingState = await this.pollStateStore.GetAsync(authorityId, ct).ConfigureAwait(false);
-                var lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
+                lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
 
                 var maxPages = this.options.MaxPagesPerAuthorityPerCycle;
                 var pagesFetched = 0;
@@ -93,6 +97,11 @@ public sealed partial class PollPlanItCommandHandler
                 {
                     var pageResult = await this.planItClient.FetchApplicationsPageAsync(
                         authorityId, lastPollTime, page, ct).ConfigureAwait(false);
+
+                    if (pagesFetched == 0)
+                    {
+                        firstPageTotal = pageResult.Total;
+                    }
 
                     foreach (var application in pageResult.Applications)
                     {
@@ -132,6 +141,7 @@ public sealed partial class PollPlanItCommandHandler
                     }
 
                     pagesFetched++;
+                    lastPageFetched = page;
 
                     if (!pageResult.HasMorePages)
                     {
@@ -139,11 +149,12 @@ public sealed partial class PollPlanItCommandHandler
                     }
 
                     // Voluntary page cap — bail cleanly so seed-poll cycles can't burn a
-                    // backlogged authority's full rate budget before rotating. The cursor
-                    // lifecycle replaces this in bd tc-70kg; until then the HWM alone drives
-                    // resumption at the LastDifferent of the final streamed application.
+                    // backlogged authority's full rate budget before rotating. Cap-hit
+                    // freezes the HWM and persists a resumable cursor so the next cycle
+                    // picks up where this one left off. See docs/specs/polling-resumable-cursor.md.
                     if (maxPages.HasValue && pagesFetched >= maxPages.Value)
                     {
+                        capHit = true;
                         break;
                     }
 
@@ -175,7 +186,30 @@ public sealed partial class PollPlanItCommandHandler
             {
                 PollingMetrics.AuthoritiesPolled.Add(1, cycleTypeTag);
                 PollingMetrics.ApplicationsIngested.Add(authorityAppCount, cycleTypeTag);
-                await this.pollStateStore.SaveAsync(authorityId, highWaterMark ?? now, cursor: null, ct).ConfigureAwait(false);
+
+                // Cursor lifecycle — see docs/specs/polling-resumable-cursor.md.
+                //   * Cap hit or 429 mid-pagination → freeze HWM, save cursor at next
+                //     unfetched page so the following cycle resumes from there.
+                //   * Natural end (or non-429 exception with partial progress) → advance
+                //     HWM to max LastDifferent observed, clear any active cursor.
+                if (capHit || (rateLimited && authorityAppCount > 0))
+                {
+                    var nextPage = lastPageFetched + 1;
+                    await this.pollStateStore.SaveAsync(
+                        authorityId,
+                        lastPollTime,
+                        new PollCursor(
+                            DateOnly.FromDateTime(lastPollTime.UtcDateTime),
+                            nextPage,
+                            firstPageTotal),
+                        ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    await this.pollStateStore.SaveAsync(
+                        authorityId, highWaterMark ?? now, cursor: null, ct).ConfigureAwait(false);
+                }
+
                 authoritiesPolled++;
                 count += authorityAppCount;
             }
