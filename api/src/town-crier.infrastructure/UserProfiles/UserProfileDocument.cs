@@ -30,6 +30,12 @@ internal sealed class UserProfileDocument
 
     public DateTimeOffset? GracePeriodExpiry { get; init; }
 
+    // Defaults to MinValue so historical documents (pre-retention work) are treated
+    // as never-active and cleanly deleted on first dormant-cleanup pass. Existing
+    // documents lacking the field get the default at deserialisation time; the
+    // first authenticated request refreshes it via RecordActivity.
+    public DateTimeOffset LastActiveAt { get; init; }
+
     public static UserProfileDocument FromDomain(UserProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -47,6 +53,7 @@ internal sealed class UserProfileDocument
             SubscriptionExpiry = profile.SubscriptionExpiry,
             OriginalTransactionId = profile.OriginalTransactionId,
             GracePeriodExpiry = profile.GracePeriodExpiry,
+            LastActiveAt = profile.LastActiveAt,
         };
     }
 
@@ -66,6 +73,7 @@ internal sealed class UserProfileDocument
             tier,
             this.SubscriptionExpiry,
             this.OriginalTransactionId,
-            this.GracePeriodExpiry);
+            this.GracePeriodExpiry,
+            this.LastActiveAt);
     }
 }
