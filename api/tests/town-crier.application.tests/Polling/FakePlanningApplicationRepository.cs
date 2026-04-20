@@ -9,6 +9,10 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
 
     public int UpsertCallCount { get; private set; }
 
+    public int GetByUidWithAuthorityCallCount { get; private set; }
+
+    public int GetByUidWithoutAuthorityCallCount { get; private set; }
+
     public IReadOnlyCollection<PlanningApplication> GetAll() => this.store.Values.ToList();
 
     public PlanningApplication? GetByName(string name)
@@ -26,7 +30,17 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
 
     public Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
     {
+        this.GetByUidWithoutAuthorityCallCount++;
         var app = this.store.Values.FirstOrDefault(a => a.Uid == uid);
+        return Task.FromResult(app);
+    }
+
+    public Task<PlanningApplication?> GetByUidAsync(string uid, string authorityCode, CancellationToken ct)
+    {
+        this.GetByUidWithAuthorityCallCount++;
+        var app = this.store.Values.FirstOrDefault(
+            a => a.Uid == uid
+                && a.AreaId.ToString(System.Globalization.CultureInfo.InvariantCulture) == authorityCode);
         return Task.FromResult(app);
     }
 

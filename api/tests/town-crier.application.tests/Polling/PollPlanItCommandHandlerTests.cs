@@ -696,6 +696,32 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.RateLimited).IsTrue();
     }
 
+    // Locks in bd tc-vidz: the hot-path dedupe lookup must pass the authority as a
+    // partition key, not fall back to the cross-partition overload. The cross-partition
+    // variant caused a ~35x spike in Cosmos RU burn.
+    [Test]
+    public async Task Should_UsePartitionScopedLookup_When_DedupingApplicationsDuringPoll()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var app = new PlanningApplicationBuilder()
+            .WithUid("app-1").WithName("Council/app-1").WithAreaId(1).Build();
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, app);
+
+        var repository = new FakePlanningApplicationRepository();
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            repository: repository,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(repository.GetByUidWithAuthorityCallCount).IsEqualTo(1);
+        await Assert.That(repository.GetByUidWithoutAuthorityCallCount).IsEqualTo(0);
+    }
+
     [Test]
     public async Task Should_SkipUpsert_When_SameApplicationReturnedTwiceWithUnchangedBusinessFields()
     {

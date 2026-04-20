@@ -140,8 +140,11 @@ public sealed partial class PollPlanItCommandHandler
 
                         // Skip upsert + zone fan-out when the only change is PlanIt bookkeeping
                         // (LastDifferent bumped by a rescrape). This is the load-bearing fix for
-                        // reindex floods — see bd tc-yt57.
-                        var existing = await this.applicationRepository.GetByUidAsync(application.Uid, ct).ConfigureAwait(false);
+                        // reindex floods — see bd tc-yt57. Partition-scoped lookup (authorityCode
+                        // is the Applications container's partition key) avoids a cross-partition
+                        // fan-out on the hot path — see bd tc-vidz.
+                        var authorityCode = application.AreaId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        var existing = await this.applicationRepository.GetByUidAsync(application.Uid, authorityCode, ct).ConfigureAwait(false);
                         if (existing is not null && existing.HasSameBusinessFieldsAs(application))
                         {
                             continue;
