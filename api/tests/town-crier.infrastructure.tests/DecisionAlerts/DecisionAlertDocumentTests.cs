@@ -93,4 +93,19 @@ public sealed class DecisionAlertDocumentTests
         // Assert
         await Assert.That(roundTripped.PushSent).IsTrue();
     }
+
+    [Test]
+    public async Task Should_SetTtlTo90Days_When_MappingFromDomain()
+    {
+        // Arrange
+        var alert = DecisionAlert.Create(
+            "user-1", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+
+        // Act
+        var document = DecisionAlertDocument.FromDomain(alert);
+
+        // Assert
+        var ninetyDaysInSeconds = (int)TimeSpan.FromDays(90).TotalSeconds;
+        await Assert.That(document.Ttl).IsEqualTo(ninetyDaysInSeconds);
+    }
 }
