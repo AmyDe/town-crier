@@ -1042,6 +1042,39 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_ClearCursor_When_NaturalEndReachedAfterResume()
+    {
+        // Seed state with an active cursor pointing at NextPage=2 — handler starts at
+        // page 1 (2 - 1 overlap). Fake returns a single partial page (HasMorePages=false).
+        // Cursor must be cleared and HWM advanced to the highest LastDifferent seen.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var lastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetState(1, new PollState(
+            lastPollTime,
+            new PollCursor(DateOnly.FromDateTime(lastPollTime.UtcDateTime), NextPage: 2, KnownTotal: 150)));
+
+        var appLastDifferent = new DateTimeOffset(2026, 4, 15, 8, 0, 0, TimeSpan.Zero);
+
+        // Single app → page 1 is partial → HasMorePages=false.
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder()
+            .WithUid("app-r").WithAreaId(1).WithLastDifferent(appLastDifferent).Build());
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(pollStateStore.GetCursorFor(1)).IsNull();
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(appLastDifferent);
+    }
+
+    [Test]
     public async Task Should_IgnoreStaleCursor_When_DifferentStartDateHasAdvanced()
     {
         // Cursor recorded against 2026-04-18 but HWM has advanced to 2026-04-19.
