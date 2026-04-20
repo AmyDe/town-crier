@@ -58,9 +58,11 @@ final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable
 
   private(set) var deleteCallCount = 0
   var deleteResult: Result<Void, Error> = .success(())
+  var onDelete: (() -> Void)?
 
   func delete() async throws {
     deleteCallCount += 1
+    onDelete?()
     try deleteResult.get()
   }
 }
