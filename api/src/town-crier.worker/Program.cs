@@ -148,6 +148,15 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
     client.BaseAddress = new Uri(planItBaseUrl);
 });
 
+var pollingOptions = new PollingOptions
+{
+    // Default 3 pages = 300 apps max per authority per cycle. Bounds the
+    // per-authority rate budget so a backlogged authority can't monopolise a
+    // seed cycle. Null disables the cap (unbounded pagination). See bd tc-l77h.
+    MaxPagesPerAuthorityPerCycle = builder.Configuration.GetValue<int?>("Polling:MaxPagesPerAuthorityPerCycle") ?? 3,
+};
+builder.Services.AddSingleton(pollingOptions);
+
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 builder.Services.AddSingleton<GenerateHourlyDigestsCommandHandler>();

@@ -120,7 +120,8 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
         TimeProvider? timeProvider = null,
-        ICycleSelector? cycleSelector = null)
+        ICycleSelector? cycleSelector = null,
+        PollingOptions? options = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -131,6 +132,7 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
+            options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

@@ -982,6 +982,49 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(300);
     }
 
+    [Test]
+    public async Task Should_PassConfiguredMaxPagesToPlanItClient_When_PollingAuthority()
+    {
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+
+        var options = new PollingOptions { MaxPagesPerAuthorityPerCycle = 3 };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            options: options);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(planItClient.LastMaxPagesUsed).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_PassNullMaxPages_When_PollingOptionsUnset()
+    {
+        // Regression guard: default PollingOptions (MaxPagesPerAuthorityPerCycle = null)
+        // must propagate null through to the PlanIt client so pagination stays unbounded.
+        // Protects watched-cycle callers that don't want the seed-poll cap applied.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            options: new PollingOptions());
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(planItClient.LastMaxPagesUsed).IsNull();
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
@@ -990,7 +1033,8 @@ public sealed class PollPlanItCommandHandlerTests
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
         TimeProvider? timeProvider = null,
-        ICycleSelector? cycleSelector = null)
+        ICycleSelector? cycleSelector = null,
+        PollingOptions? options = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -1001,6 +1045,7 @@ public sealed class PollPlanItCommandHandlerTests
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
+            options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }
