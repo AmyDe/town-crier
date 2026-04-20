@@ -14,7 +14,7 @@ public sealed class GetLegalDocumentQueryHandlerTests
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.DocumentType).IsEqualTo("privacy");
         await Assert.That(result.Title).IsEqualTo("Privacy Policy");
-        await Assert.That(result.LastUpdated).IsEqualTo("2026-04-19");
+        await Assert.That(result.LastUpdated).IsEqualTo("2026-04-20");
         await Assert.That(result.Sections).HasCount().EqualTo(10);
         await Assert.That(result.Sections[0].Heading).IsEqualTo("Who We Are");
     }
