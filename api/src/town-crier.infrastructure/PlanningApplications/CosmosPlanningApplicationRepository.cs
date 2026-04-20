@@ -43,6 +43,22 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
+    public async Task<PlanningApplication?> GetByUidAsync(string uid, string authorityCode, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(uid);
+        ArgumentException.ThrowIfNullOrWhiteSpace(authorityCode);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Applications,
+            "SELECT * FROM c WHERE c.uid = @uid",
+            [new QueryParameter("@uid", uid)],
+            authorityCode,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
+    }
+
     public async Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
     {
         var authorityCode = authorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);

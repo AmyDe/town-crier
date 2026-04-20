@@ -37,6 +37,43 @@ public sealed class CosmosPlanningApplicationRepositoryTests
         await Assert.That(result).IsNull();
     }
 
+    // Partition-scoped variant used by the poll-cycle dedupe hot path. Avoids a
+    // cross-partition fan-out on every PlanIt application (see bd tc-vidz).
+    [Test]
+    public async Task Should_ReturnOnlyApplicationInGivenPartition_When_GetByUidWithAuthorityCodeCalled()
+    {
+        // Arrange — two applications with the same uid but different authorities.
+        // PlanIt uids are not globally unique across authorities, so the scoped
+        // query must honour the partition key and return only the match inside it.
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosPlanningApplicationRepository(client);
+        var appA = CreateTestApplication(name: "A/001", uid: "shared-uid", areaId: 100);
+        var appB = CreateTestApplication(name: "B/001", uid: "shared-uid", areaId: 200);
+        await repo.UpsertAsync(appA, CancellationToken.None);
+        await repo.UpsertAsync(appB, CancellationToken.None);
+
+        // Act
+        var result = await repo.GetByUidAsync("shared-uid", authorityCode: "200", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.AreaId).IsEqualTo(200);
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_GetByUidWithAuthorityCodeForMissingApplication()
+    {
+        // Arrange
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosPlanningApplicationRepository(client);
+
+        // Act
+        var result = await repo.GetByUidAsync("nonexistent", authorityCode: "100", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
+
     [Test]
     public async Task Should_ReturnApplications_When_GetByAuthorityIdCalled()
     {
