@@ -1246,7 +1246,7 @@ public sealed class PollPlanItCommandHandlerTests
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
         var cursorAfterA = pollStateStore.GetCursorFor(1);
         await Assert.That(cursorAfterA).IsNotNull();
-        await Assert.That(cursorAfterA!.NextPage).IsEqualTo(999);
+        await Assert.That(cursorAfterA!.NextPage).IsEqualTo(4);
         await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(initialLastPollTime);
 
         // Cycle B — resumes at page 3 (4 - 1 overlap), processes pages 3, 4, 5 → cap hits
