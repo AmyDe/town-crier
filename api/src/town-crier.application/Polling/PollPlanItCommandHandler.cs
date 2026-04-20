@@ -90,9 +90,20 @@ public sealed partial class PollPlanItCommandHandler
                 var existingState = await this.pollStateStore.GetAsync(authorityId, ct).ConfigureAwait(false);
                 lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
 
+                // Resume from a previously-saved cursor only when its recorded date matches
+                // the date we're about to query. If the HWM has advanced past the cursor's
+                // date the cursor is stale and must be ignored (see tc-70kg / polling-resumable-cursor).
+                // Overlap by one page (-1) to tolerate PlanIt page-shift between cycles.
+                var startPage = 1;
+                if (existingState?.Cursor is { } resumeCursor
+                    && resumeCursor.DifferentStart == DateOnly.FromDateTime(lastPollTime.UtcDateTime))
+                {
+                    startPage = Math.Max(1, resumeCursor.NextPage - 1);
+                }
+
                 var maxPages = this.options.MaxPagesPerAuthorityPerCycle;
                 var pagesFetched = 0;
-                var page = 1;
+                var page = startPage;
                 while (true)
                 {
                     var pageResult = await this.planItClient.FetchApplicationsPageAsync(
