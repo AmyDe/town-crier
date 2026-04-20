@@ -1,5 +1,3 @@
-using TownCrier.Domain.PlanningApplications;
-
 namespace TownCrier.Application.PlanIt;
 
 public interface IPlanItClient
