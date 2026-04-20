@@ -32,9 +32,9 @@ internal sealed class FakePlanItClient : IPlanItClient
     public TimeSpan? FetchDelay { get; set; }
 
     /// <summary>
-    /// Optional override for the <see cref="FetchPageResult.Total"/> returned by
-    /// <see cref="FetchApplicationsPageAsync"/>. When null the fake derives the
-    /// total from the number of pre-seeded applications for the authority.
+    /// Gets or sets an optional override for the <see cref="FetchPageResult.Total"/>
+    /// returned by <see cref="FetchApplicationsPageAsync"/>. When null the fake derives
+    /// the total from the number of pre-seeded applications for the authority.
     /// </summary>
     public int? TotalOverride { get; set; }
 
