@@ -1041,6 +1041,45 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(pages).IsEquivalentTo(ExpectedPages1Through3);
     }
 
+    [Test]
+    public async Task Should_SaveCursor_When_PageCapHits()
+    {
+        // Seed 5 full pages of apps for a single authority, with MaxPages=3.
+        // Handler must stop after page 3 and persist a cursor pointing at page 4
+        // with the high-water mark frozen at the existing lastPollTime.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var existingLastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(1, existingLastPollTime);
+
+        var planItClient = new FakePlanItClient();
+        for (var i = 0; i < FakePlanItClient.PageSize * 5; i++)
+        {
+            planItClient.Add(1, new PlanningApplicationBuilder().WithUid($"app-{i}").WithAreaId(1).Build());
+        }
+
+        var options = new PollingOptions { MaxPagesPerAuthorityPerCycle = 3 };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            options: options);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // HWM frozen — lastPollTime unchanged.
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(existingLastPollTime);
+
+        // Cursor saved pointing at page 4 (the next unfetched page).
+        var cursor = pollStateStore.GetCursorFor(1);
+        await Assert.That(cursor).IsNotNull();
+        await Assert.That(cursor!.NextPage).IsEqualTo(4);
+        await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingLastPollTime.UtcDateTime));
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
