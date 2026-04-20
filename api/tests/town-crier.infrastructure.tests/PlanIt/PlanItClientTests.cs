@@ -875,6 +875,28 @@ public sealed class PlanItClientTests
         await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
     }
 
+    [Test]
+    public async Task Should_ReturnHasMorePagesTrue_When_FullPageReturned()
+    {
+        // Arrange — 100 records (== DefaultPageSize) signals more pages may follow.
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", BuildResponseJson(CreateRecordsJson(100), total: 250));
+        var client = CreateClient(handler);
+
+        // Act
+        var page = await client.FetchApplicationsPageAsync(
+            authorityId: 292,
+            differentStart: null,
+            page: 1,
+            ct: CancellationToken.None);
+
+        // Assert
+        await Assert.That(page.PageNumber).IsEqualTo(1);
+        await Assert.That(page.Applications).HasCount().EqualTo(100);
+        await Assert.That(page.Total).IsEqualTo(250);
+        await Assert.That(page.HasMorePages).IsTrue();
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItThrottleOptions? throttleOptions = null,
