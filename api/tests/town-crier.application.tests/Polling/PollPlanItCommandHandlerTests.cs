@@ -7,6 +7,7 @@ namespace TownCrier.Application.Tests.Polling;
 public sealed class PollPlanItCommandHandlerTests
 {
     private static readonly int[] ExpectedPages1Through3 = [1, 2, 3];
+    private static readonly int[] ExpectedPagesAcrossThreeCycles = [1, 2, 3, 3, 4, 5, 5, 6, 7];
 
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
@@ -1170,6 +1171,102 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(cursor).IsNotNull();
         await Assert.That(cursor!.NextPage).IsEqualTo(2);
         await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingLastPollTime.UtcDateTime));
+    }
+
+    [Test]
+    public async Task Should_StartAtPage1_When_NoCursorExists()
+    {
+        // No prior poll state → no cursor → handler must begin pagination at page 1.
+        // Regression guard: the cursor resume branch must only fire when GetAsync
+        // returns a state with a non-null Cursor.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+
+        var pollStateStore = new FakePollStateStore();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).HasCount().EqualTo(1);
+        await Assert.That(pages[0]).IsEqualTo(999);
+    }
+
+    [Test]
+    public async Task Should_ResumeSpike_AcrossMultipleCycles()
+    {
+        // 7-page spike with cap=3 — drive the handler across three cycles against the
+        // same seeded state:
+        //   * Cycle A starts at page 1, caps out at page 3 → cursor NextPage=4, HWM frozen.
+        //   * Cycle B resumes (overlap -1) from page 3, caps out at page 5 → cursor NextPage=6, HWM frozen.
+        //   * Cycle C resumes (overlap -1) from page 5, reaches the natural end at page 7
+        //     → cursor cleared, HWM advanced to the max LastDifferent seen.
+        // All three cycles share the same FakePlanItClient and FakePollStateStore so the
+        // stored cursor is what actually drives the next cycle's start page.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var initialLastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(1, initialLastPollTime);
+
+        // Seed 7 pages total: 6 full pages + 1 partial page so HasMorePages flips false on page 7.
+        var highestLastDifferent = new DateTimeOffset(2026, 4, 15, 23, 0, 0, TimeSpan.Zero);
+        var planItClient = new FakePlanItClient();
+        for (var i = 0; i < (FakePlanItClient.PageSize * 6) + 10; i++)
+        {
+            // Make the final app on page 7 the one with the highest LastDifferent so we can
+            // verify the HWM advance after natural end.
+            var lastDifferent = i == (FakePlanItClient.PageSize * 6) + 9
+                ? highestLastDifferent
+                : initialLastPollTime.AddHours(1);
+            planItClient.Add(1, new PlanningApplicationBuilder()
+                .WithUid($"app-{i}")
+                .WithAreaId(1)
+                .WithLastDifferent(lastDifferent)
+                .Build());
+        }
+
+        var options = new PollingOptions { MaxPagesPerAuthorityPerCycle = 3 };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            options: options);
+
+        // Cycle A
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        var cursorAfterA = pollStateStore.GetCursorFor(1);
+        await Assert.That(cursorAfterA).IsNotNull();
+        await Assert.That(cursorAfterA!.NextPage).IsEqualTo(4);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(initialLastPollTime);
+
+        // Cycle B — resumes at page 3 (4 - 1 overlap), processes pages 3, 4, 5 → cap hits
+        // after 3 pages, so next unfetched page = 6.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        var cursorAfterB = pollStateStore.GetCursorFor(1);
+        await Assert.That(cursorAfterB).IsNotNull();
+        await Assert.That(cursorAfterB!.NextPage).IsEqualTo(6);
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(initialLastPollTime);
+
+        // Cycle C — resumes at page 5, processes pages 5, 6, 7. Page 7 is partial so
+        // HasMorePages=false → natural end → cursor cleared and HWM advanced.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        await Assert.That(pollStateStore.GetCursorFor(1)).IsNull();
+        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(highestLastDifferent);
+
+        // Sanity: verify the pages actually fetched across all three cycles.
+        // A: 1,2,3. B: 3,4,5. C: 5,6,7.
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).IsEquivalentTo(ExpectedPagesAcrossThreeCycles);
     }
 
     [Test]
