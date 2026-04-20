@@ -23,6 +23,23 @@ public sealed class InMemorySavedApplicationRepository : ISavedApplicationReposi
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var keysToRemove = this.store
+            .Where(kvp => kvp.Value.UserId == userId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            this.store.TryRemove(key, out _);
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IReadOnlyList<SavedApplication>> GetByUserIdAsync(string userId, CancellationToken ct)
     {
         var results = this.store.Values

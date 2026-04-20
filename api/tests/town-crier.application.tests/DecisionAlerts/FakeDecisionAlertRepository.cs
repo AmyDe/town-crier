@@ -21,4 +21,10 @@ internal sealed class FakeDecisionAlertRepository : IDecisionAlertRepository
         this.store.Add(alert);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        this.store.RemoveAll(a => a.UserId == userId);
+        return Task.CompletedTask;
+    }
 }

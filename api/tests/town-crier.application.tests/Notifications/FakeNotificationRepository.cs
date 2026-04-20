@@ -88,4 +88,10 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         this.store.Add(notification);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        this.store.RemoveAll(n => n.UserId == userId);
+        return Task.CompletedTask;
+    }
 }

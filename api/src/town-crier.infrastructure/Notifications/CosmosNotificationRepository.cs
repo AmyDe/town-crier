@@ -149,4 +149,26 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             CosmosJsonSerializerContext.Default.NotificationDocument,
             ct).ConfigureAwait(false);
     }
+
+    public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT c.id FROM c WHERE c.userId = @userId",
+            [new QueryParameter("@userId", userId)],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        foreach (var document in documents)
+        {
+            await this.client.DeleteDocumentAsync(
+                CosmosContainerNames.Notifications,
+                document.Id,
+                userId,
+                ct).ConfigureAwait(false);
+        }
+    }
 }

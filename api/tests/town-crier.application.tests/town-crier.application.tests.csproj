@@ -19,14 +19,15 @@
     <ProjectReference Include="..\..\src\town-crier.application\town-crier.application.csproj" />
   </ItemGroup>
 
-  <!-- Exclude WIP test files from other beads that reference types not yet implemented -->
+  <!-- Exclude WIP test files from other beads that reference types not yet implemented.
+       Fakes in these folders remain compiled so they can be reused by other tests. -->
   <ItemGroup>
     <Compile Remove="Polling\WatchZoneActiveAuthorityProviderTests.cs" />
     <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
     <Compile Remove="Polling\PollingScheduleTests.cs" />
     <Compile Remove="Notifications\GetNotificationsQueryHandlerTests.cs" />
-    <Compile Remove="SavedApplications\**" />
-    <Compile Remove="DecisionAlerts\**" />
+    <Compile Remove="SavedApplications\*Tests.cs" />
+    <Compile Remove="DecisionAlerts\*Tests.cs" />
   </ItemGroup>
 
 </Project>

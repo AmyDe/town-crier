@@ -11,4 +11,6 @@ public interface IDeviceRegistrationRepository
     Task SaveAsync(DeviceRegistration registration, CancellationToken ct);
 
     Task DeleteByTokenAsync(string token, CancellationToken ct);
+
+    Task DeleteAllByUserIdAsync(string userId, CancellationToken ct);
 }

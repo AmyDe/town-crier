@@ -34,4 +34,21 @@ public sealed class InMemoryDeviceRegistrationRepository : IDeviceRegistrationRe
         this.store.TryRemove(token, out _);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var tokensToRemove = this.store
+            .Where(kvp => kvp.Value.UserId == userId)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var token in tokensToRemove)
+        {
+            this.store.TryRemove(token, out _);
+        }
+
+        return Task.CompletedTask;
+    }
 }

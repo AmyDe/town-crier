@@ -20,4 +20,20 @@ public sealed class InMemoryDecisionAlertRepository : IDecisionAlertRepository
         this.store.Add(alert);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var remaining = this.store.Where(a => a.UserId != userId).ToList();
+        while (this.store.TryTake(out _))
+        {
+            // Drain the bag.
+        }
+
+        foreach (var alert in remaining)
+        {
+            this.store.Add(alert);
+        }
+
+        return Task.CompletedTask;
+    }
 }
