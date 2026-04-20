@@ -149,6 +149,7 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<DeleteUserProfileCommandHandler>();
         services.AddTransient<UpdateZonePreferencesCommandHandler>();
         services.AddTransient<GetZonePreferencesQueryHandler>();
+        services.AddTransient<RecordUserActivityCommandHandler>();
 
         services.AddTransient<CreateWatchZoneCommandHandler>();
         services.AddTransient<UpdateWatchZoneCommandHandler>();
