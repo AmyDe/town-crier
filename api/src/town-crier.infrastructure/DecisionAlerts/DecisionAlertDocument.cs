@@ -4,6 +4,8 @@ namespace TownCrier.Infrastructure.DecisionAlerts;
 
 internal sealed class DecisionAlertDocument
 {
+    private const int NinetyDaysInSeconds = 90 * 24 * 60 * 60;
+
     public required string Id { get; init; }
 
     public required string EntityId { get; init; }
@@ -22,6 +24,8 @@ internal sealed class DecisionAlertDocument
 
     public required DateTimeOffset CreatedAt { get; init; }
 
+    public int Ttl { get; init; } = NinetyDaysInSeconds;
+
     public static DecisionAlertDocument FromDomain(DecisionAlert alert)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -37,6 +41,7 @@ internal sealed class DecisionAlertDocument
             Decision = alert.Decision,
             PushSent = alert.PushSent,
             CreatedAt = alert.CreatedAt,
+            Ttl = NinetyDaysInSeconds,
         };
     }
 
