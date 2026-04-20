@@ -1042,6 +1042,35 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_ResumeAtCursorPage_When_CursorMatchesDate()
+    {
+        // Cursor says NextPage=4, lastPollTime date matches — handler must start at page 3
+        // (4 - 1 overlap for page-shift safety).
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var lastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetState(1, new PollState(
+            lastPollTime,
+            new PollCursor(DateOnly.FromDateTime(lastPollTime.UtcDateTime), NextPage: 4, KnownTotal: 350)));
+
+        var planItClient = new FakePlanItClient();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).Contains(3);
+        await Assert.That(pages).DoesNotContain(1);
+        await Assert.That(pages).DoesNotContain(2);
+    }
+
+    [Test]
     public async Task Should_SaveCursor_When_RateLimitHitsMidPagination()
     {
         // 429 thrown AFTER page 1 yields 2 apps (page 1 had HasMorePages=true). The handler
