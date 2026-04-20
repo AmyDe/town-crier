@@ -79,7 +79,7 @@ extension LegalDocumentViewModel {
         heading: "Contact",
         body: """
           If you have questions about this privacy policy or wish to exercise \
-          your data rights, please contact us at privacy@towncrier.app.
+          your data rights, please contact us at privacy@towncrierapp.uk.
           """
       ),
     ]
