@@ -15,6 +15,12 @@ public sealed class InMemoryDecisionAlertRepository : IDecisionAlertRepository
         return Task.FromResult(alert);
     }
 
+    public Task<IReadOnlyList<DecisionAlert>> GetByUserIdAsync(string userId, CancellationToken ct)
+    {
+        var alerts = this.store.Where(a => a.UserId == userId).ToList();
+        return Task.FromResult<IReadOnlyList<DecisionAlert>>(alerts);
+    }
+
     public Task SaveAsync(DecisionAlert alert, CancellationToken ct)
     {
         this.store.Add(alert);

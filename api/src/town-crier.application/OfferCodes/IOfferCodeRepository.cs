@@ -10,4 +10,6 @@ public interface IOfferCodeRepository
     Task CreateAsync(OfferCode code, CancellationToken ct);
 
     Task SaveAsync(OfferCode code, CancellationToken ct);
+
+    Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct);
 }

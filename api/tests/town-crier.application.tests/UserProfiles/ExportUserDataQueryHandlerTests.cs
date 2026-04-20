@@ -248,8 +248,8 @@ public sealed class ExportUserDataQueryHandlerTests
         codeB.Redeem("auth0|other", DateTimeOffset.UtcNow);
         await harness.OfferCodeRepository.SaveAsync(codeB, CancellationToken.None);
 
+        // codeC is unredeemed.
         var codeC = new OfferCode("CCCCCCCCCCCC", SubscriptionTier.Pro, 14, DateTimeOffset.UtcNow);
-        // Not redeemed.
         await harness.OfferCodeRepository.SaveAsync(codeC, CancellationToken.None);
 
         // Act
