@@ -897,6 +897,27 @@ public sealed class PlanItClientTests
         await Assert.That(page.HasMorePages).IsTrue();
     }
 
+    [Test]
+    public async Task Should_ReturnHasMorePagesFalse_When_PartialPage()
+    {
+        // Arrange — fewer records than DefaultPageSize signals end of data.
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("page=1", BuildResponseJson(CreateRecordsJson(42), total: 42));
+        var client = CreateClient(handler);
+
+        // Act
+        var page = await client.FetchApplicationsPageAsync(
+            authorityId: 292,
+            differentStart: null,
+            page: 1,
+            ct: CancellationToken.None);
+
+        // Assert
+        await Assert.That(page.Applications).HasCount().EqualTo(42);
+        await Assert.That(page.Total).IsEqualTo(42);
+        await Assert.That(page.HasMorePages).IsFalse();
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItThrottleOptions? throttleOptions = null,
