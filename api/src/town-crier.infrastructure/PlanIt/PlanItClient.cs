@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using TownCrier.Application.PlanIt;
 using TownCrier.Domain.PlanningApplications;
@@ -30,50 +29,35 @@ public sealed class PlanItClient : IPlanItClient
         this.delayFunc = delayFunc ?? Task.Delay;
     }
 
-    public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
+    public async Task<FetchPageResult> FetchApplicationsPageAsync(
         int authorityId,
         DateTimeOffset? differentStart,
-        int? maxPages,
-        [EnumeratorCancellation] CancellationToken ct)
+        int page,
+        CancellationToken ct)
     {
-        var page = 1;
-        int fetched;
+        var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
+        using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
-        do
+        var planItResponse = await JsonSerializer.DeserializeAsync(
+            await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
+            PlanItJsonSerializerContext.Default.PlanItResponse,
+            ct).ConfigureAwait(false);
+
+        if (planItResponse is null)
         {
-            var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
-            using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-
-            var planItResponse = await JsonSerializer.DeserializeAsync(
-                await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
-                PlanItJsonSerializerContext.Default.PlanItResponse,
-                ct).ConfigureAwait(false);
-
-            if (planItResponse is null)
-            {
-                yield break;
-            }
-
-            fetched = planItResponse.Records.Count;
-
-            foreach (var record in planItResponse.Records)
-            {
-                yield return MapToDomain(record);
-            }
-
-            // Voluntary page cap — bail cleanly so seed-poll cycles can't burn a
-            // backlogged authority's full rate budget before rotating. The handler's
-            // high-water mark already advances to the LastDifferent of the final
-            // streamed app, so the next cycle resumes from there (bd tc-l77h).
-            if (maxPages.HasValue && page >= maxPages.Value)
-            {
-                yield break;
-            }
-
-            page++;
+            return new FetchPageResult(page, [], Total: null, HasMorePages: false);
         }
-        while (fetched >= DefaultPageSize);
+
+        var applications = planItResponse.Records
+            .Select(MapToDomain)
+            .ToList();
+
+        // Page-fill heuristic: a full page means more records may follow. This mirrors
+        // the previous client-side pagination loop's exit condition.
+        var hasMorePages = applications.Count >= DefaultPageSize;
+
+        return new FetchPageResult(page, applications, planItResponse.Total, hasMorePages);
     }
 
     public async Task<PlanItSearchResult> SearchApplicationsAsync(

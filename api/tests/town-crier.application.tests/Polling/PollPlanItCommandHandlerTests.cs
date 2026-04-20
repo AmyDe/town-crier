@@ -6,6 +6,8 @@ namespace TownCrier.Application.Tests.Polling;
 
 public sealed class PollPlanItCommandHandlerTests
 {
+    private static readonly int[] ExpectedPages1Through3 = [1, 2, 3];
+
     [Test]
     public async Task Should_ReturnApplicationCount_When_PlanItReturnsApplications()
     {
@@ -983,13 +985,18 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_PassConfiguredMaxPagesToPlanItClient_When_PollingAuthority()
+    public async Task Should_StopFetchingAtConfiguredMaxPages_When_PollingAuthority()
     {
+        // Handler now drives pagination itself: seed the fake with 5 full pages
+        // and verify the handler stops after MaxPagesPerAuthorityPerCycle pages.
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
 
         var planItClient = new FakePlanItClient();
-        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+        for (var i = 0; i < FakePlanItClient.PageSize * 5; i++)
+        {
+            planItClient.Add(1, new PlanningApplicationBuilder().WithUid($"app-{i}").WithAreaId(1).Build());
+        }
 
         var options = new PollingOptions { MaxPagesPerAuthorityPerCycle = 3 };
 
@@ -1000,20 +1007,27 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(planItClient.LastMaxPagesUsed).IsEqualTo(3);
+        // Exactly 3 page requests for authority 1, pages 1..3.
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).IsEquivalentTo(ExpectedPages1Through3);
     }
 
     [Test]
-    public async Task Should_PassNullMaxPages_When_PollingOptionsUnset()
+    public async Task Should_PaginateUnbounded_When_PollingOptionsUnset()
     {
         // Regression guard: default PollingOptions (MaxPagesPerAuthorityPerCycle = null)
-        // must propagate null through to the PlanIt client so pagination stays unbounded.
-        // Protects watched-cycle callers that don't want the seed-poll cap applied.
+        // must allow pagination to continue until HasMorePages=false so watched-cycle
+        // callers don't prematurely truncate results.
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
 
         var planItClient = new FakePlanItClient();
-        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
+
+        // Seed 2.5 pages worth — page 3 will be partial so HasMorePages flips false.
+        for (var i = 0; i < (FakePlanItClient.PageSize * 2) + 50; i++)
+        {
+            planItClient.Add(1, new PlanningApplicationBuilder().WithUid($"app-{i}").WithAreaId(1).Build());
+        }
 
         var handler = CreateHandler(
             planItClient: planItClient,
@@ -1022,7 +1036,9 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        await Assert.That(planItClient.LastMaxPagesUsed).IsNull();
+        // Handler continued to the natural end (page 3 is partial) rather than stopping early.
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).IsEquivalentTo(ExpectedPages1Through3);
     }
 
     private static PollPlanItCommandHandler CreateHandler(

@@ -5,10 +5,15 @@ namespace TownCrier.Application.Tests.Polling;
 
 internal sealed class FakePlanItClient : IPlanItClient
 {
+    // Simulated PlanIt page size. Chosen small so tests can easily trigger the
+    // page-fill heuristic (HasMorePages) with a handful of applications.
+    public const int PageSize = 100;
+
     private readonly Dictionary<int, List<PlanningApplication>> applicationsByAuthority = [];
     private readonly Dictionary<int, Exception> exceptionsByAuthority = [];
     private readonly Dictionary<int, (int Count, Exception Exception)> throwAfterYieldingByAuthority = [];
     private readonly List<PlanningApplication> searchResults = [];
+    private readonly Dictionary<int, int> yieldedByAuthority = [];
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
 
@@ -16,21 +21,28 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public List<int> AuthorityIdsRequested { get; } = [];
 
+    public List<(int AuthorityId, int Page)> PagesRequested { get; } = [];
+
     public Exception? ExceptionToThrow { get; set; }
 
     /// <summary>
-    /// Gets or sets a delay applied to FetchApplicationsAsync (honoring cancellation)
-    /// before yielding results or throwing.
+    /// Gets or sets a delay applied to each page fetch (honoring cancellation)
+    /// before returning results or throwing.
     /// </summary>
     public TimeSpan? FetchDelay { get; set; }
+
+    /// <summary>
+    /// Optional override for the <see cref="FetchPageResult.Total"/> returned by
+    /// <see cref="FetchApplicationsPageAsync"/>. When null the fake derives the
+    /// total from the number of pre-seeded applications for the authority.
+    /// </summary>
+    public int? TotalOverride { get; set; }
 
     public int SearchTotal { get; set; }
 
     public string? LastSearchText { get; private set; }
 
     public int? LastAuthorityId { get; private set; }
-
-    public int? LastMaxPagesUsed { get; private set; }
 
     public void AddSearchResult(PlanningApplication application)
     {
@@ -63,16 +75,16 @@ internal sealed class FakePlanItClient : IPlanItClient
         this.applicationsByAuthority.Clear();
     }
 
-    public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
+    public async Task<FetchPageResult> FetchApplicationsPageAsync(
         int authorityId,
         DateTimeOffset? differentStart,
-        int? maxPages,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        int page,
+        CancellationToken ct)
     {
         this.LastDifferentStartUsed = differentStart;
         this.DifferentStartByAuthority[authorityId] = differentStart;
-        this.LastMaxPagesUsed = maxPages;
         this.AuthorityIdsRequested.Add(authorityId);
+        this.PagesRequested.Add((authorityId, page));
 
         if (this.FetchDelay.HasValue)
         {
@@ -89,23 +101,43 @@ internal sealed class FakePlanItClient : IPlanItClient
             throw this.ExceptionToThrow;
         }
 
-        if (this.applicationsByAuthority.TryGetValue(authorityId, out var applications))
-        {
-            var yielded = 0;
-            foreach (var app in applications)
-            {
-                if (this.throwAfterYieldingByAuthority.TryGetValue(authorityId, out var rule)
-                    && yielded >= rule.Count)
-                {
-                    throw rule.Exception;
-                }
+        this.applicationsByAuthority.TryGetValue(authorityId, out var allApps);
+        allApps ??= [];
 
-                yield return app;
-                yielded++;
+        var skip = (page - 1) * PageSize;
+        var pageItems = allApps.Skip(skip).Take(PageSize).ToList();
+
+        // Emulate the previous streaming-fake's "throw after N yielded across the authority"
+        // semantics in a page-oriented way:
+        //   - Fill the first page with up to rule.Count apps and flag HasMorePages=true.
+        //   - Throw on the next page request (after the handler has already processed the partial page).
+        // This preserves the partial-progress contract the handler relies on for 429 mid-pagination tests.
+        if (this.throwAfterYieldingByAuthority.TryGetValue(authorityId, out var rule))
+        {
+            var yielded = this.yieldedByAuthority.TryGetValue(authorityId, out var prev) ? prev : 0;
+
+            // Throw immediately on subsequent pages — the "rate limit" has now kicked in.
+            if (yielded >= rule.Count)
+            {
+                throw rule.Exception;
             }
+
+            var remaining = rule.Count - yielded;
+            var trimmed = pageItems.Take(remaining).ToList();
+            this.yieldedByAuthority[authorityId] = yielded + trimmed.Count;
+
+            // HasMorePages=true so the handler loops back and hits the throw on the next call.
+            var totalForRule = this.TotalOverride ?? allApps.Count;
+            return new FetchPageResult(page, trimmed, totalForRule, HasMorePages: true);
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
+        var existingYielded = this.yieldedByAuthority.TryGetValue(authorityId, out var prevCount) ? prevCount : 0;
+        this.yieldedByAuthority[authorityId] = existingYielded + pageItems.Count;
+
+        var hasMorePages = pageItems.Count >= PageSize;
+        var total = this.TotalOverride ?? allApps.Count;
+
+        return new FetchPageResult(page, pageItems, total, hasMorePages);
     }
 
     public Task<PlanItSearchResult> SearchApplicationsAsync(

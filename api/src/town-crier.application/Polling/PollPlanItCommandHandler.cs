@@ -86,41 +86,68 @@ public sealed partial class PollPlanItCommandHandler
                 var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
                 lastPollTime ??= now.AddDays(-1);
 
-                await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, this.options.MaxPagesPerAuthorityPerCycle, ct).ConfigureAwait(false))
+                var maxPages = this.options.MaxPagesPerAuthorityPerCycle;
+                var pagesFetched = 0;
+                var page = 1;
+                while (true)
                 {
-                    authorityAppCount++;
+                    var pageResult = await this.planItClient.FetchApplicationsPageAsync(
+                        authorityId, lastPollTime, page, ct).ConfigureAwait(false);
 
-                    if (application.LastDifferent > (highWaterMark ?? DateTimeOffset.MinValue))
+                    foreach (var application in pageResult.Applications)
                     {
-                        highWaterMark = application.LastDifferent;
-                    }
+                        authorityAppCount++;
 
-                    // Skip upsert + zone fan-out when the only change is PlanIt bookkeeping
-                    // (LastDifferent bumped by a rescrape). This is the load-bearing fix for
-                    // reindex floods — see bd tc-yt57.
-                    var existing = await this.applicationRepository.GetByUidAsync(application.Uid, ct).ConfigureAwait(false);
-                    if (existing is not null && existing.HasSameBusinessFieldsAs(application))
-                    {
-                        continue;
-                    }
-
-                    await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
-
-                    if (application.Latitude.HasValue && application.Longitude.HasValue)
-                    {
-                        var matchingZones = await this.watchZoneRepository.FindZonesContainingAsync(
-                            application.Latitude.Value, application.Longitude.Value, ct).ConfigureAwait(false);
-
-                        foreach (var zone in matchingZones)
+                        if (application.LastDifferent > (highWaterMark ?? DateTimeOffset.MinValue))
                         {
-                            if (zone.CreatedAt > application.LastDifferent)
-                            {
-                                continue;
-                            }
+                            highWaterMark = application.LastDifferent;
+                        }
 
-                            await this.notificationEnqueuer.EnqueueAsync(application, zone, ct).ConfigureAwait(false);
+                        // Skip upsert + zone fan-out when the only change is PlanIt bookkeeping
+                        // (LastDifferent bumped by a rescrape). This is the load-bearing fix for
+                        // reindex floods — see bd tc-yt57.
+                        var existing = await this.applicationRepository.GetByUidAsync(application.Uid, ct).ConfigureAwait(false);
+                        if (existing is not null && existing.HasSameBusinessFieldsAs(application))
+                        {
+                            continue;
+                        }
+
+                        await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+
+                        if (application.Latitude.HasValue && application.Longitude.HasValue)
+                        {
+                            var matchingZones = await this.watchZoneRepository.FindZonesContainingAsync(
+                                application.Latitude.Value, application.Longitude.Value, ct).ConfigureAwait(false);
+
+                            foreach (var zone in matchingZones)
+                            {
+                                if (zone.CreatedAt > application.LastDifferent)
+                                {
+                                    continue;
+                                }
+
+                                await this.notificationEnqueuer.EnqueueAsync(application, zone, ct).ConfigureAwait(false);
+                            }
                         }
                     }
+
+                    pagesFetched++;
+
+                    if (!pageResult.HasMorePages)
+                    {
+                        break;
+                    }
+
+                    // Voluntary page cap — bail cleanly so seed-poll cycles can't burn a
+                    // backlogged authority's full rate budget before rotating. The cursor
+                    // lifecycle replaces this in bd tc-70kg; until then the HWM alone drives
+                    // resumption at the LastDifferent of the final streamed application.
+                    if (maxPages.HasValue && pagesFetched >= maxPages.Value)
+                    {
+                        break;
+                    }
+
+                    page++;
                 }
 
                 completedSuccessfully = true;

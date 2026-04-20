@@ -921,6 +921,10 @@ public sealed class PlanItClientTests
         return new PlanItClient(httpClient, throttleOptions, retryOptions, delayFunc);
     }
 
+    // Legacy streaming helper — emulates the previous FetchApplicationsAsync
+    // contract (including maxPages) on top of the new page-level port so the
+    // bulk of these tests can stay behaviour-focused. The new HasMorePages
+    // semantics are covered by dedicated tests further down.
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(
         PlanItClient client,
         DateTimeOffset? differentStart,
@@ -928,9 +932,25 @@ public sealed class PlanItClientTests
         int? maxPages = null)
     {
         var results = new List<TownCrier.Domain.PlanningApplications.PlanningApplication>();
-        await foreach (var app in client.FetchApplicationsAsync(authorityId, differentStart, maxPages, CancellationToken.None))
+        var pagesFetched = 0;
+        var page = 1;
+        while (true)
         {
-            results.Add(app);
+            var pageResult = await client.FetchApplicationsPageAsync(authorityId, differentStart, page, CancellationToken.None);
+            results.AddRange(pageResult.Applications);
+            pagesFetched++;
+
+            if (!pageResult.HasMorePages)
+            {
+                break;
+            }
+
+            if (maxPages.HasValue && pagesFetched >= maxPages.Value)
+            {
+                break;
+            }
+
+            page++;
         }
 
         return results;
