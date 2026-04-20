@@ -35,6 +35,23 @@ public sealed class Auth0ManagementClient : IAuth0ManagementClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task DeleteUserAsync(string userId, CancellationToken ct)
+    {
+        var token = await this.GetTokenAsync(ct).ConfigureAwait(false);
+
+        var url = $"https://{this.domain}/api/v2/users/{Uri.EscapeDataString(userId)}";
+        using var request = new HttpRequestMessage(HttpMethod.Delete, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task<string> GetTokenAsync(CancellationToken ct)
     {
         if (this.cachedToken is not null && DateTimeOffset.UtcNow < this.tokenExpiry)
