@@ -1042,6 +1042,35 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_IgnoreStaleCursor_When_DifferentStartDateHasAdvanced()
+    {
+        // Cursor recorded against 2026-04-18 but HWM has advanced to 2026-04-19.
+        // Handler must treat cursor as stale and start at page 1.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+
+        var lastPollTime = new DateTimeOffset(2026, 4, 19, 8, 0, 0, TimeSpan.Zero);
+        var staleCursor = new PollCursor(
+            DifferentStart: new DateOnly(2026, 4, 18),
+            NextPage: 4,
+            KnownTotal: 350);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetState(1, new PollState(lastPollTime, staleCursor));
+
+        var planItClient = new FakePlanItClient();
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        var pages = planItClient.PagesRequested.Where(p => p.AuthorityId == 1).Select(p => p.Page).ToList();
+        await Assert.That(pages).Contains(1);
+    }
+
+    [Test]
     public async Task Should_ResumeAtCursorPage_When_CursorMatchesDate()
     {
         // Cursor says NextPage=4, lastPollTime date matches — handler must start at page 3
