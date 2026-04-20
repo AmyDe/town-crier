@@ -18,6 +18,7 @@ public sealed partial class PollPlanItCommandHandler
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
     private readonly ICycleSelector cycleSelector;
+    private readonly PollingOptions options;
     private readonly ILogger<PollPlanItCommandHandler> logger;
 
     public PollPlanItCommandHandler(
@@ -29,6 +30,7 @@ public sealed partial class PollPlanItCommandHandler
         IWatchZoneRepository watchZoneRepository,
         INotificationEnqueuer notificationEnqueuer,
         ICycleSelector cycleSelector,
+        PollingOptions options,
         ILogger<PollPlanItCommandHandler> logger)
     {
         this.planItClient = planItClient;
@@ -39,6 +41,7 @@ public sealed partial class PollPlanItCommandHandler
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
         this.cycleSelector = cycleSelector;
+        this.options = options;
         this.logger = logger;
     }
 
@@ -83,7 +86,7 @@ public sealed partial class PollPlanItCommandHandler
                 var lastPollTime = await this.pollStateStore.GetLastPollTimeAsync(authorityId, ct).ConfigureAwait(false);
                 lastPollTime ??= now.AddDays(-1);
 
-                await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, ct).ConfigureAwait(false))
+                await foreach (var application in this.planItClient.FetchApplicationsAsync(authorityId, lastPollTime, this.options.MaxPagesPerAuthorityPerCycle, ct).ConfigureAwait(false))
                 {
                     authorityAppCount++;
 

@@ -794,6 +794,87 @@ public sealed class PlanItClientTests
         await Assert.That(recorded).HasCount().EqualTo(0);
     }
 
+    [Test]
+    public async Task Should_StopAtPageCap_When_MaxPagesProvidedMidPagination()
+    {
+        // Arrange — 5 pages of 100 records each (500 total), but cap at 3.
+        // Each page carries a distinct last_different so the caller can compute
+        // a high-water mark from the final streamed record.
+        using var handler = new FakePlanItHandler();
+
+        var page1Json = BuildResponseJson(CreateRecordsJson(100, lastDifferent: "2026-03-10T09:00:00.000"), total: 500);
+        var page2Json = BuildResponseJson(CreateRecordsJson(100, startIndex: 100, lastDifferent: "2026-03-11T09:00:00.000"), total: 500, from: 100);
+        var page3Json = BuildResponseJson(CreateRecordsJson(100, startIndex: 200, lastDifferent: "2026-03-12T09:00:00.000"), total: 500, from: 200);
+        var page4Json = BuildResponseJson(CreateRecordsJson(100, startIndex: 300, lastDifferent: "2026-03-13T09:00:00.000"), total: 500, from: 300);
+        var page5Json = BuildResponseJson(CreateRecordsJson(100, startIndex: 400, lastDifferent: "2026-03-14T09:00:00.000"), total: 500, from: 400);
+        handler.SetupJsonResponse("page=1", page1Json);
+        handler.SetupJsonResponse("page=2", page2Json);
+        handler.SetupJsonResponse("page=3", page3Json);
+        handler.SetupJsonResponse("page=4", page4Json);
+        handler.SetupJsonResponse("page=5", page5Json);
+
+        var client = CreateClient(handler);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null, maxPages: 3);
+
+        // Assert — exactly 300 records returned, only 3 pages fetched
+        await Assert.That(results).HasCount().EqualTo(300);
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(3);
+        await Assert.That(handler.RequestUrls[0]).Contains("page=1");
+        await Assert.That(handler.RequestUrls[1]).Contains("page=2");
+        await Assert.That(handler.RequestUrls[2]).Contains("page=3");
+
+        // The final streamed app (the 300th) must carry the page-3 last_different —
+        // this is what the handler uses to advance its high-water mark.
+        var expectedHwm = DateTimeOffset.Parse("2026-03-12T09:00:00.000", CultureInfo.InvariantCulture);
+        await Assert.That(results[^1].LastDifferent).IsEqualTo(expectedHwm);
+    }
+
+    [Test]
+    public async Task Should_PaginateUnbounded_When_MaxPagesIsNull()
+    {
+        // Arrange — 5 full pages of data (500 records). With maxPages=null we must
+        // paginate to natural exit (page 6 returns fewer than DefaultPageSize=100).
+        // This is the regression guard for the watched-cycle / Search paths.
+        using var handler = new FakePlanItHandler();
+
+        handler.SetupJsonResponse("page=1", BuildResponseJson(CreateRecordsJson(100), total: 450));
+        handler.SetupJsonResponse("page=2", BuildResponseJson(CreateRecordsJson(100, startIndex: 100), total: 450, from: 100));
+        handler.SetupJsonResponse("page=3", BuildResponseJson(CreateRecordsJson(100, startIndex: 200), total: 450, from: 200));
+        handler.SetupJsonResponse("page=4", BuildResponseJson(CreateRecordsJson(100, startIndex: 300), total: 450, from: 300));
+        handler.SetupJsonResponse("page=5", BuildResponseJson(CreateRecordsJson(50, startIndex: 400), total: 450, from: 400));
+
+        var client = CreateClient(handler);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null, maxPages: null);
+
+        // Assert — natural exit after the short page
+        await Assert.That(results).HasCount().EqualTo(450);
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(5);
+    }
+
+    [Test]
+    public async Task Should_ExitNaturally_When_MaxPagesNotReached()
+    {
+        // Arrange — 2 pages of data, cap=10 (cap well above actual page count).
+        // The natural end-of-data short-page must still terminate pagination.
+        using var handler = new FakePlanItHandler();
+
+        handler.SetupJsonResponse("page=1", BuildResponseJson(CreateRecordsJson(100), total: 150));
+        handler.SetupJsonResponse("page=2", BuildResponseJson(CreateRecordsJson(50, startIndex: 100), total: 150, from: 100));
+
+        var client = CreateClient(handler);
+
+        // Act
+        var results = await ConsumeAsync(client, differentStart: null, maxPages: 10);
+
+        // Assert — 2 page fetches, no call to page=3
+        await Assert.That(results).HasCount().EqualTo(150);
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItThrottleOptions? throttleOptions = null,
@@ -821,10 +902,11 @@ public sealed class PlanItClientTests
     private static async Task<List<TownCrier.Domain.PlanningApplications.PlanningApplication>> ConsumeAsync(
         PlanItClient client,
         DateTimeOffset? differentStart,
-        int authorityId = 292)
+        int authorityId = 292,
+        int? maxPages = null)
     {
         var results = new List<TownCrier.Domain.PlanningApplications.PlanningApplication>();
-        await foreach (var app in client.FetchApplicationsAsync(authorityId, differentStart, CancellationToken.None))
+        await foreach (var app in client.FetchApplicationsAsync(authorityId, differentStart, maxPages, CancellationToken.None))
         {
             results.Add(app);
         }
@@ -844,7 +926,7 @@ public sealed class PlanItClientTests
             """;
     }
 
-    private static string CreateRecordsJson(int count, int startIndex = 0)
+    private static string CreateRecordsJson(int count, int startIndex = 0, string lastDifferent = "2026-03-14T11:59:17.642")
     {
         var records = new System.Text.StringBuilder("[");
         for (var i = 0; i < count; i++)
@@ -865,7 +947,7 @@ public sealed class PlanItClientTests
                     "description": "Description {{index}}",
                     "app_type": "Full",
                     "app_state": "Undecided",
-                    "last_different": "2026-03-14T11:59:17.642"
+                    "last_different": "{{lastDifferent}}"
                 }
                 """;
             records.Append(record);

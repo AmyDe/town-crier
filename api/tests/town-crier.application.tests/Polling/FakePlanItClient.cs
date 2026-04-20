@@ -30,6 +30,8 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public int? LastAuthorityId { get; private set; }
 
+    public int? LastMaxPagesUsed { get; private set; }
+
     public void AddSearchResult(PlanningApplication application)
     {
         this.searchResults.Add(application);
@@ -64,10 +66,12 @@ internal sealed class FakePlanItClient : IPlanItClient
     public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
         int authorityId,
         DateTimeOffset? differentStart,
+        int? maxPages,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         this.LastDifferentStartUsed = differentStart;
         this.DifferentStartByAuthority[authorityId] = differentStart;
+        this.LastMaxPagesUsed = maxPages;
         this.AuthorityIdsRequested.Add(authorityId);
 
         if (this.FetchDelay.HasValue)

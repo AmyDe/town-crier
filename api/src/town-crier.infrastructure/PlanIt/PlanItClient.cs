@@ -33,6 +33,7 @@ public sealed class PlanItClient : IPlanItClient
     public async IAsyncEnumerable<PlanningApplication> FetchApplicationsAsync(
         int authorityId,
         DateTimeOffset? differentStart,
+        int? maxPages,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var page = 1;
@@ -59,6 +60,15 @@ public sealed class PlanItClient : IPlanItClient
             foreach (var record in planItResponse.Records)
             {
                 yield return MapToDomain(record);
+            }
+
+            // Voluntary page cap — bail cleanly so seed-poll cycles can't burn a
+            // backlogged authority's full rate budget before rotating. The handler's
+            // high-water mark already advances to the LastDifferent of the final
+            // streamed app, so the next cycle resumes from there (bd tc-l77h).
+            if (maxPages.HasValue && page >= maxPages.Value)
+            {
+                yield break;
             }
 
             page++;
