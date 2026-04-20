@@ -1042,6 +1042,46 @@ public sealed class PollPlanItCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_SaveCursor_When_RateLimitHitsMidPagination()
+    {
+        // 429 thrown AFTER page 1 yields 2 apps (page 1 had HasMorePages=true). The handler
+        // then calls page 2 which throws. We expect: HWM frozen at existing lastPollTime,
+        // cursor saved with NextPage=2 (the page that failed).
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var existingLastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(100, existingLastPollTime);
+
+        // Seed three apps so the fake has something to return on page 1.
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(100).Build());
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-3").WithAreaId(100).Build());
+        planItClient.ThrowAfterYielding(
+            100,
+            2,
+            new HttpRequestException("Rate limited", null, HttpStatusCode.TooManyRequests));
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider);
+
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // HWM frozen.
+        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(existingLastPollTime);
+
+        // Cursor saved at the page that failed (page 2).
+        var cursor = pollStateStore.GetCursorFor(100);
+        await Assert.That(cursor).IsNotNull();
+        await Assert.That(cursor!.NextPage).IsEqualTo(2);
+        await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingLastPollTime.UtcDateTime));
+    }
+
+    [Test]
     public async Task Should_SaveCursor_When_PageCapHits()
     {
         // Seed 5 full pages of apps for a single authority, with MaxPages=3.
