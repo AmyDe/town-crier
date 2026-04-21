@@ -89,3 +89,10 @@ The bespoke observability middleware was removed:
 - iOS telemetry (MetricKit crash reporting exists per [ADR 0014](0014-ios-offline-first-architecture.md), but no centralised export)
 - Custom Azure dashboards (using built-in App Insights views initially)
 - Sampling configuration (full collection at current ingestion volume)
+
+## Amendments
+
+### 2026-04-21
+- Corrected: **the React frontend instrumentation section above is aspirational and has not shipped.** `@microsoft/applicationinsights-web` is not a dependency in `web/package.json`, no SDK initialisation is present, and the `ErrorBoundary` component does not call `trackException`. `VITE_APPLICATIONINSIGHTS_CONNECTION_STRING` is wired in CI/CD but unused at runtime. End-to-end W3C trace correlation from browser to API is therefore not yet achievable. Revisit once a real frontend telemetry need is confirmed.
+- Retained: API-side instrumentation remains accurate. `Azure.Monitor.OpenTelemetry.Exporter` 1.7.0 is wired in both `town-crier.web` and `town-crier.worker`, with ActivitySources `TownCrier.Polling` and `TownCrier.Cosmos` and Meters `TownCrier.Api`, `TownCrier.Polling`, `TownCrier.Cosmos`, `TownCrier.PlanIt`. A `SuccessfulCosmosDependencyFilter` trims noisy successful dependency spans before export.
+- Added: an operational Azure dashboard (`dash-towncrier-operational`) is provisioned in Pulumi with KQL tiles over the shared Application Insights / Log Analytics workspace. The "Not yet done: Custom Azure dashboards" item is now partially addressed.

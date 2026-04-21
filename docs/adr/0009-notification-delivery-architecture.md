@@ -72,3 +72,12 @@ Notifications include:
 - **Retry semantics are implicit** — a failed batch is re-processed from the last checkpoint. This is simpler than queue-based retry but means a single poison document could block the processor. Mitigation: try/catch per document within a batch, log and skip failures after retries.
 - **Scaling ceiling**: a single change feed processor instance handles all notifications. At significant scale, the processor can be partitioned by lease assignment or extracted to a separate Container App. Not a concern for early growth.
 - **Free-tier cap is calendar-month based**, which is simpler to implement and reason about than rolling windows. Users who sign up mid-month get a partial first month — acceptable since it's the free tier.
+
+## Amendments
+
+### 2026-04-21
+- Updated: the **Cosmos DB change feed processor was not implemented**. No `IHostedService` or change-feed processor exists in `/api`. The `Leases` container is still provisioned in Pulumi but is not populated.
+- Updated: notification dispatch now runs **inline within the polling worker** (`town-crier.worker`, see [ADR 0019](0019-extract-polling-to-container-apps-job.md)). On each poll cycle the handler upserts changed applications, runs watch-zone matching against the `WatchZones` container, and calls `INotificationEnqueuer` (`DispatchNotificationEnqueuer` → `DispatchNotificationCommandHandler`) for each match. The enqueuer name is historical — dispatch is synchronous in-process, not queued.
+- Updated: **APNs delivery is not live.** `IPushNotificationSender` is currently bound to `NoOpPushNotificationSender`. The APNs device-token storage and registration endpoint exist on the iOS and API sides, but no provider-side delivery adapter is wired. The email channel ([ADR 0020](0020-email-notifications-via-acs.md)) is the active delivery path; push can be added later by implementing a real `IPushNotificationSender`.
+- Updated: **`FailedNotifications` container was not created.** Failed-delivery signal is surfaced through OpenTelemetry counters (`ApiMetrics.EmailsFailed` and related) instead of a Cosmos dead-letter collection. Revisit if operator review of failure detail becomes necessary.
+- Retained: free-tier calendar-month cap, APNs token lifecycle on the `DeviceRegistrations` container, and per-user `Notifications` feed. These continue to reflect the codebase.
