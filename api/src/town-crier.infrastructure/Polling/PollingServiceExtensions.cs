@@ -33,6 +33,7 @@ public static class PollingServiceExtensions
 
         services.AddSingleton<PollNextRunScheduler>();
         services.AddSingleton<PollTriggerOrchestrator>();
+        services.AddSingleton<PollTriggerBootstrapper>();
 
         return services;
     }

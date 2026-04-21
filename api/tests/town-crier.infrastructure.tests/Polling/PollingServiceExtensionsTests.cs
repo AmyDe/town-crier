@@ -64,6 +64,18 @@ public sealed class PollingServiceExtensionsTests
     }
 
     [Test]
+    public async Task Should_RegisterBootstrapper_When_AddingPollingInfrastructure()
+    {
+        // The safety-net reseed path (bd tc-tdgf) relies on the bootstrapper
+        // being resolvable from the worker host.
+        using var provider = BuildProvider();
+
+        var bootstrapper = provider.GetService<PollTriggerBootstrapper>();
+
+        await Assert.That(bootstrapper).IsNotNull();
+    }
+
+    [Test]
     public async Task Should_BindSchedulerOptionsFromConfiguration_When_Provided()
     {
         using var provider = BuildProvider(

@@ -260,6 +260,21 @@ switch (mode)
 
                 WorkerLog.PollCycleCompleted(logger, result.ApplicationCount, result.AuthoritiesPolled);
 
+                // Safety-net reseed (bd tc-tdgf): after the cron poll, re-seed the
+                // Service Bus trigger queue if it's empty so the adaptive SB-coordinated
+                // cycle self-heals. Best-effort — the bootstrapper absorbs any probe or
+                // publish failure so the safety-net's primary job (polling) is never
+                // blocked. Skipped when the lease was held by another replica — that
+                // holder is responsible for the SB chain.
+                if (result.TerminationReason != PollTerminationReason.LeaseHeld)
+                {
+                    var bootstrapper = host.Services.GetRequiredService<PollTriggerBootstrapper>();
+                    var bootstrapResult = await bootstrapper.TryBootstrapAsync(cycleCts.Token)
+                        .ConfigureAwait(false);
+                    activity?.SetTag("polling.safety_net.bootstrap_published", bootstrapResult.Published);
+                    activity?.SetTag("polling.safety_net.bootstrap_probe_failed", bootstrapResult.ProbeFailed);
+                }
+
                 // Exit-code semantics redefined for bd tc-qdtu:
                 //   exit 0 when ApplicationCount > 0  (we did useful work), OR
                 //   exit 0 when AuthorityErrors == 0  (clean pass, even if nothing new).
