@@ -60,6 +60,7 @@ public sealed partial class PollPlanItCommandHandler
         var rateLimited = false;
         var authorityErrors = 0;
         var timeBounded = false;
+        TimeSpan? rateLimitRetryAfter = null;
         foreach (var authorityId in sortedIds)
         {
             // Graceful timeout: when the worker's CTS (bounded to replicaTimeout - grace) fires,
@@ -192,13 +193,22 @@ public sealed partial class PollPlanItCommandHandler
 
                 completedSuccessfully = true;
             }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            catch (PlanItRateLimitException ex)
             {
                 // 429 is an expected, handled outcome — skip the authority, increment
                 // rate_limited, and (elsewhere below) save a resumable cursor so the
                 // next cycle picks up where this one left off. Do NOT call AddException
                 // or SetStatus(Error) here: that surfaces a routine throttle event as an
                 // unhandled exception in App Insights (see bd tc-qc65).
+                PollingMetrics.RateLimited.Add(1, cycleTypeTag);
+                rateLimited = true;
+                rateLimitRetryAfter = ex.RetryAfter;
+                LogRateLimitStop(this.logger, authorityId, ex);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                // Fallback for any 429 that arrives without our typed exception — treat
+                // the same as PlanItRateLimitException but without a Retry-After hint.
                 PollingMetrics.RateLimited.Add(1, cycleTypeTag);
                 rateLimited = true;
                 LogRateLimitStop(this.logger, authorityId, ex);
@@ -290,7 +300,8 @@ public sealed partial class PollPlanItCommandHandler
             authoritiesPolled,
             rateLimited,
             terminationReason,
-            authorityErrors);
+            authorityErrors,
+            rateLimitRetryAfter);
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]

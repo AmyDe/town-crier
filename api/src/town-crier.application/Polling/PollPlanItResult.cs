@@ -11,9 +11,13 @@ namespace TownCrier.Application.Polling;
 /// <param name="AuthorityErrors">Count of per-authority non-rate-limit errors observed during the run.
 /// Used by the worker to decide the exit code: if <c>ApplicationCount</c> is zero AND
 /// <c>AuthorityErrors</c> is zero, the cycle had no useful work to do and exits 0.</param>
+/// <param name="RetryAfter">Optional <c>Retry-After</c> hint bubbled up from PlanIt's 429 response when
+/// <see cref="RateLimited"/> is <c>true</c>. Consumed by the next-run scheduler to decide when to publish
+/// the next Service Bus trigger — capped and jittered by <see cref="PollNextRunScheduler"/>.</param>
 public sealed record PollPlanItResult(
     int ApplicationCount,
     int AuthoritiesPolled,
     bool RateLimited,
     PollTerminationReason TerminationReason,
-    int AuthorityErrors);
+    int AuthorityErrors,
+    TimeSpan? RetryAfter = null);
