@@ -21,16 +21,24 @@ public interface IPollTriggerQueue
     /// when the queue is empty (safety-net runs experience this when the Service
     /// Bus chain is alive).
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The received message, or <c>null</c> if the queue is empty.</returns>
     Task<IPollTriggerMessage?> ReceiveAsync(CancellationToken ct);
 
     /// <summary>
     /// Publishes the next trigger message with <c>ScheduledEnqueueTimeUtc</c> set.
     /// </summary>
+    /// <param name="scheduledEnqueueTime">When the next message should become visible to consumers.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the message has been enqueued.</returns>
     Task PublishAtAsync(DateTimeOffset scheduledEnqueueTime, CancellationToken ct);
 
     /// <summary>
     /// Completes (acks) the message, removing it from the queue.
     /// </summary>
+    /// <param name="message">The message received from <see cref="ReceiveAsync"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the ack has been confirmed by the broker.</returns>
     Task CompleteAsync(IPollTriggerMessage message, CancellationToken ct);
 
     /// <summary>
@@ -40,5 +48,8 @@ public interface IPollTriggerQueue
     /// holder (if it later frees the lease without publishing) or another
     /// replica gets a chance to pick it up.
     /// </summary>
+    /// <param name="message">The message received from <see cref="ReceiveAsync"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the abandon has been confirmed by the broker.</returns>
     Task AbandonAsync(IPollTriggerMessage message, CancellationToken ct);
 }

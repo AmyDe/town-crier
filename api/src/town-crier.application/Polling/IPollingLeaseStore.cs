@@ -13,11 +13,16 @@ public interface IPollingLeaseStore
     /// holder's TTL is still live — the caller must then exit cleanly without
     /// polling and without publishing a follow-up Service Bus message.
     /// </summary>
+    /// <param name="ttl">How long the lease should remain valid before auto-expiry.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns><c>true</c> if the lease was acquired; <c>false</c> if another holder is still live.</returns>
     Task<bool> TryAcquireAsync(TimeSpan ttl, CancellationToken ct);
 
     /// <summary>
     /// Releases the lease held by the current process. Idempotent — safe to call
     /// from a finally block even when the acquire failed.
     /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the release has been confirmed.</returns>
     Task ReleaseAsync(CancellationToken ct);
 }
