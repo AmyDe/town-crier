@@ -101,13 +101,18 @@ public sealed class PollNextRunSchedulerTests
 
     private sealed class ZeroJitter : IPollJitter
     {
-        public TimeSpan Next(TimeSpan bound) => TimeSpan.Zero;
+        public TimeSpan NextOffset(TimeSpan bound) => TimeSpan.Zero;
     }
 
     private sealed class FixedJitter : IPollJitter
     {
         private readonly TimeSpan value;
-        public FixedJitter(TimeSpan value) { this.value = value; }
-        public TimeSpan Next(TimeSpan bound) => this.value;
+
+        public FixedJitter(TimeSpan value)
+        {
+            this.value = value;
+        }
+
+        public TimeSpan NextOffset(TimeSpan bound) => this.value;
     }
 }
