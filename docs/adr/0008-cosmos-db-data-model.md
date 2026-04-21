@@ -92,3 +92,15 @@ The Applications container change feed is consumed by the notification processor
 
 ### 2026-04-03
 - Removed: **Groups** and **GroupInvitations** containers. The community groups feature was removed from the codebase — no domain entities, API handlers, or Pulumi container definitions exist. Web frontend explicitly asserts no Group-related symbols are exported. Container count corrected from 10 to 8.
+
+### 2026-04-21
+- Added containers to reflect recent feature work:
+
+| Container | Partition Key | Rationale |
+|-----------|--------------|-----------|
+| `PollState` | `/authorityCode` | Per-authority PlanIt poll state: high-water-mark timestamps and the resumable pagination cursor fields (`CursorDifferentStart`, `CursorNextPage`, `CursorKnownTotal`). Replaces the previous file-based poll state once polling moved to the worker (see [ADR 0019](0019-extract-polling-to-container-apps-job.md) and [ADR 0021](0021-resumable-pagination-cursor-for-planit-polling.md)) |
+| `OfferCodes` | `/code` | Generated promotional codes redeemable for a subscription tier grant outside the App Store purchase flow. Point reads by `code` on redemption; admin generation endpoint writes new documents |
+
+- Clarified: the `Leases` container mentioned in the original decision is provisioned in Pulumi (required historically for the Cosmos change-feed processor contemplated in [ADR 0009](0009-notification-delivery-architecture.md)) but is not currently populated — see the ADR 0009 2026-04-21 amendment for the actual notification dispatch path.
+- Clarified: `FailedNotifications` (referenced in ADR 0009) was never created as a container. Failed notifications are surfaced through OpenTelemetry counters rather than a dead-letter collection.
+- Total containers provisioned: **10** (Applications, Users, WatchZones, Notifications, Leases, DeviceRegistrations, SavedApplications, DecisionAlerts, PollState, OfferCodes).

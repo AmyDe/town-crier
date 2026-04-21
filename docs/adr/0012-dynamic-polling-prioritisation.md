@@ -4,7 +4,7 @@ Date: 2026-03-17
 
 ## Status
 
-Accepted
+Superseded by [0019](0019-extract-polling-to-container-apps-job.md)
 
 ## Context
 
@@ -32,3 +32,8 @@ Efficiency metrics (authorities polled, skipped, total) are logged each cycle fo
 - **Simpler:** Low-activity authorities are still polled (every 4th cycle = ~60 minutes), so new applications are never missed entirely — just slightly delayed.
 - **Harder:** Data freshness is no longer uniform. Users watching a low-priority authority may see applications up to 60 minutes after ingestion vs. 15 minutes for high-priority ones. This is acceptable at current scale but may need revisiting if we introduce SLA guarantees per subscription tier.
 - **Harder:** Thresholds need tuning as the user base grows. The current thresholds are suitable for early-stage density distributions but may need adjustment or replacement with a percentile-based scheme.
+
+## Amendments
+
+### 2026-04-21
+- Status changed to **Superseded by [ADR 0019](0019-extract-polling-to-container-apps-job.md)**. When polling was extracted from the API into a dedicated Container Apps Job (2026-04-04), the `PollingSchedule` value object and `ShouldPollInCycle()` logic were removed. The current worker polls all active authorities every run. Authority selection is instead handled by `ICycleSelector` / `IActiveAuthorityProvider` / `IWatchZoneActiveAuthorityProvider`, which alternate between seed and watched-zone cycles (see the seed-polling and resumable-cursor specs). Density-based prioritisation may return if scale warrants, but the original decision no longer reflects the codebase.
