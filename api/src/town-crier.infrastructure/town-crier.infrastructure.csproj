@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="town-crier.infrastructure.tests" />
+    <InternalsVisibleTo Include="town-crier.integration-tests" />
   </ItemGroup>
 
   <ItemGroup>

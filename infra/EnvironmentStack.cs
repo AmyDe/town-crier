@@ -345,7 +345,7 @@ public static class EnvironmentStack
         if (env == "prod")
         {
             pollingBus = CreateServiceBusPollingInfra(
-                env, resourceGroup.Name, resourceGroup.Location,
+                env, resourceGroup.Name,
                 cosmosDataIdentityPrincipalId: shared.GetOutput("cosmosDataIdentityPrincipalId").Apply(o => o?.ToString() ?? ""),
                 tags);
         }
@@ -650,18 +650,22 @@ public static class EnvironmentStack
     private static ServiceBusPollingInfra CreateServiceBusPollingInfra(
         string env,
         Output<string> resourceGroupName,
-        Output<string> location,
         Output<string> cosmosDataIdentityPrincipalId,
         InputMap<string> tags)
     {
         // Basic tier supports queues and scheduled messages, which is all the adaptive
         // polling loop needs. Basic is ~$0.05 per million operations — pennies/month at
         // our volume (one message per poll cycle).
+        //
+        // Location is pinned to "uksouth" rather than inheriting from the parent RG,
+        // because rg-town-crier-prod's metadata location is "ukwest" (cosmetic / immutable)
+        // while every other compute resource in the RG is explicitly in uksouth. Without
+        // this override the namespace lands in ukwest (see tc-ds1e).
         var namespaceResource = new Namespace($"sb-town-crier-{env}", new NamespaceArgs
         {
             NamespaceName = $"sb-town-crier-{env}",
             ResourceGroupName = resourceGroupName,
-            Location = location,
+            Location = "uksouth",
             Sku = new ServiceBusSkuArgs
             {
                 Name = ServiceBusSkuName.Basic,

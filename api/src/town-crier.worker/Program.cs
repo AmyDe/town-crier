@@ -32,6 +32,7 @@ using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.SavedApplications;
+using TownCrier.Infrastructure.ServiceBus;
 using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 using TownCrier.Worker;
@@ -184,6 +185,14 @@ var pollingOptions = new PollingOptions
 builder.Services.AddSingleton(pollingOptions);
 
 builder.Services.AddTransient<PollPlanItCommandHandler>();
+
+// Service Bus-driven adaptive polling chain (WORKER_MODE=poll-sb). Registers the
+// REST client, the ServiceBusPollTriggerQueue adapter, the scheduler, and the
+// orchestrator. Safe to register even when the safety-net timer mode is in use —
+// the services are only resolved by the poll-sb branch below.
+builder.Services.AddServiceBusRestClient(builder.Configuration);
+builder.Services.AddPollingInfrastructure(builder.Configuration);
+
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 builder.Services.AddSingleton<GenerateHourlyDigestsCommandHandler>();
 builder.Services.AddTransient<DeleteUserProfileCommandHandler>();
@@ -268,6 +277,64 @@ switch (mode)
             {
                 activity?.AddException(ex);
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                PollingMetrics.PollFailures.Add(1);
+                WorkerLog.PollCycleFailed(logger, ex);
+                exitCode = 1;
+            }
+
+            break;
+        }
+
+    case "poll-sb":
+        {
+            // Service-Bus-triggered adaptive polling loop. Receives one trigger
+            // message, runs the handler, publishes the next trigger (with a
+            // scheduled enqueue time), then acks. Publish-before-ack ordering is
+            // load-bearing for crash safety — see PollTriggerOrchestrator.
+            using var sbActivity = PollingInstrumentation.Source.StartActivity("Polling Cycle (SB)");
+            try
+            {
+                WorkerLog.PollCycleStarting(logger);
+
+                var replicaTimeoutSeconds = builder.Configuration.GetValue<int?>("POLL_REPLICA_TIMEOUT_SECONDS") ?? 600;
+                var shutdownGraceSeconds = builder.Configuration.GetValue<int?>("POLL_SHUTDOWN_GRACE_SECONDS") ?? 30;
+                var cycleBudget = TimeSpan.FromSeconds(Math.Max(1, replicaTimeoutSeconds - shutdownGraceSeconds));
+
+                using var cycleCts = new CancellationTokenSource(cycleBudget);
+
+                var orchestrator = host.Services.GetRequiredService<PollTriggerOrchestrator>();
+                var runResult = await orchestrator.RunOnceAsync(cycleCts.Token).ConfigureAwait(false);
+
+                sbActivity?.SetTag("polling.sb.message_received", runResult.MessageReceived);
+                sbActivity?.SetTag("polling.sb.published_next", runResult.PublishedNext);
+
+                if (runResult.PollResult is { } pollResult)
+                {
+                    sbActivity?.SetTag("polling.authorities_polled", pollResult.AuthoritiesPolled);
+                    sbActivity?.SetTag("polling.applications_ingested", pollResult.ApplicationCount);
+                    sbActivity?.SetTag("polling.termination", pollResult.TerminationReason.ToTelemetryValue());
+                    sbActivity?.SetTag("polling.authority_errors", pollResult.AuthorityErrors);
+
+                    WorkerLog.PollCycleCompleted(logger, pollResult.ApplicationCount, pollResult.AuthoritiesPolled);
+
+                    // Same exit-code semantics as the safety-net timer branch: only
+                    // exit 1 when the run did no useful work AND hit authority errors.
+                    if (pollResult.ApplicationCount == 0 && pollResult.AuthorityErrors > 0)
+                    {
+                        exitCode = 1;
+                    }
+                }
+                else
+                {
+                    WorkerLog.PollCycleCompleted(logger, 0, 0);
+                }
+            }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                sbActivity?.AddException(ex);
+                sbActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 PollingMetrics.PollFailures.Add(1);
                 WorkerLog.PollCycleFailed(logger, ex);
                 exitCode = 1;
