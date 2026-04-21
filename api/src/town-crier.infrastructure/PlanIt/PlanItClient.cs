@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using TownCrier.Application.PlanIt;
+using TownCrier.Application.Polling;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Infrastructure.Observability;
 
@@ -37,7 +38,7 @@ public sealed class PlanItClient : IPlanItClient
     {
         var url = new Uri(BuildUrl(authorityId, differentStart, page), UriKind.Relative);
         using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        EnsureSuccessOrThrow(response);
 
         var planItResponse = await JsonSerializer.DeserializeAsync(
             await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
@@ -68,7 +69,7 @@ public sealed class PlanItClient : IPlanItClient
     {
         var url = new Uri(BuildSearchUrl(searchText, authorityId, page), UriKind.Relative);
         using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        EnsureSuccessOrThrow(response);
 
         var planItResponse = await JsonSerializer.DeserializeAsync(
             await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
@@ -136,6 +137,33 @@ public sealed class PlanItClient : IPlanItClient
         }
 
         return DateOnly.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    private static void EnsureSuccessOrThrow(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            var header = response.Headers.RetryAfter;
+            string? headerValue = null;
+            if (header?.Delta is { } delta)
+            {
+                headerValue = ((int)delta.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+            }
+            else if (header?.Date is { } date)
+            {
+                headerValue = date.UtcDateTime.ToString("R", CultureInfo.InvariantCulture);
+            }
+
+            var retryAfter = RetryAfterParser.Parse(headerValue, DateTimeOffset.UtcNow);
+            throw new PlanItRateLimitException(retryAfter);
+        }
+
+        response.EnsureSuccessStatusCode();
     }
 
     private static bool IsRetryable(HttpStatusCode statusCode)
