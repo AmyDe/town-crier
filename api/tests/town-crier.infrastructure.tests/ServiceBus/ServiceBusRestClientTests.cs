@@ -6,6 +6,7 @@ using TownCrier.Infrastructure.Tests.Cosmos;
 namespace TownCrier.Infrastructure.Tests.ServiceBus;
 
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "HttpClient lifetime managed by test")]
+[SuppressMessage("Minor Code Smell", "S1075:URIs should not be hardcoded", Justification = "Test base address")]
 public sealed class ServiceBusRestClientTests
 {
     private const string Namespace = "sb-town-crier-test";
