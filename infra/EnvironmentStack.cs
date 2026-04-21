@@ -362,7 +362,7 @@ public static class EnvironmentStack
         // adaptive design across.
         if (pollingBus is not null)
         {
-            _ = CreateWorkerJob("poll", cronExpression: null, replicaTimeout: 600, workerMode: null,
+            _ = CreateWorkerJob("poll", cronExpression: null, replicaTimeout: 600, workerMode: "poll-sb",
                 env, resourceGroup.Name, containerAppsEnvironmentId,
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
