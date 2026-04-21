@@ -16,8 +16,8 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
     public List<Uri> AbandonedLockUrls { get; } = [];
 
     /// <summary>
-    /// Ordered log of every mutating call ("publish", "complete", "abandon") used by
-    /// integration tests to assert the publish-before-ack ordering contract.
+    /// Gets the ordered log of every mutating call ("publish", "complete", "abandon")
+    /// used by integration tests to assert the publish-before-ack ordering contract.
     /// </summary>
     public List<string> CallSequence { get; } = [];
 
