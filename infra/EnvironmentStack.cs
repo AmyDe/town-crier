@@ -1,12 +1,17 @@
 using System.Collections.Immutable;
 using Pulumi;
+using Pulumi.AzureNative.Authorization;
 using Pulumi.AzureNative.Resources;
 using Pulumi.AzureNative.App;
 using Pulumi.AzureNative.App.Inputs;
 using Pulumi.AzureNative.CosmosDB;
 using Pulumi.AzureNative.CosmosDB.Inputs;
+using Pulumi.AzureNative.ServiceBus;
 using Pulumi.AzureNative.Web;
 using ManagedServiceIdentityType = Pulumi.AzureNative.App.ManagedServiceIdentityType;
+using ServiceBusSkuArgs = Pulumi.AzureNative.ServiceBus.Inputs.SBSkuArgs;
+using ServiceBusSkuName = Pulumi.AzureNative.ServiceBus.SkuName;
+using ServiceBusSkuTier = Pulumi.AzureNative.ServiceBus.SkuTier;
 
 /// <summary>
 /// Defines a Cosmos DB container with its partition key and optional advanced settings.
@@ -331,14 +336,56 @@ public static class EnvironmentStack
                 new CustomResourceOptions { DependsOn = { containerApp } });
         }
 
+        // Service Bus — adaptive polling trigger (prod only for now; dev stays on cron).
+        // The polling worker consumes one message per run and re-enqueues the next run with
+        // a scheduled enqueue time calculated from Retry-After headers and natural cadence.
+        // Worker identity (cosmosDataIdentity) gets Data Owner RBAC on the namespace so it
+        // can both send and receive without SAS keys.
+        ServiceBusPollingInfra? pollingBus = null;
+        if (env == "prod")
+        {
+            pollingBus = CreateServiceBusPollingInfra(
+                env, resourceGroup.Name, resourceGroup.Location,
+                cosmosDataIdentityPrincipalId: shared.GetOutput("cosmosDataIdentityPrincipalId").Apply(o => o?.ToString() ?? ""),
+                tags);
+        }
+
         // Container Apps Jobs — polling and digest workers share the same shape,
         // differing only in name suffix, cron schedule, timeout, and WORKER_MODE.
-        var pollCron = env == "dev" ? "0 */3 * * *" : "*/15 * * * *";
-        _ = CreateWorkerJob("poll", pollCron, replicaTimeout: 600, workerMode: null,
-            env, resourceGroup.Name, containerAppsEnvironmentId,
-            acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
-            cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-            appInsightsConnectionString, acsConnectionString, tags);
+        //
+        // In prod, the "poll" job is event-triggered off the Service Bus queue provisioned
+        // above; a parallel cron-triggered "poll-safety-net" job runs every 30 minutes and
+        // re-seeds the queue if it is empty (disaster-recovery / bootstrap only — the
+        // worker's lease guard makes the safety-net a no-op when the chain is alive).
+        //
+        // In dev the "poll" job stays on the existing cron schedule until we port the
+        // adaptive design across.
+        if (pollingBus is not null)
+        {
+            _ = CreateWorkerJob("poll", cronExpression: null, replicaTimeout: 600, workerMode: null,
+                env, resourceGroup.Name, containerAppsEnvironmentId,
+                acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+                cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+                appInsightsConnectionString, acsConnectionString, tags,
+                pollingBus);
+
+            _ = CreateWorkerJob("poll-safety-net", cronExpression: "*/30 * * * *", replicaTimeout: 600, workerMode: null,
+                env, resourceGroup.Name, containerAppsEnvironmentId,
+                acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+                cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+                appInsightsConnectionString, acsConnectionString, tags,
+                pollingBus);
+        }
+        else
+        {
+            var pollCron = env == "dev" ? "0 */3 * * *" : "*/15 * * * *";
+            _ = CreateWorkerJob("poll", pollCron, replicaTimeout: 600, workerMode: null,
+                env, resourceGroup.Name, containerAppsEnvironmentId,
+                acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
+                cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
+                appInsightsConnectionString, acsConnectionString, tags,
+                pollingBus: null);
+        }
 
         CreateWorkerJob("digest", "0 7 * * *", replicaTimeout: 600, workerMode: "digest",
             env, resourceGroup.Name, containerAppsEnvironmentId,
@@ -428,11 +475,14 @@ public static class EnvironmentStack
     /// <summary>
     /// Creates a Container Apps Job for a background worker.
     /// All worker jobs share the same container shape, identity, and base env vars;
-    /// they differ only in name suffix, cron schedule, timeout, and optional WORKER_MODE.
+    /// they differ by trigger type: cronExpression=null + non-null pollingBus produces an
+    /// Event-triggered job backed by a Service Bus queue; otherwise a Schedule-triggered
+    /// cron job. When pollingBus is non-null (in any mode) the Service Bus env vars are
+    /// surfaced so the worker can send/receive messages.
     /// </summary>
     private static Job CreateWorkerJob(
         string nameSuffix,
-        string cronExpression,
+        string? cronExpression,
         int replicaTimeout,
         string? workerMode,
         string env,
@@ -446,7 +496,8 @@ public static class EnvironmentStack
         Output<string> cosmosDataIdentityClientId,
         Output<string> appInsightsConnectionString,
         Output<string> acsConnectionString,
-        InputMap<string> tags)
+        InputMap<string> tags,
+        ServiceBusPollingInfra? pollingBus = null)
     {
         var envVars = new List<EnvironmentVarArgs>
         {
@@ -463,34 +514,88 @@ public static class EnvironmentStack
             envVars.Insert(1, new EnvironmentVarArgs { Name = "WORKER_MODE", Value = workerMode });
         }
 
+        if (pollingBus is not null)
+        {
+            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__Namespace", Value = pollingBus.NamespaceFqdn });
+            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__QueueName", Value = pollingBus.QueueName });
+        }
+
+        var useEventTrigger = cronExpression is null;
+        if (useEventTrigger && pollingBus is null)
+        {
+            throw new ArgumentException(
+                "Event-triggered jobs require a ServiceBusPollingInfra (queue + namespace).",
+                nameof(pollingBus));
+        }
+
+        var configuration = new JobConfigurationArgs
+        {
+            ReplicaTimeout = replicaTimeout,
+            Registries = new[]
+            {
+                new RegistryCredentialsArgs
+                {
+                    Server = acrLoginServer,
+                    Identity = acrPullIdentityId,
+                },
+            },
+            Secrets = new[]
+            {
+                new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+            },
+        };
+
+        if (useEventTrigger)
+        {
+            // KEDA azure-servicebus scaler — authenticates to the namespace with the
+            // user-assigned managed identity (no connection string / SAS key). The
+            // worker itself must also have RBAC on the namespace for send+receive,
+            // which the pollingBus role assignment already provides.
+            configuration.TriggerType = Pulumi.AzureNative.App.TriggerType.Event;
+            configuration.EventTriggerConfig = new JobConfigurationEventTriggerConfigArgs
+            {
+                Parallelism = 1,
+                ReplicaCompletionCount = 1,
+                Scale = new JobScaleArgs
+                {
+                    MinExecutions = 0,
+                    MaxExecutions = 1,
+                    PollingInterval = 30,
+                    Rules = new[]
+                    {
+                        new JobScaleRuleArgs
+                        {
+                            Name = "servicebus-queue",
+                            Type = "azure-servicebus",
+                            Identity = cosmosDataIdentityId,
+                            Metadata = new InputMap<object>
+                            {
+                                ["namespace"] = pollingBus!.NamespaceShortName,
+                                ["queueName"] = pollingBus.QueueName,
+                                ["messageCount"] = "1",
+                            },
+                        },
+                    },
+                },
+            };
+        }
+        else
+        {
+            configuration.TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule;
+            configuration.ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
+            {
+                CronExpression = cronExpression!,
+                Parallelism = 1,
+                ReplicaCompletionCount = 1,
+            };
+        }
+
         return new Job($"job-tc-{nameSuffix}-{env}", new JobArgs
         {
             JobName = $"job-tc-{nameSuffix}-{env}",
             ResourceGroupName = resourceGroupName,
             EnvironmentId = environmentId,
-            Configuration = new JobConfigurationArgs
-            {
-                TriggerType = Pulumi.AzureNative.App.TriggerType.Schedule,
-                ReplicaTimeout = replicaTimeout,
-                ScheduleTriggerConfig = new JobConfigurationScheduleTriggerConfigArgs
-                {
-                    CronExpression = cronExpression,
-                    Parallelism = 1,
-                    ReplicaCompletionCount = 1,
-                },
-                Registries = new[]
-                {
-                    new RegistryCredentialsArgs
-                    {
-                        Server = acrLoginServer,
-                        Identity = acrPullIdentityId,
-                    },
-                },
-                Secrets = new[]
-                {
-                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
-                },
-            },
+            Configuration = configuration,
             Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
             {
                 Type = ManagedServiceIdentityType.UserAssigned,
@@ -523,5 +628,91 @@ public static class EnvironmentStack
             // CD pipeline updates the container image via `az containerapp job update`.
             IgnoreChanges = { "template.containers[0].image" },
         });
+    }
+
+    /// <summary>
+    /// Captures the Service Bus resources used by the adaptive polling trigger:
+    /// namespace (short name + FQDN for KEDA/app env vars) and queue name. The role
+    /// assignment is created inside <see cref="CreateServiceBusPollingInfra"/> and
+    /// does not need to be passed downstream.
+    /// </summary>
+    private sealed record ServiceBusPollingInfra(
+        Output<string> NamespaceShortName,
+        Output<string> NamespaceFqdn,
+        Output<string> QueueName);
+
+    /// <summary>
+    /// Provisions the Service Bus namespace + queue + RBAC used by the adaptive polling
+    /// trigger. The worker's user-assigned managed identity is granted the built-in
+    /// "Azure Service Bus Data Owner" role at the namespace scope so it can both send
+    /// (to schedule the next run) and receive (in PeekLock mode).
+    /// </summary>
+    private static ServiceBusPollingInfra CreateServiceBusPollingInfra(
+        string env,
+        Output<string> resourceGroupName,
+        Output<string> location,
+        Output<string> cosmosDataIdentityPrincipalId,
+        InputMap<string> tags)
+    {
+        // Basic tier supports queues and scheduled messages, which is all the adaptive
+        // polling loop needs. Basic is ~$0.05 per million operations — pennies/month at
+        // our volume (one message per poll cycle).
+        var namespaceResource = new Namespace($"sb-town-crier-{env}", new NamespaceArgs
+        {
+            NamespaceName = $"sb-town-crier-{env}",
+            ResourceGroupName = resourceGroupName,
+            Location = location,
+            Sku = new ServiceBusSkuArgs
+            {
+                Name = ServiceBusSkuName.Basic,
+                Tier = ServiceBusSkuTier.Basic,
+            },
+            Tags = tags,
+        });
+
+        // Polling trigger queue. The worker receives one message in PeekLock mode, runs
+        // the poll cycle, publishes the next message (ScheduledEnqueueTimeUtc computed
+        // from Retry-After / natural cadence), then completes the receive.
+        //
+        // - DefaultMessageTimeToLive = 1h — longer than any Retry-After we would honour.
+        //   Messages scheduled further out than this risk being dropped before delivery,
+        //   but the worker caps Retry-After at 30min so 1h TTL is comfortable.
+        // - LockDuration = 10min (P10M) — must be >= replicaTimeout (600s) so the peek
+        //   lock survives a full poll cycle; otherwise the message would redeliver mid-run.
+        // - MaxDeliveryCount = 10 — generous; duplicate polls are safe thanks to the
+        //   Cosmos lease guard in the worker, so we'd rather retry than dead-letter.
+        var queue = new Queue($"sbq-poll-{env}", new QueueArgs
+        {
+            QueueName = "poll",
+            NamespaceName = namespaceResource.Name,
+            ResourceGroupName = resourceGroupName,
+            DefaultMessageTimeToLive = "PT1H",
+            LockDuration = "PT10M",
+            MaxDeliveryCount = 10,
+            DeadLetteringOnMessageExpiration = true,
+        });
+
+        // Built-in role: Azure Service Bus Data Owner
+        // (https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#azure-service-bus-data-owner)
+        // Grants both send and receive, plus queue/topic management. Sufficient for the
+        // worker's publish-before-ack flow without splitting into Sender + Receiver.
+        // Scoped to the namespace so it covers any future queues added for the same worker.
+        const string serviceBusDataOwnerRoleId = "090c5cfd-751d-490a-894a-3ce6f1109419";
+        var subscriptionId = namespaceResource.Id.Apply(id => id.Split('/')[2]);
+        _ = new RoleAssignment($"sb-poll-data-owner-{env}", new RoleAssignmentArgs
+        {
+            Scope = namespaceResource.Id,
+            RoleDefinitionId = subscriptionId.Apply(subId =>
+                $"/subscriptions/{subId}/providers/Microsoft.Authorization/roleDefinitions/{serviceBusDataOwnerRoleId}"),
+            PrincipalId = cosmosDataIdentityPrincipalId,
+            PrincipalType = PrincipalType.ServicePrincipal,
+        });
+
+        var fqdn = namespaceResource.Name.Apply(n => $"{n}.servicebus.windows.net");
+
+        return new ServiceBusPollingInfra(
+            NamespaceShortName: namespaceResource.Name,
+            NamespaceFqdn: fqdn,
+            QueueName: queue.Name);
     }
 }

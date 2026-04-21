@@ -447,6 +447,10 @@ public static class SharedStack
             ["acrPullIdentityId"] = acrPullIdentity.Id,
             ["cosmosDataIdentityId"] = cosmosDataIdentity.Id,
             ["cosmosDataIdentityClientId"] = cosmosDataIdentity.ClientId,
+            // PrincipalId is required by env-stack role assignments (e.g. Service Bus
+            // Data Owner on the polling namespace) because RBAC grants are keyed to the
+            // identity's principal (object) ID, not the client ID exposed to the runtime.
+            ["cosmosDataIdentityPrincipalId"] = cosmosDataIdentity.PrincipalId,
             ["containerAppsEnvironmentId"] = containerAppsEnv.Id,
             ["cosmosAccountName"] = cosmosAccount.Name,
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
