@@ -30,7 +30,9 @@ public sealed class PollTriggerOrchestratorTests
 
         await orchestrator.RunOnceAsync(CancellationToken.None);
 
-        await Assert.That(triggerQueue.ScheduleSequence).IsEqualTo(new[] { "publish", "complete" });
+        await Assert.That(triggerQueue.ScheduleSequence).HasCount().EqualTo(2);
+        await Assert.That(triggerQueue.ScheduleSequence[0]).IsEqualTo("publish");
+        await Assert.That(triggerQueue.ScheduleSequence[1]).IsEqualTo("complete");
     }
 
     [Test]
@@ -67,8 +69,6 @@ public sealed class PollTriggerOrchestratorTests
         authorityProvider.Add(1);
 
         var triggerQueue = new FakePollTriggerQueue();
-        // no receivable messages
-
         var handler = CreateHandler(authorityProvider: authorityProvider);
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
 
