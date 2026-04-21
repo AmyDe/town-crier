@@ -10,7 +10,38 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
     <PackageReference Include="TUnit" Version="0.12.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\town-crier.application\town-crier.application.csproj" />
+    <ProjectReference Include="..\..\src\town-crier.infrastructure\town-crier.infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- Share polling-handler fakes from town-crier.application.tests rather than duplicating.
+       The alternative (copying 8 fakes into this project) was rejected in bd tc-gaxg. -->
+  <ItemGroup>
+    <Compile Include="..\town-crier.application.tests\Polling\FakeActiveAuthorityProvider.cs"
+             Link="Polling\Shared\FakeActiveAuthorityProvider.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakeCycleSelector.cs"
+             Link="Polling\Shared\FakeCycleSelector.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakeNotificationEnqueuer.cs"
+             Link="Polling\Shared\FakeNotificationEnqueuer.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakePlanItClient.cs"
+             Link="Polling\Shared\FakePlanItClient.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakePlanningApplicationRepository.cs"
+             Link="Polling\Shared\FakePlanningApplicationRepository.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakePollingLeaseStore.cs"
+             Link="Polling\Shared\FakePollingLeaseStore.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakePollStateStore.cs"
+             Link="Polling\Shared\FakePollStateStore.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakeWatchZoneRepository.cs"
+             Link="Polling\Shared\FakeWatchZoneRepository.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\PlanningApplicationBuilder.cs"
+             Link="Polling\Shared\PlanningApplicationBuilder.cs" />
+    <Compile Include="..\town-crier.infrastructure.tests\Polling\FakeServiceBusRestClient.cs"
+             Link="Polling\Shared\FakeServiceBusRestClient.cs" />
   </ItemGroup>
 
 </Project>

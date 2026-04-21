@@ -15,6 +15,12 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
 
     public List<Uri> AbandonedLockUrls { get; } = [];
 
+    /// <summary>
+    /// Ordered log of every mutating call ("publish", "complete", "abandon") used by
+    /// integration tests to assert the publish-before-ack ordering contract.
+    /// </summary>
+    public List<string> CallSequence { get; } = [];
+
     public void EnqueueReceive(ReceivedServiceBusMessage? message)
     {
         this.receiveResults.Enqueue(message);
@@ -37,6 +43,7 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
             QueueName: queueName,
             ScheduledEnqueueTimeUtc: scheduledEnqueueTimeUtc,
             SerialisedBody: serialised));
+        this.CallSequence.Add("publish");
         return Task.CompletedTask;
     }
 
@@ -61,12 +68,14 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
     public Task CompleteAsync(Uri lockUrl, CancellationToken ct)
     {
         this.CompletedLockUrls.Add(lockUrl);
+        this.CallSequence.Add("complete");
         return Task.CompletedTask;
     }
 
     public Task AbandonAsync(Uri lockUrl, CancellationToken ct)
     {
         this.AbandonedLockUrls.Add(lockUrl);
+        this.CallSequence.Add("abandon");
         return Task.CompletedTask;
     }
 
