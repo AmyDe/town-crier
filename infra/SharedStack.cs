@@ -174,6 +174,35 @@ public static class SharedStack
             ImportId = tableImportId,
         });
 
+        // Move the AppTraces table to the Basic Logs plan for the same ~80% ingestion cost
+        // saving. AppTraces holds OpenTelemetry verbose traces and is the highest-volume
+        // App* table in this workspace. It is NOT queried by any dashboard tile (those use
+        // `requests` and `customMetrics`) and no log-search alerts depend on it, so the
+        // Basic plan's 8-day interactive retention and lack of cross-table joins is
+        // acceptable. Other App* tables (AppRequests, AppExceptions, AppDependencies,
+        // AppMetrics) stay on Analytics so the dashboard and sre-observatory retain full
+        // 30-day history across them.
+        //
+        // Like ContainerAppConsoleLogs, Application Insights pre-creates the AppTraces
+        // schema in the workspace when the Component resource is applied, so the table
+        // already exists on the default Analytics plan before Pulumi reaches this resource.
+        // ImportId below causes the first `pulumi up` to adopt the existing table into
+        // Pulumi state and PATCH the plan to Basic; subsequent runs manage plan only.
+        //
+        // Basic plan retention is fixed at 8 days by Azure; RetentionInDays is not set
+        // here and the service will apply the default. See bead tc-9ggc.
+        var appTracesTableImportId = $"/subscriptions/{armSubscriptionId}/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/AppTraces";
+        _ = new Table("table-apptraces-basic", new TableArgs
+        {
+            ResourceGroupName = resourceGroup.Name,
+            WorkspaceName = logAnalytics.Name,
+            TableName = "AppTraces",
+            Plan = TablePlanEnum.Basic,
+        }, new CustomResourceOptions
+        {
+            ImportId = appTracesTableImportId,
+        });
+
         // User-assigned managed identity for Cosmos DB data access
         var cosmosDataIdentity = new UserAssignedIdentity("id-town-crier-cosmos-data", new UserAssignedIdentityArgs
         {
