@@ -14,4 +14,10 @@ public sealed record PollingOptions
     /// See <c>bd tc-l77h</c> for the seed-poll rationale.
     /// </summary>
     public int? MaxPagesPerAuthorityPerCycle { get; init; }
+
+    /// <summary>
+    /// Gets the TTL requested when the handler acquires the polling lease. Should
+    /// cover a full cycle (default 10 minutes to match the worker's replicaTimeout).
+    /// </summary>
+    public TimeSpan LeaseTtl { get; init; } = TimeSpan.FromMinutes(10);
 }

@@ -21,4 +21,12 @@ public enum PollTerminationReason
     /// The cycle stopped early because PlanIt returned HTTP 429.
     /// </summary>
     RateLimited = 2,
+
+    /// <summary>
+    /// The cycle skipped polling because another holder had the Cosmos lease.
+    /// The safety-net cron and Service Bus triggers share this code path — the
+    /// current holder is expected to publish the next Service Bus message, so the
+    /// loser exits cleanly without publishing.
+    /// </summary>
+    LeaseHeld = 3,
 }
