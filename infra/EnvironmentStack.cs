@@ -681,8 +681,11 @@ public static class EnvironmentStack
         // - DefaultMessageTimeToLive = 1h — longer than any Retry-After we would honour.
         //   Messages scheduled further out than this risk being dropped before delivery,
         //   but the worker caps Retry-After at 30min so 1h TTL is comfortable.
-        // - LockDuration = 10min (P10M) — must be >= replicaTimeout (600s) so the peek
-        //   lock survives a full poll cycle; otherwise the message would redeliver mid-run.
+        // - LockDuration = 5min (PT5M) — Azure Service Bus caps LockDuration at 5 minutes
+        //   across all tiers; setting higher returns MessagingGatewayBadRequest. This is
+        //   less than replicaTimeout (600s) so a slow poll cycle could trigger a mid-run
+        //   redelivery, but duplicate polls are safe thanks to the Cosmos lease guard in
+        //   the worker, so we'd rather retry than dead-letter.
         // - MaxDeliveryCount = 10 — generous; duplicate polls are safe thanks to the
         //   Cosmos lease guard in the worker, so we'd rather retry than dead-letter.
         var queue = new Queue($"sbq-poll-{env}", new QueueArgs
@@ -691,7 +694,7 @@ public static class EnvironmentStack
             NamespaceName = namespaceResource.Name,
             ResourceGroupName = resourceGroupName,
             DefaultMessageTimeToLive = "PT1H",
-            LockDuration = "PT10M",
+            LockDuration = "PT5M",
             MaxDeliveryCount = 10,
             DeadLetteringOnMessageExpiration = true,
         });
