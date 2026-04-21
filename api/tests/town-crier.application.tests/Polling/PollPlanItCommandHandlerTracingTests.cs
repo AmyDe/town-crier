@@ -139,6 +139,7 @@ public sealed class PollPlanItCommandHandlerTracingTests : IDisposable
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
+            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }
