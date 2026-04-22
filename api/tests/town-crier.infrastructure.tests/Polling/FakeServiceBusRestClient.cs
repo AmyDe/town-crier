@@ -8,16 +8,14 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
 {
     private readonly Queue<ReceivedServiceBusMessage?> receiveResults = new();
     private readonly Queue<Exception> receiveThrows = new();
+    private readonly Queue<ServiceBusQueueCountDetails> depthResults = new();
 
     public List<PublishCall> PublishCalls { get; } = [];
 
-    public List<Uri> CompletedLockUrls { get; } = [];
-
-    public List<Uri> AbandonedLockUrls { get; } = [];
-
     /// <summary>
-    /// Gets the ordered log of every mutating call ("publish", "complete", "abandon")
-    /// used by integration tests to assert the publish-before-ack ordering contract.
+    /// Gets the ordered log of every mutating call ("publish") plus reads
+    /// ("receive", "depth"). Used by integration tests to assert the
+    /// receive-then-handler-then-publish ordering contract.
     /// </summary>
     public List<string> CallSequence { get; } = [];
 
@@ -29,6 +27,11 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
     public void EnqueueReceiveThrow(Exception exception)
     {
         this.receiveThrows.Enqueue(exception);
+    }
+
+    public void EnqueueDepth(long active, long scheduled)
+    {
+        this.depthResults.Enqueue(new ServiceBusQueueCountDetails(active, scheduled));
     }
 
     public Task PublishAsync<T>(
@@ -52,6 +55,8 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
         TimeSpan timeout,
         CancellationToken ct)
     {
+        this.CallSequence.Add("receive");
+
         if (this.receiveThrows.Count > 0)
         {
             throw this.receiveThrows.Dequeue();
@@ -65,18 +70,15 @@ internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
         return Task.FromResult(this.receiveResults.Dequeue());
     }
 
-    public Task CompleteAsync(Uri lockUrl, CancellationToken ct)
+    public Task<ServiceBusQueueCountDetails> GetQueueDepthAsync(string queueName, CancellationToken ct)
     {
-        this.CompletedLockUrls.Add(lockUrl);
-        this.CallSequence.Add("complete");
-        return Task.CompletedTask;
-    }
+        this.CallSequence.Add("depth");
+        if (this.depthResults.Count == 0)
+        {
+            return Task.FromResult(new ServiceBusQueueCountDetails(0, 0));
+        }
 
-    public Task AbandonAsync(Uri lockUrl, CancellationToken ct)
-    {
-        this.AbandonedLockUrls.Add(lockUrl);
-        this.CallSequence.Add("abandon");
-        return Task.CompletedTask;
+        return Task.FromResult(this.depthResults.Dequeue());
     }
 
     public sealed record PublishCall(

@@ -171,17 +171,28 @@ public sealed class PollTriggerOrchestratorTests
     public async Task Should_NotPublish_When_HandlerThrows()
     {
         // Under receive-and-delete the message is already gone. If the handler
-        // throws, the chain pauses until the safety-net bootstrap recovers —
-        // the orchestrator does not attempt to publish a recovery message.
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(1);
-        var planItClient = new FakePlanItClient();
-        planItClient.ThrowForAuthority(1, new InvalidOperationException("handler boom"));
+        // fails at a level outside its per-authority error handling, for
+        // example the active-authority provider itself faults, the chain pauses
+        // until the safety-net bootstrap recovers and the orchestrator does
+        // not attempt to publish a recovery message.
+        var authorityProvider = new ThrowingActiveAuthorityProvider(
+            new InvalidOperationException("handler boom"));
 
         var triggerQueue = new FakePollTriggerQueue();
         triggerQueue.EnqueueReceivable(new FakePollTriggerMessage("M1"));
 
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+        var handler = new PollPlanItCommandHandler(
+            new FakePlanItClient(),
+            new FakePollStateStore(),
+            new FakePlanningApplicationRepository(),
+            TimeProvider.System,
+            authorityProvider,
+            new FakeWatchZoneRepository(),
+            new FakeNotificationEnqueuer(),
+            new FakeCycleSelector(CycleType.Watched),
+            new PollingOptions(),
+            new FakePollingLeaseStore { AcquireResult = true },
+            NullLogger<PollPlanItCommandHandler>.Instance);
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
 
         var orchestrator = new PollTriggerOrchestrator(
@@ -221,5 +232,20 @@ public sealed class PollTriggerOrchestratorTests
     private sealed class ZeroJitter : IPollJitter
     {
         public TimeSpan NextOffset(TimeSpan bound) => TimeSpan.Zero;
+    }
+
+    private sealed class ThrowingActiveAuthorityProvider : IActiveAuthorityProvider
+    {
+        private readonly Exception exception;
+
+        public ThrowingActiveAuthorityProvider(Exception exception)
+        {
+            this.exception = exception;
+        }
+
+        public Task<IReadOnlyCollection<int>> GetActiveAuthorityIdsAsync(CancellationToken ct)
+        {
+            throw this.exception;
+        }
     }
 }

@@ -165,16 +165,8 @@ public sealed class ServiceBusRestClientTests
         // Management API: GET the queue resource and parse countDetails.
         // Uses api-version=2017-04 per the ARM Service Bus REST surface.
         var (client, handler) = CreateClient();
-        handler.EnqueueResponse(
-            HttpStatusCode.OK,
-            """
-            {
-              "countDetails": {
-                "activeMessageCount": 3,
-                "scheduledMessageCount": 7
-              }
-            }
-            """);
+        const string ResponseBody = """{"countDetails":{"activeMessageCount":3,"scheduledMessageCount":7}}""";
+        handler.EnqueueResponse(HttpStatusCode.OK, ResponseBody);
 
         var depth = await client.GetQueueDepthAsync(QueueName, CancellationToken.None);
 
