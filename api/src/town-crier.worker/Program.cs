@@ -363,6 +363,41 @@ switch (mode)
             break;
         }
 
+    case "poll-bootstrap":
+        {
+            // Bootstrap-only safety net. Probes the Service Bus trigger queue
+            // and publishes a jittered seed if empty. Never invokes the poll
+            // handler. See docs/specs/sb-only-polling.md and ADR 0024.
+            using var bootstrapActivity = PollingInstrumentation.Source.StartActivity("Polling Bootstrap");
+            try
+            {
+                // 60 s is generous for a single Service Bus PeekLock receive
+                // + optional publish. The Container Apps replicaTimeout is the
+                // hard kill ceiling; this budget is the soft self-cancel.
+                using var bootstrapCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+                var bootstrapper = host.Services.GetRequiredService<PollTriggerBootstrapper>();
+                var bootstrapResult = await bootstrapper.TryBootstrapAsync(bootstrapCts.Token)
+                    .ConfigureAwait(false);
+
+                // Tag names match the legacy safety-net path so existing App
+                // Insights queries and dashboards keep working.
+                bootstrapActivity?.SetTag("polling.safety_net.bootstrap_published", bootstrapResult.Published);
+                bootstrapActivity?.SetTag("polling.safety_net.bootstrap_probe_failed", bootstrapResult.ProbeFailed);
+            }
+#pragma warning disable CA1031 // Worker must return exit code on any failure
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                bootstrapActivity?.AddException(ex);
+                bootstrapActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                WorkerLog.PollCycleFailed(logger, ex);
+                exitCode = 1;
+            }
+
+            break;
+        }
+
     case "digest":
         {
             using var digestActivity = PollingInstrumentation.Source.StartActivity("Digest Cycle");
