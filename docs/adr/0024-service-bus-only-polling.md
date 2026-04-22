@@ -53,3 +53,53 @@ The `poll-sb` orchestrator, `PollPlanItCommandHandler`, `PollNextRunScheduler`, 
 - **Service Bus polling infra in dev.** Rejected — would provision SB infrastructure that services essentially no traffic. The backfill feature is a better answer to dev staleness.
 - **Bootstrap on API startup.** Considered as belt-and-braces (the API pod reseeds the chain on start). Not needed — the cron tick is cheap and doesn't couple the API lifecycle to SB seed state. Can be added later without undoing this work.
 - **Tighter cron cadence (e.g. `*/10 * * * *`).** Rejected — shrinks the worst-case recovery window but triples container-start rate. The chain losing its way should be an extenuating event, not routine.
+
+## Amendments
+
+### 2026-04-22 — receive-and-delete + publish-after-consume
+
+Observed on the first post-deploy day: the `poll-triggers` queue accumulated **14 active messages** over roughly one hour, causing KEDA to drain the backlog at its 30-second polling cadence and hammer PlanIt with ~30 zero-work 429s over ~50 minutes. The scheduled (future-dated) messages were sitting correctly in the `scheduledMessageCount`, but they sat behind a growing pile of already-active duplicates.
+
+Root cause: the original **publish-before-ack** ordering produces a duplicate whenever `CompleteAsync` fails or doesn't complete in time. Sequence:
+
+1. Orchestrator publishes the next-run message (scheduled for `now + retryAfter`).
+2. `CompleteAsync` fails — container killed, REST timeout, lock expired mid-call, or any transient SB error.
+3. The Service Bus PeekLock expires (bounded by the 5-minute Basic-tier `LockDuration` cap — see `asb-lockduration-capped-at-5m`).
+4. The unacked message redelivers to a new replica. That replica processes it, publishes *another* next-run message, and acks.
+5. Net: the queue gains one message per occurrence. Over many cycles the backlog compounds.
+
+The original "publish-before-ack is load-bearing for crash safety" framing anticipated the wrong failure mode: at-least-once delivery via redelivery was supposed to make the chain self-healing, but for this workload redelivery is actively harmful — the handler already hit PlanIt, and re-running it just burns quota while duplicating the outgoing next-run message.
+
+#### Amended decision
+
+1. **Orchestrator uses Service Bus receive-and-delete mode**, not peek-lock. The message is destructively consumed on receive. There is no lock, no `Complete`, no `Abandon`.
+2. **Ordering is consume → process → publish.** Publish happens after the handler has fully run. If anything fails between receive and publish, the chain pauses until the next safety-net tick.
+3. **`IPollTriggerQueue.CompleteAsync` and `AbandonAsync` are removed.** The LeaseHeld branch in the orchestrator exits without settling — the message is already gone, and the lease holder is responsible for the next publish.
+4. **Safety-net probe uses the Service Bus management API**, reading `activeMessageCount + scheduledMessageCount` on the queue. Seed only when both are zero. The previous PeekLock-based probe was destructive under receive-and-delete and blind to scheduled messages (silently causing duplicate bootstrap publishes even under the old design).
+5. **`POLLING_HANDLER_BUDGET_SECONDS` can relax.** It existed solely to bail before the 5-minute PeekLock cap. With no lock, the only bound is `replicaTimeout` (600 s).
+
+#### Failure modes under the amendment
+
+| Failure point | Outcome |
+|---------------|---------|
+| Crash before/during processing | Message gone, no next published → safety-net recovers within ≤30 minutes |
+| Processing succeeds, publish fails | Same as above |
+| Receive succeeds, process + publish succeed | Normal chain continues |
+
+All failure paths converge on the same safety-net recovery path. At-most-once delivery is accepted as the trade-off; the work itself (polling PlanIt) is idempotent over the polling cursor and is intended to be retried on a timer in any case.
+
+#### Consequences of the amendment
+
+**Easier**
+
+- Active queue depth stays bounded to 0–1 under normal operation. Observability improves: `activeMessageCount > 1` is now a clear bug signal.
+- Code simpler: no `Complete`/`Abandon` paths, no lock-URL threading, no LeaseHeld-Abandon branch, no 4-minute handler budget tied to a 5-minute lock cap.
+- Safety-net probe correctly sees scheduled messages for the first time — pre-existing TOCTOU window is closed.
+
+**Harder**
+
+- Worst-case polling stall on a single publish-side failure is now ≤30 minutes (the safety-net cadence) rather than ≤5 minutes (the PeekLock redelivery). Acceptable for this workload; would not be acceptable for a user-facing path.
+- Safety-net bootstrap is the sole recovery mechanism and must stay healthy. Its own failures (management-API RBAC, SB outage, cron misfire) now have no backstop. Mitigated by the 30-minute cadence being cheap enough to keep.
+- Worker identity needs a management-plane read role on the Service Bus namespace (in addition to the existing data-plane Data Owner role). Least-privilege TBD during implementation (likely `Reader` scoped to the queue).
+
+See bead **tc-gpof** for the implementation and **tc-ku5u** for the original observation.
