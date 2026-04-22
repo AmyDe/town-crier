@@ -4,7 +4,7 @@ Date: 2026-04-04
 
 ## Status
 
-Accepted
+Accepted. Narrowed by [ADR 0024](0024-service-bus-only-polling.md) — cron is no longer a polling trigger; it only bootstraps the Service Bus chain when the queue is empty.
 
 ## Context
 

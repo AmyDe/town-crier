@@ -44,6 +44,6 @@ internal static partial class WorkerLog
     [LoggerMessage(Level = LogLevel.Error, Message = "Dormant account cleanup failed")]
     internal static partial void DormantCleanupFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll, poll-sb, digest, hourly-digest, dormant-cleanup")]
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll-sb, poll-bootstrap, digest, hourly-digest, dormant-cleanup")]
     internal static partial void UnknownWorkerMode(ILogger logger, string workerMode);
 }

@@ -354,12 +354,12 @@ public static class EnvironmentStack
         // differing only in name suffix, cron schedule, timeout, and WORKER_MODE.
         //
         // In prod, the "poll" job is event-triggered off the Service Bus queue provisioned
-        // above; a parallel cron-triggered "poll-safety-net" job runs every 30 minutes and
+        // above; a parallel cron-triggered "poll-bootstrap" job runs every 30 minutes and
         // re-seeds the queue if it is empty (disaster-recovery / bootstrap only — the
-        // worker's lease guard makes the safety-net a no-op when the chain is alive).
+        // bootstrap probe is a no-op when the chain is alive).
         //
-        // In dev the "poll" job stays on the existing cron schedule until we port the
-        // adaptive design across.
+        // Dev has no poll job at all. See docs/specs/sb-only-polling.md and
+        // docs/adr/0024-service-bus-only-polling.md.
         if (pollingBus is not null)
         {
             _ = CreateWorkerJob("poll", cronExpression: null, replicaTimeout: 600, workerMode: "poll-sb",
@@ -369,22 +369,12 @@ public static class EnvironmentStack
                 appInsightsConnectionString, acsConnectionString, tags,
                 pollingBus);
 
-            _ = CreateWorkerJob("poll-safety-net", cronExpression: "*/30 * * * *", replicaTimeout: 600, workerMode: null,
+            _ = CreateWorkerJob("poll-bootstrap", cronExpression: "*/30 * * * *", replicaTimeout: 120, workerMode: "poll-bootstrap",
                 env, resourceGroup.Name, containerAppsEnvironmentId,
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
                 appInsightsConnectionString, acsConnectionString, tags,
                 pollingBus);
-        }
-        else
-        {
-            var pollCron = env == "dev" ? "0 */3 * * *" : "*/15 * * * *";
-            _ = CreateWorkerJob("poll", pollCron, replicaTimeout: 600, workerMode: null,
-                env, resourceGroup.Name, containerAppsEnvironmentId,
-                acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
-                cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-                appInsightsConnectionString, acsConnectionString, tags,
-                pollingBus: null);
         }
 
         CreateWorkerJob("digest", "0 7 * * *", replicaTimeout: 600, workerMode: "digest",

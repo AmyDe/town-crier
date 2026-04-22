@@ -9,16 +9,17 @@ using TownCrier.Infrastructure.Tests.Polling;
 namespace TownCrier.IntegrationTests.Polling;
 
 /// <summary>
-/// End-to-end wiring for the safety-net reseed (bd tc-tdgf). Exercises the REAL
-/// <see cref="PollTriggerBootstrapper"/>, REAL <see cref="ServiceBusPollTriggerQueue"/>,
-/// and REAL <see cref="PollNextRunScheduler"/> backed by a fake
+/// End-to-end wiring for the bootstrap-only safety-net job (ADR 0024).
+/// Exercises the REAL <see cref="PollTriggerBootstrapper"/>, REAL
+/// <see cref="ServiceBusPollTriggerQueue"/>, and REAL
+/// <see cref="PollNextRunScheduler"/> backed by a fake
 /// <see cref="IServiceBusRestClient"/> at the transport boundary.
 /// </summary>
 [SuppressMessage(
     "Minor Code Smell",
     "S1075:URIs should not be hardcoded",
     Justification = "Test fixture URIs.")]
-public sealed class SafetyNetBootstrapIntegrationTests
+public sealed class PollBootstrapIntegrationTests
 {
     private const string QueueName = "poll";
     private static readonly DateTimeOffset Now = new(2026, 4, 21, 12, 0, 0, TimeSpan.Zero);
