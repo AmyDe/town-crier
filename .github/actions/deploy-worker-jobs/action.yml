@@ -1,17 +1,20 @@
-# Updates all Container App Jobs for the worker with a new image.
-# Iterates over every worker job (poll, poll-bootstrap, digest,
-# digest-hourly, dormant-cleanup) with the naming convention
-# job-tc-{name}-{env-suffix}.
-# These names must stay in lockstep with infra/EnvironmentStack.cs —
-# Pulumi seeds each job with a quickstart placeholder image on create,
-# and CD is responsible for replacing it on every deploy. Missing a job
-# here means it silently keeps running the placeholder in prod.
+# Updates the given Container App Jobs for the worker with a new image.
+# The caller passes the list of jobs — dev and prod have different
+# topologies (ADR 0024: dev has no poll jobs), so this action is
+# intentionally agnostic about which jobs exist where.
+# Job names follow the convention job-tc-{name}-{env-suffix} and must
+# match infra/EnvironmentStack.cs — Pulumi seeds each job with a
+# quickstart placeholder image on create, and CD is responsible for
+# replacing it on every deploy.
 #
 # Assumes azure/login has already been called in an earlier step.
 name: Deploy Worker Jobs
-description: Update all worker Container App Jobs with a new image
+description: Update the given worker Container App Jobs with a new image
 
 inputs:
+  jobs:
+    description: Space-separated list of worker job names (without the job-tc- prefix or env suffix)
+    required: true
   env-suffix:
     description: Environment suffix for job names (e.g., dev, prod)
     required: true
@@ -28,7 +31,7 @@ runs:
     - name: Deploy worker image to all jobs
       shell: bash
       run: |
-        for JOB in poll poll-bootstrap digest digest-hourly dormant-cleanup; do
+        for JOB in ${{ inputs.jobs }}; do
           echo "::group::Deploying to job-tc-${JOB}-${{ inputs.env-suffix }}"
           az containerapp job update \
             --name "job-tc-${JOB}-${{ inputs.env-suffix }}" \
