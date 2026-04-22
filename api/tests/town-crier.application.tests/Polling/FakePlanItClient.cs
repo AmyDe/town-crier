@@ -44,6 +44,14 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public int? LastAuthorityId { get; private set; }
 
+    /// <summary>
+    /// Gets or sets a callback invoked after each page fetch has assembled its
+    /// result but before <see cref="FetchApplicationsPageAsync"/> returns. Lets
+    /// tests advance a fake time provider to simulate wall-clock progression
+    /// across pages (used by handler-budget tests).
+    /// </summary>
+    public Action<int, int>? OnFetchComplete { get; set; }
+
     public void AddSearchResult(PlanningApplication application)
     {
         this.searchResults.Add(application);
@@ -128,7 +136,9 @@ internal sealed class FakePlanItClient : IPlanItClient
 
             // HasMorePages=true so the handler loops back and hits the throw on the next call.
             var totalForRule = this.TotalOverride ?? allApps.Count;
-            return new FetchPageResult(page, trimmed, totalForRule, HasMorePages: true);
+            var ruleResult = new FetchPageResult(page, trimmed, totalForRule, HasMorePages: true);
+            this.OnFetchComplete?.Invoke(authorityId, page);
+            return ruleResult;
         }
 
         var existingYielded = this.yieldedByAuthority.TryGetValue(authorityId, out var prevCount) ? prevCount : 0;
@@ -136,8 +146,9 @@ internal sealed class FakePlanItClient : IPlanItClient
 
         var hasMorePages = pageItems.Count >= PageSize;
         var total = this.TotalOverride ?? allApps.Count;
-
-        return new FetchPageResult(page, pageItems, total, hasMorePages);
+        var result = new FetchPageResult(page, pageItems, total, hasMorePages);
+        this.OnFetchComplete?.Invoke(authorityId, page);
+        return result;
     }
 
     public Task<PlanItSearchResult> SearchApplicationsAsync(
