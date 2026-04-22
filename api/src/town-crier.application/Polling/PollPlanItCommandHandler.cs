@@ -88,9 +88,14 @@ public sealed partial class PollPlanItCommandHandler
         var cycleType = this.cycleSelector.GetCurrent();
         var cycleTypeValue = cycleType.ToTelemetryValue();
         var cycleTypeTag = new KeyValuePair<string, object?>("cycle.type", cycleTypeValue);
+        var deadline = this.options.HandlerBudget is { } budget
+            ? (DateTimeOffset?)(now + budget)
+            : null;
         var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
         var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
             activeIds.ToList(), ct).ConfigureAwait(false);
+
+        bool BudgetExhausted() => deadline.HasValue && this.timeProvider.GetUtcNow() >= deadline.Value;
 
         var count = 0;
         var authoritiesPolled = 0;
@@ -103,8 +108,10 @@ public sealed partial class PollPlanItCommandHandler
             // Graceful timeout: when the worker's CTS (bounded to replicaTimeout - grace) fires,
             // break before starting a new authority so the partial result is returned cleanly.
             // See bd tc-qdtu — Container Apps replicaTimeout was SIGTERM-ing mid-loop and marking
-            // otherwise-successful seed cycles as Failed.
-            if (ct.IsCancellationRequested)
+            // otherwise-successful seed cycles as Failed. The soft HandlerBudget (docs/specs/
+            // poll-handler-soft-budget.md) layers a second, shorter deadline so poll-sb runs
+            // self-bound inside the 5-min Service Bus message lock.
+            if (ct.IsCancellationRequested || BudgetExhausted())
             {
                 timeBounded = true;
                 break;
