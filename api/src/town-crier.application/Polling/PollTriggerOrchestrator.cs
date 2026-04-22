@@ -4,10 +4,14 @@ namespace TownCrier.Application.Polling;
 
 /// <summary>
 /// Single-run orchestrator that glues the Service Bus trigger queue to
-/// <see cref="PollPlanItCommandHandler"/>. Responsible for the load-bearing
-/// publish-before-ack ordering: publish the next trigger first, then complete
-/// the one that drove this run. If the worker crashes between the publish and
-/// the ack, the trigger redelivers via PeekLock and the chain recovers.
+/// <see cref="PollPlanItCommandHandler"/>. Under ADR 0024 amendment
+/// (2026-04-22) the queue is consumed in receive-and-delete mode and the
+/// ordering is <b>receive → handler → publish</b>: the trigger message is
+/// destructively consumed on receive, the handler runs, then the next
+/// trigger is published with a scheduled enqueue time. If anything fails
+/// between receive and publish the chain pauses until the safety-net
+/// bootstrap (<see cref="PollTriggerBootstrapper"/>) recovers it on its
+/// cron tick.
 /// </summary>
 public sealed partial class PollTriggerOrchestrator
 {
@@ -43,24 +47,16 @@ public sealed partial class PollTriggerOrchestrator
                 PollResult: null);
         }
 
-        PollPlanItResult pollResult;
-        try
-        {
-            pollResult = await this.handler.HandleAsync(new PollPlanItCommand(), ct).ConfigureAwait(false);
-        }
-        catch
-        {
-            await this.triggerQueue.AbandonAsync(message, ct).ConfigureAwait(false);
-            throw;
-        }
+        // Message is destructively consumed — handler runs first. If it throws
+        // we let the exception bubble up; the safety-net bootstrap recovers
+        // the chain on its next cron tick.
+        var pollResult = await this.handler.HandleAsync(new PollPlanItCommand(), ct).ConfigureAwait(false);
 
         if (pollResult.TerminationReason == PollTerminationReason.LeaseHeld)
         {
-            // Lease holder is responsible for publishing the next trigger.
-            // Abandon the PeekLock so the message redelivers after the lock
-            // expires — if the holder crashed without publishing, this run
-            // (or the next replica) will take over.
-            await this.triggerQueue.AbandonAsync(message, ct).ConfigureAwait(false);
+            // Another replica holds the Cosmos lease and is responsible for
+            // publishing the next trigger. Our message is already gone — exit
+            // without publishing so we don't duplicate the next trigger.
             return new PollTriggerOrchestratorRunResult(
                 MessageReceived: true,
                 PublishedNext: false,
@@ -73,9 +69,11 @@ public sealed partial class PollTriggerOrchestrator
             pollResult.RetryAfter,
             now);
 
-        // Publish BEFORE complete — load-bearing for crash safety.
+        // Consume-before-publish — destructive receive already happened, so
+        // this is the sole outstanding write that could leave the chain in a
+        // quiescent state. A publish failure surfaces to the caller; the
+        // safety-net recovers.
         await this.triggerQueue.PublishAtAsync(nextRun, ct).ConfigureAwait(false);
-        await this.triggerQueue.CompleteAsync(message, ct).ConfigureAwait(false);
 
         return new PollTriggerOrchestratorRunResult(
             MessageReceived: true,
