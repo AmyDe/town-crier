@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
+using TownCrier.Application.PlanIt;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -194,7 +195,7 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_ThrowAfterRetries_When_ApiReturns429Forever()
+    public async Task Should_ThrowImmediatelyAsPlanItRateLimitException_When_ApiReturns429()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
@@ -203,12 +204,13 @@ public sealed class PlanItClientTests
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, delays: delays);
 
-        // Act & Assert — should throw after exhausting retries (default 3)
-        await Assert.ThrowsAsync<HttpRequestException>(
+        // Act & Assert — 429 throws PlanItRateLimitException on the first response
+        // so the scheduler can honour Retry-After. No internal retries on 429.
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
             async () => await ConsumeAsync(client, differentStart: null));
 
-        // 4 requests: 1 initial + 3 retries
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(4);
+        // Only 1 request — no retries
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
     }
 
     [Test]
@@ -495,12 +497,12 @@ public sealed class PlanItClientTests
         });
         listener.Start();
 
-        // Act — 429 throws after exhausting retries (default 3)
-        await Assert.ThrowsAsync<HttpRequestException>(
+        // Act — 429 throws immediately as PlanItRateLimitException; no retries
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
             async () => await ConsumeAsync(client, differentStart: null, authorityId: 292));
 
-        // Assert — 4 error metrics recorded (1 initial + 3 retries)
-        await Assert.That(recorded).HasCount().EqualTo(4);
+        // Assert — exactly 1 error metric recorded (no retries on 429)
+        await Assert.That(recorded).HasCount().EqualTo(1);
         await Assert.That(recorded[0].StatusCode).IsEqualTo(429);
         await Assert.That(recorded[0].AuthorityCode).IsEqualTo(292);
     }
@@ -626,11 +628,13 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_RetryOn429WithLongerBackoff_When_RateLimited()
+    public async Task Should_NotRetryOn429_When_RateLimited()
     {
-        // Arrange
+        // Arrange — 429 must no longer be retried inside the client; it throws
+        // PlanItRateLimitException on the first response so the scheduler can
+        // use the Retry-After header to choose the next run time.
         using var handler = new FakePlanItHandler();
-        handler.SetupTransientRateLimit("page=1", failCount: 1, SingleRecordResponse);
+        handler.SetupRateLimitForever("page=1");
         var delays = new List<TimeSpan>();
         var retryOptions = new PlanItRetryOptions
         {
@@ -640,17 +644,16 @@ public sealed class PlanItClientTests
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, retryOptions: retryOptions, delays: delays);
 
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
+        // Act & Assert — 429 throws immediately, no retries
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
+            async () => await ConsumeAsync(client, differentStart: null));
 
-        // Assert — should succeed after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
+        // Only 1 request — no retries for 429
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
 
-        // Rate limit backoff: 5s (first attempt)
+        // No retry delays — the rate-limit backoff loop is gone.
         var retryDelays = delays.Where(d => d > TimeSpan.Zero).ToList();
-        await Assert.That(retryDelays).HasCount().EqualTo(1);
-        await Assert.That(retryDelays[0]).IsEqualTo(TimeSpan.FromSeconds(5));
+        await Assert.That(retryDelays).HasCount().EqualTo(0);
     }
 
     [Test]

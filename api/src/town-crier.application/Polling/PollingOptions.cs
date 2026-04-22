@@ -20,4 +20,15 @@ public sealed record PollingOptions
     /// cover a full cycle (default 10 minutes to match the worker's replicaTimeout).
     /// </summary>
     public TimeSpan LeaseTtl { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Gets the soft wall-clock budget for a single handler invocation. When set,
+    /// the handler checks at authority and page boundaries whether the deadline
+    /// has elapsed and exits cleanly with <see cref="PollTerminationReason.TimeBounded"/>,
+    /// saving a resumable cursor if mid-pagination. <c>null</c> disables the budget
+    /// (handler only honours the outer CancellationToken). Sized to leave the
+    /// orchestrator 60 s to publish-next + complete inside the 5-min Service Bus
+    /// message lock. See <c>docs/specs/poll-handler-soft-budget.md</c>.
+    /// </summary>
+    public TimeSpan? HandlerBudget { get; init; }
 }

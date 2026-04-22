@@ -168,12 +168,15 @@ public sealed class PlanItClient : IPlanItClient
 
     private static bool IsRetryable(HttpStatusCode statusCode)
     {
+        // 429 is intentionally NOT retried here — it throws PlanItRateLimitException
+        // immediately via EnsureSuccessOrThrow so the scheduler can use the
+        // Retry-After header to choose the next run time. Internal retries on 429
+        // burn handler wall-clock budget and risk Service Bus lock expiry.
         return statusCode is
             HttpStatusCode.GatewayTimeout or
             HttpStatusCode.BadGateway or
             HttpStatusCode.ServiceUnavailable or
-            HttpStatusCode.RequestTimeout or
-            HttpStatusCode.TooManyRequests;
+            HttpStatusCode.RequestTimeout;
     }
 
     private async Task<HttpResponseMessage> SendWithThrottleAsync(Uri url, int authorityId, CancellationToken ct)

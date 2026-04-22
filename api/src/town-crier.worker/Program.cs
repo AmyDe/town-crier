@@ -175,12 +175,17 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
     client.BaseAddress = new Uri(planItBaseUrl);
 });
 
+// Default 240 s leaves 60 s headroom inside the 300 s Service Bus message
+// lock for the orchestrator's publish-next + complete. Set to 0 to disable
+// (diagnostics only). See docs/specs/poll-handler-soft-budget.md.
+var handlerBudgetSeconds = builder.Configuration.GetValue<int?>("POLLING_HANDLER_BUDGET_SECONDS") ?? 240;
 var pollingOptions = new PollingOptions
 {
     // Default 3 pages = 300 apps max per authority per cycle. Bounds the
     // per-authority rate budget so a backlogged authority can't monopolise a
     // seed cycle. Null disables the cap (unbounded pagination). See bd tc-l77h.
     MaxPagesPerAuthorityPerCycle = builder.Configuration.GetValue<int?>("Polling:MaxPagesPerAuthorityPerCycle") ?? 3,
+    HandlerBudget = handlerBudgetSeconds > 0 ? TimeSpan.FromSeconds(handlerBudgetSeconds) : null,
 };
 builder.Services.AddSingleton(pollingOptions);
 
