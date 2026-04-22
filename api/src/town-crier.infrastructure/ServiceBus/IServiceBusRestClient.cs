@@ -11,19 +11,26 @@ internal interface IServiceBusRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct);
 
+    /// <summary>
+    /// Destructively receives one message from the queue via receive-and-delete
+    /// mode. Returns <c>null</c> when the queue is empty.
+    /// </summary>
+    /// <param name="queueName">Queue to receive from.</param>
+    /// <param name="timeout">Server-side long-poll timeout.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The received message, or <c>null</c> if the queue is empty.</returns>
     Task<ReceivedServiceBusMessage?> ReceiveOneAsync(
         string queueName,
         TimeSpan timeout,
         CancellationToken ct);
 
-    Task CompleteAsync(Uri lockUrl, CancellationToken ct);
-
-    Task AbandonAsync(Uri lockUrl, CancellationToken ct);
-}
-
-internal sealed class ReceivedServiceBusMessage
-{
-    public required byte[] Body { get; init; }
-
-    public required Uri LockUrl { get; init; }
+    /// <summary>
+    /// Reads the queue's active and scheduled message counts via the
+    /// Service Bus management API (ARM-style <c>countDetails</c>).
+    /// Non-destructive; does not consume any messages.
+    /// </summary>
+    /// <param name="queueName">Queue whose counts are read.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Active and scheduled message counts for the queue.</returns>
+    Task<ServiceBusQueueCountDetails> GetQueueDepthAsync(string queueName, CancellationToken ct);
 }
