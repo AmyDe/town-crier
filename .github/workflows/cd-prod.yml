@@ -181,6 +181,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
+          jobs: poll poll-bootstrap digest digest-hourly dormant-cleanup
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}
