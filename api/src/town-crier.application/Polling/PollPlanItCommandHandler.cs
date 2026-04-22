@@ -232,6 +232,17 @@ public sealed partial class PollPlanItCommandHandler
                         break;
                     }
 
+                    if (ct.IsCancellationRequested || BudgetExhausted())
+                    {
+                        // Mid-pagination budget exhaustion — reuse the capHit cursor-save
+                        // path so the next cycle resumes at lastPageFetched + 1, and flag
+                        // the outer termination as TimeBounded. See docs/specs/
+                        // poll-handler-soft-budget.md.
+                        capHit = true;
+                        timeBounded = true;
+                        break;
+                    }
+
                     page++;
                 }
 
