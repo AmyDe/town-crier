@@ -195,7 +195,7 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_ThrowAfterRetries_When_ApiReturns429Forever()
+    public async Task Should_ThrowImmediatelyAsPlanItRateLimitException_When_ApiReturns429()
     {
         // Arrange
         using var handler = new FakePlanItHandler();
@@ -204,12 +204,13 @@ public sealed class PlanItClientTests
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, delays: delays);
 
-        // Act & Assert — should throw after exhausting retries (default 3)
-        await Assert.ThrowsAsync<HttpRequestException>(
+        // Act & Assert — 429 throws PlanItRateLimitException on the first response
+        // so the scheduler can honour Retry-After. No internal retries on 429.
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
             async () => await ConsumeAsync(client, differentStart: null));
 
-        // 4 requests: 1 initial + 3 retries
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(4);
+        // Only 1 request — no retries
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
     }
 
     [Test]
@@ -496,12 +497,12 @@ public sealed class PlanItClientTests
         });
         listener.Start();
 
-        // Act — 429 throws after exhausting retries (default 3)
-        await Assert.ThrowsAsync<HttpRequestException>(
+        // Act — 429 throws immediately as PlanItRateLimitException; no retries
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
             async () => await ConsumeAsync(client, differentStart: null, authorityId: 292));
 
-        // Assert — 4 error metrics recorded (1 initial + 3 retries)
-        await Assert.That(recorded).HasCount().EqualTo(4);
+        // Assert — exactly 1 error metric recorded (no retries on 429)
+        await Assert.That(recorded).HasCount().EqualTo(1);
         await Assert.That(recorded[0].StatusCode).IsEqualTo(429);
         await Assert.That(recorded[0].AuthorityCode).IsEqualTo(292);
     }
