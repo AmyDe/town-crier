@@ -1367,6 +1367,59 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(200);
     }
 
+    [Test]
+    public async Task Should_StopMidPaginationAndSaveCursor_When_HandlerBudgetExhausted()
+    {
+        var start = new DateTimeOffset(2026, 4, 22, 8, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(start);
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+
+        // Seed enough apps for 3 full pages (HasMorePages=true after pages 1, 2).
+        for (var i = 0; i < (FakePlanItClient.PageSize * 2) + 1; i++)
+        {
+            planItClient.Add(
+                100,
+                new PlanningApplicationBuilder().WithUid($"app-{i}").WithAreaId(100).Build());
+        }
+
+        // After page 1 completes, jump past the 4-minute budget.
+        planItClient.OnFetchComplete = (_, page) =>
+        {
+            if (page == 1)
+            {
+                timeProvider.Advance(TimeSpan.FromMinutes(5));
+            }
+        };
+
+        var pollStateStore = new FakePollStateStore();
+        var options = new PollingOptions
+        {
+            HandlerBudget = TimeSpan.FromMinutes(4),
+            MaxPagesPerAuthorityPerCycle = 10,
+        };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: timeProvider,
+            options: options);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.TimeBounded);
+        await Assert.That(result.ApplicationCount).IsEqualTo(FakePlanItClient.PageSize);
+        await Assert.That(planItClient.PagesRequested).HasCount().EqualTo(1);
+
+        var cursor = pollStateStore.GetCursorFor(100);
+        await Assert.That(cursor).IsNotNull();
+        await Assert.That(cursor!.NextPage).IsEqualTo(2);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
