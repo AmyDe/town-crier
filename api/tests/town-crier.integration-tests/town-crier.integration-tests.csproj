@@ -36,6 +36,8 @@
              Link="Polling\Shared\FakePollingLeaseStore.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\FakePollStateStore.cs"
              Link="Polling\Shared\FakePollStateStore.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakePollTriggerQueueMetrics.cs"
+             Link="Polling\Shared\FakePollTriggerQueueMetrics.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\FakeWatchZoneRepository.cs"
              Link="Polling\Shared\FakeWatchZoneRepository.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\PlanningApplicationBuilder.cs"

@@ -8,11 +8,9 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
 
     public List<DateTimeOffset> ScheduledEnqueueTimes { get; } = new();
 
-    public int CompletedCount { get; private set; }
+    public int ReceiveCount { get; private set; }
 
-    public int AbandonedCount { get; private set; }
-
-    public List<string> ScheduleSequence { get; } = new();
+    public List<string> CallSequence { get; } = new();
 
     public void EnqueueReceivable(IPollTriggerMessage message)
     {
@@ -21,6 +19,8 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
 
     public Task<IPollTriggerMessage?> ReceiveAsync(CancellationToken ct)
     {
+        this.ReceiveCount++;
+        this.CallSequence.Add("receive");
         if (this.receivable.Count == 0)
         {
             return Task.FromResult<IPollTriggerMessage?>(null);
@@ -31,22 +31,8 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
 
     public Task PublishAtAsync(DateTimeOffset scheduledEnqueueTime, CancellationToken ct)
     {
-        this.ScheduleSequence.Add("publish");
+        this.CallSequence.Add("publish");
         this.ScheduledEnqueueTimes.Add(scheduledEnqueueTime);
-        return Task.CompletedTask;
-    }
-
-    public Task CompleteAsync(IPollTriggerMessage message, CancellationToken ct)
-    {
-        this.ScheduleSequence.Add("complete");
-        this.CompletedCount++;
-        return Task.CompletedTask;
-    }
-
-    public Task AbandonAsync(IPollTriggerMessage message, CancellationToken ct)
-    {
-        this.ScheduleSequence.Add("abandon");
-        this.AbandonedCount++;
         return Task.CompletedTask;
     }
 }

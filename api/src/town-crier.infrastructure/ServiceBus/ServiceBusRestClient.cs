@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -9,7 +8,18 @@ namespace TownCrier.Infrastructure.ServiceBus;
 
 internal sealed class ServiceBusRestClient : IServiceBusRestClient
 {
-    private const string ApiVersion = "2015-01";
+    /// <summary>
+    /// API version used for runtime queue operations (publish, receive-and-delete).
+    /// </summary>
+    private const string RuntimeApiVersion = "2015-01";
+
+    /// <summary>
+    /// API version used for the management-plane queue GET that exposes
+    /// <c>countDetails</c>. 2017-04 is the documented version for the ARM
+    /// Service Bus REST surface. The data-plane REST endpoint (servicebus.windows.net)
+    /// accepts this version as well and returns the same ARM-style body.
+    /// </summary>
+    private const string ManagementApiVersion = "2017-04";
 
     private readonly HttpClient httpClient;
     private readonly ServiceBusAuthProvider authProvider;
@@ -39,7 +49,7 @@ internal sealed class ServiceBusRestClient : IServiceBusRestClient
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/{queueName}/messages?api-version={ApiVersion}");
+            $"/{queueName}/messages?api-version={RuntimeApiVersion}");
 
         await this.AddAuthorizationHeaderAsync(request, ct).ConfigureAwait(false);
 
@@ -74,9 +84,13 @@ internal sealed class ServiceBusRestClient : IServiceBusRestClient
         ArgumentException.ThrowIfNullOrEmpty(queueName);
 
         var seconds = (int)Math.Max(1, timeout.TotalSeconds);
+
+        // Receive-and-delete mode: DELETE /{queue}/messages/head destructively
+        // consumes one message in a single round-trip. No lock, no Complete,
+        // no Abandon. See ADR 0024 amendment (2026-04-22).
         using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            $"/{queueName}/messages/head?timeout={seconds.ToString(CultureInfo.InvariantCulture)}&api-version={ApiVersion}");
+            HttpMethod.Delete,
+            $"/{queueName}/messages/head?timeout={seconds.ToString(CultureInfo.InvariantCulture)}&api-version={RuntimeApiVersion}");
 
         await this.AddAuthorizationHeaderAsync(request, ct).ConfigureAwait(false);
 
@@ -91,43 +105,36 @@ internal sealed class ServiceBusRestClient : IServiceBusRestClient
 
         await ThrowOnFailureAsync(response, "ReceiveOne", ct).ConfigureAwait(false);
 
-        if (!response.Headers.TryGetValues("Location", out var locationValues))
-        {
-            throw new InvalidOperationException(
-                "Service Bus PeekLock response did not include a Location header.");
-        }
-
-        var lockUrl = new Uri(locationValues.First());
         var body = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
 
         return new ReceivedServiceBusMessage
         {
             Body = body,
-            LockUrl = lockUrl,
         };
     }
 
-    public async Task CompleteAsync(Uri lockUrl, CancellationToken ct)
+    public async Task<ServiceBusQueueCountDetails> GetQueueDepthAsync(string queueName, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(lockUrl);
+        ArgumentException.ThrowIfNullOrEmpty(queueName);
 
-        using var request = new HttpRequestMessage(HttpMethod.Delete, lockUrl);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/{queueName}?api-version={ManagementApiVersion}");
+
         await this.AddAuthorizationHeaderAsync(request, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        await ThrowOnFailureAsync(response, "Complete", ct).ConfigureAwait(false);
-    }
+        await ThrowOnFailureAsync(response, "GetQueueDepth", ct).ConfigureAwait(false);
 
-    public async Task AbandonAsync(Uri lockUrl, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(lockUrl);
+        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        var parsed = JsonSerializer.Deserialize(
+            body,
+            ServiceBusJsonSerializerContext.Default.QueueCountDetailsResponse);
 
-        using var request = new HttpRequestMessage(HttpMethod.Put, lockUrl);
-        await this.AddAuthorizationHeaderAsync(request, ct).ConfigureAwait(false);
-        request.Content = new StringContent(string.Empty, Encoding.UTF8, "application/json");
-
-        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        await ThrowOnFailureAsync(response, "Abandon", ct).ConfigureAwait(false);
+        var counts = parsed?.CountDetails;
+        return new ServiceBusQueueCountDetails(
+            ActiveMessageCount: counts?.ActiveMessageCount ?? 0,
+            ScheduledMessageCount: counts?.ScheduledMessageCount ?? 0);
     }
 
     private static async Task ThrowOnFailureAsync(

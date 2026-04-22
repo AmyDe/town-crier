@@ -3,48 +3,52 @@ using Microsoft.Extensions.Logging;
 namespace TownCrier.Application.Polling;
 
 /// <summary>
-/// Safety-net re-seed for the Service-Bus-coordinated polling chain. Runs after
-/// the cron-driven <see cref="PollPlanItCommandHandler"/> call in the worker's
-/// safety-net branch — if the trigger queue is empty (because the SB cycle has
-/// never bootstrapped, or has died), publish a single jittered bootstrap
-/// trigger so the adaptive cycle self-heals.
+/// Safety-net re-seed for the Service-Bus-coordinated polling chain. Runs on
+/// a cron tick as the sole recovery mechanism for a silent chain (e.g. the
+/// handler crashed after receiving a trigger but before publishing the next
+/// one, Service Bus maintenance dropped the chain, the queue was manually
+/// purged, etc.).
 ///
 /// <para>
-/// Implementation uses <see cref="IPollTriggerQueue.ReceiveAsync"/> with the
-/// existing PeekLock semantics. If the receive returns <c>null</c> → queue is
-/// empty → publish. If it returns a message → abandon the lock (so the real
-/// poll-sb consumer redelivers and processes it) and skip publishing. This has
-/// a small TOCTOU window but is acceptable for a best-effort seed — the
-/// orchestrator is idempotent under the Cosmos lease guard and duplicate seeds
-/// are harmless.
+/// Under ADR 0024 amendment (2026-04-22) the bootstrapper probes the queue
+/// via the Service Bus management API (<see cref="IPollTriggerQueueMetrics"/>)
+/// reading <c>countDetails.activeMessageCount + scheduledMessageCount</c>.
+/// A bootstrap seed is published only when both counts are zero. The
+/// previous destructive PeekLock probe is replaced because (a) it would
+/// delete a live message every 30 min under receive-and-delete mode and
+/// (b) it was blind to scheduled (future-dated) messages, occasionally
+/// double-publishing when a healthy chain was paused on Retry-After.
 /// </para>
 ///
 /// <para>
 /// All failures in the probe OR the publish are swallowed: the safety-net's
 /// primary job is to poll PlanIt, and a failed reseed is retried on the next
-/// cron tick. The caller's exit code must reflect the poll outcome, not the
-/// reseed outcome.
+/// cron tick.
 /// </para>
 /// </summary>
 public sealed partial class PollTriggerBootstrapper
 {
     private readonly IPollTriggerQueue triggerQueue;
+    private readonly IPollTriggerQueueMetrics metrics;
     private readonly PollNextRunScheduler scheduler;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<PollTriggerBootstrapper> logger;
 
     public PollTriggerBootstrapper(
         IPollTriggerQueue triggerQueue,
+        IPollTriggerQueueMetrics metrics,
         PollNextRunScheduler scheduler,
         TimeProvider timeProvider,
         ILogger<PollTriggerBootstrapper> logger)
     {
         ArgumentNullException.ThrowIfNull(triggerQueue);
+        ArgumentNullException.ThrowIfNull(metrics);
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         this.triggerQueue = triggerQueue;
+        this.metrics = metrics;
         this.scheduler = scheduler;
         this.timeProvider = timeProvider;
         this.logger = logger;
@@ -52,10 +56,10 @@ public sealed partial class PollTriggerBootstrapper
 
     public async Task<PollTriggerBootstrapResult> TryBootstrapAsync(CancellationToken ct)
     {
-        IPollTriggerMessage? existing;
+        PollTriggerQueueDepth depth;
         try
         {
-            existing = await this.triggerQueue.ReceiveAsync(ct).ConfigureAwait(false);
+            depth = await this.metrics.GetDepthAsync(ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Best-effort reseed — any probe failure is absorbed.
         catch (Exception ex)
@@ -65,22 +69,12 @@ public sealed partial class PollTriggerBootstrapper
             return new PollTriggerBootstrapResult(Published: false, ProbeFailed: true);
         }
 
-        if (existing is not null)
+        if (!depth.IsEmpty)
         {
-            // Queue is non-empty — the poll-sb cycle is alive. Abandon the
-            // PeekLock so the real consumer redelivers and settles the message.
-            try
-            {
-                await this.triggerQueue.AbandonAsync(existing, ct).ConfigureAwait(false);
-            }
-#pragma warning disable CA1031 // Abandon is best-effort; the lock will expire naturally.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                LogAbandonFailed(this.logger, ex);
-            }
-
-            LogQueueAlreadySeeded(this.logger);
+            LogQueueAlreadySeeded(
+                this.logger,
+                depth.ActiveMessageCount,
+                depth.ScheduledMessageCount);
             return new PollTriggerBootstrapResult(Published: false, ProbeFailed: false);
         }
 
@@ -110,17 +104,14 @@ public sealed partial class PollTriggerBootstrapper
         return new PollTriggerBootstrapResult(Published: true, ProbeFailed: false);
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Safety-net queue probe failed; skipping reseed (handler already ran)")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Safety-net queue metrics probe failed; skipping reseed (handler already ran)")]
     private static partial void LogProbeFailed(ILogger logger, Exception ex);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Safety-net queue abandon failed; PeekLock will expire naturally")]
-    private static partial void LogAbandonFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Safety-net bootstrap publish failed; next cron tick will retry")]
     private static partial void LogPublishFailed(ILogger logger, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Safety-net skipped reseed — poll trigger queue already has a pending message")]
-    private static partial void LogQueueAlreadySeeded(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Safety-net skipped reseed — poll trigger queue already has {ActiveMessageCount} active and {ScheduledMessageCount} scheduled messages")]
+    private static partial void LogQueueAlreadySeeded(ILogger logger, long activeMessageCount, long scheduledMessageCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Safety-net published bootstrap poll trigger scheduled for {ScheduledEnqueueTimeUtc:o}")]
     private static partial void LogBootstrapPublished(ILogger logger, DateTimeOffset scheduledEnqueueTimeUtc);

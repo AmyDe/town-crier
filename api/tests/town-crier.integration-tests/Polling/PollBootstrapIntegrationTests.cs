@@ -9,11 +9,13 @@ using TownCrier.Infrastructure.Tests.Polling;
 namespace TownCrier.IntegrationTests.Polling;
 
 /// <summary>
-/// End-to-end wiring for the bootstrap-only safety-net job (ADR 0024).
-/// Exercises the REAL <see cref="PollTriggerBootstrapper"/>, REAL
-/// <see cref="ServiceBusPollTriggerQueue"/>, and REAL
-/// <see cref="PollNextRunScheduler"/> backed by a fake
-/// <see cref="IServiceBusRestClient"/> at the transport boundary.
+/// End-to-end wiring for the bootstrap-only safety-net job (ADR 0024 amendment
+/// 2026-04-22). Exercises the REAL <see cref="PollTriggerBootstrapper"/>, REAL
+/// <see cref="ServiceBusPollTriggerQueue"/>, REAL
+/// <see cref="ServiceBusPollTriggerQueueMetrics"/>, and REAL
+/// <see cref="PollNextRunScheduler"/>, backed by a fake
+/// <see cref="IServiceBusRestClient"/> at the transport boundary. The probe
+/// is now a non-destructive management-API read of <c>countDetails</c>.
 /// </summary>
 [SuppressMessage(
     "Minor Code Smell",
@@ -27,13 +29,16 @@ public sealed class PollBootstrapIntegrationTests
     [Test]
     public async Task Should_PublishBootstrapTrigger_When_QueueIsEmpty()
     {
-        // Arrange — queue is empty, REST client returns null on receive.
+        // Arrange — queue counts are both zero (management-API probe).
         var rest = new FakeServiceBusRestClient();
+        rest.EnqueueDepth(active: 0, scheduled: 0);
         var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
         var queue = new ServiceBusPollTriggerQueue(rest, options);
+        var metrics = new ServiceBusPollTriggerQueueMetrics(rest, options);
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
         var bootstrapper = new PollTriggerBootstrapper(
             queue,
+            metrics,
             scheduler,
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
@@ -48,30 +53,23 @@ public sealed class PollBootstrapIntegrationTests
         await Assert.That(rest.PublishCalls[0].QueueName).IsEqualTo(QueueName);
         await Assert.That(rest.PublishCalls[0].ScheduledEnqueueTimeUtc)
             .IsEqualTo(Now + TimeSpan.FromMinutes(5));
-
-        // No existing message to settle.
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(0);
-        await Assert.That(rest.AbandonedLockUrls).HasCount().EqualTo(0);
     }
 
     [Test]
-    public async Task Should_AbandonAndSkipPublish_When_QueueAlreadyHasMessage()
+    public async Task Should_SkipPublish_When_QueueHasActiveMessage()
     {
-        // Arrange — queue returns a message on the probe receive, meaning the
-        // poll-sb cycle is alive. Bootstrapper must NOT publish a duplicate.
+        // Arrange — management-API probe returns active>0 (chain is alive).
+        // Bootstrapper must NOT publish a duplicate.
         var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/m1/lock-1");
-        rest.EnqueueReceive(new ReceivedServiceBusMessage
-        {
-            Body = [],
-            LockUrl = lockUrl,
-        });
+        rest.EnqueueDepth(active: 1, scheduled: 0);
 
         var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
         var queue = new ServiceBusPollTriggerQueue(rest, options);
+        var metrics = new ServiceBusPollTriggerQueueMetrics(rest, options);
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
         var bootstrapper = new PollTriggerBootstrapper(
             queue,
+            metrics,
             scheduler,
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
@@ -79,29 +77,54 @@ public sealed class PollBootstrapIntegrationTests
         // Act
         var result = await bootstrapper.TryBootstrapAsync(CancellationToken.None);
 
-        // Assert — probe succeeded, no publish, message abandoned so the real
-        // consumer can redeliver.
+        // Assert — non-destructive probe, no publish.
         await Assert.That(result.Published).IsFalse();
         await Assert.That(result.ProbeFailed).IsFalse();
         await Assert.That(rest.PublishCalls).HasCount().EqualTo(0);
-        await Assert.That(rest.AbandonedLockUrls).HasCount().EqualTo(1);
-        await Assert.That(rest.AbandonedLockUrls[0]).IsEqualTo(lockUrl);
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_SkipPublish_When_QueueHasScheduledMessage()
+    {
+        // Arrange — scheduled (future-dated) message pending. The management-API
+        // probe sees it (previously blind under PeekLock), so no double-publish.
+        var rest = new FakeServiceBusRestClient();
+        rest.EnqueueDepth(active: 0, scheduled: 1);
+
+        var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
+        var queue = new ServiceBusPollTriggerQueue(rest, options);
+        var metrics = new ServiceBusPollTriggerQueueMetrics(rest, options);
+        var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
+        var bootstrapper = new PollTriggerBootstrapper(
+            queue,
+            metrics,
+            scheduler,
+            new FakeTimeProvider(Now),
+            NullLogger<PollTriggerBootstrapper>.Instance);
+
+        // Act
+        var result = await bootstrapper.TryBootstrapAsync(CancellationToken.None);
+
+        // Assert — non-destructive probe, no publish.
+        await Assert.That(result.Published).IsFalse();
+        await Assert.That(result.ProbeFailed).IsFalse();
+        await Assert.That(rest.PublishCalls).HasCount().EqualTo(0);
     }
 
     [Test]
     public async Task Should_ReturnFailure_WithoutThrowing_When_TransportFails()
     {
-        // Arrange — REST client throws on receive, simulating a transport
-        // failure. The safety-net's primary job (polling) must not be aborted.
+        // Arrange — management-API probe uses a metrics fake that throws. The
+        // safety-net's primary job (polling) must not be aborted.
         var rest = new FakeServiceBusRestClient();
-        rest.EnqueueReceiveThrow(new HttpRequestException("sb unreachable"));
-
         var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
         var queue = new ServiceBusPollTriggerQueue(rest, options);
+        var metrics = new FakePollTriggerQueueMetrics();
+        metrics.EnqueueThrow(new HttpRequestException("management-api unreachable"));
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
         var bootstrapper = new PollTriggerBootstrapper(
             queue,
+            metrics,
             scheduler,
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);

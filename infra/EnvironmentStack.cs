@@ -633,9 +633,11 @@ public static class EnvironmentStack
 
     /// <summary>
     /// Provisions the Service Bus namespace + queue + RBAC used by the adaptive polling
-    /// trigger. The worker's user-assigned managed identity is granted the built-in
-    /// "Azure Service Bus Data Owner" role at the namespace scope so it can both send
-    /// (to schedule the next run) and receive (in PeekLock mode).
+    /// trigger. The worker's user-assigned managed identity is granted:
+    /// - "Azure Service Bus Data Owner" at the namespace scope — data-plane send/receive.
+    /// - "Reader" at the queue scope — management-plane GET so the bootstrap probe can
+    ///   read countDetails (activeMessageCount + scheduledMessageCount) to decide
+    ///   whether the polling chain is alive (see ADR 0024 + tc-ujl1).
     /// </summary>
     private static ServiceBusPollingInfra CreateServiceBusPollingInfra(
         string env,
@@ -701,6 +703,30 @@ public static class EnvironmentStack
             Scope = namespaceResource.Id,
             RoleDefinitionId = subscriptionId.Apply(subId =>
                 $"/subscriptions/{subId}/providers/Microsoft.Authorization/roleDefinitions/{serviceBusDataOwnerRoleId}"),
+            PrincipalId = cosmosDataIdentityPrincipalId,
+            PrincipalType = PrincipalType.ServicePrincipal,
+        });
+
+        // Built-in role: Reader
+        // (https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/general#reader)
+        // Grants read-only access to the queue's ARM resource, which is what the
+        // management-plane bootstrap probe needs:
+        //   GET https://management.azure.com/.../Microsoft.ServiceBus/namespaces/{ns}/queues/{queue}?api-version=...
+        // The response includes countDetails.activeMessageCount +
+        // countDetails.scheduledMessageCount — the signals the bootstrap worker uses
+        // to decide whether to re-seed the polling chain (see ADR 0024 + tc-ujl1).
+        //
+        // The data-plane Service Bus roles (Data Owner / Receiver / Sender) do NOT
+        // grant access to the management plane, so a separate assignment is required.
+        // There is no narrower built-in role that exposes queue countDetails, so
+        // Reader is the least-privilege option. Scoped to the queue itself (not the
+        // namespace) so it covers only this one queue resource.
+        const string readerRoleId = "acdd72a7-3385-48ef-bd42-f606fba81ae7";
+        _ = new RoleAssignment($"sb-poll-queue-reader-{env}", new RoleAssignmentArgs
+        {
+            Scope = queue.Id,
+            RoleDefinitionId = subscriptionId.Apply(subId =>
+                $"/subscriptions/{subId}/providers/Microsoft.Authorization/roleDefinitions/{readerRoleId}"),
             PrincipalId = cosmosDataIdentityPrincipalId,
             PrincipalType = PrincipalType.ServicePrincipal,
         });

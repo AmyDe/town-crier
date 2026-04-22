@@ -14,8 +14,9 @@ namespace TownCrier.IntegrationTests.Polling;
 /// Exercises the REAL <see cref="ServiceBusPollTriggerQueue"/> adapter and the
 /// REAL <see cref="PollTriggerOrchestrator"/> and <see cref="PollPlanItCommandHandler"/>,
 /// backed by a fake <see cref="IServiceBusRestClient"/> at the transport boundary.
-/// The application-layer handler dependencies reuse the in-memory fakes from
-/// <c>town-crier.application.tests</c> via linked compilation (see csproj).
+/// Under ADR 0024 amendment (2026-04-22) the queue runs in receive-and-delete
+/// mode — the message is destructively consumed on receive, so there is no
+/// lock and no Complete/Abandon. Ordering is receive -> handler -> publish.
 /// </summary>
 [SuppressMessage(
     "Minor Code Smell",
@@ -27,15 +28,13 @@ public sealed class PollSbEntrypointIntegrationTests
     private static readonly DateTimeOffset Now = new(2026, 4, 21, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
-    public async Task Should_PublishNextMessage_BeforeAck_When_HandlerSucceeds()
+    public async Task Should_RunHandlerThenPublishNext_When_HandlerSucceeds()
     {
         // Arrange — real adapter, real orchestrator, real handler, fake REST client.
         var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/m1/lock-1");
         rest.EnqueueReceive(new ReceivedServiceBusMessage
         {
             Body = [],
-            LockUrl = lockUrl,
         });
 
         var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
@@ -58,20 +57,20 @@ public sealed class PollSbEntrypointIntegrationTests
         // Act
         var result = await orchestrator.RunOnceAsync(CancellationToken.None);
 
-        // Assert — message received, handler ran, publish-before-ack observed.
+        // Assert — message received, handler ran, next trigger published.
         await Assert.That(result.MessageReceived).IsTrue();
         await Assert.That(result.PublishedNext).IsTrue();
         await Assert.That(rest.PublishCalls).HasCount().EqualTo(1);
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(1);
-        await Assert.That(rest.CompletedLockUrls[0]).IsEqualTo(lockUrl);
 
         // ScheduledEnqueueTimeUtc equals now + natural cadence (5 min default).
         await Assert.That(rest.PublishCalls[0].ScheduledEnqueueTimeUtc)
             .IsEqualTo(Now + TimeSpan.FromMinutes(5));
 
-        // Publish-before-ack ordering is load-bearing for crash safety.
-        await Assert.That(rest.CallSequence.IndexOf("publish"))
-            .IsLessThan(rest.CallSequence.IndexOf("complete"));
+        // Receive-before-publish ordering: destructive consume happens first,
+        // then the handler runs, then the next trigger is published. Crash
+        // safety is recovered by the safety-net bootstrap, not by ack ordering.
+        await Assert.That(rest.CallSequence.IndexOf("receive"))
+            .IsLessThan(rest.CallSequence.IndexOf("publish"));
     }
 
     [Test]
@@ -80,11 +79,9 @@ public sealed class PollSbEntrypointIntegrationTests
         // Arrange — handler throws PlanItRateLimitException; handler converts that into a
         // RateLimited termination with RetryAfter bubbled up, which the scheduler honours.
         var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/m2/lock-2");
         rest.EnqueueReceive(new ReceivedServiceBusMessage
         {
             Body = [],
-            LockUrl = lockUrl,
         });
 
         var options = new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName };
@@ -107,14 +104,12 @@ public sealed class PollSbEntrypointIntegrationTests
         // Act
         var result = await orchestrator.RunOnceAsync(CancellationToken.None);
 
-        // Assert — publish scheduled at now + Retry-After, message acked.
+        // Assert — publish scheduled at now + Retry-After; no ack step (receive-and-delete).
         await Assert.That(result.MessageReceived).IsTrue();
         await Assert.That(result.PublishedNext).IsTrue();
         await Assert.That(rest.PublishCalls).HasCount().EqualTo(1);
         await Assert.That(rest.PublishCalls[0].ScheduledEnqueueTimeUtc)
             .IsEqualTo(Now + TimeSpan.FromMinutes(2));
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(1);
-        await Assert.That(rest.CompletedLockUrls[0]).IsEqualTo(lockUrl);
     }
 
     [Test]
@@ -139,12 +134,10 @@ public sealed class PollSbEntrypointIntegrationTests
         // Act
         var result = await orchestrator.RunOnceAsync(CancellationToken.None);
 
-        // Assert — no handler run, no publish, no complete.
+        // Assert — no handler run, no publish.
         await Assert.That(result.MessageReceived).IsFalse();
         await Assert.That(result.PublishedNext).IsFalse();
         await Assert.That(rest.PublishCalls).HasCount().EqualTo(0);
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(0);
-        await Assert.That(rest.AbandonedLockUrls).HasCount().EqualTo(0);
     }
 
     private static PollPlanItCommandHandler CreateHandler(

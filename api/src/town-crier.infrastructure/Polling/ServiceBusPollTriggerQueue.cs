@@ -7,9 +7,9 @@ namespace TownCrier.Infrastructure.Polling;
 
 /// <summary>
 /// <see cref="IPollTriggerQueue"/> adapter over the Service Bus REST client.
-/// Carries the PeekLock URL on the received message so <see cref="CompleteAsync"/>
-/// and <see cref="AbandonAsync"/> can settle the right message without a
-/// round-trip to re-fetch broker state.
+/// Under ADR 0024 amendment (2026-04-22) the adapter uses receive-and-delete
+/// mode — the message is destructively consumed on receive, so there is no
+/// lock URL to thread through, no <c>Complete</c>, and no <c>Abandon</c>.
 /// </summary>
 [SuppressMessage(
     "Naming",
@@ -43,7 +43,7 @@ public sealed class ServiceBusPollTriggerQueue : IPollTriggerQueue
             return null;
         }
 
-        return new ServiceBusPollTriggerMessage(received.LockUrl);
+        return new ServiceBusPollTriggerMessage();
     }
 
     public async Task PublishAtAsync(DateTimeOffset scheduledEnqueueTime, CancellationToken ct)
@@ -61,42 +61,8 @@ public sealed class ServiceBusPollTriggerQueue : IPollTriggerQueue
             ct).ConfigureAwait(false);
     }
 
-    public async Task CompleteAsync(IPollTriggerMessage message, CancellationToken ct)
-    {
-        var lockUrl = RequireLockUrl(message);
-        await this.restClient.CompleteAsync(lockUrl, ct).ConfigureAwait(false);
-    }
-
-    public async Task AbandonAsync(IPollTriggerMessage message, CancellationToken ct)
-    {
-        var lockUrl = RequireLockUrl(message);
-        await this.restClient.AbandonAsync(lockUrl, ct).ConfigureAwait(false);
-    }
-
-    private static Uri RequireLockUrl(IPollTriggerMessage message)
-    {
-        ArgumentNullException.ThrowIfNull(message);
-
-        if (message is not ServiceBusPollTriggerMessage sbMessage)
-        {
-            throw new ArgumentException(
-                $"Message must be produced by {nameof(ServiceBusPollTriggerQueue)}.{nameof(ReceiveAsync)}.",
-                nameof(message));
-        }
-
-        return sbMessage.LockUrl;
-    }
-
     private sealed class ServiceBusPollTriggerMessage : IPollTriggerMessage
     {
-        public ServiceBusPollTriggerMessage(Uri lockUrl)
-        {
-            this.LockUrl = lockUrl;
-            this.Id = lockUrl.ToString();
-        }
-
-        public string Id { get; }
-
-        public Uri LockUrl { get; }
+        public string Id { get; } = Guid.NewGuid().ToString("N");
     }
 }
