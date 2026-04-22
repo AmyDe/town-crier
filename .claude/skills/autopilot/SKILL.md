@@ -8,7 +8,7 @@ description: "Autonomous single-bead worker loop. Picks a ready bead, dispatches
 Autonomous loop: pick one ready bead, ship it, merge it, return. Designed for `/loop`.
 
 ```
-Session branch -> Find work -> Dispatch worker -> Merge -> Verify tests -> Close -> Return
+Session branch -> Find work -> [Split multi-worker?] -> Dispatch worker -> Merge -> Verify tests -> Close -> Return
 ```
 
 ## Phase 0: Session Branch
@@ -66,10 +66,11 @@ bd list --status=in_progress --json | jq 'length'
   2. **Do NOT call `ScheduleWakeup`.** Omitting the call ends a dynamic loop.
   3. Report `Autopilot: no ready beads — loop stopped.` and return.
 
-Walk highest priority first. For each candidate, `/beads:show`:
+Walk highest priority first. For each candidate, `/beads:show` and read the bead fully — title, description, acceptance, design notes, and any referenced spec file (e.g. `docs/specs/<topic>.md#phase-1`):
 
-- **Skip epics** — containers, not implementable
-- **Classify worker type:**
+- **Skip epics** — containers, not implementable.
+- **Multi-worker scope? Split, don't classify.** If the bead's scope requires more than one worker type (e.g. `/api` endpoint + `/mobile/ios` consumer + `/web` consumer, or code + `/infra`), jump to **Phase 1.5: Split Multi-Worker Beads** instead of classifying.
+- **Classify worker type** (single-worker beads only):
 
 | Signals | Worker | Allowed Path |
 |---------|--------|-------------|
@@ -83,6 +84,90 @@ Walk highest priority first. For each candidate, `/beads:show`:
 **Unclassifiable?** Mark blocked: `/beads:update <id> --status=blocked --append-notes="Autopilot: cannot classify. Needs human triage."`
 
 **Found candidate?** Claim: `/beads:update <id> --status=in_progress`
+
+## Phase 1.5: Split Multi-Worker Beads
+
+When a bead's scope requires more than one worker type — e.g. `/api` endpoint + `/mobile/ios` consumer + `/web` consumer, or code + `/infra` — split it into children, one per worker type, instead of claiming.
+
+**Split when:**
+- The spec or description lists work across 2+ areas (`/api`, `/mobile/ios`, `/web`, `/infra`, `.github`).
+- A migration touches both code and infra/CI.
+
+**Do NOT split (fall through to the normal single-worker flow):**
+- Signals point to exactly one worker.
+- Multiple tech areas are mentioned but the actual work is only in one (e.g. "fix iOS bug triggered by an earlier API change" — only iOS work to do).
+
+**Ambiguous which files belong to which worker?** Don't guess — mark the parent blocked for human triage:
+
+```bash
+/beads:update <parent-id> --status=blocked --append-notes="Autopilot: multi-worker split ambiguous. Needs human triage."
+bd dolt push
+```
+
+Then return.
+
+### 1. Create a child bead per worker type
+
+For each worker type needed:
+
+```bash
+bd create \
+  --title="<parent title> — <area>" \
+  --description="<slice of the parent's work, referencing the parent by ID>" \
+  --type=<same as parent> \
+  --priority=<same as parent> \
+  --acceptance="<slice-scoped acceptance>" \
+  --notes="Split from <parent-id> by autopilot. Worker: <worker-type>. Allowed path: <path>."
+```
+
+Title convention: `<parent title> — API`, `<parent title> — iOS`, `<parent title> — web`, `<parent title> — infra`, etc. Type, priority, and any spec-file references in the parent carry into each child.
+
+### 2. Supersede the parent
+
+```bash
+bd supersede <parent-id> --with=<child-1-id>
+# bd supersede takes one --with; record additional children in notes:
+bd update <parent-id> --append-notes="Also superseded by: <child-2-id>, <child-3-id>"
+bd update <child-2-id> --append-notes="Split sibling of <child-1-id>. Parent: <parent-id>."
+bd update <child-3-id> --append-notes="Split sibling of <child-1-id>. Parent: <parent-id>."
+```
+
+### 3. Add dependencies (producer → consumer)
+
+If one child produces a contract the other consumes, add a dep. Consumer depends on producer:
+
+```bash
+bd dep add <consumer-child-id> <producer-child-id>
+```
+
+Heuristics, in order:
+
+1. **Contract producers before consumers:**
+   - `.NET` / API → iOS, web (endpoint before its clients).
+   - Pulumi / infra → anything that deploys into it.
+   - GitHub Actions → code that relies on a new workflow or secret.
+2. **Delete after migrate:** a `delete-worker` child always depends on any non-delete siblings.
+3. **Otherwise parallel.** Two UI siblings (iOS + web) consuming an existing API have no dep between them.
+
+If you can't articulate a one-sentence reason for a dep, don't add one — parallel is safer than a wrong direction. Record the reasoning on the dependent child:
+
+```bash
+bd update <consumer-child-id> --append-notes="Depends on <producer-child-id> because: <one-sentence reason>."
+```
+
+### 4. Sync and return
+
+```bash
+bd dolt push
+```
+
+Report:
+
+```
+Autopilot: split <parent-id> into <child-1-id>, <child-2-id>, ... — loop will pick up ready children.
+```
+
+Return. No code work this tick. The next loop tick picks up the first unblocked child via `/beads:ready`; blocked children become ready once their producer closes.
 
 ## Phase 2: Dispatch
 
@@ -186,7 +271,8 @@ Clean up worktree, sync beads (`bd dolt push`), report: `Autopilot: <bead-id> bl
 
 ## Rules
 
-- **One bead per invocation.** Pick, ship, return. The loop handles repetition.
+- **One bead per invocation.** Pick, ship, return. The loop handles repetition. Splitting counts as the invocation — after splitting a multi-worker bead, return without dispatching; the next tick picks up a ready child.
+- **Split before you claim.** If a bead needs more than one worker type, split it into children before claiming. Never claim a multi-worker parent.
 - **Never write code.** Workers handle implementation.
 - **Never skip test verification.** Tests must pass after merge — this is the real evidence.
 - **Never commit to main.** Session branch only.
