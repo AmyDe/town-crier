@@ -1334,6 +1334,39 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingLastPollTime.UtcDateTime));
     }
 
+    [Test]
+    public async Task Should_StopBetweenAuthorities_When_HandlerBudgetExhausted()
+    {
+        var start = new DateTimeOffset(2026, 4, 22, 8, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(start);
+
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient
+        {
+            // Advance 5 minutes on the way out of authority 100's single page.
+            OnFetchComplete = (_, _) => timeProvider.Advance(TimeSpan.FromMinutes(5)),
+        };
+        planItClient.Add(100, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(100).Build());
+        planItClient.Add(200, new PlanningApplicationBuilder().WithUid("app-2").WithAreaId(200).Build());
+
+        var options = new PollingOptions { HandlerBudget = TimeSpan.FromMinutes(4) };
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            timeProvider: timeProvider,
+            options: options);
+
+        var result = await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        await Assert.That(result.TerminationReason).IsEqualTo(PollTerminationReason.TimeBounded);
+        await Assert.That(result.AuthoritiesPolled).IsEqualTo(1);
+        await Assert.That(planItClient.AuthorityIdsRequested).DoesNotContain(200);
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
