@@ -3,12 +3,19 @@ using TownCrier.Application.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
 
+/// <summary>
+/// Orchestrator behaviour under ADR 0024 amendment
+/// (receive-and-delete + consume-before-publish). The message is destructively
+/// consumed on receive — no lock, no Complete, no Abandon. Ordering is
+/// receive -> handler -> publish. If anything fails between receive and
+/// publish, the chain pauses until the safety-net bootstrap recovers.
+/// </summary>
 public sealed class PollTriggerOrchestratorTests
 {
     private static readonly DateTimeOffset Now = new(2026, 4, 21, 12, 0, 0, TimeSpan.Zero);
 
     [Test]
-    public async Task Should_PublishNextMessage_Before_CompletingTriggerMessage()
+    public async Task Should_RunHandlerAndPublishNext_When_TriggerMessageReceived()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -28,42 +35,16 @@ public sealed class PollTriggerOrchestratorTests
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerOrchestrator>.Instance);
 
-        await orchestrator.RunOnceAsync(CancellationToken.None);
+        var result = await orchestrator.RunOnceAsync(CancellationToken.None);
 
-        await Assert.That(triggerQueue.ScheduleSequence).HasCount().EqualTo(2);
-        await Assert.That(triggerQueue.ScheduleSequence[0]).IsEqualTo("publish");
-        await Assert.That(triggerQueue.ScheduleSequence[1]).IsEqualTo("complete");
-    }
-
-    [Test]
-    public async Task Should_PublishNextMessage_When_TriggerMessageReceived()
-    {
-        var authorityProvider = new FakeActiveAuthorityProvider();
-        authorityProvider.Add(1);
-        var planItClient = new FakePlanItClient();
-        planItClient.Add(1, new PlanningApplicationBuilder().WithUid("app-1").WithAreaId(1).Build());
-
-        var triggerQueue = new FakePollTriggerQueue();
-        triggerQueue.EnqueueReceivable(new FakePollTriggerMessage("M1"));
-
-        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
-        var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
-
-        var orchestrator = new PollTriggerOrchestrator(
-            handler,
-            triggerQueue,
-            scheduler,
-            new FakeTimeProvider(Now),
-            NullLogger<PollTriggerOrchestrator>.Instance);
-
-        await orchestrator.RunOnceAsync(CancellationToken.None);
-
+        await Assert.That(result.MessageReceived).IsTrue();
+        await Assert.That(result.PublishedNext).IsTrue();
         await Assert.That(triggerQueue.ScheduledEnqueueTimes).HasCount().EqualTo(1);
         await Assert.That(triggerQueue.ScheduledEnqueueTimes[0]).IsEqualTo(Now + TimeSpan.FromMinutes(5));
     }
 
     [Test]
-    public async Task Should_NotPublishOrComplete_When_NoTriggerMessageAvailable()
+    public async Task Should_NotPublish_When_NoTriggerMessageAvailable()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -79,15 +60,20 @@ public sealed class PollTriggerOrchestratorTests
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerOrchestrator>.Instance);
 
-        await orchestrator.RunOnceAsync(CancellationToken.None);
+        var result = await orchestrator.RunOnceAsync(CancellationToken.None);
 
+        await Assert.That(result.MessageReceived).IsFalse();
+        await Assert.That(result.PublishedNext).IsFalse();
         await Assert.That(triggerQueue.ScheduledEnqueueTimes).HasCount().EqualTo(0);
-        await Assert.That(triggerQueue.CompletedCount).IsEqualTo(0);
     }
 
     [Test]
     public async Task Should_NotPublish_When_LeaseIsHeld()
     {
+        // LeaseHeld path: another replica holds the Cosmos lease. The trigger
+        // message is already destructively consumed (receive-and-delete), so we
+        // simply exit — the lease holder is responsible for publishing the
+        // next trigger.
         var triggerQueue = new FakePollTriggerQueue();
         triggerQueue.EnqueueReceivable(new FakePollTriggerMessage("M1"));
 
@@ -105,11 +91,6 @@ public sealed class PollTriggerOrchestratorTests
         await orchestrator.RunOnceAsync(CancellationToken.None);
 
         await Assert.That(triggerQueue.ScheduledEnqueueTimes).HasCount().EqualTo(0);
-
-        // Abandon the message so the current holder's publish remains the authoritative
-        // continuation of the chain.
-        await Assert.That(triggerQueue.AbandonedCount).IsEqualTo(1);
-        await Assert.That(triggerQueue.CompletedCount).IsEqualTo(0);
     }
 
     [Test]
@@ -140,13 +121,13 @@ public sealed class PollTriggerOrchestratorTests
     }
 
     [Test]
-    public async Task Should_PublishNextAndComplete_When_HandlerReturnsTimeBounded()
+    public async Task Should_PublishNext_When_HandlerReturnsTimeBounded()
     {
         // Force the handler to report TerminationReason=TimeBounded by exhausting
         // the soft HandlerBudget across authority 1's first (and only) page fetch.
         // Spec: docs/specs/poll-handler-soft-budget.md — when the handler returns
-        // TimeBounded the orchestrator must still publish-next and complete the
-        // trigger message so the poll-sb chain keeps advancing.
+        // TimeBounded the orchestrator must still publish-next so the poll-sb
+        // chain keeps advancing.
         var start = new DateTimeOffset(2026, 4, 22, 8, 0, 0, TimeSpan.Zero);
         var timeProvider = new FakeTimeProvider(start);
 
@@ -184,8 +165,36 @@ public sealed class PollTriggerOrchestratorTests
         await Assert.That(runResult.PublishedNext).IsTrue();
         await Assert.That(runResult.PollResult!.TerminationReason).IsEqualTo(PollTerminationReason.TimeBounded);
         await Assert.That(triggerQueue.ScheduledEnqueueTimes).HasCount().EqualTo(1);
-        await Assert.That(triggerQueue.CompletedCount).IsEqualTo(1);
-        await Assert.That(triggerQueue.AbandonedCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_NotPublish_When_HandlerThrows()
+    {
+        // Under receive-and-delete the message is already gone. If the handler
+        // throws, the chain pauses until the safety-net bootstrap recovers —
+        // the orchestrator does not attempt to publish a recovery message.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(1);
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(1, new InvalidOperationException("handler boom"));
+
+        var triggerQueue = new FakePollTriggerQueue();
+        triggerQueue.EnqueueReceivable(new FakePollTriggerMessage("M1"));
+
+        var handler = CreateHandler(planItClient: planItClient, authorityProvider: authorityProvider);
+        var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
+
+        var orchestrator = new PollTriggerOrchestrator(
+            handler,
+            triggerQueue,
+            scheduler,
+            new FakeTimeProvider(Now),
+            NullLogger<PollTriggerOrchestrator>.Instance);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await orchestrator.RunOnceAsync(CancellationToken.None));
+
+        await Assert.That(triggerQueue.ScheduledEnqueueTimes).HasCount().EqualTo(0);
     }
 
     private static PollPlanItCommandHandler CreateHandler(

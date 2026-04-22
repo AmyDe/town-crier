@@ -5,6 +5,11 @@ using TownCrier.Infrastructure.ServiceBus;
 
 namespace TownCrier.Infrastructure.Tests.Polling;
 
+/// <summary>
+/// Adapter-level tests for <see cref="ServiceBusPollTriggerQueue"/> under
+/// ADR 0024 amendment (receive-and-delete). Destructive consume on receive —
+/// no lock, no Complete, no Abandon.
+/// </summary>
 [SuppressMessage("Minor Code Smell", "S1075:URIs should not be hardcoded", Justification = "Test fixture URIs")]
 public sealed class ServiceBusPollTriggerQueueTests
 {
@@ -40,14 +45,12 @@ public sealed class ServiceBusPollTriggerQueueTests
     }
 
     [Test]
-    public async Task Should_WrapMessage_When_ReceiveReturnsMessage()
+    public async Task Should_ReturnMessage_When_ReceiveReturnsBody()
     {
         var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/abc/lock-1");
         rest.EnqueueReceive(new ReceivedServiceBusMessage
         {
             Body = [1, 2, 3],
-            LockUrl = lockUrl,
         });
         var queue = new ServiceBusPollTriggerQueue(
             rest,
@@ -56,49 +59,6 @@ public sealed class ServiceBusPollTriggerQueueTests
         var message = await queue.ReceiveAsync(CancellationToken.None);
 
         await Assert.That(message).IsNotNull();
-        await Assert.That(message!.Id).IsEqualTo(lockUrl.ToString());
-    }
-
-    [Test]
-    public async Task Should_CompleteLockUrl_When_Completing()
-    {
-        var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/abc/lock-2");
-        rest.EnqueueReceive(new ReceivedServiceBusMessage
-        {
-            Body = [],
-            LockUrl = lockUrl,
-        });
-        var queue = new ServiceBusPollTriggerQueue(
-            rest,
-            new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName });
-
-        var message = await queue.ReceiveAsync(CancellationToken.None);
-        await queue.CompleteAsync(message!, CancellationToken.None);
-
-        await Assert.That(rest.CompletedLockUrls).HasCount().EqualTo(1);
-        await Assert.That(rest.CompletedLockUrls[0]).IsEqualTo(lockUrl);
-    }
-
-    [Test]
-    public async Task Should_AbandonLockUrl_When_Abandoning()
-    {
-        var rest = new FakeServiceBusRestClient();
-        var lockUrl = new Uri("https://sb-test.servicebus.windows.net/poll/messages/abc/lock-3");
-        rest.EnqueueReceive(new ReceivedServiceBusMessage
-        {
-            Body = [],
-            LockUrl = lockUrl,
-        });
-        var queue = new ServiceBusPollTriggerQueue(
-            rest,
-            new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName });
-
-        var message = await queue.ReceiveAsync(CancellationToken.None);
-        await queue.AbandonAsync(message!, CancellationToken.None);
-
-        await Assert.That(rest.AbandonedLockUrls).HasCount().EqualTo(1);
-        await Assert.That(rest.AbandonedLockUrls[0]).IsEqualTo(lockUrl);
     }
 
     [Test]
@@ -116,26 +76,5 @@ public sealed class ServiceBusPollTriggerQueueTests
         // Payload is JSON — at minimum, non-empty object-shaped content.
         await Assert.That(rest.PublishCalls[0].SerialisedBody).IsNotNull();
         await Assert.That(rest.PublishCalls[0].SerialisedBody).StartsWith("{");
-    }
-
-    [Test]
-    public async Task Should_Throw_When_CompletingForeignMessage()
-    {
-        var rest = new FakeServiceBusRestClient();
-        var queue = new ServiceBusPollTriggerQueue(
-            rest,
-            new ServiceBusRestOptions { Namespace = "sb-test", QueueName = QueueName });
-
-        var foreign = new ForeignPollTriggerMessage("foreign");
-
-        await Assert.ThrowsAsync<ArgumentException>(
-            async () => await queue.CompleteAsync(foreign, CancellationToken.None));
-    }
-
-    private sealed class ForeignPollTriggerMessage : IPollTriggerMessage
-    {
-        public ForeignPollTriggerMessage(string id) => this.Id = id;
-
-        public string Id { get; }
     }
 }

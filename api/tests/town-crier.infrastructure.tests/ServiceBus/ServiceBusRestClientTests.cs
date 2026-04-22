@@ -91,11 +91,12 @@ public sealed class ServiceBusRestClientTests
     [Test]
     public async Task Should_ReturnMessage_When_ReceiveOneSucceeds()
     {
+        // Under receive-and-delete mode the broker returns 200 OK with the body
+        // directly; the message is destructively consumed — no Location header.
         var (client, handler) = CreateClient();
         handler.EnqueueResponse(
-            HttpStatusCode.Created,
-            """{"id":"m1","name":"Queued"}""",
-            [new("Location", $"{BaseUrl}/poll/messages/abc-123/lock-xyz")]);
+            HttpStatusCode.OK,
+            """{"id":"m1","name":"Queued"}""");
 
         var message = await client.ReceiveOneAsync(
             QueueName,
@@ -103,18 +104,17 @@ public sealed class ServiceBusRestClientTests
             CancellationToken.None);
 
         await Assert.That(message).IsNotNull();
-        await Assert.That(message!.LockUrl.ToString())
-            .IsEqualTo($"{BaseUrl}/poll/messages/abc-123/lock-xyz");
     }
 
     [Test]
-    public async Task Should_PostToPeekLockEndpoint_When_ReceivingOne()
+    public async Task Should_DeleteFromHeadEndpoint_When_ReceivingOne()
     {
+        // Receive-and-delete mode uses HTTP DELETE on the /head endpoint — the
+        // broker destructively consumes the message in a single round-trip.
         var (client, handler) = CreateClient();
         handler.EnqueueResponse(
-            HttpStatusCode.Created,
-            """{"id":"m1","name":"Queued"}""",
-            [new("Location", $"{BaseUrl}/poll/messages/abc/lock")]);
+            HttpStatusCode.OK,
+            """{"id":"m1","name":"Queued"}""");
 
         await client.ReceiveOneAsync(
             QueueName,
@@ -122,7 +122,7 @@ public sealed class ServiceBusRestClientTests
             CancellationToken.None);
 
         var request = handler.SentRequests[0];
-        await Assert.That(request.Method).IsEqualTo(HttpMethod.Post);
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Delete);
         await Assert.That(request.RequestUri!.AbsolutePath).IsEqualTo("/poll/messages/head");
         await Assert.That(request.RequestUri!.Query).Contains("timeout=45");
         await Assert.That(request.RequestUri!.Query).Contains("api-version=2015-01");
@@ -143,22 +143,6 @@ public sealed class ServiceBusRestClientTests
     }
 
     [Test]
-    public async Task Should_DeleteLockUrl_When_Completing()
-    {
-        var (client, handler) = CreateClient();
-        handler.EnqueueResponse(HttpStatusCode.OK);
-
-        var lockUrl = new Uri($"{BaseUrl}/poll/messages/msg-1/lock-abc");
-
-        await client.CompleteAsync(lockUrl, CancellationToken.None);
-
-        var request = handler.SentRequests[0];
-        await Assert.That(request.Method).IsEqualTo(HttpMethod.Delete);
-        await Assert.That(request.RequestUri!.ToString()).IsEqualTo(lockUrl.ToString());
-        await Assert.That(request.Headers.Contains("Authorization")).IsTrue();
-    }
-
-    [Test]
     public async Task Should_ThrowHttpRequestException_When_PublishFails()
     {
         var (client, handler) = CreateClient();
@@ -171,6 +155,45 @@ public sealed class ServiceBusRestClientTests
                 scheduledEnqueueTimeUtc: null,
                 TestSerializerContext.Default.TestDocument,
                 CancellationToken.None));
+
+        await Assert.That(exception).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_GetFromManagementEndpoint_When_ReadingQueueDepth()
+    {
+        // Management API: GET the queue resource and parse countDetails.
+        // Uses api-version=2017-04 per the ARM Service Bus REST surface.
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """
+            {
+              "countDetails": {
+                "activeMessageCount": 3,
+                "scheduledMessageCount": 7
+              }
+            }
+            """);
+
+        var depth = await client.GetQueueDepthAsync(QueueName, CancellationToken.None);
+
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Get);
+        await Assert.That(request.RequestUri!.AbsolutePath).IsEqualTo("/poll");
+        await Assert.That(request.RequestUri!.Query).Contains("api-version=2017-04");
+        await Assert.That(depth.ActiveMessageCount).IsEqualTo(3L);
+        await Assert.That(depth.ScheduledMessageCount).IsEqualTo(7L);
+    }
+
+    [Test]
+    public async Task Should_ThrowHttpRequestException_When_GetQueueDepthFails()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.Unauthorized);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.GetQueueDepthAsync(QueueName, CancellationToken.None));
 
         await Assert.That(exception).IsNotNull();
     }
