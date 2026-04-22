@@ -32,7 +32,15 @@ public static class ServiceBusServiceExtensions
         services.AddSingleton(new ServiceBusAuthProvider(new DefaultAzureCredential()));
 #pragma warning restore CA2000
 
-        var baseUri = new Uri($"https://{serviceBusNamespace}.servicebus.windows.net");
+        // Accept both bare namespace ("sb-town-crier-prod") and full FQDN
+        // ("sb-town-crier-prod.servicebus.windows.net"). Pulumi sets the env var
+        // to the FQDN (EnvironmentStack.cs), older configs pass the bare name —
+        // doubling the suffix produces NXDOMAIN and silently kills the SB poll
+        // bootstrap (the publish failure is swallowed by CA1031).
+        var host = serviceBusNamespace.EndsWith(".servicebus.windows.net", StringComparison.OrdinalIgnoreCase)
+            ? serviceBusNamespace
+            : $"{serviceBusNamespace}.servicebus.windows.net";
+        var baseUri = new Uri($"https://{host}");
 
         services.AddHttpClient("ServiceBusRest", client =>
         {

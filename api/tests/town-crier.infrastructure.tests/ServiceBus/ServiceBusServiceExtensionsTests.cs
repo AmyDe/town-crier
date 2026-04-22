@@ -63,6 +63,33 @@ public sealed class ServiceBusServiceExtensionsTests
         await Assert.That(ex!.Message).Contains("ServiceBus:QueueName");
     }
 
+    // Pulumi sets ServiceBus__Namespace to the full FQDN
+    // (e.g. "sb-town-crier-prod.servicebus.windows.net"), but earlier code paths
+    // and dev configs use the bare short name. The HTTP BaseAddress must be the
+    // single FQDN in either case — never doubled — or the REST client gets DNS
+    // NXDOMAIN and the SB-coordinated polling cycle silently fails.
+    [Test]
+    [Arguments("sb-town-crier-test", "https://sb-town-crier-test.servicebus.windows.net/")]
+    [Arguments("sb-town-crier-prod.servicebus.windows.net", "https://sb-town-crier-prod.servicebus.windows.net/")]
+    [Arguments("sb-town-crier-prod.SERVICEBUS.WINDOWS.NET", "https://sb-town-crier-prod.servicebus.windows.net/")]
+    public async Task Should_BuildSingleFqdnBaseAddress_When_NamespaceIsBareOrFqdn(
+        string configuredNamespace,
+        string expectedBaseAddress)
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildConfiguration(
+            ("ServiceBus:Namespace", configuredNamespace),
+            ("ServiceBus:QueueName", "poll"));
+
+        services.AddServiceBusRestClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+        using var httpClient = factory.CreateClient("ServiceBusRest");
+
+        await Assert.That(httpClient.BaseAddress?.ToString()).IsEqualTo(expectedBaseAddress);
+    }
+
     private static IConfiguration BuildConfiguration(params (string Key, string Value)[] entries)
     {
         var dict = new Dictionary<string, string?>(StringComparer.Ordinal);
