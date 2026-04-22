@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
+using TownCrier.Application.PlanIt;
 using TownCrier.Infrastructure.PlanIt;
 
 namespace TownCrier.Infrastructure.Tests.PlanIt;
@@ -626,11 +627,13 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_RetryOn429WithLongerBackoff_When_RateLimited()
+    public async Task Should_NotRetryOn429_When_RateLimited()
     {
-        // Arrange
+        // Arrange — 429 must no longer be retried inside the client; it throws
+        // PlanItRateLimitException on the first response so the scheduler can
+        // use the Retry-After header to choose the next run time.
         using var handler = new FakePlanItHandler();
-        handler.SetupTransientRateLimit("page=1", failCount: 1, SingleRecordResponse);
+        handler.SetupRateLimitForever("page=1");
         var delays = new List<TimeSpan>();
         var retryOptions = new PlanItRetryOptions
         {
@@ -640,17 +643,16 @@ public sealed class PlanItClientTests
         var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0 };
         var client = CreateClient(handler, throttleOptions: throttleOptions, retryOptions: retryOptions, delays: delays);
 
-        // Act
-        var results = await ConsumeAsync(client, differentStart: null);
+        // Act & Assert — 429 throws immediately, no retries
+        await Assert.ThrowsAsync<PlanItRateLimitException>(
+            async () => await ConsumeAsync(client, differentStart: null));
 
-        // Assert — should succeed after retry
-        await Assert.That(results).HasCount().EqualTo(1);
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(2);
+        // Only 1 request — no retries for 429
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
 
-        // Rate limit backoff: 5s (first attempt)
+        // No retry delays — the rate-limit backoff loop is gone.
         var retryDelays = delays.Where(d => d > TimeSpan.Zero).ToList();
-        await Assert.That(retryDelays).HasCount().EqualTo(1);
-        await Assert.That(retryDelays[0]).IsEqualTo(TimeSpan.FromSeconds(5));
+        await Assert.That(retryDelays).HasCount().EqualTo(0);
     }
 
     [Test]
