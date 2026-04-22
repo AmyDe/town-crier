@@ -1,5 +1,5 @@
 # Updates all Container App Jobs for the worker with a new image.
-# Iterates over every worker job (poll, poll-safety-net, digest,
+# Iterates over every worker job (poll, poll-bootstrap, digest,
 # digest-hourly, dormant-cleanup) with the naming convention
 # job-tc-{name}-{env-suffix}.
 # These names must stay in lockstep with infra/EnvironmentStack.cs —
@@ -28,7 +28,7 @@ runs:
     - name: Deploy worker image to all jobs
       shell: bash
       run: |
-        for JOB in poll poll-safety-net digest digest-hourly dormant-cleanup; do
+        for JOB in poll poll-bootstrap digest digest-hourly dormant-cleanup; do
           echo "::group::Deploying to job-tc-${JOB}-${{ inputs.env-suffix }}"
           az containerapp job update \
             --name "job-tc-${JOB}-${{ inputs.env-suffix }}" \
