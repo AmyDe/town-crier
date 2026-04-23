@@ -71,6 +71,13 @@ public interface ICosmosRestClient
         string ifMatchEtag,
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct);
+
+    Task<CosmosDeleteOutcome> TryDeleteDocumentAsync(
+        string collection,
+        string id,
+        string partitionKey,
+        string? ifMatchEtag,
+        CancellationToken ct);
 }
 
 public readonly record struct QueryParameter(string Name, object Value);

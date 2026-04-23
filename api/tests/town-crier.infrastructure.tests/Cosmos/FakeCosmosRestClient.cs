@@ -149,6 +149,26 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         return Task.CompletedTask;
     }
 
+    public Task<CosmosDeleteOutcome> TryDeleteDocumentAsync(
+        string collection,
+        string id,
+        string partitionKey,
+        string? ifMatchEtag,
+        CancellationToken ct)
+    {
+        // For T4 scope, simple key-presence check without ETag comparison.
+        // Real ETag CAS is Task 5's job.
+        var key = (collection, id, partitionKey);
+
+        if (!this.store.ContainsKey(key))
+        {
+            return Task.FromResult(CosmosDeleteOutcome.NotFound);
+        }
+
+        this.store.Remove(key);
+        return Task.FromResult(CosmosDeleteOutcome.Deleted);
+    }
+
     public Task<List<T>> QueryAsync<T>(
         string collection,
         string sql,

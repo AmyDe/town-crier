@@ -553,6 +553,41 @@ public sealed class CosmosRestClientTests
         await Assert.That(replaced).IsFalse();
     }
 
+    [Test]
+    public async Task TryDeleteDocument_ReturnsDeleted_When204()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NoContent);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: null, default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.Deleted);
+    }
+
+    [Test]
+    public async Task TryDeleteDocument_ReturnsNotFound_When404()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: null, default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.NotFound);
+    }
+
+    [Test]
+    public async Task TryDeleteDocument_ReturnsPreconditionFailed_When412()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.PreconditionFailed);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: "\"stale\"", default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.PreconditionFailed);
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"stale\"");
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();

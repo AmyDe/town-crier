@@ -208,9 +208,7 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         activity?.SetTag("db.cosmosdb.container", collection);
         activity?.SetTag("db.operation.name", "Delete");
 
-        var encodedId = Uri.EscapeDataString(id);
-        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
-        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/{resourceLink}");
+        using var request = this.BuildDeleteRequest(collection, id);
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
@@ -223,6 +221,50 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
 
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<CosmosDeleteOutcome> TryDeleteDocumentAsync(
+        string collection,
+        string id,
+        string partitionKey,
+        string? ifMatchEtag,
+        CancellationToken ct)
+    {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos TryDelete");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "TryDelete");
+
+        using var request = this.BuildDeleteRequest(collection, id);
+        if (!string.IsNullOrEmpty(ifMatchEtag))
+        {
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatchEtag);
+        }
+
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
+
+        if (response.StatusCode == HttpStatusCode.NoContent
+            || response.StatusCode == HttpStatusCode.OK)
+        {
+            return CosmosDeleteOutcome.Deleted;
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return CosmosDeleteOutcome.NotFound;
+        }
+
+        if (response.StatusCode == HttpStatusCode.PreconditionFailed)
+        {
+            return CosmosDeleteOutcome.PreconditionFailed;
+        }
+
+        await ThrowOnFailureAsync(response, "TryDelete", ct).ConfigureAwait(false);
+        return CosmosDeleteOutcome.Deleted; // unreachable
     }
 
     public async Task<List<T>> QueryAsync<T>(
@@ -540,6 +582,13 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         var encodedId = Uri.EscapeDataString(id);
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         return new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
+    }
+
+    private HttpRequestMessage BuildDeleteRequest(string collection, string id)
+    {
+        var encodedId = Uri.EscapeDataString(id);
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
+        return new HttpRequestMessage(HttpMethod.Delete, $"/{resourceLink}");
     }
 
     private HttpRequestMessage BuildQueryRequest(
