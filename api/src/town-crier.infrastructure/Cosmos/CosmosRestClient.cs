@@ -160,6 +160,43 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         return false; // unreachable
     }
 
+    public async Task<bool> TryReplaceDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        string ifMatchEtag,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(ifMatchEtag);
+
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos TryReplace");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "TryReplace");
+
+        using var request = this.BuildReplaceRequest(collection, document, typeInfo);
+        request.Headers.TryAddWithoutValidation("If-Match", ifMatchEtag);
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        if (response.StatusCode == HttpStatusCode.PreconditionFailed)
+        {
+            return false;
+        }
+
+        await ThrowOnFailureAsync(response, "TryReplace", ct).ConfigureAwait(false);
+        return false; // unreachable
+    }
+
     public async Task DeleteDocumentAsync(
         string collection,
         string id,
@@ -400,6 +437,15 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
     }
 
+    private static string GetDocumentId<T>(T document, JsonTypeInfo<T> typeInfo)
+    {
+        // Serialize to JsonElement to extract the id field
+        using var jsonDoc = JsonDocument.Parse(
+            JsonSerializer.Serialize(document, typeInfo));
+        return jsonDoc.RootElement.GetProperty("id").GetString()
+            ?? throw new InvalidOperationException("Document must have an id field");
+    }
+
     private async Task<List<T>> QueryWithFanOutAsync<T>(
         string collection,
         string sql,
@@ -523,6 +569,24 @@ internal sealed class CosmosRestClient : ICosmosRestClient
     {
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
         var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(document, typeInfo),
+            Encoding.UTF8,
+            "application/json");
+
+        return request;
+    }
+
+    private HttpRequestMessage BuildReplaceRequest<T>(
+        string collection,
+        T document,
+        JsonTypeInfo<T> typeInfo)
+    {
+        var documentId = GetDocumentId(document, typeInfo);
+        var encodedId = Uri.EscapeDataString(documentId);
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/{resourceLink}");
 
         request.Content = new StringContent(
             JsonSerializer.Serialize(document, typeInfo),

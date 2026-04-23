@@ -110,6 +110,34 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         return Task.FromResult(true);
     }
 
+    public Task<bool> TryReplaceDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        string ifMatchEtag,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(document, typeInfo);
+
+        // Extract id from the serialized JSON to use as the key
+        using var doc = JsonDocument.Parse(json);
+        var id = ExtractId(doc);
+
+        var key = (collection, id, partitionKey);
+
+        // For T3 scope, simple "key exists? overwrite : return false" without ETag comparison.
+        // Real ETag CAS is Task 5's job.
+        if (!this.store.ContainsKey(key))
+        {
+            return Task.FromResult(false);
+        }
+
+        // Document exists — overwrite it and return true
+        this.store[key] = json;
+        return Task.FromResult(true);
+    }
+
     public Task DeleteDocumentAsync(
         string collection,
         string id,

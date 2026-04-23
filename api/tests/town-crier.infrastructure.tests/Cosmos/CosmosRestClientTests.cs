@@ -514,6 +514,45 @@ public sealed class CosmosRestClientTests
                 default));
     }
 
+    [Test]
+    public async Task TryReplaceDocument_ReturnsTrue_When200()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK);
+
+        var replaced = await client.TryReplaceDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Payload = "new" },
+            "x",
+            "\"v1\"",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(replaced).IsTrue();
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Put);
+        await Assert.That(request.RequestUri!.AbsolutePath)
+            .IsEqualTo("/dbs/test-db/colls/c/docs/x");
+        await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"v1\"");
+    }
+
+    [Test]
+    public async Task TryReplaceDocument_ReturnsFalse_When412()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.PreconditionFailed);
+
+        var replaced = await client.TryReplaceDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Payload = "new" },
+            "x",
+            "\"stale\"",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(replaced).IsFalse();
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
