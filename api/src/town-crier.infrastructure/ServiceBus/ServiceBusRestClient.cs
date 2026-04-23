@@ -13,20 +13,12 @@ internal sealed class ServiceBusRestClient : IServiceBusRestClient
     /// </summary>
     private const string RuntimeApiVersion = "2015-01";
 
-    /// <summary>
-    /// API version used for the management-plane queue GET that exposes
-    /// <c>countDetails</c>. 2017-04 is the documented version for the ARM
-    /// Service Bus REST surface. The data-plane REST endpoint (servicebus.windows.net)
-    /// accepts this version as well and returns the same ARM-style body.
-    /// </summary>
-    private const string ManagementApiVersion = "2017-04";
-
     private readonly HttpClient httpClient;
-    private readonly ServiceBusAuthProvider authProvider;
+    private readonly AzureAdTokenProvider authProvider;
 
     public ServiceBusRestClient(
         HttpClient httpClient,
-        ServiceBusAuthProvider authProvider,
+        AzureAdTokenProvider authProvider,
         ServiceBusRestOptions options)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -111,30 +103,6 @@ internal sealed class ServiceBusRestClient : IServiceBusRestClient
         {
             Body = body,
         };
-    }
-
-    public async Task<ServiceBusQueueCountDetails> GetQueueDepthAsync(string queueName, CancellationToken ct)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(queueName);
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/{queueName}?api-version={ManagementApiVersion}");
-
-        await this.AddAuthorizationHeaderAsync(request, ct).ConfigureAwait(false);
-
-        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
-        await ThrowOnFailureAsync(response, "GetQueueDepth", ct).ConfigureAwait(false);
-
-        var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        var parsed = JsonSerializer.Deserialize(
-            body,
-            ServiceBusJsonSerializerContext.Default.QueueCountDetailsResponse);
-
-        var counts = parsed?.CountDetails;
-        return new ServiceBusQueueCountDetails(
-            ActiveMessageCount: counts?.ActiveMessageCount ?? 0,
-            ScheduledMessageCount: counts?.ScheduledMessageCount ?? 0);
     }
 
     private static async Task ThrowOnFailureAsync(

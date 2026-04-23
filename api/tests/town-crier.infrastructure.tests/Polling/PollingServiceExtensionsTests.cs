@@ -94,6 +94,8 @@ public sealed class PollingServiceExtensionsTests
         {
             ["ServiceBus:Namespace"] = "sb-town-crier-test",
             ["ServiceBus:QueueName"] = "poll",
+            ["ServiceBus:SubscriptionId"] = "ae5e40cd-96ef-48d8-950a-2e22cf8f991a",
+            ["ServiceBus:ResourceGroup"] = "rg-town-crier-test",
         };
         foreach (var (key, value) in extras)
         {

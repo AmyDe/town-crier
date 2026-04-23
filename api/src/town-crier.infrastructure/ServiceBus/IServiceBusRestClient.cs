@@ -23,14 +23,4 @@ internal interface IServiceBusRestClient
         string queueName,
         TimeSpan timeout,
         CancellationToken ct);
-
-    /// <summary>
-    /// Reads the queue's active and scheduled message counts via the
-    /// Service Bus management API (ARM-style <c>countDetails</c>).
-    /// Non-destructive; does not consume any messages.
-    /// </summary>
-    /// <param name="queueName">Queue whose counts are read.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Active and scheduled message counts for the queue.</returns>
-    Task<ServiceBusQueueCountDetails> GetQueueDepthAsync(string queueName, CancellationToken ct);
 }

@@ -159,43 +159,14 @@ public sealed class ServiceBusRestClientTests
         await Assert.That(exception).IsNotNull();
     }
 
-    [Test]
-    public async Task Should_GetFromManagementEndpoint_When_ReadingQueueDepth()
-    {
-        // Management API: GET the queue resource and parse countDetails.
-        // Uses api-version=2017-04 per the ARM Service Bus REST surface.
-        var (client, handler) = CreateClient();
-        const string ResponseBody = """{"countDetails":{"activeMessageCount":3,"scheduledMessageCount":7}}""";
-        handler.EnqueueResponse(HttpStatusCode.OK, ResponseBody);
-
-        var depth = await client.GetQueueDepthAsync(QueueName, CancellationToken.None);
-
-        var request = handler.SentRequests[0];
-        await Assert.That(request.Method).IsEqualTo(HttpMethod.Get);
-        await Assert.That(request.RequestUri!.AbsolutePath).IsEqualTo("/poll");
-        await Assert.That(request.RequestUri!.Query).Contains("api-version=2017-04");
-        await Assert.That(depth.ActiveMessageCount).IsEqualTo(3L);
-        await Assert.That(depth.ScheduledMessageCount).IsEqualTo(7L);
-    }
-
-    [Test]
-    public async Task Should_ThrowHttpRequestException_When_GetQueueDepthFails()
-    {
-        var (client, handler) = CreateClient();
-        handler.EnqueueResponse(HttpStatusCode.Unauthorized);
-
-        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await client.GetQueueDepthAsync(QueueName, CancellationToken.None));
-
-        await Assert.That(exception).IsNotNull();
-    }
-
     private static (IServiceBusRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
         var credential = new StubTokenCredential("fake-token");
-        var authProvider = new ServiceBusAuthProvider(credential);
+        var authProvider = new AzureAdTokenProvider(
+            credential,
+            ["https://servicebus.azure.net/.default"]);
         var options = new ServiceBusRestOptions
         {
             Namespace = Namespace,

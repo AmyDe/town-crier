@@ -508,6 +508,8 @@ public static class EnvironmentStack
         {
             envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__Namespace", Value = pollingBus.NamespaceFqdn });
             envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__QueueName", Value = pollingBus.QueueName });
+            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__SubscriptionId", Value = pollingBus.SubscriptionId });
+            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__ResourceGroup", Value = pollingBus.ResourceGroup });
         }
 
         var useEventTrigger = cronExpression is null;
@@ -629,7 +631,9 @@ public static class EnvironmentStack
     private sealed record ServiceBusPollingInfra(
         Output<string> NamespaceShortName,
         Output<string> NamespaceFqdn,
-        Output<string> QueueName);
+        Output<string> QueueName,
+        Output<string> SubscriptionId,
+        Output<string> ResourceGroup);
 
     /// <summary>
     /// Provisions the Service Bus namespace + queue + RBAC used by the adaptive polling
@@ -736,6 +740,8 @@ public static class EnvironmentStack
         return new ServiceBusPollingInfra(
             NamespaceShortName: namespaceResource.Name,
             NamespaceFqdn: fqdn,
-            QueueName: queue.Name);
+            QueueName: queue.Name,
+            SubscriptionId: subscriptionId,
+            ResourceGroup: resourceGroupName);
     }
 }

@@ -4,7 +4,14 @@ using TownCrier.Infrastructure.ServiceBus;
 
 namespace TownCrier.Infrastructure.Tests.Polling;
 
-internal sealed class FakeServiceBusRestClient : IServiceBusRestClient
+/// <summary>
+/// Test double implementing both the data-plane <see cref="IServiceBusRestClient"/>
+/// and the ARM management-plane <see cref="IServiceBusManagementClient"/>. Both
+/// surfaces funnel into a single <see cref="CallSequence"/> so integration tests
+/// can assert the receive-handler-publish-then-probe ordering contract in one
+/// place.
+/// </summary>
+internal sealed class FakeServiceBusRestClient : IServiceBusRestClient, IServiceBusManagementClient
 {
     private readonly Queue<ReceivedServiceBusMessage?> receiveResults = new();
     private readonly Queue<Exception> receiveThrows = new();
