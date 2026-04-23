@@ -1,0 +1,26 @@
+{
+  "skill_name": "cost-forecast",
+  "evals": [
+    {
+      "id": 1,
+      "name": "happy-path-full-report",
+      "prompt": "/cost-forecast",
+      "expected_output": "A markdown report at docs/cost-forecast/<today>.md with: headline table comparing bottom-up vs Azure forecast for rest-of-month, next 30 days, next quarter; a 'Why Azure's forecast is wrong' section that cites at least one recent /infra commit by sha and date; a per-service spend table; per-resource breakdown with notes on any change-points; and at least one recommendation filed as a bead.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "diagnostic-cost-discrepancy",
+      "prompt": "Azure's portal is projecting £180 for this month but we just cut log ingestion in PR #237. Why is its number so high?",
+      "expected_output": "Same report at docs/cost-forecast/<today>.md, but the analysis should explicitly identify the log-ingestion change-point, quantify the daily-cost drop before/after the merge of PR #237 (or any related telemetry-cost commits), and explain how Azure's linear extrapolation inherits the pre-change run-rate. Should not just produce a generic forecast — must address the specific question.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "recommendation-focus",
+      "prompt": "Where can we cut Azure costs? Give me actionable recommendations with £ savings.",
+      "expected_output": "The full report is fine, but the report's Recommendations section must contain at least 3 specific, quantified suggestions (each with an estimated £/month saving and a filed bead id). Each recommendation must name a concrete resource, not a category. Recommendations under £2/month should be omitted unless trivially zero-effort.",
+      "files": []
+    }
+  ]
+}
