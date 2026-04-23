@@ -465,6 +465,79 @@ public sealed class CosmosRestClientTests
         await Assert.That(handler.SentRequests[0].Method).IsEqualTo(HttpMethod.Post);
     }
 
+    [Test]
+    public async Task TryCreateDocument_ReturnsTrue_When201()
+    {
+        var handler = new ValidationHttpHandler(req =>
+        {
+            // Verify If-None-Match: * was sent.
+            var header = req.Headers.IfNoneMatch.Single().Tag;
+            if (header != "*")
+            {
+                return new HttpResponseMessage(HttpStatusCode.BadRequest);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.Created);
+        });
+        var client = BuildClient(handler);
+
+        var created = await client.TryCreateDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Name = "test" },
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(created).IsTrue();
+    }
+
+    [Test]
+    public async Task TryCreateDocument_ReturnsFalse_When409()
+    {
+        var handler = new StubHttpHandler();
+        handler.EnqueueResponse(HttpStatusCode.Conflict);
+        var client = BuildClient(handler);
+
+        var created = await client.TryCreateDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Name = "test" },
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(created).IsFalse();
+    }
+
+    [Test]
+    public async Task TryCreateDocument_Throws_On5xx()
+    {
+        var handler = new StubHttpHandler();
+        handler.EnqueueResponse(HttpStatusCode.InternalServerError);
+        var client = BuildClient(handler);
+
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.TryCreateDocumentAsync(
+                "c",
+                new TestDocument { Id = "x", Name = "test" },
+                "x",
+                TestSerializerContext.Default.TestDocument,
+                default));
+    }
+
+    private static CosmosRestClient BuildClient(HttpMessageHandler handler)
+    {
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri(AccountEndpoint) };
+        var credential = new StubTokenCredential("fake-token");
+        var authProvider = new CosmosAuthProvider(credential);
+        var options = new CosmosRestOptions
+        {
+            AccountEndpoint = AccountEndpoint,
+            DatabaseName = DatabaseName,
+        };
+
+        return new CosmosRestClient(httpClient, authProvider, options);
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();

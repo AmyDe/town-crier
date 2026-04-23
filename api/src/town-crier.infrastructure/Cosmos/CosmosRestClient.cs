@@ -115,21 +115,42 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         activity?.SetTag("db.cosmosdb.container", collection);
         activity?.SetTag("db.operation.name", "Upsert");
 
-        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
-        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+        using var request = this.BuildCreateRequest(collection, document, typeInfo);
         request.Headers.TryAddWithoutValidation("x-ms-documentdb-is-upsert", "True");
-
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(document, typeInfo),
-            Encoding.UTF8,
-            "application/json");
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
 
         RecordResponseMetrics(activity, response);
 
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<bool> TryCreateDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        using var request = this.BuildCreateRequest(collection, document, typeInfo);
+        request.Headers.TryAddWithoutValidation("If-None-Match", "*");
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.Created)
+        {
+            return true;
+        }
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            return false;
+        }
+
+        await ThrowOnFailureAsync(response, "TryCreate", ct).ConfigureAwait(false);
+        return false; // unreachable
     }
 
     public async Task DeleteDocumentAsync(
@@ -359,6 +380,19 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
     }
 
+    private static async Task ThrowOnFailureAsync(
+        HttpResponseMessage response,
+        string operation,
+        CancellationToken ct)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new HttpRequestException(
+                $"Cosmos DB {operation} failed ({(int)response.StatusCode}): {body}");
+        }
+    }
+
     private async Task<List<T>> QueryWithFanOutAsync<T>(
         string collection,
         string sql,
@@ -471,6 +505,22 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         var json = JsonSerializer.Serialize(body, CosmosJsonSerializerContext.Default.CosmosQueryBody);
         request.Content = new StringContent(json, Encoding.UTF8);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/query+json");
+
+        return request;
+    }
+
+    private HttpRequestMessage BuildCreateRequest<T>(
+        string collection,
+        T document,
+        JsonTypeInfo<T> typeInfo)
+    {
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}";
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/{resourceLink}/docs");
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(document, typeInfo),
+            Encoding.UTF8,
+            "application/json");
 
         return request;
     }

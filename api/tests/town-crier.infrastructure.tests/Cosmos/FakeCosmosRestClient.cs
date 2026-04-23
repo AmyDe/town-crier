@@ -84,6 +84,32 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         return Task.CompletedTask;
     }
 
+    public Task<bool> TryCreateDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(document, typeInfo);
+
+        // Extract id from the serialized JSON to use as the key
+        using var doc = JsonDocument.Parse(json);
+        var id = ExtractId(doc);
+
+        var key = (collection, id, partitionKey);
+
+        // If-None-Match: * semantics — return false if document already exists
+        if (this.store.ContainsKey(key))
+        {
+            return Task.FromResult(false);
+        }
+
+        // Store the document and return true (created)
+        this.store[key] = json;
+        return Task.FromResult(true);
+    }
+
     public Task DeleteDocumentAsync(
         string collection,
         string id,

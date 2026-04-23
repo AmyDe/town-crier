@@ -56,6 +56,13 @@ public interface ICosmosRestClient
         string? continuationToken,
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct);
+
+    Task<bool> TryCreateDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct);
 }
 
 public readonly record struct QueryParameter(string Name, object Value);
