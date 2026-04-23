@@ -133,11 +133,18 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos TryCreate");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "TryCreate");
+
         using var request = this.BuildCreateRequest(collection, document, typeInfo);
         request.Headers.TryAddWithoutValidation("If-None-Match", "*");
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
 
         if (response.StatusCode == HttpStatusCode.Created)
         {
