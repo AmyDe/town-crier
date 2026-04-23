@@ -51,6 +51,22 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         return Task.FromResult(default(T));
     }
 
+    public Task<CosmosReadResult<T>> ReadDocumentWithETagAsync<T>(
+        string collection,
+        string id,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        if (this.store.TryGetValue((collection, id, partitionKey), out var json))
+        {
+            var result = JsonSerializer.Deserialize(json, typeInfo);
+            return Task.FromResult(new CosmosReadResult<T>(result, null));
+        }
+
+        return Task.FromResult(new CosmosReadResult<T>(default, null));
+    }
+
     public Task UpsertDocumentAsync<T>(
         string collection,
         T document,

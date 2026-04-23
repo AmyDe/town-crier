@@ -85,6 +85,44 @@ public sealed class CosmosRestClientTests
     }
 
     [Test]
+    public async Task ReadDocumentWithETag_ReturnsBodyAndETag_When200()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"id":"x","name":"hello"}""",
+            [new KeyValuePair<string, string>("ETag", "\"v1\"")]);
+
+        var result = await client.ReadDocumentWithETagAsync(
+            "Users",
+            "x",
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(result.Document).IsNotNull();
+        await Assert.That(result.Document!.Name).IsEqualTo("hello");
+        await Assert.That(result.ETag).IsEqualTo("\"v1\"");
+    }
+
+    [Test]
+    public async Task ReadDocumentWithETag_ReturnsNullBodyAndETag_When404()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        var result = await client.ReadDocumentWithETagAsync(
+            "Users",
+            "missing",
+            "missing",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(result.Document).IsNull();
+        await Assert.That(result.ETag).IsNull();
+    }
+
+    [Test]
     public async Task Should_SetUpsertHeader_When_UpsertingDocument()
     {
         var (client, handler) = CreateClient();

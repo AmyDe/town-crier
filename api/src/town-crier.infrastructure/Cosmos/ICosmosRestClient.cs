@@ -11,6 +11,13 @@ public interface ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct);
 
+    Task<CosmosReadResult<T>> ReadDocumentWithETagAsync<T>(
+        string collection,
+        string id,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct);
+
     Task UpsertDocumentAsync<T>(
         string collection,
         T document,

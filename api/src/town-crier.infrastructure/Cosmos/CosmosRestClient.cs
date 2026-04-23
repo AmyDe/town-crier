@@ -42,9 +42,9 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         activity?.SetTag("db.cosmosdb.container", collection);
         activity?.SetTag("db.operation.name", "ReadItem");
 
-        var encodedId = Uri.EscapeDataString(id);
-        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
+#pragma warning disable CA2000 // using var disposes request on all paths
+        using var request = this.BuildReadRequest(collection, id);
+#pragma warning restore CA2000
         await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
 
         using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
@@ -62,6 +62,44 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         await using (stream.ConfigureAwait(false))
         {
             return await JsonSerializer.DeserializeAsync(stream, typeInfo, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<CosmosReadResult<T>> ReadDocumentWithETagAsync<T>(
+        string collection,
+        string id,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        using var activity = CosmosInstrumentation.Source.StartActivity("Cosmos ReadItem");
+        activity?.SetTag("db.system", "cosmosdb");
+        activity?.SetTag("db.cosmosdb.container", collection);
+        activity?.SetTag("db.operation.name", "ReadItem");
+
+#pragma warning disable CA2000 // using var disposes request on all paths
+        using var request = this.BuildReadRequest(collection, id);
+#pragma warning restore CA2000
+        await this.AddHeadersAsync(request, partitionKey, ct).ConfigureAwait(false);
+
+        using var response = await this.httpClient.SendAsync(request, ct).ConfigureAwait(false);
+
+        RecordResponseMetrics(activity, response);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new CosmosReadResult<T>(default, null);
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        var etag = response.Headers.ETag?.Tag;
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            var document = await JsonSerializer.DeserializeAsync(stream, typeInfo, ct)
+                .ConfigureAwait(false);
+            return new CosmosReadResult<T>(document, etag);
         }
     }
 
@@ -408,6 +446,13 @@ internal sealed class CosmosRestClient : ICosmosRestClient
 
             return ranges;
         }
+    }
+
+    private HttpRequestMessage BuildReadRequest(string collection, string id)
+    {
+        var encodedId = Uri.EscapeDataString(id);
+        var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
+        return new HttpRequestMessage(HttpMethod.Get, $"/{resourceLink}");
     }
 
     private HttpRequestMessage BuildQueryRequest(
