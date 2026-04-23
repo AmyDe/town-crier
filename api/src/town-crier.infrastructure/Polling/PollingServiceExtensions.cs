@@ -31,7 +31,7 @@ public static class PollingServiceExtensions
             sp.GetRequiredService<IServiceBusRestClient>(),
             sp.GetRequiredService<ServiceBusRestOptions>()));
         services.AddSingleton<IPollTriggerQueueMetrics>(sp => new ServiceBusPollTriggerQueueMetrics(
-            sp.GetRequiredService<IServiceBusRestClient>(),
+            sp.GetRequiredService<IServiceBusManagementClient>(),
             sp.GetRequiredService<ServiceBusRestOptions>()));
 
         services.AddSingleton<PollNextRunScheduler>();

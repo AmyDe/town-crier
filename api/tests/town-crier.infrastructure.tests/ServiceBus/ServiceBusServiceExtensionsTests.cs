@@ -6,13 +6,14 @@ namespace TownCrier.Infrastructure.Tests.ServiceBus;
 
 public sealed class ServiceBusServiceExtensionsTests
 {
+    private const string TestSubscriptionId = "ae5e40cd-96ef-48d8-950a-2e22cf8f991a";
+    private const string TestResourceGroup = "rg-town-crier-test";
+
     [Test]
     public async Task Should_RegisterServiceBusRestClient_When_ConfigurationIsValid()
     {
         var services = new ServiceCollection();
-        var configuration = BuildConfiguration(
-            ("ServiceBus:Namespace", "sb-town-crier-test"),
-            ("ServiceBus:QueueName", "poll"));
+        var configuration = BuildValidConfiguration();
 
         services.AddServiceBusRestClient(configuration);
         using var provider = services.BuildServiceProvider();
@@ -22,12 +23,23 @@ public sealed class ServiceBusServiceExtensionsTests
     }
 
     [Test]
+    public async Task Should_RegisterServiceBusManagementClient_When_ConfigurationIsValid()
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildValidConfiguration();
+
+        services.AddServiceBusRestClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetService<IServiceBusManagementClient>();
+        await Assert.That(client).IsNotNull();
+    }
+
+    [Test]
     public async Task Should_RegisterOptions_When_ConfigurationIsValid()
     {
         var services = new ServiceCollection();
-        var configuration = BuildConfiguration(
-            ("ServiceBus:Namespace", "sb-town-crier-test"),
-            ("ServiceBus:QueueName", "poll"));
+        var configuration = BuildValidConfiguration();
 
         services.AddServiceBusRestClient(configuration);
         using var provider = services.BuildServiceProvider();
@@ -38,11 +50,28 @@ public sealed class ServiceBusServiceExtensionsTests
     }
 
     [Test]
+    public async Task Should_RegisterManagementOptions_When_ConfigurationIsValid()
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildValidConfiguration();
+
+        services.AddServiceBusRestClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<ServiceBusManagementOptions>();
+        await Assert.That(options.SubscriptionId).IsEqualTo(TestSubscriptionId);
+        await Assert.That(options.ResourceGroup).IsEqualTo(TestResourceGroup);
+        await Assert.That(options.Namespace).IsEqualTo("sb-town-crier-test");
+    }
+
+    [Test]
     public async Task Should_Throw_When_NamespaceMissing()
     {
         var services = new ServiceCollection();
         var configuration = BuildConfiguration(
-            ("ServiceBus:QueueName", "poll"));
+            ("ServiceBus:QueueName", "poll"),
+            ("ServiceBus:SubscriptionId", TestSubscriptionId),
+            ("ServiceBus:ResourceGroup", TestResourceGroup));
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             services.AddServiceBusRestClient(configuration));
@@ -55,12 +84,44 @@ public sealed class ServiceBusServiceExtensionsTests
     {
         var services = new ServiceCollection();
         var configuration = BuildConfiguration(
-            ("ServiceBus:Namespace", "sb-town-crier-test"));
+            ("ServiceBus:Namespace", "sb-town-crier-test"),
+            ("ServiceBus:SubscriptionId", TestSubscriptionId),
+            ("ServiceBus:ResourceGroup", TestResourceGroup));
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
             services.AddServiceBusRestClient(configuration));
 
         await Assert.That(ex!.Message).Contains("ServiceBus:QueueName");
+    }
+
+    [Test]
+    public async Task Should_Throw_When_SubscriptionIdMissing()
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildConfiguration(
+            ("ServiceBus:Namespace", "sb-town-crier-test"),
+            ("ServiceBus:QueueName", "poll"),
+            ("ServiceBus:ResourceGroup", TestResourceGroup));
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddServiceBusRestClient(configuration));
+
+        await Assert.That(ex!.Message).Contains("ServiceBus:SubscriptionId");
+    }
+
+    [Test]
+    public async Task Should_Throw_When_ResourceGroupMissing()
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildConfiguration(
+            ("ServiceBus:Namespace", "sb-town-crier-test"),
+            ("ServiceBus:QueueName", "poll"),
+            ("ServiceBus:SubscriptionId", TestSubscriptionId));
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddServiceBusRestClient(configuration));
+
+        await Assert.That(ex!.Message).Contains("ServiceBus:ResourceGroup");
     }
 
     // Pulumi sets ServiceBus__Namespace to the full FQDN
@@ -79,7 +140,9 @@ public sealed class ServiceBusServiceExtensionsTests
         var services = new ServiceCollection();
         var configuration = BuildConfiguration(
             ("ServiceBus:Namespace", configuredNamespace),
-            ("ServiceBus:QueueName", "poll"));
+            ("ServiceBus:QueueName", "poll"),
+            ("ServiceBus:SubscriptionId", TestSubscriptionId),
+            ("ServiceBus:ResourceGroup", TestResourceGroup));
 
         services.AddServiceBusRestClient(configuration);
         using var provider = services.BuildServiceProvider();
@@ -89,6 +152,28 @@ public sealed class ServiceBusServiceExtensionsTests
 
         await Assert.That(httpClient.BaseAddress?.ToString()).IsEqualTo(expectedBaseAddress);
     }
+
+    [Test]
+    public async Task Should_BuildManagementBaseAddress_When_ConfigurationIsValid()
+    {
+        var services = new ServiceCollection();
+        var configuration = BuildValidConfiguration();
+
+        services.AddServiceBusRestClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+        using var httpClient = factory.CreateClient("ServiceBusManagement");
+
+        await Assert.That(httpClient.BaseAddress?.ToString()).IsEqualTo("https://management.azure.com/");
+    }
+
+    private static IConfiguration BuildValidConfiguration() =>
+        BuildConfiguration(
+            ("ServiceBus:Namespace", "sb-town-crier-test"),
+            ("ServiceBus:QueueName", "poll"),
+            ("ServiceBus:SubscriptionId", TestSubscriptionId),
+            ("ServiceBus:ResourceGroup", TestResourceGroup));
 
     private static IConfiguration BuildConfiguration(params (string Key, string Value)[] entries)
     {
