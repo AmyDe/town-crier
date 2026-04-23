@@ -11,8 +11,10 @@ namespace TownCrier.Infrastructure.Tests.Cosmos;
 internal sealed class FakeCosmosRestClient : ICosmosRestClient
 {
     private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> store = new();
+    private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> etags = new();
     private readonly Dictionary<string, object> cannedQueryResults = new();
     private readonly Dictionary<string, (object Results, string? ContinuationToken)> cannedPageResults = new();
+    private long nextEtag;
 
     public string? LastPageQuerySql { get; private set; }
 
@@ -58,10 +60,12 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         JsonTypeInfo<T> typeInfo,
         CancellationToken ct)
     {
-        if (this.store.TryGetValue((collection, id, partitionKey), out var json))
+        var key = (collection, id, partitionKey);
+        if (this.store.TryGetValue(key, out var json))
         {
             var result = JsonSerializer.Deserialize(json, typeInfo);
-            return Task.FromResult(new CosmosReadResult<T>(result, null));
+            this.etags.TryGetValue(key, out var etag);
+            return Task.FromResult(new CosmosReadResult<T>(result, etag));
         }
 
         return Task.FromResult(new CosmosReadResult<T>(default, null));
@@ -80,7 +84,9 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         using var doc = JsonDocument.Parse(json);
         var id = ExtractId(doc);
 
-        this.store[(collection, id, partitionKey)] = json;
+        var key = (collection, id, partitionKey);
+        this.store[key] = json;
+        this.etags[key] = this.NewEtag();
         return Task.CompletedTask;
     }
 
@@ -105,8 +111,9 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
             return Task.FromResult(false);
         }
 
-        // Store the document and return true (created)
+        // Store the document, assign a new ETag, and return true (created)
         this.store[key] = json;
+        this.etags[key] = this.NewEtag();
         return Task.FromResult(true);
     }
 
@@ -126,15 +133,16 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
 
         var key = (collection, id, partitionKey);
 
-        // For T3 scope, simple "key exists? overwrite : return false" without ETag comparison.
-        // Real ETag CAS is Task 5's job.
-        if (!this.store.ContainsKey(key))
+        // CAS: require current ETag to match ifMatchEtag. Missing document (no ETag
+        // tracked) or mismatch returns false without mutating state.
+        if (!this.etags.TryGetValue(key, out var current) || current != ifMatchEtag)
         {
             return Task.FromResult(false);
         }
 
-        // Document exists — overwrite it and return true
+        // ETag matched — overwrite and bump to a new ETag
         this.store[key] = json;
+        this.etags[key] = this.NewEtag();
         return Task.FromResult(true);
     }
 
@@ -145,7 +153,9 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         CancellationToken ct)
     {
         // Idempotent — no error if not found (matches REST API behavior)
-        this.store.Remove((collection, id, partitionKey));
+        var key = (collection, id, partitionKey);
+        this.store.Remove(key);
+        this.etags.Remove(key);
         return Task.CompletedTask;
     }
 
@@ -156,8 +166,6 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         string? ifMatchEtag,
         CancellationToken ct)
     {
-        // For T4 scope, simple key-presence check without ETag comparison.
-        // Real ETag CAS is Task 5's job.
         var key = (collection, id, partitionKey);
 
         if (!this.store.ContainsKey(key))
@@ -165,7 +173,17 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
             return Task.FromResult(CosmosDeleteOutcome.NotFound);
         }
 
+        // CAS: when caller supplied an If-Match, require it to equal the tracked ETag.
+        // Mismatch surfaces as PreconditionFailed without mutating state.
+        if (ifMatchEtag is not null
+            && this.etags.TryGetValue(key, out var current)
+            && current != ifMatchEtag)
+        {
+            return Task.FromResult(CosmosDeleteOutcome.PreconditionFailed);
+        }
+
         this.store.Remove(key);
+        this.etags.Remove(key);
         return Task.FromResult(CosmosDeleteOutcome.Deleted);
     }
 
@@ -303,4 +321,6 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
 
         throw new InvalidOperationException("Document must have an 'id' or 'Id' property.");
     }
+
+    private string NewEtag() => $"\"v{Interlocked.Increment(ref this.nextEtag)}\"";
 }
