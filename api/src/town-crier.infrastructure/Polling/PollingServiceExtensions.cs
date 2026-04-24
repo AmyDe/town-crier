@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using TownCrier.Application.Polling;
 using TownCrier.Infrastructure.ServiceBus;
 
@@ -25,6 +26,11 @@ public static class PollingServiceExtensions
         var schedulerOptions = BuildSchedulerOptions(configuration);
         services.AddSingleton(schedulerOptions);
 
+        // Register a default PollingOptions so the bootstrapper and orchestrator
+        // can resolve it even when the host (Program.cs) has not yet registered
+        // a custom instance. TryAddSingleton means a host-provided instance wins.
+        services.TryAddSingleton(new PollingOptions());
+
         services.AddSingleton<IPollingLeaseStore, CosmosPollingLeaseStore>();
         services.AddSingleton<IPollJitter, SystemRandomPollJitter>();
         services.AddSingleton<IPollTriggerQueue>(sp => new ServiceBusPollTriggerQueue(
@@ -43,7 +49,14 @@ public static class PollingServiceExtensions
             sp.GetRequiredService<PollingOptions>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PollTriggerOrchestrator>>()));
-        services.AddSingleton<PollTriggerBootstrapper>();
+        services.AddSingleton<PollTriggerBootstrapper>(sp => new PollTriggerBootstrapper(
+            sp.GetRequiredService<IPollTriggerQueue>(),
+            sp.GetRequiredService<IPollTriggerQueueMetrics>(),
+            sp.GetRequiredService<PollNextRunScheduler>(),
+            sp.GetRequiredService<IPollingLeaseStore>(),
+            sp.GetRequiredService<PollingOptions>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PollTriggerBootstrapper>>()));
 
         return services;
     }
