@@ -31,7 +31,7 @@ Plan changes, then for each:
 
 1. **Implement** — Write infrastructure code in `/infra`
 2. **Verify** — `cd infra && dotnet build` (and `pulumi preview` if a stack is configured)
-3. **Commit** — `"infra: <what was added/changed>"`
+3. **Commit** — `"infra: <what was added/changed> (<bead-id>)"`
 
 ## Pre-flight
 
@@ -39,11 +39,25 @@ Plan changes, then for each:
 cd infra && dotnet format && dotnet build
 ```
 
-Commit any fixes: `"chore: pre-flight fixes"`
+Commit any fixes: `"chore: pre-flight fixes (<bead-id>)"`
 
 ## Completion
 
+- Update bead notes with a structured handoff before your last commit (see Bead Hygiene)
 - Do **not** close the bead, push, or run `pulumi up`/`pulumi destroy`
+
+## Bead Hygiene
+
+- **Commit trailer** — end every commit subject with `(<bead-id>)` (e.g. `infra: add Cosmos private endpoint (tc-a1b2)`). Enables `bd doctor` orphan detection.
+- **Handoff notes** — before the pre-flight commit, overwrite the bead notes in this exact shape (for a reader with zero conversation context):
+  ```bash
+  bd update <bead-id> --notes "COMPLETED: <what's done>. IN PROGRESS: <what's mid-flight>. NEXT: <concrete next step>. BLOCKER: <none|what>. KEY DECISIONS: <why the non-obvious choices>."
+  ```
+- **Side-quest work** — if you spot unrelated misconfigured resources, drift, or tech debt outside scope, file it and link provenance instead of fixing it:
+  ```bash
+  bd create --title="<what>" --type=<bug|task> --priority=3
+  bd dep add <new-id> <current-bead-id> --type=discovered-from
+  ```
 
 ## Rules
 
