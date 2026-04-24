@@ -157,9 +157,14 @@ A PreToolUse hook (`.claude/require-bead.sh`) enforces this — Write/Edit on co
 
 Before editing code, create and enter an isolated worktree:
 1. `bd worktree create <name>` (optionally `--branch <branch>`) — wraps `git worktree add`, keeps the shared beads DB visible, and avoids beads bug [GH#3311](https://github.com/gastownhall/beads/issues/3311).
-2. `EnterWorktree path: "<path printed by the command>"` to switch the session into it.
-3. Make your changes within the worktree.
-4. Use the `/ship` skill or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (has safety checks for uncommitted/unpushed work).
+2. **Apply the GH#3421 workaround.** bd v1.0.2 does not propagate `.beads/dolt-server.port` into new worktrees, so `bd` commands inside them fail with "database not found". Symlink the main tree's port file:
+   ```bash
+   ln -sf ../../../../.beads/dolt-server.port .claude/worktrees/<name>/.beads/dolt-server.port
+   ```
+   (Path depth `../../../../` assumes worktrees live at `.claude/worktrees/<name>`.) Autopilot's Phase 2 already does this automatically; this line is for humans creating worktrees by hand. Remove when beads [GH#3421](https://github.com/gastownhall/beads/issues/3421) lands.
+3. `EnterWorktree path: "<path printed by the command>"` to switch the session into it.
+4. Make your changes within the worktree.
+5. Use the `/ship` skill or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (has safety checks for uncommitted/unpushed work).
 
 A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. A second hook blocks raw `git worktree add` and directs you to `bd worktree create`. Do not try to work around them.
 
@@ -329,50 +334,7 @@ Standard linting/formatting configs are bundled with their respective skills:
 - `.claude/skills/dotnet-coding-standards/assets/.editorconfig` and `Directory.Build.props` (SonarAnalyzer, StyleCop, warnings-as-errors)
 - `.claude/skills/ios-coding-standards/assets/.swiftlint.yml` (force cast/try/unwrap as errors)
 
+## Re-running `bd init` / `bd setup claude`
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
-## Beads Issue Tracker
+Always pass `--skip-agents` when re-running `bd init`, `bd init --server`, or `bd setup claude` on this repo. Without it, bd re-inserts its own "Beads Issue Tracker" / "Session Completion" block (wrapped in `<!-- BEGIN/END BEADS INTEGRATION -->` markers) which duplicates the project-specific guidance in the **Beads (Exclusive Issue Tracker)** section above and drifts from it over time.
 
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-## Session Completion
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd dolt push
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-<!-- END BEADS INTEGRATION -->
