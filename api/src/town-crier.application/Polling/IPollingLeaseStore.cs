@@ -14,6 +14,9 @@ public interface IPollingLeaseStore
     /// TransientError. Never throws for expected outcomes (held by peer,
     /// raced on create/replace).
     /// </summary>
+    /// <param name="ttl">Lease time-to-live; the lease document is written with this Cosmos TTL.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Acquired (with handle), Held (lost the race), or TransientError.</returns>
     Task<LeaseAcquireResult> TryAcquireAsync(TimeSpan ttl, CancellationToken ct);
 
     /// <summary>
@@ -21,5 +24,8 @@ public interface IPollingLeaseStore
     /// conditional delete using the ETag from acquire. Never throws — failures
     /// are logged via the store's own logger, if any.
     /// </summary>
+    /// <param name="handle">Handle returned by a prior successful <see cref="TryAcquireAsync"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the release attempt has finished.</returns>
     Task ReleaseAsync(LeaseHandle handle, CancellationToken ct);
 }
