@@ -239,6 +239,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                 PollingMetrics.RateLimited.Add(1, cycleTypeTag);
                 rateLimited = true;
                 rateLimitRetryAfter = ex.RetryAfter;
+                RecordRetryAfter(ex.RetryAfter, cycleTypeTag, authorityId);
                 LogRateLimitStop(this.logger, authorityId, ex);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
@@ -247,6 +248,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                 // the same as PlanItRateLimitException but without a Retry-After hint.
                 PollingMetrics.RateLimited.Add(1, cycleTypeTag);
                 rateLimited = true;
+                RecordRetryAfter(retryAfter: null, cycleTypeTag, authorityId);
                 LogRateLimitStop(this.logger, authorityId, ex);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -354,6 +356,20 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
             terminationReason,
             authorityErrors,
             rateLimitRetryAfter);
+    }
+
+    private static void RecordRetryAfter(TimeSpan? retryAfter, KeyValuePair<string, object?> cycleTypeTag, int authorityId)
+    {
+        // Emit retry_after_seconds for every 429 — including 0 with header_present=false
+        // when PlanIt omitted the header — so dashboards can distinguish "no header" from
+        // "small backoff" and surface the actual Retry-After distribution. See bd tc-6nkn.
+        var headerPresent = retryAfter.HasValue;
+        var value = retryAfter?.TotalSeconds ?? 0;
+        PollingMetrics.RetryAfterSeconds.Record(
+            value,
+            cycleTypeTag,
+            new KeyValuePair<string, object?>("polling.authority_code", authorityId),
+            new KeyValuePair<string, object?>("header_present", headerPresent ? "true" : "false"));
     }
 
 #pragma warning disable SA1204
