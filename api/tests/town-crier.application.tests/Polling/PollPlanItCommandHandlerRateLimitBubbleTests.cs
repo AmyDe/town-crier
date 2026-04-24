@@ -74,7 +74,6 @@ public sealed class PollPlanItCommandHandlerRateLimitBubbleTests
             new FakeNotificationEnqueuer(),
             new FakeCycleSelector(CycleType.Watched),
             new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

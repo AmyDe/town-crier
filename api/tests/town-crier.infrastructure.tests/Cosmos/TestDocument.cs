@@ -9,4 +9,7 @@ public sealed class TestDocument
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("payload")]
+    public string Payload { get; set; } = string.Empty;
 }

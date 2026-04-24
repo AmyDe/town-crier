@@ -650,7 +650,6 @@ public sealed class PollPlanItCommandHandlerMetricsTests
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }

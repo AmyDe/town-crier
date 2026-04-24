@@ -1,3 +1,4 @@
+using TownCrier.Infrastructure.Cosmos;
 using TownCrier.Infrastructure.Polling;
 using TownCrier.Infrastructure.Tests.Cosmos;
 
@@ -5,85 +6,93 @@ namespace TownCrier.Infrastructure.Tests.Polling;
 
 public sealed class CosmosPollingLeaseStoreTests
 {
+    private static readonly DateTimeOffset Now = new(2026, 4, 23, 12, 0, 0, TimeSpan.Zero);
+
     [Test]
-    public async Task Should_Acquire_When_NoExistingLease()
+    public async Task TryAcquire_CreatesDocument_When_NoneExists()
     {
-        var client = new FakeCosmosRestClient();
-        var time = new FakeTimeProvider();
-        time.SetUtcNow(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
-        var store = new CosmosPollingLeaseStore(client, time);
+        var (store, _, _) = Build();
 
-        var acquired = await store.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
+        var result = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        await Assert.That(acquired).IsTrue();
+        await Assert.That(result.Acquired).IsTrue();
+        await Assert.That(result.Handle).IsNotNull();
+        await Assert.That(result.Handle!.ETag).IsNotNull();
     }
 
     [Test]
-    public async Task Should_NotAcquire_When_ExistingLeaseIsStillLive()
+    public async Task TryAcquire_ReturnsHeld_When_ExistingNotExpired()
     {
-        var client = new FakeCosmosRestClient();
-        var time = new FakeTimeProvider();
-        time.SetUtcNow(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
-        var storeA = new CosmosPollingLeaseStore(client, time);
-        var storeB = new CosmosPollingLeaseStore(client, time);
+        var (store, _, _) = Build();
+        var first = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
+        await Assert.That(first.Acquired).IsTrue();
 
-        // A acquires first.
-        var acquiredA = await storeA.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
+        var second = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        // Thirty seconds later, B attempts to acquire — A's lease TTL is still live.
-        time.Advance(TimeSpan.FromSeconds(30));
-        var acquiredB = await storeB.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
-
-        await Assert.That(acquiredA).IsTrue();
-        await Assert.That(acquiredB).IsFalse();
+        await Assert.That(second.Acquired).IsFalse();
+        await Assert.That(second.Held).IsTrue();
     }
 
     [Test]
-    public async Task Should_Acquire_When_ExistingLeaseIsExpired()
+    public async Task TryAcquire_ReacquiresViaCas_When_ExistingExpired()
     {
-        var client = new FakeCosmosRestClient();
-        var time = new FakeTimeProvider();
-        time.SetUtcNow(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
-        var storeA = new CosmosPollingLeaseStore(client, time);
-        var storeB = new CosmosPollingLeaseStore(client, time);
+        var (store, _, time) = Build();
+        var first = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        await storeA.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
+        time.Advance(TimeSpan.FromMinutes(10)); // lease expired
 
-        // Advance time past A's lease TTL — B can now take it.
-        time.Advance(TimeSpan.FromMinutes(11));
-        var acquiredB = await storeB.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
+        var second = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        await Assert.That(acquiredB).IsTrue();
+        await Assert.That(second.Acquired).IsTrue();
+        await Assert.That(second.Handle!.ETag).IsNotEqualTo(first.Handle!.ETag);
     }
 
     [Test]
-    public async Task Should_AllowSubsequentAcquire_After_Release()
+    public async Task Release_DeletesDocument_When_EtagMatches()
     {
-        var client = new FakeCosmosRestClient();
-        var time = new FakeTimeProvider();
-        time.SetUtcNow(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
-        var storeA = new CosmosPollingLeaseStore(client, time);
-        var storeB = new CosmosPollingLeaseStore(client, time);
+        var (store, fake, _) = Build();
+        var result = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        await storeA.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
-        await storeA.ReleaseAsync(CancellationToken.None);
+        await store.ReleaseAsync(result.Handle!, CancellationToken.None);
 
-        // Still well within the original TTL — but the doc was deleted on release.
-        time.Advance(TimeSpan.FromSeconds(5));
-        var acquiredB = await storeB.TryAcquireAsync(TimeSpan.FromMinutes(10), CancellationToken.None);
-
-        await Assert.That(acquiredB).IsTrue();
+        var readAfter = await fake.ReadDocumentWithETagAsync(
+            CosmosContainerNames.Leases,
+            "polling",
+            "polling",
+            CosmosJsonSerializerContext.Default.PollingLeaseDocument,
+            CancellationToken.None);
+        await Assert.That(readAfter.Document).IsNull();
     }
 
     [Test]
-    public async Task Should_NotThrow_When_ReleaseCalledWithoutAcquire()
+    public async Task Release_Swallows_When_EtagIsStale()
     {
-        var client = new FakeCosmosRestClient();
-        var time = new FakeTimeProvider();
-        time.SetUtcNow(new DateTimeOffset(2026, 4, 21, 12, 0, 0, TimeSpan.Zero));
-        var store = new CosmosPollingLeaseStore(client, time);
+        var (store, fake, _) = Build();
+        var acquire = await store.TryAcquireAsync(TimeSpan.FromMinutes(5), CancellationToken.None);
 
-        // Release is idempotent — safe to call from a finally block even if acquire failed.
-        await store.ReleaseAsync(CancellationToken.None);
+        // Simulate a peer taking over via a direct replace.
+        await fake.TryReplaceDocumentAsync(
+            CosmosContainerNames.Leases,
+            new PollingLeaseDocument
+            {
+                Id = "polling",
+                HolderId = "peer",
+                ExpiresAtUtc = Now.AddMinutes(5).ToString("o"),
+            },
+            "polling",
+            acquire.Handle!.ETag,
+            CosmosJsonSerializerContext.Default.PollingLeaseDocument,
+            CancellationToken.None);
+
+        // Release should not throw; fake records the attempt as PreconditionFailed.
+        await store.ReleaseAsync(acquire.Handle, CancellationToken.None);
+    }
+
+    private static (CosmosPollingLeaseStore Store, FakeCosmosRestClient Fake, FakeTimeProvider Time) Build()
+    {
+        var fake = new FakeCosmosRestClient();
+        var time = new FakeTimeProvider();
+        time.SetUtcNow(Now);
+        return (new CosmosPollingLeaseStore(fake, time), fake, time);
     }
 }

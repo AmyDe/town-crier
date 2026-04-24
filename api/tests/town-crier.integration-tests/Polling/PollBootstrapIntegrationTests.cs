@@ -40,6 +40,8 @@ public sealed class PollBootstrapIntegrationTests
             queue,
             metrics,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions(),
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
 
@@ -71,6 +73,8 @@ public sealed class PollBootstrapIntegrationTests
             queue,
             metrics,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions(),
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
 
@@ -99,6 +103,8 @@ public sealed class PollBootstrapIntegrationTests
             queue,
             metrics,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions(),
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
 
@@ -126,6 +132,8 @@ public sealed class PollBootstrapIntegrationTests
             queue,
             metrics,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions(),
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerBootstrapper>.Instance);
 

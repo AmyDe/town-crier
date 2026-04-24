@@ -7,4 +7,5 @@ namespace TownCrier.Application.Polling;
 public sealed record PollTriggerOrchestratorRunResult(
     bool MessageReceived,
     bool PublishedNext,
-    PollPlanItResult? PollResult);
+    PollPlanItResult? PollResult,
+    bool LeaseUnavailable = false);

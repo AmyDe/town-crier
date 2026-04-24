@@ -347,7 +347,6 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 
@@ -374,7 +373,6 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 

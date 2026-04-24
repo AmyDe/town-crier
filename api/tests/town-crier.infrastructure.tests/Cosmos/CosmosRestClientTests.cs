@@ -85,6 +85,44 @@ public sealed class CosmosRestClientTests
     }
 
     [Test]
+    public async Task ReadDocumentWithETag_ReturnsBodyAndETag_When200()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"id":"x","name":"hello"}""",
+            [new KeyValuePair<string, string>("ETag", "\"v1\"")]);
+
+        var result = await client.ReadDocumentWithETagAsync(
+            "Users",
+            "x",
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(result.Document).IsNotNull();
+        await Assert.That(result.Document!.Name).IsEqualTo("hello");
+        await Assert.That(result.ETag).IsEqualTo("\"v1\"");
+    }
+
+    [Test]
+    public async Task ReadDocumentWithETag_ReturnsNullBodyAndETag_When404()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        var result = await client.ReadDocumentWithETagAsync(
+            "Users",
+            "missing",
+            "missing",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(result.Document).IsNull();
+        await Assert.That(result.ETag).IsNull();
+    }
+
+    [Test]
     public async Task Should_SetUpsertHeader_When_UpsertingDocument()
     {
         var (client, handler) = CreateClient();
@@ -425,6 +463,129 @@ public sealed class CosmosRestClientTests
         // Normal path: single POST query, no fan-out
         await Assert.That(handler.SentRequests).HasCount().EqualTo(1);
         await Assert.That(handler.SentRequests[0].Method).IsEqualTo(HttpMethod.Post);
+    }
+
+    [Test]
+    public async Task TryCreateDocument_ReturnsTrue_When201()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.Created);
+
+        var created = await client.TryCreateDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Name = "hi" },
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(created).IsTrue();
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Headers.IfNoneMatch.Single().Tag).IsEqualTo("*");
+    }
+
+    [Test]
+    public async Task TryCreateDocument_ReturnsFalse_When409()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.Conflict);
+
+        var created = await client.TryCreateDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Name = "hi" },
+            "x",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(created).IsFalse();
+    }
+
+    [Test]
+    public async Task TryCreateDocument_Throws_On5xx()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.InternalServerError);
+
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.TryCreateDocumentAsync(
+                "c",
+                new TestDocument { Id = "x", Name = "hi" },
+                "x",
+                TestSerializerContext.Default.TestDocument,
+                default));
+    }
+
+    [Test]
+    public async Task TryReplaceDocument_ReturnsTrue_When200()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK);
+
+        var replaced = await client.TryReplaceDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Payload = "new" },
+            "x",
+            "\"v1\"",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(replaced).IsTrue();
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Method).IsEqualTo(HttpMethod.Put);
+        await Assert.That(request.RequestUri!.AbsolutePath)
+            .IsEqualTo("/dbs/test-db/colls/c/docs/x");
+        await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"v1\"");
+    }
+
+    [Test]
+    public async Task TryReplaceDocument_ReturnsFalse_When412()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.PreconditionFailed);
+
+        var replaced = await client.TryReplaceDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Payload = "new" },
+            "x",
+            "\"stale\"",
+            TestSerializerContext.Default.TestDocument,
+            default);
+
+        await Assert.That(replaced).IsFalse();
+    }
+
+    [Test]
+    public async Task TryDeleteDocument_ReturnsDeleted_When204()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NoContent);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: null, default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.Deleted);
+    }
+
+    [Test]
+    public async Task TryDeleteDocument_ReturnsNotFound_When404()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.NotFound);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: null, default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.NotFound);
+    }
+
+    [Test]
+    public async Task TryDeleteDocument_ReturnsPreconditionFailed_When412()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.PreconditionFailed);
+
+        var outcome = await client.TryDeleteDocumentAsync("c", "x", "x", ifMatchEtag: "\"stale\"", default);
+
+        await Assert.That(outcome).IsEqualTo(CosmosDeleteOutcome.PreconditionFailed);
+        var request = handler.SentRequests[0];
+        await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"stale\"");
     }
 
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()

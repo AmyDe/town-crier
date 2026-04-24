@@ -31,4 +31,19 @@ public sealed record PollingOptions
     /// message lock. See <c>docs/specs/poll-handler-soft-budget.md</c>.
     /// </summary>
     public TimeSpan? HandlerBudget { get; init; }
+
+    /// <summary>
+    /// Gets the TTL requested when the orchestrator acquires a polling lease.
+    /// </summary>
+    public TimeSpan OrchestratorLeaseTtl { get; init; } = TimeSpan.FromMinutes(4.5);
+
+    /// <summary>
+    /// Gets the TTL requested when the bootstrap phase acquires a polling lease.
+    /// </summary>
+    public TimeSpan BootstrapLeaseTtl { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Gets the delay before retrying a failed lease acquire operation.
+    /// </summary>
+    public TimeSpan LeaseAcquireRetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 }

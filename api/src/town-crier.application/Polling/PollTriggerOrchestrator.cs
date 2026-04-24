@@ -1,86 +1,111 @@
 using Microsoft.Extensions.Logging;
+using TownCrier.Application.Observability;
 
 namespace TownCrier.Application.Polling;
 
 /// <summary>
 /// Single-run orchestrator that glues the Service Bus trigger queue to
-/// <see cref="PollPlanItCommandHandler"/>. Under ADR 0024 amendment
-/// (2026-04-22) the queue is consumed in receive-and-delete mode and the
-/// ordering is <b>receive → handler → publish</b>: the trigger message is
-/// destructively consumed on receive, the handler runs, then the next
-/// trigger is published with a scheduled enqueue time. If anything fails
-/// between receive and publish the chain pauses until the safety-net
-/// bootstrap (<see cref="PollTriggerBootstrapper"/>) recovers it on its
-/// cron tick.
+/// <see cref="IPollPlanItCommandHandler"/>. Under the polling-lease-CAS spec
+/// (docs/specs/polling-lease-cas.md) the ordering is
+/// <b>acquire lease → receive → handler → publish → release</b>: the lease is
+/// acquired before the destructive receive so no other actor can mutate the
+/// queue during the critical section. One retry with a configurable delay
+/// handles the common case where the bootstrap briefly holds the lease.
 /// </summary>
 public sealed partial class PollTriggerOrchestrator
 {
-    private readonly PollPlanItCommandHandler handler;
+    private readonly IPollPlanItCommandHandler handler;
     private readonly IPollTriggerQueue triggerQueue;
     private readonly PollNextRunScheduler scheduler;
+    private readonly IPollingLeaseStore leaseStore;
+    private readonly PollingOptions options;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<PollTriggerOrchestrator> logger;
 
     public PollTriggerOrchestrator(
-        PollPlanItCommandHandler handler,
+        IPollPlanItCommandHandler handler,
         IPollTriggerQueue triggerQueue,
         PollNextRunScheduler scheduler,
+        IPollingLeaseStore leaseStore,
+        PollingOptions options,
         TimeProvider timeProvider,
         ILogger<PollTriggerOrchestrator> logger)
     {
         this.handler = handler;
         this.triggerQueue = triggerQueue;
         this.scheduler = scheduler;
+        this.leaseStore = leaseStore;
+        this.options = options;
         this.timeProvider = timeProvider;
         this.logger = logger;
     }
 
     public async Task<PollTriggerOrchestratorRunResult> RunOnceAsync(CancellationToken ct)
     {
-        var message = await this.triggerQueue.ReceiveAsync(ct).ConfigureAwait(false);
-        if (message is null)
+        var callerTag = new KeyValuePair<string, object?>("caller", "orchestrator");
+
+        var acquire = await this.leaseStore.TryAcquireAsync(this.options.OrchestratorLeaseTtl, ct).ConfigureAwait(false);
+        if (!acquire.Acquired)
         {
-            LogEmptyQueue(this.logger);
-            return new PollTriggerOrchestratorRunResult(
-                MessageReceived: false,
-                PublishedNext: false,
-                PollResult: null);
+            await Task.Delay(this.options.LeaseAcquireRetryDelay, ct).ConfigureAwait(false);
+            acquire = await this.leaseStore.TryAcquireAsync(this.options.OrchestratorLeaseTtl, ct).ConfigureAwait(false);
+            if (!acquire.Acquired)
+            {
+                LogLeaseUnavailable(this.logger);
+                PollingMetrics.LeaseHeldByPeer.Add(1, callerTag);
+                return new PollTriggerOrchestratorRunResult(
+                    MessageReceived: false,
+                    PublishedNext: false,
+                    PollResult: null,
+                    LeaseUnavailable: true);
+            }
         }
 
-        // Message is destructively consumed — handler runs first. If it throws
-        // we let the exception bubble up; the safety-net bootstrap recovers
-        // the chain on its next cron tick.
-        var pollResult = await this.handler.HandleAsync(new PollPlanItCommand(), ct).ConfigureAwait(false);
+        PollingMetrics.LeaseAcquired.Add(1, callerTag);
 
-        if (pollResult.TerminationReason == PollTerminationReason.LeaseHeld)
+        try
         {
-            // Another replica holds the Cosmos lease and is responsible for
-            // publishing the next trigger. Our message is already gone — exit
-            // without publishing so we don't duplicate the next trigger.
+            var message = await this.triggerQueue.ReceiveAsync(ct).ConfigureAwait(false);
+            if (message is null)
+            {
+                LogEmptyQueue(this.logger);
+                return new PollTriggerOrchestratorRunResult(
+                    MessageReceived: false,
+                    PublishedNext: false,
+                    PollResult: null,
+                    LeaseUnavailable: false);
+            }
+
+            var pollResult = await this.handler.HandleAsync(new PollPlanItCommand(), ct).ConfigureAwait(false);
+
+            var now = this.timeProvider.GetUtcNow();
+            var nextRun = this.scheduler.ComputeNextRun(pollResult.TerminationReason, pollResult.RetryAfter, now);
+
+            await this.triggerQueue.PublishAtAsync(nextRun, ct).ConfigureAwait(false);
+
             return new PollTriggerOrchestratorRunResult(
                 MessageReceived: true,
-                PublishedNext: false,
-                PollResult: pollResult);
+                PublishedNext: true,
+                PollResult: pollResult,
+                LeaseUnavailable: false);
         }
-
-        var now = this.timeProvider.GetUtcNow();
-        var nextRun = this.scheduler.ComputeNextRun(
-            pollResult.TerminationReason,
-            pollResult.RetryAfter,
-            now);
-
-        // Consume-before-publish — destructive receive already happened, so
-        // this is the sole outstanding write that could leave the chain in a
-        // quiescent state. A publish failure surfaces to the caller; the
-        // safety-net recovers.
-        await this.triggerQueue.PublishAtAsync(nextRun, ct).ConfigureAwait(false);
-
-        return new PollTriggerOrchestratorRunResult(
-            MessageReceived: true,
-            PublishedNext: true,
-            PollResult: pollResult);
+        finally
+        {
+            var releaseOutcome = await this.leaseStore.ReleaseAsync(acquire.Handle!, ct).ConfigureAwait(false);
+            if (releaseOutcome == LeaseReleaseOutcome.PreconditionFailed)
+            {
+                LogRelease412(this.logger);
+                PollingMetrics.LeaseReleased412.Add(1, callerTag);
+            }
+        }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Poll trigger queue empty, exiting cleanly (safety-net run will re-seed)")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Poll trigger queue empty, exiting cleanly (bootstrap will re-seed)")]
     private static partial void LogEmptyQueue(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Polling lease unavailable after retry — exiting; KEDA will re-trigger when peer releases")]
+    private static partial void LogLeaseUnavailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Polling lease release returned 412 PreconditionFailed — ETag mismatch; TTL is the backstop")]
+    private static partial void LogRelease412(ILogger logger);
 }

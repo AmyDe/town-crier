@@ -51,6 +51,8 @@ public sealed class PollSbEntrypointIntegrationTests
             handler,
             queue,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions { LeaseAcquireRetryDelay = TimeSpan.Zero },
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerOrchestrator>.Instance);
 
@@ -98,6 +100,8 @@ public sealed class PollSbEntrypointIntegrationTests
             handler,
             queue,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions { LeaseAcquireRetryDelay = TimeSpan.Zero },
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerOrchestrator>.Instance);
 
@@ -128,6 +132,8 @@ public sealed class PollSbEntrypointIntegrationTests
             handler,
             queue,
             scheduler,
+            new FakePollingLeaseStore(),
+            new PollingOptions { LeaseAcquireRetryDelay = TimeSpan.Zero },
             new FakeTimeProvider(Now),
             NullLogger<PollTriggerOrchestrator>.Instance);
 
@@ -154,7 +160,6 @@ public sealed class PollSbEntrypointIntegrationTests
             new FakeNotificationEnqueuer(),
             new FakeCycleSelector(CycleType.Watched),
             new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 

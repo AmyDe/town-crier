@@ -8,7 +8,7 @@ using TownCrier.Application.WatchZones;
 
 namespace TownCrier.Application.Polling;
 
-public sealed partial class PollPlanItCommandHandler
+public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
 {
     private readonly IPlanItClient planItClient;
     private readonly IPollStateStore pollStateStore;
@@ -19,7 +19,6 @@ public sealed partial class PollPlanItCommandHandler
     private readonly INotificationEnqueuer notificationEnqueuer;
     private readonly ICycleSelector cycleSelector;
     private readonly PollingOptions options;
-    private readonly IPollingLeaseStore leaseStore;
     private readonly ILogger<PollPlanItCommandHandler> logger;
 
     public PollPlanItCommandHandler(
@@ -32,7 +31,6 @@ public sealed partial class PollPlanItCommandHandler
         INotificationEnqueuer notificationEnqueuer,
         ICycleSelector cycleSelector,
         PollingOptions options,
-        IPollingLeaseStore leaseStore,
         ILogger<PollPlanItCommandHandler> logger)
     {
         this.planItClient = planItClient;
@@ -44,45 +42,10 @@ public sealed partial class PollPlanItCommandHandler
         this.notificationEnqueuer = notificationEnqueuer;
         this.cycleSelector = cycleSelector;
         this.options = options;
-        this.leaseStore = leaseStore;
         this.logger = logger;
     }
 
     public async Task<PollPlanItResult> HandleAsync(PollPlanItCommand command, CancellationToken ct)
-    {
-        var acquired = await this.leaseStore.TryAcquireAsync(this.options.LeaseTtl, ct).ConfigureAwait(false);
-        if (!acquired)
-        {
-            LogLeaseHeld(this.logger);
-            return new PollPlanItResult(
-                ApplicationCount: 0,
-                AuthoritiesPolled: 0,
-                RateLimited: false,
-                TerminationReason: PollTerminationReason.LeaseHeld,
-                AuthorityErrors: 0);
-        }
-
-        try
-        {
-            return await this.HandleUnderLeaseAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            try
-            {
-                await this.leaseStore.ReleaseAsync(ct).ConfigureAwait(false);
-            }
-#pragma warning disable CA1031 // Release is best-effort — must not mask the original outcome.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                LogLeaseReleaseFailed(this.logger, ex);
-            }
-        }
-    }
-
-#pragma warning disable SA1204 // Instance helper kept near the public entrypoint for readability.
-    private async Task<PollPlanItResult> HandleUnderLeaseAsync(CancellationToken ct)
     {
         var now = this.timeProvider.GetUtcNow();
         var cycleType = this.cycleSelector.GetCurrent();
@@ -358,7 +321,6 @@ public sealed partial class PollPlanItCommandHandler
             authorityErrors,
             rateLimitRetryAfter);
     }
-#pragma warning restore SA1204
 
 #pragma warning disable SA1204
     [LoggerMessage(Level = LogLevel.Warning, Message = "Rate limited polling authority {AuthorityId}, stopping polling cycle")]
@@ -366,11 +328,5 @@ public sealed partial class PollPlanItCommandHandler
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error polling authority {AuthorityId}, skipping to next authority")]
     private static partial void LogAuthorityError(ILogger logger, int authorityId, Exception exception);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Polling lease held by another worker, exiting cleanly without polling")]
-    private static partial void LogLeaseHeld(ILogger logger);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Polling lease release failed — lease will expire on its TTL")]
-    private static partial void LogLeaseReleaseFailed(ILogger logger, Exception exception);
 #pragma warning restore SA1204
 }

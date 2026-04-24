@@ -11,8 +11,10 @@ namespace TownCrier.Infrastructure.Tests.Cosmos;
 internal sealed class FakeCosmosRestClient : ICosmosRestClient
 {
     private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> store = new();
+    private readonly Dictionary<(string Collection, string Id, string PartitionKey), string> etags = new();
     private readonly Dictionary<string, object> cannedQueryResults = new();
     private readonly Dictionary<string, (object Results, string? ContinuationToken)> cannedPageResults = new();
+    private long nextEtag;
 
     public string? LastPageQuerySql { get; private set; }
 
@@ -51,6 +53,24 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         return Task.FromResult(default(T));
     }
 
+    public Task<CosmosReadResult<T>> ReadDocumentWithETagAsync<T>(
+        string collection,
+        string id,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var key = (collection, id, partitionKey);
+        if (this.store.TryGetValue(key, out var json))
+        {
+            var result = JsonSerializer.Deserialize(json, typeInfo);
+            this.etags.TryGetValue(key, out var etag);
+            return Task.FromResult(new CosmosReadResult<T>(result, etag));
+        }
+
+        return Task.FromResult(new CosmosReadResult<T>(default, null));
+    }
+
     public Task UpsertDocumentAsync<T>(
         string collection,
         T document,
@@ -64,8 +84,66 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         using var doc = JsonDocument.Parse(json);
         var id = ExtractId(doc);
 
-        this.store[(collection, id, partitionKey)] = json;
+        var key = (collection, id, partitionKey);
+        this.store[key] = json;
+        this.etags[key] = this.NewEtag();
         return Task.CompletedTask;
+    }
+
+    public Task<bool> TryCreateDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(document, typeInfo);
+
+        // Extract id from the serialized JSON to use as the key
+        using var doc = JsonDocument.Parse(json);
+        var id = ExtractId(doc);
+
+        var key = (collection, id, partitionKey);
+
+        // If-None-Match: * semantics — return false if document already exists
+        if (this.store.ContainsKey(key))
+        {
+            return Task.FromResult(false);
+        }
+
+        // Store the document, assign a new ETag, and return true (created)
+        this.store[key] = json;
+        this.etags[key] = this.NewEtag();
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> TryReplaceDocumentAsync<T>(
+        string collection,
+        T document,
+        string partitionKey,
+        string ifMatchEtag,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(document, typeInfo);
+
+        // Extract id from the serialized JSON to use as the key
+        using var doc = JsonDocument.Parse(json);
+        var id = ExtractId(doc);
+
+        var key = (collection, id, partitionKey);
+
+        // CAS: require current ETag to match ifMatchEtag. Missing document (no ETag
+        // tracked) or mismatch returns false without mutating state.
+        if (!this.etags.TryGetValue(key, out var current) || current != ifMatchEtag)
+        {
+            return Task.FromResult(false);
+        }
+
+        // ETag matched — overwrite and bump to a new ETag
+        this.store[key] = json;
+        this.etags[key] = this.NewEtag();
+        return Task.FromResult(true);
     }
 
     public Task DeleteDocumentAsync(
@@ -75,8 +153,38 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         CancellationToken ct)
     {
         // Idempotent — no error if not found (matches REST API behavior)
-        this.store.Remove((collection, id, partitionKey));
+        var key = (collection, id, partitionKey);
+        this.store.Remove(key);
+        this.etags.Remove(key);
         return Task.CompletedTask;
+    }
+
+    public Task<CosmosDeleteOutcome> TryDeleteDocumentAsync(
+        string collection,
+        string id,
+        string partitionKey,
+        string? ifMatchEtag,
+        CancellationToken ct)
+    {
+        var key = (collection, id, partitionKey);
+
+        if (!this.store.ContainsKey(key))
+        {
+            return Task.FromResult(CosmosDeleteOutcome.NotFound);
+        }
+
+        // CAS: when caller supplied an If-Match, require it to equal the tracked ETag.
+        // Mismatch surfaces as PreconditionFailed without mutating state.
+        if (ifMatchEtag is not null
+            && this.etags.TryGetValue(key, out var current)
+            && current != ifMatchEtag)
+        {
+            return Task.FromResult(CosmosDeleteOutcome.PreconditionFailed);
+        }
+
+        this.store.Remove(key);
+        this.etags.Remove(key);
+        return Task.FromResult(CosmosDeleteOutcome.Deleted);
     }
 
     public Task<List<T>> QueryAsync<T>(
@@ -213,4 +321,6 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
 
         throw new InvalidOperationException("Document must have an 'id' or 'Id' property.");
     }
+
+    private string NewEtag() => $"\"v{Interlocked.Increment(ref this.nextEtag)}\"";
 }

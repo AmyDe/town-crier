@@ -18,7 +18,6 @@ public static class PollTerminationReasonExtensions
         PollTerminationReason.Natural => "natural",
         PollTerminationReason.TimeBounded => "time_bounded",
         PollTerminationReason.RateLimited => "rate_limited",
-        PollTerminationReason.LeaseHeld => "lease_held",
         _ => throw new ArgumentOutOfRangeException(
             nameof(reason),
             reason,
