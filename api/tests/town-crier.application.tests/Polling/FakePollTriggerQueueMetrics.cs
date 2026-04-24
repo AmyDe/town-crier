@@ -9,6 +9,18 @@ internal sealed class FakePollTriggerQueueMetrics : IPollTriggerQueueMetrics
 
     public int GetDepthCallCount { get; private set; }
 
+    /// <summary>
+    /// Gets the number of times <see cref="GetDepthAsync"/> has been called.
+    /// Alias of <see cref="GetDepthCallCount"/> — used by bootstrapper tests.
+    /// </summary>
+    public int ProbeCalls => this.GetDepthCallCount;
+
+    /// <summary>
+    /// Gets or sets an exception to throw from the next <see cref="GetDepthAsync"/> call.
+    /// Cleared after first use.
+    /// </summary>
+    public Exception? ThrowOnProbe { get; set; }
+
     public void Enqueue(long active, long scheduled)
     {
         this.depths.Enqueue(new PollTriggerQueueDepth(active, scheduled));
@@ -22,6 +34,12 @@ internal sealed class FakePollTriggerQueueMetrics : IPollTriggerQueueMetrics
     public Task<PollTriggerQueueDepth> GetDepthAsync(CancellationToken ct)
     {
         this.GetDepthCallCount++;
+
+        if (this.ThrowOnProbe is { } probeEx)
+        {
+            this.ThrowOnProbe = null;
+            throw probeEx;
+        }
 
         if (this.throws.Count > 0)
         {

@@ -5,6 +5,7 @@ namespace TownCrier.Application.Tests.Polling;
 internal sealed class FakePollTriggerQueue : IPollTriggerQueue
 {
     private readonly Queue<IPollTriggerMessage> receivable = new();
+    private int publishCallCount;
 
     public List<DateTimeOffset> ScheduledEnqueueTimes { get; } = new();
 
@@ -15,6 +16,12 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
     /// Alias of <see cref="ReceiveCount"/> — used by orchestrator tests.
     /// </summary>
     public int ReceiveCalls => this.ReceiveCount;
+
+    /// <summary>
+    /// Gets the number of times <see cref="PublishAtAsync"/> completed successfully
+    /// (i.e. without throwing).
+    /// </summary>
+    public int PublishCalls => this.publishCallCount;
 
     public List<string> CallSequence { get; } = new();
 
@@ -61,6 +68,7 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
         }
 
         this.ScheduledEnqueueTimes.Add(scheduledEnqueueTime);
+        this.publishCallCount++;
         return Task.CompletedTask;
     }
 }
