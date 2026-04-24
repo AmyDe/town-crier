@@ -31,7 +31,13 @@ public static class SharedStack
             Tags = tags,
         });
 
-        // Azure Container Registry (shared across environments)
+        // Azure Container Registry (shared across environments).
+        //
+        // RetentionPolicy purges untagged manifests older than 30 days so the registry
+        // doesn't creep past the 10 GB Basic SKU quota as every CD run pushes new image
+        // layers. Untagged manifests are the default (and only) target on Basic ACR; the
+        // type is Pulumi.AzureNative.ContainerRegistry.Inputs.RetentionPolicyArgs and
+        // Status accepts the PolicyStatus.Enabled enum. See bead tc-v467.
         var containerRegistry = new Registry("acrtowncriershared", new RegistryArgs
         {
             RegistryName = "acrtowncriershared",
@@ -41,6 +47,14 @@ public static class SharedStack
                 Name = SkuName.Basic,
             },
             AdminUserEnabled = false,
+            Policies = new Pulumi.AzureNative.ContainerRegistry.Inputs.PoliciesArgs
+            {
+                RetentionPolicy = new Pulumi.AzureNative.ContainerRegistry.Inputs.RetentionPolicyArgs
+                {
+                    Status = PolicyStatus.Enabled,
+                    Days = 30,
+                },
+            },
             Tags = tags,
         });
 

@@ -232,6 +232,10 @@ public static class EnvironmentStack
             Configuration = new ConfigurationArgs
             {
                 ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
+                // Cap inactive revisions to prevent ACR storage growth. Azure's default
+                // is 100; each revision holds image layers in ACR, which pushes the
+                // shared Basic-tier registry over its 10 GB quota (see bead tc-vjrn).
+                MaxInactiveRevisions = 5,
                 Secrets = new[]
                 {
                     new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
