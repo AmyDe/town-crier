@@ -5,6 +5,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!--
+      NU1902: NuGet Audit moderate-severity advisory on OpenTelemetry.Api 1.15.1
+      (GHSA-g94r-2vxg-569j). Demoted from error to warning so this hotfix can
+      ship; OTel upgrade tracked separately.
+    -->
+    <WarningsNotAsErrors>NU1902</WarningsNotAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SonarAnalyzer.CSharp" Version="9.32.0.97167">
