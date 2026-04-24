@@ -39,12 +39,43 @@ az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shar
 ```
 Expect non-zero `applications_ingested`, `authorities_polled`, `cycles_completed`.
 
-**3b. Not overwhelming PlanIt**
+**3b. Honouring Retry-After on 429**
+
+**429s from PlanIt are expected and part of normal operation** — the worker deliberately hammers PlanIt serially until it gets a 429, then short-circuits the cycle and schedules the next ASB message using the `Retry-After` header. A 429 in the *middle* of a cycle is the healthy termination signal. Do NOT treat 429 counts, `rate_limited` metrics, or `PlanItRateLimitException` exceptions as watch items by themselves, and do NOT recommend "watching 429 cadence" in the report.
+
+**The actual regression** is a 429 as the **first** PlanIt response in a cycle — that means we didn't honour the previous cycle's `Retry-After` before starting the next one. Check this per cycle:
+
 ```bash
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "dependencies | where timestamp > ago(30m) | where target contains 'planit' | summarize total=count(), rate429=countif(resultCode == '429'), failures=countif(success == false), avgDurMs=avg(duration) by bin(timestamp, 5m) | order by timestamp asc"
+  --analytics-query "dependencies | where timestamp > ago(1h) | where target contains 'planit' and cloud_RoleName == 'town-crier-worker' | summarize arg_min(timestamp, resultCode) by cloud_RoleInstance | extend first_response_429 = (resultCode == '429') | summarize total_cycles = count(), cycles_with_first_429 = countif(first_response_429)"
 ```
-`rate429` must be near 0. Serial chain by design — one message in flight.
+
+`cycles_with_first_429` **MUST be 0**. If non-zero, that's the symptom — point at `PlanItClient.cs` / the retry-after handling in the orchestrator's next-message scheduler.
+
+For context only (not a pass/fail signal), you can also report the 429 distribution, but state it as expected cadence not a concern:
+
+```bash
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "dependencies | where timestamp > ago(30m) | where target contains 'planit' | summarize total=count(), rate429=countif(resultCode == '429'), failures=countif(success == false and resultCode != '429'), avgDurMs=avg(duration) by bin(timestamp, 5m) | order by timestamp asc"
+```
+
+`failures` (excluding 429) must be near 0. `rate429` being non-zero is fine — that's the cycle termination marker.
+
+**Retry-After value distribution** — what is PlanIt actually asking us to wait? The worker emits `towncrier.polling.retry_after_seconds` (histogram) on every 429 with the parsed `Retry-After` header value, tagged `header_present=true|false`. Use this to confirm whether the configured `RetryAfterCap` (currently 3h, [PollNextRunSchedulerOptions.cs:14](api/src/town-crier.application/Polling/PollNextRunSchedulerOptions.cs)) is large enough for the values PlanIt is sending:
+
+```bash
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(customDimensions['header_present']) | where header_present == 'true' | summarize samples=count(), p50_s=percentile(value, 50), p90_s=percentile(value, 90), p99_s=percentile(value, 99), max_s=max(value)"
+```
+
+Pass condition: `max_s < 10800` (3h cap, in seconds). If `max_s ≥ 10800`, PlanIt is asking for backoffs longer than the cap and we are clipping — bump `RetryAfterCap` higher or escalate to a human. If `samples == 0` and `cycles_with_first_429 > 0`, then PlanIt is sending 429s without `Retry-After` headers; check the `header_present='false'` row separately:
+
+```bash
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(customDimensions['header_present']), authority = tostring(customDimensions['polling.authority_code']) | summarize samples=count() by header_present, authority | order by samples desc | take 10"
+```
+
+A high `header_present='false'` count means PlanIt isn't sending `Retry-After` at all, and we're falling back to the configured default — point at `PollNextRunScheduler.cs` retry-after parsing if `cycles_with_first_429` is also non-zero.
 
 **3c. Only 1 thread at a time (lease CAS)**
 ```bash
@@ -86,7 +117,7 @@ Bootstrap (`*/30`) should acquire lease, probe, publish only if empty, release. 
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
   --analytics-query "exceptions | where timestamp > ago(1h) | where cloud_RoleName == 'town-crier-worker' | summarize count() by type, outerMessage | top 10 by count_"
 ```
-Should be empty or known-benign.
+Should be empty or known-benign. `PlanItRateLimitException` is expected (see 3b) and is not a concern in any volume — do not flag it.
 
 ### 5. Runs since last deploy (for the per-run table)
 
@@ -124,6 +155,8 @@ Output three tables, in this order:
 
 1. **Invariants** — six invariants (3a–3f) + deployment status + abort check. One row each, ✅ / ⚠️ / ❌ + one line of evidence (metric name and value, or trace count, or queue sample). For 3e (oldest HWM), include the authority id and the lag in a human unit (e.g. "47m behind, authority 123").
 2. **Runs since last deploy** — columns: `#`, execution short-name (last segment after `job-tc-poll-prod-`), start UTC, duration, status, apps, auths, cycles, notes. Include bootstrap ticks as separate rows marked `— bootstrap HH:MM —` with dashes for apps/auths/cycles and a note like "lease acquired, no-op reseed" or "reseeded (queue empty)".
-3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), PlanIt 429 count, oldest-HWM age at start vs. end of window (and whether it grew or shrank — the single most important "are we keeping up?" signal).
+3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), `cycles_with_first_429` (must be 0 — see 3b), retry-after `p50/p90/max` in seconds with sample count (must have `max_s < 10800`; if no samples but 429s present, surface the `header_present='false'` count instead), oldest-HWM age at start vs. end of window (and whether it grew or shrank — the single most important "are we keeping up?" signal).
 
-End with 1–3 watch items (e.g. persistent DLQ count, 429 cadence) and one recommendation line. Keep the prose under 200 words — tables can be as long as the data demands.
+End with 1–3 watch items and one recommendation line. Keep the prose under 200 words — tables can be as long as the data demands.
+
+**Do not include as watch items**: PlanIt 429 counts or cadence, `PlanItRateLimitException`, `rate_limited` metric totals, or cycles that polled 0 authorities because they hit a 429 on first draw. Those are expected behaviour, not concerns. Only flag a 429-related issue if `cycles_with_first_429 > 0`.

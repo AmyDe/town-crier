@@ -30,6 +30,20 @@ public static class PollingMetrics
     public static readonly Counter<long> RateLimited =
         Meter.CreateCounter<long>("towncrier.polling.rate_limited");
 
+    /// <summary>
+    /// Distribution of parsed <c>Retry-After</c> values (in seconds) returned by PlanIt
+    /// when a poll is throttled with HTTP 429. Recorded once per rate-limited authority,
+    /// tagged with <c>cycle.type</c>, <c>polling.authority_code</c>, and
+    /// <c>header_present</c> = "true" | "false". A value of 0 with header_present=false
+    /// is emitted when PlanIt returned 429 without a Retry-After header so dashboards
+    /// can distinguish "no header" from "small backoff". See bd tc-6nkn.
+    /// </summary>
+    public static readonly Histogram<double> RetryAfterSeconds =
+        Meter.CreateHistogram<double>(
+            "towncrier.polling.retry_after_seconds",
+            unit: "s",
+            description: "PlanIt-supplied Retry-After value (seconds) on 429 responses. Tagged by cycle.type, polling.authority_code, and header_present.");
+
     public static readonly Histogram<double> CycleDuration =
         Meter.CreateHistogram<double>(
             "towncrier.polling.cycle_duration_ms",

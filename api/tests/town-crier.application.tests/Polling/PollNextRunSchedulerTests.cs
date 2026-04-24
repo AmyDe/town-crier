@@ -42,14 +42,15 @@ public sealed class PollNextRunSchedulerTests
     }
 
     [Test]
-    public async Task Should_CapRetryAfterAt30Minutes_When_RateLimitedWithLargeRetryAfter()
+    public async Task Should_CapRetryAfterAt3Hours_When_RateLimitedWithLargeRetryAfter()
     {
         var jitter = new ZeroJitter();
         var scheduler = new PollNextRunScheduler(DefaultOptions, jitter);
-        var retryAfter = TimeSpan.FromHours(2);
+        var retryAfter = TimeSpan.FromHours(5);
 
         var next = scheduler.ComputeNextRun(PollTerminationReason.RateLimited, retryAfter, Now);
 
+        await Assert.That(DefaultOptions.RetryAfterCap).IsEqualTo(TimeSpan.FromHours(3));
         await Assert.That(next).IsEqualTo(Now + DefaultOptions.RetryAfterCap);
     }
 
