@@ -21,12 +21,10 @@ public enum PollTerminationReason
     /// The cycle stopped early because PlanIt returned HTTP 429.
     /// </summary>
     RateLimited = 2,
-
-    /// <summary>
-    /// The cycle skipped polling because another holder had the Cosmos lease.
-    /// The safety-net cron and Service Bus triggers share this code path — the
-    /// current holder is expected to publish the next Service Bus message, so the
-    /// loser exits cleanly without publishing.
-    /// </summary>
-    LeaseHeld = 3,
 }
+
+// Removed: LeaseHeld (was = 3)
+// Reason: The orchestrator now exits with LeaseUnavailable flag instead of returning
+// a termination reason. LeaseHeld was a signal for the handler to publish a termination
+// message — serialisation now happens in the orchestrator itself, so poll results only
+// flow from handlers that actually ran. See ADR 0024 amendment and feat/polling-lease-cas.
