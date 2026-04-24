@@ -46,6 +46,12 @@ public static class PollingMetrics
             "towncrier.polling.authority_total",
             description: "PlanIt-reported total matching applications for an authority at the start of a page-1 fetch. Tagged by cycle.type and polling.authority_code. See docs/specs/polling-resumable-cursor.md#telemetry-additions.");
 
+    public static readonly Gauge<double> OldestHighWaterMarkAge =
+        Meter.CreateGauge<double>(
+            "towncrier.polling.oldest_hwm_age_seconds",
+            unit: "s",
+            description: "Age, in seconds, of the stalest authority's LastPollTime at the start of a cycle. Tagged by cycle.type, polling.authority_code, and never_polled. A never-polled authority reports (now - UnixEpoch) and never_polled=true so dashboards can distinguish it from a genuinely stale HWM.");
+
     public static readonly Counter<long> CursorAdvanced =
         Meter.CreateCounter<long>(
             "towncrier.polling.cursor_advanced",
