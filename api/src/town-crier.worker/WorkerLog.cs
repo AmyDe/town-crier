@@ -46,4 +46,7 @@ internal static partial class WorkerLog
 
     [LoggerMessage(Level = LogLevel.Critical, Message = "Unknown WORKER_MODE '{WorkerMode}'. Valid values: poll-sb, poll-bootstrap, digest, hourly-digest, dormant-cleanup")]
     internal static partial void UnknownWorkerMode(ILogger logger, string workerMode);
+
+    [LoggerMessage(Level = LogLevel.Critical, Message = "Polling handler budget must be set for poll-sb mode to bound lease TTL. Aborting")]
+    internal static partial void HandlerBudgetMissingInPollSbMode(ILogger logger);
 }

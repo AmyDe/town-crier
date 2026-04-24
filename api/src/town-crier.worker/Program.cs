@@ -236,6 +236,16 @@ switch (mode)
 {
     case "poll-sb":
         {
+            // Fail fast if HandlerBudget is unset. The lease TTL must be strictly
+            // greater than the handler's max runtime; an unset budget means the
+            // handler can run indefinitely, risking lease expiry mid-handler and
+            // duplicate polling. See polling-lease-cas.md § Invariants.
+            if (pollingOptions.HandlerBudget is null)
+            {
+                WorkerLog.HandlerBudgetMissingInPollSbMode(logger);
+                return 1;
+            }
+
             // Service-Bus-triggered adaptive polling loop. Receives one trigger
             // message, runs the handler, publishes the next trigger (with a
             // scheduled enqueue time), then acks. Publish-before-ack ordering is
