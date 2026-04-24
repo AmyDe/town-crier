@@ -128,25 +128,30 @@ public sealed class CosmosPollingLeaseStore : IPollingLeaseStore
     }
 
     /// <inheritdoc />
-    public async Task ReleaseAsync(LeaseHandle handle, CancellationToken ct)
+    public async Task<LeaseReleaseOutcome> ReleaseAsync(LeaseHandle handle, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(handle);
         try
         {
-            _ = await this.client.TryDeleteDocumentAsync(
+            var outcome = await this.client.TryDeleteDocumentAsync(
                 CosmosContainerNames.Leases,
                 LeaseDocumentId,
                 LeaseDocumentId,
                 handle.ETag,
                 ct).ConfigureAwait(false);
-
-            // Caller (orchestrator / bootstrap) logs the outcome via its own logger.
+            return outcome switch
+            {
+                CosmosDeleteOutcome.Deleted => LeaseReleaseOutcome.Released,
+                CosmosDeleteOutcome.NotFound => LeaseReleaseOutcome.AlreadyGone,
+                CosmosDeleteOutcome.PreconditionFailed => LeaseReleaseOutcome.PreconditionFailed,
+                _ => LeaseReleaseOutcome.TransientError,
+            };
         }
 #pragma warning disable CA1031 // Release is best-effort; TTL is the backstop.
         catch
 #pragma warning restore CA1031
         {
-            // Swallow; TTL is the backstop.
+            return LeaseReleaseOutcome.TransientError;
         }
     }
 

@@ -55,5 +55,32 @@ public static class PollingMetrics
         Meter.CreateCounter<long>(
             "towncrier.polling.cursor_cleared",
             description: "Incremented when the handler clears a previously-active cursor after reaching a natural end. Tagged by cycle.type.");
+
+    /// <summary>
+    /// Incremented each time the caller successfully acquires the polling lease.
+    /// Tagged with <c>caller</c> = "orchestrator" | "bootstrap".
+    /// </summary>
+    public static readonly Counter<long> LeaseAcquired =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.lease.acquired",
+            description: "Incremented when the polling lease is successfully acquired.");
+
+    /// <summary>
+    /// Incremented when the lease is unavailable after all retry attempts.
+    /// Tagged with <c>caller</c> = "orchestrator" | "bootstrap".
+    /// </summary>
+    public static readonly Counter<long> LeaseHeldByPeer =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.lease.held_by_peer",
+            description: "Incremented when the polling lease is held by a peer and unavailable after retry.");
+
+    /// <summary>
+    /// Incremented when the conditional delete on release returns 412 Precondition Failed.
+    /// Tagged with <c>caller</c> = "orchestrator" | "bootstrap".
+    /// </summary>
+    public static readonly Counter<long> LeaseReleased412 =
+        Meter.CreateCounter<long>(
+            "towncrier.polling.lease.released_412",
+            description: "Incremented when the lease release fails with a precondition-failed (412) outcome.");
 }
 #pragma warning restore SA1202

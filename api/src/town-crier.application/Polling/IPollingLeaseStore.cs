@@ -22,10 +22,16 @@ public interface IPollingLeaseStore
     /// <summary>
     /// Releases the lease identified by <paramref name="handle"/>. Performs a
     /// conditional delete using the ETag from acquire. Never throws — failures
-    /// are logged via the store's own logger, if any.
+    /// are surfaced as a <see cref="LeaseReleaseOutcome"/> rather than exceptions.
+    /// TTL is the backstop for any non-Released outcome.
     /// </summary>
     /// <param name="handle">Handle returned by a prior successful <see cref="TryAcquireAsync"/>.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>A task that completes when the release attempt has finished.</returns>
-    Task ReleaseAsync(LeaseHandle handle, CancellationToken ct);
+    /// <returns>
+    /// <see cref="LeaseReleaseOutcome.Released"/> on success;
+    /// <see cref="LeaseReleaseOutcome.AlreadyGone"/> if the document was not found;
+    /// <see cref="LeaseReleaseOutcome.PreconditionFailed"/> if the ETag did not match;
+    /// <see cref="LeaseReleaseOutcome.TransientError"/> for network or 5xx failures.
+    /// </returns>
+    Task<LeaseReleaseOutcome> ReleaseAsync(LeaseHandle handle, CancellationToken ct);
 }

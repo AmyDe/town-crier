@@ -41,14 +41,15 @@ internal sealed class FakePollingLeaseStore : IPollingLeaseStore
         return Task.FromResult(LeaseAcquireResult.FromAcquired(this.held));
     }
 
-    public Task ReleaseAsync(LeaseHandle handle, CancellationToken ct)
+    public Task<LeaseReleaseOutcome> ReleaseAsync(LeaseHandle handle, CancellationToken ct)
     {
         Interlocked.Increment(ref this.releaseCalls);
         if (this.held is not null && this.held.ETag == handle.ETag)
         {
             this.held = null;
+            return Task.FromResult(LeaseReleaseOutcome.Released);
         }
 
-        return Task.CompletedTask;
+        return Task.FromResult(LeaseReleaseOutcome.AlreadyGone);
     }
 }

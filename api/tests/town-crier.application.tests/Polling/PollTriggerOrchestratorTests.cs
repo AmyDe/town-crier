@@ -343,7 +343,7 @@ public sealed class PollTriggerOrchestratorTests
             return inner.TryAcquireAsync(ttl, ct);
         }
 
-        public Task ReleaseAsync(LeaseHandle handle, CancellationToken ct) =>
+        public Task<LeaseReleaseOutcome> ReleaseAsync(LeaseHandle handle, CancellationToken ct) =>
             inner.ReleaseAsync(handle, ct);
     }
 }

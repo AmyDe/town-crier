@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TownCrier.Application.Observability;
 
 namespace TownCrier.Application.Polling;
 
@@ -41,6 +42,8 @@ public sealed partial class PollTriggerOrchestrator
 
     public async Task<PollTriggerOrchestratorRunResult> RunOnceAsync(CancellationToken ct)
     {
+        var callerTag = new KeyValuePair<string, object?>("caller", "orchestrator");
+
         var acquire = await this.leaseStore.TryAcquireAsync(this.options.OrchestratorLeaseTtl, ct).ConfigureAwait(false);
         if (!acquire.Acquired)
         {
@@ -49,6 +52,7 @@ public sealed partial class PollTriggerOrchestrator
             if (!acquire.Acquired)
             {
                 LogLeaseUnavailable(this.logger);
+                PollingMetrics.LeaseHeldByPeer.Add(1, callerTag);
                 return new PollTriggerOrchestratorRunResult(
                     MessageReceived: false,
                     PublishedNext: false,
@@ -56,6 +60,8 @@ public sealed partial class PollTriggerOrchestrator
                     LeaseUnavailable: true);
             }
         }
+
+        PollingMetrics.LeaseAcquired.Add(1, callerTag);
 
         try
         {
@@ -85,7 +91,12 @@ public sealed partial class PollTriggerOrchestrator
         }
         finally
         {
-            await this.leaseStore.ReleaseAsync(acquire.Handle!, ct).ConfigureAwait(false);
+            var releaseOutcome = await this.leaseStore.ReleaseAsync(acquire.Handle!, ct).ConfigureAwait(false);
+            if (releaseOutcome == LeaseReleaseOutcome.PreconditionFailed)
+            {
+                LogRelease412(this.logger);
+                PollingMetrics.LeaseReleased412.Add(1, callerTag);
+            }
         }
     }
 
@@ -94,4 +105,7 @@ public sealed partial class PollTriggerOrchestrator
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Polling lease unavailable after retry — exiting; KEDA will re-trigger when peer releases")]
     private static partial void LogLeaseUnavailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Polling lease release returned 412 PreconditionFailed — ETag mismatch; TTL is the backstop")]
+    private static partial void LogRelease412(ILogger logger);
 }

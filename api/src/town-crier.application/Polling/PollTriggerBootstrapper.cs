@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TownCrier.Application.Observability;
 
 namespace TownCrier.Application.Polling;
 
@@ -72,12 +73,17 @@ public sealed partial class PollTriggerBootstrapper
 
     public async Task<PollTriggerBootstrapResult> TryBootstrapAsync(CancellationToken ct)
     {
+        var callerTag = new KeyValuePair<string, object?>("caller", "bootstrap");
+
         var acquire = await this.leaseStore.TryAcquireAsync(this.options.BootstrapLeaseTtl, ct).ConfigureAwait(false);
         if (!acquire.Acquired)
         {
             LogLeaseHeldByPeer(this.logger);
+            PollingMetrics.LeaseHeldByPeer.Add(1, callerTag);
             return new PollTriggerBootstrapResult(Published: false, ProbeFailed: false, LeaseUnavailable: true);
         }
+
+        PollingMetrics.LeaseAcquired.Add(1, callerTag);
 
         try
         {
@@ -130,7 +136,12 @@ public sealed partial class PollTriggerBootstrapper
         }
         finally
         {
-            await this.leaseStore.ReleaseAsync(acquire.Handle!, ct).ConfigureAwait(false);
+            var releaseOutcome = await this.leaseStore.ReleaseAsync(acquire.Handle!, ct).ConfigureAwait(false);
+            if (releaseOutcome == LeaseReleaseOutcome.PreconditionFailed)
+            {
+                LogRelease412(this.logger);
+                PollingMetrics.LeaseReleased412.Add(1, callerTag);
+            }
         }
     }
 
@@ -148,4 +159,7 @@ public sealed partial class PollTriggerBootstrapper
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Safety-net published bootstrap poll trigger scheduled for {ScheduledEnqueueTimeUtc:o}")]
     private static partial void LogBootstrapPublished(ILogger logger, DateTimeOffset scheduledEnqueueTimeUtc);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Safety-net lease release returned 412 PreconditionFailed — ETag mismatch; TTL is the backstop")]
+    private static partial void LogRelease412(ILogger logger);
 }
