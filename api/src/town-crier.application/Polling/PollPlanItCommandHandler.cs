@@ -58,6 +58,24 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
         var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
             activeIds.ToList(), ct).ConfigureAwait(false);
 
+        // Emit the stalest LastPollTime seen across all active authorities so dashboards
+        // can answer "how far behind is the pipeline?" directly. sortedIds is ordered
+        // never-polled-first, then ascending LastPollTime, so sortedIds[0] is always
+        // the stalest candidate. Emitting at cycle start captures the state the cycle
+        // is about to work through — more useful as a backlog signal than post-cycle lag.
+        if (sortedIds.Count > 0)
+        {
+            var oldestAuthorityId = sortedIds[0];
+            var oldestState = await this.pollStateStore.GetAsync(oldestAuthorityId, ct).ConfigureAwait(false);
+            var oldestLastPollTime = oldestState?.LastPollTime ?? DateTimeOffset.UnixEpoch;
+            var neverPolled = oldestState is null;
+            PollingMetrics.OldestHighWaterMarkAge.Record(
+                (now - oldestLastPollTime).TotalSeconds,
+                cycleTypeTag,
+                new KeyValuePair<string, object?>("polling.authority_code", oldestAuthorityId),
+                new KeyValuePair<string, object?>("never_polled", neverPolled ? "true" : "false"));
+        }
+
         bool BudgetExhausted() => deadline.HasValue && this.timeProvider.GetUtcNow() >= deadline.Value;
 
         var count = 0;

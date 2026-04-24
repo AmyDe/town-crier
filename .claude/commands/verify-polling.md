@@ -65,7 +65,14 @@ done
 ```
 Steady state: `active + scheduled ∈ {0, 1}`. `{a:0, s:1}` is healthy (next poll queued). `{a:1, s:0}` is the transient hand-off (handler running). If `active + scheduled > 1` at any sample, a duplicate publish-after-consume chain has appeared — **escalate before touching anything**. Per `bd memories poll-queue-max-one-message` the user has pre-authorised brute-force purge, but confirm the symptom first.
 
-**3e. Bootstrap doesn't double-post during active cycle**
+**3e. Keeping up with the authority backlog (oldest HWM age)**
+```bash
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | summarize latest_age_s = arg_max(timestamp, value, authority, never_polled) by bin(timestamp, 30m) | order by timestamp desc | take 10"
+```
+Read the most recent row: `value` is how far behind the stalest authority is, in seconds; `authority` identifies it; `never_polled='true'` means that authority has no state yet (age will equal seconds-since-epoch — huge by design). Healthy means the latest `value` is within the expected cycle cadence — roughly `authorities_polled_per_cycle × cycle_interval`. A monotonically climbing value over the 6h window means the pipeline is falling behind and needs more frequency or more throughput per cycle. Report the current lag in human units (e.g. "oldest HWM is 47 min behind, authority 123").
+
+**3f. Bootstrap doesn't double-post during active cycle**
 ```bash
 az containerapp job execution list --name job-tc-poll-bootstrap-prod -g rg-town-crier-prod \
   --query "[].{start:properties.startTime, status:properties.status}" -o table | head -10
@@ -100,6 +107,10 @@ az containerapp job execution list --name job-tc-poll-bootstrap-prod -g rg-town-
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
   --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where cloud_RoleName == 'town-crier-worker' | where name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(value) by cloud_RoleInstance, name | order by cloud_RoleInstance asc, name asc"
 
+# Oldest-HWM age per cycle since deploy — one emission per cycle at cycle start
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | project timestamp, age_s = value, authority, never_polled, cloud_RoleInstance | order by timestamp asc"
+
 # Map cloud_RoleInstance -> execution by first-seen timestamp (matches execution startTime within a few seconds)
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
   --analytics-query "union customMetrics, traces | where timestamp > datetime($DEPLOY_TS) | where cloud_RoleName == 'town-crier-worker' | summarize firstSeen=min(timestamp), lastSeen=max(timestamp) by cloud_RoleInstance | order by firstSeen asc"
@@ -111,8 +122,8 @@ Match each `cloud_RoleInstance` to an execution by taking the execution whose `s
 
 Output three tables, in this order:
 
-1. **Invariants** — five invariants + deployment status + abort check. One row each, ✅ / ⚠️ / ❌ + one line of evidence (metric name and value, or trace count, or queue sample).
+1. **Invariants** — six invariants (3a–3f) + deployment status + abort check. One row each, ✅ / ⚠️ / ❌ + one line of evidence (metric name and value, or trace count, or queue sample). For 3e (oldest HWM), include the authority id and the lag in a human unit (e.g. "47m behind, authority 123").
 2. **Runs since last deploy** — columns: `#`, execution short-name (last segment after `job-tc-poll-prod-`), start UTC, duration, status, apps, auths, cycles, notes. Include bootstrap ticks as separate rows marked `— bootstrap HH:MM —` with dashes for apps/auths/cycles and a note like "lease acquired, no-op reseed" or "reseeded (queue empty)".
-3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), PlanIt 429 count.
+3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), PlanIt 429 count, oldest-HWM age at start vs. end of window (and whether it grew or shrank — the single most important "are we keeping up?" signal).
 
 End with 1–3 watch items (e.g. persistent DLQ count, 429 cadence) and one recommendation line. Keep the prose under 200 words — tables can be as long as the data demands.
