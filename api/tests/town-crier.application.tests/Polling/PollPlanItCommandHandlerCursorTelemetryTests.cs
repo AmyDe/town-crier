@@ -170,10 +170,12 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         authorityProvider.Add(100);
 
         var lastPollTime = DateTimeOffset.UtcNow.AddDays(-1);
+        var highWaterMark = lastPollTime;
         var pollStateStore = new FakePollStateStore();
         pollStateStore.SetState(100, new PollState(
             lastPollTime,
-            new PollCursor(DateOnly.FromDateTime(lastPollTime.UtcDateTime), NextPage: 4, KnownTotal: 7200)));
+            highWaterMark,
+            new PollCursor(DateOnly.FromDateTime(highWaterMark.UtcDateTime), NextPage: 4, KnownTotal: 7200)));
 
         var planItClient = new FakePlanItClient();
 

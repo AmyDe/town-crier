@@ -329,9 +329,12 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(result.ApplicationCount).IsEqualTo(2);
         await Assert.That(result.AuthoritiesPolled).IsEqualTo(2);
         await Assert.That(pollStateStore.SaveCallCount).IsEqualTo(2);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(app100LastDifferent);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(300)).IsEqualTo(app300LastDifferent);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsNull();
+
+        // HighWaterMark advances to max LastDifferent; LastPollTime stamps to now.
+        // Authority 200 failed so no state was saved for it.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(100)).IsEqualTo(app100LastDifferent);
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(300)).IsEqualTo(app300LastDifferent);
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(200)).IsNull();
     }
 
     [Test]
@@ -477,11 +480,12 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // Authority 100 should be advanced to high-water mark
-        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(app100LastDifferent);
+        // Authority 100 should have its HighWaterMark advanced to max LastDifferent.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(100)).IsEqualTo(app100LastDifferent);
 
-        // Authority 200 should retain its original poll time (rate limited, not advanced)
+        // Authority 200 was not polled (rate limit hit before) — state retained from seed.
         await Assert.That(pollStateStore.GetLastPollTimeFor(200)).IsEqualTo(authority200Time);
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(200)).IsEqualTo(authority200Time);
     }
 
     [Test]
@@ -1078,10 +1082,12 @@ public sealed class PollPlanItCommandHandlerTests
         authorityProvider.Add(1);
 
         var lastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var highWaterMark = lastPollTime;
         var pollStateStore = new FakePollStateStore();
         pollStateStore.SetState(1, new PollState(
             lastPollTime,
-            new PollCursor(DateOnly.FromDateTime(lastPollTime.UtcDateTime), NextPage: 2, KnownTotal: 150)));
+            highWaterMark,
+            new PollCursor(DateOnly.FromDateTime(highWaterMark.UtcDateTime), NextPage: 2, KnownTotal: 150)));
 
         var appLastDifferent = new DateTimeOffset(2026, 4, 15, 8, 0, 0, TimeSpan.Zero);
 
@@ -1098,7 +1104,9 @@ public sealed class PollPlanItCommandHandlerTests
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
         await Assert.That(pollStateStore.GetCursorFor(1)).IsNull();
-        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(appLastDifferent);
+
+        // HighWaterMark advanced to max LastDifferent; LastPollTime stamped to now.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(1)).IsEqualTo(appLastDifferent);
     }
 
     [Test]
@@ -1110,12 +1118,13 @@ public sealed class PollPlanItCommandHandlerTests
         authorityProvider.Add(1);
 
         var lastPollTime = new DateTimeOffset(2026, 4, 19, 8, 0, 0, TimeSpan.Zero);
+        var highWaterMark = lastPollTime;
         var staleCursor = new PollCursor(
             DifferentStart: new DateOnly(2026, 4, 18),
             NextPage: 4,
             KnownTotal: 350);
         var pollStateStore = new FakePollStateStore();
-        pollStateStore.SetState(1, new PollState(lastPollTime, staleCursor));
+        pollStateStore.SetState(1, new PollState(lastPollTime, highWaterMark, staleCursor));
 
         var planItClient = new FakePlanItClient();
 
@@ -1139,10 +1148,12 @@ public sealed class PollPlanItCommandHandlerTests
         authorityProvider.Add(1);
 
         var lastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var highWaterMark = lastPollTime;
         var pollStateStore = new FakePollStateStore();
         pollStateStore.SetState(1, new PollState(
             lastPollTime,
-            new PollCursor(DateOnly.FromDateTime(lastPollTime.UtcDateTime), NextPage: 4, KnownTotal: 350)));
+            highWaterMark,
+            new PollCursor(DateOnly.FromDateTime(highWaterMark.UtcDateTime), NextPage: 4, KnownTotal: 350)));
 
         var planItClient = new FakePlanItClient();
 
@@ -1163,14 +1174,14 @@ public sealed class PollPlanItCommandHandlerTests
     public async Task Should_SaveCursor_When_RateLimitHitsMidPagination()
     {
         // 429 thrown AFTER page 1 yields 2 apps (page 1 had HasMorePages=true). The handler
-        // then calls page 2 which throws. We expect: HWM frozen at existing lastPollTime,
-        // cursor saved with NextPage=2 (the page that failed).
+        // then calls page 2 which throws. We expect: HighWaterMark frozen at the existing
+        // value, cursor saved with NextPage=2 (the page that failed).
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(100);
 
-        var existingLastPollTime = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
+        var existingHighWaterMark = new DateTimeOffset(2026, 4, 10, 0, 0, 0, TimeSpan.Zero);
         var pollStateStore = new FakePollStateStore();
-        pollStateStore.SetLastPollTime(100, existingLastPollTime);
+        pollStateStore.SetLastPollTime(100, existingHighWaterMark);
 
         // Seed three apps so the fake has something to return on page 1.
         var planItClient = new FakePlanItClient();
@@ -1189,14 +1200,14 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // HWM frozen.
-        await Assert.That(pollStateStore.GetLastPollTimeFor(100)).IsEqualTo(existingLastPollTime);
+        // HighWaterMark frozen at the pre-existing value.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(100)).IsEqualTo(existingHighWaterMark);
 
-        // Cursor saved at the page that failed (page 2).
+        // Cursor saved at the page that failed (page 2), anchored to the frozen HWM date.
         var cursor = pollStateStore.GetCursorFor(100);
         await Assert.That(cursor).IsNotNull();
         await Assert.That(cursor!.NextPage).IsEqualTo(2);
-        await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingLastPollTime.UtcDateTime));
+        await Assert.That(cursor.DifferentStart).IsEqualTo(DateOnly.FromDateTime(existingHighWaterMark.UtcDateTime));
     }
 
     [Test]
@@ -1273,7 +1284,9 @@ public sealed class PollPlanItCommandHandlerTests
         var cursorAfterA = pollStateStore.GetCursorFor(1);
         await Assert.That(cursorAfterA).IsNotNull();
         await Assert.That(cursorAfterA!.NextPage).IsEqualTo(4);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(initialLastPollTime);
+
+        // HighWaterMark stays frozen mid-spike; LastPollTime advances each cycle.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(1)).IsEqualTo(initialLastPollTime);
 
         // Cycle B — resumes at page 3 (4 - 1 overlap), processes pages 3, 4, 5 → cap hits
         // after 3 pages, so next unfetched page = 6.
@@ -1281,13 +1294,13 @@ public sealed class PollPlanItCommandHandlerTests
         var cursorAfterB = pollStateStore.GetCursorFor(1);
         await Assert.That(cursorAfterB).IsNotNull();
         await Assert.That(cursorAfterB!.NextPage).IsEqualTo(6);
-        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(initialLastPollTime);
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(1)).IsEqualTo(initialLastPollTime);
 
         // Cycle C — resumes at page 5, processes pages 5, 6, 7. Page 7 is partial so
         // HasMorePages=false → natural end → cursor cleared and HWM advanced.
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
         await Assert.That(pollStateStore.GetCursorFor(1)).IsNull();
-        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(highestLastDifferent);
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(1)).IsEqualTo(highestLastDifferent);
 
         // Sanity: verify the pages actually fetched across all three cycles.
         // A: 1,2,3. B: 3,4,5. C: 5,6,7.
@@ -1324,10 +1337,10 @@ public sealed class PollPlanItCommandHandlerTests
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
-        // HWM frozen — lastPollTime unchanged.
-        await Assert.That(pollStateStore.GetLastPollTimeFor(1)).IsEqualTo(existingLastPollTime);
+        // HighWaterMark frozen — matches the pre-existing value.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(1)).IsEqualTo(existingLastPollTime);
 
-        // Cursor saved pointing at page 4 (the next unfetched page).
+        // Cursor saved pointing at page 4 (the next unfetched page), anchored to the frozen HWM.
         var cursor = pollStateStore.GetCursorFor(1);
         await Assert.That(cursor).IsNotNull();
         await Assert.That(cursor!.NextPage).IsEqualTo(4);
@@ -1418,6 +1431,67 @@ public sealed class PollPlanItCommandHandlerTests
         var cursor = pollStateStore.GetCursorFor(100);
         await Assert.That(cursor).IsNotNull();
         await Assert.That(cursor!.NextPage).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task Should_NotReselectQuietAuthorityFirst_When_SecondCycleRunsAfterFirst()
+    {
+        // Core regression guard for tc-m6fx. Authority 156 is "quiet" — its newest
+        // application's LastDifferent is 7 days old. Authority 200 is "fresh". Both
+        // authorities are seeded with equally-stale LastPollTimes. Cycle 1 polls
+        // both; in cycle 2 the quiet authority must NOT be re-selected first, because
+        // its scheduling clock (LastPollTime) was advanced to `now` even though its
+        // HighWaterMark stayed stale.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(156);
+        authorityProvider.Add(200);
+
+        var start = new DateTimeOffset(2026, 4, 24, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(start);
+
+        var staleApp = new PlanningApplicationBuilder()
+            .WithUid("stale-156").WithAreaId(156)
+            .WithLastDifferent(start.AddDays(-7))
+            .Build();
+        var freshApp = new PlanningApplicationBuilder()
+            .WithUid("fresh-200").WithAreaId(200)
+            .WithLastDifferent(start.AddHours(-2))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(156, staleApp);
+        planItClient.Add(200, freshApp);
+
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(156, start.AddDays(-1));
+        pollStateStore.SetLastPollTime(200, start.AddDays(-1));
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: timeProvider);
+
+        // Cycle 1 — both authorities polled; advance clock between cycles.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        // Cycle 2 — re-poll.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Both authorities were polled twice each (once per cycle).
+        var cycle2Calls = planItClient.AuthorityIdsRequested.Skip(2).Take(2).ToList();
+        await Assert.That(cycle2Calls).HasCount().EqualTo(2);
+
+        // HWM for 156 is 7 days stale (quiet). If the bug had regressed, LastPollTime
+        // would equal HighWaterMark and 156 would be re-selected first despite being
+        // polled moments ago. Under the fix, LastPollTime for both authorities equals
+        // the wall-clock of the cycle that polled them, so neither consistently sorts
+        // first — and critically, 156's stale HWM does not influence scheduling.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(156)).IsEqualTo(start.AddDays(-7));
+        var quietLastPoll = pollStateStore.GetLastPollTimeFor(156);
+        await Assert.That(quietLastPoll).IsNotNull();
+        await Assert.That(quietLastPoll!.Value).IsGreaterThan(start.AddDays(-7));
     }
 
     private static PollPlanItCommandHandler CreateHandler(

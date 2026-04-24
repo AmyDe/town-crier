@@ -37,6 +37,17 @@ internal sealed class FakeCosmosRestClient : ICosmosRestClient
         this.cannedPageResults[sqlPrefix] = (results, continuationToken);
     }
 
+    // Seed a document directly by raw JSON. Useful for simulating legacy documents
+    // whose shape differs from the current DTO — e.g. missing fields added in a
+    // schema migration. ReadDocumentAsync will deserialize the raw JSON against
+    // the caller's type info on read.
+    public void SeedDocument(string collection, string documentId, string partitionKey, string json)
+    {
+        var key = (collection, documentId, partitionKey);
+        this.store[key] = json;
+        this.etags[key] = this.NewEtag();
+    }
+
     public Task<T?> ReadDocumentAsync<T>(
         string collection,
         string id,

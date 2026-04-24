@@ -107,7 +107,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
             DateTimeOffset? highWaterMark = null;
             var completedSuccessfully = false;
             var capHit = false;
-            var lastPollTime = now.AddDays(-1);
+            var existingHighWaterMark = now.AddDays(-1);
             var lastPageFetched = 0;
             int? firstPageTotal = null;
 
@@ -115,16 +115,16 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
             try
             {
                 var existingState = await this.pollStateStore.GetAsync(authorityId, ct).ConfigureAwait(false);
-                lastPollTime = existingState?.LastPollTime ?? now.AddDays(-1);
+                existingHighWaterMark = existingState?.HighWaterMark ?? now.AddDays(-1);
                 hadActiveCursor = existingState?.Cursor is not null;
 
                 // Resume from a previously-saved cursor only when its recorded date matches
-                // the date we're about to query. If the HWM has advanced past the cursor's
+                // the HWM date we're about to query. If the HWM has advanced past the cursor's
                 // date the cursor is stale and must be ignored (see tc-70kg / polling-resumable-cursor).
                 // Overlap by one page (-1) to tolerate PlanIt page-shift between cycles.
                 var startPage = 1;
                 if (existingState?.Cursor is { } resumeCursor
-                    && resumeCursor.DifferentStart == DateOnly.FromDateTime(lastPollTime.UtcDateTime))
+                    && resumeCursor.DifferentStart == DateOnly.FromDateTime(existingHighWaterMark.UtcDateTime))
                 {
                     startPage = Math.Max(1, resumeCursor.NextPage - 1);
                 }
@@ -135,7 +135,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                 while (true)
                 {
                     var pageResult = await this.planItClient.FetchApplicationsPageAsync(
-                        authorityId, lastPollTime, page, ct).ConfigureAwait(false);
+                        authorityId, existingHighWaterMark, page, ct).ConfigureAwait(false);
 
                     if (pagesFetched == 0)
                     {
@@ -272,12 +272,19 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                 //     HWM to max LastDifferent observed, clear any active cursor.
                 if (capHit || (rateLimited && authorityAppCount > 0))
                 {
+                    // Cap-hit / mid-pagination 429: freeze the HighWaterMark at the
+                    // previously-stored value so the next cycle resumes from the same
+                    // different_start date. Advancing HWM mid-pagination would skip
+                    // the tail of the result set. LastPollTime still advances to `now`
+                    // so the scheduler rotates off this authority rather than re-selecting
+                    // it next cycle — see docs/specs/poll-state-split-last-poll-time.md.
                     var nextPage = lastPageFetched + 1;
                     await this.pollStateStore.SaveAsync(
                         authorityId,
-                        lastPollTime,
+                        lastPollTime: now,
+                        highWaterMark: existingHighWaterMark,
                         new PollCursor(
-                            DateOnly.FromDateTime(lastPollTime.UtcDateTime),
+                            DateOnly.FromDateTime(existingHighWaterMark.UtcDateTime),
                             nextPage,
                             firstPageTotal),
                         ct).ConfigureAwait(false);
@@ -286,8 +293,17 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                 }
                 else
                 {
+                    // Natural end: advance HWM to max LastDifferent observed this cycle,
+                    // fall back to the existing HWM when PlanIt returned zero apps (quiet
+                    // authority). LastPollTime always stamps to `now` so quiet authorities
+                    // drop to the back of the LRU queue immediately — see spec above.
+                    var advancedHighWaterMark = highWaterMark ?? existingHighWaterMark;
                     await this.pollStateStore.SaveAsync(
-                        authorityId, highWaterMark ?? now, cursor: null, ct).ConfigureAwait(false);
+                        authorityId,
+                        lastPollTime: now,
+                        highWaterMark: advancedHighWaterMark,
+                        cursor: null,
+                        ct).ConfigureAwait(false);
 
                     // Only emit cursor_cleared when we actually *cleared* something —
                     // i.e., there was a previously-active cursor. Clearing "nothing"
