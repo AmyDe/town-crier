@@ -21,6 +21,14 @@ internal sealed class PollingLeaseDocument
     public string HolderId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the UTC instant the lease was acquired. ISO-8601 round-trip
+    /// ("o") string. Diagnostic only — acquisition decisions are based purely on
+    /// <see cref="ExpiresAtUtc"/>.
+    /// </summary>
+    [JsonPropertyName("acquiredAtUtc")]
+    public string AcquiredAtUtc { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the UTC instant after which the lease is considered expired.
     /// Stored as an ISO-8601 round-trip ("o") string for human readability in the
     /// Data Explorer.
