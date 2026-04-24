@@ -7,6 +7,7 @@ public interface IPollStateStore
     Task SaveAsync(
         int authorityId,
         DateTimeOffset lastPollTime,
+        DateTimeOffset highWaterMark,
         PollCursor? cursor,
         CancellationToken ct);
 

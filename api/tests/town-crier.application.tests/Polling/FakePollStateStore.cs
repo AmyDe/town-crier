@@ -24,6 +24,11 @@ internal sealed class FakePollStateStore : IPollStateStore
         return this.states.TryGetValue(authorityId, out var state) ? state.LastPollTime : null;
     }
 
+    public DateTimeOffset? GetHighWaterMarkFor(int authorityId)
+    {
+        return this.states.TryGetValue(authorityId, out var state) ? state.HighWaterMark : null;
+    }
+
     public PollCursor? GetCursorFor(int authorityId)
     {
         return this.states.TryGetValue(authorityId, out var state) ? state.Cursor : null;
@@ -34,9 +39,15 @@ internal sealed class FakePollStateStore : IPollStateStore
         this.states[authorityId] = state;
     }
 
+    /// <summary>
+    /// Convenience setter used by existing tests that pre-date the split between
+    /// <see cref="PollState.LastPollTime"/> (scheduling) and
+    /// <see cref="PollState.HighWaterMark"/> (PlanIt cursor). Seeds both fields to
+    /// the same value so legacy tests retain their original semantics.
+    /// </summary>
     public void SetLastPollTime(int authorityId, DateTimeOffset pollTime)
     {
-        this.states[authorityId] = new PollState(pollTime, Cursor: null);
+        this.states[authorityId] = new PollState(pollTime, pollTime, Cursor: null);
     }
 
     public Task<PollState?> GetAsync(int authorityId, CancellationToken ct)
@@ -48,10 +59,11 @@ internal sealed class FakePollStateStore : IPollStateStore
     public Task SaveAsync(
         int authorityId,
         DateTimeOffset lastPollTime,
+        DateTimeOffset highWaterMark,
         PollCursor? cursor,
         CancellationToken ct)
     {
-        this.states[authorityId] = new PollState(lastPollTime, cursor);
+        this.states[authorityId] = new PollState(lastPollTime, highWaterMark, cursor);
         this.SaveCallCount++;
         this.OnSave?.Invoke(authorityId, lastPollTime);
         return Task.CompletedTask;

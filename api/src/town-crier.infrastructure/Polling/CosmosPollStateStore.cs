@@ -30,13 +30,23 @@ public sealed class CosmosPollStateStore : IPollStateStore
         }
 
         var lastPollTime = DateTimeOffset.Parse(doc.LastPollTime, CultureInfo.InvariantCulture);
+
+        // Backward-compat: legacy documents (pre-tc-m6fx) stored the conflated
+        // LastPollTime as the PlanIt cursor. When HighWaterMark is absent, fall
+        // back to LastPollTime — that preserves cursor behaviour until the next
+        // write populates both fields. See docs/specs/poll-state-split-last-poll-time.md.
+        var highWaterMark = doc.HighWaterMark is null
+            ? lastPollTime
+            : DateTimeOffset.Parse(doc.HighWaterMark, CultureInfo.InvariantCulture);
+
         var cursor = ReadCursor(doc);
-        return new PollState(lastPollTime, cursor);
+        return new PollState(lastPollTime, highWaterMark, cursor);
     }
 
     public async Task SaveAsync(
         int authorityId,
         DateTimeOffset lastPollTime,
+        DateTimeOffset highWaterMark,
         PollCursor? cursor,
         CancellationToken ct)
     {
@@ -45,6 +55,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
         {
             Id = documentId,
             LastPollTime = lastPollTime.ToString("O", CultureInfo.InvariantCulture),
+            HighWaterMark = highWaterMark.ToString("O", CultureInfo.InvariantCulture),
             AuthorityId = authorityId,
             CursorDifferentStart = cursor?.DifferentStart.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             CursorNextPage = cursor?.NextPage,
@@ -80,7 +91,8 @@ public sealed class CosmosPollStateStore : IPollStateStore
 
         var polledSet = docs.ToDictionary(d => d.AuthorityId, d => d.LastPollTime);
 
-        // Never-polled authorities first, then by oldest lastPollTime
+        // Never-polled authorities first, then by oldest lastPollTime (scheduling clock,
+        // independent of HighWaterMark). See docs/specs/poll-state-split-last-poll-time.md.
         return candidateAuthorityIds
             .OrderBy(id => polledSet.ContainsKey(id) ? 1 : 0)
             .ThenBy(id => polledSet.TryGetValue(id, out var time) ? DateTimeOffset.Parse(time, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue)
