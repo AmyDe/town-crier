@@ -330,13 +330,49 @@ Standard linting/formatting configs are bundled with their respective skills:
 - `.claude/skills/ios-coding-standards/assets/.swiftlint.yml` (force cast/try/unwrap as errors)
 
 
-<!-- BEGIN BEADS INTEGRATION v:2 profile:minimal -->
-## Beads Reference
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
 
-Run `bd prime` for the current, AI-optimized workflow context (per [beads ADR-0001](https://github.com/gastownhall/beads/blob/main/claude-plugin/skills/beads/adr/0001-bd-prime-as-source-of-truth.md), that is the canonical source of truth — do not duplicate it here). Run `bd <command> --help` for specific usage.
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
 
-Rules:
-- `bd` for ALL tracking (not TodoWrite/TaskCreate).
-- `bd remember` for persistent knowledge across sessions (not MEMORY.md).
-- `bd doctor` when things feel wrong (stuck lock, orphan bead, worktree drift) — it diagnoses and `bd doctor --fix` remediates.
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
