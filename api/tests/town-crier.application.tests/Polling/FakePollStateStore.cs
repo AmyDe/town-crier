@@ -39,12 +39,9 @@ internal sealed class FakePollStateStore : IPollStateStore
         this.states[authorityId] = state;
     }
 
-    /// <summary>
-    /// Convenience setter used by existing tests that pre-date the split between
-    /// <see cref="PollState.LastPollTime"/> (scheduling) and
-    /// <see cref="PollState.HighWaterMark"/> (PlanIt cursor). Seeds both fields to
-    /// the same value so legacy tests retain their original semantics.
-    /// </summary>
+    // Convenience setter used by existing tests that pre-date the split between
+    // LastPollTime (scheduling) and HighWaterMark (PlanIt cursor). Seeds both
+    // fields to the same value so legacy tests retain their original semantics.
     public void SetLastPollTime(int authorityId, DateTimeOffset pollTime)
     {
         this.states[authorityId] = new PollState(pollTime, pollTime, Cursor: null);
