@@ -16,8 +16,16 @@ case "$file_path" in
   */.claude/*|*/node_modules/*|*/bin/*|*/obj/*|*/.beads/*) exit 0 ;;
 esac
 
-# Check for in_progress beads (fast local query)
+# Check for in_progress beads (fast local query).
+# In a git worktree the local .beads may be an uninitialised replica; fall back
+# to the main worktree's beads DB so cross-worktree bead claims are honoured.
 count=$(bd list --status=in_progress --flat 2>/dev/null | grep -c '^◐' || true)
+if [ "${count:-0}" -eq 0 ]; then
+  main_tree=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
+  if [ -n "$main_tree" ] && [ "$main_tree" != "$(pwd)" ]; then
+    count=$(cd "$main_tree" && bd list --status=in_progress --flat 2>/dev/null | grep -c '^◐' || true)
+  fi
+fi
 [ "${count:-0}" -gt 0 ] && exit 0
 
 jq -n '{
