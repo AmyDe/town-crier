@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
 using TownCrier.Application.Observability;
+using TownCrier.Application.PlanIt;
 using TownCrier.Application.Polling;
 
 namespace TownCrier.Application.Tests.Polling;
@@ -627,6 +628,130 @@ public sealed class PollPlanItCommandHandlerMetricsTests
 
         await Assert.That(terminations).HasCount().EqualTo(1);
         await Assert.That(terminations[0]).IsEqualTo("rate_limited");
+    }
+
+    [Test]
+    public async Task Should_RecordRetryAfter_When_RateLimitedWithHeaderPresent()
+    {
+        // Arrange
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(100);
+
+        var planItClient = new FakePlanItClient();
+        var retryAfter = TimeSpan.FromSeconds(75);
+        planItClient.ThrowForAuthority(100, new PlanItRateLimitException(retryAfter));
+
+        var cycleSelector = new FakeCycleSelector(CycleType.Seed);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            cycleSelector: cycleSelector);
+
+        var recorded = new List<(double Value, string? CycleType, string? HeaderPresent, string? AuthorityCode)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.retry_after_seconds")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((_, measurement, tags, _) =>
+        {
+            string? cycleType = null;
+            string? headerPresent = null;
+            string? authorityCode = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "cycle.type")
+                {
+                    cycleType = tag.Value?.ToString();
+                }
+                else if (tag.Key == "header_present")
+                {
+                    headerPresent = tag.Value?.ToString();
+                }
+                else if (tag.Key == "polling.authority_code")
+                {
+                    authorityCode = tag.Value?.ToString();
+                }
+            }
+
+            recorded.Add((measurement, cycleType, headerPresent, authorityCode));
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — retry_after value emitted with header_present=true and authority tag
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0].Value).IsEqualTo(75);
+        await Assert.That(recorded[0].CycleType).IsEqualTo("seed");
+        await Assert.That(recorded[0].HeaderPresent).IsEqualTo("true");
+        await Assert.That(recorded[0].AuthorityCode).IsEqualTo("100");
+    }
+
+    [Test]
+    public async Task Should_RecordRetryAfterZero_When_RateLimitedWithHeaderAbsent()
+    {
+        // Arrange — PlanItRateLimitException with no Retry-After parsed
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(200);
+
+        var planItClient = new FakePlanItClient();
+        planItClient.ThrowForAuthority(200, new PlanItRateLimitException(retryAfter: null));
+
+        var cycleSelector = new FakeCycleSelector(CycleType.Watched);
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            authorityProvider: authorityProvider,
+            cycleSelector: cycleSelector);
+
+        var recorded = new List<(double Value, string? CycleType, string? HeaderPresent, string? AuthorityCode)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Name == "towncrier.polling.retry_after_seconds")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((_, measurement, tags, _) =>
+        {
+            string? cycleType = null;
+            string? headerPresent = null;
+            string? authorityCode = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "cycle.type")
+                {
+                    cycleType = tag.Value?.ToString();
+                }
+                else if (tag.Key == "header_present")
+                {
+                    headerPresent = tag.Value?.ToString();
+                }
+                else if (tag.Key == "polling.authority_code")
+                {
+                    authorityCode = tag.Value?.ToString();
+                }
+            }
+
+            recorded.Add((measurement, cycleType, headerPresent, authorityCode));
+        });
+        listener.Start();
+
+        // Act
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Assert — emit a 0-value sample with header_present=false so the metric is
+        // present in dashboards even when PlanIt omits the Retry-After header.
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0].Value).IsEqualTo(0);
+        await Assert.That(recorded[0].CycleType).IsEqualTo("watched");
+        await Assert.That(recorded[0].HeaderPresent).IsEqualTo("false");
+        await Assert.That(recorded[0].AuthorityCode).IsEqualTo("200");
     }
 
     private static PollPlanItCommandHandler CreateHandler(
