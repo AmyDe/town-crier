@@ -251,7 +251,6 @@ public sealed class PollTriggerOrchestratorTests
             new FakeNotificationEnqueuer(),
             new FakeCycleSelector(CycleType.Watched),
             new PollingOptions(),
-            new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
         var scheduler = new PollNextRunScheduler(new PollNextRunSchedulerOptions(), new ZeroJitter());
 
@@ -291,7 +290,6 @@ public sealed class PollTriggerOrchestratorTests
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakeActiveAuthorityProvider? authorityProvider = null,
-        FakePollingLeaseStore? leaseStore = null,
         TimeProvider? timeProvider = null,
         PollingOptions? options = null)
     {
@@ -305,7 +303,6 @@ public sealed class PollTriggerOrchestratorTests
             new FakeNotificationEnqueuer(),
             new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
-            leaseStore ?? new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 

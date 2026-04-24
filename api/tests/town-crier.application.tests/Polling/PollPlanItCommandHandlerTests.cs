@@ -1429,8 +1429,7 @@ public sealed class PollPlanItCommandHandlerTests
         FakeNotificationEnqueuer? notificationEnqueuer = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
-        PollingOptions? options = null,
-        IPollingLeaseStore? leaseStore = null)
+        PollingOptions? options = null)
     {
         return new PollPlanItCommandHandler(
             planItClient ?? new FakePlanItClient(),
@@ -1442,7 +1441,6 @@ public sealed class PollPlanItCommandHandlerTests
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
-            leaseStore ?? new FakePollingLeaseStore { AcquireResult = true },
             NullLogger<PollPlanItCommandHandler>.Instance);
     }
 }
