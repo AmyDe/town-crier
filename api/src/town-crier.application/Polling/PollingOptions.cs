@@ -22,15 +22,17 @@ public sealed record PollingOptions
     public TimeSpan LeaseTtl { get; init; } = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// Gets the soft wall-clock budget for a single handler invocation. When set,
-    /// the handler checks at authority and page boundaries whether the deadline
-    /// has elapsed and exits cleanly with <see cref="PollTerminationReason.TimeBounded"/>,
-    /// saving a resumable cursor if mid-pagination. <c>null</c> disables the budget
-    /// (handler only honours the outer CancellationToken). Sized to leave the
-    /// orchestrator 60 s to publish-next + complete inside the 5-min Service Bus
-    /// message lock. See <c>docs/specs/poll-handler-soft-budget.md</c>.
+    /// Gets the soft wall-clock budget for a single handler invocation. The handler
+    /// checks at authority and page boundaries whether the deadline has elapsed and
+    /// exits cleanly with <see cref="PollTerminationReason.TimeBounded"/>, saving a
+    /// resumable cursor if mid-pagination. <c>null</c> disables the budget (handler
+    /// only honours the outer CancellationToken). Default 4 minutes — sized to fit
+    /// inside <see cref="OrchestratorLeaseTtl"/> (4.5 min), so the lease cannot
+    /// expire mid-handler and a peer cannot acquire it for a duplicate cycle. See
+    /// <c>docs/specs/polling-lease-cas.md</c> § Invariants and
+    /// <c>docs/specs/poll-handler-soft-budget.md</c>.
     /// </summary>
-    public TimeSpan? HandlerBudget { get; init; }
+    public TimeSpan? HandlerBudget { get; init; } = TimeSpan.FromMinutes(4);
 
     /// <summary>
     /// Gets the TTL requested when the orchestrator acquires a polling lease.

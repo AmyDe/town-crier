@@ -175,12 +175,6 @@ builder.Services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
     client.BaseAddress = new Uri(planItBaseUrl);
 });
 
-// Under ADR 0024 amendment (receive-and-delete) there is no Service Bus
-// message lock, so the per-handler soft budget is no longer needed — the
-// only runtime budget is the worker's replicaTimeout (600 s). HandlerBudget
-// is left null in production so a cycle runs to completion or replicaTimeout,
-// whichever comes first. The property remains on PollingOptions for targeted
-// unit tests that exercise the TimeBounded termination path.
 var pollingOptions = new PollingOptions
 {
     // Default 3 pages = 300 apps max per authority per cycle. Bounds the
