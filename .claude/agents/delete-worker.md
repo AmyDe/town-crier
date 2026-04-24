@@ -33,9 +33,9 @@ git diff --name-only HEAD $(git merge-base HEAD main) | grep -v '^<allowed-path>
    - Clean up broken imports, registrations, dead references
    - Remove tests that tested the deleted feature
    - Build to verify no compilation errors
-   - Commit: `"delete: <what was removed>"`
+   - Commit: `"delete: <what was removed> (<bead-id>)"`
 3. **Verify** — Run the full test suite. All remaining tests must pass.
-4. **Pre-flight** — Format + build + test. Commit any fixes.
+4. **Pre-flight** — Format + build + test. Commit any fixes as `"chore: pre-flight fixes (<bead-id>)"`.
 
 ### Test commands by scope
 
@@ -47,8 +47,22 @@ git diff --name-only HEAD $(git merge-base HEAD main) | grep -v '^<allowed-path>
 
 ## Completion
 
+- Update bead notes with a structured handoff before your last commit (see Bead Hygiene)
 - Do **not** close the bead — the orchestrator handles that
 - Do **not** push — the orchestrator handles merging
+
+## Bead Hygiene
+
+- **Commit trailer** — end every commit subject with `(<bead-id>)` (e.g. `delete: unused PollState variants (tc-a1b2)`). Enables `bd doctor` orphan detection.
+- **Handoff notes** — before the pre-flight commit, overwrite the bead notes in this exact shape (for a reader with zero conversation context):
+  ```bash
+  bd update <bead-id> --notes "COMPLETED: <what's done>. IN PROGRESS: <what's mid-flight>. NEXT: <concrete next step>. BLOCKER: <none|what>. KEY DECISIONS: <why the non-obvious choices>."
+  ```
+- **Side-quest work** — if the delete surfaces other dead code or broken references outside scope, file it and link provenance instead of expanding the bead:
+  ```bash
+  bd create --title="<what>" --type=task --priority=3
+  bd dep add <new-id> <current-bead-id> --type=discovered-from
+  ```
 
 ## Rules
 

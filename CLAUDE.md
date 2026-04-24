@@ -134,7 +134,10 @@ Use `bd` for ALL task tracking. Do NOT use TodoWrite, TaskCreate, or markdown fi
 
 - Run `bd prime` to load workflow context (commands, session protocol)
 - Do NOT use `bd edit` — it opens an interactive editor that blocks agents
-- Run `bd dolt push` to sync beads to GitHub (separate from `git push`)
+- `bd dolt push` runs automatically on `git push` via the bd pre-push hook (install once per clone with `bd hooks install`). No manual sync needed.
+- **End every commit subject with `(<bead-id>)`** (e.g. `fix: expire stale sessions (tc-a1b2)`). This enables `bd doctor` to detect orphan beads — work committed without closing its issue.
+- **Write handoff notes before stopping** — beads survive compaction; conversation history doesn't. Use the structured shape `COMPLETED: … IN PROGRESS: … NEXT: … BLOCKER: … KEY DECISIONS: …` (overwrite, don't append). Worker skills enforce this on their last commit.
+- **Link side-quest work with `discovered-from`** — when you spot unrelated work during a task, file a new bead and run `bd dep add <new> <current> --type=discovered-from`. Preserves the "why was this filed?" trail.
 
 ### Bead-First Rule
 
@@ -152,12 +155,15 @@ A PreToolUse hook (`.claude/require-bead.sh`) enforces this — Write/Edit on co
 
 **All code changes must happen in a worktree — never in the main working tree.** Multiple conversations often run in parallel; editing the main tree causes conflicts.
 
-Before editing code, enter an isolated worktree:
-1. `EnterWorktree` (optionally with a descriptive name)
-2. Make your changes within the worktree
-3. Use the `/ship` skill or `ExitWorktree` when done
+Before editing code, create and enter an isolated worktree:
+1. `bd worktree create <name>` (optionally `--branch <branch>`) — wraps `git worktree add`, keeps the shared beads DB visible, and avoids beads bug [GH#3311](https://github.com/gastownhall/beads/issues/3311).
+2. `EnterWorktree path: "<path printed by the command>"` to switch the session into it.
+3. Make your changes within the worktree.
+4. Use the `/ship` skill or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (has safety checks for uncommitted/unpushed work).
 
-A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. Do not try to work around it.
+A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. A second hook blocks raw `git worktree add` and directs you to `bd worktree create`. Do not try to work around them.
+
+**Who creates the worktree?** The orchestrator (top-level agent), not the subagent. Dispatch workers with the worktree path already in hand — this matches how `autopilot` and the TDD workers are wired and keeps worktree lifecycle (create, verify, remove) in one place.
 
 ### Superpowers Workflow Integration
 
@@ -224,16 +230,16 @@ Always use `--yes` or equivalent non-interactive flags when running CLI fix/form
 
 When ending a work session where code was changed:
 
-1. **File issues for remaining work** — `bd create` for anything needing follow-up
-2. **Run quality gates** — tests, linters, builds
-3. **Update issue status** — `bd close` finished work, update in-progress items
-4. **Sync and push** —
+1. **File issues for remaining work** — `bd create` for anything needing follow-up (link with `--type=discovered-from` when it came out of the current task).
+2. **Update bead notes on the in-progress bead** — overwrite with `COMPLETED: … IN PROGRESS: … NEXT: … BLOCKER: … KEY DECISIONS: …` so the next session (or post-compaction you) can resume with zero conversation context.
+3. **Run quality gates** — tests, linters, builds.
+4. **Update issue status** — `bd close` finished work, update in-progress items.
+5. **Push** —
    ```bash
    git pull --rebase
-   bd dolt push
-   git push
+   git push   # pre-push hook runs bd dolt push automatically (requires `bd hooks install`)
    ```
-5. **Verify** — `git status` should show "up to date with origin"
+6. **Verify** — `git status` should show "up to date with origin".
 
 ## Memory Management
 
@@ -325,17 +331,12 @@ Standard linting/formatting configs are bundled with their respective skills:
 
 
 <!-- BEGIN BEADS INTEGRATION v:2 profile:minimal -->
-## Beads Quick Reference
+## Beads Reference
 
-Run `bd prime` for full command reference. Key commands:
+Run `bd prime` for the current, AI-optimized workflow context (per [beads ADR-0001](https://github.com/gastownhall/beads/blob/main/claude-plugin/skills/beads/adr/0001-bd-prime-as-source-of-truth.md), that is the canonical source of truth — do not duplicate it here). Run `bd <command> --help` for specific usage.
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-bd remember "insight" # Persistent knowledge across sessions
-```
-
-Rules: `bd` for ALL tracking (not TodoWrite/TaskCreate). `bd remember` for persistent knowledge (not MEMORY.md).
+Rules:
+- `bd` for ALL tracking (not TodoWrite/TaskCreate).
+- `bd remember` for persistent knowledge across sessions (not MEMORY.md).
+- `bd doctor` when things feel wrong (stuck lock, orphan bead, worktree drift) — it diagnoses and `bd doctor --fix` remediates.
 <!-- END BEADS INTEGRATION -->
