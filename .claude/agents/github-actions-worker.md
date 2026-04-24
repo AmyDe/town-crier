@@ -31,17 +31,31 @@ Plan changes, then for each:
 
 1. **Implement** — Write/modify workflow files
 2. **Validate** — `python3 -c "import yaml; yaml.safe_load(open('<file>.yml'))"` and `actionlint` if available
-3. **Commit** — `"ci: <what was added/changed>"`
+3. **Commit** — `"ci: <what was added/changed> (<bead-id>)"`
 
 ## Pre-flight
 
 Validate all modified `.yml` files. Check: correct triggers, pinned action versions, path filters match repo, required secrets documented.
 
-Commit any fixes: `"chore: pre-flight fixes"`
+Commit any fixes: `"chore: pre-flight fixes (<bead-id>)"`
 
 ## Completion
 
+- Update bead notes with a structured handoff before your last commit (see Bead Hygiene)
 - Do **not** close the bead or push
+
+## Bead Hygiene
+
+- **Commit trailer** — end every commit subject with `(<bead-id>)` (e.g. `ci: add ios-test workflow (tc-a1b2)`). Enables `bd doctor` orphan detection.
+- **Handoff notes** — before the pre-flight commit, overwrite the bead notes in this exact shape (for a reader with zero conversation context):
+  ```bash
+  bd update <bead-id> --notes "COMPLETED: <what's done>. IN PROGRESS: <what's mid-flight>. NEXT: <concrete next step>. BLOCKER: <none|what>. KEY DECISIONS: <why the non-obvious choices>."
+  ```
+- **Side-quest work** — if you spot unrelated flaky workflows, missing path filters, or CI tech debt outside scope, file it and link provenance instead of fixing it:
+  ```bash
+  bd create --title="<what>" --type=<bug|task> --priority=3
+  bd dep add <new-id> <current-bead-id> --type=discovered-from
+  ```
 
 ## Rules
 
