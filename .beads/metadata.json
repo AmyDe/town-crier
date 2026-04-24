@@ -1,7 +1,7 @@
 {
   "database": "dolt",
   "backend": "dolt",
-  "dolt_mode": "embedded",
+  "dolt_mode": "server",
   "dolt_database": "town_crier",
   "project_id": "8309f4e2-cdba-4e7e-9acf-61d481500188"
 }

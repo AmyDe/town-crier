@@ -10,19 +10,19 @@
       {
         "hooks": [
           {
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */mobile/ios/*.swift ]] || exit 0; lint=$(cd mobile/ios && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint \"$f\" --quiet 2>/dev/null | grep \"^$f:\"); [ -z \"$lint\" ] && exit 0; jq -n --arg ctx \"SwiftLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */mobile/ios/*.swift ]] || exit 0; lint=$(cd mobile/ios \u0026\u0026 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint \"$f\" --quiet 2\u003e/dev/null | grep \"^$f:\"); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg ctx \"SwiftLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2\u003e/dev/null || true",
             "statusMessage": "Running SwiftLint...",
             "timeout": 30,
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */web/src/*.ts ]] || [[ \"$f\" == */web/src/*.tsx ]] || [[ \"$f\" == */web/src/*.css ]] || exit 0; root=$(git rev-parse --show-toplevel); lint=$(cd \"$root/web\" && npx eslint --no-warn-ignored \"$f\" 2>/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+(error|warning)' | head -20); [ -z \"$lint\" ] && exit 0; jq -n --arg ctx \"ESLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */web/src/*.ts ]] || [[ \"$f\" == */web/src/*.tsx ]] || [[ \"$f\" == */web/src/*.css ]] || exit 0; root=$(git rev-parse --show-toplevel); lint=$(cd \"$root/web\" \u0026\u0026 npx eslint --no-warn-ignored \"$f\" 2\u003e/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+(error|warning)' | head -20); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg ctx \"ESLint violations — fix before continuing:\\n$lint\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2\u003e/dev/null || true",
             "statusMessage": "Running ESLint...",
             "timeout": 30,
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */api/*.cs ]] || exit 0; root=$(git rev-parse --show-toplevel); output=$(cd \"$root/api\" && dotnet build --no-restore -q 2>&1 | head -10); echo \"$output\" | grep -qi \"error\" || exit 0; jq -n --arg ctx \"dotnet build errors — fix before continuing:\\n$output\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */api/*.cs ]] || exit 0; root=$(git rev-parse --show-toplevel); output=$(cd \"$root/api\" \u0026\u0026 dotnet build --no-restore -q 2\u003e\u00261 | head -10); echo \"$output\" | grep -qi \"error\" || exit 0; jq -n --arg ctx \"dotnet build errors — fix before continuing:\\n$output\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2\u003e/dev/null || true",
             "statusMessage": "Running dotnet build...",
             "timeout": 60,
             "type": "command"
@@ -46,7 +46,7 @@
       {
         "hooks": [
           {
-            "command": "echo '{\"decision\":\"block\",\"reason\":\"This project uses beads (bd) for ALL task tracking — TodoWrite/TaskCreate are blocked. Mapping:\\n  TodoWrite create task    → bd create --title=\\\"...\\\" --description=\\\"...\\\" --type=task --priority=2\\n  TodoWrite in_progress    → bd update <id> --status=in_progress  (or --claim)\\n  TodoWrite completed      → bd close <id>\\n  TodoRead / list tasks    → bd list --status=open\\nFor superpowers workflows: run plan-to-beads after writing-plans to create the bead ledger, then use bd commands above instead of TodoWrite throughout execution. See CLAUDE.md Superpowers Workflow Integration section.\"}'",
+            "command": "echo '{\"decision\":\"block\",\"reason\":\"This project uses beads (bd) for ALL task tracking — TodoWrite/TaskCreate are blocked. Mapping:\\n  TodoWrite create task    → bd create --title=\\\"...\\\" --description=\\\"...\\\" --type=task --priority=2\\n  TodoWrite in_progress    → bd update \u003cid\u003e --status=in_progress  (or --claim)\\n  TodoWrite completed      → bd close \u003cid\u003e\\n  TodoRead / list tasks    → bd list --status=open\\nFor superpowers workflows: run plan-to-beads after writing-plans to create the bead ledger, then use bd commands above instead of TodoWrite throughout execution. See CLAUDE.md Superpowers Workflow Integration section.\"}'",
             "timeout": 5,
             "type": "command"
           }
@@ -73,25 +73,25 @@
       {
         "hooks": [
           {
-            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+push' && { branch=$(git rev-parse --abbrev-ref HEAD); if [ \"$branch\" = \"main\" ]; then echo '{\"decision\":\"block\",\"reason\":\"You are on the main branch. Do NOT push directly to main. Instead: 1) Create a new feature branch with git checkout -b <descriptive-branch-name>, 2) Push that branch with git push -u origin <branch-name>, 3) Create a PR using gh pr create.\"}'; fi; } || true",
+            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+push' \u0026\u0026 { branch=$(git rev-parse --abbrev-ref HEAD); if [ \"$branch\" = \"main\" ]; then echo '{\"decision\":\"block\",\"reason\":\"You are on the main branch. Do NOT push directly to main. Instead: 1) Create a new feature branch with git checkout -b \u003cdescriptive-branch-name\u003e, 2) Push that branch with git push -u origin \u003cbranch-name\u003e, 3) Create a PR using gh pr create.\"}'; fi; } || true",
             "statusMessage": "Checking branch protection...",
             "timeout": 10,
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] && exit 0; lint=$(cd \"$root/mobile/ios\" && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2>/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] && exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
+            "command": "jq -r '.tool_input.command' | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.swift' | grep '^mobile/ios/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] \u0026\u0026 exit 0; lint=$(cd \"$root/mobile/ios\" \u0026\u0026 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftlint lint $staged --quiet 2\u003e/dev/null | grep -E ':[0-9]+:[0-9]+: (error|warning):'); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg reason \"SwiftLint violations in staged files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'",
             "statusMessage": "SwiftLint pre-commit check...",
             "timeout": 30,
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.command' | { read -r cmd; echo \"$cmd\" | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.ts' '*.tsx' '*.css' 2>/dev/null | grep '^web/src/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] && exit 0; lint=$(cd \"$root/web\" && npx eslint --no-warn-ignored $staged 2>/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+error' | head -20); [ -z \"$lint\" ] && exit 0; jq -n --arg reason \"ESLint errors in staged web files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'; }",
+            "command": "jq -r '.tool_input.command' | { read -r cmd; echo \"$cmd\" | grep -qE '^git\\s+commit' || exit 0; root=$(git rev-parse --show-toplevel); staged=$(git diff --cached --name-only -- '*.ts' '*.tsx' '*.css' 2\u003e/dev/null | grep '^web/src/' | sed \"s|^|$root/|\" || true); [ -z \"$staged\" ] \u0026\u0026 exit 0; lint=$(cd \"$root/web\" \u0026\u0026 npx eslint --no-warn-ignored $staged 2\u003e/dev/null | grep -E '^\\s+[0-9]+:[0-9]+\\s+error' | head -20); [ -z \"$lint\" ] \u0026\u0026 exit 0; jq -n --arg reason \"ESLint errors in staged web files — fix before committing:\\n$lint\" '{\"decision\":\"block\",\"reason\":$reason}'; }",
             "statusMessage": "ESLint pre-commit check...",
             "timeout": 30,
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.command' | grep -qE '(^|[[:space:];&|])git[[:space:]]+worktree[[:space:]]+add([[:space:];&|]|$)' && jq -n '{\"decision\":\"block\",\"reason\":\"`git worktree add` is disabled in this project. Use `bd worktree create <name>` instead — it configures beads database sharing via git common-directory discovery and avoids beads bug GH#3311 (stray root `issues.jsonl` on every commit).\\n\\nExamples:\\n  bd worktree create feature-auth\\n  bd worktree create bugfix --branch fix-1\\n\\nSee `bd worktree --help`.\"}' || true",
+            "command": "jq -r '.tool_input.command' | grep -qE '(^|[[:space:];\u0026|])git[[:space:]]+worktree[[:space:]]+add([[:space:];\u0026|]|$)' \u0026\u0026 jq -n '{\"decision\":\"block\",\"reason\":\"`git worktree add` is disabled in this project. Use `bd worktree create \u003cname\u003e` instead — it configures beads database sharing via git common-directory discovery and avoids beads bug GH#3311 (stray root `issues.jsonl` on every commit).\\n\\nExamples:\\n  bd worktree create feature-auth\\n  bd worktree create bugfix --branch fix-1\\n\\nSee `bd worktree --help`.\"}' || true",
             "statusMessage": "Checking for git worktree add...",
             "timeout": 5,
             "type": "command"
