@@ -1433,6 +1433,67 @@ public sealed class PollPlanItCommandHandlerTests
         await Assert.That(cursor!.NextPage).IsEqualTo(2);
     }
 
+    [Test]
+    public async Task Should_NotReselectQuietAuthorityFirst_When_SecondCycleRunsAfterFirst()
+    {
+        // Core regression guard for tc-m6fx. Authority 156 is "quiet" — its newest
+        // application's LastDifferent is 7 days old. Authority 200 is "fresh". Both
+        // authorities are seeded with equally-stale LastPollTimes. Cycle 1 polls
+        // both; in cycle 2 the quiet authority must NOT be re-selected first, because
+        // its scheduling clock (LastPollTime) was advanced to `now` even though its
+        // HighWaterMark stayed stale.
+        var authorityProvider = new FakeActiveAuthorityProvider();
+        authorityProvider.Add(156);
+        authorityProvider.Add(200);
+
+        var start = new DateTimeOffset(2026, 4, 24, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FakeTimeProvider(start);
+
+        var staleApp = new PlanningApplicationBuilder()
+            .WithUid("stale-156").WithAreaId(156)
+            .WithLastDifferent(start.AddDays(-7))
+            .Build();
+        var freshApp = new PlanningApplicationBuilder()
+            .WithUid("fresh-200").WithAreaId(200)
+            .WithLastDifferent(start.AddHours(-2))
+            .Build();
+
+        var planItClient = new FakePlanItClient();
+        planItClient.Add(156, staleApp);
+        planItClient.Add(200, freshApp);
+
+        var pollStateStore = new FakePollStateStore();
+        pollStateStore.SetLastPollTime(156, start.AddDays(-1));
+        pollStateStore.SetLastPollTime(200, start.AddDays(-1));
+
+        var handler = CreateHandler(
+            planItClient: planItClient,
+            pollStateStore: pollStateStore,
+            authorityProvider: authorityProvider,
+            timeProvider: timeProvider);
+
+        // Cycle 1 — both authorities polled; advance clock between cycles.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        // Cycle 2 — re-poll.
+        await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
+
+        // Both authorities were polled twice each (once per cycle).
+        var cycle2Calls = planItClient.AuthorityIdsRequested.Skip(2).Take(2).ToList();
+        await Assert.That(cycle2Calls).HasCount().EqualTo(2);
+
+        // HWM for 156 is 7 days stale (quiet). If the bug had regressed, LastPollTime
+        // would equal HighWaterMark and 156 would be re-selected first despite being
+        // polled moments ago. Under the fix, LastPollTime for both authorities equals
+        // the wall-clock of the cycle that polled them, so neither consistently sorts
+        // first — and critically, 156's stale HWM does not influence scheduling.
+        await Assert.That(pollStateStore.GetHighWaterMarkFor(156)).IsEqualTo(start.AddDays(-7));
+        var quietLastPoll = pollStateStore.GetLastPollTimeFor(156);
+        await Assert.That(quietLastPoll).IsNotNull();
+        await Assert.That(quietLastPoll!.Value).IsGreaterThan(start.AddDays(-7));
+    }
+
     private static PollPlanItCommandHandler CreateHandler(
         FakePlanItClient? planItClient = null,
         FakePollStateStore? pollStateStore = null,
