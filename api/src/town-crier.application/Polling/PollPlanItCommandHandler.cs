@@ -8,7 +8,7 @@ using TownCrier.Application.WatchZones;
 
 namespace TownCrier.Application.Polling;
 
-public sealed partial class PollPlanItCommandHandler
+public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
 {
     private readonly IPlanItClient planItClient;
     private readonly IPollStateStore pollStateStore;

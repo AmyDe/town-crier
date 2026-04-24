@@ -10,11 +10,32 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
 
     public int ReceiveCount { get; private set; }
 
+    /// <summary>
+    /// Gets the number of times <see cref="ReceiveAsync"/> has been called.
+    /// Alias of <see cref="ReceiveCount"/> — used by orchestrator tests.
+    /// </summary>
+    public int ReceiveCalls => this.ReceiveCount;
+
     public List<string> CallSequence { get; } = new();
+
+    /// <summary>
+    /// Gets or sets an exception to throw from the next <see cref="PublishAtAsync"/> call.
+    /// Cleared after first use.
+    /// </summary>
+    public Exception? ThrowOnPublish { get; set; }
 
     public void EnqueueReceivable(IPollTriggerMessage message)
     {
         this.receivable.Enqueue(message);
+    }
+
+    /// <summary>
+    /// Enqueues a synthetic trigger message with a generated ID so callers
+    /// that don't care about the message identity can use a shorter form.
+    /// </summary>
+    public void EnqueueReceivable()
+    {
+        this.receivable.Enqueue(new FakePollTriggerMessage($"M-{Guid.NewGuid():N}"));
     }
 
     public Task<IPollTriggerMessage?> ReceiveAsync(CancellationToken ct)
@@ -32,6 +53,13 @@ internal sealed class FakePollTriggerQueue : IPollTriggerQueue
     public Task PublishAtAsync(DateTimeOffset scheduledEnqueueTime, CancellationToken ct)
     {
         this.CallSequence.Add("publish");
+
+        if (this.ThrowOnPublish is { } ex)
+        {
+            this.ThrowOnPublish = null;
+            throw ex;
+        }
+
         this.ScheduledEnqueueTimes.Add(scheduledEnqueueTime);
         return Task.CompletedTask;
     }

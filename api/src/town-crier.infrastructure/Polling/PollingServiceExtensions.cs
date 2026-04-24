@@ -35,7 +35,14 @@ public static class PollingServiceExtensions
             sp.GetRequiredService<ServiceBusRestOptions>()));
 
         services.AddSingleton<PollNextRunScheduler>();
-        services.AddSingleton<PollTriggerOrchestrator>();
+        services.AddSingleton<PollTriggerOrchestrator>(sp => new PollTriggerOrchestrator(
+            sp.GetRequiredService<PollPlanItCommandHandler>(),
+            sp.GetRequiredService<IPollTriggerQueue>(),
+            sp.GetRequiredService<PollNextRunScheduler>(),
+            sp.GetRequiredService<IPollingLeaseStore>(),
+            sp.GetRequiredService<PollingOptions>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PollTriggerOrchestrator>>()));
         services.AddSingleton<PollTriggerBootstrapper>();
 
         return services;
