@@ -175,6 +175,12 @@ Create worktree:
 ```bash
 bd worktree create ".claude/worktrees/autopilot-<bead-id>" --branch "autopilot/<bead-id>"
 worktree_path="$(pwd)/.claude/worktrees/autopilot-<bead-id>"
+
+# Workaround for beads GH#3421 (open in v1.0.2): bd worktree create does NOT
+# propagate .beads/dolt-server.port, so bd commands inside the new worktree
+# fail with "database not found on Dolt server at 127.0.0.1:<random>". Symlink
+# the main tree's port file so the worker inherits the live server port.
+ln -sf ../../../../.beads/dolt-server.port "${worktree_path}/.beads/dolt-server.port"
 ```
 
 Dispatch:
