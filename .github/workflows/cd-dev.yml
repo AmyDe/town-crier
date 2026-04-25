@@ -1,5 +1,7 @@
 # Deploys all components to the dev environment.
-# Triggered on every push to main (squash merges assumed).
+# Triggered on every push to main (squash merges assumed) that touches
+# deployable code or infra. Pushes that only change docs, iOS, beads, Claude
+# config, or markdown/license/git metadata are skipped via paths-ignore.
 #
 # All components deploy unconditionally to keep dev in sync with main.
 #
@@ -20,6 +22,15 @@ name: CD Dev
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'mobile/ios/**'
+      - '.beads/**'
+      - '.claude/**'
+      - '**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
   workflow_dispatch:
 
 concurrency:
