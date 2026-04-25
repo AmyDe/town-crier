@@ -48,6 +48,10 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     !isEditing
   }
 
+  public var maxRadiusMetres: Double {
+    limits.maxRadiusMetres
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil
