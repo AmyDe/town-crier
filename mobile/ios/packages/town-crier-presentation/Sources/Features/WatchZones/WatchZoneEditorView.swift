@@ -90,12 +90,28 @@ public struct WatchZoneEditorView: View {
 
   private var radiusSection: some View {
     Section("Radius") {
-      Picker("Radius", selection: $viewModel.selectedRadiusMetres) {
-        ForEach(viewModel.availableRadiusOptions, id: \.self) { option in
-          Text(formatRadius(option)).tag(option)
+      VStack(alignment: .leading, spacing: TCSpacing.small) {
+        Text(formatRadius(viewModel.selectedRadiusMetres))
+          .font(TCTypography.bodyEmphasis)
+          .foregroundStyle(Color.tcTextPrimary)
+
+        Slider(
+          value: $viewModel.selectedRadiusMetres,
+          in: 100...viewModel.maxRadiusMetres,
+          step: 100
+        )
+        .tint(Color.tcAmber)
+        .accessibilityLabel("Radius")
+        .accessibilityValue(formatRadius(viewModel.selectedRadiusMetres))
+
+        HStack {
+          Text(formatRadius(100))
+          Spacer()
+          Text(formatRadius(viewModel.maxRadiusMetres))
         }
+        .font(TCTypography.caption)
+        .foregroundStyle(Color.tcTextSecondary)
       }
-      .pickerStyle(.segmented)
     }
   }
 
