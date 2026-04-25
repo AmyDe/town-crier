@@ -37,6 +37,12 @@ When looking up user data or entity information, query Cosmos DB first — not A
 - Never commit directly to main. Always create a feature branch and open a PR, even for small fixes.
 - When git push or tag push is blocked by branch protection hooks, immediately fall back to `gh release create` instead of debugging the hook.
 
+## Follow-up Checks
+
+Never suggest `/schedule` to check on things later (deploy verification, "did the next run succeed?", monitor post-merge behaviour, etc.). The cloud agents that `/schedule` launches do not have the local credentials this repo's checks rely on — `gh`, `az`, `auth0`, `pulumi`, the Cosmos endpoint, the Dolt-backed `bd` server, and the Azure subscription context all live on the user's workstation. A scheduled cloud agent will silently fail the moment it tries to run any of those.
+
+`/loop` is the only viable way to check on things in the future, because it runs in the user's local session with full credentials. If a follow-up check is worth offering, offer `/loop` — never `/schedule`.
+
 ## Debugging Guidelines
 
 When diagnosing issues, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (e.g., Auth0 vs Cosmos, OpenTelemetry vs logs).
