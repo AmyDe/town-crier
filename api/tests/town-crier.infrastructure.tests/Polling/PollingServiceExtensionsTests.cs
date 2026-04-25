@@ -88,6 +88,50 @@ public sealed class PollingServiceExtensionsTests
         await Assert.That(options.JitterBound).IsEqualTo(TimeSpan.FromSeconds(5));
     }
 
+    // Regression for bead tc-eijl: digest, hourly-digest, and dormant-cleanup
+    // workers run without ServiceBus__* env vars. AddServiceBusRestClient
+    // eagerly throws on missing config, which crashed those workers as exit
+    // 139 (SIGSEGV) before OTel could flush — silent failure for 3+ days.
+    // The chain helper must be a no-op when the namespace is unset.
+    [Test]
+    public async Task Should_BeNoOp_When_ServiceBusNamespaceMissing()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder().Build();
+
+        services.AddServiceBusPollingChainIfConfigured(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        await Assert.That(provider.GetService<IPollTriggerQueue>()).IsNull();
+        await Assert.That(provider.GetService<PollTriggerBootstrapper>()).IsNull();
+        await Assert.That(provider.GetService<IServiceBusRestClient>()).IsNull();
+    }
+
+    [Test]
+    public async Task Should_RegisterChain_When_ServiceBusNamespaceConfigured()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ICosmosRestClient>(new FakeCosmosRestClient());
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["ServiceBus:Namespace"] = "sb-town-crier-test",
+                ["ServiceBus:QueueName"] = "poll",
+                ["ServiceBus:SubscriptionId"] = "ae5e40cd-96ef-48d8-950a-2e22cf8f991a",
+                ["ServiceBus:ResourceGroup"] = "rg-town-crier-test",
+            })
+            .Build();
+
+        services.AddServiceBusPollingChainIfConfigured(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        await Assert.That(provider.GetService<IPollTriggerQueue>()).IsNotNull();
+        await Assert.That(provider.GetService<PollTriggerBootstrapper>()).IsNotNull();
+        await Assert.That(provider.GetService<IServiceBusRestClient>()).IsNotNull();
+    }
+
     private static ServiceProvider BuildProvider(params (string Key, string Value)[] extras)
     {
         var dict = new Dictionary<string, string?>(StringComparer.Ordinal)

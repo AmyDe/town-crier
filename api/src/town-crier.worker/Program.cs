@@ -186,12 +186,12 @@ builder.Services.AddSingleton(pollingOptions);
 
 builder.Services.AddTransient<PollPlanItCommandHandler>();
 
-// Service Bus-driven adaptive polling chain (WORKER_MODE=poll-sb). Registers the
-// REST client, the ServiceBusPollTriggerQueue adapter, the scheduler, and the
-// orchestrator. Safe to register even when the safety-net timer mode is in use —
-// the services are only resolved by the poll-sb branch below.
-builder.Services.AddServiceBusRestClient(builder.Configuration);
-builder.Services.AddPollingInfrastructure(builder.Configuration);
+// Service Bus-driven adaptive polling chain (WORKER_MODE=poll-sb / poll-bootstrap).
+// Registered ONLY when ServiceBus is configured — the digest, hourly-digest, and
+// dormant-cleanup workers run without ServiceBus__* env vars, and AddServiceBusRestClient
+// validates config eagerly at registration time. Without this guard those workers
+// crash as exit 139 (SIGSEGV) before OTel can flush. See bead tc-eijl.
+builder.Services.AddServiceBusPollingChainIfConfigured(builder.Configuration);
 
 builder.Services.AddSingleton<GenerateWeeklyDigestsCommandHandler>();
 builder.Services.AddSingleton<GenerateHourlyDigestsCommandHandler>();
