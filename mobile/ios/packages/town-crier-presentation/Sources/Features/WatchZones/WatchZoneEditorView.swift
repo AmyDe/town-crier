@@ -14,7 +14,9 @@ public struct WatchZoneEditorView: View {
     NavigationStack {
       Form {
         nameSection
-        postcodeSection
+        if viewModel.isPostcodeFieldVisible {
+          postcodeSection
+        }
         if viewModel.geocodedCoordinate != nil {
           radiusSection
           mapPreviewSection
