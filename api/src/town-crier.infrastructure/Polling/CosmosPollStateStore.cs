@@ -70,7 +70,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
             ct).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
+    public async Task<LeastRecentlyPolledResult> GetLeastRecentlyPolledAsync(
         IReadOnlyList<int> candidateAuthorityIds,
         CancellationToken ct)
     {
@@ -78,7 +78,7 @@ public sealed class CosmosPollStateStore : IPollStateStore
 
         if (candidateAuthorityIds.Count == 0)
         {
-            return [];
+            return new LeastRecentlyPolledResult([], NeverPolledCount: 0);
         }
 
         var docs = await this.client.QueryAsync(
@@ -93,10 +93,16 @@ public sealed class CosmosPollStateStore : IPollStateStore
 
         // Never-polled authorities first, then by oldest lastPollTime (scheduling clock,
         // independent of HighWaterMark). See docs/specs/poll-state-split-last-poll-time.md.
-        return candidateAuthorityIds
+        var sorted = candidateAuthorityIds
             .OrderBy(id => polledSet.ContainsKey(id) ? 1 : 0)
             .ThenBy(id => polledSet.TryGetValue(id, out var time) ? DateTimeOffset.Parse(time, CultureInfo.InvariantCulture) : DateTimeOffset.MinValue)
             .ToList();
+
+        // Never-polled cohort = candidates with no PollState document. Surfaced via
+        // the towncrier.polling.never_polled_count gauge so dashboards can detect
+        // tc-ews7-style fairness regressions directly. See bd tc-ifdl.
+        var neverPolled = candidateAuthorityIds.Count(id => !polledSet.ContainsKey(id));
+        return new LeastRecentlyPolledResult(sorted, neverPolled);
     }
 
     private static PollCursor? ReadCursor(PollStateDocument doc)

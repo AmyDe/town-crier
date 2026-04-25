@@ -153,10 +153,10 @@ public sealed class CosmosPollStateStoreTests
             authorityId: 200, busyLastPoll, busyHwm, cursor: null, CancellationToken.None);
 
         // Act
-        var order = await store.GetLeastRecentlyPolledAsync(QuietAndBusyAuthorities, CancellationToken.None);
+        var result = await store.GetLeastRecentlyPolledAsync(QuietAndBusyAuthorities, CancellationToken.None);
 
         // Assert — B sorts before A despite A having the older HWM.
-        await Assert.That(order[0]).IsEqualTo(200);
-        await Assert.That(order[1]).IsEqualTo(156);
+        await Assert.That(result.AuthorityIds[0]).IsEqualTo(200);
+        await Assert.That(result.AuthorityIds[1]).IsEqualTo(156);
     }
 }

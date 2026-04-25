@@ -66,6 +66,11 @@ public static class PollingMetrics
             unit: "s",
             description: "Age, in seconds, of the stalest authority's LastPollTime at the start of a cycle. Tagged by cycle.type, polling.authority_code, and never_polled. A never-polled authority reports (now - UnixEpoch) and never_polled=true so dashboards can distinguish it from a genuinely stale HWM.");
 
+    public static readonly Gauge<long> NeverPolledCount =
+        Meter.CreateGauge<long>(
+            "towncrier.polling.never_polled_count",
+            description: "Count of authorities with no PollState document at the start of a cycle. Tagged by cycle.type. Drains monotonically toward 0 as the Seed cycle rotates through the never-polled cohort. See bd tc-ews7 / tc-ifdl.");
+
     public static readonly Counter<long> CursorAdvanced =
         Meter.CreateCounter<long>(
             "towncrier.polling.cursor_advanced",

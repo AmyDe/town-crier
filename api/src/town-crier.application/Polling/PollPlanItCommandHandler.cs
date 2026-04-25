@@ -55,8 +55,17 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
             ? (DateTimeOffset?)(now + budget)
             : null;
         var activeIds = await this.activeAuthorityProvider.GetActiveAuthorityIdsAsync(ct).ConfigureAwait(false);
-        var sortedIds = await this.pollStateStore.GetLeastRecentlyPolledAsync(
+        var leastRecentlyPolled = await this.pollStateStore.GetLeastRecentlyPolledAsync(
             activeIds.ToList(), ct).ConfigureAwait(false);
+        var sortedIds = leastRecentlyPolled.AuthorityIds;
+
+        // Emit the never-polled cohort size at cycle start so dashboards can detect
+        // tc-ews7-style fairness regressions directly rather than via ad-hoc Cosmos
+        // queries. Drains monotonically toward 0 as the Seed cycle rotates through
+        // the cohort. See bd tc-ifdl.
+        PollingMetrics.NeverPolledCount.Record(
+            leastRecentlyPolled.NeverPolledCount,
+            cycleTypeTag);
 
         // Emit the stalest LastPollTime seen across all active authorities so dashboards
         // can answer "how far behind is the pipeline?" directly. sortedIds is ordered
