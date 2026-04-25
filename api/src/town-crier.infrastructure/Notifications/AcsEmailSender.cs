@@ -26,7 +26,7 @@ public sealed class AcsEmailSender : IEmailSender
 
         var emailMessage = new EmailMessage(
             senderAddress: SenderAddress,
-            content: new EmailContent($"Your weekly planning digest — {totalCount} new applications")
+            content: new EmailContent(BuildDigestSubject(totalCount))
             {
                 Html = htmlBody,
             },
@@ -73,7 +73,12 @@ public sealed class AcsEmailSender : IEmailSender
         }
     }
 
-    private static string BuildDigestHtml(IReadOnlyList<WatchZoneDigest> digests, int totalCount)
+    internal static string BuildDigestSubject(int totalCount)
+    {
+        return $"Planning update — {totalCount} new applications near you";
+    }
+
+    internal static string BuildDigestHtml(IReadOnlyList<WatchZoneDigest> digests, int totalCount)
     {
         var zoneBlocks = string.Join(string.Empty, digests.Select(d =>
         {
@@ -105,7 +110,7 @@ public sealed class AcsEmailSender : IEmailSender
             <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
               <tr><td style="background:#1a1a2e;padding:24px;text-align:center;">
                 <div style="font-size:20px;font-weight:700;color:#ffffff;">Town Crier</div>
-                <div style="color:#888;font-size:13px;margin-top:4px;">Weekly Planning Digest</div>
+                <div style="color:#888;font-size:13px;margin-top:4px;">Live Planning Update</div>
               </td></tr>
               <tr><td style="padding:24px;">
                 <table width="100%" cellpadding="0" cellspacing="0">
@@ -118,7 +123,7 @@ public sealed class AcsEmailSender : IEmailSender
                 </table>
               </td></tr>
               <tr><td style="padding:16px 24px;text-align:center;color:#999;font-size:12px;border-top:1px solid #eee;">
-                {totalCount} application{(totalCount != 1 ? "s" : string.Empty)} this week · <a href="https://towncrierapp.uk/settings" style="color:#999;">Unsubscribe</a>
+                {totalCount} new application{(totalCount != 1 ? "s" : string.Empty)} · <a href="https://towncrierapp.uk/settings" style="color:#999;">Unsubscribe</a>
               </td></tr>
             </table>
             </td></tr></table>
