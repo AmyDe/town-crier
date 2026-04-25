@@ -17,6 +17,28 @@ namespace TownCrier.Infrastructure.Polling;
 /// </summary>
 public static class PollingServiceExtensions
 {
+    // Skip the SB-coordinated polling chain when ServiceBus is not configured.
+    // The digest, hourly-digest, and dormant-cleanup workers run without
+    // ServiceBus__* env vars; calling AddServiceBusRestClient directly would
+    // throw InvalidOperationException at registration time, which crashed
+    // those workers as exit 139 (SIGSEGV) before OTel could flush — silent
+    // failure for 3+ days. See bead tc-eijl.
+    public static IServiceCollection AddServiceBusPollingChainIfConfigured(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        if (string.IsNullOrEmpty(configuration["ServiceBus:Namespace"]))
+        {
+            return services;
+        }
+
+        services.AddServiceBusRestClient(configuration);
+        services.AddPollingInfrastructure(configuration);
+        return services;
+    }
+
     public static IServiceCollection AddPollingInfrastructure(
         this IServiceCollection services, IConfiguration configuration)
     {
