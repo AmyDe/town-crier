@@ -66,7 +66,7 @@ internal sealed class FakePollStateStore : IPollStateStore
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
+    public Task<LeastRecentlyPolledResult> GetLeastRecentlyPolledAsync(
         IReadOnlyList<int> candidateAuthorityIds,
         CancellationToken ct)
     {
@@ -74,6 +74,7 @@ internal sealed class FakePollStateStore : IPollStateStore
             .OrderBy(id => this.states.ContainsKey(id) ? 1 : 0)
             .ThenBy(id => this.states.TryGetValue(id, out var state) ? state.LastPollTime : DateTimeOffset.MinValue)
             .ToList();
-        return Task.FromResult(sorted);
+        var neverPolled = candidateAuthorityIds.Count(id => !this.states.ContainsKey(id));
+        return Task.FromResult(new LeastRecentlyPolledResult(sorted, neverPolled));
     }
 }

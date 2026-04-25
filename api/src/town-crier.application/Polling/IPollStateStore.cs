@@ -11,7 +11,7 @@ public interface IPollStateStore
         PollCursor? cursor,
         CancellationToken ct);
 
-    Task<IReadOnlyList<int>> GetLeastRecentlyPolledAsync(
+    Task<LeastRecentlyPolledResult> GetLeastRecentlyPolledAsync(
         IReadOnlyList<int> candidateAuthorityIds,
         CancellationToken ct);
 }
