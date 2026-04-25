@@ -96,12 +96,18 @@ done
 ```
 Steady state: `active + scheduled ∈ {0, 1}`. `{a:0, s:1}` is healthy (next poll queued). `{a:1, s:0}` is the transient hand-off (handler running). If `active + scheduled > 1` at any sample, a duplicate publish-after-consume chain has appeared — **escalate before touching anything**. Per `bd memories poll-queue-max-one-message` the user has pre-authorised brute-force purge, but confirm the symptom first.
 
-**3e. Keeping up with the authority backlog (oldest HWM age)**
+**3e. Keeping up with the authority backlog (oldest LastPollTime age)**
+
+> **Naming note:** the metric is `towncrier.polling.oldest_hwm_age_seconds` for legacy reasons (PR #298 / tc-m6fx split LastPollTime from HighWaterMark but kept the metric name). The value is the **LastPollTime age**, not the HighWaterMark age — see the description in [PollingMetrics.cs](api/src/town-crier.application/Observability/PollingMetrics.cs).
+
+This check focuses on **polled** authorities (`never_polled='false'`). The never-polled cohort is covered by 3g — they always report `(now − UnixEpoch)` which is huge by design and would otherwise dominate this signal.
+
 ```bash
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | summarize latest_age_s = arg_max(timestamp, value, authority, never_polled) by bin(timestamp, 30m) | order by timestamp desc | take 10"
+  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | where never_polled == 'false' | summarize latest_age_s = arg_max(timestamp, value, authority) by bin(timestamp, 30m) | order by timestamp desc | take 10"
 ```
-Read the most recent row: `value` is how far behind the stalest authority is, in seconds; `authority` identifies it; `never_polled='true'` means that authority has no state yet (age will equal seconds-since-epoch — huge by design). Healthy means the latest `value` is within the expected cycle cadence — roughly `authorities_polled_per_cycle × cycle_interval`. A monotonically climbing value over the 6h window means the pipeline is falling behind and needs more frequency or more throughput per cycle. Report the current lag in human units (e.g. "oldest HWM is 47 min behind, authority 123").
+
+Read the most recent row: `value` is how far behind the stalest **polled** authority is, in seconds; `authority` identifies it. Healthy means the latest `value` is within the expected cycle cadence — roughly `authorities_polled_per_cycle × cycle_interval`. A monotonically climbing value over the 6h window means the pipeline is falling behind and needs more frequency or more throughput per cycle. Report the current lag in human units (e.g. "oldest LastPollTime is 47 min behind, authority 123").
 
 **3f. Bootstrap doesn't double-post during active cycle**
 ```bash
@@ -111,6 +117,26 @@ az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shar
   --analytics-query "traces | where timestamp > ago(1h) | where message contains 'Safety-net' or message contains 'queue empty' or message contains 'bootstrap' | project timestamp, cloud_RoleName, message | order by timestamp asc | take 30"
 ```
 Bootstrap (`*/30`) should acquire lease, probe, publish only if empty, release. During an orchestrator cycle (lease TTL 4.5 min), a concurrent bootstrap tick should see Held and no-op. Queue must not jump from 1 → 2 at bootstrap tick times.
+
+**3g. Backlog drain rate (never-polled cohort)**
+
+Counts authorities with no PollState document at cycle start. Should monotonically drain to 0 within 24–48h after any deploy that adds new authorities or changes selection logic. **A flat-line non-zero count over 24h is the canonical tc-ews7 starvation regression** — surface it loudly.
+
+```bash
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > ago(24h) | where name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(customDimensions['cycle.type']) | where cycle == 'seed' | summarize count_=avg(value) by bin(timestamp, 1h) | order by timestamp asc"
+```
+
+Pass conditions:
+- Latest `count_` is 0, **or**
+- Latest `count_` is strictly less than the value 6h earlier (drain in progress), **or**
+- Latest `count_` equals the count of authorities added in the most recent CD deploy and the deploy was within the last 6h (fresh-deploy transient).
+
+Fail conditions:
+- Latest `count_` is non-zero AND has been flat or rising for ≥6h after a deploy that's been live ≥6h. Point at `CycleAlternatingAuthorityProvider`, `CosmosPollStateStore.GetLeastRecentlyPolledAsync`, and `PollPlanItCommandHandler`'s natural-end branch (lines 296-308) — that's the drain path.
+- Metric is missing from telemetry. Confirm the worker image is post-tc-ifdl deploy.
+
+The Watched cycle reports its own `never_polled_count` (count of watch-zone authorities with no state — usually 0). Filter on `cycle.type == 'seed'` for the canonical drain signal; report Watched separately only if non-zero.
 
 ### 4. Exceptions sanity check
 ```bash
@@ -138,9 +164,13 @@ az containerapp job execution list --name job-tc-poll-bootstrap-prod -g rg-town-
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
   --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where cloud_RoleName == 'town-crier-worker' | where name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(value) by cloud_RoleInstance, name | order by cloud_RoleInstance asc, name asc"
 
-# Oldest-HWM age per cycle since deploy — one emission per cycle at cycle start
+# Oldest-LastPollTime age per cycle since deploy — one emission per cycle at cycle start
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
   --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | project timestamp, age_s = value, authority, never_polled, cloud_RoleInstance | order by timestamp asc"
+
+# Never-polled count per cycle since deploy — drains monotonically toward 0 (see 3g)
+az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
+  --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(customDimensions['cycle.type']) | project timestamp, count_=value, cycle, cloud_RoleInstance | order by timestamp asc"
 
 # Map cloud_RoleInstance -> execution by first-seen timestamp (matches execution startTime within a few seconds)
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
@@ -153,9 +183,9 @@ Match each `cloud_RoleInstance` to an execution by taking the execution whose `s
 
 Output three tables, in this order:
 
-1. **Invariants** — six invariants (3a–3f) + deployment status + abort check. One row each, ✅ / ⚠️ / ❌ + one line of evidence (metric name and value, or trace count, or queue sample). For 3e (oldest HWM), include the authority id and the lag in a human unit (e.g. "47m behind, authority 123").
+1. **Invariants** — seven invariants (3a–3g) + deployment status + abort check. One row each, ✅ / ⚠️ / ❌ + one line of evidence (metric name and value, or trace count, or queue sample). For 3e (oldest LastPollTime), include the authority id and the lag in a human unit (e.g. "47m behind, authority 123"). For 3g (never-polled drain), include the latest count and the trend versus 6h earlier (e.g. "0 (was 12, draining)" or "272 (flat for 18h — STARVATION)").
 2. **Runs since last deploy** — columns: `#`, execution short-name (last segment after `job-tc-poll-prod-`), start UTC, duration, status, apps, auths, cycles, notes. Include bootstrap ticks as separate rows marked `— bootstrap HH:MM —` with dashes for apps/auths/cycles and a note like "lease acquired, no-op reseed" or "reseeded (queue empty)".
-3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), `cycles_with_first_429` (must be 0 — see 3b), retry-after `p50/p90/max` in seconds with sample count (must have `max_s < 10800`; if no samples but 429s present, surface the `header_present='false'` count instead), oldest-HWM age at start vs. end of window (and whether it grew or shrank — the single most important "are we keeping up?" signal).
+3. **Totals since deploy** — window length, successful cycles, failed cycles, applications ingested, authorities polled, orchestrator lease acquisitions, bootstrap lease acquisitions, `lease.released_412` (must be 0), `cycles_with_first_429` (must be 0 — see 3b), retry-after `p50/p90/max` in seconds with sample count (must have `max_s < 10800`; if no samples but 429s present, surface the `header_present='false'` count instead), oldest-LastPollTime age at start vs. end of window (and whether it grew or shrank — the single most important "are we keeping up?" signal), never-polled count at start vs. end of window (must monotonically drain or stay 0 — the canonical tc-ews7 starvation signal).
 
 End with 1–3 watch items and one recommendation line. Keep the prose under 200 words — tables can be as long as the data demands.
 
