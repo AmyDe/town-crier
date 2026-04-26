@@ -1,0 +1,23 @@
+name: Legal docs drift check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/src/town-crier.application/Legal/Resources/**'
+      - 'mobile/ios/packages/town-crier-presentation/Sources/Resources/legal/**'
+      - 'scripts/check-legal-drift.sh'
+      - 'scripts/sync-legal.sh'
+      - '.github/workflows/legal-drift-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Verify API and iOS legal JSON match
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - run: bash scripts/check-legal-drift.sh

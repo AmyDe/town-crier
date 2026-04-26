@@ -32,7 +32,8 @@ let package = Package(
     .target(
       name: "TownCrierPresentation",
       dependencies: ["TownCrierDomain"],
-      path: "packages/town-crier-presentation/Sources"
+      path: "packages/town-crier-presentation/Sources",
+      resources: [.process("Resources/legal")]
     ),
     .testTarget(
       name: "TownCrierTests",
