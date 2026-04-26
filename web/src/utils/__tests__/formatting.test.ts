@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, statusClassName } from '../formatting';
+import { formatDate, statusClassName, statusDisplayLabel } from '../formatting';
 
 describe('formatDate', () => {
   it('formats an ISO date string as "day month year" in en-GB locale', () => {
@@ -51,5 +51,28 @@ describe('statusClassName', () => {
     };
 
     expect(statusClassName('SomeUnknownStatus', stylesWithoutDefault)).toBe('');
+  });
+});
+
+describe('statusDisplayLabel', () => {
+  it('returns user-friendly UK planning vocabulary for decision states', () => {
+    // Permitted/Conditions/Rejected are PlanIt wire strings;
+    // residents talk about applications being "Granted" or "Refused".
+    expect(statusDisplayLabel('Permitted')).toBe('Granted');
+    expect(statusDisplayLabel('Conditions')).toBe('Granted with conditions');
+    expect(statusDisplayLabel('Rejected')).toBe('Refused');
+  });
+
+  it('passes through non-decision states unchanged', () => {
+    expect(statusDisplayLabel('Undecided')).toBe('Undecided');
+    expect(statusDisplayLabel('Withdrawn')).toBe('Withdrawn');
+    expect(statusDisplayLabel('Appealed')).toBe('Appealed');
+    expect(statusDisplayLabel('Unresolved')).toBe('Unresolved');
+    expect(statusDisplayLabel('Referred')).toBe('Referred');
+    expect(statusDisplayLabel('Not Available')).toBe('Not Available');
+  });
+
+  it('returns the raw string for unknown values', () => {
+    expect(statusDisplayLabel('SomethingElse')).toBe('SomethingElse');
   });
 });
