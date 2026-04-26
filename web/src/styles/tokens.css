@@ -22,9 +22,10 @@
   --tc-text-tertiary: #5C5852;
   --tc-text-on-accent: #1C1917;
 
-  /* Status */
-  --tc-status-approved: #34C759;
-  --tc-status-refused: #FF453A;
+  /* Status (PlanIt vocabulary: Permitted / Conditions / Rejected) */
+  --tc-status-permitted: #34C759;
+  --tc-status-conditions: #FF9500;
+  --tc-status-rejected: #FF453A;
   --tc-status-pending: #FFB340;
   --tc-status-withdrawn: #8E8A85;
   --tc-status-appealed: #A78BFA;
@@ -100,9 +101,10 @@
   --tc-text-tertiary: #A39E98;
   --tc-text-on-accent: #FFFFFF;
 
-  /* Status */
-  --tc-status-approved: #1A7D37;
-  --tc-status-refused: #C42B2B;
+  /* Status (PlanIt vocabulary: Permitted / Conditions / Rejected) */
+  --tc-status-permitted: #1A7D37;
+  --tc-status-conditions: #A85A0A;
+  --tc-status-rejected: #C42B2B;
   --tc-status-pending: #C27A0A;
   --tc-status-withdrawn: #7A7570;
   --tc-status-appealed: #7C3AED;
@@ -135,9 +137,10 @@
   --tc-text-tertiary: #5C5852;
   --tc-text-on-accent: #1C1917;
 
-  /* Status — same as dark */
-  --tc-status-approved: #34C759;
-  --tc-status-refused: #FF453A;
+  /* Status — same as dark (PlanIt vocabulary) */
+  --tc-status-permitted: #34C759;
+  --tc-status-conditions: #FF9500;
+  --tc-status-rejected: #FF453A;
   --tc-status-pending: #FFB340;
   --tc-status-withdrawn: #8E8A85;
   --tc-status-appealed: #A78BFA;
@@ -171,9 +174,10 @@
     --tc-text-tertiary: #A39E98;
     --tc-text-on-accent: #FFFFFF;
 
-    /* Status */
-    --tc-status-approved: #1A7D37;
-    --tc-status-refused: #C42B2B;
+    /* Status (PlanIt vocabulary) */
+    --tc-status-permitted: #1A7D37;
+    --tc-status-conditions: #A85A0A;
+    --tc-status-rejected: #C42B2B;
     --tc-status-pending: #C27A0A;
     --tc-status-withdrawn: #7A7570;
     --tc-status-appealed: #7C3AED;

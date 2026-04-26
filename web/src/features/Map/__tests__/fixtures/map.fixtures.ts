@@ -59,7 +59,7 @@ export function aSecondApplication(overrides?: Partial<PlanningApplication>): Pl
     postcode: 'SW1A 1AA',
     description: 'Change of use from retail to residential',
     appType: 'Change of Use',
-    appState: 'Approved',
+    appState: 'Permitted',
     appSize: null,
     startDate: '2026-02-01',
     decidedDate: '2026-03-01',

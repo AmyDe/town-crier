@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useApplication } from '../useApplication';
 import { SpyApplicationRepository } from './spies/spy-application-repository';
-import { fullApplication, approvedWithDecision } from './fixtures/planning-application.fixtures';
+import { fullApplication, permittedWithDecision } from './fixtures/planning-application.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
 describe('useApplication', () => {
@@ -52,7 +52,7 @@ describe('useApplication', () => {
   it('refetches when uid changes', async () => {
     const spy = new SpyApplicationRepository();
     const first = fullApplication();
-    const second = approvedWithDecision();
+    const second = permittedWithDecision();
     let callCount = 0;
 
     const originalFetch = spy.fetchApplication.bind(spy);

@@ -70,7 +70,7 @@
 }
 
 .error {
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-size: var(--tc-text-caption);
   margin: var(--tc-space-sm) 0 0 0;
 }

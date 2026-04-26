@@ -8,7 +8,7 @@ import { SavedApplicationsPage } from '../SavedApplicationsPage';
 import { SpySavedApplicationRepository } from './spies/spy-saved-application-repository';
 import {
   savedUndecidedApplication,
-  savedApprovedApplication,
+  savedPermittedApplication,
 } from './fixtures/saved-application.fixtures';
 
 function createWrapper() {
@@ -32,7 +32,7 @@ describe('SavedApplicationsPage', () => {
   });
 
   it('renders saved applications as cards', async () => {
-    spy.listSavedResult = [savedUndecidedApplication(), savedApprovedApplication()];
+    spy.listSavedResult = [savedUndecidedApplication(), savedPermittedApplication()];
 
     render(<SavedApplicationsPage repository={spy} />, {
       wrapper: createWrapper(),
@@ -84,7 +84,7 @@ describe('SavedApplicationsPage', () => {
   });
 
   it('renders a remove button for each card', async () => {
-    spy.listSavedResult = [savedUndecidedApplication(), savedApprovedApplication()];
+    spy.listSavedResult = [savedUndecidedApplication(), savedPermittedApplication()];
 
     render(<SavedApplicationsPage repository={spy} />, {
       wrapper: createWrapper(),

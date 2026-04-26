@@ -52,9 +52,9 @@
 }
 
 .removeButton:hover {
-  color: var(--tc-status-refused);
-  border-color: var(--tc-status-refused);
-  background-color: color-mix(in srgb, var(--tc-status-refused) 10%, transparent);
+  color: var(--tc-status-rejected);
+  border-color: var(--tc-status-rejected);
+  background-color: color-mix(in srgb, var(--tc-status-rejected) 10%, transparent);
 }
 
 .removeButton:focus-visible {
@@ -64,7 +64,7 @@
 
 .error {
   padding: var(--tc-space-md);
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-size: var(--tc-text-body);
 }
 
