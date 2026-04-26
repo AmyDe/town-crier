@@ -39,12 +39,19 @@ describe('Design tokens (tokens.css)', () => {
     expect(css).toContain('--tc-surface-elevated: #161616');
   });
 
-  it('defines status tokens for all application states', () => {
-    expect(css).toContain('--tc-status-approved');
-    expect(css).toContain('--tc-status-refused');
+  it('defines status tokens for all PlanIt application states', () => {
+    expect(css).toContain('--tc-status-permitted');
+    expect(css).toContain('--tc-status-conditions');
+    expect(css).toContain('--tc-status-rejected');
     expect(css).toContain('--tc-status-pending');
     expect(css).toContain('--tc-status-withdrawn');
     expect(css).toContain('--tc-status-appealed');
+  });
+
+  it('does not define legacy status tokens (Approved/Refused)', () => {
+    // PlanIt uses Permitted/Conditions/Rejected; legacy tokens were renamed.
+    expect(css).not.toContain('--tc-status-approved');
+    expect(css).not.toContain('--tc-status-refused');
   });
 
   it('defines spacing scale tokens', () => {
