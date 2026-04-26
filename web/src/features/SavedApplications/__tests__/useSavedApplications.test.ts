@@ -7,7 +7,7 @@ import { useSavedApplications } from '../useSavedApplications';
 import { SpySavedApplicationRepository } from './spies/spy-saved-application-repository';
 import {
   savedUndecidedApplication,
-  savedApprovedApplication,
+  savedPermittedApplication,
 } from './fixtures/saved-application.fixtures';
 
 function createWrapper() {
@@ -27,7 +27,7 @@ describe('useSavedApplications', () => {
   });
 
   it('loads saved applications from the repository', async () => {
-    const apps = [savedUndecidedApplication(), savedApprovedApplication()];
+    const apps = [savedUndecidedApplication(), savedPermittedApplication()];
     spy.listSavedResult = apps;
 
     const { result } = renderHook(() => useSavedApplications(spy), {
@@ -69,7 +69,7 @@ describe('useSavedApplications', () => {
   });
 
   it('removes a saved application and refetches', async () => {
-    const apps = [savedUndecidedApplication(), savedApprovedApplication()];
+    const apps = [savedUndecidedApplication(), savedPermittedApplication()];
     spy.listSavedResult = apps;
 
     const { result } = renderHook(() => useSavedApplications(spy), {
@@ -81,7 +81,7 @@ describe('useSavedApplications', () => {
     });
 
     // After remove, the list refetches with only one app
-    spy.listSavedResult = [savedApprovedApplication()];
+    spy.listSavedResult = [savedPermittedApplication()];
     result.current.remove(apps[0]!.applicationUid);
 
     await waitFor(() => {

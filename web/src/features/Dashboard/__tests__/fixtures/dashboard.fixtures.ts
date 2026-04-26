@@ -57,7 +57,7 @@ export function anotherRecentApplication(
     postcode: 'OX1 4AS',
     description: 'Change of use from retail to residential',
     appType: 'Listed Building Consent',
-    appState: 'Approved',
+    appState: 'Permitted',
     areaName: 'Oxford City Council',
     startDate: '2026-03-10',
     url: null,
