@@ -16,4 +16,8 @@
     <ProjectReference Include="..\town-crier.domain\town-crier.domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Legal\Resources\*.json" />
+  </ItemGroup>
+
 </Project>
