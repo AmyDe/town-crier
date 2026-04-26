@@ -9,10 +9,13 @@ export function formatDate(isoDate: string): string {
 
 const STATUS_CLASS_MAP: Record<string, string> = {
   Undecided: 'statusUndecided',
-  Approved: 'statusApproved',
-  Refused: 'statusRefused',
+  Permitted: 'statusPermitted',
+  Conditions: 'statusConditions',
+  Rejected: 'statusRejected',
   Withdrawn: 'statusWithdrawn',
   Appealed: 'statusAppealed',
+  Unresolved: 'statusUnresolved',
+  Referred: 'statusReferred',
   'Not Available': 'statusNotAvailable',
 };
 
