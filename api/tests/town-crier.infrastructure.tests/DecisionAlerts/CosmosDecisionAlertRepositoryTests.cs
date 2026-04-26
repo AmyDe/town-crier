@@ -13,7 +13,7 @@ public sealed class CosmosDecisionAlertRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosDecisionAlertRepository(client);
 
-        var alert = DecisionAlert.Create("user-1", "app-uid-1", "APP/001", "123 Main St", "Approved", DateTimeOffset.UtcNow);
+        var alert = DecisionAlert.Create("user-1", "app-uid-1", "APP/001", "123 Main St", "Permitted", DateTimeOffset.UtcNow);
         await repo.SaveAsync(alert, CancellationToken.None);
 
         // Act
@@ -46,7 +46,7 @@ public sealed class CosmosDecisionAlertRepositoryTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosDecisionAlertRepository(client);
 
-        var alert = DecisionAlert.Create("user-2", "app-uid-2", "APP/002", "456 High St", "Refused", DateTimeOffset.UtcNow);
+        var alert = DecisionAlert.Create("user-2", "app-uid-2", "APP/002", "456 High St", "Rejected", DateTimeOffset.UtcNow);
 
         // Act
         await repo.SaveAsync(alert, CancellationToken.None);
@@ -54,6 +54,6 @@ public sealed class CosmosDecisionAlertRepositoryTests
         // Assert
         var result = await repo.GetByUserAndApplicationAsync("user-2", "app-uid-2", CancellationToken.None);
         await Assert.That(result).IsNotNull();
-        await Assert.That(result!.Decision).IsEqualTo("Refused");
+        await Assert.That(result!.Decision).IsEqualTo("Rejected");
     }
 }
