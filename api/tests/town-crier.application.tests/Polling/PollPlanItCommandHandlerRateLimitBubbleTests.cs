@@ -72,6 +72,7 @@ public sealed class PollPlanItCommandHandlerRateLimitBubbleTests
             authorityProvider,
             new FakeWatchZoneRepository(),
             new FakeNotificationEnqueuer(),
+            new FakeDecisionAlertDispatcher(),
             new FakeCycleSelector(CycleType.Watched),
             new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
