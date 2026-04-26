@@ -75,10 +75,10 @@ public struct RedeemOfferCodeView: View {
       Label {
         Text(message)
           .font(TCTypography.body)
-          .foregroundStyle(Color.tcStatusRefused)
+          .foregroundStyle(Color.tcStatusRejected)
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(Color.tcStatusRefused)
+          .foregroundStyle(Color.tcStatusRejected)
       }
     }
   }

@@ -22,7 +22,7 @@ struct MapViewModelTests {
   // MARK: - Loading
 
   @Test func loadApplications_populatesAnnotations() async {
-    let apps = [PlanningApplication.pendingReview, .approved, .refused, .withdrawn]
+    let apps = [PlanningApplication.pendingReview, .permitted, .rejected, .withdrawn]
     let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
@@ -51,19 +51,19 @@ struct MapViewModelTests {
   // MARK: - Annotations
 
   @Test func annotations_haveCorrectStatus() async {
-    let apps: [PlanningApplication] = [.pendingReview, .approved, .refused, .withdrawn]
+    let apps: [PlanningApplication] = [.pendingReview, .permitted, .rejected, .withdrawn]
     let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
 
     let pending = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-001") }
-    let approved = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-002") }
-    let refused = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
+    let permitted = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-002") }
+    let rejected = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
     let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
 
     #expect(pending?.status == .undecided)
-    #expect(approved?.status == .approved)
-    #expect(refused?.status == .refused)
+    #expect(permitted?.status == .permitted)
+    #expect(rejected?.status == .rejected)
     #expect(withdrawn?.status == .withdrawn)
   }
 

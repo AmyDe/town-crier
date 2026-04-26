@@ -22,14 +22,14 @@ struct ApplicationListViewModelTests {
   }
 
   private static let allApps: [PlanningApplication] = [
-    .pendingReview, .approved, .refused, .withdrawn,
+    .pendingReview, .permitted, .rejected, .withdrawn,
   ]
 
   // MARK: - Loading
   @Test func loadApplications_populatesApplicationsSortedByDateDescending() async throws {
     let older = PlanningApplication.pendingReview  // 1_700_000_000
-    let newer = PlanningApplication.approved  // 1_700_100_000
-    let newest = PlanningApplication.refused  // 1_700_200_000
+    let newer = PlanningApplication.permitted  // 1_700_100_000
+    let newest = PlanningApplication.rejected  // 1_700_200_000
     let (sut, _) = try makeSUT(applications: [older, newest, newer])
 
     await sut.loadApplications()
@@ -107,9 +107,9 @@ struct ApplicationListViewModelTests {
 
     #expect(sut.canFilter)
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.status == .approved)
+    #expect(sut.filteredApplications.first?.status == .permitted)
   }
 
   @Test func filterByStatus_proTier_canFilter() async throws {
@@ -118,16 +118,16 @@ struct ApplicationListViewModelTests {
 
     #expect(sut.canFilter)
 
-    sut.selectedStatusFilter = .refused
+    sut.selectedStatusFilter = .rejected
     #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.status == .refused)
+    #expect(sut.filteredApplications.first?.status == .rejected)
   }
 
   @Test func filterByStatus_nilFilter_showsAll() async throws {
     let (sut, _) = try makeSUT(applications: Self.allApps, tier: .personal)
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredApplications.count == 1)
 
     sut.selectedStatusFilter = nil
@@ -141,7 +141,7 @@ struct ApplicationListViewModelTests {
     )
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredApplications.isEmpty)
   }
 
@@ -375,7 +375,7 @@ struct ApplicationListViewModelTests {
   @Test func selectZone_resetsStatusFilter() async throws {
     let (sut, _, _, _) = try makeSUTWithZones(tier: .personal)
     await sut.loadApplications()
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     await sut.selectZone(.london)
     #expect(sut.selectedStatusFilter == nil)
   }

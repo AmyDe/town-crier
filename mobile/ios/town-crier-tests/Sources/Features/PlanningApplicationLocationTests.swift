@@ -41,7 +41,7 @@ struct PlanningApplicationLocationTests {
     #expect(PlanningApplication.pendingReview.location != nil)
   }
 
-  @Test func fixtures_approved_hasLocation() {
-    #expect(PlanningApplication.approved.location != nil)
+  @Test func fixtures_permitted_hasLocation() {
+    #expect(PlanningApplication.permitted.location != nil)
   }
 }

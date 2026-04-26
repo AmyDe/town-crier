@@ -34,7 +34,7 @@ struct SearchViewModelTests {
 
   @Test("search populates applications on success")
   func search_populatesApplicationsOnSuccess() async {
-    let expected = [PlanningApplication.pendingReview, .approved]
+    let expected = [PlanningApplication.pendingReview, .permitted]
     let (sut, _) = makeSUT(applications: expected)
     sut.selectedAuthorityId = 123
     sut.query = "extension"
@@ -142,7 +142,7 @@ struct SearchViewModelTests {
     let (sut, spy) = makeSUT()
     spy.searchResult = .success(
       SearchResult(
-        applications: [.pendingReview, .approved],
+        applications: [.pendingReview, .permitted],
         total: 10,
         page: 1
       )
@@ -172,7 +172,7 @@ struct SearchViewModelTests {
 
     spy.searchResult = .success(
       SearchResult(
-        applications: [.approved],
+        applications: [.permitted],
         total: 3,
         page: 2
       )
@@ -181,7 +181,7 @@ struct SearchViewModelTests {
 
     #expect(sut.applications.count == 2)
     #expect(sut.applications[0].id == PlanningApplication.pendingReview.id)
-    #expect(sut.applications[1].id == PlanningApplication.approved.id)
+    #expect(sut.applications[1].id == PlanningApplication.permitted.id)
     #expect(spy.searchCalls.last?.page == 2)
   }
 
@@ -217,13 +217,13 @@ struct SearchViewModelTests {
     await sut.search()
 
     spy.searchResult = .success(
-      SearchResult(applications: [.approved], total: 1, page: 1)
+      SearchResult(applications: [.permitted], total: 1, page: 1)
     )
     sut.query = "different"
     await sut.search()
 
     #expect(sut.applications.count == 1)
-    #expect(sut.applications[0].id == PlanningApplication.approved.id)
+    #expect(sut.applications[0].id == PlanningApplication.permitted.id)
     #expect(spy.searchCalls.last?.page == 1)
   }
 

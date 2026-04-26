@@ -109,14 +109,14 @@ struct AppCoordinatorTests {
 
   @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
     let (sut, spy) = makeSUT()
-    spy.fetchApplicationResult = .success(.approved)
+    spy.fetchApplicationResult = .success(.permitted)
     let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
     try await Task.sleep(for: .milliseconds(200))
 
-    #expect(sut.detailApplication == .approved)
+    #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 

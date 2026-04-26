@@ -16,7 +16,7 @@ struct InMemoryApplicationCacheStoreTests {
 
   @Test func storeAndRetrieve_roundTrips() async {
     let sut = InMemoryApplicationCacheStore()
-    let apps = [PlanningApplication.pendingReview, .approved]
+    let apps = [PlanningApplication.pendingReview, .permitted]
     let entry = CacheEntry(data: apps, fetchedAt: Date())
 
     await sut.store(entry, for: WatchZone.cambridge)
@@ -29,7 +29,7 @@ struct InMemoryApplicationCacheStoreTests {
   @Test func store_overwritesPreviousEntry() async {
     let sut = InMemoryApplicationCacheStore()
     let first = CacheEntry(data: [PlanningApplication.pendingReview], fetchedAt: Date())
-    let second = CacheEntry(data: [PlanningApplication.approved, .refused], fetchedAt: Date())
+    let second = CacheEntry(data: [PlanningApplication.permitted, .rejected], fetchedAt: Date())
 
     await sut.store(first, for: WatchZone.cambridge)
     await sut.store(second, for: WatchZone.cambridge)
