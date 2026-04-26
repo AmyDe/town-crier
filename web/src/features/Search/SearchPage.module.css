@@ -69,11 +69,11 @@
 }
 
 .error {
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-size: var(--tc-text-body);
   padding: var(--tc-space-md);
   background: var(--tc-surface);
-  border: 1px solid var(--tc-status-refused);
+  border: 1px solid var(--tc-status-rejected);
   border-radius: var(--tc-radius-sm);
 }
 

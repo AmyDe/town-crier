@@ -35,7 +35,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-size: var(--tc-text-body);
 }
 

@@ -93,7 +93,7 @@
 
 .deleteButton {
   padding: var(--tc-space-xs) var(--tc-space-sm);
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-weight: var(--tc-font-semibold);
   font-size: var(--tc-text-caption);
   background: none;
@@ -108,7 +108,7 @@
 }
 
 .error {
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   text-align: center;
 }
 
