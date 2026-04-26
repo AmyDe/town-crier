@@ -207,6 +207,52 @@ public static class SharedStack
             ImportId = appTracesTableImportId,
         });
 
+        // Force the App Insights workspace-based tables to honour the workspace's 30-day
+        // retention. Despite the Component resource's RetentionInDays = 30 and the
+        // workspace's RetentionInDays = 30, Azure pre-creates these tables with the legacy
+        // Application Insights default of 90 days and they do NOT inherit either setting.
+        // Verified live (2026-04-26): the Tables API returns retentionInDays=90 for all
+        // App* tables below, while non-App* tables sit at the workspace default of 30.
+        //
+        // Under PerGB2018 this means days 31–90 of data sit in archive at ~£0.019/GB/month.
+        // With current near-zero ingestion the exposure is negligible, but once prod traffic
+        // grows this could become £3–5/month of pure waste. See bead tc-23yb and the cost
+        // forecast at docs/cost-forecast/2026-04-25.md.
+        //
+        // We apply the same import-then-patch pattern used for ContainerAppConsoleLogs and
+        // AppTraces: Application Insights pre-creates each table the first time data lands,
+        // so on the initial `pulumi up` we adopt the existing resource into state and PATCH
+        // RetentionInDays down to 30; subsequent runs manage retention only. AppTraces is
+        // omitted because it is already on the Basic plan (8-day fixed retention).
+        var appTablesToCapAt30Days = new[]
+        {
+            "AppRequests",
+            "AppDependencies",
+            "AppExceptions",
+            "AppMetrics",
+            "AppPageViews",
+            "AppAvailabilityResults",
+            "AppBrowserTimings",
+            "AppEvents",
+            "AppPerformanceCounters",
+            "AppSystemEvents",
+        };
+        foreach (var tableName in appTablesToCapAt30Days)
+        {
+            var importId = $"/subscriptions/{armSubscriptionId}/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/{tableName}";
+            _ = new Table($"table-{tableName.ToLowerInvariant()}-30day", new TableArgs
+            {
+                ResourceGroupName = resourceGroup.Name,
+                WorkspaceName = logAnalytics.Name,
+                TableName = tableName,
+                RetentionInDays = 30,
+                TotalRetentionInDays = 30,
+            }, new CustomResourceOptions
+            {
+                ImportId = importId,
+            });
+        }
+
         // User-assigned managed identity for Cosmos DB data access
         var cosmosDataIdentity = new UserAssignedIdentity("id-town-crier-cosmos-data", new UserAssignedIdentityArgs
         {
