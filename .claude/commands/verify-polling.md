@@ -6,7 +6,10 @@ Verify the Town Crier prod polling pipeline is healthy. Report concisely (green/
 
 ## Fixed environment
 
-- **App Insights**: resource `appi-town-crier-shared` in `rg-town-crier-shared` (App ID `80cacb3f-59ff-4c3f-aa35-61d818e49dbd`). Use **classic schema** (`traces`, `exceptions`, `dependencies`, `requests`, `customMetrics`) — NOT workspace schema (`AppTraces` etc. return BadRequest). Invoke with `az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared --analytics-query "..."`.
+- **App Insights — two query paths (use the right one or you will get false gaps):**
+  - **Short windows (≤1h):** `az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared --analytics-query "..."` with classic schema (`traces`, `customMetrics`, `dependencies`, `exceptions`). Works reliably for recent data.
+  - **Historical windows (≥6h) and ALL deploy-anchored queries:** `az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 --analytics-query "..."` with workspace schema (`AppMetrics`, `AppTraces`, `AppDependencies`, `AppExceptions`). Column mapping vs classic: `timestamp`→`TimeGenerated`, `cloud_RoleName`→`AppRoleName`, `cloud_RoleInstance`→`AppRoleInstance`, `name`→`Name`, `value`→`Sum`, `customDimensions['k']`→`Properties['k']`, `message`→`Message`, `target`→`Target`, `resultCode`→`ResultCode`, `success`→`Success`, `duration`→`DurationMs`.
+  - **⚠️ Do NOT use `az monitor app-insights query` for windows > ~1h.** This workspace only surfaces a partial/recent slice of data through the classic API. Longer windows will look like a telemetry gap that does not exist. This is a known false-positive source that has triggered incorrect "9-hour gap" findings in multiple past sessions.
 - **Service Bus**: namespace `sb-town-crier-prod` in `rg-town-crier-prod`, queue `poll`. Use `az servicebus queue show ... --query countDetails` — `az monitor metrics list` does NOT work for `Microsoft.ServiceBus/namespaces/queues`.
 - **Jobs**: `job-tc-poll-prod` (orchestrator, KEDA ~30s cadence), `job-tc-poll-bootstrap-prod` (cron `*/30 * * * *`). Both in `rg-town-crier-prod`.
 - **Worker role name** in telemetry: `town-crier-worker`.
@@ -64,23 +67,23 @@ az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shar
 **Retry-After value distribution** — what is PlanIt actually asking us to wait? The worker emits `towncrier.polling.retry_after_seconds` (histogram) on every 429 with the parsed `Retry-After` header value, tagged `header_present=true|false`. Use this to confirm whether the configured `RetryAfterCap` (currently 3h, [PollNextRunSchedulerOptions.cs:14](api/src/town-crier.application/Polling/PollNextRunSchedulerOptions.cs)) is large enough for the values PlanIt is sending:
 
 ```bash
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(customDimensions['header_present']) | where header_present == 'true' | summarize samples=count(), p50_s=percentile(value, 50), p90_s=percentile(value, 90), p99_s=percentile(value, 99), max_s=max(value)"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(Properties['header_present']) | where header_present == 'true' | summarize samples=count(), p50_s=percentile(Sum, 50), p90_s=percentile(Sum, 90), p99_s=percentile(Sum, 99), max_s=max(Sum)"
 ```
 
 Pass condition: `max_s < 10800` (3h cap, in seconds). If `max_s ≥ 10800`, PlanIt is asking for backoffs longer than the cap and we are clipping — bump `RetryAfterCap` higher or escalate to a human. If `samples == 0` and `cycles_with_first_429 > 0`, then PlanIt is sending 429s without `Retry-After` headers; check the `header_present='false'` row separately:
 
 ```bash
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(customDimensions['header_present']), authority = tostring(customDimensions['polling.authority_code']) | summarize samples=count() by header_present, authority | order by samples desc | take 10"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(Properties['header_present']), authority = tostring(Properties['polling.authority_code']) | summarize samples=count() by header_present, authority | order by samples desc | take 10"
 ```
 
 A high `header_present='false'` count means PlanIt isn't sending `Retry-After` at all, and we're falling back to the configured default — point at `PollNextRunScheduler.cs` retry-after parsing if `cycles_with_first_429` is also non-zero.
 
 **3c. Only 1 thread at a time (lease CAS)**
 ```bash
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(6h) | where name startswith 'towncrier.polling.lease' | summarize total=sum(value), count() by name | order by name asc"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name startswith 'towncrier.polling.lease' | summarize total=sum(Sum), count() by Name | order by Name asc"
 ```
 `released_412` **MUST be 0** (non-zero = concurrent handlers stomping each other). `held_by_peer` ≥0 is fine (bootstrap/orchestrator race is expected; CAS is working). `acquired` should be non-zero.
 
@@ -103,8 +106,8 @@ Steady state: `active + scheduled ∈ {0, 1}`. `{a:0, s:1}` is healthy (next pol
 This check focuses on **polled** authorities (`never_polled='false'`). The never-polled cohort is covered by 3g — they always report `(now − UnixEpoch)` which is huge by design and would otherwise dominate this signal.
 
 ```bash
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(6h) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | where never_polled == 'false' | summarize latest_age_s = arg_max(timestamp, value, authority) by bin(timestamp, 30m) | order by timestamp desc | take 10"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(Properties['polling.authority_code']), never_polled = tostring(Properties['never_polled']) | where never_polled == 'false' | summarize arg_max(TimeGenerated, Sum, authority) by bin(TimeGenerated, 30m) | order by TimeGenerated desc | take 10"
 ```
 
 Read the most recent row: `value` is how far behind the stalest **polled** authority is, in seconds; `authority` identifies it. Healthy means the latest `value` is within the expected cycle cadence — roughly `authorities_polled_per_cycle × cycle_interval`. A monotonically climbing value over the 6h window means the pipeline is falling behind and needs more frequency or more throughput per cycle. Report the current lag in human units (e.g. "oldest LastPollTime is 47 min behind, authority 123").
@@ -123,8 +126,8 @@ Bootstrap (`*/30`) should acquire lease, probe, publish only if empty, release. 
 Counts authorities with no PollState document at cycle start. Should monotonically drain to 0 within 24–48h after any deploy that adds new authorities or changes selection logic. **A flat-line non-zero count over 24h is the canonical tc-ews7 starvation regression** — surface it loudly.
 
 ```bash
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > ago(24h) | where name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(customDimensions['cycle.type']) | where cycle == 'seed' | summarize count_=avg(value) by bin(timestamp, 1h) | order by timestamp asc"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > ago(24h) | where Name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(Properties['cycle.type']) | where cycle == 'seed' | summarize count_=avg(Sum) by bin(TimeGenerated, 1h) | order by TimeGenerated asc"
 ```
 
 Pass conditions:
@@ -160,21 +163,21 @@ az containerapp job execution list --name job-tc-poll-prod -g rg-town-crier-prod
 az containerapp job execution list --name job-tc-poll-bootstrap-prod -g rg-town-crier-prod \
   --query "[?properties.startTime >= '$DEPLOY_TS'].{name:name, start:properties.startTime, end:properties.endTime, status:properties.status}" -o json
 
-# Per-instance counters since deploy — each cloud_RoleInstance is one job execution
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where cloud_RoleName == 'town-crier-worker' | where name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(value) by cloud_RoleInstance, name | order by cloud_RoleInstance asc, name asc"
+# Per-instance counters since deploy — each AppRoleInstance is one job execution
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker' | where Name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(Sum) by AppRoleInstance, Name | order by AppRoleInstance asc, Name asc"
 
 # Oldest-LastPollTime age per cycle since deploy — one emission per cycle at cycle start
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(customDimensions['polling.authority_code']), never_polled = tostring(customDimensions['never_polled']) | project timestamp, age_s = value, authority, never_polled, cloud_RoleInstance | order by timestamp asc"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > datetime('$DEPLOY_TS') | where Name == 'towncrier.polling.oldest_hwm_age_seconds' | extend authority = tostring(Properties['polling.authority_code']), never_polled = tostring(Properties['never_polled']) | project TimeGenerated, age_s = Sum, authority, never_polled, AppRoleInstance | order by TimeGenerated asc"
 
 # Never-polled count per cycle since deploy — drains monotonically toward 0 (see 3g)
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "customMetrics | where timestamp > datetime($DEPLOY_TS) | where name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(customDimensions['cycle.type']) | project timestamp, count_=value, cycle, cloud_RoleInstance | order by timestamp asc"
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "AppMetrics | where TimeGenerated > datetime('$DEPLOY_TS') | where Name == 'towncrier.polling.never_polled_count' | extend cycle = tostring(Properties['cycle.type']) | project TimeGenerated, count_=Sum, cycle, AppRoleInstance | order by TimeGenerated asc"
 
-# Map cloud_RoleInstance -> execution by first-seen timestamp (matches execution startTime within a few seconds)
-az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "union customMetrics, traces | where timestamp > datetime($DEPLOY_TS) | where cloud_RoleName == 'town-crier-worker' | summarize firstSeen=min(timestamp), lastSeen=max(timestamp) by cloud_RoleInstance | order by firstSeen asc"
+# Map AppRoleInstance -> execution by first-seen timestamp (matches execution startTime within a few seconds)
+az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
+  --analytics-query "union AppMetrics, AppTraces | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker' | summarize firstSeen=min(TimeGenerated), lastSeen=max(TimeGenerated) by AppRoleInstance | order by firstSeen asc"
 ```
 
 Match each `cloud_RoleInstance` to an execution by taking the execution whose `startTime` is within ~30s before `firstSeen`. Short-lived instances (~6s lifetime, `lease.acquired=1` only) are bootstrap ticks — label them as such.
