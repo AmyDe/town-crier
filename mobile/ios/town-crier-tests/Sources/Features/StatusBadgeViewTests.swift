@@ -15,13 +15,18 @@ struct StatusBadgeViewTests {
     _ = sut.body
   }
 
-  @Test func init_withApprovedStatus_createsView() {
-    let sut = StatusBadgeView(status: .approved)
+  @Test func init_withPermittedStatus_createsView() {
+    let sut = StatusBadgeView(status: .permitted)
     _ = sut.body
   }
 
-  @Test func init_withRefusedStatus_createsView() {
-    let sut = StatusBadgeView(status: .refused)
+  @Test func init_withConditionsStatus_createsView() {
+    let sut = StatusBadgeView(status: .conditions)
+    _ = sut.body
+  }
+
+  @Test func init_withRejectedStatus_createsView() {
+    let sut = StatusBadgeView(status: .rejected)
     _ = sut.body
   }
 
@@ -45,10 +50,13 @@ struct StatusBadgeViewTests {
   @Test(arguments: [
     ApplicationStatus.undecided,
     ApplicationStatus.notAvailable,
-    ApplicationStatus.approved,
-    ApplicationStatus.refused,
+    ApplicationStatus.permitted,
+    ApplicationStatus.conditions,
+    ApplicationStatus.rejected,
     ApplicationStatus.withdrawn,
     ApplicationStatus.appealed,
+    ApplicationStatus.unresolved,
+    ApplicationStatus.referred,
     ApplicationStatus.unknown,
   ])
   func allStatuses_renderWithoutCrashing(status: ApplicationStatus) {

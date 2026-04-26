@@ -15,22 +15,22 @@ extension PlanningApplication {
     location: try! Coordinate(latitude: 52.2043, longitude: 0.1243)
   )
 
-  static let approved = PlanningApplication(
+  static let permitted = PlanningApplication(
     id: PlanningApplicationId("APP-002"),
     reference: ApplicationReference("2026/0099"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .approved,
+    status: .permitted,
     receivedDate: Date(timeIntervalSince1970: 1_700_100_000),
     description: "Change of use from retail to residential",
     address: "45 High Street, Cambridge, CB2 1LA",
     location: try! Coordinate(latitude: 52.2053, longitude: 0.1218)
   )
 
-  static let refused = PlanningApplication(
+  static let rejected = PlanningApplication(
     id: PlanningApplicationId("APP-003"),
     reference: ApplicationReference("2026/0150"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .refused,
+    status: .rejected,
     receivedDate: Date(timeIntervalSince1970: 1_700_200_000),
     description: "Demolition of existing garage and erection of dwelling",
     address: "8 Park Terrace, Cambridge, CB1 1JH",
@@ -48,33 +48,33 @@ extension PlanningApplication {
     location: try! Coordinate(latitude: 52.1990, longitude: 0.1190)
   )
 
-  static let approvedWithHistory = PlanningApplication(
+  static let permittedWithHistory = PlanningApplication(
     id: PlanningApplicationId("APP-006"),
     reference: ApplicationReference("2026/0310"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .approved,
+    status: .permitted,
     receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
     description: "Loft conversion with rear dormer",
     address: "5 Cherry Hinton Road, Cambridge, CB1 7AA",
     location: try! Coordinate(latitude: 52.1980, longitude: 0.1350),
     statusHistory: [
       StatusEvent(status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000)),
-      StatusEvent(status: .approved, date: Date(timeIntervalSince1970: 1_700_500_000)),
+      StatusEvent(status: .permitted, date: Date(timeIntervalSince1970: 1_700_500_000)),
     ]
   )
 
-  static let refusedWithHistory = PlanningApplication(
+  static let rejectedWithHistory = PlanningApplication(
     id: PlanningApplicationId("APP-007"),
     reference: ApplicationReference("2026/0320"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
-    status: .refused,
+    status: .rejected,
     receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
     description: "Two-storey side extension",
     address: "10 Grange Road, Cambridge, CB3 9DT",
     location: try! Coordinate(latitude: 52.2000, longitude: 0.1100),
     statusHistory: [
       StatusEvent(status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000)),
-      StatusEvent(status: .refused, date: Date(timeIntervalSince1970: 1_700_600_000)),
+      StatusEvent(status: .rejected, date: Date(timeIntervalSince1970: 1_700_600_000)),
     ]
   )
 

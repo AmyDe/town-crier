@@ -69,7 +69,7 @@ public struct LoginView: View {
   private func errorMessage(_ error: DomainError) -> some View {
     Text(errorDescription(error))
       .font(TCTypography.caption)
-      .foregroundStyle(Color.tcStatusRefused)
+      .foregroundStyle(Color.tcStatusRejected)
       .multilineTextAlignment(.center)
   }
 

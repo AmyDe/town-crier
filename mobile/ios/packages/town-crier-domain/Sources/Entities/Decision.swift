@@ -1,5 +1,6 @@
-/// The outcome of a planning decision.
+/// The outcome of a planning decision, mirroring PlanIt's wire vocabulary.
 public enum Decision: Equatable, Sendable {
-  case approved
-  case refused
+  case permitted
+  case conditions
+  case rejected
 }

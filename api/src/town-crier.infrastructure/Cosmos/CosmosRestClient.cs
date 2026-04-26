@@ -479,15 +479,6 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         }
     }
 
-    private static string GetDocumentId<T>(T document, JsonTypeInfo<T> typeInfo)
-    {
-        // Serialize to JsonElement to extract the id field
-        using var jsonDoc = JsonDocument.Parse(
-            JsonSerializer.Serialize(document, typeInfo));
-        return jsonDoc.RootElement.GetProperty("id").GetString()
-            ?? throw new InvalidOperationException("Document must have an id field");
-    }
-
     private async Task<List<T>> QueryWithFanOutAsync<T>(
         string collection,
         string sql,
@@ -632,15 +623,26 @@ internal sealed class CosmosRestClient : ICosmosRestClient
         T document,
         JsonTypeInfo<T> typeInfo)
     {
-        var documentId = GetDocumentId(document, typeInfo);
+        // Serialize once: extract the id from the same bytes used for the request body.
+        var payload = JsonSerializer.SerializeToUtf8Bytes(document, typeInfo);
+
+        string documentId;
+        using (var jsonDoc = JsonDocument.Parse(payload))
+        {
+            documentId = jsonDoc.RootElement.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("Document must have an id field");
+        }
+
         var encodedId = Uri.EscapeDataString(documentId);
         var resourceLink = $"dbs/{this.databaseName}/colls/{collection}/docs/{encodedId}";
         var request = new HttpRequestMessage(HttpMethod.Put, $"/{resourceLink}");
 
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(document, typeInfo),
-            Encoding.UTF8,
-            "application/json");
+        var content = new ByteArrayContent(payload);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json")
+        {
+            CharSet = "utf-8",
+        };
+        request.Content = content;
 
         return request;
     }

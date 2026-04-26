@@ -132,7 +132,7 @@ struct APIPlanningApplicationRepositoryTests {
               "postcode": null,
               "description": "Extension",
               "appType": "Full",
-              "appState": "Approved",
+              "appState": "Permitted",
               "appSize": null,
               "startDate": "2026-01-15",
               "decidedDate": "2026-03-01",
@@ -154,7 +154,7 @@ struct APIPlanningApplicationRepositoryTests {
     let app = result[0]
     #expect(app.statusHistory.count == 2)
     #expect(app.statusHistory[0].status == ApplicationStatus.undecided)
-    #expect(app.statusHistory[1].status == ApplicationStatus.approved)
+    #expect(app.statusHistory[1].status == ApplicationStatus.permitted)
   }
 
   @Test("fetchApplications with network error throws networkUnavailable")
@@ -259,7 +259,7 @@ struct APIPlanningApplicationRepositoryTests {
           "postcode": "OX1 4AS",
           "description": "Change of use",
           "appType": "Full",
-          "appState": "Refused",
+          "appState": "Rejected",
           "appSize": null,
           "startDate": "2026-02-01",
           "decidedDate": "2026-03-15",
@@ -280,7 +280,7 @@ struct APIPlanningApplicationRepositoryTests {
     #expect(app.id == PlanningApplicationId("app-002"))
     #expect(app.reference == ApplicationReference("2026/0099"))
     #expect(app.authority == LocalAuthority(code: "456", name: "Oxford"))
-    #expect(app.status == ApplicationStatus.refused)
+    #expect(app.status == ApplicationStatus.rejected)
     #expect(app.address == "45 High Street, Oxford, OX1 4AS")
     let expectedLocation = try Coordinate(latitude: 51.7520, longitude: -1.2577)
     #expect(app.location == expectedLocation)
@@ -317,8 +317,9 @@ struct APIPlanningApplicationRepositoryTests {
     arguments: [
       ("Undecided", ApplicationStatus.undecided),
       ("Not Available", ApplicationStatus.notAvailable),
-      ("Approved", ApplicationStatus.approved),
-      ("Refused", ApplicationStatus.refused),
+      ("Permitted", ApplicationStatus.permitted),
+      ("Conditions", ApplicationStatus.conditions),
+      ("Rejected", ApplicationStatus.rejected),
       ("Withdrawn", ApplicationStatus.withdrawn),
       ("Appealed", ApplicationStatus.appealed),
     ])

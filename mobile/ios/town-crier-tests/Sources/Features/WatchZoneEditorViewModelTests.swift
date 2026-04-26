@@ -73,6 +73,32 @@ struct WatchZoneEditorCreateTests {
     #expect(freeSut.availableRadiusOptions == limits.availableRadiusOptions)
   }
 
+  @Test func isPostcodeFieldVisible_inCreateMode_isTrue() {
+    #expect(sut.isPostcodeFieldVisible)
+  }
+
+  @Test func maxRadiusMetres_freeTier_is2000() {
+    let freeSut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .free
+    )
+    #expect(freeSut.maxRadiusMetres == 2000)
+  }
+
+  @Test func maxRadiusMetres_personalTier_is5000() {
+    #expect(sut.maxRadiusMetres == 5000)
+  }
+
+  @Test func maxRadiusMetres_proTier_is10000() {
+    let proSut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .pro
+    )
+    #expect(proSut.maxRadiusMetres == 10000)
+  }
+
   @Test func submitPostcode_autoFillsNameFromPostcode_whenNameEmpty() async {
     sut.postcodeInput = "CB1 2AD"
     spyGeocoder.geocodeResult = .success(.cambridge)
@@ -212,6 +238,10 @@ struct WatchZoneEditorEditTests {
     #expect(vm.nameInput == "My Home Zone")
     #expect(vm.postcodeInput.isEmpty)
     #expect(vm.geocodedCoordinate == .cambridge)
+  }
+
+  @Test func isPostcodeFieldVisible_inEditMode_isFalse() {
+    #expect(!sut.isPostcodeFieldVisible)
   }
 
   @Test func save_preservesExistingId() async {

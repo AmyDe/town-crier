@@ -28,7 +28,7 @@ struct OfflineAwareRepositoryTests {
   // MARK: - Online with no cache
 
   @Test func fetchApplications_online_noCached_fetchesFromRemoteAndCaches() async throws {
-    let apps = [PlanningApplication.pendingReview, .approved]
+    let apps = [PlanningApplication.pendingReview, .permitted]
     let (sut, remote, cache, _) = makeSUT(remoteApplications: apps)
 
     let result = try await sut.fetchApplications(for: WatchZone.cambridge)
@@ -82,7 +82,7 @@ struct OfflineAwareRepositoryTests {
 
   @Test func fetchApplications_offline_withCache_returnsCachedData() async throws {
     let cachedEntry = CacheEntry(
-      data: [PlanningApplication.approved],
+      data: [PlanningApplication.permitted],
       fetchedAt: Date().addingTimeInterval(-2000),
       ttlSeconds: 900
     )
@@ -91,7 +91,7 @@ struct OfflineAwareRepositoryTests {
     let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
-    #expect(result.data.first?.id == PlanningApplication.approved.id)
+    #expect(result.data.first?.id == PlanningApplication.permitted.id)
     #expect(remote.fetchApplicationsCalls.isEmpty)
   }
 
@@ -109,7 +109,7 @@ struct OfflineAwareRepositoryTests {
 
   @Test func fetchApplications_online_remoteFails_withCache_returnsCached() async throws {
     let cachedEntry = CacheEntry(
-      data: [PlanningApplication.refused],
+      data: [PlanningApplication.rejected],
       fetchedAt: Date().addingTimeInterval(-500),
       ttlSeconds: 900
     )
@@ -119,7 +119,7 @@ struct OfflineAwareRepositoryTests {
     let result = try await sut.fetchApplications(for: WatchZone.cambridge)
 
     #expect(result.data.count == 1)
-    #expect(result.data.first?.id == PlanningApplication.refused.id)
+    #expect(result.data.first?.id == PlanningApplication.rejected.id)
   }
 
   // MARK: - Online remote failure no cache propagates error

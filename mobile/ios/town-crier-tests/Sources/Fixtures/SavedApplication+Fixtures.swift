@@ -11,6 +11,6 @@ extension SavedApplication {
   static let changeOfUse = SavedApplication(
     applicationUid: "BK/2026/0099",
     savedAt: Date(timeIntervalSince1970: 1_700_100_000),
-    application: .approved
+    application: .permitted
   )
 }

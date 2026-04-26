@@ -30,16 +30,22 @@ describe("branded type constructors", () => {
 
 describe("type guards", () => {
   describe("isApplicationStatus", () => {
-    it("returns true for valid statuses", () => {
+    it("returns true for valid statuses (PlanIt vocabulary)", () => {
       expect(isApplicationStatus("Undecided")).toBe(true);
-      expect(isApplicationStatus("Approved")).toBe(true);
-      expect(isApplicationStatus("Refused")).toBe(true);
+      expect(isApplicationStatus("Permitted")).toBe(true);
+      expect(isApplicationStatus("Conditions")).toBe(true);
+      expect(isApplicationStatus("Rejected")).toBe(true);
       expect(isApplicationStatus("Withdrawn")).toBe(true);
       expect(isApplicationStatus("Appealed")).toBe(true);
+      expect(isApplicationStatus("Unresolved")).toBe(true);
+      expect(isApplicationStatus("Referred")).toBe(true);
       expect(isApplicationStatus("Not Available")).toBe(true);
     });
 
-    it("returns false for invalid statuses", () => {
+    it("returns false for legacy/invalid statuses", () => {
+      // Legacy vocabulary that PlanIt does not actually use
+      expect(isApplicationStatus("Approved")).toBe(false);
+      expect(isApplicationStatus("Refused")).toBe(false);
       expect(isApplicationStatus("invalid")).toBe(false);
       expect(isApplicationStatus("")).toBe(false);
       expect(isApplicationStatus(42)).toBe(false);

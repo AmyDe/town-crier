@@ -102,10 +102,10 @@ public struct ZonePreferencesView: View {
       Label {
         Text(error.userMessage)
           .font(.system(.body))
-          .foregroundStyle(Color.tcStatusRefused)
+          .foregroundStyle(Color.tcStatusRejected)
       } icon: {
         Image(systemName: "exclamationmark.triangle.fill")
-          .foregroundStyle(Color.tcStatusRefused)
+          .foregroundStyle(Color.tcStatusRejected)
       }
     }
   }

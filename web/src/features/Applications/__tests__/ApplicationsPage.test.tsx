@@ -7,7 +7,7 @@ import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port'
 import { cambridgeZone, oxfordZone } from './fixtures/zone.fixtures';
 import {
   undecidedApplication,
-  approvedApplication,
+  permittedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
 import type { WatchZoneSummary } from '../../../domain/types';
 
@@ -83,7 +83,7 @@ describe('ApplicationsPage', () => {
 
   it('shows applications when zone card is clicked', async () => {
     zonesPort.fetchZonesResult = [cambridgeZone()];
-    browsePort.fetchByZoneResult = [undecidedApplication(), approvedApplication()];
+    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
     const user = userEvent.setup();
 
     renderPage(zonesPort, browsePort);

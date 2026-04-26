@@ -29,7 +29,7 @@ export function aSecondApplication(
     postcode: 'CB2 1LA',
     description: 'Change of use from retail to residential',
     appType: 'Listed Building Consent',
-    appState: 'Approved',
+    appState: 'Permitted',
     areaName: 'Cambridge City Council',
     startDate: '2026-02-20',
     url: null,

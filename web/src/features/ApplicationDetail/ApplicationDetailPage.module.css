@@ -18,7 +18,7 @@
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   font-size: var(--tc-text-body);
 }
 
@@ -63,14 +63,19 @@
   color: var(--tc-status-pending);
 }
 
-.statusApproved {
-  background: color-mix(in srgb, var(--tc-status-approved) 15%, transparent);
-  color: var(--tc-status-approved);
+.statusPermitted {
+  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
+  color: var(--tc-status-permitted);
 }
 
-.statusRefused {
-  background: color-mix(in srgb, var(--tc-status-refused) 15%, transparent);
-  color: var(--tc-status-refused);
+.statusConditions {
+  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
+  color: var(--tc-status-conditions);
+}
+
+.statusRejected {
+  background: color-mix(in srgb, var(--tc-status-rejected) 15%, transparent);
+  color: var(--tc-status-rejected);
 }
 
 .statusWithdrawn {
@@ -79,6 +84,16 @@
 }
 
 .statusAppealed {
+  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
+  color: var(--tc-status-appealed);
+}
+
+.statusUnresolved {
+  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
+  color: var(--tc-text-secondary);
+}
+
+.statusReferred {
   background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
   color: var(--tc-status-appealed);
 }

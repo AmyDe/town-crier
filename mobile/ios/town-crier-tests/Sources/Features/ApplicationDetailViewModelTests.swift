@@ -51,14 +51,14 @@ struct ApplicationDetailViewModelTests {
     #expect(sut.statusLabel == "Pending")
   }
 
-  @Test func statusLabel_approved_returnsApproved() {
-    let sut = ApplicationDetailViewModel(application: .approved)
+  @Test func statusLabel_permitted_returnsGranted() {
+    let sut = ApplicationDetailViewModel(application: .permitted)
 
-    #expect(sut.statusLabel == "Approved")
+    #expect(sut.statusLabel == "Granted")
   }
 
-  @Test func statusLabel_refused_returnsRefused() {
-    let sut = ApplicationDetailViewModel(application: .refused)
+  @Test func statusLabel_rejected_returnsRefused() {
+    let sut = ApplicationDetailViewModel(application: .rejected)
 
     #expect(sut.statusLabel == "Refused")
   }
@@ -75,14 +75,14 @@ struct ApplicationDetailViewModelTests {
     #expect(sut.statusIcon == "clock")
   }
 
-  @Test func statusIcon_approved_returnsCheckmark() {
-    let sut = ApplicationDetailViewModel(application: .approved)
+  @Test func statusIcon_permitted_returnsCheckmark() {
+    let sut = ApplicationDetailViewModel(application: .permitted)
 
     #expect(sut.statusIcon == "checkmark.circle")
   }
 
-  @Test func statusIcon_refused_returnsXmark() {
-    let sut = ApplicationDetailViewModel(application: .refused)
+  @Test func statusIcon_rejected_returnsXmark() {
+    let sut = ApplicationDetailViewModel(application: .rejected)
 
     #expect(sut.statusIcon == "xmark.circle")
   }

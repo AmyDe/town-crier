@@ -16,12 +16,16 @@ struct ApplicationStatusDisplayTests {
     #expect(ApplicationStatus.notAvailable.displayLabel == "Not Available")
   }
 
-  @Test func displayLabel_approved_returnsApproved() {
-    #expect(ApplicationStatus.approved.displayLabel == "Approved")
+  @Test func displayLabel_permitted_returnsGranted() {
+    #expect(ApplicationStatus.permitted.displayLabel == "Granted")
   }
 
-  @Test func displayLabel_refused_returnsRefused() {
-    #expect(ApplicationStatus.refused.displayLabel == "Refused")
+  @Test func displayLabel_conditions_returnsGrantedWithConditions() {
+    #expect(ApplicationStatus.conditions.displayLabel == "Granted with conditions")
+  }
+
+  @Test func displayLabel_rejected_returnsRefused() {
+    #expect(ApplicationStatus.rejected.displayLabel == "Refused")
   }
 
   @Test func displayLabel_withdrawn_returnsWithdrawn() {
@@ -30,6 +34,14 @@ struct ApplicationStatusDisplayTests {
 
   @Test func displayLabel_appealed_returnsAppealed() {
     #expect(ApplicationStatus.appealed.displayLabel == "Appealed")
+  }
+
+  @Test func displayLabel_unresolved_returnsUnresolved() {
+    #expect(ApplicationStatus.unresolved.displayLabel == "Unresolved")
+  }
+
+  @Test func displayLabel_referred_returnsReferred() {
+    #expect(ApplicationStatus.referred.displayLabel == "Referred")
   }
 
   @Test func displayLabel_unknown_returnsUnknown() {
@@ -46,12 +58,16 @@ struct ApplicationStatusDisplayTests {
     #expect(ApplicationStatus.notAvailable.displayIcon == "minus.circle")
   }
 
-  @Test func displayIcon_approved_returnsCheckmarkCircle() {
-    #expect(ApplicationStatus.approved.displayIcon == "checkmark.circle")
+  @Test func displayIcon_permitted_returnsCheckmarkCircle() {
+    #expect(ApplicationStatus.permitted.displayIcon == "checkmark.circle")
   }
 
-  @Test func displayIcon_refused_returnsXmarkCircle() {
-    #expect(ApplicationStatus.refused.displayIcon == "xmark.circle")
+  @Test func displayIcon_conditions_returnsCheckmarkCircleBadgeQuestionmark() {
+    #expect(ApplicationStatus.conditions.displayIcon == "checkmark.circle.badge.questionmark")
+  }
+
+  @Test func displayIcon_rejected_returnsXmarkCircle() {
+    #expect(ApplicationStatus.rejected.displayIcon == "xmark.circle")
   }
 
   @Test func displayIcon_withdrawn_returnsArrowUturnBackwardCircle() {
@@ -70,7 +86,8 @@ struct ApplicationStatusDisplayTests {
 
   @Test func displayColor_allStatusesReturnColor() {
     let allStatuses: [ApplicationStatus] = [
-      .undecided, .notAvailable, .approved, .refused, .withdrawn, .appealed, .unknown,
+      .undecided, .permitted, .conditions, .rejected, .withdrawn, .appealed,
+      .unresolved, .referred, .notAvailable, .unknown,
     ]
     for status in allStatuses {
       // Verify each status produces a color without crashing.

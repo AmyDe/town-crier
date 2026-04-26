@@ -25,7 +25,7 @@ struct PostcodeEntryStepView: View {
       if let error = viewModel.error {
         Text(error.userMessage)
           .font(TCTypography.caption)
-          .foregroundStyle(Color.tcStatusRefused)
+          .foregroundStyle(Color.tcStatusRejected)
       }
 
       PrimaryButton {

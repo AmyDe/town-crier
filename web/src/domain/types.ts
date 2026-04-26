@@ -24,20 +24,33 @@ export function asAuthorityId(value: number): AuthorityId {
 // Union types (no enums — erasableSyntaxOnly is enabled)
 // ---------------------------------------------------------------------------
 
+/**
+ * PlanIt application state vocabulary. Identifiers are PascalCase and match the
+ * exact wire string PlanIt sends in `app_state`.
+ *
+ * The four states that trigger decision alerts are:
+ * Permitted, Conditions, Rejected, Appealed.
+ */
 export type ApplicationStatus =
   | "Undecided"
-  | "Approved"
-  | "Refused"
+  | "Permitted"
+  | "Conditions"
+  | "Rejected"
   | "Withdrawn"
   | "Appealed"
+  | "Unresolved"
+  | "Referred"
   | "Not Available";
 
 const APPLICATION_STATUSES: readonly string[] = [
   "Undecided",
-  "Approved",
-  "Refused",
+  "Permitted",
+  "Conditions",
+  "Rejected",
   "Withdrawn",
   "Appealed",
+  "Unresolved",
+  "Referred",
   "Not Available",
 ];
 

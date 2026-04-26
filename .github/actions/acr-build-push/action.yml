@@ -43,3 +43,40 @@ runs:
         docker build -f "${{ inputs.dockerfile }}" -t "$IMAGE" -t "$LATEST" .
         docker push "$IMAGE"
         docker push "$LATEST"
+
+    - name: Prune old ACR manifests (keep newest 5)
+      shell: bash
+      run: |
+        # Basic-tier ACR has no RetentionPolicy, so we prune manually after each push.
+        # Keep the 5 newest manifests (by createdTime) for this repo and delete the rest.
+        # The "latest" tag is always on the most recently pushed manifest, so it is
+        # always retained by virtue of being in the top 5.
+        REGISTRY="$(echo "${{ inputs.acr-login-server }}" | cut -d. -f1)"
+        IMAGE_NAME="${{ inputs.image-name }}"
+        KEEP=5
+
+        echo "Listing manifests for ${REGISTRY}/${IMAGE_NAME}..."
+        MANIFESTS_JSON="$(az acr manifest list-metadata \
+          --registry "$REGISTRY" \
+          --name "$IMAGE_NAME" \
+          -o json)"
+
+        # Sort by createdTime descending, drop the first KEEP entries, emit digests for the rest.
+        DIGESTS_TO_DELETE="$(echo "$MANIFESTS_JSON" \
+          | jq -r --argjson keep "$KEEP" '
+              sort_by(.createdTime) | reverse | .[$keep:] | .[].digest
+            ')"
+
+        if [ -z "$DIGESTS_TO_DELETE" ]; then
+          echo "Nothing to prune (<= ${KEEP} manifests present)."
+          exit 0
+        fi
+
+        while IFS= read -r DIGEST; do
+          [ -z "$DIGEST" ] && continue
+          echo "Deleting ${IMAGE_NAME}@${DIGEST}"
+          az acr manifest delete \
+            --registry "$REGISTRY" \
+            --name "${IMAGE_NAME}@${DIGEST}" \
+            --yes
+        done <<< "$DIGESTS_TO_DELETE"

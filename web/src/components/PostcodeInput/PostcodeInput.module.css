@@ -63,5 +63,5 @@
 .error {
   margin: 0;
   font-size: var(--tc-text-caption);
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
 }

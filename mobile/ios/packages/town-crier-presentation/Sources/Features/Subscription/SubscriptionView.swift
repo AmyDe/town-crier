@@ -99,10 +99,10 @@ public struct SubscriptionView: View {
   private func trialBadge(days: Int) -> some View {
     Text("\(days)-day free trial")
       .font(TCTypography.captionEmphasis)
-      .foregroundStyle(Color.tcStatusApproved)
+      .foregroundStyle(Color.tcStatusPermitted)
       .padding(.horizontal, TCSpacing.small)
       .padding(.vertical, TCSpacing.extraSmall)
-      .background(Color.tcStatusApproved.opacity(0.15))
+      .background(Color.tcStatusPermitted.opacity(0.15))
       .clipShape(Capsule())
   }
 
@@ -123,10 +123,10 @@ public struct SubscriptionView: View {
   private var currentPlanLabel: some View {
     HStack {
       Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(Color.tcStatusApproved)
+        .foregroundStyle(Color.tcStatusPermitted)
       Text("Current plan")
         .font(TCTypography.bodyEmphasis)
-        .foregroundStyle(Color.tcStatusApproved)
+        .foregroundStyle(Color.tcStatusPermitted)
     }
     .frame(maxWidth: .infinity)
     .frame(minHeight: 44)

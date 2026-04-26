@@ -8,7 +8,7 @@ import TownCrierDomain
 @MainActor
 struct MapViewModelSaveTests {
   private static let allApps: [PlanningApplication] = [
-    .pendingReview, .approved, .refused, .withdrawn,
+    .pendingReview, .permitted, .rejected, .withdrawn,
   ]
 
   private func makeSUT(

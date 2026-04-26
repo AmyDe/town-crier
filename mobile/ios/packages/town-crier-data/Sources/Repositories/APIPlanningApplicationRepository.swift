@@ -64,7 +64,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let lastDifferent: String
 
   func toDomain() -> PlanningApplication {
-    let status = mapAppState(appState ?? "")
+    let status = ApplicationStatus(rawValue: appState ?? "") ?? .unknown
     let location = mapLocation()
     let portalUrl = url.flatMap { URL(string: $0) }
     let receivedDate = parseDate(startDate) ?? Date()
@@ -82,25 +82,6 @@ struct PlanningApplicationDTO: Decodable, Sendable {
       portalUrl: portalUrl,
       statusHistory: history
     )
-  }
-
-  private func mapAppState(_ state: String) -> ApplicationStatus {
-    switch state {
-    case "Undecided":
-      return .undecided
-    case "Not Available":
-      return .notAvailable
-    case "Approved":
-      return .approved
-    case "Refused":
-      return .refused
-    case "Withdrawn":
-      return .withdrawn
-    case "Appealed":
-      return .appealed
-    default:
-      return .unknown
-    }
   }
 
   private func mapLocation() -> Coordinate? {
@@ -121,14 +102,10 @@ struct PlanningApplicationDTO: Decodable, Sendable {
     if let decidedDateString = decidedDate, let decidedDate = parseDate(decidedDateString) {
       let decidedStatus: ApplicationStatus
       switch status {
-      case .approved:
-        decidedStatus = .approved
-      case .refused:
-        decidedStatus = .refused
-      case .withdrawn:
-        decidedStatus = .withdrawn
-      default:
+      case .permitted, .conditions, .rejected, .withdrawn, .appealed:
         decidedStatus = status
+      default:
+        decidedStatus = .undecided
       }
       if decidedStatus != .undecided {
         history.append(StatusEvent(status: decidedStatus, date: decidedDate))

@@ -4,7 +4,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { ApplicationCard } from '../ApplicationCard';
 import {
   undecidedApplication,
-  approvedApplication,
+  permittedApplication,
+  conditionsApplication,
+  rejectedApplication,
   longDescriptionApplication,
 } from './fixtures/planning-application-summary.fixtures';
 
@@ -92,15 +94,37 @@ describe('ApplicationCard', () => {
     expect(text).toMatch(/\.\.\.$/);
   });
 
-  it('renders different status states correctly', () => {
-    const app = approvedApplication();
+  it('renders "Granted" label for Permitted state', () => {
+    const app = permittedApplication();
     render(
       <MemoryRouter>
         <ApplicationCard application={app} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Approved')).toBeInTheDocument();
+    expect(screen.getByText('Granted')).toBeInTheDocument();
+  });
+
+  it('renders "Granted with conditions" label for Conditions state', () => {
+    const app = conditionsApplication();
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Granted with conditions')).toBeInTheDocument();
+  });
+
+  it('renders "Refused" label for Rejected state', () => {
+    const app = rejectedApplication();
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Refused')).toBeInTheDocument();
   });
 
   it('handles null start date gracefully', () => {

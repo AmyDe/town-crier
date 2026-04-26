@@ -8,7 +8,7 @@ import TownCrierDomain
 @MainActor
 struct ApplicationListSavedFilterTests {
   private static let allApps: [PlanningApplication] = [
-    .pendingReview, .approved, .refused, .withdrawn,
+    .pendingReview, .permitted, .rejected, .withdrawn,
   ]
 
   // MARK: - Initial State
@@ -91,7 +91,7 @@ struct ApplicationListSavedFilterTests {
     )
 
     await sut.loadApplications()
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     await sut.activateSavedFilter()
 
     #expect(sut.selectedStatusFilter == nil)
@@ -107,11 +107,11 @@ struct ApplicationListSavedFilterTests {
 
     await sut.loadApplications()
     await sut.activateSavedFilter()
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
 
     #expect(!sut.isSavedFilterActive)
     #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.status == .approved)
+    #expect(sut.filteredApplications.first?.status == .permitted)
   }
 
   // MARK: - Saved UIDs
@@ -180,7 +180,7 @@ struct ApplicationListSavedFilterTests {
 
   @Test func savedFilter_showsSavedAppsNotInCurrentList() async {
     // The current zone's applications list contains only APP-001 and APP-002
-    let currentZoneApps: [PlanningApplication] = [.pendingReview, .approved]
+    let currentZoneApps: [PlanningApplication] = [.pendingReview, .permitted]
     // A saved application from a different zone — not in the current applications list
     let otherZoneApp = PlanningApplication(
       id: PlanningApplicationId("APP-OTHER-ZONE"),

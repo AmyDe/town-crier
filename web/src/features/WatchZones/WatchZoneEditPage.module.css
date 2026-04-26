@@ -59,7 +59,7 @@
 
 .fieldError {
   font-size: var(--tc-text-caption);
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   margin: var(--tc-space-xs) 0 0 0;
 }
 
@@ -92,7 +92,7 @@
 }
 
 .error {
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
 }
 
 .preferencesSection {

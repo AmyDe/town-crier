@@ -27,14 +27,14 @@ export function fullApplication(
   };
 }
 
-export function approvedWithDecision(
+export function permittedWithDecision(
   overrides?: Partial<PlanningApplication>,
 ): PlanningApplication {
   return {
     ...fullApplication(),
     uid: asApplicationUid('APP-002'),
     name: '2026/0099/LBC',
-    appState: 'Approved',
+    appState: 'Permitted',
     decidedDate: '2026-03-10',
     ...overrides,
   };
