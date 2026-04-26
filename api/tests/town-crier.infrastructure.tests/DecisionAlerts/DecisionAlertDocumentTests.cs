@@ -12,7 +12,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-1", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+            "user-1", "app-uid-001", "Test App", "123 High St", "Permitted", March2026);
 
         // Act
         var document = DecisionAlertDocument.FromDomain(alert);
@@ -26,7 +26,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-partition-test", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+            "user-partition-test", "app-uid-001", "Test App", "123 High St", "Permitted", March2026);
 
         // Act
         var document = DecisionAlertDocument.FromDomain(alert);
@@ -40,7 +40,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-1", "app-uid-001", "Test App", "123 High St", "Refused", March2026);
+            "user-1", "app-uid-001", "Test App", "123 High St", "Rejected", March2026);
 
         // Act
         var document = DecisionAlertDocument.FromDomain(alert);
@@ -51,7 +51,7 @@ public sealed class DecisionAlertDocumentTests
         await Assert.That(document.ApplicationUid).IsEqualTo("app-uid-001");
         await Assert.That(document.ApplicationName).IsEqualTo("Test App");
         await Assert.That(document.ApplicationAddress).IsEqualTo("123 High St");
-        await Assert.That(document.Decision).IsEqualTo("Refused");
+        await Assert.That(document.Decision).IsEqualTo("Rejected");
         await Assert.That(document.PushSent).IsFalse();
         await Assert.That(document.CreatedAt).IsEqualTo(March2026);
     }
@@ -61,7 +61,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-1", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+            "user-1", "app-uid-001", "Test App", "123 High St", "Permitted", March2026);
 
         // Act
         var document = DecisionAlertDocument.FromDomain(alert);
@@ -73,7 +73,7 @@ public sealed class DecisionAlertDocumentTests
         await Assert.That(roundTripped.ApplicationUid).IsEqualTo("app-uid-001");
         await Assert.That(roundTripped.ApplicationName).IsEqualTo("Test App");
         await Assert.That(roundTripped.ApplicationAddress).IsEqualTo("123 High St");
-        await Assert.That(roundTripped.Decision).IsEqualTo("Approved");
+        await Assert.That(roundTripped.Decision).IsEqualTo("Permitted");
         await Assert.That(roundTripped.PushSent).IsFalse();
         await Assert.That(roundTripped.CreatedAt).IsEqualTo(March2026);
     }
@@ -83,7 +83,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-1", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+            "user-1", "app-uid-001", "Test App", "123 High St", "Permitted", March2026);
         alert.MarkPushSent();
 
         // Act
@@ -99,7 +99,7 @@ public sealed class DecisionAlertDocumentTests
     {
         // Arrange
         var alert = DecisionAlert.Create(
-            "user-1", "app-uid-001", "Test App", "123 High St", "Approved", March2026);
+            "user-1", "app-uid-001", "Test App", "123 High St", "Permitted", March2026);
 
         // Act
         var document = DecisionAlertDocument.FromDomain(alert);

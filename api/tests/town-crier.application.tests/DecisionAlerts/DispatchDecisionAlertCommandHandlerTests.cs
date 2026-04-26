@@ -15,13 +15,17 @@ public sealed class DispatchDecisionAlertCommandHandlerTests
     private static readonly DateTimeOffset March2026 = new(2026, 3, 15, 10, 0, 0, TimeSpan.Zero);
 
     [Test]
-    public async Task Should_CreateDecisionAlert_When_BookmarkedApplicationReceivesDecision()
+    [Arguments("Permitted")]
+    [Arguments("Conditions")]
+    [Arguments("Rejected")]
+    [Arguments("Appealed")]
+    public async Task Should_CreateDecisionAlert_When_BookmarkedApplicationReceivesDecision(string appState)
     {
         // Arrange
         var (handler, alertRepo, savedAppRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
         await SeedBookmarkedUserWithDevice(savedAppRepo, userProfileRepo, deviceRepo);
 
-        var command = CreateCommand();
+        var command = CreateCommand(appState);
 
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
@@ -30,7 +34,7 @@ public sealed class DispatchDecisionAlertCommandHandlerTests
         await Assert.That(alertRepo.All).HasCount().EqualTo(1);
         await Assert.That(alertRepo.All[0].UserId).IsEqualTo("user-1");
         await Assert.That(alertRepo.All[0].ApplicationUid).IsEqualTo("test-uid-001");
-        await Assert.That(alertRepo.All[0].Decision).IsEqualTo("Approved");
+        await Assert.That(alertRepo.All[0].Decision).IsEqualTo(appState);
     }
 
     [Test]
