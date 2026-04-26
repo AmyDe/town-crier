@@ -217,6 +217,7 @@ public sealed class PollPlanItCommandHandlerNeverPolledMetricTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
+        FakeDecisionAlertDispatcher? decisionAlertDispatcher = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
         PollingOptions? options = null)
@@ -229,6 +230,7 @@ public sealed class PollPlanItCommandHandlerNeverPolledMetricTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
+            decisionAlertDispatcher ?? new FakeDecisionAlertDispatcher(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);

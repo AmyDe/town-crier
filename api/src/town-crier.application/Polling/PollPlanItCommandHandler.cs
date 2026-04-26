@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using Microsoft.Extensions.Logging;
+using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
@@ -17,6 +18,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
     private readonly IActiveAuthorityProvider activeAuthorityProvider;
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationEnqueuer notificationEnqueuer;
+    private readonly IDecisionAlertDispatcher decisionAlertDispatcher;
     private readonly ICycleSelector cycleSelector;
     private readonly PollingOptions options;
     private readonly ILogger<PollPlanItCommandHandler> logger;
@@ -29,6 +31,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
         IActiveAuthorityProvider activeAuthorityProvider,
         IWatchZoneRepository watchZoneRepository,
         INotificationEnqueuer notificationEnqueuer,
+        IDecisionAlertDispatcher decisionAlertDispatcher,
         ICycleSelector cycleSelector,
         PollingOptions options,
         ILogger<PollPlanItCommandHandler> logger)
@@ -40,6 +43,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
         this.activeAuthorityProvider = activeAuthorityProvider;
         this.watchZoneRepository = watchZoneRepository;
         this.notificationEnqueuer = notificationEnqueuer;
+        this.decisionAlertDispatcher = decisionAlertDispatcher;
         this.cycleSelector = cycleSelector;
         this.options = options;
         this.logger = logger;
@@ -185,7 +189,25 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
                             continue;
                         }
 
+                        // Decision-alert dispatch: detect the transition from non-decision to
+                        // a decision state (Permitted, Conditions, Rejected, Appealed) so we
+                        // notify bookmark holders exactly once per application. First-time
+                        // inserts that arrive already-decided count as a transition (existing
+                        // is null). The check happens BEFORE upsert so we compare the persisted
+                        // state, not the incoming one. Idempotency lives downstream in
+                        // DispatchDecisionAlertCommandHandler — one alert per user per app —
+                        // so re-dispatch on a same-decision-class change is harmless but we
+                        // still gate on the transition to keep observability honest.
+                        // See docs/specs/decision-state-vocabulary.md#dispatch.
+                        var isNewDecision = IsDecisionState(application.AppState)
+                            && !IsDecisionState(existing?.AppState);
+
                         await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
+
+                        if (isNewDecision)
+                        {
+                            await this.decisionAlertDispatcher.DispatchAsync(application, ct).ConfigureAwait(false);
+                        }
 
                         if (application.Latitude.HasValue && application.Longitude.HasValue)
                         {
@@ -365,6 +387,28 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
             terminationReason,
             authorityErrors,
             rateLimitRetryAfter);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="appState"/> is one of the four PlanIt strings that
+    /// represent a final decision worth alerting on: Permitted (granted),
+    /// Conditions (granted with conditions), Rejected (refused), Appealed
+    /// (refusal under appeal). Withdrawn is terminal but does NOT trigger an
+    /// alert. Comparison is case-insensitive to tolerate provider drift, and a
+    /// null/empty state is treated as non-decision. See
+    /// docs/specs/decision-state-vocabulary.md.
+    /// </summary>
+    private static bool IsDecisionState(string? appState)
+    {
+        if (string.IsNullOrEmpty(appState))
+        {
+            return false;
+        }
+
+        return string.Equals(appState, "Permitted", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(appState, "Conditions", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(appState, "Rejected", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(appState, "Appealed", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void RecordRetryAfter(TimeSpan? retryAfter, KeyValuePair<string, object?> cycleTypeTag, int authorityId)
