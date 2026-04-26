@@ -1,5 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using TownCrier.Infrastructure.Cosmos;
 
 namespace TownCrier.Infrastructure.Tests.Cosmos;
@@ -554,6 +557,26 @@ public sealed class CosmosRestClientTests
     }
 
     [Test]
+    public async Task TryReplaceDocument_SerializesDocumentExactlyOnce()
+    {
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK);
+
+        var converter = new CountingTestDocumentConverter();
+        var typeInfo = BuildCountingTypeInfo(converter);
+
+        await client.TryReplaceDocumentAsync(
+            "c",
+            new TestDocument { Id = "x", Payload = "new" },
+            "x",
+            "\"v1\"",
+            typeInfo,
+            default);
+
+        await Assert.That(converter.WriteCount).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task TryDeleteDocument_ReturnsDeleted_When204()
     {
         var (client, handler) = CreateClient();
@@ -588,6 +611,17 @@ public sealed class CosmosRestClientTests
         await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"stale\"");
     }
 
+    private static JsonTypeInfo<TestDocument> BuildCountingTypeInfo(
+        CountingTestDocumentConverter converter)
+    {
+        var options = new JsonSerializerOptions
+        {
+            TypeInfoResolver = TestSerializerContext.Default,
+            Converters = { converter },
+        };
+        return (JsonTypeInfo<TestDocument>)options.GetTypeInfo(typeof(TestDocument));
+    }
+
     private static (CosmosRestClient Client, StubHttpHandler Handler) CreateClient()
     {
         var handler = new StubHttpHandler();
@@ -601,5 +635,39 @@ public sealed class CosmosRestClientTests
         };
         var client = new CosmosRestClient(httpClient, authProvider, options);
         return (client, handler);
+    }
+
+    private sealed class CountingTestDocumentConverter : JsonConverter<TestDocument>
+    {
+        public int WriteCount { get; private set; }
+
+        public override TestDocument? Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            using var doc = JsonDocument.ParseValue(ref reader);
+            return new TestDocument
+            {
+                Id = doc.RootElement.TryGetProperty("id", out var idElem)
+                    ? idElem.GetString() ?? string.Empty
+                    : string.Empty,
+                Name = doc.RootElement.TryGetProperty("name", out var nameElem)
+                    ? nameElem.GetString() ?? string.Empty
+                    : string.Empty,
+                Payload = doc.RootElement.TryGetProperty("payload", out var payloadElem)
+                    ? payloadElem.GetString() ?? string.Empty
+                    : string.Empty,
+            };
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer, TestDocument value, JsonSerializerOptions options)
+        {
+            this.WriteCount++;
+            writer.WriteStartObject();
+            writer.WriteString("id", value.Id);
+            writer.WriteString("name", value.Name);
+            writer.WriteString("payload", value.Payload);
+            writer.WriteEndObject();
+        }
     }
 }
