@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { PlanningApplicationSummary } from '../../domain/types';
-import { formatDate, statusClassName } from '../../utils/formatting';
+import { formatDate, statusClassName, statusDisplayLabel } from '../../utils/formatting';
 import styles from './ApplicationCard.module.css';
 
 interface Props {
@@ -27,7 +27,7 @@ export function ApplicationCard({ application }: Props) {
       <div className={styles.header}>
         <h3 className={styles.reference}>{application.name}</h3>
         <span className={`${styles.statusBadge} ${statusClass}`}>
-          {application.appState}
+          {statusDisplayLabel(application.appState)}
         </span>
       </div>
 

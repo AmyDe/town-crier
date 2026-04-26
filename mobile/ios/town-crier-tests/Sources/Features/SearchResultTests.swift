@@ -8,7 +8,7 @@ struct SearchResultTests {
   @Test("hasMore returns true when more pages exist")
   func hasMore_morePagesExist_returnsTrue() {
     let result = SearchResult(
-      applications: [.pendingReview, .approved],
+      applications: [.pendingReview, .permitted],
       total: 10,
       page: 1
     )
@@ -19,7 +19,7 @@ struct SearchResultTests {
   @Test("hasMore returns false when on last page")
   func hasMore_lastPage_returnsFalse() {
     let result = SearchResult(
-      applications: [.pendingReview, .approved],
+      applications: [.pendingReview, .permitted],
       total: 2,
       page: 1
     )
@@ -41,7 +41,7 @@ struct SearchResultTests {
   @Test("hasMore returns false when total equals page times pageSize")
   func hasMore_exactlyFull_returnsFalse() {
     let result = SearchResult(
-      applications: [.pendingReview, .approved, .refused],
+      applications: [.pendingReview, .permitted, .rejected],
       total: 6,
       page: 2
     )
@@ -52,7 +52,7 @@ struct SearchResultTests {
   @Test("hasMore returns true when total exceeds page times pageSize")
   func hasMore_moreRemaining_returnsTrue() {
     let result = SearchResult(
-      applications: [.pendingReview, .approved, .refused],
+      applications: [.pendingReview, .permitted, .rejected],
       total: 7,
       page: 2
     )

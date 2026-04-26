@@ -52,7 +52,7 @@
 
 .error {
   font-size: var(--tc-text-body);
-  color: var(--tc-status-refused);
+  color: var(--tc-status-rejected);
   text-align: center;
   padding: var(--tc-space-xxl) 0;
 }

@@ -25,27 +25,27 @@ struct DeepLinkTests {
 
   @Test func handleDeepLink_applicationDetail_fetchesAndSetsDetailApplication() async throws {
     let (sut, spy) = makeSUT()
-    spy.fetchApplicationResult = .success(.approved)
+    spy.fetchApplicationResult = .success(.permitted)
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
     try await Task.sleep(for: .milliseconds(200))
 
-    #expect(sut.detailApplication == .approved)
+    #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
   @Test func handleDeepLink_successClearsPreviousError() async throws {
     let (sut, spy) = makeSUT()
     sut.deepLinkError = .applicationNotFound(PlanningApplicationId("OLD"))
-    spy.fetchApplicationResult = .success(.approved)
+    spy.fetchApplicationResult = .success(.permitted)
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
     try await Task.sleep(for: .milliseconds(200))
 
     #expect(sut.deepLinkError == nil)
-    #expect(sut.detailApplication == .approved)
+    #expect(sut.detailApplication == .permitted)
   }
 
   @Test func handleDeepLink_applicationNotFound_setsDeepLinkError() async throws {

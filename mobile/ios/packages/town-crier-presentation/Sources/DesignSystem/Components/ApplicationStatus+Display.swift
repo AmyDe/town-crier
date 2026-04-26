@@ -3,21 +3,32 @@ import TownCrierDomain
 
 extension ApplicationStatus {
 
-  /// The user-facing label for this status (e.g. "Pending", "Approved").
+  /// The user-facing label for this status.
+  ///
+  /// We translate PlanIt's wire vocabulary into the language UK residents
+  /// actually use about planning outcomes (e.g. "Refused" rather than
+  /// "Rejected"). Display strings stay local; the wire raw values remain
+  /// PlanIt-canonical.
   public var displayLabel: String {
     switch self {
     case .undecided:
       "Pending"
-    case .notAvailable:
-      "Not Available"
-    case .approved:
-      "Approved"
-    case .refused:
+    case .permitted:
+      "Granted"
+    case .conditions:
+      "Granted with conditions"
+    case .rejected:
       "Refused"
     case .withdrawn:
       "Withdrawn"
     case .appealed:
       "Appealed"
+    case .unresolved:
+      "Unresolved"
+    case .referred:
+      "Referred"
+    case .notAvailable:
+      "Not Available"
     case .unknown:
       "Unknown"
     }
@@ -28,16 +39,22 @@ extension ApplicationStatus {
     switch self {
     case .undecided:
       "clock"
-    case .notAvailable:
-      "minus.circle"
-    case .approved:
+    case .permitted:
       "checkmark.circle"
-    case .refused:
+    case .conditions:
+      "checkmark.circle.badge.questionmark"
+    case .rejected:
       "xmark.circle"
     case .withdrawn:
       "arrow.uturn.backward.circle"
     case .appealed:
       "exclamationmark.triangle"
+    case .unresolved:
+      "questionmark.circle"
+    case .referred:
+      "arrow.up.forward.circle"
+    case .notAvailable:
+      "minus.circle"
     case .unknown:
       "questionmark.circle"
     }
@@ -48,17 +65,17 @@ extension ApplicationStatus {
     switch self {
     case .undecided:
       .tcStatusPending
-    case .notAvailable:
-      .tcTextTertiary
-    case .approved:
-      .tcStatusApproved
-    case .refused:
-      .tcStatusRefused
+    case .permitted:
+      .tcStatusPermitted
+    case .conditions:
+      .tcStatusConditions
+    case .rejected:
+      .tcStatusRejected
     case .withdrawn:
       .tcStatusWithdrawn
     case .appealed:
       .tcStatusAppealed
-    case .unknown:
+    case .unresolved, .referred, .notAvailable, .unknown:
       .tcTextTertiary
     }
   }

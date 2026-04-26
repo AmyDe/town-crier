@@ -29,7 +29,7 @@ export function savedUndecidedApplication(
   };
 }
 
-export function savedApprovedApplication(
+export function savedPermittedApplication(
   overrides?: Partial<SavedApplication>,
 ): SavedApplication {
   const uid = overrides?.applicationUid ?? asApplicationUid('APP-002');
@@ -42,7 +42,7 @@ export function savedApprovedApplication(
       postcode: 'CB2 1LA',
       description: 'Change of use from retail to residential',
       appType: 'Listed Building Consent',
-      appState: 'Approved',
+      appState: 'Permitted',
       startDate: '2026-02-20',
       url: null,
       ...overrides?.application,

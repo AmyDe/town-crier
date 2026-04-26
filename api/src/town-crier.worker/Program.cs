@@ -157,6 +157,16 @@ else
 
 builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
 builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
+
+// Decision-alert dispatch — wires the polling pipeline to the
+// DispatchDecisionAlertCommandHandler via the IDecisionAlertDispatcher port.
+// The push sender is a no-op until an APNS-backed implementation lands; the
+// handler still records DecisionAlert documents so bookmark holders can see
+// the outcome on their next app launch. See docs/specs/decision-state-vocabulary.md#dispatch.
+builder.Services.AddSingleton<IDecisionAlertPushSender, NoOpDecisionAlertPushSender>();
+builder.Services.AddSingleton<DispatchDecisionAlertCommandHandler>();
+builder.Services.AddSingleton<IDecisionAlertDispatcher, DispatchDecisionAlertViaHandler>();
+
 builder.Services.AddSingleton(TimeProvider.System);
 
 var planItThrottle = new PlanItThrottleOptions();

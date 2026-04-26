@@ -43,11 +43,18 @@ extension Color {
 // MARK: - Status
 
 extension Color {
-  /// Application approved/granted.
-  public static let tcStatusApproved = Color.themed(light: 0x1A7D37, dark: 0x34C759, oled: 0x34C759)
+  /// Application granted (PlanIt `Permitted`).
+  public static let tcStatusPermitted = Color.themed(
+    light: 0x1A7D37, dark: 0x34C759, oled: 0x34C759)
 
-  /// Application refused.
-  public static let tcStatusRefused = Color.themed(light: 0xC42B2B, dark: 0xFF453A, oled: 0xFF453A)
+  /// Application granted with conditions (PlanIt `Conditions`).
+  /// Amber/orange — granted but constrained, distinct from outright approval.
+  public static let tcStatusConditions = Color.themed(
+    light: 0xB85C00, dark: 0xFF9F0A, oled: 0xFF9F0A)
+
+  /// Application refused (PlanIt `Rejected`).
+  public static let tcStatusRejected = Color.themed(
+    light: 0xC42B2B, dark: 0xFF453A, oled: 0xFF453A)
 
   /// Awaiting decision / under review.
   public static let tcStatusPending = Color.themed(light: 0xC27A0A, dark: 0xFFB340, oled: 0xFFB340)

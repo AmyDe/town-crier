@@ -131,8 +131,9 @@ public struct MapView: View {
         if viewModel.canFilter {
           filterChip(label: "All", status: nil)
           filterChip(label: "Pending", status: .undecided)
-          filterChip(label: "Approved", status: .approved)
-          filterChip(label: "Refused", status: .refused)
+          filterChip(label: "Granted", status: .permitted)
+          filterChip(label: "Granted with conditions", status: .conditions)
+          filterChip(label: "Refused", status: .rejected)
           filterChip(label: "Withdrawn", status: .withdrawn)
           filterChip(label: "Appealed", status: .appealed)
         }

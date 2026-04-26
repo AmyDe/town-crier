@@ -11,29 +11,29 @@ struct StatusTimelineViewModelTests {
   // MARK: - Timeline Items from History
 
   @Test func timelineItems_withHistory_returnsFormattedItems() {
-    let sut = ApplicationDetailViewModel(application: .approvedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .permittedWithHistory)
 
     #expect(sut.timelineItems.count == 2)
     #expect(sut.timelineItems[0].label == "Pending")
-    #expect(sut.timelineItems[1].label == "Approved")
+    #expect(sut.timelineItems[1].label == "Granted")
   }
 
   @Test func timelineItems_withHistory_formatsDateInUKLocale() {
-    let sut = ApplicationDetailViewModel(application: .approvedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .permittedWithHistory)
 
     // 1_700_000_000 = 14 Nov 2023 UTC
     #expect(sut.timelineItems[0].dateFormatted == "14 Nov 2023")
   }
 
   @Test func timelineItems_lastItemIsCurrentStatus() {
-    let sut = ApplicationDetailViewModel(application: .approvedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .permittedWithHistory)
 
     #expect(sut.timelineItems[0].isCurrent == false)
     #expect(sut.timelineItems[1].isCurrent == true)
   }
 
   @Test func timelineItems_includesStatusIcon() {
-    let sut = ApplicationDetailViewModel(application: .approvedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .permittedWithHistory)
 
     #expect(sut.timelineItems[0].icon == "clock")
     #expect(sut.timelineItems[1].icon == "checkmark.circle")
@@ -53,7 +53,7 @@ struct StatusTimelineViewModelTests {
   // MARK: - Refused outcome
 
   @Test func timelineItems_refused_showsRefusedAsCurrent() {
-    let sut = ApplicationDetailViewModel(application: .refusedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .rejectedWithHistory)
 
     #expect(sut.timelineItems.last?.label == "Refused")
     #expect(sut.timelineItems.last?.isCurrent == true)
@@ -63,7 +63,7 @@ struct StatusTimelineViewModelTests {
   // MARK: - Has Timeline
 
   @Test func hasTimeline_withHistory_returnsTrue() {
-    let sut = ApplicationDetailViewModel(application: .approvedWithHistory)
+    let sut = ApplicationDetailViewModel(application: .permittedWithHistory)
 
     #expect(sut.hasTimeline)
   }

@@ -3,7 +3,7 @@ import { asApplicationUid } from '../../domain/types';
 import type { ApplicationRepository } from '../../domain/ports/application-repository';
 import type { DesignationRepository } from '../../domain/ports/designation-repository';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
-import { formatDate, statusClassName } from '../../utils/formatting';
+import { formatDate, statusClassName, statusDisplayLabel } from '../../utils/formatting';
 import { useApplication } from './useApplication';
 import { useDesignations } from './useDesignations';
 import { useSavedApplication } from './useSavedApplication';
@@ -58,7 +58,7 @@ export function ApplicationDetailPage({
             className={`${styles.badge ?? ''} ${statusClassName(application.appState, styles)}`}
             role="status"
           >
-            {application.appState}
+            {statusDisplayLabel(application.appState)}
           </span>
         </div>
         <p className={styles.address}>{application.address}</p>

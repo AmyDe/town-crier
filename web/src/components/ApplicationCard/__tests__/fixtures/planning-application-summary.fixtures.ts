@@ -19,7 +19,7 @@ export function undecidedApplication(
   };
 }
 
-export function approvedApplication(
+export function permittedApplication(
   overrides?: Partial<PlanningApplicationSummary>,
 ): PlanningApplicationSummary {
   return {
@@ -29,9 +29,45 @@ export function approvedApplication(
     postcode: 'CB2 1LA',
     description: 'Change of use from retail to residential',
     appType: 'Listed Building Consent',
-    appState: 'Approved',
+    appState: 'Permitted',
     areaName: 'Cambridge City Council',
     startDate: '2026-02-20',
+    url: null,
+    ...overrides,
+  };
+}
+
+export function conditionsApplication(
+  overrides?: Partial<PlanningApplicationSummary>,
+): PlanningApplicationSummary {
+  return {
+    uid: asApplicationUid('APP-004'),
+    name: '2026/0114/FUL',
+    address: '7 Trumpington Street, Cambridge, CB2 1QA',
+    postcode: 'CB2 1QA',
+    description: 'Single-storey side extension with landscaping conditions',
+    appType: 'Full Planning',
+    appState: 'Conditions',
+    areaName: 'Cambridge City Council',
+    startDate: '2026-02-25',
+    url: null,
+    ...overrides,
+  };
+}
+
+export function rejectedApplication(
+  overrides?: Partial<PlanningApplicationSummary>,
+): PlanningApplicationSummary {
+  return {
+    uid: asApplicationUid('APP-005'),
+    name: '2026/0150/FUL',
+    address: '3 King Street, Cambridge, CB1 1LH',
+    postcode: 'CB1 1LH',
+    description: 'Demolition of garage and erection of two-storey dwelling',
+    appType: 'Full Planning',
+    appState: 'Rejected',
+    areaName: 'Cambridge City Council',
+    startDate: '2026-02-28',
     url: null,
     ...overrides,
   };

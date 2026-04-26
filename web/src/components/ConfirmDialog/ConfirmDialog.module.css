@@ -62,7 +62,7 @@
 
 .confirmButton {
   padding: var(--tc-space-sm) var(--tc-space-md);
-  background: var(--tc-status-refused);
+  background: var(--tc-status-rejected);
   border: none;
   border-radius: var(--tc-radius-md);
   font-size: var(--tc-text-body);

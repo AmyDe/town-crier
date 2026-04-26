@@ -8,7 +8,7 @@ import { SpyDesignationRepository } from './spies/spy-designation-repository';
 import { SpySavedApplicationRepository } from './spies/spy-saved-application-repository';
 import {
   fullApplication,
-  approvedWithDecision,
+  permittedWithDecision,
   applicationWithoutCoordinates,
   applicationWithoutUrl,
 } from './fixtures/planning-application.fixtures';
@@ -119,11 +119,20 @@ describe('ApplicationDetailPage', () => {
 
   it('renders the decided date when present', async () => {
     const appRepo = new SpyApplicationRepository();
-    appRepo.fetchApplicationResult = approvedWithDecision();
+    appRepo.fetchApplicationResult = permittedWithDecision();
 
     renderPage(appRepo);
 
     expect(await screen.findByText('10 Mar 2026')).toBeInTheDocument();
+  });
+
+  it('renders user-facing label "Granted" for Permitted state', async () => {
+    const appRepo = new SpyApplicationRepository();
+    appRepo.fetchApplicationResult = permittedWithDecision();
+
+    renderPage(appRepo);
+
+    expect(await screen.findByText('Granted')).toBeInTheDocument();
   });
 
   it('renders the consultation date when present', async () => {

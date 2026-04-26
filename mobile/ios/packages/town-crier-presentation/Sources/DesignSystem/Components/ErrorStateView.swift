@@ -60,9 +60,9 @@ public struct ErrorStateView: View {
     case .networkUnavailable:
       return .tcStatusPending
     case .sessionExpired, .authenticationFailed:
-      return .tcStatusRefused
+      return .tcStatusRejected
     default:
-      return .tcStatusRefused
+      return .tcStatusRejected
     }
   }
 }

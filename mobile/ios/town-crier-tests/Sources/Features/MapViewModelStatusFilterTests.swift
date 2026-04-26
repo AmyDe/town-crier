@@ -8,7 +8,7 @@ import TownCrierDomain
 @MainActor
 struct MapViewModelStatusFilterTests {
   private static let allApps: [PlanningApplication] = [
-    .pendingReview, .approved, .refused, .withdrawn,
+    .pendingReview, .permitted, .rejected, .withdrawn,
   ]
 
   private func makeSUT(
@@ -51,7 +51,7 @@ struct MapViewModelStatusFilterTests {
     let (sut, _, _) = makeSUT(applications: Self.allApps, tier: .free)
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredAnnotations.count == 4)
   }
 
@@ -59,9 +59,9 @@ struct MapViewModelStatusFilterTests {
     let (sut, _, _) = makeSUT(applications: Self.allApps, tier: .personal)
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredAnnotations.count == 1)
-    #expect(sut.filteredAnnotations.first?.status == .approved)
+    #expect(sut.filteredAnnotations.first?.status == .permitted)
   }
 
   @Test func filteredAnnotations_nilFilter_showsAll() async {
@@ -79,7 +79,7 @@ struct MapViewModelStatusFilterTests {
     )
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     #expect(sut.filteredAnnotations.isEmpty)
   }
 
@@ -99,8 +99,8 @@ struct MapViewModelStatusFilterTests {
       zoneSelectionKey: "test.zone"
     )
     await sut.loadApplications()
-    sut.selectedStatusFilter = .approved
-    #expect(sut.selectedStatusFilter == .approved)
+    sut.selectedStatusFilter = .permitted
+    #expect(sut.selectedStatusFilter == .permitted)
 
     await sut.selectZone(.london)
 
@@ -197,7 +197,7 @@ struct MapViewModelStatusFilterTests {
     )
 
     await sut.loadApplications()
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
     await sut.activateSavedFilter()
 
     #expect(sut.selectedStatusFilter == nil)
@@ -222,11 +222,11 @@ struct MapViewModelStatusFilterTests {
 
     await sut.loadApplications()
     await sut.activateSavedFilter()
-    sut.selectedStatusFilter = .approved
+    sut.selectedStatusFilter = .permitted
 
     #expect(!sut.isSavedFilterActive)
     #expect(sut.filteredAnnotations.count == 1)
-    #expect(sut.filteredAnnotations.first?.status == .approved)
+    #expect(sut.filteredAnnotations.first?.status == .permitted)
   }
 
   @Test func savedFilter_selectZone_deactivatesSavedFilter() async throws {

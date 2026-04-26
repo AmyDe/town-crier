@@ -38,12 +38,18 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
   }
 
   public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {
-    guard status == .undecided else {
-      throw DomainError.invalidStatusTransition(
-        from: status,
-        to: decision == .approved ? .approved : .refused
-      )
+    let decidedStatus: ApplicationStatus
+    switch decision {
+    case .permitted:
+      decidedStatus = .permitted
+    case .conditions:
+      decidedStatus = .conditions
+    case .rejected:
+      decidedStatus = .rejected
     }
-    status = decision == .approved ? .approved : .refused
+    guard status == .undecided else {
+      throw DomainError.invalidStatusTransition(from: status, to: decidedStatus)
+    }
+    status = decidedStatus
   }
 }
