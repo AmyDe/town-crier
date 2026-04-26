@@ -5,7 +5,7 @@ import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port'
 import type { PlanningApplicationSummary } from '../../../domain/types';
 import {
   undecidedApplication,
-  approvedApplication,
+  permittedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
 import { cambridgeZone } from './fixtures/zone.fixtures';
 
@@ -24,7 +24,7 @@ describe('useApplications', () => {
 
   it('fetches applications when zone is selected', async () => {
     const spy = new SpyApplicationsBrowsePort();
-    spy.fetchByZoneResult = [undecidedApplication(), approvedApplication()];
+    spy.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
     const zone = cambridgeZone();
 
     const { result } = renderHook(() => useApplications(spy));
