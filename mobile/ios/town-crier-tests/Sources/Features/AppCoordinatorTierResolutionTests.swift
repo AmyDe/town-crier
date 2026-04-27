@@ -55,6 +55,22 @@ struct AppCoordinatorTierResolutionTests {
 
   // MARK: - resolveSubscriptionTier
 
+  @Test
+  func resolveSubscriptionTier_callsCreateOnUserProfileRepository_toEnsureServerProfile() async {
+    // Bug tc-a6it: iOS sign-in must POST /v1/me so new TestFlight users get a
+    // Cosmos UserProfile document. The server's CreateUserProfileCommandHandler
+    // is idempotent — calling create() on every tier resolve safely backfills
+    // the profile for users who don't have one yet, and is a no-op when they do.
+    let (sut, _, _, profileSpy) = makeSUT(
+      authSession: .valid,
+      serverProfile: makeServerProfile(tier: .free)
+    )
+
+    await sut.resolveSubscriptionTier()
+
+    #expect(profileSpy.createCallCount >= 1)
+  }
+
   @Test func resolveSubscriptionTier_picksHighestFromAllSources() async {
     let (sut, _, _, _) = makeSUT(
       authSession: .pro,
