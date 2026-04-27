@@ -37,6 +37,19 @@ platform :ios do
                   "See GitHub release for changes."
                 end
 
+    # Force manual signing using the match-installed App Store profile.
+    # The project itself uses CODE_SIGN_STYLE: Automatic for local Xcode work,
+    # but on CI we override to Manual so xcodebuild won't try (and fail) to
+    # contact Apple for a Development profile.
+    team_id = ENV.fetch("APPLE_TEAM_ID")
+    profile_specifier = "match AppStore uk.towncrierapp.mobile"
+    xcargs = [
+      "CODE_SIGN_STYLE=Manual",
+      "DEVELOPMENT_TEAM=#{team_id}",
+      "PROVISIONING_PROFILE_SPECIFIER=\"#{profile_specifier}\"",
+      "CODE_SIGN_IDENTITY=\"Apple Distribution\"",
+    ].join(" ")
+
     build_app(
       project: "TownCrier.xcodeproj",
       scheme: "TownCrierApp",
@@ -45,6 +58,15 @@ platform :ios do
       output_directory: "build",
       output_name: "TownCrier.ipa",
       clean: true,
+      xcargs: xcargs,
+      export_options: {
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: team_id,
+        provisioningProfiles: {
+          "uk.towncrierapp.mobile" => profile_specifier,
+        },
+      },
     )
 
     upload_to_testflight(
