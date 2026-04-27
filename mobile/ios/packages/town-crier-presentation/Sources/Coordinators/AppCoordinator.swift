@@ -189,11 +189,11 @@ public final class AppCoordinator: ObservableObject {
   /// and the server profile, then picks the highest tier. Mirrors the same
   /// triple-source resolution used by ``SettingsViewModel``.
   ///
-  /// When the server profile fetch fails (network error, auth issue, etc.),
-  /// the previously resolved tier is preserved rather than silently falling
-  /// back to `.free`. This prevents paying users from losing feature access
-  /// due to transient failures — a common scenario on the simulator where
-  /// JWT and StoreKit always return `.free`.
+  /// When the server profile ensure-or-fetch call fails (network error, auth
+  /// issue, etc.), the previously resolved tier is preserved rather than
+  /// silently falling back to `.free`. This prevents paying users from losing
+  /// feature access due to transient failures — a common scenario on the
+  /// simulator where JWT and StoreKit always return `.free`.
   public func resolveSubscriptionTier() async {
     var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
@@ -203,8 +203,9 @@ public final class AppCoordinator: ObservableObject {
     let serverTier = await ensureServerProfileTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
 
-    // When the server profile fetch failed (nil), fall back to the current
-    // tier so we don't downgrade a paying user due to a transient error.
+    // When the server profile ensure-or-fetch call failed (nil), fall back to
+    // the current tier so we don't downgrade a paying user due to a transient
+    // error.
     let effectiveServerTier = serverTier ?? subscriptionTier
     let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
     subscriptionTier = resolved
