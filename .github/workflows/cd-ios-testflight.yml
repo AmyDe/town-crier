@@ -1,0 +1,180 @@
+# Builds and uploads the iOS app to TestFlight when a v* tag is pushed AND
+# mobile/ios/** has changed since the previous tag. Tags are created by the
+# /release skill via `gh release create`.
+#
+# Spec: docs/specs/ios-testflight-automation.md
+# ADR:  docs/adr/0025-ios-testflight-release-automation.md
+#
+# Requires repo-level secrets:
+#   APP_STORE_CONNECT_API_KEY_ID       — App Store Connect API key ID
+#   APP_STORE_CONNECT_ISSUER_ID        — App Store Connect issuer ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT  — base64-encoded .p8 file contents
+#   MATCH_PASSWORD                     — fastlane match decryption password
+#   MATCH_GIT_DEPLOY_KEY               — SSH private key with write access to
+#                                        AmyDe/town-crier-ios-certs
+#   APPLE_TEAM_ID                      — 10-character Apple Developer team ID
+
+name: CD iOS TestFlight
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: cd-ios-testflight-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed to annotate the GH release with the build number
+
+jobs:
+  guard:
+    name: Detect iOS changes since previous tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should-release: ${{ steps.check.outputs.should-release }}
+      previous-tag: ${{ steps.check.outputs.previous-tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect mobile/ios/ changes
+        id: check
+        run: |
+          set -euo pipefail
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [ -z "$PREV" ]; then
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "previous-tag=" >> "$GITHUB_OUTPUT"
+            echo "::notice::No previous tag — first release, will upload to TestFlight"
+            exit 0
+          fi
+          if git diff --quiet "${PREV}..${GITHUB_REF_NAME}" -- mobile/ios/; then
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "previous-tag=${PREV}" >> "$GITHUB_OUTPUT"
+            echo "::notice::No mobile/ios/ changes since ${PREV} — skipping TestFlight upload"
+          else
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "previous-tag=${PREV}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Detected mobile/ios/ changes since ${PREV} — will upload to TestFlight"
+          fi
+
+  test:
+    name: iOS unit tests + lint
+    needs: guard
+    if: needs.guard.outputs.should-release == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Cache SPM build
+        uses: actions/cache@v4
+        with:
+          path: mobile/ios/.build
+          key: spm-test-${{ hashFiles('mobile/ios/Package.resolved') }}
+          restore-keys: |
+            spm-test-
+
+      - name: Install swiftlint
+        run: brew install swiftlint
+
+      - name: SwiftLint (strict)
+        working-directory: mobile/ios
+        run: swiftlint lint --strict
+
+      - name: SPM tests
+        working-directory: mobile/ios
+        run: swift test
+
+  testflight:
+    name: Build & upload to TestFlight
+    needs: [guard, test]
+    if: needs.guard.outputs.should-release == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: spm-archive-${{ hashFiles('mobile/ios/Package.resolved', 'mobile/ios/packages/**/Package.resolved') }}
+          restore-keys: |
+            spm-archive-
+            spm-
+
+      - name: Setup Ruby + bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: mobile/ios
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: mobile/ios
+        run: xcodegen generate
+
+      - name: Setup SSH key for fastlane match
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_GIT_DEPLOY_KEY }}
+
+      - name: Decode App Store Connect API key
+        env:
+          P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          mkdir -p mobile/ios/fastlane/certs
+          printf '%s' "$P8_BASE64" | base64 --decode > mobile/ios/fastlane/certs/AuthKey.p8
+          chmod 600 mobile/ios/fastlane/certs/AuthKey.p8
+
+      - name: Capture GitHub release notes for TestFlight changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p mobile/ios/fastlane/metadata
+          BODY=$(gh release view "${GITHUB_REF_NAME}" --json body --jq .body 2>/dev/null || echo "Release ${GITHUB_REF_NAME}")
+          # TestFlight changelog limit is 4000 chars
+          printf '%s' "$BODY" | head -c 3900 > mobile/ios/fastlane/metadata/changelog.txt
+
+      - name: Run fastlane beta lane
+        working-directory: mobile/ios
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_PATH: fastlane/certs/AuthKey.p8
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          FASTLANE_DISABLE_COLORS: "1"
+          CI: "true"
+        run: bundle exec fastlane beta
+
+      - name: Annotate GitHub release with TestFlight build info
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BUILD_NUM=$(cat mobile/ios/fastlane/build-number.txt)
+          ORIG=$(gh release view "${GITHUB_REF_NAME}" --json body --jq .body)
+          {
+            printf '> TestFlight build **%s** uploaded — typically takes 5–10 min for App Store Connect to finish processing before testers can install.\n\n' "$BUILD_NUM"
+            printf '%s\n' "$ORIG"
+          } > /tmp/notes.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/notes.md

@@ -63,6 +63,16 @@ Carthage/Build/
 .build/
 node_modules/
 
+# Fastlane runtime artifacts (mobile/ios/fastlane)
+# Never commit: decoded API keys, generated build metadata, fastlane reports.
+mobile/ios/fastlane/certs/
+mobile/ios/fastlane/metadata/changelog.txt
+mobile/ios/fastlane/build-number.txt
+mobile/ios/fastlane/report.xml
+mobile/ios/fastlane/test_output/
+mobile/ios/fastlane/README.md
+mobile/ios/build/
+
 # Other
 *.log
 .env
