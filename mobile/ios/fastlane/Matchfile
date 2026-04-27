@@ -1,0 +1,4 @@
+git_url("git@github.com:AmyDe/town-crier-ios-certs.git")
+storage_mode("git")
+type("appstore")
+app_identifier(["uk.towncrierapp.mobile"])

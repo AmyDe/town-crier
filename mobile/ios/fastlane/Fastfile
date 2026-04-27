@@ -1,0 +1,59 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload a new TestFlight build"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_filepath: ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"),
+      in_house: false,
+    )
+
+    setup_ci if ENV["CI"]
+
+    match(
+      api_key: api_key,
+      type: "appstore",
+      readonly: true,
+    )
+
+    next_build = latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: "uk.towncrierapp.mobile",
+      initial_build_number: 0,
+    ) + 1
+    UI.message("Next TestFlight build number: #{next_build}")
+    File.write("build-number.txt", next_build.to_s)
+
+    increment_build_number(
+      build_number: next_build.to_s,
+      xcodeproj: "TownCrier.xcodeproj",
+    )
+
+    changelog = if File.exist?("metadata/changelog.txt")
+                  File.read("metadata/changelog.txt")
+                else
+                  "See GitHub release for changes."
+                end
+
+    build_app(
+      project: "TownCrier.xcodeproj",
+      scheme: "TownCrierApp",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "TownCrier.ipa",
+      clean: true,
+    )
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "build/TownCrier.ipa",
+      app_identifier: "uk.towncrierapp.mobile",
+      changelog: changelog,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+    )
+  end
+end
