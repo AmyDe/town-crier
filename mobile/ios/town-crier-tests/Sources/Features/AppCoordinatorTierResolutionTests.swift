@@ -23,9 +23,9 @@ struct AppCoordinatorTierResolutionTests {
     subscriptionSpy.currentEntitlementResult = entitlement
     let profileSpy = SpyUserProfileRepository()
     if let serverProfileError {
-      profileSpy.fetchResult = .failure(serverProfileError)
-    } else {
-      profileSpy.fetchResult = .success(serverProfile)
+      profileSpy.createResult = .failure(serverProfileError)
+    } else if let serverProfile {
+      profileSpy.createResult = .success(serverProfile)
     }
     let coordinator = AppCoordinator(
       repository: SpyPlanningApplicationRepository(),
@@ -157,7 +157,7 @@ struct AppCoordinatorTierResolutionTests {
     // Second resolution: all sources fail/return .free
     authSpy.currentSessionResult = nil
     subscriptionSpy.currentEntitlementResult = nil
-    profileSpy.fetchResult = .failure(DomainError.networkUnavailable)
+    profileSpy.createResult = .failure(DomainError.networkUnavailable)
 
     await sut.resolveSubscriptionTier()
 
@@ -177,32 +177,11 @@ struct AppCoordinatorTierResolutionTests {
     // Second resolution: server explicitly returns .free (user downgraded)
     authSpy.currentSessionResult = nil
     subscriptionSpy.currentEntitlementResult = nil
-    profileSpy.fetchResult = .success(makeServerProfile(tier: .free))
+    profileSpy.createResult = .success(makeServerProfile(tier: .free))
 
     await sut.resolveSubscriptionTier()
 
     // Should update to .free because server explicitly returned .free
-    #expect(sut.subscriptionTier == .free)
-  }
-
-  @Test func resolveSubscriptionTier_preservesPreviousTier_whenServerReturnsNilProfile() async {
-    // First resolution: server returns .pro
-    let (sut, authSpy, subscriptionSpy, profileSpy) = makeSUT(
-      authSession: .valid,
-      serverProfile: makeServerProfile(tier: .pro)
-    )
-    await sut.resolveSubscriptionTier()
-    #expect(sut.subscriptionTier == .pro)
-
-    // Second resolution: server returns nil (404), others fail
-    authSpy.currentSessionResult = nil
-    subscriptionSpy.currentEntitlementResult = nil
-    profileSpy.fetchResult = .success(nil)
-
-    await sut.resolveSubscriptionTier()
-
-    // Profile not found (404) means the profile was deleted -- this is a genuine
-    // state change, so tier should update to .free
     #expect(sut.subscriptionTier == .free)
   }
 

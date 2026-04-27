@@ -22,7 +22,9 @@ struct AppCoordinatorOfferCodeTests {
     let subscriptionSpy = SpySubscriptionService()
     subscriptionSpy.currentEntitlementResult = entitlement
     let profileSpy = SpyUserProfileRepository()
-    profileSpy.fetchResult = .success(serverProfile)
+    if let serverProfile {
+      profileSpy.createResult = .success(serverProfile)
+    }
     let coordinator = AppCoordinator(
       repository: SpyPlanningApplicationRepository(),
       authService: authSpy,
@@ -122,7 +124,7 @@ struct AppCoordinatorOfferCodeTests {
     await sut.waitForPendingOfferCodeRefresh()
 
     #expect(sut.subscriptionTier == .pro)
-    #expect(profileSpy.fetchCallCount >= 1)
+    #expect(profileSpy.createCallCount >= 1)
   }
 
   @Test("onRedeemed dismisses the offer-code sheet")
