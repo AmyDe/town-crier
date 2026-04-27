@@ -20,6 +20,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    # Manual trigger — bypasses the iOS-changes guard. Use when you need to
+    # force a TestFlight upload from a ref that the guard would skip (e.g.,
+    # to validate a workflow change against an existing tag without cutting
+    # a fresh release).
 
 concurrency:
   group: cd-ios-testflight-${{ github.ref_name }}
@@ -45,6 +50,12 @@ jobs:
         id: check
         run: |
           set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "previous-tag=" >> "$GITHUB_OUTPUT"
+            echo "::notice::Manual workflow_dispatch — bypassing guard, will upload to TestFlight"
+            exit 0
+          fi
           PREV=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
           if [ -z "$PREV" ]; then
             echo "should-release=true" >> "$GITHUB_OUTPUT"
@@ -170,7 +181,9 @@ jobs:
         run: bundle exec fastlane beta
 
       - name: Annotate GitHub release with TestFlight build info
-        if: success()
+        # Skip on workflow_dispatch — there's usually no GH release for the
+        # ref being dispatched (e.g., main, a feature branch).
+        if: success() && github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
