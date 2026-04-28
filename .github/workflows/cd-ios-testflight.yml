@@ -88,7 +88,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Cache SPM build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: mobile/ios/.build
           key: spm-test-${{ hashFiles('mobile/ios/Package.resolved') }}
@@ -122,7 +122,7 @@ jobs:
           xcode-version: latest-stable
 
       - name: Cache SPM
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
           key: spm-archive-${{ hashFiles('mobile/ios/Package.resolved', 'mobile/ios/packages/**/Package.resolved') }}
