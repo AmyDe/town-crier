@@ -42,4 +42,21 @@ struct PushNotificationRegistrarTests {
 
     #expect(notificationService.registerDeviceTokenCalls.isEmpty)
   }
+
+  // MARK: - flushPendingRegistration
+
+  @Test("flushPendingRegistration after queued token registers it once user is authenticated")
+  func flushPendingRegistration_afterQueuedToken_registersIt() async {
+    let (sut, notificationService, authService) = makeSUT(session: nil)
+    let tokenData = Data([0xCA, 0xFE, 0xBA, 0xBE])
+    await sut.didReceiveDeviceToken(tokenData)
+    #expect(notificationService.registerDeviceTokenCalls.isEmpty)
+
+    // User signs in: simulate by switching the spy session.
+    authService.currentSessionResult = .valid
+
+    await sut.flushPendingRegistration()
+
+    #expect(notificationService.registerDeviceTokenCalls == ["cafebabe"])
+  }
 }
