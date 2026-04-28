@@ -160,14 +160,17 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   private func fetchServerTier() async -> SubscriptionTier {
+    // POST /v1/me (create) is idempotent — it backfills missing profiles
+    // and returns the existing one when present. This unifies tier
+    // resolution with `AppCoordinator.ensureServerProfileTier()` (tc-aza5)
+    // so any path that reaches Settings (e.g. deep link, sign-out/sign-in)
+    // reliably ensures the user has a server profile.
     do {
-      if let profile = try await userProfileRepository.fetch() {
-        return profile.tier
-      }
-      return .free
+      let profile = try await userProfileRepository.create()
+      return profile.tier
     } catch {
       Self.logger.error(
-        "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
+        "Failed to ensure server profile for subscription tier: \(error.localizedDescription)"
       )
       return .free
     }
