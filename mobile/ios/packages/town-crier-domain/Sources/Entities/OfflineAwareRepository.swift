@@ -49,4 +49,15 @@ public final class OfflineAwareRepository: Sendable {
       throw error
     }
   }
+
+  /// Invalidates the cached applications for the given zone id.
+  ///
+  /// Callers should invoke this after a watch-zone edit changes the zone's
+  /// geometry (radius/centre), so a subsequent `fetchApplications(for:)`
+  /// re-queries the server and stores fresh results that reflect the new
+  /// shape. Without invalidation, a TTL-fresh cache hit could serve
+  /// applications matching the previous geometry for up to the cache TTL.
+  public func invalidateCache(for zoneId: WatchZoneId) async {
+    await cache.invalidate(for: zoneId)
+  }
 }
