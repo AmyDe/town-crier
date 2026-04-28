@@ -166,4 +166,54 @@ struct LoginViewModelTests {
     #expect(!sut.isAuthenticated)
     #expect(sut.session == nil)
   }
+
+  // MARK: - onAuthenticated callback
+
+  @Test("login fires onAuthenticated callback on success")
+  func login_firesOnAuthenticatedCallback_onSuccess() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .success(.valid)
+    var callCount = 0
+    sut.onAuthenticated = { callCount += 1 }
+
+    await sut.login()
+
+    #expect(callCount == 1)
+  }
+
+  @Test("login does NOT fire onAuthenticated callback on failure")
+  func login_doesNotFireOnAuthenticated_onFailure() async {
+    let (sut, spy) = makeSUT()
+    spy.loginResult = .failure(DomainError.authenticationFailed(NSError(domain: "x", code: 1)))
+    var callCount = 0
+    sut.onAuthenticated = { callCount += 1 }
+
+    await sut.login()
+
+    #expect(callCount == 0)
+  }
+
+  @Test("checkExistingSession fires onAuthenticated callback when session restored")
+  func checkExistingSession_firesOnAuthenticated_whenRestored() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = .valid
+    var callCount = 0
+    sut.onAuthenticated = { callCount += 1 }
+
+    await sut.checkExistingSession()
+
+    #expect(callCount == 1)
+  }
+
+  @Test("checkExistingSession does NOT fire onAuthenticated when no session")
+  func checkExistingSession_doesNotFireOnAuthenticated_whenNoSession() async {
+    let (sut, spy) = makeSUT()
+    spy.currentSessionResult = nil
+    var callCount = 0
+    sut.onAuthenticated = { callCount += 1 }
+
+    await sut.checkExistingSession()
+
+    #expect(callCount == 0)
+  }
 }
