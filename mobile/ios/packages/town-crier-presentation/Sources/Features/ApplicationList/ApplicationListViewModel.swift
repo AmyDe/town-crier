@@ -18,6 +18,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
   @Published private(set) var isSavedFilterActive = false
+  @Published private(set) var isLoadingSaved = false
   @Published private(set) var savedApplicationUids: Set<String> = []
 
   /// Full saved application objects from the most recent saved-filter activation.
@@ -64,7 +65,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   public var isEmpty: Bool {
-    filteredApplications.isEmpty && error == nil && !isLoading
+    filteredApplications.isEmpty && error == nil && !isLoading && !isLoadingSaved
   }
 
   public var isNetworkError: Bool {
@@ -184,6 +185,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     guard let repository = savedApplicationRepository else { return }
     selectedStatusFilter = nil
     isSavedFilterActive = true
+    isLoadingSaved = true
     do {
       let saved = try await repository.loadAll()
       savedApplications = saved
@@ -192,6 +194,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       savedApplications = []
       savedApplicationUids = []
     }
+    isLoadingSaved = false
   }
 
   public func deactivateSavedFilter() {
