@@ -189,42 +189,48 @@ public final class AppCoordinator: ObservableObject {
   /// and the server profile, then picks the highest tier. Mirrors the same
   /// triple-source resolution used by ``SettingsViewModel``.
   ///
-  /// When the server profile fetch fails (network error, auth issue, etc.),
-  /// the previously resolved tier is preserved rather than silently falling
-  /// back to `.free`. This prevents paying users from losing feature access
-  /// due to transient failures — a common scenario on the simulator where
-  /// JWT and StoreKit always return `.free`.
+  /// When the server profile ensure-or-fetch call fails (network error, auth
+  /// issue, etc.), the previously resolved tier is preserved rather than
+  /// silently falling back to `.free`. This prevents paying users from losing
+  /// feature access due to transient failures — a common scenario on the
+  /// simulator where JWT and StoreKit always return `.free`.
   public func resolveSubscriptionTier() async {
     var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
       jwtTier = session.subscriptionTier
     }
 
-    let serverTier = await fetchServerTier()
+    let serverTier = await ensureServerProfileTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
 
-    // When the server profile fetch failed (nil), fall back to the current
-    // tier so we don't downgrade a paying user due to a transient error.
+    // When the server profile ensure-or-fetch call failed (nil), fall back to
+    // the current tier so we don't downgrade a paying user due to a transient
+    // error.
     let effectiveServerTier = serverTier ?? subscriptionTier
     let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
     subscriptionTier = resolved
     tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
   }
 
-  /// Fetches the subscription tier from the server profile.
+  /// Ensures the user has a server-side profile (POST /v1/me) and returns its
+  /// subscription tier.
   ///
-  /// Returns `nil` when the fetch fails due to a network or server error,
-  /// distinguishing "fetch failed" from "user is genuinely on free tier."
-  /// Returns `.free` when the profile does not exist (HTTP 404).
-  private func fetchServerTier() async -> SubscriptionTier? {
+  /// `POST /v1/me` is idempotent server-side: the
+  /// `CreateUserProfileCommandHandler` returns the existing profile when one
+  /// is already present, and creates one otherwise. Calling it on every tier
+  /// resolution backfills profiles for users who signed in before this code
+  /// path existed (see bug tc-a6it — iOS-only signups previously had no
+  /// Cosmos `UserProfile` document and were invisible to backend tooling).
+  ///
+  /// Returns `nil` when the call fails due to a network or server error,
+  /// distinguishing "ensure failed" from "user is genuinely on free tier."
+  private func ensureServerProfileTier() async -> SubscriptionTier? {
     do {
-      if let profile = try await userProfileRepository.fetch() {
-        return profile.tier
-      }
-      return .free
+      let profile = try await userProfileRepository.create()
+      return profile.tier
     } catch {
       Self.logger.error(
-        "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
+        "Failed to ensure server profile for subscription tier: \(error.localizedDescription)"
       )
       return nil
     }
