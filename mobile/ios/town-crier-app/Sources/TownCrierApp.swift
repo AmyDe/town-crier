@@ -7,12 +7,14 @@ import UserNotifications
 
 @main
 struct TownCrierApp: App {
+  @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var coordinator: AppCoordinator
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
   @StateObject private var settingsViewModel: SettingsViewModel
   private let crashReporter: CrashReporter
   private let notificationDelegate: NotificationDelegate
+  private let pushRegistrar: PushNotificationRegistrar
 
   init() {
     let auth0Config = Auth0Config(
@@ -31,7 +33,8 @@ struct TownCrierApp: App {
     let onboardingRepository = UserDefaultsOnboardingRepository()
     let notificationService = CompositeNotificationService(
       permissionProvider: UNNotificationPermissionProvider(),
-      apiService: APINotificationService(apiClient: apiClient)
+      apiService: APINotificationService(apiClient: apiClient),
+      remoteRegistrar: UIApplicationRemoteRegistrar()
     )
     let connectivityMonitor = NWPathConnectivityMonitor()
     let cacheStore = InMemoryApplicationCacheStore()
@@ -64,7 +67,16 @@ struct TownCrierApp: App {
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
+    let registrar = PushNotificationRegistrar(
+      notificationService: notificationService,
+      authService: authService
+    )
+    pushRegistrar = registrar
+
     let loginVM = appCoordinator.makeLoginViewModel()
+    loginVM.onAuthenticated = {
+      Task { await registrar.flushPendingRegistration() }
+    }
     _loginViewModel = StateObject(wrappedValue: loginVM)
 
     _forceUpdateViewModel = StateObject(
@@ -86,6 +98,11 @@ struct TownCrierApp: App {
     let reporter = MetricKitCrashReporter()
     reporter.start()
     crashReporter = reporter
+
+    // Wire the push registrar into the AppDelegate so the UIKit lifecycle
+    // callbacks (didRegisterForRemoteNotificationsWithDeviceToken /
+    // didFailToRegisterForRemoteNotificationsWithError) can forward to it.
+    appDelegate.registrar = registrar
   }
 
   var body: some Scene {
