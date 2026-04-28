@@ -21,15 +21,21 @@ public sealed class GetSavedApplicationsQueryHandler
 
         var saved = await this.savedRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
 
-        var results = new List<SavedApplicationResult>();
-        foreach (var s in saved)
+        // Hydrate every save concurrently. The previous implementation issued N sequential
+        // GetByUidAsync calls, which dominated cold-load latency for users with several saves
+        // (see bd tc-qz0j / tc-a1x8). Order is preserved by hydrating into a positional array.
+        var hydrated = await Task.WhenAll(
+            saved.Select(s => this.applicationRepository.GetByUidAsync(s.ApplicationUid, ct))).ConfigureAwait(false);
+
+        var results = new List<SavedApplicationResult>(saved.Count);
+        for (var i = 0; i < saved.Count; i++)
         {
-            var application = await this.applicationRepository.GetByUidAsync(s.ApplicationUid, ct).ConfigureAwait(false);
+            var application = hydrated[i];
             if (application is not null)
             {
                 results.Add(new SavedApplicationResult(
-                    s.ApplicationUid,
-                    s.SavedAt,
+                    saved[i].ApplicationUid,
+                    saved[i].SavedAt,
                     GetApplicationByUidQueryHandler.ToResult(application)));
             }
         }
