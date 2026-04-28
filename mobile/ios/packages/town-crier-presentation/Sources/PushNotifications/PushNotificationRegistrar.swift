@@ -46,6 +46,14 @@ public actor PushNotificationRegistrar {
     queuedToken = nil
   }
 
+  /// Called by the AppDelegate when APNs registration fails. Logged but not
+  /// surfaced — the app remains usable without push notifications.
+  public func didFailToRegister(error: Error) {
+    Self.logger.error(
+      "APNs registration failed: \(error.localizedDescription)"
+    )
+  }
+
   private func register(_ hexToken: String) async {
     do {
       try await notificationService.registerDeviceToken(hexToken)
