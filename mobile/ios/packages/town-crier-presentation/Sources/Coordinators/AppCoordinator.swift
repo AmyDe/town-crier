@@ -28,6 +28,7 @@ public final class AppCoordinator: ObservableObject {
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
+  private let serverTierResolver: ServerTierResolving
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
@@ -56,6 +57,7 @@ public final class AppCoordinator: ObservableObject {
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
+    serverTierResolver: ServerTierResolving? = nil,
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
     watchZoneRepository: WatchZoneRepository,
@@ -72,6 +74,8 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
+    self.serverTierResolver =
+      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository
@@ -203,7 +207,7 @@ public final class AppCoordinator: ObservableObject {
       jwtTier = session.subscriptionTier
     }
 
-    let serverTier = await ensureServerProfileTier()
+    let serverTier = await serverTierResolver.ensureServerProfileTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
 
     // When the server profile ensure-or-fetch call failed (nil), fall back to
@@ -213,30 +217,6 @@ public final class AppCoordinator: ObservableObject {
     let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
     subscriptionTier = resolved
     tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
-  }
-
-  /// Ensures the user has a server-side profile (POST /v1/me) and returns its
-  /// subscription tier.
-  ///
-  /// `POST /v1/me` is idempotent server-side: the
-  /// `CreateUserProfileCommandHandler` returns the existing profile when one
-  /// is already present, and creates one otherwise. Calling it on every tier
-  /// resolution backfills profiles for users who signed in before this code
-  /// path existed (see bug tc-a6it — iOS-only signups previously had no
-  /// Cosmos `UserProfile` document and were invisible to backend tooling).
-  ///
-  /// Returns `nil` when the call fails due to a network or server error,
-  /// distinguishing "ensure failed" from "user is genuinely on free tier."
-  private func ensureServerProfileTier() async -> SubscriptionTier? {
-    do {
-      let profile = try await userProfileRepository.create()
-      return profile.tier
-    } catch {
-      Self.logger.error(
-        "Failed to ensure server profile for subscription tier: \(error.localizedDescription)"
-      )
-      return nil
-    }
   }
 
   // MARK: - Watch Zone Factories
