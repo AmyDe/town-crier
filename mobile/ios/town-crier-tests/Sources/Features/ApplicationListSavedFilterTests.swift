@@ -176,6 +176,81 @@ struct ApplicationListSavedFilterTests {
     #expect(!sut.isSavedFilterActive)
   }
 
+  // MARK: - Loading State
+
+  @Test func isLoadingSaved_defaultsFalse() {
+    let savedSpy = SpySavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([])
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_isTrueWhileLoadAllInFlight() async {
+    // A controllable saved repository that suspends loadAll() until resume() is called.
+    let controllable = ControllableSavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: controllable
+    )
+    await sut.loadApplications()
+
+    // Kick off the activation; the task will suspend inside loadAll().
+    let task = Task { await sut.activateSavedFilter() }
+
+    // Wait for activateSavedFilter() to enter loadAll() and register the continuation.
+    await controllable.waitForCall()
+
+    // While loadAll() is in flight, the spinner flag must be true and isEmpty must
+    // be suppressed so the view does not render the misleading empty state.
+    #expect(sut.isLoadingSaved)
+    #expect(!sut.isEmpty)
+
+    // Resume the in-flight loadAll() with an empty result.
+    controllable.resume(with: .success([]))
+    await task.value
+
+    // Once the await completes, the flag clears regardless of the result.
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_clearsAfterSuccess() async {
+    let sut = makeSUT(savedUids: ["APP-001"], applications: Self.allApps)
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_clearsAfterFailure() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .failure(DomainError.networkUnavailable)
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let sut = ApplicationListViewModel(
+      repository: appSpy,
+      zone: .cambridge,
+      tier: .free,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(!sut.isLoadingSaved)
+  }
+
   // MARK: - Cross-Zone Saved Applications
 
   @Test func savedFilter_showsSavedAppsNotInCurrentList() async {

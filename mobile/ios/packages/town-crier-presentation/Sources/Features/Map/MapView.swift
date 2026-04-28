@@ -222,7 +222,7 @@ public struct MapView: View {
         }
       } else {
         mapContent
-        if viewModel.isLoading {
+        if viewModel.isLoading || viewModel.isLoadingSaved {
           ProgressView()
             .controlSize(.large)
         }

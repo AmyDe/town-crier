@@ -20,6 +20,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     }
   }
   @Published private(set) var isSavedFilterActive = false
+  @Published private(set) var isLoadingSaved = false
   @Published private(set) var savedApplicationUids: Set<String> = []
 
   @Published private(set) var centreLat: Double = 51.5074
@@ -53,7 +54,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   public var isEmpty: Bool {
-    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
+    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading && !isLoadingSaved
   }
 
   /// Whether the currently selected application is in the user's saved set.
@@ -140,12 +141,14 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     guard let repository = savedApplicationRepository else { return }
     selectedStatusFilter = nil
     isSavedFilterActive = true
+    isLoadingSaved = true
     do {
       let saved = try await repository.loadAll()
       savedApplicationUids = Set(saved.map(\.applicationUid))
     } catch {
       savedApplicationUids = []
     }
+    isLoadingSaved = false
   }
 
   public func deactivateSavedFilter() {
