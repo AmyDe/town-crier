@@ -8,7 +8,10 @@ struct CompositeNotificationServiceTests {
   private let baseURL = URL(string: "https://api-dev.towncrierapp.uk")
 
   private func makeSUT() throws -> (
-    CompositeNotificationService, SpyNotificationPermissionProvider, StubHTTPTransport
+    CompositeNotificationService,
+    SpyNotificationPermissionProvider,
+    StubHTTPTransport,
+    SpyRemoteNotificationRegistering
   ) {
     let url = try #require(baseURL)
     let permissionSpy = SpyNotificationPermissionProvider()
@@ -21,11 +24,13 @@ struct CompositeNotificationServiceTests {
       transport: transport
     )
     let apiService = APINotificationService(apiClient: apiClient)
+    let remoteRegistrar = SpyRemoteNotificationRegistering()
     let sut = CompositeNotificationService(
       permissionProvider: permissionSpy,
-      apiService: apiService
+      apiService: apiService,
+      remoteRegistrar: remoteRegistrar
     )
-    return (sut, permissionSpy, transport)
+    return (sut, permissionSpy, transport, remoteRegistrar)
   }
 
   private func makeResponse() throws -> (Data, HTTPURLResponse) {
@@ -37,7 +42,7 @@ struct CompositeNotificationServiceTests {
 
   @Test("requestPermission delegates to permission provider and returns true")
   func requestPermission_delegatesToProvider_returnsTrue() async throws {
-    let (sut, permissionSpy, _) = try makeSUT()
+    let (sut, permissionSpy, _, _) = try makeSUT()
     permissionSpy.requestPermissionResult = .success(true)
 
     let result = try await sut.requestPermission()
@@ -48,7 +53,7 @@ struct CompositeNotificationServiceTests {
 
   @Test("requestPermission delegates to permission provider and returns false")
   func requestPermission_delegatesToProvider_returnsFalse() async throws {
-    let (sut, permissionSpy, _) = try makeSUT()
+    let (sut, permissionSpy, _, _) = try makeSUT()
     permissionSpy.requestPermissionResult = .success(false)
 
     let result = try await sut.requestPermission()
@@ -58,7 +63,7 @@ struct CompositeNotificationServiceTests {
 
   @Test("requestPermission propagates errors from permission provider")
   func requestPermission_propagatesError() async throws {
-    let (sut, permissionSpy, _) = try makeSUT()
+    let (sut, permissionSpy, _, _) = try makeSUT()
     permissionSpy.requestPermissionResult = .failure(DomainError.notificationPermissionDenied)
 
     await #expect(throws: DomainError.self) {
@@ -66,11 +71,31 @@ struct CompositeNotificationServiceTests {
     }
   }
 
+  @Test("requestPermission triggers registerForRemoteNotifications when granted")
+  func requestPermission_granted_triggersRemoteRegistration() async throws {
+    let (sut, permissionSpy, _, remoteRegistrar) = try makeSUT()
+    permissionSpy.requestPermissionResult = .success(true)
+
+    _ = try await sut.requestPermission()
+
+    #expect(remoteRegistrar.registerForRemoteNotificationsCallCount == 1)
+  }
+
+  @Test("requestPermission does NOT trigger registerForRemoteNotifications when denied")
+  func requestPermission_denied_doesNotRegisterRemote() async throws {
+    let (sut, permissionSpy, _, remoteRegistrar) = try makeSUT()
+    permissionSpy.requestPermissionResult = .success(false)
+
+    _ = try await sut.requestPermission()
+
+    #expect(remoteRegistrar.registerForRemoteNotificationsCallCount == 0)
+  }
+
   // MARK: - registerDeviceToken
 
   @Test("registerDeviceToken delegates to API service")
   func registerDeviceToken_delegatesToAPIService() async throws {
-    let (sut, _, transport) = try makeSUT()
+    let (sut, _, transport, _) = try makeSUT()
     transport.responses = [try makeResponse()]
 
     try await sut.registerDeviceToken("test-token-abc")
@@ -87,7 +112,7 @@ struct CompositeNotificationServiceTests {
 
   @Test("removeDeviceToken delegates to API service")
   func removeDeviceToken_delegatesToAPIService() async throws {
-    let (sut, _, transport) = try makeSUT()
+    let (sut, _, transport, _) = try makeSUT()
     transport.responses = [try makeResponse(), try makeResponse()]
 
     // Must register first so there's a stored token to remove
@@ -101,7 +126,7 @@ struct CompositeNotificationServiceTests {
 
   @Test("removeDeviceToken with no prior registration is a no-op")
   func removeDeviceToken_noPriorRegistration_noOp() async throws {
-    let (sut, _, transport) = try makeSUT()
+    let (sut, _, transport, _) = try makeSUT()
 
     try await sut.removeDeviceToken()
 

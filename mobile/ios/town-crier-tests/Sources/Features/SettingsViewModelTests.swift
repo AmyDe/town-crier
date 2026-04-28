@@ -10,7 +10,7 @@ struct SettingsViewModelTests {
   private func makeSUT(
     session: AuthSession? = .valid,
     entitlement: SubscriptionEntitlement? = nil,
-    serverProfile: Result<ServerProfile?, Error> = .success(nil),
+    serverProfile: Result<ServerProfile, Error> = .success(.freeUser),
     version: String = "1.0.0",
     buildNumber: String = "42"
   ) -> (
@@ -22,7 +22,7 @@ struct SettingsViewModelTests {
     let subscriptionSpy = SpySubscriptionService()
     subscriptionSpy.currentEntitlementResult = entitlement
     let profileSpy = SpyUserProfileRepository()
-    profileSpy.fetchResult = serverProfile
+    profileSpy.createResult = serverProfile
     let versionProvider = SpyAppVersionProvider()
     versionProvider.version = version
     versionProvider.buildNumber = buildNumber
@@ -222,25 +222,18 @@ struct SettingsViewModelTests {
     #expect(sut.subscriptionTier == .free)
   }
 
-  @Test func load_fetchesServerProfile() async {
+  @Test func load_ensuresServerProfileViaCreate() async {
+    // Bug tc-aza5: SettingsViewModel previously called GET /v1/me (fetch),
+    // which silently 404s for users who never had a server profile. Now it
+    // must call POST /v1/me (create), which is idempotent — backfilling
+    // missing profiles and matching AppCoordinator's tier-resolution path.
     let (sut, _, _, profileSpy, _, _) = makeSUT(
       serverProfile: .success(.proUser)
     )
 
     await sut.load()
 
-    #expect(profileSpy.fetchCallCount == 1)
-  }
-
-  @Test func load_serverProfileNil_usesStoreKitTier() async {
-    let (sut, _, _, _, _, _) = makeSUT(
-      entitlement: .personalActive,
-      serverProfile: .success(nil)
-    )
-
-    await sut.load()
-
-    #expect(sut.subscriptionTier == .personal)
+    #expect(profileSpy.createCallCount >= 1)
   }
 
   @Test func load_serverProfileReturnsFreeTier_storeKitNil_showsFree() async {

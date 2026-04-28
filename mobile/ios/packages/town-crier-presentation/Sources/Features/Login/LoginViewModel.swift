@@ -14,6 +14,12 @@ public final class LoginViewModel: ObservableObject, ErrorHandlingViewModel {
     session != nil
   }
 
+  /// Fired whenever the user becomes authenticated — either via a fresh
+  /// `login()` or a successful `checkExistingSession()`. The
+  /// `PushNotificationRegistrar` listens to this hook to flush any device
+  /// token that arrived before the user signed in.
+  public var onAuthenticated: (() -> Void)?
+
   public init(authService: AuthenticationService) {
     self.authService = authService
   }
@@ -24,6 +30,7 @@ public final class LoginViewModel: ObservableObject, ErrorHandlingViewModel {
     error = nil
     do {
       session = try await authService.login()
+      onAuthenticated?()
     } catch {
       handleError(error) { .authenticationFailed($0) }
     }
@@ -52,9 +59,14 @@ public final class LoginViewModel: ObservableObject, ErrorHandlingViewModel {
         session = try await authService.refreshSession()
       } catch {
         session = nil
+        return
       }
     } else {
       session = existing
+    }
+
+    if session != nil {
+      onAuthenticated?()
     }
   }
 }

@@ -1,13 +1,10 @@
 import Combine
 import Foundation
 import TownCrierDomain
-import os
 
 /// ViewModel managing the settings and account screen.
 @MainActor
 public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
-  private static let logger = Logger(subsystem: "uk.towncrierapp", category: "SettingsViewModel")
-
   @Published public private(set) var userEmail: String?
   @Published public private(set) var userName: String?
   @Published public private(set) var authMethod: AuthMethod?
@@ -29,6 +26,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
+  private let serverTierResolver: ServerTierResolving
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
   private let defaults: UserDefaults
@@ -37,6 +35,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
+    serverTierResolver: ServerTierResolving? = nil,
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService,
     defaults: UserDefaults = .standard
@@ -44,6 +43,8 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
+    self.serverTierResolver =
+      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
     self.defaults = defaults
@@ -160,17 +161,11 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   private func fetchServerTier() async -> SubscriptionTier {
-    do {
-      if let profile = try await userProfileRepository.fetch() {
-        return profile.tier
-      }
-      return .free
-    } catch {
-      Self.logger.error(
-        "Failed to fetch server profile for subscription tier: \(error.localizedDescription)"
-      )
-      return .free
-    }
+    // Delegated to the shared `ServerTierResolver` so this VM and
+    // `AppCoordinator` cannot drift apart again (tc-aza5). When the
+    // ensure-or-fetch call fails, fall back to `.free` — JWT and StoreKit
+    // are folded in by `resolveSubscriptionTier`'s `max(...)`.
+    await serverTierResolver.ensureServerProfileTier() ?? .free
   }
 
   private func clearSession() {

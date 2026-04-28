@@ -28,6 +28,7 @@ public final class AppCoordinator: ObservableObject {
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
+  private let serverTierResolver: ServerTierResolving
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
@@ -47,12 +48,16 @@ public final class AppCoordinator: ObservableObject {
   // Tracks the in-flight post-redemption refresh task so tests can await it
   // and SwiftUI's dismiss happens after session + tier are up to date.
   private var pendingOfferCodeRefresh: Task<Void, Never>?
+  // Tracks the in-flight post-save watch-zone reload task so tests can await
+  // it deterministically rather than racing it with `Task.sleep`.
+  private var pendingWatchZoneRefresh: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
+    serverTierResolver: ServerTierResolving? = nil,
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
     watchZoneRepository: WatchZoneRepository,
@@ -69,6 +74,8 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
+    self.serverTierResolver =
+      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository
@@ -200,7 +207,7 @@ public final class AppCoordinator: ObservableObject {
       jwtTier = session.subscriptionTier
     }
 
-    let serverTier = await ensureServerProfileTier()
+    let serverTier = await serverTierResolver.ensureServerProfileTier()
     let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
 
     // When the server profile ensure-or-fetch call failed (nil), fall back to
@@ -210,30 +217,6 @@ public final class AppCoordinator: ObservableObject {
     let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
     subscriptionTier = resolved
     tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
-  }
-
-  /// Ensures the user has a server-side profile (POST /v1/me) and returns its
-  /// subscription tier.
-  ///
-  /// `POST /v1/me` is idempotent server-side: the
-  /// `CreateUserProfileCommandHandler` returns the existing profile when one
-  /// is already present, and creates one otherwise. Calling it on every tier
-  /// resolution backfills profiles for users who signed in before this code
-  /// path existed (see bug tc-a6it — iOS-only signups previously had no
-  /// Cosmos `UserProfile` document and were invisible to backend tooling).
-  ///
-  /// Returns `nil` when the call fails due to a network or server error,
-  /// distinguishing "ensure failed" from "user is genuinely on free tier."
-  private func ensureServerProfileTier() async -> SubscriptionTier? {
-    do {
-      let profile = try await userProfileRepository.create()
-      return profile.tier
-    } catch {
-      Self.logger.error(
-        "Failed to ensure server profile for subscription tier: \(error.localizedDescription)"
-      )
-      return nil
-    }
   }
 
   // MARK: - Watch Zone Factories
@@ -271,14 +254,29 @@ public final class AppCoordinator: ObservableObject {
       tier: subscriptionTier,
       editing: zone
     )
-    viewModel.onSave = { [weak self] _ in
+    let isEditing = zone != nil
+    viewModel.onSave = { [weak self] saved in
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
-      Task { [weak self] in
+      self?.pendingWatchZoneRefresh = Task { [weak self] in
+        // Invalidate the per-zone applications cache before reloading so a
+        // radius/centre change does not serve a stale cache hit on the
+        // Apps view for up to the cache TTL (tc-9vid).
+        if isEditing, let offlineRepository = self?.offlineRepository {
+          await offlineRepository.invalidateCache(for: saved.id)
+        }
         await self?.watchZoneListViewModel?.load()
       }
     }
     return viewModel
+  }
+
+  /// Test-only synchronisation: await the most recently kicked-off post-save
+  /// watch-zone reload so assertions happen after the list view-model has
+  /// been refreshed against the latest repository state. Replaces flaky
+  /// `Task.sleep(...)` waits in tests.
+  public func waitForPendingWatchZoneRefresh() async {
+    await pendingWatchZoneRefresh?.value
   }
 
   // MARK: - Settings Navigation
