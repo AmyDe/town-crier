@@ -103,7 +103,14 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     do {
       let loadedZones = try await watchZoneRepository.loadAll()
       zones = loadedZones
-      if selectedZone == nil || !loadedZones.contains(where: { $0.id == selectedZone?.id }) {
+      // Always refresh `selectedZone` from the reloaded list so an in-place
+      // edit (same id, new radius/centre) propagates through to the map.
+      // Falling back to `resolveInitialZone` only when the id is missing
+      // (zone deleted) preserves the previous-session restore behaviour.
+      if let currentId = selectedZone?.id,
+         let updated = loadedZones.first(where: { $0.id == currentId }) {
+        selectedZone = updated
+      } else {
         selectedZone = resolveInitialZone(from: loadedZones)
       }
       guard let zone = selectedZone else {
