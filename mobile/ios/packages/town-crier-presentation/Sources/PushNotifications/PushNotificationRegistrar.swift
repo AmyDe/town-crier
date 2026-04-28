@@ -37,6 +37,15 @@ public actor PushNotificationRegistrar {
     }
   }
 
+  /// Flushes a queued device token to the backend, if one was captured before
+  /// the user authenticated. Should be called after a successful login.
+  public func flushPendingRegistration() async {
+    guard let token = queuedToken else { return }
+    guard await authService.currentSession() != nil else { return }
+    await register(token)
+    queuedToken = nil
+  }
+
   private func register(_ hexToken: String) async {
     do {
       try await notificationService.registerDeviceToken(hexToken)
