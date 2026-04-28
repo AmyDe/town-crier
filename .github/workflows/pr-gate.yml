@@ -59,6 +59,7 @@ jobs:
             .github/workflows/pr-gate.yml:api,cli,ios,web,infra
             .github/workflows/cd-dev.yml:api,web,infra
             .github/workflows/cd-prod.yml:infra
+            .github/workflows/cd-ios-testflight.yml:ios
 
   # ── API ──────────────────────────────────────────────
 
