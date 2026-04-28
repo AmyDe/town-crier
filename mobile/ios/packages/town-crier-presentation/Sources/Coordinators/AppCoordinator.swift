@@ -13,6 +13,12 @@ public final class AppCoordinator: ObservableObject {
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
   @Published public var isSubscriptionPresented = false
+  /// Toggled to `true` when the user taps "Notification Preferences" in
+  /// Settings. The view layer observes this and deep-links to the iOS system
+  /// Settings page for the app via ``UIApplication/openSettingsURLString``,
+  /// then resets the flag to `false`. This pattern lets the Coordinator stay
+  /// UIKit-free while making the navigation testable.
+  @Published public var isOpeningSystemNotificationSettings = false
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
   @Published public var isRedeemOfferCodePresented = false
@@ -291,6 +297,17 @@ public final class AppCoordinator: ObservableObject {
 
   public func showManageSubscription() {
     isManageSubscriptionPresented = true
+  }
+
+  /// Requests that the view layer deep-link to the iOS system Settings page
+  /// for the app, where the user can manage push notification permissions
+  /// (alert style, banners, lock screen, sounds, badges, focus, etc.).
+  ///
+  /// The Coordinator stays UIKit-free; `TownCrierApp` observes the flag and
+  /// performs the actual ``UIApplication/openSettingsURLString`` open via
+  /// SwiftUI's ``Environment(\.openURL)``.
+  public func showSystemNotificationSettings() {
+    isOpeningSystemNotificationSettings = true
   }
 
   // MARK: - Offer Codes
