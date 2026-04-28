@@ -133,4 +133,38 @@ struct OfflineAwareRepositoryTests {
     }
   }
 
+  // MARK: - Cache invalidation
+
+  @Test func invalidateCache_delegatesToCacheStoreWithZoneId() async {
+    let (sut, _, cache, _) = makeSUT()
+
+    await sut.invalidateCache(for: WatchZone.cambridge.id)
+
+    #expect(cache.invalidateCalls == [WatchZone.cambridge.id])
+  }
+
+  @Test func invalidateCache_thenFetch_skipsStaleCacheAndHitsRemote() async throws {
+    // Simulate a fresh-cached entry from before a zone-radius edit. After
+    // invalidating the cache, the next fetch must go to the network — even
+    // though the cache TTL hasn't expired — so the new geometry is honoured.
+    let staleApps = [PlanningApplication.withdrawn]
+    let staleEntry = CacheEntry(
+      data: staleApps,
+      fetchedAt: Date().addingTimeInterval(-60),
+      ttlSeconds: 900
+    )
+    let freshApps = [PlanningApplication.pendingReview, .permitted]
+    let (sut, remote, _, _) = makeSUT(
+      remoteApplications: freshApps,
+      cachedEntry: staleEntry
+    )
+
+    await sut.invalidateCache(for: WatchZone.cambridge.id)
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
+
+    #expect(remote.fetchApplicationsCalls.count == 1)
+    #expect(result.data.count == 2)
+    #expect(result.data.first?.id == PlanningApplication.pendingReview.id)
+  }
+
 }
