@@ -14,4 +14,8 @@ public actor InMemoryApplicationCacheStore: ApplicationCacheStore {
   public func retrieve(for zone: WatchZone) -> CacheEntry<[PlanningApplication]>? {
     entries[zone.id.value]
   }
+
+  public func invalidate(for zoneId: WatchZoneId) {
+    entries.removeValue(forKey: zoneId.value)
+  }
 }
