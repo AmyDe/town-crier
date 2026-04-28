@@ -47,6 +47,9 @@ public final class AppCoordinator: ObservableObject {
   // Tracks the in-flight post-redemption refresh task so tests can await it
   // and SwiftUI's dismiss happens after session + tier are up to date.
   private var pendingOfferCodeRefresh: Task<Void, Never>?
+  // Tracks the in-flight post-save watch-zone reload task so tests can await
+  // it deterministically rather than racing it with `Task.sleep`.
+  private var pendingWatchZoneRefresh: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -274,11 +277,19 @@ public final class AppCoordinator: ObservableObject {
     viewModel.onSave = { [weak self] _ in
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
-      Task { [weak self] in
+      self?.pendingWatchZoneRefresh = Task { [weak self] in
         await self?.watchZoneListViewModel?.load()
       }
     }
     return viewModel
+  }
+
+  /// Test-only synchronisation: await the most recently kicked-off post-save
+  /// watch-zone reload so assertions happen after the list view-model has
+  /// been refreshed against the latest repository state. Replaces flaky
+  /// `Task.sleep(...)` waits in tests.
+  public func waitForPendingWatchZoneRefresh() async {
+    await pendingWatchZoneRefresh?.value
   }
 
   // MARK: - Settings Navigation
