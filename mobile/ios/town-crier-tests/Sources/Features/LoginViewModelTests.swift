@@ -184,7 +184,7 @@ struct LoginViewModelTests {
   @Test("login does NOT fire onAuthenticated callback on failure")
   func login_doesNotFireOnAuthenticated_onFailure() async {
     let (sut, spy) = makeSUT()
-    spy.loginResult = .failure(DomainError.authenticationFailed(NSError(domain: "x", code: 1)))
+    spy.loginResult = .failure(DomainError.authenticationFailed("test failure"))
     var callCount = 0
     sut.onAuthenticated = { callCount += 1 }
 
