@@ -127,8 +127,7 @@ struct AppCoordinatorWatchZoneTests {
 
     vm.onSave?(.cambridge)
 
-    // Give the async loadAll task a moment to run
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingWatchZoneRefresh()
 
     #expect(watchZoneSpy.loadAllCallCount >= 1)
   }
@@ -155,7 +154,7 @@ struct AppCoordinatorWatchZoneTests {
 
     vm.onSave?(.cambridge)
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingWatchZoneRefresh()
 
     #expect(watchZoneSpy.loadAllCallCount >= 1)
     #expect(sut.editingWatchZone == nil)
@@ -194,7 +193,7 @@ struct AppCoordinatorWatchZoneTests {
     let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
     editorVM.onSave?(renamed)
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingWatchZoneRefresh()
 
     #expect(listVM.zones == [renamed])
   }
@@ -245,7 +244,7 @@ struct AppCoordinatorWatchZoneTests {
     let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
     editorVM.onSave?(renamed)
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingWatchZoneRefresh()
 
     #expect(listVM.zones == [renamed])
   }
