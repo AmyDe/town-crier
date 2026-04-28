@@ -53,4 +53,16 @@ struct SettingsViewTests {
 
     #expect(tapped)
   }
+
+  @Test("SettingsView forwards the notification-preferences tap to the callback")
+  func notificationPreferencesCallback_isInvokedOnRequest() {
+    let vm = makeViewModel()
+    var tapped = false
+    let handler: () -> Void = { tapped = true }
+    let view = SettingsView(viewModel: vm, onNotificationPreferences: handler)
+
+    view.requestNotificationPreferences()
+
+    #expect(tapped)
+  }
 }

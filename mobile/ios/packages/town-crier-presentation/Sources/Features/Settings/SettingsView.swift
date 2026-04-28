@@ -34,6 +34,13 @@ public struct SettingsView: View {
     onRedeemOfferCode?()
   }
 
+  /// Test-only seam: invoke the notification-preferences callback as if the
+  /// user had tapped the row in Settings. Mirrors `requestRedeemOfferCode` so
+  /// the wiring is verifiable without UI-level automation.
+  public func requestNotificationPreferences() {
+    onNotificationPreferences?()
+  }
+
   public var body: some View {
     List {
       accountSection

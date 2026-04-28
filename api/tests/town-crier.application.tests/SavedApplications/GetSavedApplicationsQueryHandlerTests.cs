@@ -87,6 +87,39 @@ public sealed class GetSavedApplicationsQueryHandlerTests
     }
 
     [Test]
+    public async Task Should_HydrateApplicationsInParallel_When_UserHasManySaves()
+    {
+        // Arrange — a barrier-style fake that blocks every GetByUidAsync call until
+        // every expected call has arrived. If hydration were sequential, only one call
+        // would ever be in-flight and the test would dead-lock (caught by the timeout).
+        var savedRepository = new FakeSavedApplicationRepository();
+        var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
+        const int saveCount = 8;
+
+        var uids = new List<string>();
+        for (var i = 0; i < saveCount; i++)
+        {
+            var uid = $"planit-uid-{i:D3}";
+            uids.Add(uid);
+            await savedRepository.SaveAsync(
+                SavedApplication.Create("auth0|user-1", uid, savedAt.AddSeconds(i)), CancellationToken.None);
+        }
+
+        var applicationRepository = new BarrierPlanningApplicationRepository(saveCount, uids);
+        var handler = new GetSavedApplicationsQueryHandler(savedRepository, applicationRepository);
+        var query = new GetSavedApplicationsQuery("auth0|user-1");
+
+        // Act — bound the wait so a sequential implementation visibly deadlocks.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await handler.HandleAsync(query, cts.Token);
+
+        // Assert — every save was hydrated and all calls were in-flight at once.
+        await Assert.That(result).HasCount().EqualTo(saveCount);
+        await Assert.That(applicationRepository.PeakConcurrentCalls).IsEqualTo(saveCount);
+        await Assert.That(applicationRepository.TotalCalls).IsEqualTo(saveCount);
+    }
+
+    [Test]
     public async Task Should_ExcludeSavedApplication_When_PlanningApplicationNoLongerExists()
     {
         // Arrange

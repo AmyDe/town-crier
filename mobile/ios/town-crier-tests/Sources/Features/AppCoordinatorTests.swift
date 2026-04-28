@@ -292,4 +292,20 @@ struct AppCoordinatorTests {
     #expect(!sut.isManageSubscriptionPresented)
   }
 
+  // MARK: - Settings Navigation (System Notification Settings)
+
+  @Test func isOpeningSystemNotificationSettings_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isOpeningSystemNotificationSettings)
+  }
+
+  @Test func showSystemNotificationSettings_setsFlagToTrue() {
+    let (sut, _) = makeSUT()
+
+    sut.showSystemNotificationSettings()
+
+    #expect(sut.isOpeningSystemNotificationSettings)
+  }
+
 }

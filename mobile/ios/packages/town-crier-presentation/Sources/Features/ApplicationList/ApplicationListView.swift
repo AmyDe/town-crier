@@ -85,7 +85,7 @@ public struct ApplicationListView: View {
 
   @ViewBuilder
   private var contentRows: some View {
-    if viewModel.isLoading && viewModel.filteredApplications.isEmpty {
+    if (viewModel.isLoading || viewModel.isLoadingSaved) && viewModel.filteredApplications.isEmpty {
       ListSkeletonView()
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets())

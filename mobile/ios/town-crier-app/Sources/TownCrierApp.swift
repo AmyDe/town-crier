@@ -3,11 +3,13 @@ import SwiftUI
 import TownCrierData
 import TownCrierDomain
 import TownCrierPresentation
+import UIKit
 import UserNotifications
 
 @main
 struct TownCrierApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+  @Environment(\.openURL) private var openURL
   @StateObject private var coordinator: AppCoordinator
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
@@ -194,6 +196,9 @@ struct TownCrierApp: App {
       NavigationStack {
         SettingsView(
           viewModel: settingsViewModel,
+          onNotificationPreferences: {
+            coordinator.showSystemNotificationSettings()
+          },
           onManageSubscription: {
             coordinator.showManageSubscription()
           },
@@ -215,6 +220,13 @@ struct TownCrierApp: App {
           isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
         )
       #endif
+      .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
+        guard requested else { return }
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+          openURL(url)
+        }
+        coordinator.isOpeningSystemNotificationSettings = false
+      }
       .tabItem {
         Label("Settings", systemImage: "gearshape")
       }

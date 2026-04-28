@@ -18,11 +18,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
   @Published private(set) var isSavedFilterActive = false
+  @Published private(set) var isLoadingSaved = false
   @Published private(set) var savedApplicationUids: Set<String> = []
-
-  /// Full saved application objects from the most recent saved-filter activation.
-  /// Used to merge cross-zone applications into the filtered display list.
-  private var savedApplications: [SavedApplication] = []
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
@@ -49,13 +46,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   public var filteredApplications: [PlanningApplication] {
     if isSavedFilterActive {
-      let existingIds = Set(applications.map(\.id.value))
-      let fromCurrentList = applications.filter { savedApplicationUids.contains($0.id.value) }
-      let fromSavedData = savedApplications.compactMap { saved -> PlanningApplication? in
-        guard let app = saved.application, !existingIds.contains(app.id.value) else { return nil }
-        return app
-      }
-      return fromCurrentList + fromSavedData
+      return applications.filter { savedApplicationUids.contains($0.id.value) }
     }
     guard canFilter, let filter = selectedStatusFilter else {
       return applications
@@ -64,7 +55,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   public var isEmpty: Bool {
-    filteredApplications.isEmpty && error == nil && !isLoading
+    filteredApplications.isEmpty && error == nil && !isLoading && !isLoadingSaved
   }
 
   public var isNetworkError: Bool {
@@ -184,19 +175,18 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     guard let repository = savedApplicationRepository else { return }
     selectedStatusFilter = nil
     isSavedFilterActive = true
+    isLoadingSaved = true
     do {
       let saved = try await repository.loadAll()
-      savedApplications = saved
       savedApplicationUids = Set(saved.map(\.applicationUid))
     } catch {
-      savedApplications = []
       savedApplicationUids = []
     }
+    isLoadingSaved = false
   }
 
   public func deactivateSavedFilter() {
     isSavedFilterActive = false
-    savedApplications = []
   }
 
   public func selectZone(_ zone: WatchZone) async {
