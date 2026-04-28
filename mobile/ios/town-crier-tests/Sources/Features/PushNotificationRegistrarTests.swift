@@ -59,4 +59,40 @@ struct PushNotificationRegistrarTests {
 
     #expect(notificationService.registerDeviceTokenCalls == ["cafebabe"])
   }
+
+  @Test("flushPendingRegistration is idempotent — repeated calls do not re-POST")
+  func flushPendingRegistration_idempotent() async {
+    let (sut, notificationService, authService) = makeSUT(session: nil)
+    await sut.didReceiveDeviceToken(Data([0xCA, 0xFE]))
+    authService.currentSessionResult = .valid
+
+    await sut.flushPendingRegistration()
+    await sut.flushPendingRegistration()
+
+    #expect(notificationService.registerDeviceTokenCalls.count == 1)
+  }
+
+  @Test("flushPendingRegistration with no queued token is a no-op")
+  func flushPendingRegistration_noQueuedToken_noOp() async {
+    let (sut, notificationService, _) = makeSUT(session: .valid)
+
+    await sut.flushPendingRegistration()
+
+    #expect(notificationService.registerDeviceTokenCalls.isEmpty)
+  }
+
+  @Test("flushPendingRegistration while still anonymous does not register and keeps token queued")
+  func flushPendingRegistration_stillAnonymous_keepsQueued() async {
+    let (sut, notificationService, authService) = makeSUT(session: nil)
+    await sut.didReceiveDeviceToken(Data([0xAB, 0xCD]))
+
+    await sut.flushPendingRegistration()
+    #expect(notificationService.registerDeviceTokenCalls.isEmpty)
+
+    // Now authenticate and re-flush — the queued token should still be there.
+    authService.currentSessionResult = .valid
+    await sut.flushPendingRegistration()
+
+    #expect(notificationService.registerDeviceTokenCalls == ["abcd"])
+  }
 }
