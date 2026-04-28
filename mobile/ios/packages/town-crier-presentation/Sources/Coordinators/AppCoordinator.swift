@@ -274,10 +274,17 @@ public final class AppCoordinator: ObservableObject {
       tier: subscriptionTier,
       editing: zone
     )
-    viewModel.onSave = { [weak self] _ in
+    let isEditing = zone != nil
+    viewModel.onSave = { [weak self] saved in
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
       self?.pendingWatchZoneRefresh = Task { [weak self] in
+        // Invalidate the per-zone applications cache before reloading so a
+        // radius/centre change does not serve a stale cache hit on the
+        // Apps view for up to the cache TTL (tc-9vid).
+        if isEditing, let offlineRepository = self?.offlineRepository {
+          await offlineRepository.invalidateCache(for: saved.id)
+        }
         await self?.watchZoneListViewModel?.load()
       }
     }
