@@ -95,4 +95,41 @@ struct PushNotificationRegistrarTests {
 
     #expect(notificationService.registerDeviceTokenCalls == ["abcd"])
   }
+
+  // MARK: - Token rotation / re-registration on each launch
+
+  @Test("didReceiveDeviceToken while authenticated re-POSTs on every call (token rotation)")
+  func didReceiveDeviceToken_authenticated_rePostsEachTime() async {
+    let (sut, notificationService, _) = makeSUT(session: .valid)
+
+    await sut.didReceiveDeviceToken(Data([0x01, 0x02]))
+    await sut.didReceiveDeviceToken(Data([0x03, 0x04]))
+
+    #expect(notificationService.registerDeviceTokenCalls == ["0102", "0304"])
+  }
+
+  @Test("rotated token while anonymous overwrites the queued token")
+  func didReceiveDeviceToken_rotatedWhileAnonymous_overwritesQueue() async {
+    let (sut, notificationService, authService) = makeSUT(session: nil)
+
+    await sut.didReceiveDeviceToken(Data([0x01, 0x02]))
+    await sut.didReceiveDeviceToken(Data([0x03, 0x04]))
+
+    authService.currentSessionResult = .valid
+    await sut.flushPendingRegistration()
+
+    #expect(notificationService.registerDeviceTokenCalls == ["0304"])
+  }
+
+  // MARK: - didFailToRegister
+
+  @Test("didFailToRegister does not throw and does not call the backend")
+  func didFailToRegister_noBackendCall() async {
+    let (sut, notificationService, _) = makeSUT(session: .valid)
+    let error = NSError(domain: "APNs", code: 3010, userInfo: nil)
+
+    await sut.didFailToRegister(error: error)
+
+    #expect(notificationService.registerDeviceTokenCalls.isEmpty)
+  }
 }
