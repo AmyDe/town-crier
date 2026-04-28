@@ -229,6 +229,89 @@ struct MapViewModelStatusFilterTests {
     #expect(sut.filteredAnnotations.first?.status == .permitted)
   }
 
+  // MARK: - Saved Filter Loading State
+
+  @Test func isLoadingSaved_defaultsFalse() {
+    let savedSpy = SpySavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_isTrueWhileLoadAllInFlight() async {
+    let controllable = ControllableSavedApplicationRepository()
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: controllable
+    )
+    await sut.loadApplications()
+
+    let task = Task { await sut.activateSavedFilter() }
+    await controllable.waitForCall()
+
+    // While loadAll() is in flight, the spinner flag must be true and isEmpty
+    // must be suppressed so the view does not render the misleading empty state.
+    #expect(sut.isLoadingSaved)
+    #expect(!sut.isEmpty)
+
+    controllable.resume(with: .success([]))
+    await task.value
+
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_clearsAfterSuccess() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication(applicationUid: "APP-001", savedAt: Date())
+    ])
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(!sut.isLoadingSaved)
+  }
+
+  @Test func isLoadingSaved_clearsAfterFailure() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .failure(DomainError.networkUnavailable)
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let sut = MapViewModel(
+      repository: appSpy,
+      watchZoneRepository: zoneSpy,
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(!sut.isLoadingSaved)
+  }
+
   @Test func savedFilter_selectZone_deactivatesSavedFilter() async throws {
     let savedSpy = SpySavedApplicationRepository()
     savedSpy.loadAllResult = .success([
