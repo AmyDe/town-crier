@@ -30,4 +30,16 @@ struct PushNotificationRegistrarTests {
 
     #expect(notificationService.registerDeviceTokenCalls == ["deadbeef"])
   }
+
+  // MARK: - didReceiveDeviceToken — anonymous
+
+  @Test("didReceiveDeviceToken when not authenticated does not call backend")
+  func didReceiveDeviceToken_whenAnonymous_doesNotCallBackend() async {
+    let (sut, notificationService, _) = makeSUT(session: nil)
+    let tokenData = Data([0x01, 0x02, 0x03])
+
+    await sut.didReceiveDeviceToken(tokenData)
+
+    #expect(notificationService.registerDeviceTokenCalls.isEmpty)
+  }
 }
