@@ -155,7 +155,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       if let watchZoneRepository {
         let loadedZones = try await watchZoneRepository.loadAll()
         zones = loadedZones
-        if selectedZone == nil || !loadedZones.contains(where: { $0.id == selectedZone?.id }) {
+        // Always refresh `selectedZone` from the reloaded list so an in-place
+        // edit (same id, new radius/centre) propagates through to the list's
+        // header pill and downstream filters. Falling back to
+        // `resolveInitialZone` only when the id is missing (zone deleted)
+        // preserves the previous-session restore behaviour.
+        if let currentId = selectedZone?.id,
+           let updated = loadedZones.first(where: { $0.id == currentId }) {
+          selectedZone = updated
+        } else {
           selectedZone = resolveInitialZone(from: loadedZones)
         }
       }
