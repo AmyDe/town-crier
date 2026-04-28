@@ -25,7 +25,8 @@ struct CompositionRootTests {
     let repository = APIPlanningApplicationRepository(apiClient: apiClient)
     let notificationService = CompositeNotificationService(
       permissionProvider: SpyNotificationPermissionProvider(),
-      apiService: APINotificationService(apiClient: apiClient)
+      apiService: APINotificationService(apiClient: apiClient),
+      remoteRegistrar: SpyRemoteNotificationRegistering()
     )
 
     let userProfileRepository = APIUserProfileRepository(apiClient: apiClient)
@@ -83,7 +84,8 @@ struct CompositionRootTests {
       onboardingRepository: onboardingRepo,
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
@@ -134,7 +136,8 @@ struct CompositionRootTests {
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
@@ -161,7 +164,8 @@ struct CompositionRootTests {
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
@@ -217,7 +221,8 @@ struct CompositionRootTests {
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)
@@ -238,7 +243,8 @@ struct CompositionRootTests {
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL),
@@ -261,7 +267,8 @@ struct CompositionRootTests {
       onboardingRepository: UserDefaultsOnboardingRepository(),
       notificationService: CompositeNotificationService(
         permissionProvider: SpyNotificationPermissionProvider(),
-        apiService: APINotificationService(apiClient: apiClient)
+        apiService: APINotificationService(apiClient: apiClient),
+        remoteRegistrar: SpyRemoteNotificationRegistering()
       ),
       appVersionProvider: BundleAppVersionProvider(),
       versionConfigService: APIVersionConfigService(baseURL: apiBaseURL)

@@ -6,17 +6,24 @@ import TownCrierDomain
 public final class CompositeNotificationService: NotificationService, @unchecked Sendable {
   private let permissionProvider: any NotificationPermissionProvider
   private let apiService: APINotificationService
+  private let remoteRegistrar: any RemoteNotificationRegistering
 
   public init(
     permissionProvider: any NotificationPermissionProvider,
-    apiService: APINotificationService
+    apiService: APINotificationService,
+    remoteRegistrar: any RemoteNotificationRegistering
   ) {
     self.permissionProvider = permissionProvider
     self.apiService = apiService
+    self.remoteRegistrar = remoteRegistrar
   }
 
   public func requestPermission() async throws -> Bool {
-    try await permissionProvider.requestPermission()
+    let granted = try await permissionProvider.requestPermission()
+    if granted {
+      remoteRegistrar.registerForRemoteNotifications()
+    }
+    return granted
   }
 
   public func registerDeviceToken(_ token: String) async throws {
