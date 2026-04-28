@@ -262,6 +262,47 @@ struct AppCoordinatorWatchZoneTests {
     #expect(first === second)
   }
 
+  // MARK: - Deterministic onSave synchronisation
+
+  /// Regression guard for tc-5l2j (CI flakes on `Task.sleep(...)` waits in
+  /// the editor's onSave path). The Coordinator must expose a way to await
+  /// the post-save refresh without sleeping so tests are deterministic.
+  @Test func waitForPendingWatchZoneRefresh_awaitsOnSaveReload() async throws {
+    let watchZoneSpy = SpyWatchZoneRepository()
+    watchZoneSpy.loadAllResult = .success([.cambridge])
+    let sut = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: watchZoneSpy,
+      geocoder: SpyPostcodeGeocoder(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+
+    let listVM = sut.makeWatchZoneListViewModel()
+    await listVM.load()
+
+    let renamed = try WatchZone(
+      id: WatchZone.cambridge.id,
+      name: "Renamed",
+      centre: WatchZone.cambridge.centre,
+      radiusMetres: WatchZone.cambridge.radiusMetres,
+      authorityId: WatchZone.cambridge.authorityId
+    )
+    watchZoneSpy.loadAllResult = .success([renamed])
+
+    let editorVM = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+    editorVM.onSave?(renamed)
+
+    await sut.waitForPendingWatchZoneRefresh()
+
+    #expect(listVM.zones == [renamed])
+  }
+
   // MARK: - Watch Zone Upsell
 
   @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
