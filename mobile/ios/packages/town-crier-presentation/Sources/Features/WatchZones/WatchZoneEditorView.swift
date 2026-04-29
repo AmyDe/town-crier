@@ -21,6 +21,9 @@ public struct WatchZoneEditorView: View {
           radiusSection
           mapPreviewSection
         }
+        if viewModel.areNotificationTogglesVisible {
+          notificationsSection
+        }
         if let error = viewModel.error {
           errorSection(error)
         }
@@ -114,6 +117,21 @@ public struct WatchZoneEditorView: View {
         .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
       }
+    }
+  }
+
+  private var notificationsSection: some View {
+    Section {
+      Toggle("Send push notifications", isOn: $viewModel.pushEnabled)
+        .tint(Color.tcAmber)
+      Toggle("Send instant emails", isOn: $viewModel.emailInstantEnabled)
+        .tint(Color.tcAmber)
+    } header: {
+      Text("Notifications")
+    } footer: {
+      Text("Choose how this zone alerts you when new applications match.")
+        .font(.system(.caption))
+        .foregroundStyle(Color.tcTextSecondary)
     }
   }
 
