@@ -61,4 +61,21 @@ public sealed class UserProfileDocumentSerializationTests
         await Assert.That(json).Contains("\"tier\"");
         await Assert.That(json).Contains("\"zonePreferences\"");
     }
+
+    [Test]
+    public async Task Should_DefaultEmailDigestEnabledToTrue_When_CosmosDocumentHasNoEmailDigestEnabled()
+    {
+        // Arrange — simulate a legacy document predating the emailDigestEnabled field.
+        // The System.Text.Json source generator sets bool properties to default(bool)=false
+        // when the JSON field is missing, regardless of property initialiser. The fix is
+        // to model the field as bool? and coalesce to true in ToDomain.
+        var json = """{"id":"auth0|user-1","userId":"auth0|user-1","pushEnabled":true,"digestDay":3,"zonePreferences":{},"tier":"Free","lastActiveAt":"0001-01-01T00:00:00+00:00"}""";
+
+        // Act
+        var document = JsonSerializer.Deserialize<UserProfileDocument>(json, this.jsonOptions)!;
+        var profile = document.ToDomain();
+
+        // Assert — missing emailDigestEnabled hydrates to true (preserves prior default-on behaviour for legacy users)
+        await Assert.That(profile.NotificationPreferences.EmailDigestEnabled).IsTrue();
+    }
 }
