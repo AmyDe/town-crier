@@ -125,3 +125,24 @@
   font-size: var(--tc-text-body);
   color: var(--tc-text-primary);
 }
+
+.zoneNotifications {
+  margin-top: var(--tc-space-md);
+  padding-top: var(--tc-space-md);
+  border-top: 1px solid var(--tc-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-sm);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tc-space-md);
+}
+
+.toggleRowLabel {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+}
