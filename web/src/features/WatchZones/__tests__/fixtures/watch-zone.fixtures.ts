@@ -12,6 +12,8 @@ export function aWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZoneSumm
     longitude: 0.1218,
     radiusMetres: 2000,
     authorityId: asAuthorityId(1),
+    pushEnabled: true,
+    emailInstantEnabled: true,
     ...overrides,
   };
 }
@@ -24,6 +26,8 @@ export function aSecondWatchZone(overrides?: Partial<WatchZoneSummary>): WatchZo
     longitude: -0.1278,
     radiusMetres: 5000,
     authorityId: asAuthorityId(2),
+    pushEnabled: true,
+    emailInstantEnabled: true,
     ...overrides,
   };
 }

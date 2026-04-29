@@ -122,6 +122,8 @@ export interface WatchZoneSummary {
   readonly longitude: number;
   readonly radiusMetres: number;
   readonly authorityId: AuthorityId;
+  readonly pushEnabled: boolean;
+  readonly emailInstantEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +236,8 @@ export interface CreateWatchZoneRequest {
   readonly longitude: number;
   readonly radiusMetres: number;
   readonly authorityId?: number;
+  readonly pushEnabled?: boolean;
+  readonly emailInstantEnabled?: boolean;
 }
 
 export interface UpdateProfileRequest {
@@ -246,6 +250,8 @@ export interface UpdateProfileRequest {
 export interface UpdateWatchZoneRequest {
   readonly name?: string;
   readonly radiusMetres?: number;
+  readonly pushEnabled?: boolean;
+  readonly emailInstantEnabled?: boolean;
 }
 
 export interface UpdateZonePreferencesRequest {
