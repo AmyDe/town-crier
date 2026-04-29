@@ -36,22 +36,6 @@ public sealed class CosmosNotificationRepositoryTests
     }
 
     [Test]
-    public async Task Should_ReturnCount_When_CountByUserInMonthCalled()
-    {
-        // Arrange
-        var client = new FakeCosmosRestClient();
-        var repo = new CosmosNotificationRepository(client);
-        var notification = new NotificationBuilder().Build();
-        await repo.SaveAsync(notification, CancellationToken.None);
-
-        // Act -- scalar query returns count of docs in partition
-        var result = await repo.CountByUserInMonthAsync("user-1", 2026, 3, CancellationToken.None);
-
-        // Assert
-        await Assert.That(result).IsGreaterThanOrEqualTo(1);
-    }
-
-    [Test]
     public async Task Should_ReturnCount_When_CountByUserSinceCalled()
     {
         // Arrange

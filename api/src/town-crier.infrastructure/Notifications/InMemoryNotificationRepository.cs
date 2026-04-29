@@ -15,15 +15,6 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         return Task.FromResult(notification);
     }
 
-    public Task<int> CountByUserInMonthAsync(string userId, int year, int month, CancellationToken ct)
-    {
-        var count = this.store.Count(n =>
-            n.UserId == userId &&
-            n.CreatedAt.Year == year &&
-            n.CreatedAt.Month == month);
-        return Task.FromResult(count);
-    }
-
     public Task<int> CountByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct)
     {
         var count = this.store.Count(n =>
