@@ -45,8 +45,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     savedApplicationRepository != nil
   }
 
+  /// True when the zone picker (real zones plus the synthetic 'All' chip)
+  /// should be visible. With at least one zone, the picker renders so the
+  /// 'All' chip is always reachable as an escape hatch for orphan saves.
   public var showZonePicker: Bool {
-    zones.count > 1
+    !zones.isEmpty
   }
 
   public var filteredApplications: [PlanningApplication] {

@@ -386,15 +386,7 @@ struct ApplicationListViewModelTests {
     #expect(sut.showZonePicker)
   }
 
-  @Test func showZonePicker_falseWhenSingleZone() async throws {
-    let (sut, _, _, _) = try makeSUTWithZones(zones: [.cambridge])
-    await sut.loadApplications()
-    #expect(!sut.showZonePicker)
-  }
-
-  @Test func showZonePicker_falseWhenNoZones() async throws {
-    let (sut, _, _, _) = try makeSUTWithZones(zones: [])
-    await sut.loadApplications()
-    #expect(!sut.showZonePicker)
-  }
+  // showZonePicker single-zone / no-zones cases live in
+  // ApplicationListAllZonesTests so they sit alongside the 'All' chip
+  // visibility contract.
 }
