@@ -63,6 +63,29 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     filteredApplications.isEmpty && error == nil && !isLoading && !isLoadingSaved
   }
 
+  /// Identifies which copy the empty state should render. Only meaningful when
+  /// `isEmpty` is true; the View renders one of these messages accordingly.
+  public enum EmptyStateKind: Equatable, Sendable {
+    /// 'All' selected with the Saved filter off — encourage the user to pick a
+    /// zone or turn on Saved to see their bookmarks.
+    case allZonesNoSavedFilter
+    /// Saved filter on but the user has no bookmarks (in-zone or, when 'All',
+    /// across all zones).
+    case savedFilterNoResults
+    /// A real watch zone is selected but it has no applications yet.
+    case zoneNoApplications
+  }
+
+  public var emptyStateKind: EmptyStateKind {
+    if isAllZonesSelected, !isSavedFilterActive {
+      return .allZonesNoSavedFilter
+    }
+    if isSavedFilterActive {
+      return .savedFilterNoResults
+    }
+    return .zoneNoApplications
+  }
+
   public var isNetworkError: Bool {
     error == .networkUnavailable
   }
