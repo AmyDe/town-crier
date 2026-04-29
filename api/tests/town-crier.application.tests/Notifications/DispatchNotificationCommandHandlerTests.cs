@@ -98,24 +98,26 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_EnforceFreeTierCap_When_FiveNotificationsSentInMonth()
+    public async Task Should_RecordButNotPush_When_UserOnFreeTier()
     {
-        // Arrange
+        // Arrange — free tier (default) gets weekly digest only, no instant push
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
-        for (var i = 0; i < 5; i++)
+        // Act — dispatch 10 notifications well past any historical cap
+        for (var i = 0; i < 10; i++)
         {
             await handler.HandleAsync(CreateCommand($"app-{i:D3}"), CancellationToken.None);
         }
 
-        // Act — 6th notification
-        await handler.HandleAsync(CreateCommand("app-005"), CancellationToken.None);
+        // Assert — all rows persisted (digest will pick them up) but no pushes sent
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(10);
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
 
-        // Assert — recorded but no push
-        await Assert.That(notificationRepo.All).HasCount().EqualTo(6);
-        await Assert.That(notificationRepo.All[5].PushSent).IsFalse();
-        await Assert.That(pushSender.Sent).HasCount().EqualTo(5);
+        for (var i = 0; i < 10; i++)
+        {
+            await Assert.That(notificationRepo.All[i].PushSent).IsFalse();
+        }
     }
 
     [Test]
