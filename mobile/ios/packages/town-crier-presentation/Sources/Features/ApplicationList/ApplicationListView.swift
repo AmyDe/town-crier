@@ -44,7 +44,6 @@ public struct ApplicationListView: View {
     if viewModel.showZonePicker {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
-          allZonesChip
           ForEach(viewModel.zones) { zone in
             zoneChip(zone: zone, isSelected: zone.id == viewModel.selectedZone?.id)
           }
@@ -57,21 +56,16 @@ public struct ApplicationListView: View {
       .listRowBackground(Color.tcBackground)
     }
 
-    if viewModel.canFilter || viewModel.canSave {
+    if !viewModel.applications.isEmpty {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
-          if viewModel.canSave {
-            savedFilterChip
-          }
-          if viewModel.canFilter {
-            filterChip(label: "All", status: nil)
-            filterChip(label: "Pending", status: .undecided)
-            filterChip(label: "Granted", status: .permitted)
-            filterChip(label: "Granted with conditions", status: .conditions)
-            filterChip(label: "Refused", status: .rejected)
-            filterChip(label: "Withdrawn", status: .withdrawn)
-            filterChip(label: "Appealed", status: .appealed)
-          }
+          filterChip(label: "All", status: nil)
+          filterChip(label: "Pending", status: .undecided)
+          filterChip(label: "Granted", status: .permitted)
+          filterChip(label: "Granted with conditions", status: .conditions)
+          filterChip(label: "Refused", status: .rejected)
+          filterChip(label: "Withdrawn", status: .withdrawn)
+          filterChip(label: "Appealed", status: .appealed)
         }
         .padding(.horizontal, TCSpacing.medium)
         .padding(.vertical, TCSpacing.small)
@@ -86,7 +80,7 @@ public struct ApplicationListView: View {
 
   @ViewBuilder
   private var contentRows: some View {
-    if (viewModel.isLoading || viewModel.isLoadingSaved) && viewModel.filteredApplications.isEmpty {
+    if viewModel.isLoading && viewModel.filteredApplications.isEmpty {
       ListSkeletonView()
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets())
@@ -100,10 +94,15 @@ public struct ApplicationListView: View {
       .listRowInsets(EdgeInsets())
       .listRowBackground(Color.tcBackground)
     } else if viewModel.isEmpty {
-      emptyStateRow
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.tcBackground)
+      EmptyStateView(
+        icon: "doc.text.magnifyingglass",
+        title: "No Applications",
+        description: "No planning applications found in your watch zone yet."
+      )
+      .frame(maxWidth: .infinity)
+      .listRowSeparator(.hidden)
+      .listRowInsets(EdgeInsets())
+      .listRowBackground(Color.tcBackground)
     } else {
       ForEach(viewModel.filteredApplications) { application in
         ApplicationListRow(application: application)
@@ -114,56 +113,6 @@ public struct ApplicationListView: View {
           }
       }
     }
-  }
-
-  @ViewBuilder
-  private var emptyStateRow: some View {
-    switch viewModel.emptyStateKind {
-    case .allZonesNoSavedFilter:
-      EmptyStateView(
-        icon: "square.stack.3d.up",
-        title: "Nothing to Show",
-        description:
-          "Pick a zone to see applications, or turn on Saved to see everything you've bookmarked."
-      )
-      .frame(maxWidth: .infinity)
-    case .savedFilterNoResults:
-      EmptyStateView(
-        icon: "bookmark",
-        title: "No Saved Applications",
-        description:
-          "No saved applications. Tap the bookmark icon on any application to save it."
-      )
-      .frame(maxWidth: .infinity)
-    case .zoneNoApplications:
-      EmptyStateView(
-        icon: "doc.text.magnifyingglass",
-        title: "No Applications",
-        description: "No planning applications found in your watch zone yet."
-      )
-      .frame(maxWidth: .infinity)
-    }
-  }
-
-  // MARK: - All Zones Chip
-
-  private var allZonesChip: some View {
-    let isSelected = viewModel.isAllZonesSelected
-    return Text("All")
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(isSelected ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        Task { await viewModel.selectAllZones() }
-      }
   }
 
   // MARK: - Zone Chip
@@ -190,33 +139,8 @@ public struct ApplicationListView: View {
 
   // MARK: - Filter Chips
 
-  private var savedFilterChip: some View {
-    Label("Saved", systemImage: "bookmark.fill")
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(
-        viewModel.isSavedFilterActive ? Color.tcTextOnAccent : Color.tcTextPrimary
-      )
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(viewModel.isSavedFilterActive ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: viewModel.isSavedFilterActive ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        if viewModel.isSavedFilterActive {
-          viewModel.deactivateSavedFilter()
-        } else {
-          Task { await viewModel.activateSavedFilter() }
-        }
-      }
-  }
-
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     let isSelected = viewModel.selectedStatusFilter == status
-      && !viewModel.isSavedFilterActive
     return Text(label)
       .font(TCTypography.captionEmphasis)
       .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
@@ -233,5 +157,4 @@ public struct ApplicationListView: View {
         viewModel.selectedStatusFilter = status
       }
   }
-
 }

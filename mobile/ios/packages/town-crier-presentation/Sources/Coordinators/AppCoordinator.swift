@@ -111,7 +111,6 @@ public final class AppCoordinator: ObservableObject {
     MapViewModel(
       repository: repository,
       watchZoneRepository: watchZoneRepository,
-      tier: subscriptionTier,
       savedApplicationRepository: savedApplicationRepository
     )
   }
@@ -123,16 +122,12 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         offlineRepository: offlineRepository,
-        zone: zone,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        zone: zone
       )
     } else {
       viewModel = ApplicationListViewModel(
         repository: repository,
-        zone: zone,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        zone: zone
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -148,16 +143,12 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        offlineRepository: offlineRepository,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        offlineRepository: offlineRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        repository: repository,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        repository: repository
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
