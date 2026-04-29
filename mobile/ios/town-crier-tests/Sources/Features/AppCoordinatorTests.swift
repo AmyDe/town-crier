@@ -232,6 +232,36 @@ struct AppCoordinatorTests {
     #expect(vm.annotations.count == 1)
   }
 
+  // MARK: - Saved Application List Factory
+
+  @Test func makeSavedApplicationListViewModel_returnsConfiguredViewModel() async {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([
+      SavedApplication.fixture(uid: "APP-A"),
+    ])
+    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
+
+    let vm = sut.makeSavedApplicationListViewModel()
+
+    #expect(vm.selectedStatusFilter == nil)
+    await vm.loadAll()
+    #expect(vm.applications.count == 1)
+  }
+
+  @Test func savedApplicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, spy) = makeSUT(savedApplicationRepository: savedSpy)
+    spy.fetchApplicationResult = .success(.permitted)
+    let vm = sut.makeSavedApplicationListViewModel()
+
+    vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(sut.detailApplication == .permitted)
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+  }
+
   // MARK: - Settings ViewModel Factory
 
   @Test func makeSettingsViewModel_withRequiredDeps_createsViewModel() {
