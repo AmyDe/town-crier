@@ -44,8 +44,8 @@ describe('useApplications — initial selection', () => {
 
     await waitFor(() => {
       expect(result.current.selectedZone).toEqual(cambridgeZone());
+      expect(result.current.applications).toHaveLength(1);
     });
-    expect(result.current.applications).toHaveLength(1);
     expect(browsePort.fetchByZoneCalls).toEqual([cambridgeZone().id]);
   });
 });
