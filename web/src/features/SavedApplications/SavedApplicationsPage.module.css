@@ -1,0 +1,87 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+}
+
+.heading {
+  font-size: var(--tc-text-display-large);
+  font-weight: var(--tc-weight-bold);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-lg);
+}
+
+.filterBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-lg);
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+}
+
+@media (min-width: 640px) {
+  .filterBar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+}
+
+.statusChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tc-space-xs);
+  flex: 1 1 auto;
+}
+
+.chip {
+  font: inherit;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-secondary);
+  background: transparent;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-full);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast) ease, color var(--tc-duration-fast) ease, border-color var(--tc-duration-fast) ease;
+}
+
+.chip:hover {
+  border-color: var(--tc-amber);
+  color: var(--tc-text-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.chipPressed {
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border-color: var(--tc-amber);
+}
+
+.chipPressed:hover {
+  color: var(--tc-text-on-accent);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-md);
+}
+
+.loading {
+  text-align: center;
+  padding: var(--tc-space-xl);
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
