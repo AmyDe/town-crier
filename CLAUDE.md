@@ -169,11 +169,23 @@ A PreToolUse hook (`.claude/require-bead.sh`) enforces this — Write/Edit on co
 
 Before editing code, create and enter an isolated worktree:
 1. `bd worktree create <name>` (optionally `--branch <branch>`) — wraps `git worktree add`, keeps the shared beads DB visible, and avoids beads bug [GH#3311](https://github.com/gastownhall/beads/issues/3311).
-2. **Apply the GH#3421 workaround.** bd v1.0.2 does not propagate `.beads/dolt-server.port` into new worktrees, so `bd` commands inside them fail with "database not found". Symlink the main tree's port file:
+2. **Apply two bd worktree workarounds.** Autopilot's Phase 2 does both automatically; humans creating worktrees by hand must run them manually.
+
+   **a. GH#3421 — `.beads/dolt-server.port` not propagated.** Without the symlink, `bd` commands inside the worktree fail with "database not found". The relative path depth depends on where the worktree lives:
    ```bash
+   # Human layout: `bd worktree create <name>` places it at <repo>/<name>/
+   ln -sf ../../.beads/dolt-server.port <name>/.beads/dolt-server.port
+
+   # Autopilot layout: worktrees live at <repo>/.claude/worktrees/<name>/
    ln -sf ../../../../.beads/dolt-server.port .claude/worktrees/<name>/.beads/dolt-server.port
    ```
-   (Path depth `../../../../` assumes worktrees live at `.claude/worktrees/<name>`.) Autopilot's Phase 2 already does this automatically; this line is for humans creating worktrees by hand. Remove when beads [GH#3421](https://github.com/gastownhall/beads/issues/3421) lands.
+
+   **b. gastownhall/beads#3593 — `.beads/` left at 0755.** `bd worktree create` doesn't tighten the umask, so every `bd` invocation inside the worktree prints a permissions warning. Fix:
+   ```bash
+   chmod 700 <worktree>/.beads/
+   ```
+
+   Remove both workarounds when [GH#3421](https://github.com/gastownhall/beads/issues/3421) and [gastownhall/beads#3593](https://github.com/gastownhall/beads/issues/3593) ship in a released bd version.
 3. `EnterWorktree path: "<path printed by the command>"` to switch the session into it.
 4. Make your changes within the worktree.
 5. Use the `/ship` skill or `ExitWorktree` when done; `bd worktree remove <name>` for cleanup (has safety checks for uncommitted/unpushed work).
