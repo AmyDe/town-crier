@@ -99,4 +99,21 @@ struct WatchZoneEditorViewTests {
     #expect(formatRadius(100) == "100 m")
     #expect(formatRadius(vm.maxRadiusMetres) == "10 km")
   }
+
+  // MARK: - Per-zone notification toggles (tc-kh1s)
+
+  /// Smoke test: editing an existing zone with toggles flipped off must render without crashing.
+  @Test func body_renders_inEditMode_withNotificationFlagsToggled() throws {
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-toggles"),
+      name: "Notify",
+      centre: .cambridge,
+      radiusMetres: 1500,
+      pushEnabled: false,
+      emailInstantEnabled: false
+    )
+    let vm = makeViewModel(tier: .personal, editing: zone)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
 }

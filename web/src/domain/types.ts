@@ -58,9 +58,9 @@ export function isApplicationStatus(value: unknown): value is ApplicationStatus 
   return typeof value === "string" && APPLICATION_STATUSES.includes(value);
 }
 
-export type SubscriptionTier = "Free" | "Pro";
+export type SubscriptionTier = "Free" | "Personal" | "Pro";
 
-const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Pro"];
+const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Personal", "Pro"];
 
 export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
   return typeof value === "string" && SUBSCRIPTION_TIERS.includes(value);
@@ -99,7 +99,6 @@ export interface UserProfile {
   readonly userId: string;
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
-  readonly emailInstantEnabled: boolean;
   readonly digestDay: DayOfWeek;
   readonly tier: SubscriptionTier;
 }
@@ -122,6 +121,8 @@ export interface WatchZoneSummary {
   readonly longitude: number;
   readonly radiusMetres: number;
   readonly authorityId: AuthorityId;
+  readonly pushEnabled: boolean;
+  readonly emailInstantEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,18 +235,21 @@ export interface CreateWatchZoneRequest {
   readonly longitude: number;
   readonly radiusMetres: number;
   readonly authorityId?: number;
+  readonly pushEnabled?: boolean;
+  readonly emailInstantEnabled?: boolean;
 }
 
 export interface UpdateProfileRequest {
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
-  readonly emailInstantEnabled: boolean;
   readonly digestDay: DayOfWeek;
 }
 
 export interface UpdateWatchZoneRequest {
   readonly name?: string;
   readonly radiusMetres?: number;
+  readonly pushEnabled?: boolean;
+  readonly emailInstantEnabled?: boolean;
 }
 
 export interface UpdateZonePreferencesRequest {

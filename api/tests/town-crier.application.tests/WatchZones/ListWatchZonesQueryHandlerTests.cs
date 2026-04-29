@@ -55,6 +55,29 @@ public sealed class ListWatchZonesQueryHandlerTests
     }
 
     [Test]
+    public async Task Should_ExposeNotificationFlags_When_ListingZones()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithPushEnabled(false)
+            .WithEmailInstantEnabled(true)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new ListWatchZonesQueryHandler(this.watchZoneRepository);
+
+        // Act
+        var result = await handler.HandleAsync(new ListWatchZonesQuery("user-1"), CancellationToken.None);
+
+        // Assert — both flags surface verbatim through the summary
+        var summary = result.Zones.Single();
+        await Assert.That(summary.PushEnabled).IsFalse();
+        await Assert.That(summary.EmailInstantEnabled).IsTrue();
+    }
+
+    [Test]
     public async Task Should_ExcludeOtherUsersZones_When_ListingZones()
     {
         // Arrange

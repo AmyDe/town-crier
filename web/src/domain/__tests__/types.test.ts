@@ -55,6 +55,7 @@ describe("type guards", () => {
   describe("isSubscriptionTier", () => {
     it("returns true for valid tiers", () => {
       expect(isSubscriptionTier("Free")).toBe(true);
+      expect(isSubscriptionTier("Personal")).toBe(true);
       expect(isSubscriptionTier("Pro")).toBe(true);
     });
 

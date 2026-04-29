@@ -7,13 +7,17 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
   public let centre: Coordinate
   public let radiusMetres: Double
   public let authorityId: Int
+  public let pushEnabled: Bool
+  public let emailInstantEnabled: Bool
 
   public init(
     id: WatchZoneId = WatchZoneId(),
     name: String,
     centre: Coordinate,
     radiusMetres: Double,
-    authorityId: Int = 0
+    authorityId: Int = 0,
+    pushEnabled: Bool = true,
+    emailInstantEnabled: Bool = true
   ) throws {
     let trimmed = name.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else {
@@ -27,6 +31,8 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     self.centre = centre
     self.radiusMetres = radiusMetres
     self.authorityId = authorityId
+    self.pushEnabled = pushEnabled
+    self.emailInstantEnabled = emailInstantEnabled
   }
 
   /// Convenience initializer that derives the zone name from a validated postcode.
@@ -35,14 +41,18 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     postcode: Postcode,
     centre: Coordinate,
     radiusMetres: Double,
-    authorityId: Int = 0
+    authorityId: Int = 0,
+    pushEnabled: Bool = true,
+    emailInstantEnabled: Bool = true
   ) throws {
     try self.init(
       id: id,
       name: postcode.value,
       centre: centre,
       radiusMetres: radiusMetres,
-      authorityId: authorityId
+      authorityId: authorityId,
+      pushEnabled: pushEnabled,
+      emailInstantEnabled: emailInstantEnabled
     )
   }
 

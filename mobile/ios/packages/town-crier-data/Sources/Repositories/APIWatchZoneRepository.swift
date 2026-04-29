@@ -20,7 +20,9 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       latitude: zone.centre.latitude,
       longitude: zone.centre.longitude,
       radiusMetres: zone.radiusMetres,
-      authorityId: zone.authorityId > 0 ? zone.authorityId : nil
+      authorityId: zone.authorityId > 0 ? zone.authorityId : nil,
+      pushEnabled: zone.pushEnabled,
+      emailInstantEnabled: zone.emailInstantEnabled
     )
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
@@ -36,7 +38,9 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
       name: zone.name,
       latitude: zone.centre.latitude,
       longitude: zone.centre.longitude,
-      radiusMetres: zone.radiusMetres
+      radiusMetres: zone.radiusMetres,
+      pushEnabled: zone.pushEnabled,
+      emailInstantEnabled: zone.emailInstantEnabled
     )
     do {
       let _: EmptyResponse = try await apiClient.request(
@@ -96,6 +100,8 @@ struct CreateWatchZoneRequest: Encodable, Sendable {
   let longitude: Double
   let radiusMetres: Double
   let authorityId: Int?
+  let pushEnabled: Bool
+  let emailInstantEnabled: Bool
 }
 
 struct UpdateWatchZoneRequest: Encodable, Sendable {
@@ -103,6 +109,8 @@ struct UpdateWatchZoneRequest: Encodable, Sendable {
   let latitude: Double
   let longitude: Double
   let radiusMetres: Double
+  let pushEnabled: Bool
+  let emailInstantEnabled: Bool
 }
 
 struct ListWatchZonesResponse: Decodable, Sendable {
@@ -116,6 +124,47 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
   let longitude: Double
   let radiusMetres: Double
   let authorityId: Int
+  let pushEnabled: Bool
+  let emailInstantEnabled: Bool
+
+  init(
+    id: String,
+    name: String,
+    latitude: Double,
+    longitude: Double,
+    radiusMetres: Double,
+    authorityId: Int,
+    pushEnabled: Bool = true,
+    emailInstantEnabled: Bool = true
+  ) {
+    self.id = id
+    self.name = name
+    self.latitude = latitude
+    self.longitude = longitude
+    self.radiusMetres = radiusMetres
+    self.authorityId = authorityId
+    self.pushEnabled = pushEnabled
+    self.emailInstantEnabled = emailInstantEnabled
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.id = try container.decode(String.self, forKey: .id)
+    self.name = try container.decode(String.self, forKey: .name)
+    self.latitude = try container.decode(Double.self, forKey: .latitude)
+    self.longitude = try container.decode(Double.self, forKey: .longitude)
+    self.radiusMetres = try container.decode(Double.self, forKey: .radiusMetres)
+    self.authorityId = try container.decode(Int.self, forKey: .authorityId)
+    // Per spec (T1): existing zones without these fields hydrate to true (preserves prior behaviour).
+    self.pushEnabled = try container.decodeIfPresent(Bool.self, forKey: .pushEnabled) ?? true
+    self.emailInstantEnabled =
+      try container.decodeIfPresent(Bool.self, forKey: .emailInstantEnabled) ?? true
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, name, latitude, longitude, radiusMetres, authorityId
+    case pushEnabled, emailInstantEnabled
+  }
 
   func toDomain() throws -> WatchZone {
     let centre = try Coordinate(latitude: latitude, longitude: longitude)
@@ -124,7 +173,9 @@ struct WatchZoneSummaryDTO: Decodable, Sendable {
       name: name,
       centre: centre,
       radiusMetres: radiusMetres,
-      authorityId: authorityId
+      authorityId: authorityId,
+      pushEnabled: pushEnabled,
+      emailInstantEnabled: emailInstantEnabled
     )
   }
 }

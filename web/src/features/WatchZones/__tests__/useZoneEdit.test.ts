@@ -218,4 +218,121 @@ describe('useZoneEdit', () => {
 
     expect(result.current.canSave).toBe(false);
   });
+
+  describe('per-zone notification toggles', () => {
+    it('initialises pushEnabled and emailInstantEnabled from the zone', () => {
+      const zone = aWatchZone({ pushEnabled: false, emailInstantEnabled: true });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      expect(result.current.pushEnabled).toBe(false);
+      expect(result.current.emailInstantEnabled).toBe(true);
+      expect(result.current.isDirty).toBe(false);
+    });
+
+    it('toggling pushEnabled marks the form dirty', () => {
+      const zone = aWatchZone({ pushEnabled: true, emailInstantEnabled: true });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setPushEnabled(false);
+      });
+
+      expect(result.current.pushEnabled).toBe(false);
+      expect(result.current.isDirty).toBe(true);
+    });
+
+    it('toggling emailInstantEnabled marks the form dirty', () => {
+      const zone = aWatchZone({ pushEnabled: true, emailInstantEnabled: true });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setEmailInstantEnabled(false);
+      });
+
+      expect(result.current.emailInstantEnabled).toBe(false);
+      expect(result.current.isDirty).toBe(true);
+    });
+
+    it('sends pushEnabled in the patch payload when changed', async () => {
+      const zone = aWatchZone({ pushEnabled: true, emailInstantEnabled: true });
+      spy.updateZoneResult = aWatchZone({ pushEnabled: false, emailInstantEnabled: true });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setPushEnabled(false);
+      });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ pushEnabled: false });
+    });
+
+    it('sends emailInstantEnabled in the patch payload when changed', async () => {
+      const zone = aWatchZone({ pushEnabled: true, emailInstantEnabled: true });
+      spy.updateZoneResult = aWatchZone({ pushEnabled: true, emailInstantEnabled: false });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setEmailInstantEnabled(false);
+      });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ emailInstantEnabled: false });
+    });
+
+    it('omits unchanged notification flags from the patch payload', async () => {
+      const zone = aWatchZone({
+        name: 'Home',
+        pushEnabled: true,
+        emailInstantEnabled: true,
+      });
+      spy.updateZoneResult = aWatchZone({
+        name: 'Office',
+        pushEnabled: true,
+        emailInstantEnabled: true,
+      });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setName('Office');
+      });
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ name: 'Office' });
+    });
+
+    it('resets dirty state after save and reflects updated flags', async () => {
+      const zone = aWatchZone({ pushEnabled: true, emailInstantEnabled: true });
+      spy.updateZoneResult = aWatchZone({ pushEnabled: false, emailInstantEnabled: true });
+
+      const { result } = renderHook(() => useZoneEdit(spy, zone));
+
+      act(() => {
+        result.current.setPushEnabled(false);
+      });
+
+      expect(result.current.isDirty).toBe(true);
+
+      await act(async () => {
+        await result.current.save();
+      });
+
+      expect(result.current.isDirty).toBe(false);
+      expect(result.current.pushEnabled).toBe(false);
+    });
+  });
 });

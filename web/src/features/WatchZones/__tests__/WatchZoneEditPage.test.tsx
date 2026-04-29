@@ -200,4 +200,104 @@ describe('WatchZoneEditPage', () => {
     const saveButton = screen.getByRole('button', { name: /save/i });
     expect(saveButton).toBeInTheDocument();
   });
+
+  describe('per-zone notification toggles', () => {
+    it('renders push and instant-email toggles for Pro tier reflecting zone state', async () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ pushEnabled: true, emailInstantEnabled: false })}
+          tier="Pro"
+        />,
+      );
+
+      const pushSwitch = await screen.findByRole('switch', { name: /push notifications/i });
+      const emailSwitch = screen.getByRole('switch', { name: /instant emails/i });
+
+      expect(pushSwitch).toHaveAttribute('aria-checked', 'true');
+      expect(emailSwitch).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('renders push and instant-email toggles for Personal tier', async () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ pushEnabled: true, emailInstantEnabled: true })}
+          tier="Personal"
+        />,
+      );
+
+      expect(
+        await screen.findByRole('switch', { name: /push notifications/i }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: /instant emails/i })).toBeInTheDocument();
+    });
+
+    it('hides push and instant-email toggles for Free tier', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone()} tier="Free" />,
+      );
+
+      expect(
+        screen.queryByRole('switch', { name: /push notifications/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('switch', { name: /instant emails/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('toggling push enables the save button and patches the flag on save', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+      spy.updateZoneResult = aWatchZone({ pushEnabled: false, emailInstantEnabled: true });
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ pushEnabled: true, emailInstantEnabled: true })}
+          tier="Pro"
+        />,
+      );
+
+      const pushSwitch = await screen.findByRole('switch', { name: /push notifications/i });
+      await user.click(pushSwitch);
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      expect(saveButton).toBeEnabled();
+
+      await user.click(saveButton);
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ pushEnabled: false });
+    });
+
+    it('toggling instant-email enables the save button and patches the flag on save', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+      spy.updateZoneResult = aWatchZone({ pushEnabled: true, emailInstantEnabled: false });
+
+      renderWithRouter(
+        <WatchZoneEditPage
+          repository={spy}
+          zone={aWatchZone({ pushEnabled: true, emailInstantEnabled: true })}
+          tier="Pro"
+        />,
+      );
+
+      const emailSwitch = await screen.findByRole('switch', { name: /instant emails/i });
+      await user.click(emailSwitch);
+
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      await user.click(saveButton);
+
+      expect(spy.updateZoneCalls).toHaveLength(1);
+      expect(spy.updateZoneCalls[0]?.data).toEqual({ emailInstantEnabled: false });
+    });
+  });
 });

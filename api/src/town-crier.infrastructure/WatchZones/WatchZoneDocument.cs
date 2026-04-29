@@ -21,6 +21,15 @@ internal sealed class WatchZoneDocument
 
     public DateTimeOffset? CreatedAt { get; init; }
 
+    // Nullable so existing Cosmos documents predating per-zone notification flags
+    // (tc-kh1s) hydrate as opt-in to push and email — preserving prior behaviour.
+    // The System.Text.Json source generator sets `bool` properties to `default(bool)`
+    // (false) when the JSON field is missing — even when a property initializer
+    // declares `= true` — so we use `bool?` and coalesce at `ToDomain` time.
+    public bool? PushEnabled { get; init; }
+
+    public bool? EmailInstantEnabled { get; init; }
+
     public static WatchZoneDocument FromDomain(WatchZone zone)
     {
         ArgumentNullException.ThrowIfNull(zone);
@@ -35,6 +44,8 @@ internal sealed class WatchZoneDocument
             RadiusMetres = zone.RadiusMetres,
             AuthorityId = zone.AuthorityId,
             CreatedAt = zone.CreatedAt,
+            PushEnabled = zone.PushEnabled,
+            EmailInstantEnabled = zone.EmailInstantEnabled,
         };
     }
 
@@ -47,6 +58,8 @@ internal sealed class WatchZoneDocument
             new Coordinates(this.Latitude, this.Longitude),
             this.RadiusMetres,
             this.AuthorityId,
-            this.CreatedAt ?? DateTimeOffset.MinValue);
+            this.CreatedAt ?? DateTimeOffset.MinValue,
+            this.PushEnabled ?? true,
+            this.EmailInstantEnabled ?? true);
     }
 }

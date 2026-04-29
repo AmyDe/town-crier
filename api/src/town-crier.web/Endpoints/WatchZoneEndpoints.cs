@@ -36,7 +36,9 @@ internal static class WatchZoneEndpoints
                 request.Latitude,
                 request.Longitude,
                 request.RadiusMetres,
-                request.AuthorityId);
+                request.AuthorityId,
+                request.PushEnabled,
+                request.EmailInstantEnabled);
 
             try
             {
@@ -109,7 +111,9 @@ internal static class WatchZoneEndpoints
                 request.Latitude,
                 request.Longitude,
                 request.RadiusMetres,
-                request.AuthorityId);
+                request.AuthorityId,
+                request.PushEnabled,
+                request.EmailInstantEnabled);
 
             try
             {

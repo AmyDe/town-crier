@@ -1,23 +1,33 @@
 import { Link } from 'react-router-dom';
-import type { WatchZoneSummary } from '../../domain/types';
+import type { WatchZoneSummary, SubscriptionTier } from '../../domain/types';
 import type { WatchZoneRepository } from '../../domain/ports/watch-zone-repository';
 import { useZonePreferences } from './useZonePreferences';
 import { useZoneEdit } from './useZoneEdit';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
+import { Toggle } from '../../components/Toggle/Toggle';
 import styles from './WatchZoneEditPage.module.css';
 
 interface Props {
   repository: WatchZoneRepository;
   zone: WatchZoneSummary;
+  /**
+   * The current user's subscription tier. Per-zone push and instant-email
+   * toggles are only rendered for Personal/Pro tiers — Free users see no
+   * notification controls (they fall back to the account-level weekly digest).
+   * Optional so legacy call sites keep compiling; defaults to Free, which
+   * hides the toggles.
+   */
+  tier?: SubscriptionTier;
 }
 
-export function WatchZoneEditPage({ repository, zone }: Props) {
+export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
   const { preferences, isLoading, error, updatePreferences } = useZonePreferences(
     repository,
     zone.id,
   );
 
   const zoneEdit = useZoneEdit(repository, zone);
+  const showZoneNotificationToggles = tier !== 'Free';
 
   function handleToggle(field: 'newApplications' | 'statusChanges' | 'decisionUpdates') {
     if (!preferences) return;
@@ -60,6 +70,27 @@ export function WatchZoneEditPage({ repository, zone }: Props) {
           selectedMetres={zoneEdit.radiusMetres}
           onSelect={zoneEdit.setRadiusMetres}
         />
+
+        {showZoneNotificationToggles && (
+          <div className={styles.zoneNotifications}>
+            <div className={styles.toggleRow}>
+              <span className={styles.toggleRowLabel}>Push notifications</span>
+              <Toggle
+                checked={zoneEdit.pushEnabled}
+                onChange={zoneEdit.setPushEnabled}
+                label="Push notifications"
+              />
+            </div>
+            <div className={styles.toggleRow}>
+              <span className={styles.toggleRowLabel}>Instant emails</span>
+              <Toggle
+                checked={zoneEdit.emailInstantEnabled}
+                onChange={zoneEdit.setEmailInstantEnabled}
+                label="Instant emails"
+              />
+            </div>
+          </div>
+        )}
 
         {zoneEdit.isDirty && (
           <button

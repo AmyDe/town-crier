@@ -63,7 +63,9 @@ struct WatchZoneSummaryDTOTests {
       latitude: 52.2053,
       longitude: 0.1218,
       radiusMetres: 2000,
-      authorityId: 123
+      authorityId: 123,
+      pushEnabled: true,
+      emailInstantEnabled: true
     )
 
     let zone = try dto.toDomain()
@@ -71,5 +73,78 @@ struct WatchZoneSummaryDTOTests {
     #expect(zone.name == "CB1 2AD")
     #expect(zone.radiusMetres == 2000)
     #expect(zone.authorityId == 123)
+  }
+
+  // MARK: - Per-zone notification flags (tc-kh1s)
+
+  @Test("toDomain carries pushEnabled and emailInstantEnabled to domain model")
+  func toDomain_carriesNotificationFlags() throws {
+    let dto = WatchZoneSummaryDTO(
+      id: "zone-ok",
+      name: "CB1 2AD",
+      latitude: 52.2053,
+      longitude: 0.1218,
+      radiusMetres: 2000,
+      authorityId: 123,
+      pushEnabled: false,
+      emailInstantEnabled: true
+    )
+
+    let zone = try dto.toDomain()
+    #expect(!zone.pushEnabled)
+    #expect(zone.emailInstantEnabled)
+  }
+
+  @Test("decoding DTO without pushEnabled defaults to true")
+  func decoding_missingPushEnabled_defaultsToTrue() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123,
+          "emailInstantEnabled": true
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(dto.pushEnabled)
+  }
+
+  @Test("decoding DTO without emailInstantEnabled defaults to true")
+  func decoding_missingEmailInstantEnabled_defaultsToTrue() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123,
+          "pushEnabled": true
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(dto.emailInstantEnabled)
+  }
+
+  @Test("decoding DTO with explicit false flags preserves them")
+  func decoding_explicitFalseFlags_arePreserved() throws {
+    let json = """
+      {
+          "id": "zone-001",
+          "name": "CB1 2AD",
+          "latitude": 52.2053,
+          "longitude": 0.1218,
+          "radiusMetres": 2000,
+          "authorityId": 123,
+          "pushEnabled": false,
+          "emailInstantEnabled": false
+      }
+      """
+    let dto = try JSONDecoder().decode(WatchZoneSummaryDTO.self, from: Data(json.utf8))
+    #expect(!dto.pushEnabled)
+    #expect(!dto.emailInstantEnabled)
   }
 }

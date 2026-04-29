@@ -145,4 +145,81 @@ public sealed class UpdateWatchZoneCommandHandlerTests
         await Assert.That(saved).IsNotNull();
         await Assert.That(saved!.Name).IsEqualTo("New Name");
     }
+
+    [Test]
+    public async Task Should_DisablePush_When_PushEnabledFalseProvided()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithPushEnabled(true)
+            .WithEmailInstantEnabled(true)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "zone-1", PushEnabled: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — push toggled off, email instant preserved
+        await Assert.That(result.Zone.PushEnabled).IsFalse();
+        await Assert.That(result.Zone.EmailInstantEnabled).IsTrue();
+
+        var saved = await this.watchZoneRepository.GetByUserAndZoneIdAsync("user-1", "zone-1", CancellationToken.None);
+        await Assert.That(saved!.PushEnabled).IsFalse();
+        await Assert.That(saved.EmailInstantEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_DisableEmailInstant_When_EmailInstantEnabledFalseProvided()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithPushEnabled(true)
+            .WithEmailInstantEnabled(true)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "zone-1", EmailInstantEnabled: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — email instant toggled off, push preserved
+        await Assert.That(result.Zone.EmailInstantEnabled).IsFalse();
+        await Assert.That(result.Zone.PushEnabled).IsTrue();
+
+        var saved = await this.watchZoneRepository.GetByUserAndZoneIdAsync("user-1", "zone-1", CancellationToken.None);
+        await Assert.That(saved!.EmailInstantEnabled).IsFalse();
+        await Assert.That(saved.PushEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_PreserveNotificationFlags_When_OnlyOtherFieldsUpdated()
+    {
+        // Arrange
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithPushEnabled(false)
+            .WithEmailInstantEnabled(false)
+            .Build();
+        this.watchZoneRepository.Add(zone);
+
+        var handler = new UpdateWatchZoneCommandHandler(this.watchZoneRepository);
+        var command = new UpdateWatchZoneCommand("user-1", "zone-1", Name: "Renamed");
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — notification flags untouched
+        await Assert.That(result.Zone.PushEnabled).IsFalse();
+        await Assert.That(result.Zone.EmailInstantEnabled).IsFalse();
+    }
 }

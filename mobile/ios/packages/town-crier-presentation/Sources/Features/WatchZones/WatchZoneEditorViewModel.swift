@@ -8,6 +8,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
   @Published public var nameInput: String = ""
   @Published public var postcodeInput: String = ""
   @Published public var selectedRadiusMetres: Double = 1000
+  @Published public var pushEnabled: Bool = true
+  @Published public var emailInstantEnabled: Bool = true
   @Published public private(set) var geocodedCoordinate: Coordinate?
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
@@ -19,6 +21,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
   private let geocoder: PostcodeGeocoder
   private let repository: WatchZoneRepository
   private let limits: WatchZoneLimits
+  private let tier: SubscriptionTier
   private let existingId: WatchZoneId?
 
   public init(
@@ -30,6 +33,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     self.geocoder = geocoder
     self.repository = repository
     self.limits = WatchZoneLimits(tier: tier)
+    self.tier = tier
     self.isEditing = zone != nil
     self.existingId = zone?.id
 
@@ -37,6 +41,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
       self.nameInput = zone.name
       self.selectedRadiusMetres = zone.radiusMetres
       self.geocodedCoordinate = zone.centre
+      self.pushEnabled = zone.pushEnabled
+      self.emailInstantEnabled = zone.emailInstantEnabled
     }
   }
 
@@ -50,6 +56,14 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
 
   public var maxRadiusMetres: Double {
     limits.maxRadiusMetres
+  }
+
+  /// Per-zone notification toggles are gated to Personal/Pro tiers only (tc-kh1s).
+  ///
+  /// Free users do not see these controls — the polling fan-out skips push and
+  /// instant email for them regardless of any flag values.
+  public var areNotificationTogglesVisible: Bool {
+    tier != .free
   }
 
   public func submitPostcode() async {
@@ -88,7 +102,9 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
         id: existingId ?? WatchZoneId(),
         name: nameInput,
         centre: coordinate,
-        radiusMetres: clampedRadius
+        radiusMetres: clampedRadius,
+        pushEnabled: pushEnabled,
+        emailInstantEnabled: emailInstantEnabled
       )
       if isEditing {
         try await repository.update(zone)

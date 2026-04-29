@@ -44,6 +44,7 @@ public struct ApplicationListView: View {
     if viewModel.showZonePicker {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
+          allZonesChip
           ForEach(viewModel.zones) { zone in
             zoneChip(zone: zone, isSelected: zone.id == viewModel.selectedZone?.id)
           }
@@ -117,7 +118,16 @@ public struct ApplicationListView: View {
 
   @ViewBuilder
   private var emptyStateRow: some View {
-    if viewModel.isSavedFilterActive {
+    switch viewModel.emptyStateKind {
+    case .allZonesNoSavedFilter:
+      EmptyStateView(
+        icon: "square.stack.3d.up",
+        title: "Nothing to Show",
+        description:
+          "Pick a zone to see applications, or turn on Saved to see everything you've bookmarked."
+      )
+      .frame(maxWidth: .infinity)
+    case .savedFilterNoResults:
       EmptyStateView(
         icon: "bookmark",
         title: "No Saved Applications",
@@ -125,7 +135,7 @@ public struct ApplicationListView: View {
           "No saved applications. Tap the bookmark icon on any application to save it."
       )
       .frame(maxWidth: .infinity)
-    } else {
+    case .zoneNoApplications:
       EmptyStateView(
         icon: "doc.text.magnifyingglass",
         title: "No Applications",
@@ -133,6 +143,27 @@ public struct ApplicationListView: View {
       )
       .frame(maxWidth: .infinity)
     }
+  }
+
+  // MARK: - All Zones Chip
+
+  private var allZonesChip: some View {
+    let isSelected = viewModel.isAllZonesSelected
+    return Text("All")
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
+      .padding(.horizontal, TCSpacing.small)
+      .padding(.vertical, TCSpacing.extraSmall)
+      .background(isSelected ? Color.tcAmber : Color.tcSurface)
+      .clipShape(Capsule())
+      .overlay(
+        Capsule()
+          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
+      )
+      .contentShape(Capsule())
+      .onTapGesture {
+        Task { await viewModel.selectAllZones() }
+      }
   }
 
   // MARK: - Zone Chip

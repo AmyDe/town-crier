@@ -105,4 +105,42 @@ struct WatchZoneTests {
       try WatchZone(name: "   ", centre: centre, radiusMetres: 1000)
     }
   }
+
+  // MARK: - Per-zone notification flags (tc-kh1s)
+
+  @Test func init_defaultsPushEnabledToTrue() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.pushEnabled)
+  }
+
+  @Test func init_defaultsEmailInstantEnabledToTrue() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.emailInstantEnabled)
+  }
+
+  @Test func init_storesPushEnabledFalse() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(
+      name: "Home",
+      centre: centre,
+      radiusMetres: 1000,
+      pushEnabled: false
+    )
+    #expect(!zone.pushEnabled)
+    #expect(zone.emailInstantEnabled)
+  }
+
+  @Test func init_storesEmailInstantEnabledFalse() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(
+      name: "Home",
+      centre: centre,
+      radiusMetres: 1000,
+      emailInstantEnabled: false
+    )
+    #expect(zone.pushEnabled)
+    #expect(!zone.emailInstantEnabled)
+  }
 }

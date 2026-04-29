@@ -6,4 +6,6 @@ public sealed record WatchZoneSummary(
     double Latitude,
     double Longitude,
     double RadiusMetres,
-    int AuthorityId);
+    int AuthorityId,
+    bool PushEnabled,
+    bool EmailInstantEnabled);

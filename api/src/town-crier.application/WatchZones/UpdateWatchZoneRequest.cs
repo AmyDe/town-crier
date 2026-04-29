@@ -5,4 +5,6 @@ public sealed record UpdateWatchZoneRequest(
     double? Latitude = null,
     double? Longitude = null,
     double? RadiusMetres = null,
-    int? AuthorityId = null);
+    int? AuthorityId = null,
+    bool? PushEnabled = null,
+    bool? EmailInstantEnabled = null);

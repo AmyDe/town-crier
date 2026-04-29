@@ -168,15 +168,6 @@ describe('SettingsPage', () => {
     expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
-  it('renders instant emails toggle', async () => {
-    spy.fetchProfileResult = freeUserProfile({ emailInstantEnabled: false });
-
-    renderSettingsPage(spy);
-
-    const toggle = await screen.findByRole('switch', { name: /instant email/i });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-  });
-
   it('renders digest day picker when digest is enabled', async () => {
     spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true, digestDay: 1 });
 

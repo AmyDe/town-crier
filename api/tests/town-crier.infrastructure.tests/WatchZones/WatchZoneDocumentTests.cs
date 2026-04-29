@@ -91,6 +91,112 @@ public sealed class WatchZoneDocumentTests
         await Assert.That(zone.CreatedAt).IsEqualTo(DateTimeOffset.MinValue);
     }
 
+    [Test]
+    public async Task Should_PreserveNotificationFlags_When_MappedFromDomain()
+    {
+        // Arrange
+        var zone = new WatchZone(
+            "zone-1",
+            "user-1",
+            "Home",
+            new Coordinates(51.5074, -0.1278),
+            5000,
+            42,
+            TestCreatedAt,
+            pushEnabled: false,
+            emailInstantEnabled: false);
+
+        // Act
+        var document = WatchZoneDocument.FromDomain(zone);
+
+        // Assert
+        await Assert.That(document.PushEnabled).IsEqualTo(false);
+        await Assert.That(document.EmailInstantEnabled).IsEqualTo(false);
+    }
+
+    [Test]
+    public async Task Should_RoundTripNotificationFlags_When_MappedBackAndForth()
+    {
+        // Arrange
+        var original = new WatchZone(
+            "zone-1",
+            "user-1",
+            "Home",
+            new Coordinates(51.5074, -0.1278),
+            5000,
+            42,
+            TestCreatedAt,
+            pushEnabled: false,
+            emailInstantEnabled: true);
+
+        // Act
+        var document = WatchZoneDocument.FromDomain(original);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.PushEnabled).IsFalse();
+        await Assert.That(roundTripped.EmailInstantEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_DefaultPushEnabledToTrue_When_CosmosDocumentHasNoPushEnabled()
+    {
+        // Arrange — simulate a legacy document predating the per-zone notification flags
+        var json = """{"id":"zone-1","userId":"user-1","name":"Old Zone","latitude":51.5,"longitude":-0.1,"radiusMetres":500,"authorityId":100,"createdAt":"2026-01-01T00:00:00+00:00"}""";
+
+        var jsonOptions = CreateJsonOptions();
+
+        // Act
+        var document = JsonSerializer.Deserialize<WatchZoneDocument>(json, jsonOptions)!;
+        var zone = document.ToDomain();
+
+        // Assert — missing pushEnabled hydrates to true (preserves current behaviour for existing zones)
+        await Assert.That(zone.PushEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_DefaultEmailInstantEnabledToTrue_When_CosmosDocumentHasNoEmailInstantEnabled()
+    {
+        // Arrange — simulate a legacy document predating the per-zone notification flags
+        var json = """{"id":"zone-1","userId":"user-1","name":"Old Zone","latitude":51.5,"longitude":-0.1,"radiusMetres":500,"authorityId":100,"createdAt":"2026-01-01T00:00:00+00:00"}""";
+
+        var jsonOptions = CreateJsonOptions();
+
+        // Act
+        var document = JsonSerializer.Deserialize<WatchZoneDocument>(json, jsonOptions)!;
+        var zone = document.ToDomain();
+
+        // Assert — missing emailInstantEnabled hydrates to true (preserves current behaviour for existing zones)
+        await Assert.That(zone.EmailInstantEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_RoundTripNotificationFlagsThroughJson_When_SerializedWithSourceGenerators()
+    {
+        // Arrange
+        var original = WatchZoneDocument.FromDomain(
+            new WatchZone(
+                "zone-1",
+                "user-1",
+                "Home",
+                new Coordinates(51.5074, -0.1278),
+                5000,
+                42,
+                TestCreatedAt,
+                pushEnabled: false,
+                emailInstantEnabled: false));
+
+        var jsonOptions = CreateJsonOptions();
+
+        // Act
+        var json = JsonSerializer.Serialize(original, jsonOptions);
+        var deserialized = JsonSerializer.Deserialize<WatchZoneDocument>(json, jsonOptions)!;
+
+        // Assert
+        await Assert.That(deserialized.PushEnabled).IsEqualTo(false);
+        await Assert.That(deserialized.EmailInstantEnabled).IsEqualTo(false);
+    }
+
     private static JsonSerializerOptions CreateJsonOptions()
     {
         var options = new JsonSerializerOptions

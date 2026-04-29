@@ -490,6 +490,53 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await Assert.That(zones).HasCount().EqualTo(1);
     }
 
+    [Test]
+    public async Task Should_DefaultNotificationFlagsToTrue_When_CreateCommandOmitsThem()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = CreateCommand();
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — preserves prior behaviour: a new zone is opt-in to alerts.
+        var zones = await this.watchZoneRepository.GetByUserIdAsync("user-1", CancellationToken.None);
+        await Assert.That(zones.First().PushEnabled).IsTrue();
+        await Assert.That(zones.First().EmailInstantEnabled).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_PropagateNotificationFlags_When_CreateCommandSpecifiesThem()
+    {
+        // Arrange
+        var profile = UserProfile.Register("user-1");
+        await this.userProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = this.CreateHandler();
+        var command = new CreateWatchZoneCommand(
+            UserId: "user-1",
+            ZoneId: "zone-1",
+            Name: "My Zone",
+            Latitude: 51.5074,
+            Longitude: -0.1278,
+            RadiusMetres: 5000,
+            AuthorityId: 42,
+            PushEnabled: false,
+            EmailInstantEnabled: false);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var zones = await this.watchZoneRepository.GetByUserIdAsync("user-1", CancellationToken.None);
+        await Assert.That(zones.First().PushEnabled).IsFalse();
+        await Assert.That(zones.First().EmailInstantEnabled).IsFalse();
+    }
+
     private static CreateWatchZoneCommand CreateCommand(string userId = "user-1")
     {
         return new CreateWatchZoneCommand(
