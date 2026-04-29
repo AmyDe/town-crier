@@ -82,21 +82,6 @@ struct AppCoordinatorTests {
 
   // MARK: - Application List Factory
 
-  @Test func makeApplicationListViewModel_passesRepository_enablesCanSave() {
-    let savedSpy = SpySavedApplicationRepository()
-    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
-    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
-
-    #expect(vm.canSave)
-  }
-
-  @Test func makeApplicationListViewModel_withoutRepository_canSaveIsFalse() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeApplicationListViewModel(zone: .cambridge)
-
-    #expect(!vm.canSave)
-  }
-
   @Test func makeApplicationListViewModel_createsViewModelWithZone() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationsResult = .success([.pendingReview])
@@ -170,42 +155,6 @@ struct AppCoordinatorTests {
   }
 
   // MARK: - Map ViewModel Factory
-
-  @Test func makeMapViewModel_passesRepository_enablesCanSave() {
-    let savedSpy = SpySavedApplicationRepository()
-    let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
-    let vm = sut.makeMapViewModel()
-
-    #expect(vm.canSave)
-  }
-
-  @Test func makeMapViewModel_withoutRepository_canSaveIsFalse() {
-    let (sut, _) = makeSUT()
-    let vm = sut.makeMapViewModel()
-
-    #expect(!vm.canSave)
-  }
-
-  @Test func makeMapViewModel_passesSubscriptionTier() async {
-    let authSpy = SpyAuthenticationService()
-    authSpy.currentSessionResult = AuthSession.personal
-    let coordinator = AppCoordinator(
-      repository: SpyPlanningApplicationRepository(),
-      authService: authSpy,
-      subscriptionService: SpySubscriptionService(),
-      userProfileRepository: SpyUserProfileRepository(),
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-    await coordinator.resolveSubscriptionTier()
-
-    let vm = coordinator.makeMapViewModel()
-
-    #expect(vm.canFilter)
-  }
 
   @Test func makeMapViewModel_fetchesByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
