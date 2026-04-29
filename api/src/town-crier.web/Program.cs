@@ -24,7 +24,7 @@ var hasAppInsights = !string.IsNullOrEmpty(aiConnectionString);
 builder.Logging.ClearProviders();
 
 var otel = builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService("town-crier-web"))
+    .ConfigureResource(resource => resource.AddService("town-crier-api"))
     .WithTracing(tracing =>
     {
         tracing
