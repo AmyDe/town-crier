@@ -6,8 +6,14 @@ import { extractErrorMessage } from '../../utils/extractErrorMessage';
 export function useZoneEdit(repository: WatchZoneRepository, zone: WatchZoneSummary) {
   const [baselineName, setBaselineName] = useState(zone.name);
   const [baselineRadius, setBaselineRadius] = useState(zone.radiusMetres);
+  const [baselinePushEnabled, setBaselinePushEnabled] = useState(zone.pushEnabled);
+  const [baselineEmailInstantEnabled, setBaselineEmailInstantEnabled] = useState(
+    zone.emailInstantEnabled,
+  );
   const [name, setName] = useState(zone.name);
   const [radiusMetres, setRadiusMetres] = useState(zone.radiusMetres);
+  const [pushEnabled, setPushEnabled] = useState(zone.pushEnabled);
+  const [emailInstantEnabled, setEmailInstantEnabled] = useState(zone.emailInstantEnabled);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +24,11 @@ export function useZoneEdit(repository: WatchZoneRepository, zone: WatchZoneSumm
     return null;
   }, [name]);
 
-  const isDirty = name !== baselineName || radiusMetres !== baselineRadius;
+  const isDirty =
+    name !== baselineName ||
+    radiusMetres !== baselineRadius ||
+    pushEnabled !== baselinePushEnabled ||
+    emailInstantEnabled !== baselineEmailInstantEnabled;
 
   const canSave = isDirty && nameError === null;
 
@@ -33,6 +43,12 @@ export function useZoneEdit(repository: WatchZoneRepository, zone: WatchZoneSumm
     if (radiusMetres !== baselineRadius) {
       mutableData['radiusMetres'] = radiusMetres;
     }
+    if (pushEnabled !== baselinePushEnabled) {
+      mutableData['pushEnabled'] = pushEnabled;
+    }
+    if (emailInstantEnabled !== baselineEmailInstantEnabled) {
+      mutableData['emailInstantEnabled'] = emailInstantEnabled;
+    }
 
     setIsSaving(true);
     setError(null);
@@ -40,20 +56,40 @@ export function useZoneEdit(repository: WatchZoneRepository, zone: WatchZoneSumm
       const updated = await repository.updateZone(zone.id, data);
       setBaselineName(updated.name);
       setBaselineRadius(updated.radiusMetres);
+      setBaselinePushEnabled(updated.pushEnabled);
+      setBaselineEmailInstantEnabled(updated.emailInstantEnabled);
       setName(updated.name);
       setRadiusMetres(updated.radiusMetres);
+      setPushEnabled(updated.pushEnabled);
+      setEmailInstantEnabled(updated.emailInstantEnabled);
       setIsSaving(false);
     } catch (err: unknown) {
       setIsSaving(false);
       setError(extractErrorMessage(err));
     }
-  }, [isDirty, name, radiusMetres, baselineName, baselineRadius, zone.id, repository]);
+  }, [
+    isDirty,
+    name,
+    radiusMetres,
+    pushEnabled,
+    emailInstantEnabled,
+    baselineName,
+    baselineRadius,
+    baselinePushEnabled,
+    baselineEmailInstantEnabled,
+    zone.id,
+    repository,
+  ]);
 
   return {
     name,
     setName,
     radiusMetres,
     setRadiusMetres,
+    pushEnabled,
+    setPushEnabled,
+    emailInstantEnabled,
+    setEmailInstantEnabled,
     isDirty,
     isSaving,
     error,
