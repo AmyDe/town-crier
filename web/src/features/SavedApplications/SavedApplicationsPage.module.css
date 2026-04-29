@@ -30,41 +30,6 @@
   }
 }
 
-.zoneSelectorLabel {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.zoneSelector {
-  font: inherit;
-  font-size: var(--tc-text-body);
-  color: var(--tc-text-primary);
-  background: var(--tc-surface);
-  border: 1px solid var(--tc-border);
-  border-radius: var(--tc-radius-sm);
-  padding: var(--tc-space-xs) var(--tc-space-sm);
-  min-width: 160px;
-  cursor: pointer;
-}
-
-.zoneSelector:focus-visible {
-  outline: 2px solid var(--tc-border-focused);
-  outline-offset: 2px;
-}
-
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
 .statusChips {
   display: flex;
   flex-wrap: wrap;

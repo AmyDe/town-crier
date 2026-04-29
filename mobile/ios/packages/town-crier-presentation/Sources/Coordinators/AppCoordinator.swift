@@ -111,7 +111,6 @@ public final class AppCoordinator: ObservableObject {
     MapViewModel(
       repository: repository,
       watchZoneRepository: watchZoneRepository,
-      tier: subscriptionTier,
       savedApplicationRepository: savedApplicationRepository
     )
   }
@@ -123,16 +122,12 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         offlineRepository: offlineRepository,
-        zone: zone,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        zone: zone
       )
     } else {
       viewModel = ApplicationListViewModel(
         repository: repository,
-        zone: zone,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        zone: zone
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -148,18 +143,29 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        offlineRepository: offlineRepository,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        offlineRepository: offlineRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        repository: repository,
-        tier: subscriptionTier,
-        savedApplicationRepository: savedApplicationRepository
+        repository: repository
       )
     }
+    viewModel.onApplicationSelected = { [weak self] id in
+      self?.showApplicationDetail(id)
+    }
+    return viewModel
+  }
+
+  /// Factory for the dedicated Saved tab view model.
+  ///
+  /// Falls back to a no-op repository when no `SavedApplicationRepository` was
+  /// injected. The Saved tab is only meaningful when bookmarking is wired, so
+  /// in production this branch is unreachable; surfacing a fatal error there
+  /// would crash the app for users who never tap the tab.
+  public func makeSavedApplicationListViewModel() -> SavedApplicationListViewModel {
+    let repository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
+    let viewModel = SavedApplicationListViewModel(savedApplicationRepository: repository)
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
     }

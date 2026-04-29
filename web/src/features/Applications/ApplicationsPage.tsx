@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
 import { useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
@@ -15,10 +14,7 @@ interface ZonesPort {
 interface Props {
   zonesPort: ZonesPort;
   browsePort: ApplicationsBrowsePort;
-  savedRepository: SavedApplicationRepository;
 }
-
-const ALL_ZONES_VALUE = '__all__';
 
 interface StatusChip {
   readonly label: string;
@@ -35,7 +31,7 @@ const STATUS_CHIPS: readonly StatusChip[] = [
   { label: 'Appealed', status: 'Appealed' },
 ];
 
-export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Props) {
+export function ApplicationsPage({ zonesPort, browsePort }: Props) {
   const navigate = useNavigate();
   const {
     data: zones,
@@ -45,30 +41,20 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
 
   const {
     selectedZone,
-    isAllZonesSelected,
     applications,
     isLoading: isLoadingApps,
     error: appsError,
     selectedStatusFilter,
-    isSavedFilterActive,
     selectZone,
-    selectAllZones,
     setStatusFilter,
-    activateSavedFilter,
-    deactivateSavedFilter,
   } = useApplications({
     browsePort,
-    savedRepository,
     zones: zones ?? [],
   });
 
   const hasZones = (zones ?? []).length > 0;
 
   function handleZoneChange(value: string) {
-    if (value === ALL_ZONES_VALUE) {
-      selectAllZones();
-      return;
-    }
     const zone = (zones ?? []).find((z) => z.id === value);
     if (zone) {
       selectZone(zone);
@@ -79,20 +65,7 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
     setStatusFilter(status);
   }
 
-  function handleSavedToggle() {
-    if (isSavedFilterActive) {
-      deactivateSavedFilter();
-    } else {
-      void activateSavedFilter();
-    }
-  }
-
-  const showAllZonesEmptyHint = isAllZonesSelected && !isSavedFilterActive;
-
-  // Determine the current value for the zone selector
-  const zoneSelectorValue = isAllZonesSelected
-    ? ALL_ZONES_VALUE
-    : (selectedZone?.id ?? '');
+  const zoneSelectorValue = selectedZone?.id ?? '';
 
   return (
     <div className={styles.container}>
@@ -127,7 +100,6 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
                 value={zoneSelectorValue}
                 onChange={(e) => handleZoneChange(e.target.value)}
               >
-                <option value={ALL_ZONES_VALUE}>All</option>
                 {(zones ?? []).map((zone) => (
                   <option key={zone.id} value={zone.id}>
                     {zone.name}
@@ -138,10 +110,7 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
 
             <div className={styles.statusChips} role="group" aria-label="Status filter">
               {STATUS_CHIPS.map((chip) => {
-                const isPressed =
-                  chip.status === null
-                    ? selectedStatusFilter === null && !isSavedFilterActive
-                    : selectedStatusFilter === chip.status;
+                const isPressed = selectedStatusFilter === chip.status;
                 return (
                   <button
                     key={chip.label}
@@ -155,17 +124,6 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
                 );
               })}
             </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isSavedFilterActive}
-              aria-label="Saved"
-              className={`${styles.savedToggle} ${isSavedFilterActive ? styles.savedToggleOn : ''}`}
-              onClick={handleSavedToggle}
-            >
-              Saved
-            </button>
           </div>
 
           {isLoadingApps && (
@@ -181,27 +139,13 @@ export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Pro
             />
           )}
 
-          {!isLoadingApps && appsError === null && showAllZonesEmptyHint && (
+          {!isLoadingApps && appsError === null && applications.length === 0 && (
             <EmptyState
-              icon="📌"
-              message="Pick a zone to see applications, or turn on Saved to see everything you've bookmarked."
+              icon="📋"
+              title="No applications"
+              message="No applications found in this zone."
             />
           )}
-
-          {!isLoadingApps &&
-            appsError === null &&
-            !showAllZonesEmptyHint &&
-            applications.length === 0 && (
-              <EmptyState
-                icon="📋"
-                title="No applications"
-                message={
-                  isSavedFilterActive
-                    ? "You haven't saved any applications matching this view."
-                    : 'No applications found in this zone.'
-                }
-              />
-            )}
 
           {!isLoadingApps && appsError === null && applications.length > 0 && (
             <ul className={styles.list}>

@@ -21,6 +21,11 @@ const ConnectedApplicationDetailPage = lazy(() =>
     default: m.ConnectedApplicationDetailPage,
   })),
 );
+const ConnectedSavedApplicationsPage = lazy(() =>
+  import('./features/SavedApplications/ConnectedSavedApplicationsPage').then((m) => ({
+    default: m.ConnectedSavedApplicationsPage,
+  })),
+);
 const ConnectedWatchZoneListPage = lazy(() =>
   import('./features/WatchZones/ConnectedWatchZoneListPage').then((m) => ({ default: m.ConnectedWatchZoneListPage })),
 );
@@ -63,6 +68,7 @@ export function AppRoutes() {
             <Route path="/dashboard" element={<ConnectedDashboardPage />} />
             <Route path="/applications" element={<ConnectedApplicationsPage />} />
             <Route path="/applications/*" element={<ConnectedApplicationDetailPage />} />
+            <Route path="/saved" element={<Suspense fallback={null}><ConnectedSavedApplicationsPage /></Suspense>} />
             <Route path="/watch-zones" element={<ConnectedWatchZoneListPage />} />
             <Route path="/watch-zones/new" element={<ConnectedWatchZoneCreatePage />} />
             <Route path="/watch-zones/:zoneId" element={<ConnectedWatchZoneEditPage />} />

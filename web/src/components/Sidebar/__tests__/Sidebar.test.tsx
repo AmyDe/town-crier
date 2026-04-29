@@ -31,6 +31,7 @@ describe('Sidebar', () => {
     const expectedLinks = [
       'Dashboard',
       'Applications',
+      'Saved',
       'Watch Zones',
       'Map',
       'Search',
@@ -43,13 +44,13 @@ describe('Sidebar', () => {
     }
   });
 
-  it('renders exactly 7 nav links', () => {
+  it('renders exactly 8 nav links', () => {
     renderSidebar();
 
     const nav = screen.getByRole('navigation', { name: /main/i });
     const links = within(nav).getAllByRole('link');
-    // 7 section links + 1 app name link = 8
-    expect(links).toHaveLength(8);
+    // 8 section links + 1 app name link = 9
+    expect(links).toHaveLength(9);
   });
 
   it('does not render a Groups nav link', () => {
@@ -59,10 +60,12 @@ describe('Sidebar', () => {
     expect(within(nav).queryByRole('link', { name: 'Groups' })).not.toBeInTheDocument();
   });
 
-  it('does not render a Saved nav link (retired)', () => {
+  it('renders a Saved nav link pointing to /saved', () => {
     renderSidebar();
 
     const nav = screen.getByRole('navigation', { name: /main/i });
-    expect(within(nav).queryByRole('link', { name: 'Saved' })).not.toBeInTheDocument();
+    const savedLink = within(nav).getByRole('link', { name: 'Saved' });
+    expect(savedLink).toBeInTheDocument();
+    expect(savedLink).toHaveAttribute('href', '/saved');
   });
 });

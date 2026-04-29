@@ -183,20 +183,6 @@ struct CompositionRootTests {
     #expect(vm.canSave)
   }
 
-  @Test func coordinatorCreatesListViewModelWithSavedRepository() {
-    let coordinator = makeCoordinatorWithSavedRepository()
-    let vm = coordinator.makeApplicationListViewModel(zone: .cambridge)
-
-    #expect(vm.canSave)
-  }
-
-  @Test func coordinatorCreatesMapViewModelWithSavedRepository() {
-    let coordinator = makeCoordinatorWithSavedRepository()
-    let vm = coordinator.makeMapViewModel()
-
-    #expect(vm.canSave)
-  }
-
   // MARK: - Helpers
 
   private func makeTestAuth0Config() -> Auth0Config {
