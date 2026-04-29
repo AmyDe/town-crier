@@ -14,7 +14,12 @@ internal sealed class UserProfileDocument
 
     public required DayOfWeek DigestDay { get; init; }
 
-    public bool EmailDigestEnabled { get; init; } = true;
+    // Nullable so legacy Cosmos documents predating emailDigestEnabled (tc-ho5w) hydrate
+    // as opt-in to email digests — preserving prior default-on behaviour. The
+    // System.Text.Json source generator sets `bool` properties to `default(bool)` (false)
+    // when the JSON field is missing — even when a property initialiser declares `= true`
+    // — so we use `bool?` and coalesce at `ToDomain` time.
+    public bool? EmailDigestEnabled { get; init; }
 
     // Legacy field — kept for backward compatibility with existing Cosmos documents.
     // No longer written; ignored during domain reconstitution.
@@ -63,7 +68,7 @@ internal sealed class UserProfileDocument
         var notificationPreferences = new NotificationPreferences(
             this.PushEnabled,
             this.DigestDay,
-            this.EmailDigestEnabled);
+            this.EmailDigestEnabled ?? true);
 
         return UserProfile.Reconstitute(
             this.UserId,
