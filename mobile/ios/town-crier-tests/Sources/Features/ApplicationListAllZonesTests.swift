@@ -199,6 +199,47 @@ struct ApplicationListAllZonesTests {
     #expect(!sut.isAllZonesSelected)
   }
 
+  // MARK: - Empty state messaging
+
+  @Test func emptyStateKind_allZonesSavedInactive_isPickAZoneOrTurnOnSaved() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let sut = try makeSUT(
+      zones: [.cambridge, .london],
+      savedRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.selectAllZones()
+
+    #expect(sut.emptyStateKind == .allZonesNoSavedFilter)
+  }
+
+  @Test func emptyStateKind_savedActiveNoResults_isNoSavedApplications() async throws {
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let sut = try makeSUT(
+      zones: [.cambridge],
+      savedRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.activateSavedFilter()
+
+    #expect(sut.emptyStateKind == .savedFilterNoResults)
+  }
+
+  @Test func emptyStateKind_zoneSelectedNoApps_isNoApplications() async throws {
+    let sut = try makeSUT(
+      zones: [.cambridge],
+      currentZoneApps: []
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.emptyStateKind == .zoneNoApplications)
+  }
+
   // MARK: - Helpers
 
   private func makeSUT(
