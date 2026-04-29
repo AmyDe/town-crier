@@ -218,6 +218,57 @@ struct ApplicationListAllZonesTests {
     #expect(!sut.showZonePicker)
   }
 
+  // MARK: - Persistence
+
+  @Test func selectAllZones_persistsSentinelToUserDefaults() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([])
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge])
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy,
+      tier: .free,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone",
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+    await sut.selectAllZones()
+
+    #expect(defaults.string(forKey: "test.zone") == ApplicationListViewModel.allZonesSentinel)
+  }
+
+  @Test func loadApplications_restoresAllZonesFromPersistedSentinel() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    appSpy.fetchApplicationsResult = .success([.pendingReview])
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([.cambridge, .london])
+    let savedSpy = SpySavedApplicationRepository()
+    savedSpy.loadAllResult = .success([])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    defaults.set(ApplicationListViewModel.allZonesSentinel, forKey: "test.zone")
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy,
+      tier: .free,
+      userDefaults: defaults,
+      zoneSelectionKey: "test.zone",
+      savedApplicationRepository: savedSpy
+    )
+
+    await sut.loadApplications()
+
+    #expect(sut.isAllZonesSelected)
+    #expect(sut.selectedZone == nil)
+    // 'All' + Saved-inactive must not trigger a per-zone fetch.
+    #expect(appSpy.fetchApplicationsCalls.isEmpty)
+  }
+
   // MARK: - Empty state messaging
 
   @Test func emptyStateKind_allZonesSavedInactive_isPickAZoneOrTurnOnSaved() async throws {
