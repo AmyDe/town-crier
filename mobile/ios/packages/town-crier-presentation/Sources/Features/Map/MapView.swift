@@ -16,7 +16,7 @@ public struct MapView: View {
       if viewModel.showZonePicker {
         zonePickerSection
       }
-      if viewModel.canFilter || viewModel.canSave {
+      if !viewModel.annotations.isEmpty {
         filterHeader
       }
       mapBody
@@ -125,18 +125,13 @@ public struct MapView: View {
   private var filterHeader: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: TCSpacing.small) {
-        if viewModel.canSave {
-          savedFilterChip
-        }
-        if viewModel.canFilter {
-          filterChip(label: "All", status: nil)
-          filterChip(label: "Pending", status: .undecided)
-          filterChip(label: "Granted", status: .permitted)
-          filterChip(label: "Granted with conditions", status: .conditions)
-          filterChip(label: "Refused", status: .rejected)
-          filterChip(label: "Withdrawn", status: .withdrawn)
-          filterChip(label: "Appealed", status: .appealed)
-        }
+        filterChip(label: "All", status: nil)
+        filterChip(label: "Pending", status: .undecided)
+        filterChip(label: "Granted", status: .permitted)
+        filterChip(label: "Granted with conditions", status: .conditions)
+        filterChip(label: "Refused", status: .rejected)
+        filterChip(label: "Withdrawn", status: .withdrawn)
+        filterChip(label: "Appealed", status: .appealed)
       }
       .padding(.horizontal, TCSpacing.medium)
       .padding(.vertical, TCSpacing.small)
@@ -144,33 +139,8 @@ public struct MapView: View {
     .background(Color.tcBackground)
   }
 
-  private var savedFilterChip: some View {
-    Label("Saved", systemImage: "bookmark.fill")
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(
-        viewModel.isSavedFilterActive ? Color.tcTextOnAccent : Color.tcTextPrimary
-      )
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(viewModel.isSavedFilterActive ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: viewModel.isSavedFilterActive ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        if viewModel.isSavedFilterActive {
-          viewModel.deactivateSavedFilter()
-        } else {
-          Task { await viewModel.activateSavedFilter() }
-        }
-      }
-  }
-
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     let isSelected = viewModel.selectedStatusFilter == status
-      && !viewModel.isSavedFilterActive
     return Text(label)
       .font(TCTypography.captionEmphasis)
       .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
@@ -201,28 +171,17 @@ public struct MapView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.tcBackground)
       } else if viewModel.isEmpty {
-        if viewModel.isSavedFilterActive {
-          EmptyStateView(
-            icon: "bookmark",
-            title: "No Saved Applications",
-            description:
-              "No saved applications. Tap the bookmark icon on any application to save it."
-          )
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .background(Color.tcBackground)
-        } else {
-          EmptyStateView(
-            icon: "map",
-            title: "No Applications",
-            description:
-              "No planning applications found in your watch zone yet. Check back soon."
-          )
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .background(Color.tcBackground)
-        }
+        EmptyStateView(
+          icon: "map",
+          title: "No Applications",
+          description:
+            "No planning applications found in your watch zone yet. Check back soon."
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.tcBackground)
       } else {
         mapContent
-        if viewModel.isLoading || viewModel.isLoadingSaved {
+        if viewModel.isLoading {
           ProgressView()
             .controlSize(.large)
         }

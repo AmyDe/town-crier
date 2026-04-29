@@ -2,7 +2,11 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel driving the map view with planning application pins.
+/// ViewModel driving the map view with planning application pins. Status
+/// filtering is free for all subscription tiers (tc-acf0); the cross-zone
+/// Saved-on-map listing was retired in favour of the dedicated Saved tab.
+/// `canSave` and the bookmark icon on the summary sheet remain — that's
+/// the per-application save flow, not a list-level filter.
 @MainActor
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var annotations: [MapAnnotationItem] = []
@@ -12,15 +16,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
-  @Published var selectedStatusFilter: ApplicationStatus? {
-    didSet {
-      if selectedStatusFilter != nil {
-        isSavedFilterActive = false
-      }
-    }
-  }
-  @Published private(set) var isSavedFilterActive = false
-  @Published private(set) var isLoadingSaved = false
+  @Published var selectedStatusFilter: ApplicationStatus?
   @Published private(set) var savedApplicationUids: Set<String> = []
 
   @Published private(set) var centreLat: Double = 51.5074
@@ -30,31 +26,21 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
   private let savedApplicationRepository: SavedApplicationRepository?
-  private let tier: SubscriptionTier
   private var applications: [PlanningApplication] = []
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
-
-  public var canFilter: Bool {
-    tier != .free
-  }
 
   public var canSave: Bool {
     savedApplicationRepository != nil
   }
 
   public var filteredAnnotations: [MapAnnotationItem] {
-    if isSavedFilterActive {
-      return annotations.filter { savedApplicationUids.contains($0.applicationId.value) }
-    }
-    guard canFilter, let filter = selectedStatusFilter else {
-      return annotations
-    }
+    guard let filter = selectedStatusFilter else { return annotations }
     return annotations.filter { $0.status == filter }
   }
 
   public var isEmpty: Bool {
-    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading && !isLoadingSaved
+    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
   }
 
   /// Whether the currently selected application is in the user's saved set.
@@ -85,7 +71,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public init(
     repository: PlanningApplicationRepository,
     watchZoneRepository: WatchZoneRepository,
-    tier: SubscriptionTier = .free,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.map",
     savedApplicationRepository: SavedApplicationRepository? = nil
@@ -93,7 +78,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     self.repository = repository
     self.watchZoneRepository = watchZoneRepository
     self.savedApplicationRepository = savedApplicationRepository
-    self.tier = tier
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
   }
@@ -137,26 +121,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded = true
   }
 
-  public func activateSavedFilter() async {
-    guard let repository = savedApplicationRepository else { return }
-    selectedStatusFilter = nil
-    isSavedFilterActive = true
-    isLoadingSaved = true
-    do {
-      let saved = try await repository.loadAll()
-      savedApplicationUids = Set(saved.map(\.applicationUid))
-    } catch {
-      savedApplicationUids = []
-    }
-    isLoadingSaved = false
-  }
-
-  public func deactivateSavedFilter() {
-    isSavedFilterActive = false
-  }
-
-  /// Loads the set of saved application UIDs so `isSelectedApplicationSaved` can be checked.
-  /// Does not activate the saved filter. No-op if no repository was provided.
+  /// Loads the set of saved application UIDs so `isSelectedApplicationSaved`
+  /// can be checked. No-op if no repository was provided.
   public func loadSavedStateForSelectedApplication() async {
     guard let repository = savedApplicationRepository else { return }
     do {
@@ -170,7 +136,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
-    isSavedFilterActive = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
     centreLat = zone.centre.latitude
     centreLon = zone.centre.longitude

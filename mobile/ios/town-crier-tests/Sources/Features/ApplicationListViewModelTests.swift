@@ -8,15 +8,13 @@ import TownCrierDomain
 @MainActor
 struct ApplicationListViewModelTests {
   private func makeSUT(
-    applications: [PlanningApplication] = [],
-    tier: SubscriptionTier = .free
+    applications: [PlanningApplication] = []
   ) throws -> (ApplicationListViewModel, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     spy.fetchApplicationsResult = .success(applications)
     let vm = ApplicationListViewModel(
       repository: spy,
-      zone: .cambridge,
-      tier: tier
+      zone: .cambridge
     )
     return (vm, spy)
   }
@@ -91,40 +89,20 @@ struct ApplicationListViewModelTests {
     #expect(selectedId == PlanningApplicationId("APP-001"))
   }
 
-  // MARK: - Status Filtering
+  // MARK: - Status Filtering (free for all tiers — tc-acf0)
 
-  @Test func filterByStatus_freeTier_cannotFilter() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .free)
+  @Test func filterByStatus_filtersByPermitted() async throws {
+    let (sut, _) = try makeSUT(applications: Self.allApps)
     await sut.loadApplications()
-
-    #expect(!sut.canFilter)
-    #expect(sut.filteredApplications.count == 4)
-  }
-
-  @Test func filterByStatus_personalTier_canFilter() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .personal)
-    await sut.loadApplications()
-
-    #expect(sut.canFilter)
 
     sut.selectedStatusFilter = .permitted
+
     #expect(sut.filteredApplications.count == 1)
     #expect(sut.filteredApplications.first?.status == .permitted)
   }
 
-  @Test func filterByStatus_proTier_canFilter() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .pro)
-    await sut.loadApplications()
-
-    #expect(sut.canFilter)
-
-    sut.selectedStatusFilter = .rejected
-    #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.status == .rejected)
-  }
-
   @Test func filterByStatus_nilFilter_showsAll() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps, tier: .personal)
+    let (sut, _) = try makeSUT(applications: Self.allApps)
     await sut.loadApplications()
 
     sut.selectedStatusFilter = .permitted
@@ -135,13 +113,11 @@ struct ApplicationListViewModelTests {
   }
 
   @Test func filterByStatus_noMatchingResults_returnsEmpty() async throws {
-    let (sut, _) = try makeSUT(
-      applications: [.pendingReview],
-      tier: .personal
-    )
+    let (sut, _) = try makeSUT(applications: [.pendingReview])
     await sut.loadApplications()
 
     sut.selectedStatusFilter = .permitted
+
     #expect(sut.filteredApplications.isEmpty)
   }
 
@@ -305,7 +281,6 @@ struct ApplicationListViewModelTests {
   private func makeSUTWithZones(
     zones: [WatchZone] = [.cambridge, .london],
     applications: [PlanningApplication] = [.pendingReview],
-    tier: SubscriptionTier = .free,
     persistedZoneId: String? = nil
   ) throws -> (ApplicationListViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults) {
     let appSpy = SpyPlanningApplicationRepository()
@@ -319,7 +294,6 @@ struct ApplicationListViewModelTests {
     let vm = ApplicationListViewModel(
       watchZoneRepository: zoneSpy,
       repository: appSpy,
-      tier: tier,
       userDefaults: defaults,
       zoneSelectionKey: "test.zone"
     )
@@ -373,12 +347,14 @@ struct ApplicationListViewModelTests {
   }
 
   @Test func selectZone_resetsStatusFilter() async throws {
-    let (sut, _, _, _) = try makeSUTWithZones(tier: .personal)
+    let (sut, _, _, _) = try makeSUTWithZones()
     await sut.loadApplications()
     sut.selectedStatusFilter = .permitted
     await sut.selectZone(.london)
     #expect(sut.selectedStatusFilter == nil)
   }
+
+  // MARK: - Zone Picker Visibility (tc-acf0: 'All' chip removed)
 
   @Test func showZonePicker_trueWhenMultipleZones() async throws {
     let (sut, _, _, _) = try makeSUTWithZones()
@@ -386,7 +362,15 @@ struct ApplicationListViewModelTests {
     #expect(sut.showZonePicker)
   }
 
-  // showZonePicker single-zone / no-zones cases live in
-  // ApplicationListAllZonesTests so they sit alongside the 'All' chip
-  // visibility contract.
+  @Test func showZonePicker_falseWithSingleZone() async throws {
+    let (sut, _, _, _) = try makeSUTWithZones(zones: [.cambridge])
+    await sut.loadApplications()
+    #expect(!sut.showZonePicker)
+  }
+
+  @Test func showZonePicker_falseWithNoZones() async throws {
+    let (sut, _, _, _) = try makeSUTWithZones(zones: [])
+    await sut.loadApplications()
+    #expect(!sut.showZonePicker)
+  }
 }

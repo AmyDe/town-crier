@@ -45,7 +45,7 @@ struct MapViewModelSaveTests {
   func isSelectedApplicationSaved_savedApp_returnsTrue() async {
     let (sut, _) = makeSUT(savedApplicationUids: ["APP-001"])
     await sut.loadApplications()
-    await sut.activateSavedFilter()
+    await sut.loadSavedStateForSelectedApplication()
     sut.selectApplication(PlanningApplicationId("APP-001"))
 
     #expect(sut.isSelectedApplicationSaved)
@@ -55,7 +55,7 @@ struct MapViewModelSaveTests {
   func isSelectedApplicationSaved_unsavedApp_returnsFalse() async {
     let (sut, _) = makeSUT(savedApplicationUids: ["APP-002"])
     await sut.loadApplications()
-    await sut.activateSavedFilter()
+    await sut.loadSavedStateForSelectedApplication()
     sut.selectApplication(PlanningApplicationId("APP-001"))
 
     #expect(!sut.isSelectedApplicationSaved)
@@ -79,7 +79,7 @@ struct MapViewModelSaveTests {
   func toggleSave_savedApp_callsRemove() async {
     let (sut, spy) = makeSUT(savedApplicationUids: ["APP-001"])
     await sut.loadApplications()
-    await sut.activateSavedFilter()
+    await sut.loadSavedStateForSelectedApplication()
     sut.selectApplication(PlanningApplicationId("APP-001"))
 
     await sut.toggleSaveSelectedApplication()
@@ -116,7 +116,7 @@ struct MapViewModelSaveTests {
     let (sut, spy) = makeSUT(savedApplicationUids: ["APP-001"])
     spy.removeResult = .failure(DomainError.networkUnavailable)
     await sut.loadApplications()
-    await sut.activateSavedFilter()
+    await sut.loadSavedStateForSelectedApplication()
     sut.selectApplication(PlanningApplicationId("APP-001"))
 
     await sut.toggleSaveSelectedApplication()
@@ -126,8 +126,8 @@ struct MapViewModelSaveTests {
 
   // MARK: - loadSavedStateForSelectedApplication
 
-  @Test("loadSavedStateForSelectedApplication populates savedApplicationUids without activating filter")
-  func loadSavedState_populatesUids_withoutActivatingFilter() async {
+  @Test("loadSavedStateForSelectedApplication populates savedApplicationUids")
+  func loadSavedState_populatesUids() async {
     let (sut, spy) = makeSUT()
     spy.loadAllResult = .success([
       SavedApplication(applicationUid: "APP-001", savedAt: Date()),
@@ -137,7 +137,6 @@ struct MapViewModelSaveTests {
     await sut.loadSavedStateForSelectedApplication()
 
     #expect(sut.savedApplicationUids.contains("APP-001"))
-    #expect(!sut.isSavedFilterActive)
   }
 
   @Test("loadSavedStateForSelectedApplication is no-op without repository")

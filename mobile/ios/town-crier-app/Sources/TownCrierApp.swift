@@ -164,6 +164,25 @@ struct TownCrierApp: App {
       }
 
       NavigationStack {
+        SavedApplicationListView(
+          viewModel: coordinator.makeSavedApplicationListViewModel()
+        )
+        .id(coordinator.subscriptionTier)
+      }
+      .sheet(item: $coordinator.detailApplication) { application in
+        NavigationStack {
+          ApplicationDetailView(
+            viewModel: coordinator.makeApplicationDetailViewModel(
+              application: application
+            )
+          )
+        }
+      }
+      .tabItem {
+        Label("Saved", systemImage: "bookmark.fill")
+      }
+
+      NavigationStack {
         MapView(viewModel: coordinator.makeMapViewModel())
           .id(coordinator.subscriptionTier)
           .navigationTitle("Map")
