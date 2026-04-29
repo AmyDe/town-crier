@@ -4,6 +4,7 @@ import styles from './Sidebar.module.css';
 const NAV_ITEMS = [
   { label: 'Dashboard', to: '/dashboard' },
   { label: 'Applications', to: '/applications' },
+  { label: 'Saved', to: '/saved' },
   { label: 'Watch Zones', to: '/watch-zones' },
   { label: 'Map', to: '/map' },
   { label: 'Search', to: '/search' },
