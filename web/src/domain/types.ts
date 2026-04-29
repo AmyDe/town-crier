@@ -99,7 +99,6 @@ export interface UserProfile {
   readonly userId: string;
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
-  readonly emailInstantEnabled: boolean;
   readonly digestDay: DayOfWeek;
   readonly tier: SubscriptionTier;
 }
@@ -243,7 +242,6 @@ export interface CreateWatchZoneRequest {
 export interface UpdateProfileRequest {
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
-  readonly emailInstantEnabled: boolean;
   readonly digestDay: DayOfWeek;
 }
 

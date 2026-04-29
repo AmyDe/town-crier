@@ -159,13 +159,12 @@ describe('useUserProfile', () => {
     expect(spy.updateProfileLastRequest).toEqual({
       pushEnabled: true,
       emailDigestEnabled: false,
-      emailInstantEnabled: false,
       digestDay: 1,
     });
   });
 
   it('optimistically updates profile on preference change', async () => {
-    spy.fetchProfileResult = freeUserProfile();
+    spy.fetchProfileResult = freeUserProfile({ emailDigestEnabled: true });
 
     const { result } = renderHook(() => useUserProfile(spy, logout));
 
@@ -174,10 +173,10 @@ describe('useUserProfile', () => {
     });
 
     await act(async () => {
-      await result.current.updatePreferences({ emailInstantEnabled: true });
+      await result.current.updatePreferences({ emailDigestEnabled: false });
     });
 
-    expect(result.current.profile?.emailInstantEnabled).toBe(true);
+    expect(result.current.profile?.emailDigestEnabled).toBe(false);
   });
 
   it('reverts profile on preference update failure', async () => {

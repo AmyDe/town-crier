@@ -7,7 +7,6 @@ export function freeUserProfile(
     userId: 'auth0|abc123',
     pushEnabled: true,
     emailDigestEnabled: true,
-    emailInstantEnabled: false,
     digestDay: 1,
     tier: 'Free' as SubscriptionTier,
     ...overrides,

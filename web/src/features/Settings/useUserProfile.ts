@@ -34,7 +34,6 @@ export function useUserProfile(
     const request: UpdateProfileRequest = {
       pushEnabled: base.pushEnabled,
       emailDigestEnabled: base.emailDigestEnabled,
-      emailInstantEnabled: base.emailInstantEnabled,
       digestDay: base.digestDay,
       ...changes,
     };

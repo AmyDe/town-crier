@@ -133,14 +133,6 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
               </select>
             </div>
           )}
-          <div className={styles.toggleRow}>
-            <span className={styles.label}>Instant emails</span>
-            <Toggle
-              checked={profile?.emailInstantEnabled ?? false}
-              onChange={(checked) => updatePreferences({ emailInstantEnabled: checked })}
-              label="Instant emails"
-            />
-          </div>
         </div>
       </section>
 
