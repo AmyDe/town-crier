@@ -11,74 +11,132 @@
   margin: 0 0 var(--tc-space-lg);
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: var(--tc-space-xs);
-  margin-bottom: var(--tc-space-lg);
-  font-size: var(--tc-text-body);
-  color: var(--tc-text-secondary);
-}
-
-.breadcrumbLink {
-  color: var(--tc-amber);
-  text-decoration: none;
-  cursor: pointer;
-  background: none;
-  border: none;
-  font: inherit;
-  padding: 0;
-}
-
-.breadcrumbLink:hover {
-  text-decoration: underline;
-}
-
-.breadcrumbCurrent {
-  color: var(--tc-text-primary);
-  font-weight: var(--tc-weight-medium);
-}
-
-.authorityGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--tc-space-md);
-}
-
-.authorityCard {
+.filterBar {
   display: flex;
   flex-direction: column;
-  gap: var(--tc-space-xs);
+  gap: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-lg);
+  padding: var(--tc-space-sm) var(--tc-space-md);
   background: var(--tc-surface);
   border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-md);
-  padding: var(--tc-space-md);
-  box-shadow: var(--tc-shadow-card);
-  cursor: pointer;
-  transition: border-color var(--tc-duration-fast) ease;
-  text-align: left;
+}
+
+@media (min-width: 640px) {
+  .filterBar {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+}
+
+.zoneSelectorLabel {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.zoneSelector {
   font: inherit;
-  color: inherit;
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  min-width: 160px;
+  cursor: pointer;
 }
 
-.authorityCard:hover {
-  border-color: var(--tc-amber);
-}
-
-.authorityCard:focus-visible {
+.zoneSelector:focus-visible {
   outline: 2px solid var(--tc-border-focused);
   outline-offset: 2px;
 }
 
-.authorityName {
-  font-size: var(--tc-text-headline);
-  font-weight: var(--tc-weight-semibold);
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.statusChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tc-space-xs);
+  flex: 1 1 auto;
+}
+
+.chip {
+  font: inherit;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-secondary);
+  background: transparent;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-full);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  cursor: pointer;
+  transition: background var(--tc-duration-fast) ease, color var(--tc-duration-fast) ease, border-color var(--tc-duration-fast) ease;
+}
+
+.chip:hover {
+  border-color: var(--tc-amber);
   color: var(--tc-text-primary);
 }
 
-.authorityType {
+.chip:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.chipPressed {
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border-color: var(--tc-amber);
+}
+
+.chipPressed:hover {
+  color: var(--tc-text-on-accent);
+}
+
+.savedToggle {
+  font: inherit;
   font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
   color: var(--tc-text-secondary);
+  background: transparent;
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-full);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--tc-duration-fast) ease, color var(--tc-duration-fast) ease, border-color var(--tc-duration-fast) ease;
+}
+
+.savedToggle:hover {
+  border-color: var(--tc-amber);
+  color: var(--tc-text-primary);
+}
+
+.savedToggle:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.savedToggleOn {
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+  border-color: var(--tc-amber);
+}
+
+.savedToggleOn:hover {
+  color: var(--tc-text-on-accent);
 }
 
 .list {

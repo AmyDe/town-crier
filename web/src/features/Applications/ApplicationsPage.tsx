@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import type { WatchZoneSummary } from '../../domain/types';
+import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
+import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
 import { useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
@@ -14,67 +15,159 @@ interface ZonesPort {
 interface Props {
   zonesPort: ZonesPort;
   browsePort: ApplicationsBrowsePort;
+  savedRepository: SavedApplicationRepository;
 }
 
-export function ApplicationsPage({ zonesPort, browsePort }: Props) {
+const ALL_ZONES_VALUE = '__all__';
+
+interface StatusChip {
+  readonly label: string;
+  readonly status: ApplicationStatus | null;
+}
+
+const STATUS_CHIPS: readonly StatusChip[] = [
+  { label: 'All', status: null },
+  { label: 'Pending', status: 'Undecided' },
+  { label: 'Granted', status: 'Permitted' },
+  { label: 'Granted with conditions', status: 'Conditions' },
+  { label: 'Refused', status: 'Rejected' },
+  { label: 'Withdrawn', status: 'Withdrawn' },
+  { label: 'Appealed', status: 'Appealed' },
+];
+
+export function ApplicationsPage({ zonesPort, browsePort, savedRepository }: Props) {
   const navigate = useNavigate();
-  const { data: zones, isLoading: isLoadingZones, error: zonesError } =
-    useFetchData(() => zonesPort.fetchZones(), [zonesPort]);
-  const { selectedZone, applications, isLoading: isLoadingApps, error: appsError, selectZone } =
-    useApplications(browsePort);
+  const {
+    data: zones,
+    isLoading: isLoadingZones,
+    error: zonesError,
+  } = useFetchData(() => zonesPort.fetchZones(), [zonesPort]);
+
+  const {
+    selectedZone,
+    isAllZonesSelected,
+    applications,
+    isLoading: isLoadingApps,
+    error: appsError,
+    selectedStatusFilter,
+    isSavedFilterActive,
+    selectZone,
+    selectAllZones,
+    setStatusFilter,
+    activateSavedFilter,
+    deactivateSavedFilter,
+  } = useApplications({
+    browsePort,
+    savedRepository,
+    zones: zones ?? [],
+  });
+
+  const hasZones = (zones ?? []).length > 0;
+
+  function handleZoneChange(value: string) {
+    if (value === ALL_ZONES_VALUE) {
+      selectAllZones();
+      return;
+    }
+    const zone = (zones ?? []).find((z) => z.id === value);
+    if (zone) {
+      selectZone(zone);
+    }
+  }
+
+  function handleStatusClick(status: ApplicationStatus | null) {
+    setStatusFilter(status);
+  }
+
+  function handleSavedToggle() {
+    if (isSavedFilterActive) {
+      deactivateSavedFilter();
+    } else {
+      void activateSavedFilter();
+    }
+  }
+
+  const showAllZonesEmptyHint = isAllZonesSelected && !isSavedFilterActive;
+
+  // Determine the current value for the zone selector
+  const zoneSelectorValue = isAllZonesSelected
+    ? ALL_ZONES_VALUE
+    : (selectedZone?.id ?? '');
 
   return (
     <div className={styles.container}>
       <h1 className={styles.heading}>Applications</h1>
 
-      {selectedZone !== null && (
-        <nav className={styles.breadcrumb} aria-label="Breadcrumb">
-          <button className={styles.breadcrumbLink} onClick={() => selectZone(null)}>
-            Watch Zones
-          </button>
-          <span aria-hidden="true">&rsaquo;</span>
-          <span className={styles.breadcrumbCurrent}>{selectedZone.name}</span>
-        </nav>
+      {isLoadingZones && (
+        <div className={styles.loading} aria-live="polite">Loading zones...</div>
       )}
 
-      {selectedZone === null && (
+      {zonesError !== null && (
+        <EmptyState title="Something went wrong" message={zonesError} />
+      )}
+
+      {!isLoadingZones && zonesError === null && !hasZones && (
+        <EmptyState
+          icon="📍"
+          title="No watch zones yet"
+          message="Set up a watch zone to start browsing applications."
+          actionLabel="Create watch zone"
+          onAction={() => navigate('/watch-zones/new')}
+        />
+      )}
+
+      {!isLoadingZones && zonesError === null && hasZones && (
         <>
-          {isLoadingZones && (
-            <div className={styles.loading} aria-live="polite">Loading zones...</div>
-          )}
+          <div className={styles.filterBar} role="toolbar" aria-label="Filters">
+            <label className={styles.zoneSelectorLabel}>
+              <span className={styles.srOnly}>Zone</span>
+              <select
+                className={styles.zoneSelector}
+                aria-label="Zone"
+                value={zoneSelectorValue}
+                onChange={(e) => handleZoneChange(e.target.value)}
+              >
+                <option value={ALL_ZONES_VALUE}>All</option>
+                {(zones ?? []).map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          {zonesError !== null && (
-            <EmptyState title="Something went wrong" message={zonesError} />
-          )}
-
-          {!isLoadingZones && zonesError === null && (zones ?? []).length === 0 && (
-            <EmptyState
-              icon="📍"
-              title="No watch zones yet"
-              message="Set up a watch zone to start browsing applications."
-              actionLabel="Create watch zone"
-              onAction={() => navigate('/watch-zones/new')}
-            />
-          )}
-
-          {!isLoadingZones && zonesError === null && (zones ?? []).length > 0 && (
-            <div className={styles.authorityGrid}>
-              {(zones ?? []).map((zone) => (
-                <button
-                  key={zone.id}
-                  className={styles.authorityCard}
-                  onClick={() => selectZone(zone)}
-                >
-                  <span className={styles.authorityName}>{zone.name}</span>
-                </button>
-              ))}
+            <div className={styles.statusChips} role="group" aria-label="Status filter">
+              {STATUS_CHIPS.map((chip) => {
+                const isPressed =
+                  chip.status === null
+                    ? selectedStatusFilter === null && !isSavedFilterActive
+                    : selectedStatusFilter === chip.status;
+                return (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    className={`${styles.chip} ${isPressed ? styles.chipPressed : ''}`}
+                    aria-pressed={isPressed}
+                    onClick={() => handleStatusClick(chip.status)}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </>
-      )}
 
-      {selectedZone !== null && (
-        <>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isSavedFilterActive}
+              aria-label="Saved"
+              className={`${styles.savedToggle} ${isSavedFilterActive ? styles.savedToggleOn : ''}`}
+              onClick={handleSavedToggle}
+            >
+              Saved
+            </button>
+          </div>
+
           {isLoadingApps && (
             <div className={styles.loading} aria-live="polite">Loading applications...</div>
           )}
@@ -84,17 +177,31 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
               title="Something went wrong"
               message={appsError}
               actionLabel="Try again"
-              onAction={() => selectZone(selectedZone)}
+              onAction={() => selectedZone && selectZone(selectedZone)}
             />
           )}
 
-          {!isLoadingApps && appsError === null && applications.length === 0 && (
+          {!isLoadingApps && appsError === null && showAllZonesEmptyHint && (
             <EmptyState
-              icon="📋"
-              title="No applications"
-              message="No applications found in this zone."
+              icon="📌"
+              message="Pick a zone to see applications, or turn on Saved to see everything you've bookmarked."
             />
           )}
+
+          {!isLoadingApps &&
+            appsError === null &&
+            !showAllZonesEmptyHint &&
+            applications.length === 0 && (
+              <EmptyState
+                icon="📋"
+                title="No applications"
+                message={
+                  isSavedFilterActive
+                    ? "You haven't saved any applications matching this view."
+                    : 'No applications found in this zone.'
+                }
+              />
+            )}
 
           {!isLoadingApps && appsError === null && applications.length > 0 && (
             <ul className={styles.list}>
