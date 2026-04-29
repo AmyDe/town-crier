@@ -199,6 +199,25 @@ struct ApplicationListAllZonesTests {
     #expect(!sut.isAllZonesSelected)
   }
 
+  // MARK: - Zone picker visibility
+
+  @Test func showZonePicker_trueWithSingleZone_soAllOptionIsReachable() async throws {
+    // 'All' is meaningful even with one zone (it surfaces orphan saves made
+    // outside that zone's geometry). The picker must therefore render so the
+    // user can reach the 'All' chip.
+    let sut = try makeSUT(zones: [.cambridge])
+    await sut.loadApplications()
+
+    #expect(sut.showZonePicker)
+  }
+
+  @Test func showZonePicker_falseWithNoZones() async throws {
+    let sut = try makeSUT(zones: [])
+    await sut.loadApplications()
+
+    #expect(!sut.showZonePicker)
+  }
+
   // MARK: - Empty state messaging
 
   @Test func emptyStateKind_allZonesSavedInactive_isPickAZoneOrTurnOnSaved() async throws {
