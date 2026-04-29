@@ -105,40 +105,6 @@
   color: var(--tc-text-on-accent);
 }
 
-.savedToggle {
-  font: inherit;
-  font-size: var(--tc-text-caption);
-  font-weight: var(--tc-weight-medium);
-  color: var(--tc-text-secondary);
-  background: transparent;
-  border: 1px solid var(--tc-border);
-  border-radius: var(--tc-radius-full);
-  padding: var(--tc-space-xs) var(--tc-space-sm);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--tc-duration-fast) ease, color var(--tc-duration-fast) ease, border-color var(--tc-duration-fast) ease;
-}
-
-.savedToggle:hover {
-  border-color: var(--tc-amber);
-  color: var(--tc-text-primary);
-}
-
-.savedToggle:focus-visible {
-  outline: 2px solid var(--tc-border-focused);
-  outline-offset: 2px;
-}
-
-.savedToggleOn {
-  background: var(--tc-amber);
-  color: var(--tc-text-on-accent);
-  border-color: var(--tc-amber);
-}
-
-.savedToggleOn:hover {
-  color: var(--tc-text-on-accent);
-}
-
 .list {
   list-style: none;
   padding: 0;
