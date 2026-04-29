@@ -47,11 +47,14 @@ export function useApplications(options: UseApplicationsOptions) {
   const hasAutoSelectedRef = useRef(false);
 
   // Auto-select the first zone the first time zones become non-empty.
+  // setState here syncs UI to a one-shot async upstream load (zones from
+  // the profile fetch); the ref guards against repeats.
   useEffect(() => {
     if (hasAutoSelectedRef.current) return;
     if (zones.length === 0) return;
     hasAutoSelectedRef.current = true;
     const firstZone = zones[0]!;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((prev) => ({ ...prev, selectedZone: firstZone, isLoading: true, error: null }));
     browsePort
       .fetchByZone(firstZone.id)
