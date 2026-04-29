@@ -58,9 +58,9 @@ export function isApplicationStatus(value: unknown): value is ApplicationStatus 
   return typeof value === "string" && APPLICATION_STATUSES.includes(value);
 }
 
-export type SubscriptionTier = "Free" | "Pro";
+export type SubscriptionTier = "Free" | "Personal" | "Pro";
 
-const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Pro"];
+const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Personal", "Pro"];
 
 export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
   return typeof value === "string" && SUBSCRIPTION_TIERS.includes(value);
