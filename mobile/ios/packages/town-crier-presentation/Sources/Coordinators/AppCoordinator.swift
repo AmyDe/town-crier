@@ -166,6 +166,21 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
+  /// Factory for the dedicated Saved tab view model.
+  ///
+  /// Falls back to a no-op repository when no `SavedApplicationRepository` was
+  /// injected. The Saved tab is only meaningful when bookmarking is wired, so
+  /// in production this branch is unreachable; surfacing a fatal error there
+  /// would crash the app for users who never tap the tab.
+  public func makeSavedApplicationListViewModel() -> SavedApplicationListViewModel {
+    let repository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
+    let viewModel = SavedApplicationListViewModel(savedApplicationRepository: repository)
+    viewModel.onApplicationSelected = { [weak self] id in
+      self?.showApplicationDetail(id)
+    }
+    return viewModel
+  }
+
   public func makeSettingsViewModel() -> SettingsViewModel {
     SettingsViewModel(
       authService: authService,
