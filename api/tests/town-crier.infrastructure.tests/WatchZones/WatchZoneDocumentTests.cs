@@ -110,8 +110,8 @@ public sealed class WatchZoneDocumentTests
         var document = WatchZoneDocument.FromDomain(zone);
 
         // Assert
-        await Assert.That(document.PushEnabled).IsFalse();
-        await Assert.That(document.EmailInstantEnabled).IsFalse();
+        await Assert.That(document.PushEnabled).IsEqualTo(false);
+        await Assert.That(document.EmailInstantEnabled).IsEqualTo(false);
     }
 
     [Test]
@@ -193,8 +193,8 @@ public sealed class WatchZoneDocumentTests
         var deserialized = JsonSerializer.Deserialize<WatchZoneDocument>(json, jsonOptions)!;
 
         // Assert
-        await Assert.That(deserialized.PushEnabled).IsFalse();
-        await Assert.That(deserialized.EmailInstantEnabled).IsFalse();
+        await Assert.That(deserialized.PushEnabled).IsEqualTo(false);
+        await Assert.That(deserialized.EmailInstantEnabled).IsEqualTo(false);
     }
 
     private static JsonSerializerOptions CreateJsonOptions()
