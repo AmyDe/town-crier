@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { label: 'Watch Zones', to: '/watch-zones' },
   { label: 'Map', to: '/map' },
   { label: 'Search', to: '/search' },
-  { label: 'Saved', to: '/saved' },
   { label: 'Notifications', to: '/notifications' },
   { label: 'Settings', to: '/settings' },
 ] as const;
