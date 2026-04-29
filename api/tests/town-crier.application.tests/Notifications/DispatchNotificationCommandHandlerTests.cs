@@ -16,7 +16,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
-        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
         await handler.HandleAsync(CreateCommand(), CancellationToken.None);
@@ -29,11 +29,11 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_SendPushNotification_When_UserHasRegisteredDevice()
+    public async Task Should_SendPushNotification_When_PaidUserHasRegisteredDevice()
     {
         // Arrange
         var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
-        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
         await handler.HandleAsync(CreateCommand(), CancellationToken.None);
@@ -45,11 +45,11 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_MarkPushSent_When_NotificationDispatched()
+    public async Task Should_MarkPushSent_When_NotificationDispatchedToPaidUser()
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
-        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
         await handler.HandleAsync(CreateCommand(), CancellationToken.None);
@@ -63,7 +63,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
-        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         var command = CreateCommand();
 
@@ -79,11 +79,12 @@ public sealed class DispatchNotificationCommandHandlerTests
     [Test]
     public async Task Should_RecordNotificationButNotPush_When_PushDisabled()
     {
-        // Arrange
+        // Arrange — paid tier with push toggled off; row written, no push
         var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
             .WithPushEnabled(false)
             .Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
@@ -151,33 +152,6 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_ResetCap_When_NewCalendarMonth()
-    {
-        // Arrange
-        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 28, 10, 0, 0, TimeSpan.Zero));
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler(timeProvider);
-        await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
-
-        for (var i = 0; i < 5; i++)
-        {
-            await handler.HandleAsync(CreateCommand($"march-{i:D3}"), CancellationToken.None);
-        }
-
-        await Assert.That(pushSender.Sent).HasCount().EqualTo(5);
-
-        // Advance to April 1st
-        timeProvider.SetUtcNow(new DateTimeOffset(2026, 4, 1, 0, 0, 1, TimeSpan.Zero));
-
-        // Act
-        await handler.HandleAsync(CreateCommand("april-001"), CancellationToken.None);
-
-        // Assert — push sent (cap reset)
-        await Assert.That(notificationRepo.All).HasCount().EqualTo(6);
-        await Assert.That(notificationRepo.All[5].PushSent).IsTrue();
-        await Assert.That(pushSender.Sent).HasCount().EqualTo(6);
-    }
-
-    [Test]
     public async Task Should_NotCreateNotification_When_UserProfileNotFound()
     {
         // Arrange — no user profile seeded
@@ -194,10 +168,13 @@ public sealed class DispatchNotificationCommandHandlerTests
     [Test]
     public async Task Should_NotSendPush_When_NoRegisteredDevices()
     {
-        // Arrange
+        // Arrange — paid user with no devices
         var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
 
-        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
         // Act
@@ -215,7 +192,10 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
 
-        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
         profile.SetZonePreferences(
             "zone-1",
             new ZoneNotificationPreferences(
@@ -242,7 +222,10 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
 
-        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
         profile.SetZonePreferences(
             "zone-1",
             new ZoneNotificationPreferences(
@@ -288,6 +271,21 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         var profile = new UserProfileBuilder()
             .WithUserId(userId)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var device = DeviceRegistration.Create(userId, "device-token-1", DevicePlatform.Ios, March2026);
+        await deviceRepo.SaveAsync(device, CancellationToken.None);
+    }
+
+    private static async Task SeedPaidUserWithDevice(
+        FakeUserProfileRepository userProfileRepo,
+        FakeDeviceRegistrationRepository deviceRepo,
+        string userId = "user-1")
+    {
+        var profile = new UserProfileBuilder()
+            .WithUserId(userId)
+            .WithTier(SubscriptionTier.Pro)
             .Build();
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
