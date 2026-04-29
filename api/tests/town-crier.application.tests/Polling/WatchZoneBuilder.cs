@@ -13,6 +13,8 @@ internal sealed class WatchZoneBuilder
     private double radiusMetres = 5000;
     private int authorityId = 1;
     private DateTimeOffset createdAt = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private bool pushEnabled = true;
+    private bool emailInstantEnabled = true;
 
     public WatchZoneBuilder WithId(string id)
     {
@@ -57,6 +59,18 @@ internal sealed class WatchZoneBuilder
         return this;
     }
 
+    public WatchZoneBuilder WithPushEnabled(bool enabled)
+    {
+        this.pushEnabled = enabled;
+        return this;
+    }
+
+    public WatchZoneBuilder WithEmailInstantEnabled(bool enabled)
+    {
+        this.emailInstantEnabled = enabled;
+        return this;
+    }
+
     public WatchZone Build()
     {
         return new WatchZone(
@@ -66,6 +80,8 @@ internal sealed class WatchZoneBuilder
             new Coordinates(this.latitude, this.longitude),
             this.radiusMetres,
             this.authorityId,
-            this.createdAt);
+            this.createdAt,
+            this.pushEnabled,
+            this.emailInstantEnabled);
     }
 }

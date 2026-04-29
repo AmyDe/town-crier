@@ -7,4 +7,6 @@ public sealed record CreateWatchZoneCommand(
     double Latitude,
     double Longitude,
     double RadiusMetres,
-    int? AuthorityId = null);
+    int? AuthorityId = null,
+    bool PushEnabled = true,
+    bool EmailInstantEnabled = true);

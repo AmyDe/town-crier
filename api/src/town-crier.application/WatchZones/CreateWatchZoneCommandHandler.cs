@@ -57,7 +57,9 @@ public sealed class CreateWatchZoneCommandHandler
             new Coordinates(command.Latitude, command.Longitude),
             command.RadiusMetres,
             authorityId,
-            this.timeProvider.GetUtcNow());
+            this.timeProvider.GetUtcNow(),
+            command.PushEnabled,
+            command.EmailInstantEnabled);
 
         await this.watchZoneRepository.SaveAsync(zone, ct).ConfigureAwait(false);
         ApiMetrics.WatchZonesCreated.Add(1);

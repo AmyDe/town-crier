@@ -22,7 +22,9 @@ public sealed class ListWatchZonesQueryHandler
                 z.Centre.Latitude,
                 z.Centre.Longitude,
                 z.RadiusMetres,
-                z.AuthorityId))
+                z.AuthorityId,
+                z.PushEnabled,
+                z.EmailInstantEnabled))
             .ToList();
 
         return new ListWatchZonesResult(summaries);

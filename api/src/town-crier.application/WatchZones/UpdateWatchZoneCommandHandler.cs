@@ -32,7 +32,9 @@ public sealed class UpdateWatchZoneCommandHandler
             name: command.Name,
             centre: newCentre,
             radiusMetres: command.RadiusMetres,
-            authorityId: command.AuthorityId);
+            authorityId: command.AuthorityId,
+            pushEnabled: command.PushEnabled,
+            emailInstantEnabled: command.EmailInstantEnabled);
 
         await this.watchZoneRepository.SaveAsync(updated, ct).ConfigureAwait(false);
         ApiMetrics.WatchZonesUpdated.Add(1);
@@ -43,6 +45,8 @@ public sealed class UpdateWatchZoneCommandHandler
             updated.Centre.Latitude,
             updated.Centre.Longitude,
             updated.RadiusMetres,
-            updated.AuthorityId));
+            updated.AuthorityId,
+            updated.PushEnabled,
+            updated.EmailInstantEnabled));
     }
 }
