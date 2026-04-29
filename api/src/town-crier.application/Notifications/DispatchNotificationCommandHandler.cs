@@ -8,8 +8,6 @@ namespace TownCrier.Application.Notifications;
 
 public sealed class DispatchNotificationCommandHandler
 {
-    private const int FreeMonthlyNotificationCap = 5;
-
     private readonly INotificationRepository notificationRepository;
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
@@ -84,18 +82,12 @@ public sealed class DispatchNotificationCommandHandler
             return;
         }
 
-        // Check free-tier monthly cap
+        // Paid-tier gate: instant push is a paid-tier hook. Free tier still gets the
+        // notification row (picked up by the weekly digest) but no push.
         if (profile.Tier == SubscriptionTier.Free)
         {
-            var monthlyCount = await this.notificationRepository.CountByUserInMonthAsync(
-                zone.UserId, now.Year, now.Month, ct).ConfigureAwait(false);
-
-            if (monthlyCount >= FreeMonthlyNotificationCap)
-            {
-                // Cap reached — record notification but don't send push
-                await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
-                return;
-            }
+            await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
+            return;
         }
 
         // Send push notification

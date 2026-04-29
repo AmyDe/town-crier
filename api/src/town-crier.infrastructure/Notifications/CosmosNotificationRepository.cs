@@ -28,25 +28,6 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
-    public async Task<int> CountByUserInMonthAsync(
-        string userId, int year, int month, CancellationToken ct)
-    {
-        var startOfMonth = new DateTimeOffset(year, month, 1, 0, 0, 0, TimeSpan.Zero);
-        var startOfNextMonth = startOfMonth.AddMonths(1);
-
-        return await this.client.ScalarQueryAsync(
-            CosmosContainerNames.Notifications,
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt >= @start AND c.createdAt < @end",
-            [
-                new QueryParameter("@userId", userId),
-                new QueryParameter("@start", startOfMonth),
-                new QueryParameter("@end", startOfNextMonth),
-            ],
-            userId,
-            CosmosJsonSerializerContext.Default.Int32,
-            ct).ConfigureAwait(false);
-    }
-
     public async Task<int> CountByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {

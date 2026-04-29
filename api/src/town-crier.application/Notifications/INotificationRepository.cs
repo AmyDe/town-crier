@@ -6,8 +6,6 @@ public interface INotificationRepository
 {
     Task<Notification?> GetByUserAndApplicationAsync(string userId, string applicationName, CancellationToken ct);
 
-    Task<int> CountByUserInMonthAsync(string userId, int year, int month, CancellationToken ct);
-
     Task<int> CountByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct);
 
     Task<IReadOnlyList<Notification>> GetByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct);
