@@ -194,6 +194,64 @@ struct WatchZoneEditorCreateTests {
     let saved = spyRepository.saveCalls.first
     #expect(saved?.radiusMetres == 2000)
   }
+
+  // MARK: - Per-zone notification toggles (tc-kh1s)
+
+  @Test func defaultPushEnabled_isTrue() {
+    #expect(sut.pushEnabled)
+  }
+
+  @Test func defaultEmailInstantEnabled_isTrue() {
+    #expect(sut.emailInstantEnabled)
+  }
+
+  @Test func areNotificationTogglesVisible_freeTier_isFalse() {
+    let freeSut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .free
+    )
+    #expect(!freeSut.areNotificationTogglesVisible)
+  }
+
+  @Test func areNotificationTogglesVisible_personalTier_isTrue() {
+    #expect(sut.areNotificationTogglesVisible)
+  }
+
+  @Test func areNotificationTogglesVisible_proTier_isTrue() {
+    let proSut = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .pro
+    )
+    #expect(proSut.areNotificationTogglesVisible)
+  }
+
+  @Test func save_passesPushEnabledToRepository() async {
+    sut.postcodeInput = "CB1 2AD"
+    spyGeocoder.geocodeResult = .success(.cambridge)
+    await sut.submitPostcode()
+    sut.pushEnabled = false
+
+    await sut.save()
+
+    let saved = spyRepository.saveCalls.first
+    #expect(saved?.pushEnabled == false)
+    #expect(saved?.emailInstantEnabled == true)
+  }
+
+  @Test func save_passesEmailInstantEnabledToRepository() async {
+    sut.postcodeInput = "CB1 2AD"
+    spyGeocoder.geocodeResult = .success(.cambridge)
+    await sut.submitPostcode()
+    sut.emailInstantEnabled = false
+
+    await sut.save()
+
+    let saved = spyRepository.saveCalls.first
+    #expect(saved?.emailInstantEnabled == false)
+    #expect(saved?.pushEnabled == true)
+  }
 }
 
 @MainActor
@@ -276,5 +334,56 @@ struct WatchZoneEditorEditTests {
     await sut.submitPostcode()
 
     #expect(sut.geocodedCoordinate == london)
+  }
+
+  // MARK: - Per-zone notification toggles in edit mode (tc-kh1s)
+
+  @Test func initialState_populatesPushEnabledFromExistingZone() throws {
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-x"),
+      name: "Test",
+      centre: .cambridge,
+      radiusMetres: 1000,
+      pushEnabled: false,
+      emailInstantEnabled: true
+    )
+    let vm = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .personal,
+      editing: zone
+    )
+    #expect(!vm.pushEnabled)
+    #expect(vm.emailInstantEnabled)
+  }
+
+  @Test func initialState_populatesEmailInstantEnabledFromExistingZone() throws {
+    let zone = try WatchZone(
+      id: WatchZoneId("zone-x"),
+      name: "Test",
+      centre: .cambridge,
+      radiusMetres: 1000,
+      pushEnabled: true,
+      emailInstantEnabled: false
+    )
+    let vm = WatchZoneEditorViewModel(
+      geocoder: spyGeocoder,
+      repository: spyRepository,
+      tier: .personal,
+      editing: zone
+    )
+    #expect(vm.pushEnabled)
+    #expect(!vm.emailInstantEnabled)
+  }
+
+  @Test func save_inEditMode_passesUpdatedFlagsToRepository() async {
+    sut.pushEnabled = false
+    sut.emailInstantEnabled = false
+
+    await sut.save()
+
+    let updated = spyRepository.updateCalls.first
+    #expect(updated?.pushEnabled == false)
+    #expect(updated?.emailInstantEnabled == false)
   }
 }
