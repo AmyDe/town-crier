@@ -17,9 +17,14 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
+  @Published private(set) var isAllZonesSelected = false
   @Published private(set) var isSavedFilterActive = false
   @Published private(set) var isLoadingSaved = false
   @Published private(set) var savedApplicationUids: Set<String> = []
+
+  /// Sentinel persisted to UserDefaults to indicate the synthetic 'All' selection.
+  /// Watch zone IDs are UUID strings so cannot collide with this value.
+  static let allZonesSentinel = "__all__"
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
@@ -146,17 +151,25 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       if let watchZoneRepository {
         let loadedZones = try await watchZoneRepository.loadAll()
         zones = loadedZones
-        // Always refresh `selectedZone` from the reloaded list so an in-place
-        // edit (same id, new radius/centre) propagates through to the list's
-        // header pill and downstream filters. Falling back to
-        // `resolveInitialZone` only when the id is missing (zone deleted)
-        // preserves the previous-session restore behaviour.
-        if let currentId = selectedZone?.id,
-           let updated = loadedZones.first(where: { $0.id == currentId }) {
+        // Refresh any in-place-edited zone (same id, new radius/centre) so its
+        // updated geometry propagates downstream. If the selection has been
+        // deleted — or nothing is selected yet — fall back to
+        // `resolveInitialSelection`, which honours both real zone IDs and the
+        // synthetic 'All' sentinel persisted in UserDefaults.
+        if isAllZonesSelected {
+          selectedZone = nil
+        } else if let currentId = selectedZone?.id,
+                  let updated = loadedZones.first(where: { $0.id == currentId }) {
           selectedZone = updated
         } else {
-          selectedZone = resolveInitialZone(from: loadedZones)
+          resolveInitialSelection(from: loadedZones)
         }
+      }
+      if isAllZonesSelected {
+        // 'All' + Saved active → populate from saved payloads; otherwise empty.
+        applications = []
+        isLoading = false
+        return
       }
       guard let activeZone = selectedZone ?? zone else {
         applications = []
@@ -179,17 +192,33 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     do {
       let saved = try await repository.loadAll()
       savedApplicationUids = Set(saved.map(\.applicationUid))
+      if isAllZonesSelected {
+        // 'All' + Saved → show every saved app, regardless of zone.
+        // Server-denormalised payloads on SavedApplication.application carry
+        // the data; entries lacking a payload (e.g. legacy saves) are dropped.
+        applications = saved.compactMap(\.application)
+          .sorted { $0.receivedDate > $1.receivedDate }
+      }
     } catch {
       savedApplicationUids = []
+      if isAllZonesSelected {
+        applications = []
+      }
     }
     isLoadingSaved = false
   }
 
   public func deactivateSavedFilter() {
     isSavedFilterActive = false
+    if isAllZonesSelected {
+      // 'All' without Saved has no per-zone source — clear so the empty state
+      // and discoverability prompt take over.
+      applications = []
+    }
   }
 
   public func selectZone(_ zone: WatchZone) async {
+    isAllZonesSelected = false
     selectedZone = zone
     selectedStatusFilter = nil
     isSavedFilterActive = false
@@ -205,16 +234,50 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = false
   }
 
+  /// Selects the synthetic 'All' option. Lists are sourced from the Saved
+  /// repository when the Saved filter is active; otherwise the list is empty
+  /// and the view shows a discoverability prompt.
+  public func selectAllZones() async {
+    isAllZonesSelected = true
+    selectedZone = nil
+    selectedStatusFilter = nil
+    userDefaults.set(Self.allZonesSentinel, forKey: zoneSelectionKey)
+    if isSavedFilterActive, let repository = savedApplicationRepository {
+      isLoadingSaved = true
+      do {
+        let saved = try await repository.loadAll()
+        savedApplicationUids = Set(saved.map(\.applicationUid))
+        applications = saved.compactMap(\.application)
+          .sorted { $0.receivedDate > $1.receivedDate }
+      } catch {
+        savedApplicationUids = []
+        applications = []
+      }
+      isLoadingSaved = false
+    } else {
+      applications = []
+    }
+  }
+
   public func selectApplication(_ id: PlanningApplicationId) {
     onApplicationSelected?(id)
   }
 
-  private func resolveInitialZone(from zones: [WatchZone]) -> WatchZone? {
-    if let savedId = userDefaults.string(forKey: zoneSelectionKey),
-       let savedZone = zones.first(where: { $0.id.value == savedId }) {
-      return savedZone
+  /// Restores the previous-session selection (real zone or 'All') from
+  /// UserDefaults, falling back to the first zone when nothing is persisted.
+  private func resolveInitialSelection(from zones: [WatchZone]) {
+    let savedId = userDefaults.string(forKey: zoneSelectionKey)
+    if savedId == Self.allZonesSentinel {
+      isAllZonesSelected = true
+      selectedZone = nil
+      return
     }
-    return zones.first
+    if let savedId,
+       let savedZone = zones.first(where: { $0.id.value == savedId }) {
+      selectedZone = savedZone
+      return
+    }
+    selectedZone = zones.first
   }
 
   private func fetchApplications(for zone: WatchZone) async throws -> [PlanningApplication] {
