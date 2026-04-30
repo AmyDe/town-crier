@@ -13,10 +13,16 @@ public protocol UserProfileRepository: Sendable {
   func fetch() async throws -> ServerProfile?
 
   /// Updates mutable profile preferences.
+  ///
+  /// `savedDecisionPush` and `savedDecisionEmail` default to `true` so existing
+  /// callers that only manage digest preferences keep their behaviour without
+  /// accidentally toggling saved-application notifications off.
   func update(
     pushEnabled: Bool,
     digestDay: DayOfWeek,
-    emailDigestEnabled: Bool
+    emailDigestEnabled: Bool,
+    savedDecisionPush: Bool,
+    savedDecisionEmail: Bool
   ) async throws -> ServerProfile
 
   /// Deletes the user profile and cascades (removes all user data server-side).

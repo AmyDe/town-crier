@@ -178,7 +178,9 @@ struct APIUserProfileRepositoryTests {
     let updated = try await sut.update(
       pushEnabled: false,
       digestDay: .friday,
-      emailDigestEnabled: false
+      emailDigestEnabled: false,
+      savedDecisionPush: true,
+      savedDecisionEmail: true
     )
 
     #expect(transport.requests.count == 1)
@@ -192,6 +194,8 @@ struct APIUserProfileRepositoryTests {
     #expect(bodyJSON["pushEnabled"] as? Bool == false)
     #expect(bodyJSON["digestDay"] as? String == "Friday")
     #expect(bodyJSON["emailDigestEnabled"] as? Bool == false)
+    #expect(bodyJSON["savedDecisionPush"] as? Bool == true)
+    #expect(bodyJSON["savedDecisionEmail"] as? Bool == true)
 
     #expect(updated.pushEnabled == false)
     #expect(updated.digestDay == .friday)
@@ -215,7 +219,9 @@ struct APIUserProfileRepositoryTests {
       _ = try await sut.update(
         pushEnabled: true,
         digestDay: .monday,
-        emailDigestEnabled: true
+        emailDigestEnabled: true,
+        savedDecisionPush: true,
+        savedDecisionEmail: true
       )
     }
   }

@@ -36,12 +36,16 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
   public func update(
     pushEnabled: Bool,
     digestDay: DayOfWeek,
-    emailDigestEnabled: Bool
+    emailDigestEnabled: Bool,
+    savedDecisionPush: Bool,
+    savedDecisionEmail: Bool
   ) async throws -> ServerProfile {
     let body = UpdateProfileRequest(
       pushEnabled: pushEnabled,
       digestDay: digestDay,
-      emailDigestEnabled: emailDigestEnabled
+      emailDigestEnabled: emailDigestEnabled,
+      savedDecisionPush: savedDecisionPush,
+      savedDecisionEmail: savedDecisionEmail
     )
     do {
       let dto: ServerProfileDTO = try await apiClient.request(
@@ -74,6 +78,8 @@ struct ServerProfileDTO: Decodable, Sendable {
   let pushEnabled: Bool
   let digestDay: String
   let emailDigestEnabled: Bool
+  let savedDecisionPush: Bool
+  let savedDecisionEmail: Bool
 
   enum CodingKeys: String, CodingKey {
     case userId
@@ -81,6 +87,8 @@ struct ServerProfileDTO: Decodable, Sendable {
     case pushEnabled
     case digestDay
     case emailDigestEnabled
+    case savedDecisionPush
+    case savedDecisionEmail
   }
 
   init(from decoder: any Decoder) throws {
@@ -92,6 +100,12 @@ struct ServerProfileDTO: Decodable, Sendable {
     emailDigestEnabled =
       try container.decodeIfPresent(Bool.self, forKey: .emailDigestEnabled)
       ?? true
+    savedDecisionPush =
+      try container.decodeIfPresent(Bool.self, forKey: .savedDecisionPush)
+      ?? true
+    savedDecisionEmail =
+      try container.decodeIfPresent(Bool.self, forKey: .savedDecisionEmail)
+      ?? true
   }
 
   func toDomain() -> ServerProfile {
@@ -100,7 +114,9 @@ struct ServerProfileDTO: Decodable, Sendable {
       tier: SubscriptionTier(rawValue: tier.lowercased()) ?? .free,
       pushEnabled: pushEnabled,
       digestDay: DayOfWeek(rawValue: digestDay) ?? .monday,
-      emailDigestEnabled: emailDigestEnabled
+      emailDigestEnabled: emailDigestEnabled,
+      savedDecisionPush: savedDecisionPush,
+      savedDecisionEmail: savedDecisionEmail
     )
   }
 }
@@ -109,10 +125,14 @@ struct UpdateProfileRequest: Encodable, Sendable {
   let pushEnabled: Bool
   let digestDay: DayOfWeek
   let emailDigestEnabled: Bool
+  let savedDecisionPush: Bool
+  let savedDecisionEmail: Bool
 
   enum CodingKeys: String, CodingKey {
     case pushEnabled
     case digestDay
     case emailDigestEnabled
+    case savedDecisionPush
+    case savedDecisionEmail
   }
 }
