@@ -91,6 +91,30 @@ public sealed class ExportUserDataQueryHandlerTests
     }
 
     [Test]
+    public async Task Should_IncludeSavedDecisionFlags_When_ExportingNotificationPreferences()
+    {
+        // Arrange
+        var harness = new ExportUserDataHarness();
+        var profile = UserProfile.Register("auth0|user1");
+        profile.UpdatePreferences(new NotificationPreferences(
+            PushEnabled: true,
+            DigestDay: DayOfWeek.Monday,
+            EmailDigestEnabled: true,
+            SavedDecisionPush: false,
+            SavedDecisionEmail: false));
+        await harness.UserProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        // Act
+        var result = await harness.Handler.HandleAsync(
+            new ExportUserDataQuery("auth0|user1"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.NotificationPreferences.SavedDecisionPush).IsFalse();
+        await Assert.That(result.NotificationPreferences.SavedDecisionEmail).IsFalse();
+    }
+
+    [Test]
     public async Task Should_IncludeSubscriptionMetadata_When_ProfileExists()
     {
         // Arrange
