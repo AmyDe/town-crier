@@ -206,6 +206,214 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
     }
 
+    [Test]
+    public async Task Should_RecordButNotPush_When_MasterPushDisabled()
+    {
+        // Arrange — paid user, zone matches, but the master PushEnabled toggle is off
+        var harness = new Harness();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .WithPushEnabled(false)
+            .Build();
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .Build();
+        harness.WatchZoneRepo.Add(zone);
+
+        var device = DeviceRegistration.Create("user-1", "device-1", DevicePlatform.Ios, March2026);
+        await harness.DeviceRepo.SaveAsync(device, CancellationToken.None);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_RecordButNotPush_When_ZoneDecisionPushDisabled()
+    {
+        // Arrange — paid user with zone DecisionPush=false, no saved match
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        var profile = await harness.UserProfileRepo.GetByUserIdAsync("user-1", CancellationToken.None);
+        profile!.SetZonePreferences(
+            "zone-1",
+            new ZoneNotificationPreferences(
+                NewApplicationPush: true,
+                NewApplicationEmail: true,
+                DecisionPush: false,
+                DecisionEmail: true));
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_RecordButNotPush_When_SavedDecisionPushDisabled()
+    {
+        // Arrange — paid user with saved bookmark, profile-level
+        // SavedDecisionPush=false; not a zone match either.
+        var harness = new Harness();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        profile.UpdatePreferences(profile.NotificationPreferences with { SavedDecisionPush = false });
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            CancellationToken.None);
+
+        var device = DeviceRegistration.Create("user-1", "device-1", DevicePlatform.Ios, March2026);
+        await harness.DeviceRepo.SaveAsync(device, CancellationToken.None);
+
+        // Act — no coordinates, so saved-only path
+        var application = new PlanningApplicationBuilder()
+            .WithUid("test-uid-001")
+            .WithName("app-001")
+            .WithAppState("Permitted")
+            .Build();
+
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(application),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_PushOnce_When_BothSourcesMatchAndEitherDecisionPushIsOn()
+    {
+        // Arrange — paid user matches via Zone (DecisionPush=false) AND Saved
+        // (SavedDecisionPush=true). OR-merge means push fires.
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        var profile = await harness.UserProfileRepo.GetByUserIdAsync("user-1", CancellationToken.None);
+        profile!.SetZonePreferences(
+            "zone-1",
+            new ZoneNotificationPreferences(
+                NewApplicationPush: false,
+                NewApplicationEmail: false,
+                DecisionPush: false,
+                DecisionEmail: false));
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            CancellationToken.None);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — exactly one notification, exactly one push
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsTrue();
+        await Assert.That(harness.NotificationRepo.All[0].Sources)
+            .IsEqualTo(NotificationSources.Zone | NotificationSources.Saved);
+    }
+
+    [Test]
+    public async Task Should_NotCreateNotification_When_UserProfileMissing()
+    {
+        // Arrange — saved bookmark held by an unknown user (race against profile delete)
+        var harness = new Harness();
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("ghost-user", "test-uid-001", March2026),
+            CancellationToken.None);
+
+        var application = new PlanningApplicationBuilder()
+            .WithUid("test-uid-001")
+            .WithAppState("Permitted")
+            .Build();
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(application),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(0);
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_RecordWithoutPushing_When_NoRegisteredDevices()
+    {
+        // Arrange — paid user, zone match, push opted in, but no devices
+        var harness = new Harness();
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .Build();
+        harness.WatchZoneRepo.Add(zone);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — row written, no push (no devices)
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_FanOutOneNotificationPerUser_When_MultipleUsersMatch()
+    {
+        // Arrange — two paid users, each with a zone covering the application
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+        await harness.SeedPaidUserWithZoneAsync("user-2", "zone-2", "device-2");
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(2);
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(2);
+        await Assert.That(harness.NotificationRepo.All.Any(n => n.UserId == "user-1")).IsTrue();
+        await Assert.That(harness.NotificationRepo.All.Any(n => n.UserId == "user-2")).IsTrue();
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
