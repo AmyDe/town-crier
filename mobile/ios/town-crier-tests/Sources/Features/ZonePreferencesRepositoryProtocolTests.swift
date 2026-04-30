@@ -10,9 +10,10 @@ struct ZonePreferencesRepositoryProtocolTests {
     let spy = SpyZonePreferencesRepository()
     let expected = ZoneNotificationPreferences(
       zoneId: "zone-001",
-      newApplications: true,
-      statusChanges: true,
-      decisionUpdates: false
+      newApplicationPush: true,
+      newApplicationEmail: false,
+      decisionPush: true,
+      decisionEmail: false
     )
     spy.fetchResult = .success(expected)
 
@@ -26,9 +27,10 @@ struct ZonePreferencesRepositoryProtocolTests {
     let spy = SpyZonePreferencesRepository()
     let prefs = ZoneNotificationPreferences(
       zoneId: "zone-001",
-      newApplications: true,
-      statusChanges: false,
-      decisionUpdates: true
+      newApplicationPush: true,
+      newApplicationEmail: true,
+      decisionPush: false,
+      decisionEmail: true
     )
 
     try await spy.updatePreferences(prefs)

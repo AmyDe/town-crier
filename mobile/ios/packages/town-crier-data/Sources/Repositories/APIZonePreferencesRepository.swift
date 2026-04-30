@@ -24,9 +24,10 @@ public final class APIZonePreferencesRepository: ZonePreferencesRepository, Send
   public func updatePreferences(_ preferences: ZoneNotificationPreferences) async throws {
     let body = ZonePreferencesDTO(
       zoneId: preferences.zoneId,
-      newApplications: preferences.newApplications,
-      statusChanges: preferences.statusChanges,
-      decisionUpdates: preferences.decisionUpdates
+      newApplicationPush: preferences.newApplicationPush,
+      newApplicationEmail: preferences.newApplicationEmail,
+      decisionPush: preferences.decisionPush,
+      decisionEmail: preferences.decisionEmail
     )
     do {
       let _: EmptyResponse = try await apiClient.request(
@@ -44,16 +45,18 @@ public final class APIZonePreferencesRepository: ZonePreferencesRepository, Send
 
 struct ZonePreferencesDTO: Codable, Sendable {
   let zoneId: String
-  let newApplications: Bool
-  let statusChanges: Bool
-  let decisionUpdates: Bool
+  let newApplicationPush: Bool
+  let newApplicationEmail: Bool
+  let decisionPush: Bool
+  let decisionEmail: Bool
 
   func toDomain() -> ZoneNotificationPreferences {
     ZoneNotificationPreferences(
       zoneId: zoneId,
-      newApplications: newApplications,
-      statusChanges: statusChanges,
-      decisionUpdates: decisionUpdates
+      newApplicationPush: newApplicationPush,
+      newApplicationEmail: newApplicationEmail,
+      decisionPush: decisionPush,
+      decisionEmail: decisionEmail
     )
   }
 }

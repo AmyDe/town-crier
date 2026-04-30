@@ -3,19 +3,18 @@ import TownCrierDomain
 
 /// Drives the per-zone notification preferences screen.
 ///
-/// Loads and saves preferences via ``ZonePreferencesRepository``, with proactive
-/// entitlement gating for the status-change and decision-update toggles (Personal+ only),
-/// and reactive 403 fallback via ``EntitlementGatingViewModel``.
+/// Exposes four per-channel toggles (push/email × new-application/decision) wired to the
+/// ``ZonePreferencesRepository``. All four default to true; the free-tier downgrade is
+/// applied server-side at dispatch time, so the UI shows the same controls to every tier.
 @MainActor
-public final class ZonePreferencesViewModel: ObservableObject, EntitlementGatingViewModel {
-  @Published public var newApplications: Bool = true
-  @Published public var statusChanges: Bool = false
-  @Published public var decisionUpdates: Bool = false
+public final class ZonePreferencesViewModel: ObservableObject, ErrorHandlingViewModel {
+  @Published public var newApplicationPush: Bool = true
+  @Published public var newApplicationEmail: Bool = true
+  @Published public var decisionPush: Bool = true
+  @Published public var decisionEmail: Bool = true
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
-  @Published public var entitlementGate: Entitlement?
 
-  public let featureGate: FeatureGate
   public let zoneName: String
 
   private let zoneId: String
@@ -24,13 +23,11 @@ public final class ZonePreferencesViewModel: ObservableObject, EntitlementGating
   public init(
     zoneId: String,
     zoneName: String,
-    repository: ZonePreferencesRepository,
-    tier: SubscriptionTier
+    repository: ZonePreferencesRepository
   ) {
     self.zoneId = zoneId
     self.zoneName = zoneName
     self.repository = repository
-    self.featureGate = FeatureGate(tier: tier)
   }
 
   /// Loads the current preferences from the API.
@@ -40,9 +37,10 @@ public final class ZonePreferencesViewModel: ObservableObject, EntitlementGating
 
     do {
       let prefs = try await repository.fetchPreferences(zoneId: zoneId)
-      newApplications = prefs.newApplications
-      statusChanges = prefs.statusChanges
-      decisionUpdates = prefs.decisionUpdates
+      newApplicationPush = prefs.newApplicationPush
+      newApplicationEmail = prefs.newApplicationEmail
+      decisionPush = prefs.decisionPush
+      decisionEmail = prefs.decisionEmail
     } catch {
       handleError(error)
     }
@@ -51,17 +49,15 @@ public final class ZonePreferencesViewModel: ObservableObject, EntitlementGating
   }
 
   /// Saves the current preferences to the API.
-  ///
-  /// If the API returns 403 insufficient_entitlement, the entitlement gate binding
-  /// is set to trigger the subscription upsell sheet.
   public func savePreferences() async {
     error = nil
 
     let prefs = ZoneNotificationPreferences(
       zoneId: zoneId,
-      newApplications: newApplications,
-      statusChanges: statusChanges,
-      decisionUpdates: decisionUpdates
+      newApplicationPush: newApplicationPush,
+      newApplicationEmail: newApplicationEmail,
+      decisionPush: decisionPush,
+      decisionEmail: decisionEmail
     )
 
     do {
@@ -69,12 +65,5 @@ public final class ZonePreferencesViewModel: ObservableObject, EntitlementGating
     } catch {
       handleError(error)
     }
-  }
-
-  /// Proactively triggers the subscription upsell sheet for a gated entitlement.
-  ///
-  /// Called by ``GatedToggle`` when a Free user taps a disabled toggle.
-  public func showUpgradeSheet(for entitlement: Entitlement) {
-    self.entitlementGate = entitlement
   }
 }

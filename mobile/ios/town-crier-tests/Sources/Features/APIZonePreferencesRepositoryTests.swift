@@ -46,9 +46,10 @@ struct APIZonePreferencesRepositoryTests {
     let json = """
       {
         "zoneId": "zone-001",
-        "newApplications": true,
-        "statusChanges": false,
-        "decisionUpdates": true
+        "newApplicationPush": true,
+        "newApplicationEmail": false,
+        "decisionPush": true,
+        "decisionEmail": false
       }
       """
     let (sut, _, transport) = makeSUT(responses: [
@@ -63,9 +64,10 @@ struct APIZonePreferencesRepositoryTests {
     #expect(request.url?.path().contains("/v1/me/watch-zones/zone-001/preferences") == true)
 
     #expect(result.zoneId == "zone-001")
-    #expect(result.newApplications == true)
-    #expect(result.statusChanges == false)
-    #expect(result.decisionUpdates == true)
+    #expect(result.newApplicationPush == true)
+    #expect(result.newApplicationEmail == false)
+    #expect(result.decisionPush == true)
+    #expect(result.decisionEmail == false)
   }
 
   @Test("fetchPreferences maps all-true response correctly")
@@ -73,9 +75,10 @@ struct APIZonePreferencesRepositoryTests {
     let json = """
       {
         "zoneId": "zone-002",
-        "newApplications": true,
-        "statusChanges": true,
-        "decisionUpdates": true
+        "newApplicationPush": true,
+        "newApplicationEmail": true,
+        "decisionPush": true,
+        "decisionEmail": true
       }
       """
     let (sut, _, _) = makeSUT(responses: [
@@ -84,9 +87,10 @@ struct APIZonePreferencesRepositoryTests {
 
     let result = try await sut.fetchPreferences(zoneId: "zone-002")
 
-    #expect(result.newApplications == true)
-    #expect(result.statusChanges == true)
-    #expect(result.decisionUpdates == true)
+    #expect(result.newApplicationPush == true)
+    #expect(result.newApplicationEmail == true)
+    #expect(result.decisionPush == true)
+    #expect(result.decisionEmail == true)
   }
 
   @Test("fetchPreferences with network error throws networkUnavailable")
@@ -129,9 +133,10 @@ struct APIZonePreferencesRepositoryTests {
     ])
     let prefs = ZoneNotificationPreferences(
       zoneId: "zone-001",
-      newApplications: true,
-      statusChanges: false,
-      decisionUpdates: true
+      newApplicationPush: true,
+      newApplicationEmail: false,
+      decisionPush: true,
+      decisionEmail: false
     )
 
     try await sut.updatePreferences(prefs)
@@ -144,32 +149,10 @@ struct APIZonePreferencesRepositoryTests {
     let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
     #expect(json["zoneId"] as? String == "zone-001")
-    #expect(json["newApplications"] as? Bool == true)
-    #expect(json["statusChanges"] as? Bool == false)
-    #expect(json["decisionUpdates"] as? Bool == true)
-  }
-
-  @Test("updatePreferences with 403 insufficient_entitlement throws insufficientEntitlement")
-  func updatePreferences_403_throwsInsufficientEntitlement() async {
-    let errorJson = """
-      {
-        "error": "insufficient_entitlement",
-        "required": "statusChangeAlerts"
-      }
-      """
-    let (sut, _, _) = makeSUT(responses: [
-      (Data(errorJson.utf8), httpResponse(statusCode: 403))
-    ])
-    let prefs = ZoneNotificationPreferences(
-      zoneId: "zone-001",
-      newApplications: true,
-      statusChanges: true,
-      decisionUpdates: false
-    )
-
-    await #expect(throws: DomainError.insufficientEntitlement(required: "statusChangeAlerts")) {
-      try await sut.updatePreferences(prefs)
-    }
+    #expect(json["newApplicationPush"] as? Bool == true)
+    #expect(json["newApplicationEmail"] as? Bool == false)
+    #expect(json["decisionPush"] as? Bool == true)
+    #expect(json["decisionEmail"] as? Bool == false)
   }
 
   @Test("updatePreferences with network error throws networkUnavailable")

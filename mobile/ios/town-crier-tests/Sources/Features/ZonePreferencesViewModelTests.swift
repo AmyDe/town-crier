@@ -11,44 +11,25 @@ struct ZonePreferencesViewModelTests {
   private var spyRepository: SpyZonePreferencesRepository
   private var sut: ZonePreferencesViewModel
 
-  // Default: Personal tier (has statusChangeAlerts and decisionUpdateAlerts)
   init() {
     spyRepository = SpyZonePreferencesRepository()
     sut = ZonePreferencesViewModel(
       zoneId: "zone-001",
       zoneName: "CB1 2AD",
-      repository: spyRepository,
-      tier: .personal
+      repository: spyRepository
     )
   }
 
   // MARK: - Initial state
 
-  @Test func initialState_hasDefaultValues() {
-    #expect(sut.newApplications == true)
-    #expect(sut.statusChanges == false)
-    #expect(sut.decisionUpdates == false)
+  @Test func initialState_allTogglesDefaultOn() {
+    #expect(sut.newApplicationPush == true)
+    #expect(sut.newApplicationEmail == true)
+    #expect(sut.decisionPush == true)
+    #expect(sut.decisionEmail == true)
     #expect(sut.isLoading == false)
     #expect(sut.error == nil)
-    #expect(sut.entitlementGate == nil)
     #expect(sut.zoneName == "CB1 2AD")
-  }
-
-  @Test func featureGate_personalTier_hasNotificationEntitlements() {
-    #expect(sut.featureGate.hasEntitlement(.statusChangeAlerts) == true)
-    #expect(sut.featureGate.hasEntitlement(.decisionUpdateAlerts) == true)
-  }
-
-  @Test func featureGate_freeTier_lacksNotificationEntitlements() {
-    let freeSut = ZonePreferencesViewModel(
-      zoneId: "zone-001",
-      zoneName: "CB1 2AD",
-      repository: spyRepository,
-      tier: .free
-    )
-
-    #expect(freeSut.featureGate.hasEntitlement(.statusChangeAlerts) == false)
-    #expect(freeSut.featureGate.hasEntitlement(.decisionUpdateAlerts) == false)
   }
 
   // MARK: - Load preferences
@@ -57,17 +38,19 @@ struct ZonePreferencesViewModelTests {
     spyRepository.fetchResult = .success(
       ZoneNotificationPreferences(
         zoneId: "zone-001",
-        newApplications: false,
-        statusChanges: true,
-        decisionUpdates: true
+        newApplicationPush: false,
+        newApplicationEmail: true,
+        decisionPush: false,
+        decisionEmail: true
       )
     )
 
     await sut.loadPreferences()
 
-    #expect(sut.newApplications == false)
-    #expect(sut.statusChanges == true)
-    #expect(sut.decisionUpdates == true)
+    #expect(sut.newApplicationPush == false)
+    #expect(sut.newApplicationEmail == true)
+    #expect(sut.decisionPush == false)
+    #expect(sut.decisionEmail == true)
     #expect(sut.isLoading == false)
     #expect(sut.error == nil)
     #expect(spyRepository.fetchCalls == ["zone-001"])
@@ -85,18 +68,20 @@ struct ZonePreferencesViewModelTests {
   // MARK: - Save preferences
 
   @Test func savePreferences_sendsCurrentStateToRepository() async {
-    sut.newApplications = true
-    sut.statusChanges = true
-    sut.decisionUpdates = false
+    sut.newApplicationPush = true
+    sut.newApplicationEmail = false
+    sut.decisionPush = true
+    sut.decisionEmail = false
 
     await sut.savePreferences()
 
     #expect(spyRepository.updateCalls.count == 1)
     let saved = spyRepository.updateCalls[0]
     #expect(saved.zoneId == "zone-001")
-    #expect(saved.newApplications == true)
-    #expect(saved.statusChanges == true)
-    #expect(saved.decisionUpdates == false)
+    #expect(saved.newApplicationPush == true)
+    #expect(saved.newApplicationEmail == false)
+    #expect(saved.decisionPush == true)
+    #expect(saved.decisionEmail == false)
   }
 
   @Test func savePreferences_networkError_setsError() async {
@@ -105,35 +90,5 @@ struct ZonePreferencesViewModelTests {
     await sut.savePreferences()
 
     #expect(sut.error == .networkUnavailable)
-  }
-
-  @Test func savePreferences_insufficientEntitlement_setsEntitlementGate() async {
-    spyRepository.updateResult = .failure(
-      DomainError.insufficientEntitlement(required: "statusChangeAlerts")
-    )
-
-    await sut.savePreferences()
-
-    #expect(sut.entitlementGate == .statusChangeAlerts)
-    #expect(sut.error == nil)
-  }
-
-  @Test func savePreferences_insufficientEntitlement_decisionUpdates_setsGate() async {
-    spyRepository.updateResult = .failure(
-      DomainError.insufficientEntitlement(required: "decisionUpdateAlerts")
-    )
-
-    await sut.savePreferences()
-
-    #expect(sut.entitlementGate == .decisionUpdateAlerts)
-    #expect(sut.error == nil)
-  }
-
-  // MARK: - Upsell sheet
-
-  @Test func showUpgradeSheet_setsEntitlementGate() {
-    sut.showUpgradeSheet(for: .statusChangeAlerts)
-
-    #expect(sut.entitlementGate == .statusChangeAlerts)
   }
 }
