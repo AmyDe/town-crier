@@ -24,6 +24,8 @@ public sealed class GetUserProfileQueryHandler
             profile.NotificationPreferences.PushEnabled,
             profile.NotificationPreferences.DigestDay,
             profile.NotificationPreferences.EmailDigestEnabled,
+            profile.NotificationPreferences.SavedDecisionPush,
+            profile.NotificationPreferences.SavedDecisionEmail,
             profile.Tier);
     }
 }
