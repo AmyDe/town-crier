@@ -209,7 +209,7 @@ public sealed class PollPlanItCommandHandlerSeedFairnessTests
             alternating,
             new FakeWatchZoneRepository(),
             new FakeNotificationEnqueuer(),
-            new FakeDecisionAlertDispatcher(),
+            new FakeDecisionEventDispatcher(),
             cycleSelector,
             new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
@@ -255,7 +255,7 @@ public sealed class PollPlanItCommandHandlerSeedFairnessTests
             alternating,
             new FakeWatchZoneRepository(),
             new FakeNotificationEnqueuer(),
-            new FakeDecisionAlertDispatcher(),
+            new FakeDecisionEventDispatcher(),
             cycleSelector,
             new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
@@ -278,7 +278,7 @@ public sealed class PollPlanItCommandHandlerSeedFairnessTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        FakeDecisionAlertDispatcher? decisionAlertDispatcher = null,
+        FakeDecisionEventDispatcher? decisionEventDispatcher = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
         PollingOptions? options = null)
@@ -291,7 +291,7 @@ public sealed class PollPlanItCommandHandlerSeedFairnessTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            decisionAlertDispatcher ?? new FakeDecisionAlertDispatcher(),
+            decisionEventDispatcher ?? new FakeDecisionEventDispatcher(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);

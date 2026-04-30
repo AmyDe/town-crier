@@ -249,7 +249,7 @@ public sealed class PollTriggerOrchestratorTests
             authorityProvider,
             new FakeWatchZoneRepository(),
             new FakeNotificationEnqueuer(),
-            new FakeDecisionAlertDispatcher(),
+            new FakeDecisionEventDispatcher(),
             new FakeCycleSelector(CycleType.Watched),
             new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
@@ -302,7 +302,7 @@ public sealed class PollTriggerOrchestratorTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             new FakeWatchZoneRepository(),
             new FakeNotificationEnqueuer(),
-            new FakeDecisionAlertDispatcher(),
+            new FakeDecisionEventDispatcher(),
             new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
