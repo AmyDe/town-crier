@@ -34,6 +34,27 @@ public sealed class DispatchNotificationCommandHandlerMetricsTests
         await Assert.That(recorded[0].Tags["sources"]).IsEqualTo("Zone");
     }
 
+    [Test]
+    public async Task Should_TagNotificationsSentWithEventTypeSourcesAndTier_When_PushFiresForPaidUser()
+    {
+        // Arrange — Pro user, zone match, push enabled, device registered
+        var (handler, _, userProfileRepo, _, deviceRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        var recorded = new List<(long Value, Dictionary<string, string?> Tags)>();
+        using var listener = BuildListener("towncrier.notifications.sent", recorded);
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — single push emission tagged with all three dimensions
+        await Assert.That(recorded).HasCount().EqualTo(1);
+        await Assert.That(recorded[0].Value).IsEqualTo(1);
+        await Assert.That(recorded[0].Tags["event_type"]).IsEqualTo("NewApplication");
+        await Assert.That(recorded[0].Tags["sources"]).IsEqualTo("Zone");
+        await Assert.That(recorded[0].Tags["tier"]).IsEqualTo("Pro");
+    }
+
     private static MeterListener BuildListener(
         string instrumentName,
         List<(long Value, Dictionary<string, string?> Tags)> recorded)
