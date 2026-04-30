@@ -23,10 +23,8 @@ public sealed class DispatchDecisionEventCommandHandler
     private readonly IUserProfileRepository userProfileRepository;
     private readonly ISavedApplicationRepository savedApplicationRepository;
     private readonly IWatchZoneRepository watchZoneRepository;
-#pragma warning disable S4487 // Wired in subsequent cycles (push delivery)
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
-#pragma warning restore S4487
     private readonly TimeProvider timeProvider;
 
     public DispatchDecisionEventCommandHandler(
@@ -142,6 +140,33 @@ public sealed class DispatchDecisionEventCommandHandler
             decision: application.AppState,
             eventType: NotificationEventType.DecisionUpdate,
             sources: sources);
+
+        // OR-merge per-channel toggles across the matching sources. A user may
+        // hit this path via Zone, Saved, or both — push fires when either
+        // matching subscription opted into decision pushes.
+        var zonePushOptIn = sources.HasFlag(NotificationSources.Zone)
+            && watchZoneId is not null
+            && profile.GetZonePreferences(watchZoneId).DecisionPush;
+        var savedPushOptIn = sources.HasFlag(NotificationSources.Saved)
+            && profile.NotificationPreferences.SavedDecisionPush;
+        var pushOptIn = zonePushOptIn || savedPushOptIn;
+
+        var canPush = profile.NotificationPreferences.PushEnabled
+            && profile.Tier != SubscriptionTier.Free
+            && pushOptIn;
+
+        if (canPush)
+        {
+            var devices = await this.deviceRegistrationRepository.GetByUserIdAsync(userId, ct)
+                .ConfigureAwait(false);
+
+            if (devices.Count > 0)
+            {
+                await this.pushNotificationSender.SendAsync(notification, devices, ct)
+                    .ConfigureAwait(false);
+                notification.MarkPushSent();
+            }
+        }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
     }
