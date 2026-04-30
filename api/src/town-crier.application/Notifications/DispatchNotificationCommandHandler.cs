@@ -71,7 +71,10 @@ public sealed class DispatchNotificationCommandHandler
             authorityId: application.AreaId,
             now: now);
 
-        ApiMetrics.NotificationsCreated.Add(1);
+        ApiMetrics.NotificationsCreated.Add(
+            1,
+            new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
+            new KeyValuePair<string, object?>("sources", notification.Sources.ToString()));
 
         // Check notification preferences — record but don't push
         if (!profile.NotificationPreferences.PushEnabled)
