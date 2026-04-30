@@ -17,7 +17,7 @@ internal sealed class NotificationDocument
     public required string ApplicationName { get; init; }
 
     [JsonPropertyName("watchZoneId")]
-    public required string WatchZoneId { get; init; }
+    public required string? WatchZoneId { get; init; }
 
     [JsonPropertyName("applicationAddress")]
     public required string ApplicationAddress { get; init; }
@@ -30,6 +30,9 @@ internal sealed class NotificationDocument
 
     [JsonPropertyName("authorityId")]
     public required int AuthorityId { get; init; }
+
+    [JsonPropertyName("decision")]
+    public string? Decision { get; init; }
 
     [JsonPropertyName("pushSent")]
     public required bool PushSent { get; init; }
@@ -55,6 +58,7 @@ internal sealed class NotificationDocument
             ApplicationDescription = notification.ApplicationDescription,
             ApplicationType = notification.ApplicationType,
             AuthorityId = notification.AuthorityId,
+            Decision = notification.Decision,
             PushSent = notification.PushSent,
             EmailSent = notification.EmailSent,
             CreatedAt = notification.CreatedAt,
@@ -73,6 +77,7 @@ internal sealed class NotificationDocument
             this.ApplicationDescription,
             this.ApplicationType,
             this.AuthorityId,
+            this.Decision,
             this.PushSent,
             this.EmailSent,
             this.CreatedAt);

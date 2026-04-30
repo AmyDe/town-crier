@@ -16,6 +16,8 @@ public static class UkPlanningVocabulary
     /// states this helper covers. Matching is case-insensitive to tolerate
     /// upstream casing drift.
     /// </summary>
+    /// <param name="planItAppState">The raw PlanIt <c>app_state</c> string.</param>
+    /// <returns>The UK display label, or <see langword="null"/> when the input is not a recognised decision state.</returns>
     public static string? GetDisplayString(string? planItAppState)
     {
         if (string.IsNullOrWhiteSpace(planItAppState))

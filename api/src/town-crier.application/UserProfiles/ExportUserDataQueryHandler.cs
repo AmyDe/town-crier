@@ -94,6 +94,7 @@ public sealed class ExportUserDataQueryHandler
                     ApplicationDescription: n.ApplicationDescription,
                     ApplicationType: n.ApplicationType,
                     AuthorityId: n.AuthorityId,
+                    Decision: n.Decision,
                     PushSent: n.PushSent,
                     EmailSent: n.EmailSent,
                     CreatedAt: n.CreatedAt))
