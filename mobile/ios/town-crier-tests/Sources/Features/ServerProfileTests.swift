@@ -62,4 +62,34 @@ struct ServerProfileTests {
     #expect(profile.tier == .free)
     #expect(profile.pushEnabled == false)
   }
+
+  @Test("stores savedDecisionPush and savedDecisionEmail flags")
+  func storesSavedDecisionFlags() {
+    let profile = ServerProfile(
+      userId: "auth0|user-001",
+      tier: .personal,
+      pushEnabled: true,
+      digestDay: .monday,
+      emailDigestEnabled: true,
+      savedDecisionPush: false,
+      savedDecisionEmail: false
+    )
+
+    #expect(profile.savedDecisionPush == false)
+    #expect(profile.savedDecisionEmail == false)
+  }
+
+  @Test("savedDecisionPush and savedDecisionEmail default to true")
+  func savedDecisionDefaultsAreTrue() {
+    let profile = ServerProfile(
+      userId: "auth0|user-001",
+      tier: .free,
+      pushEnabled: true,
+      digestDay: .monday,
+      emailDigestEnabled: true
+    )
+
+    #expect(profile.savedDecisionPush == true)
+    #expect(profile.savedDecisionEmail == true)
+  }
 }
