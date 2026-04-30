@@ -38,6 +38,37 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(notification.Decision).IsEqualTo("Permitted");
     }
 
+    [Test]
+    public async Task Should_CreateSavedDecisionNotification_When_PaidUserHasBookmarkedApplication()
+    {
+        // Arrange — Pro user has saved this app, not in any zone (no coordinates)
+        var harness = new Harness();
+        await harness.SeedPaidUserAsync("user-1", "device-1");
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            CancellationToken.None);
+
+        // Act — application has no coords (only saved-bookmark holders)
+        var application = new PlanningApplicationBuilder()
+            .WithUid("test-uid-001")
+            .WithName("app-001")
+            .WithAppState("Rejected")
+            .Build();
+
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(application),
+            CancellationToken.None);
+
+        // Assert — Sources=Saved, no WatchZoneId, decision recorded
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        var notification = harness.NotificationRepo.All[0];
+        await Assert.That(notification.UserId).IsEqualTo("user-1");
+        await Assert.That(notification.Sources).IsEqualTo(NotificationSources.Saved);
+        await Assert.That(notification.WatchZoneId).IsNull();
+        await Assert.That(notification.Decision).IsEqualTo("Rejected");
+        await Assert.That(notification.EventType).IsEqualTo(NotificationEventType.DecisionUpdate);
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
@@ -89,16 +120,24 @@ public sealed class DispatchDecisionEventCommandHandlerTests
 
         public FakeTimeProvider TimeProvider { get; }
 
-        public async Task SeedPaidUserWithZoneAsync(
-            string userId,
-            string zoneId,
-            string deviceToken)
+        public async Task SeedPaidUserAsync(string userId, string deviceToken)
         {
             var profile = new UserProfileBuilder()
                 .WithUserId(userId)
                 .WithTier(SubscriptionTier.Pro)
                 .Build();
             await this.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+            var device = DeviceRegistration.Create(userId, deviceToken, DevicePlatform.Ios, March2026);
+            await this.DeviceRepo.SaveAsync(device, CancellationToken.None);
+        }
+
+        public async Task SeedPaidUserWithZoneAsync(
+            string userId,
+            string zoneId,
+            string deviceToken)
+        {
+            await this.SeedPaidUserAsync(userId, deviceToken);
 
             var zone = new WatchZoneBuilder()
                 .WithId(zoneId)
@@ -107,9 +146,6 @@ public sealed class DispatchDecisionEventCommandHandlerTests
                 .WithRadiusMetres(5000)
                 .Build();
             this.WatchZoneRepo.Add(zone);
-
-            var device = DeviceRegistration.Create(userId, deviceToken, DevicePlatform.Ios, March2026);
-            await this.DeviceRepo.SaveAsync(device, CancellationToken.None);
         }
     }
 }
