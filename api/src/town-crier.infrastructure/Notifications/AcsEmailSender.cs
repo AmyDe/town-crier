@@ -82,17 +82,7 @@ public sealed class AcsEmailSender : IEmailSender
     {
         var zoneBlocks = string.Join(string.Empty, digests.Select(d =>
         {
-            var cards = string.Join(string.Empty, d.Notifications.Select(n => $"""
-                <tr><td style="padding:0 0 8px 0;">
-                  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:6px;">
-                    <tr><td style="padding:12px;">
-                      <div style="font-weight:600;color:#1a1a2e;">{HtmlEncode(n.ApplicationAddress)}</div>
-                      <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(n.ApplicationType ?? "Planning Application")}</div>
-                      <div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(n.ApplicationDescription, 120))}</div>
-                    </td></tr>
-                  </table>
-                </td></tr>
-                """));
+            var cards = string.Join(string.Empty, d.Notifications.Select(BuildNotificationCard));
 
             return $"""
                 <tr><td style="padding:16px 0 8px 0;font-size:14px;color:#666;text-transform:uppercase;letter-spacing:0.5px;">
@@ -128,6 +118,31 @@ public sealed class AcsEmailSender : IEmailSender
             </table>
             </td></tr></table>
             </body></html>
+            """;
+    }
+
+    private static string BuildNotificationCard(Notification notification)
+    {
+        var addressLine = HtmlEncode(notification.ApplicationAddress);
+        if (notification.EventType == NotificationEventType.DecisionUpdate)
+        {
+            var label = UkPlanningVocabulary.GetDisplayString(notification.Decision);
+            if (!string.IsNullOrEmpty(label))
+            {
+                addressLine = $"<span style=\"display:inline-block;background:#eef1ff;color:#1a1a2e;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;margin-right:6px;\">[{HtmlEncode(label)}]</span>{addressLine}";
+            }
+        }
+
+        return $"""
+            <tr><td style="padding:0 0 8px 0;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:6px;">
+                <tr><td style="padding:12px;">
+                  <div style="font-weight:600;color:#1a1a2e;">{addressLine}</div>
+                  <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(notification.ApplicationType ?? "Planning Application")}</div>
+                  <div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(notification.ApplicationDescription, 120))}</div>
+                </td></tr>
+              </table>
+            </td></tr>
             """;
     }
 
