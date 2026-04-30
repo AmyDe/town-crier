@@ -89,4 +89,105 @@ public sealed class AcsEmailDigestCopyTests
         // Assert
         await Assert.That(html).Contains("Live Planning Update");
     }
+
+    [Test]
+    public async Task Should_RenderApprovedBadge_When_NotificationIsPermittedDecision()
+    {
+        // Arrange
+        var decision = new NotificationBuilder()
+            .WithApplicationAddress("4 High Street")
+            .WithEventType(NotificationEventType.DecisionUpdate)
+            .WithDecision("Permitted")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { decision }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("[Approved]");
+    }
+
+    [Test]
+    public async Task Should_RenderRefusedBadge_When_NotificationIsRejectedDecision()
+    {
+        // Arrange
+        var decision = new NotificationBuilder()
+            .WithEventType(NotificationEventType.DecisionUpdate)
+            .WithDecision("Rejected")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { decision }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("[Refused]");
+    }
+
+    [Test]
+    public async Task Should_RenderApprovedWithConditionsBadge_When_NotificationIsConditionsDecision()
+    {
+        // Arrange
+        var decision = new NotificationBuilder()
+            .WithEventType(NotificationEventType.DecisionUpdate)
+            .WithDecision("Conditions")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { decision }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("[Approved with conditions]");
+    }
+
+    [Test]
+    public async Task Should_RenderRefusalAppealedBadge_When_NotificationIsAppealedDecision()
+    {
+        // Arrange
+        var decision = new NotificationBuilder()
+            .WithEventType(NotificationEventType.DecisionUpdate)
+            .WithDecision("Appealed")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { decision }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("[Refusal appealed]");
+    }
+
+    [Test]
+    public async Task Should_NotRenderDecisionBadge_When_NotificationIsNewApplication()
+    {
+        // Arrange
+        var newApp = new NotificationBuilder()
+            .WithEventType(NotificationEventType.NewApplication)
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { newApp }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).DoesNotContain("[Approved]");
+        await Assert.That(html).DoesNotContain("[Refused]");
+    }
 }
