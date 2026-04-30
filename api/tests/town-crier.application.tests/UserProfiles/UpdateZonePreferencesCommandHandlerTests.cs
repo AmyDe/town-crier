@@ -7,7 +7,7 @@ namespace TownCrier.Application.Tests.UserProfiles;
 public sealed class UpdateZonePreferencesCommandHandlerTests
 {
     [Test]
-    public async Task Should_SetZonePreferences_When_FreeTierEnablesNewApplications()
+    public async Task Should_SetZonePreferences_When_FreeTierEnablesNewApplicationPush()
     {
         // Arrange
         var (handler, repo) = CreateHandler();
@@ -17,23 +17,25 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "user-1",
             "zone-1",
-            NewApplications: true,
-            StatusChanges: false,
-            DecisionUpdates: false);
+            NewApplicationPush: true,
+            NewApplicationEmail: false,
+            DecisionPush: false,
+            DecisionEmail: false);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        await Assert.That(result.NewApplications).IsTrue();
-        await Assert.That(result.StatusChanges).IsFalse();
-        await Assert.That(result.DecisionUpdates).IsFalse();
+        await Assert.That(result.NewApplicationPush).IsTrue();
+        await Assert.That(result.NewApplicationEmail).IsFalse();
+        await Assert.That(result.DecisionPush).IsFalse();
+        await Assert.That(result.DecisionEmail).IsFalse();
     }
 
     [Test]
-    public async Task Should_RejectStatusChanges_When_FreeTier()
+    public async Task Should_AllowAllPreferences_When_FreeTier()
     {
-        // Arrange
+        // Arrange — free-tier guard removed: domain no longer blocks any toggle.
         var (handler, repo) = CreateHandler();
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
         await repo.SaveAsync(profile, CancellationToken.None);
@@ -41,33 +43,19 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "user-1",
             "zone-1",
-            NewApplications: true,
-            StatusChanges: true,
-            DecisionUpdates: false);
+            NewApplicationPush: true,
+            NewApplicationEmail: true,
+            DecisionPush: true,
+            DecisionEmail: true);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<InsufficientTierException>(
-            () => handler.HandleAsync(command, CancellationToken.None));
-    }
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
 
-    [Test]
-    public async Task Should_RejectDecisionUpdates_When_FreeTier()
-    {
-        // Arrange
-        var (handler, repo) = CreateHandler();
-        var profile = new UserProfileBuilder().WithUserId("user-1").Build();
-        await repo.SaveAsync(profile, CancellationToken.None);
-
-        var command = new UpdateZonePreferencesCommand(
-            "user-1",
-            "zone-1",
-            NewApplications: true,
-            StatusChanges: false,
-            DecisionUpdates: true);
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InsufficientTierException>(
-            () => handler.HandleAsync(command, CancellationToken.None));
+        // Assert
+        await Assert.That(result.NewApplicationPush).IsTrue();
+        await Assert.That(result.NewApplicationEmail).IsTrue();
+        await Assert.That(result.DecisionPush).IsTrue();
+        await Assert.That(result.DecisionEmail).IsTrue();
     }
 
     [Test]
@@ -84,17 +72,19 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "user-1",
             "zone-1",
-            NewApplications: true,
-            StatusChanges: true,
-            DecisionUpdates: true);
+            NewApplicationPush: true,
+            NewApplicationEmail: true,
+            DecisionPush: true,
+            DecisionEmail: true);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        await Assert.That(result.NewApplications).IsTrue();
-        await Assert.That(result.StatusChanges).IsTrue();
-        await Assert.That(result.DecisionUpdates).IsTrue();
+        await Assert.That(result.NewApplicationPush).IsTrue();
+        await Assert.That(result.NewApplicationEmail).IsTrue();
+        await Assert.That(result.DecisionPush).IsTrue();
+        await Assert.That(result.DecisionEmail).IsTrue();
     }
 
     [Test]
@@ -111,9 +101,10 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "user-1",
             "zone-1",
-            NewApplications: true,
-            StatusChanges: true,
-            DecisionUpdates: false);
+            NewApplicationPush: true,
+            NewApplicationEmail: true,
+            DecisionPush: true,
+            DecisionEmail: false);
 
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
@@ -121,9 +112,10 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         // Assert
         var saved = await repo.GetByUserIdAsync("user-1", CancellationToken.None);
         var zonePrefs = saved!.GetZonePreferences("zone-1");
-        await Assert.That(zonePrefs.NewApplications).IsTrue();
-        await Assert.That(zonePrefs.StatusChanges).IsTrue();
-        await Assert.That(zonePrefs.DecisionUpdates).IsFalse();
+        await Assert.That(zonePrefs.NewApplicationPush).IsTrue();
+        await Assert.That(zonePrefs.NewApplicationEmail).IsTrue();
+        await Assert.That(zonePrefs.DecisionPush).IsTrue();
+        await Assert.That(zonePrefs.DecisionEmail).IsFalse();
     }
 
     [Test]
@@ -135,9 +127,10 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "nonexistent",
             "zone-1",
-            NewApplications: true,
-            StatusChanges: false,
-            DecisionUpdates: false);
+            NewApplicationPush: true,
+            NewApplicationEmail: true,
+            DecisionPush: true,
+            DecisionEmail: true);
 
         // Act & Assert
         await Assert.ThrowsAsync<UserProfileNotFoundException>(
@@ -150,17 +143,18 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         // Arrange
         var profile = new UserProfileBuilder().WithUserId("user-1").Build();
 
-        // Act — zone with no explicit preferences gets defaults
+        // Act — zone with no explicit preferences gets defaults (all true)
         var zonePrefs = profile.GetZonePreferences("zone-99");
 
         // Assert
-        await Assert.That(zonePrefs.NewApplications).IsTrue();
-        await Assert.That(zonePrefs.StatusChanges).IsFalse();
-        await Assert.That(zonePrefs.DecisionUpdates).IsFalse();
+        await Assert.That(zonePrefs.NewApplicationPush).IsTrue();
+        await Assert.That(zonePrefs.NewApplicationEmail).IsTrue();
+        await Assert.That(zonePrefs.DecisionPush).IsTrue();
+        await Assert.That(zonePrefs.DecisionEmail).IsTrue();
     }
 
     [Test]
-    public async Task Should_DisableNewApplications_When_ExplicitlyTurnedOff()
+    public async Task Should_DisableNewApplicationPush_When_ExplicitlyTurnedOff()
     {
         // Arrange
         var (handler, repo) = CreateHandler();
@@ -170,15 +164,16 @@ public sealed class UpdateZonePreferencesCommandHandlerTests
         var command = new UpdateZonePreferencesCommand(
             "user-1",
             "zone-1",
-            NewApplications: false,
-            StatusChanges: false,
-            DecisionUpdates: false);
+            NewApplicationPush: false,
+            NewApplicationEmail: false,
+            DecisionPush: false,
+            DecisionEmail: false);
 
         // Act
         var result = await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        await Assert.That(result.NewApplications).IsFalse();
+        await Assert.That(result.NewApplicationPush).IsFalse();
     }
 
     private static (UpdateZonePreferencesCommandHandler Handler, FakeUserProfileRepository Repo) CreateHandler()

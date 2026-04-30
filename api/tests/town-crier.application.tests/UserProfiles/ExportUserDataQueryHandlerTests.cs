@@ -70,9 +70,10 @@ public sealed class ExportUserDataQueryHandlerTests
             DigestDay: DayOfWeek.Friday,
             EmailDigestEnabled: false));
         profile.SetZonePreferences("zone-1", new ZoneNotificationPreferences(
-            NewApplications: true,
-            StatusChanges: false,
-            DecisionUpdates: false));
+            NewApplicationPush: true,
+            NewApplicationEmail: false,
+            DecisionPush: false,
+            DecisionEmail: false));
         await harness.UserProfileRepository.SaveAsync(profile, CancellationToken.None);
 
         // Act
@@ -86,7 +87,7 @@ public sealed class ExportUserDataQueryHandlerTests
         await Assert.That(result.NotificationPreferences.EmailDigestEnabled).IsFalse();
         await Assert.That(result.NotificationPreferences.ZonePreferences).HasCount().EqualTo(1);
         await Assert.That(result.NotificationPreferences.ZonePreferences[0].ZoneId).IsEqualTo("zone-1");
-        await Assert.That(result.NotificationPreferences.ZonePreferences[0].NewApplications).IsTrue();
+        await Assert.That(result.NotificationPreferences.ZonePreferences[0].NewApplicationPush).IsTrue();
     }
 
     [Test]

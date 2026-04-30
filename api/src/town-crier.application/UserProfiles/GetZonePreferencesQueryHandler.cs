@@ -22,8 +22,9 @@ public sealed class GetZonePreferencesQueryHandler
 
         return new GetZonePreferencesResult(
             query.ZoneId,
-            prefs.NewApplications,
-            prefs.StatusChanges,
-            prefs.DecisionUpdates);
+            prefs.NewApplicationPush,
+            prefs.NewApplicationEmail,
+            prefs.DecisionPush,
+            prefs.DecisionEmail);
     }
 }

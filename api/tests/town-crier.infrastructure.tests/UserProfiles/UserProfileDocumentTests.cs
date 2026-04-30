@@ -69,8 +69,8 @@ public sealed class UserProfileDocumentTests
         // Arrange
         var original = UserProfile.Register("auth0|user-1");
         original.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
-        original.SetZonePreferences("zone-1", new ZoneNotificationPreferences(true, true, false));
-        original.SetZonePreferences("zone-2", new ZoneNotificationPreferences(false, false, true));
+        original.SetZonePreferences("zone-1", new ZoneNotificationPreferences(true, true, false, false));
+        original.SetZonePreferences("zone-2", new ZoneNotificationPreferences(false, false, true, true));
 
         // Act
         var document = UserProfileDocument.FromDomain(original);
@@ -78,14 +78,16 @@ public sealed class UserProfileDocumentTests
 
         // Assert
         var zone1 = roundTripped.GetZonePreferences("zone-1");
-        await Assert.That(zone1.NewApplications).IsTrue();
-        await Assert.That(zone1.StatusChanges).IsTrue();
-        await Assert.That(zone1.DecisionUpdates).IsFalse();
+        await Assert.That(zone1.NewApplicationPush).IsTrue();
+        await Assert.That(zone1.NewApplicationEmail).IsTrue();
+        await Assert.That(zone1.DecisionPush).IsFalse();
+        await Assert.That(zone1.DecisionEmail).IsFalse();
 
         var zone2 = roundTripped.GetZonePreferences("zone-2");
-        await Assert.That(zone2.NewApplications).IsFalse();
-        await Assert.That(zone2.StatusChanges).IsFalse();
-        await Assert.That(zone2.DecisionUpdates).IsTrue();
+        await Assert.That(zone2.NewApplicationPush).IsFalse();
+        await Assert.That(zone2.NewApplicationEmail).IsFalse();
+        await Assert.That(zone2.DecisionPush).IsTrue();
+        await Assert.That(zone2.DecisionEmail).IsTrue();
     }
 
     [Test]

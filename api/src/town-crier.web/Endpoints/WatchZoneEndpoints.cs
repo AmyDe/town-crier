@@ -169,9 +169,10 @@ internal static class WatchZoneEndpoints
             var fullCommand = new UpdateZonePreferencesCommand(
                 userId,
                 zoneId,
-                command.NewApplications,
-                command.StatusChanges,
-                command.DecisionUpdates);
+                command.NewApplicationPush,
+                command.NewApplicationEmail,
+                command.DecisionPush,
+                command.DecisionEmail);
 
             try
             {

@@ -187,7 +187,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_RecordButNotPush_When_ZoneNewApplicationsDisabled()
+    public async Task Should_RecordButNotPush_When_ZoneNewApplicationPushDisabled()
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
@@ -199,9 +199,10 @@ public sealed class DispatchNotificationCommandHandlerTests
         profile.SetZonePreferences(
             "zone-1",
             new ZoneNotificationPreferences(
-                NewApplications: false,
-                StatusChanges: false,
-                DecisionUpdates: false));
+                NewApplicationPush: false,
+                NewApplicationEmail: false,
+                DecisionPush: false,
+                DecisionEmail: false));
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
         var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);
@@ -217,7 +218,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_SendPush_When_ZoneNewApplicationsEnabled()
+    public async Task Should_SendPush_When_ZoneNewApplicationPushEnabled()
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
@@ -229,9 +230,10 @@ public sealed class DispatchNotificationCommandHandlerTests
         profile.SetZonePreferences(
             "zone-1",
             new ZoneNotificationPreferences(
-                NewApplications: true,
-                StatusChanges: false,
-                DecisionUpdates: false));
+                NewApplicationPush: true,
+                NewApplicationEmail: false,
+                DecisionPush: false,
+                DecisionEmail: false));
         await userProfileRepo.SaveAsync(profile, CancellationToken.None);
 
         var device = DeviceRegistration.Create("user-1", "device-token-1", DevicePlatform.Ios, March2026);

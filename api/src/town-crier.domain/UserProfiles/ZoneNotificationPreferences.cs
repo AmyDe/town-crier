@@ -1,12 +1,14 @@
 namespace TownCrier.Domain.UserProfiles;
 
 public sealed record ZoneNotificationPreferences(
-    bool NewApplications,
-    bool StatusChanges,
-    bool DecisionUpdates)
+    bool NewApplicationPush,
+    bool NewApplicationEmail,
+    bool DecisionPush,
+    bool DecisionEmail)
 {
     public static ZoneNotificationPreferences Default => new(
-        NewApplications: true,
-        StatusChanges: false,
-        DecisionUpdates: false);
+        NewApplicationPush: true,
+        NewApplicationEmail: true,
+        DecisionPush: true,
+        DecisionEmail: true);
 }

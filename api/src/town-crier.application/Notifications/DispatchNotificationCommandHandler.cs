@@ -76,7 +76,7 @@ public sealed class DispatchNotificationCommandHandler
 
         // Check zone-level preferences for new applications
         var zonePrefs = profile.GetZonePreferences(zone.Id);
-        if (!zonePrefs.NewApplications)
+        if (!zonePrefs.NewApplicationPush)
         {
             await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
             return;

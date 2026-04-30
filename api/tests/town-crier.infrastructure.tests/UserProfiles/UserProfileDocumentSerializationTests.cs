@@ -26,7 +26,7 @@ public sealed class UserProfileDocumentSerializationTests
         profile.UpdatePreferences(new NotificationPreferences(true, DayOfWeek.Wednesday));
         profile.ActivateSubscription(SubscriptionTier.Pro, new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
         profile.LinkOriginalTransactionId("txn-ser-123");
-        profile.SetZonePreferences("zone-1", new ZoneNotificationPreferences(true, true, false));
+        profile.SetZonePreferences("zone-1", new ZoneNotificationPreferences(true, true, false, false));
         var original = UserProfileDocument.FromDomain(profile);
 
         // Act

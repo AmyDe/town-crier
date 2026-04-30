@@ -130,12 +130,6 @@ public sealed class UserProfile
         ArgumentException.ThrowIfNullOrWhiteSpace(zoneId);
         ArgumentNullException.ThrowIfNull(preferences);
 
-        if (this.Tier == SubscriptionTier.Free && (preferences.StatusChanges || preferences.DecisionUpdates))
-        {
-            throw new InsufficientTierException(
-                "Status changes and decision updates require a Pro subscription.");
-        }
-
         this.zonePreferences[zoneId] = preferences;
     }
 
