@@ -130,4 +130,63 @@ public sealed class UpdateUserProfileCommandHandlerTests
         var saved = repository.GetByUserId("auth0|user-789");
         await Assert.That(saved!.NotificationPreferences.DigestDay).IsEqualTo(DayOfWeek.Friday);
     }
+
+    [Test]
+    public async Task Should_UpdateSavedDecisionPush_When_SetToFalse()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var profile = UserProfile.Register("auth0|user-789");
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new UpdateUserProfileCommandHandler(repository);
+        var command = new UpdateUserProfileCommand("auth0|user-789", true, SavedDecisionPush: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.SavedDecisionPush).IsFalse();
+        var saved = repository.GetByUserId("auth0|user-789");
+        await Assert.That(saved!.NotificationPreferences.SavedDecisionPush).IsFalse();
+    }
+
+    [Test]
+    public async Task Should_UpdateSavedDecisionEmail_When_SetToFalse()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var profile = UserProfile.Register("auth0|user-789");
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new UpdateUserProfileCommandHandler(repository);
+        var command = new UpdateUserProfileCommand("auth0|user-789", true, SavedDecisionEmail: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.SavedDecisionEmail).IsFalse();
+        var saved = repository.GetByUserId("auth0|user-789");
+        await Assert.That(saved!.NotificationPreferences.SavedDecisionEmail).IsFalse();
+    }
+
+    [Test]
+    public async Task Should_DefaultSavedDecisionFlagsToTrue_When_NotProvidedInCommand()
+    {
+        // Arrange
+        var repository = new FakeUserProfileRepository();
+        var profile = UserProfile.Register("auth0|user-789");
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new UpdateUserProfileCommandHandler(repository);
+        var command = new UpdateUserProfileCommand("auth0|user-789", true);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.SavedDecisionPush).IsTrue();
+        await Assert.That(result.SavedDecisionEmail).IsTrue();
+    }
 }
