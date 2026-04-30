@@ -55,9 +55,34 @@ While `ready_count > 0` OR `inprog_count > 0`:
    Wrap this in Monitor so you're notified when the in-progress queue clears. Once cleared, recheck `ready_count` (a closed bead may have unblocked successors).
 3. **Re-check both counts** after each autopilot invocation. The list shrinks as beads close, but new ones can appear if a worker splits a multi-worker parent.
 
-**Safety bound:** Cap drain at 50 autopilot invocations per drain pass. If you hit the cap, stop and report — something is wrong (probably the same bead being repeatedly blocked).
+### 1.3 Authorized stop conditions
 
-### 1.3 Anything to ship?
+The drain may exit ONLY when one of these conditions fires. Anything else is unauthorized — keep draining.
+
+| ID | Condition | Action |
+|----|-----------|--------|
+| **A** | `bd ready` is empty AND `bd list --status=in_progress` is empty | Proceed to §1.5 (Anything to ship?) |
+| **B** | 50-tick cap reached (autopilot has been invoked 50 times this drain pass) | STOP and report — likely a stuck bead |
+| **C** | The same bead was marked blocked in two consecutive ticks | STOP and report — that bead is the offender |
+| **D** | An autopilot or ship sub-skill reported an error that requires Phase 4 (RECOVER) | Branch to RECOVER per the existing flow |
+| **E** | The user has explicitly aborted (via signal or instruction) | STOP and report state-of-play |
+
+Track the tick count and the last-blocked-bead-id in-memory across iterations to evaluate B and C. The pre-flight in §5.1 will verify which condition fired before allowing termination.
+
+### 1.4 Forbidden stop reasons
+
+These are the patterns the orchestrator's own judgment will rationalize. Recognize them and ignore them — they are NOT authorized stops:
+
+- **"Context budget feels heavy" / "tokens are climbing"** — orchestrator context is not a stop condition. Long drains are the whole point of this skill.
+- **"The next bead looks complex" / "this could time out"** — the worker, not the orchestrator, decides what's tractable. Dispatch and let one-strike-block handle it.
+- **"We have enough to ship already"** — there is no "enough." The drain ships what's drained, not what feels sufficient.
+- **"Session is getting long"** — duration is not a stop condition.
+- **"I'm worried this will fail"** — fear is not a stop condition. Dispatch and observe.
+- **"It's safer to checkpoint now"** — checkpointing mid-drain is not a sanctioned operation. Drain to one of A–E.
+
+If you find yourself reaching for any of these reasons, stop, re-read §1.3, and continue the drain.
+
+### 1.5 Anything to ship?
 
 When the drain loop exits, check whether autopilot actually produced commits:
 
@@ -167,10 +192,39 @@ Return to **Phase 1: DRAIN**. The new beads should be ready. Process them, re-sh
 
 ## Phase 5: STOP / DONE
 
-Always end with a single summary message containing:
+### 5.1 Mandatory pre-flight: are we authorized to stop?
+
+Before producing any final summary, run this check:
+
+```bash
+ready_count=$(bd ready --json 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+inprog_count=$(bd list --status=in_progress --json 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+```
+
+If `ready_count > 0` OR `inprog_count > 0`, the orchestrator MUST have triggered one of the authorized stop conditions B, C, D, or E from §1.3. Verify which one fired and record it explicitly:
+
+- **Condition B** (50-tick cap): tick counter must be ≥ 50.
+- **Condition C** (same bead blocked twice): last-blocked-bead-id this tick must equal last-blocked-bead-id previous tick.
+- **Condition D** (RECOVER exhausted): `recovery_attempted == true` AND the second ship attempt failed.
+- **Condition E** (user abort): explicit user signal in the conversation transcript.
+
+Additionally, condition A is satisfied trivially when `ready_count == 0` AND `inprog_count == 0` — DRAIN reached its natural end. Successful Phase 3 (RELEASE) completion implies A.
+
+If none of A/B/C/D/E applies and `ready_count > 0`, this is an **UNAUTHORIZED STOP**. Report exactly:
+
+```
+STOP UNAUTHORIZED — drain has <N> ready beads but no §1.3 stop condition fired.
+Returning to Phase 1.2 to continue draining.
+```
+
+…and re-enter the drain loop. Do NOT produce a summary message; do NOT exit. Re-read §1.4 if you can't articulate why you tried to stop — the reason is almost certainly forbidden.
+
+### 5.2 Final summary
+
+Once the pre-flight confirms an authorized stop, produce a single summary message containing:
 
 - What was achieved (beads closed, PR URL, release URL if any)
-- Why we stopped (success / retry exhausted / unfixable failure)
+- Why we stopped — name the condition (A/B/C/D/E) explicitly
 - Any follow-up beads filed
 
 Update the orchestrator bead's notes via `bd update tc-ophh --append-notes="..."` if relevant.
@@ -183,6 +237,7 @@ Update the orchestrator bead's notes via `bd update tc-ophh --append-notes="..."
 - **Never deploy directly.** If a failure points at "deploy this manually", file a bead and stop.
 - **Always invoke sub-skills via the Skill tool**, not by re-implementing their logic. The sub-skills own their own edge cases.
 - **Cap the drain at 50 autopilot ticks per pass.** Infinite drains usually mean a single bead is being repeatedly blocked.
+- **Do not invent stop conditions.** §1.3 enumerates every authorized reason to leave the drain (A–E). §1.4 lists the reasons that masquerade as stop conditions but aren't. §5.1 mechanically rejects unauthorized stops and re-enters the drain.
 - **Default to patch release.** If commits since the last tag look like a feature release (any `feat:`), the release skill will detect that itself — don't override.
 - **Bead-first.** This skill assumes there is at least one ready bead at start. If there are none and nothing in-progress, report "Nothing to do" and exit.
 
