@@ -157,6 +157,7 @@ else
 
 builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
 builder.Services.AddSingleton<DispatchDecisionEventCommandHandler>();
+builder.Services.AddSingleton<IDecisionEventDispatcher, DispatchDecisionEventViaHandler>();
 builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
 
 // Decision-alert dispatch — wires the polling pipeline to the
