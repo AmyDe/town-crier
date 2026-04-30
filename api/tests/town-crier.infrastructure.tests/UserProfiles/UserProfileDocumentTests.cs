@@ -137,4 +137,53 @@ public sealed class UserProfileDocumentTests
         await Assert.That(document.Email).IsNull();
         await Assert.That(roundTripped.Email).IsNull();
     }
+
+    [Test]
+    public async Task Should_PreserveSavedDecisionFlags_When_RoundTripped()
+    {
+        // Arrange — toggle the saved-decision flags off so we can verify they persist.
+        var original = UserProfile.Register("auth0|user-1");
+        original.UpdatePreferences(new NotificationPreferences(
+            PushEnabled: true,
+            DigestDay: DayOfWeek.Monday,
+            EmailDigestEnabled: true,
+            SavedDecisionPush: false,
+            SavedDecisionEmail: false));
+
+        // Act
+        var document = UserProfileDocument.FromDomain(original);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.NotificationPreferences.SavedDecisionPush).IsFalse();
+        await Assert.That(roundTripped.NotificationPreferences.SavedDecisionEmail).IsFalse();
+    }
+
+    [Test]
+    public async Task Should_DefaultSavedDecisionFlagsToTrue_When_LegacyDocumentLacksFields()
+    {
+        // Arrange — simulate a legacy Cosmos document predating the saved-decision fields
+        // by constructing the document directly with the new fields unset (null).
+        var document = new UserProfileDocument
+        {
+            Id = "auth0|user-legacy",
+            UserId = "auth0|user-legacy",
+            Email = null,
+            PushEnabled = true,
+            DigestDay = DayOfWeek.Monday,
+            EmailDigestEnabled = true,
+            SavedDecisionPush = null,
+            SavedDecisionEmail = null,
+            ZonePreferences = new Dictionary<string, ZoneNotificationPreferences>(),
+            Tier = "Free",
+            LastActiveAt = DateTimeOffset.UtcNow,
+        };
+
+        // Act
+        var profile = document.ToDomain();
+
+        // Assert — legacy documents hydrate with both flags defaulting to true.
+        await Assert.That(profile.NotificationPreferences.SavedDecisionPush).IsTrue();
+        await Assert.That(profile.NotificationPreferences.SavedDecisionEmail).IsTrue();
+    }
 }
