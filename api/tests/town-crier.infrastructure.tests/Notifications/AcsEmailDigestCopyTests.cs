@@ -172,6 +172,45 @@ public sealed class AcsEmailDigestCopyTests
     }
 
     [Test]
+    public async Task Should_RenderSavedIndicator_When_NotificationIsZonePlusSaved()
+    {
+        // Arrange
+        var notification = new NotificationBuilder()
+            .WithSources(NotificationSources.Zone | NotificationSources.Saved)
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { notification }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("saved");
+    }
+
+    [Test]
+    public async Task Should_NotRenderSavedIndicator_When_NotificationIsZoneOnly()
+    {
+        // Arrange
+        var notification = new NotificationBuilder()
+            .WithApplicationDescription("Two-storey rear extension")
+            .WithSources(NotificationSources.Zone)
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { notification }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+
+        // Assert -- avoid false positives by checking for the indicator-class marker
+        await Assert.That(html).DoesNotContain("data-saved-indicator");
+    }
+
+    [Test]
     public async Task Should_NotRenderDecisionBadge_When_NotificationIsNewApplication()
     {
         // Arrange
