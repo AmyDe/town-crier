@@ -103,6 +103,17 @@ public sealed class AcsEmailSender : IEmailSender
                 """;
         }));
 
+        if (savedApplications.Count > 0)
+        {
+            var savedCards = string.Join(string.Empty, savedApplications.Select(BuildNotificationCard));
+            zoneBlocks += $"""
+                <tr><td style="padding:16px 0 8px 0;font-size:14px;color:#666;text-transform:uppercase;letter-spacing:0.5px;">
+                  ★ Saved Applications
+                </td></tr>
+                {savedCards}
+                """;
+        }
+
         return $"""
             <!DOCTYPE html>
             <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
