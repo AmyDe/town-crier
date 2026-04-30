@@ -9,18 +9,28 @@ public struct ServerProfile: Equatable, Sendable {
   public let pushEnabled: Bool
   public let digestDay: DayOfWeek
   public let emailDigestEnabled: Bool
+  /// Push notifications for decision updates on saved applications.
+  /// Defaults to `true` to match the API's documented opt-out semantics.
+  public let savedDecisionPush: Bool
+  /// Email notifications for decision updates on saved applications.
+  /// Defaults to `true` to match the API's documented opt-out semantics.
+  public let savedDecisionEmail: Bool
 
   public init(
     userId: String,
     tier: SubscriptionTier,
     pushEnabled: Bool,
     digestDay: DayOfWeek,
-    emailDigestEnabled: Bool
+    emailDigestEnabled: Bool,
+    savedDecisionPush: Bool = true,
+    savedDecisionEmail: Bool = true
   ) {
     self.userId = userId
     self.tier = tier
     self.pushEnabled = pushEnabled
     self.digestDay = digestDay
     self.emailDigestEnabled = emailDigestEnabled
+    self.savedDecisionPush = savedDecisionPush
+    self.savedDecisionEmail = savedDecisionEmail
   }
 }
