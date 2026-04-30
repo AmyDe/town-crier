@@ -60,6 +60,8 @@ public sealed class ExportUserDataQueryHandler
                 PushEnabled: profile.NotificationPreferences.PushEnabled,
                 DigestDay: profile.NotificationPreferences.DigestDay,
                 EmailDigestEnabled: profile.NotificationPreferences.EmailDigestEnabled,
+                SavedDecisionPush: profile.NotificationPreferences.SavedDecisionPush,
+                SavedDecisionEmail: profile.NotificationPreferences.SavedDecisionEmail,
                 ZonePreferences: profile.AllZonePreferences
                     .Select(kvp => new ExportedZonePreferences(
                         ZoneId: kvp.Key,
