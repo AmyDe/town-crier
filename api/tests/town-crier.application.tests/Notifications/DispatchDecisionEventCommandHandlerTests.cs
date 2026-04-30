@@ -155,6 +155,25 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(harness.NotificationRepo.All.Count(n => n.EventType == NotificationEventType.DecisionUpdate)).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task Should_SendPushAndMarkSent_When_PaidUserHasZoneDecisionPushOn()
+    {
+        // Arrange — Pro user with zone DecisionPush=true (default), device registered
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(harness.PushSender.Sent[0].Notification.ApplicationUid).IsEqualTo("test-uid-001");
+        await Assert.That(harness.PushSender.Sent[0].Devices).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsTrue();
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
