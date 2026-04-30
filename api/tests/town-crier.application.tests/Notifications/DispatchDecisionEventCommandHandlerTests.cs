@@ -174,6 +174,38 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(harness.NotificationRepo.All[0].PushSent).IsTrue();
     }
 
+    [Test]
+    public async Task Should_RecordButNotPush_When_UserOnFreeTier()
+    {
+        // Arrange — Free tier matches via zone, has device + push enabled
+        var harness = new Harness();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .Build(); // Free by default
+        await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithCentre(51.5074, -0.1278)
+            .Build();
+        harness.WatchZoneRepo.Add(zone);
+
+        var device = DeviceRegistration.Create("user-1", "device-1", DevicePlatform.Ios, March2026);
+        await harness.DeviceRepo.SaveAsync(device, CancellationToken.None);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — row written for the digest, but no push
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
