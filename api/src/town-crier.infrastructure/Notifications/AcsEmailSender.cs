@@ -133,11 +133,19 @@ public sealed class AcsEmailSender : IEmailSender
             }
         }
 
+        // A row marked with both Zone and Saved sources renders once under the
+        // zone section with a small "saved" indicator so the user can see that
+        // the application is also on their bookmarks list.
+        var savedIndicator = notification.WatchZoneId is not null
+            && notification.Sources.HasFlag(NotificationSources.Saved)
+                ? "<span data-saved-indicator style=\"display:inline-block;background:#fff3cd;color:#664d03;font-size:11px;font-weight:600;letter-spacing:0.3px;padding:2px 6px;border-radius:4px;margin-left:6px;\">★ saved</span>"
+                : string.Empty;
+
         return $"""
             <tr><td style="padding:0 0 8px 0;">
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:6px;">
                 <tr><td style="padding:12px;">
-                  <div style="font-weight:600;color:#1a1a2e;">{addressLine}</div>
+                  <div style="font-weight:600;color:#1a1a2e;">{addressLine}{savedIndicator}</div>
                   <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(notification.ApplicationType ?? "Planning Application")}</div>
                   <div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(notification.ApplicationDescription, 120))}</div>
                 </td></tr>
