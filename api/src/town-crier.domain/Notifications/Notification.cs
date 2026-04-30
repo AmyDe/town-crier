@@ -12,6 +12,8 @@ public sealed class Notification
         string? applicationType,
         int authorityId,
         string? decision,
+        NotificationEventType eventType,
+        NotificationSources sources,
         bool pushSent,
         bool emailSent,
         DateTimeOffset createdAt)
@@ -25,6 +27,8 @@ public sealed class Notification
         this.ApplicationType = applicationType;
         this.AuthorityId = authorityId;
         this.Decision = decision;
+        this.EventType = eventType;
+        this.Sources = sources;
         this.PushSent = pushSent;
         this.EmailSent = emailSent;
         this.CreatedAt = createdAt;
@@ -55,6 +59,20 @@ public sealed class Notification
     /// </summary>
     public string? Decision { get; }
 
+    /// <summary>
+    /// Gets the lifecycle event this notification was raised for. Defaults to
+    /// <see cref="NotificationEventType.NewApplication"/> for legacy rows
+    /// persisted before this field existed.
+    /// </summary>
+    public NotificationEventType EventType { get; }
+
+    /// <summary>
+    /// Gets the subscription paths that produced this notification. A single
+    /// underlying application can match a user via multiple sources, so the
+    /// dispatch handler OR-merges those matches into one notification.
+    /// </summary>
+    public NotificationSources Sources { get; }
+
     public bool PushSent { get; private set; }
 
     public bool EmailSent { get; private set; }
@@ -70,7 +88,9 @@ public sealed class Notification
         string? applicationType,
         int authorityId,
         DateTimeOffset now,
-        string? decision = null)
+        string? decision = null,
+        NotificationEventType eventType = NotificationEventType.NewApplication,
+        NotificationSources sources = NotificationSources.Zone)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
@@ -85,6 +105,8 @@ public sealed class Notification
             applicationType: applicationType,
             authorityId: authorityId,
             decision: decision,
+            eventType: eventType,
+            sources: sources,
             pushSent: false,
             emailSent: false,
             createdAt: now);
@@ -110,6 +132,8 @@ public sealed class Notification
         string? applicationType,
         int authorityId,
         string? decision,
+        NotificationEventType eventType,
+        NotificationSources sources,
         bool pushSent,
         bool emailSent,
         DateTimeOffset createdAt)
@@ -124,6 +148,8 @@ public sealed class Notification
             applicationType,
             authorityId,
             decision,
+            eventType,
+            sources,
             pushSent,
             emailSent,
             createdAt);

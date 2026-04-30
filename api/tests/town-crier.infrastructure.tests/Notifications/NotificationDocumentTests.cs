@@ -110,4 +110,58 @@ public sealed class NotificationDocumentTests
         var ninetyDaysInSeconds = (int)TimeSpan.FromDays(90).TotalSeconds;
         await Assert.That(document.Ttl).IsEqualTo(ninetyDaysInSeconds);
     }
+
+    [Test]
+    public async Task Should_RoundTripEventTypeAndSources_When_MappingFromDomainAndBack()
+    {
+        // Arrange
+        var notification = Notification.Create(
+            userId: "user-1",
+            applicationName: "APP/2026/0001",
+            watchZoneId: "zone-1",
+            applicationAddress: "123 High Street",
+            applicationDescription: "Loft conversion",
+            applicationType: "Householder",
+            authorityId: 42,
+            now: new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero),
+            decision: "Permitted",
+            eventType: NotificationEventType.DecisionUpdate,
+            sources: NotificationSources.Zone | NotificationSources.Saved);
+
+        // Act
+        var document = NotificationDocument.FromDomain(notification);
+        var roundTripped = document.ToDomain();
+
+        // Assert
+        await Assert.That(roundTripped.EventType).IsEqualTo(NotificationEventType.DecisionUpdate);
+        await Assert.That(roundTripped.Sources).IsEqualTo(NotificationSources.Zone | NotificationSources.Saved);
+    }
+
+    [Test]
+    public async Task Should_DefaultToNewApplicationAndZone_When_LegacyDocumentHasNullEventTypeAndSources()
+    {
+        // Arrange — simulate a legacy Cosmos row written before tc-so3a.3 added these fields.
+        var legacyDocument = new NotificationDocument
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserId = "user-legacy",
+            ApplicationName = "APP/2025/0001",
+            WatchZoneId = "zone-legacy",
+            ApplicationAddress = "1 Old Lane",
+            ApplicationDescription = "Pre-existing application",
+            ApplicationType = "Householder",
+            AuthorityId = 1,
+            EventType = null,
+            Sources = null,
+            PushSent = true,
+            CreatedAt = new DateTimeOffset(2025, 12, 1, 9, 0, 0, TimeSpan.Zero),
+        };
+
+        // Act
+        var hydrated = legacyDocument.ToDomain();
+
+        // Assert — coalesced backfill defaults.
+        await Assert.That(hydrated.EventType).IsEqualTo(NotificationEventType.NewApplication);
+        await Assert.That(hydrated.Sources).IsEqualTo(NotificationSources.Zone);
+    }
 }
