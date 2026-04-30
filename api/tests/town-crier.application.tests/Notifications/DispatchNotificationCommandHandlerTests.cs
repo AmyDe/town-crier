@@ -2,6 +2,7 @@ using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
+using TownCrier.Domain.Notifications;
 using TownCrier.Domain.UserProfiles;
 using FakeDeviceRegistrationRepository = TownCrier.Application.Tests.DeviceRegistrations.FakeDeviceRegistrationRepository;
 
@@ -59,7 +60,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
-    public async Task Should_NotSendDuplicateNotification_When_SameApplicationAndUser()
+    public async Task Should_NotSendDuplicateNotification_When_SameApplicationAndUserAndEventType()
     {
         // Arrange
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
@@ -74,6 +75,67 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Assert
         await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
         await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_CreateNewApplicationNotification_When_DecisionUpdateAlreadyExistsForSameUserAndApplication()
+    {
+        // Arrange — DecisionUpdate already persisted for the same user + applicationUid.
+        // Dedup key is (userId, applicationUid, eventType) so a NewApplication dispatch
+        // must NOT collide with the pre-existing DecisionUpdate row.
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        var existingDecisionUpdate = Notification.Create(
+            userId: "user-1",
+            applicationUid: "test-uid-001",
+            applicationName: "app-001",
+            watchZoneId: "zone-1",
+            applicationAddress: "1 High St",
+            applicationDescription: "Extension",
+            applicationType: "Householder",
+            authorityId: 42,
+            now: March2026,
+            decision: "Permitted",
+            eventType: NotificationEventType.DecisionUpdate);
+        notificationRepo.Seed(existingDecisionUpdate);
+
+        // Act — dispatch a NewApplication for the same user + applicationUid
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — both rows exist, no dedup collision across event types
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(2);
+        await Assert.That(notificationRepo.All.Count(n => n.EventType == NotificationEventType.NewApplication)).IsEqualTo(1);
+        await Assert.That(notificationRepo.All.Count(n => n.EventType == NotificationEventType.DecisionUpdate)).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_NotCreateDuplicate_When_NewApplicationAlreadyExistsWithSameUidAndEventType()
+    {
+        // Arrange — pre-existing NewApplication for the same applicationUid; subsequent
+        // NewApplication dispatch must dedup (same eventType + same uid + same user).
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        var existing = Notification.Create(
+            userId: "user-1",
+            applicationUid: "test-uid-001",
+            applicationName: "app-001",
+            watchZoneId: "zone-1",
+            applicationAddress: "1 High St",
+            applicationDescription: "Extension",
+            applicationType: "Householder",
+            authorityId: 42,
+            now: March2026,
+            eventType: NotificationEventType.NewApplication);
+        notificationRepo.Seed(existing);
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — dedup hits, no extra row, no push
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
     }
 
     [Test]
@@ -108,7 +170,8 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Act — dispatch 10 notifications well past any historical cap
         for (var i = 0; i < 10; i++)
         {
-            await handler.HandleAsync(CreateCommand($"app-{i:D3}"), CancellationToken.None);
+            await handler.HandleAsync(
+                CreateCommand($"app-{i:D3}", $"uid-{i:D3}"), CancellationToken.None);
         }
 
         // Assert — all rows persisted (digest will pick them up) but no pushes sent
@@ -138,7 +201,8 @@ public sealed class DispatchNotificationCommandHandlerTests
 
         for (var i = 0; i < 10; i++)
         {
-            await handler.HandleAsync(CreateCommand($"app-{i:D3}"), CancellationToken.None);
+            await handler.HandleAsync(
+                CreateCommand($"app-{i:D3}", $"uid-{i:D3}"), CancellationToken.None);
         }
 
         // Assert — all 10 pushed
@@ -295,9 +359,12 @@ public sealed class DispatchNotificationCommandHandlerTests
         await deviceRepo.SaveAsync(device, CancellationToken.None);
     }
 
-    private static DispatchNotificationCommand CreateCommand(string applicationName = "app-001")
+    private static DispatchNotificationCommand CreateCommand(
+        string applicationName = "app-001",
+        string applicationUid = "test-uid-001")
     {
         var application = new PlanningApplicationBuilder()
+            .WithUid(applicationUid)
             .WithName(applicationName)
             .WithCoordinates(51.5074, -0.1278)
             .Build();

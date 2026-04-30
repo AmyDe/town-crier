@@ -4,7 +4,11 @@ namespace TownCrier.Application.Notifications;
 
 public interface INotificationRepository
 {
-    Task<Notification?> GetByUserAndApplicationAsync(string userId, string applicationName, CancellationToken ct);
+    Task<Notification?> GetByUserAndApplicationAsync(
+        string userId,
+        string applicationUid,
+        NotificationEventType eventType,
+        CancellationToken ct);
 
     Task<int> CountByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct);
 

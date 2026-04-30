@@ -5,6 +5,7 @@ namespace TownCrier.Infrastructure.Tests.Notifications;
 internal sealed class NotificationBuilder
 {
     private string userId = "user-1";
+    private string applicationUid = "test-uid-001";
     private string applicationName = "APP/2026/0001";
     private string watchZoneId = "zone-1";
     private string applicationAddress = "123 High Street";
@@ -16,6 +17,12 @@ internal sealed class NotificationBuilder
     public NotificationBuilder WithUserId(string userId)
     {
         this.userId = userId;
+        return this;
+    }
+
+    public NotificationBuilder WithApplicationUid(string applicationUid)
+    {
+        this.applicationUid = applicationUid;
         return this;
     }
 
@@ -65,6 +72,7 @@ internal sealed class NotificationBuilder
     {
         return Notification.Create(
             this.userId,
+            this.applicationUid,
             this.applicationName,
             this.watchZoneId,
             this.applicationAddress,

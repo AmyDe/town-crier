@@ -11,6 +11,7 @@ public sealed class NotificationTests
     {
         var notification = Notification.Create(
             userId: "user-1",
+            applicationUid: "test-uid-001",
             applicationName: "APP/2026/0001",
             watchZoneId: "zone-1",
             applicationAddress: "123 High Street",
@@ -28,6 +29,7 @@ public sealed class NotificationTests
     {
         var notification = Notification.Create(
             userId: "user-1",
+            applicationUid: "test-uid-001",
             applicationName: "APP/2026/0001",
             watchZoneId: "zone-1",
             applicationAddress: "123 High Street",
@@ -44,6 +46,7 @@ public sealed class NotificationTests
     {
         var notification = Notification.Create(
             userId: "user-1",
+            applicationUid: "test-uid-001",
             applicationName: "APP/2026/0001",
             watchZoneId: null,
             applicationAddress: "123 High Street",

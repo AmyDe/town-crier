@@ -13,6 +13,12 @@ internal sealed class NotificationDocument
     [JsonPropertyName("userId")]
     public required string UserId { get; init; }
 
+    // Nullable so legacy Cosmos documents predating tc-so3a.4 hydrate via the
+    // ApplicationName fallback in ToDomain — the same lazy-coalesce backfill
+    // pattern as EventType/Sources from tc-so3a.3.
+    [JsonPropertyName("applicationUid")]
+    public string? ApplicationUid { get; init; }
+
     [JsonPropertyName("applicationName")]
     public required string ApplicationName { get; init; }
 
@@ -67,6 +73,7 @@ internal sealed class NotificationDocument
         {
             Id = notification.Id,
             UserId = notification.UserId,
+            ApplicationUid = notification.ApplicationUid,
             ApplicationName = notification.ApplicationName,
             WatchZoneId = notification.WatchZoneId,
             ApplicationAddress = notification.ApplicationAddress,
@@ -95,9 +102,15 @@ internal sealed class NotificationDocument
             ? NotificationSources.Zone
             : Enum.Parse<NotificationSources>(this.Sources);
 
+        // Legacy rows predating tc-so3a.4 hydrate with ApplicationName as the
+        // ApplicationUid fallback — keeps dedup queries against legacy data
+        // returning a non-null match instead of double-writing.
+        var applicationUid = this.ApplicationUid ?? this.ApplicationName;
+
         return Notification.Reconstitute(
             this.Id,
             this.UserId,
+            applicationUid,
             this.ApplicationName,
             this.WatchZoneId,
             this.ApplicationAddress,

@@ -315,6 +315,7 @@ public sealed class ExportUserDataQueryHandlerTests
     {
         return Notification.Create(
             userId: userId,
+            applicationUid: $"uid-{applicationName}",
             applicationName: applicationName,
             watchZoneId: "zone-1",
             applicationAddress: "10 Example St",

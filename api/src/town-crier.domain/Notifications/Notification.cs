@@ -5,6 +5,7 @@ public sealed class Notification
     private Notification(
         string id,
         string userId,
+        string applicationUid,
         string applicationName,
         string? watchZoneId,
         string applicationAddress,
@@ -20,6 +21,7 @@ public sealed class Notification
     {
         this.Id = id;
         this.UserId = userId;
+        this.ApplicationUid = applicationUid;
         this.ApplicationName = applicationName;
         this.WatchZoneId = watchZoneId;
         this.ApplicationAddress = applicationAddress;
@@ -37,6 +39,16 @@ public sealed class Notification
     public string Id { get; }
 
     public string UserId { get; }
+
+    /// <summary>
+    /// Gets the PlanIt-assigned unique identifier for the underlying application.
+    /// Used as the dedup key together with <see cref="UserId"/> and
+    /// <see cref="EventType"/> — same user can receive one NewApplication AND
+    /// one DecisionUpdate notification per application UID, but not duplicates
+    /// of either. Distinct from <see cref="ApplicationName"/> which is the
+    /// human-readable case reference rendered in UI and digests.
+    /// </summary>
+    public string ApplicationUid { get; }
 
     public string ApplicationName { get; }
 
@@ -81,6 +93,7 @@ public sealed class Notification
 
     public static Notification Create(
         string userId,
+        string applicationUid,
         string applicationName,
         string? watchZoneId,
         string applicationAddress,
@@ -93,11 +106,13 @@ public sealed class Notification
         NotificationSources sources = NotificationSources.Zone)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationUid);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
 
         return new Notification(
             id: Guid.NewGuid().ToString(),
             userId: userId,
+            applicationUid: applicationUid,
             applicationName: applicationName,
             watchZoneId: watchZoneId,
             applicationAddress: applicationAddress,
@@ -125,6 +140,7 @@ public sealed class Notification
     internal static Notification Reconstitute(
         string id,
         string userId,
+        string applicationUid,
         string applicationName,
         string? watchZoneId,
         string applicationAddress,
@@ -141,6 +157,7 @@ public sealed class Notification
         return new Notification(
             id,
             userId,
+            applicationUid,
             applicationName,
             watchZoneId,
             applicationAddress,

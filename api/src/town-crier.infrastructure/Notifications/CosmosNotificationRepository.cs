@@ -15,12 +15,19 @@ public sealed class CosmosNotificationRepository : INotificationRepository
     }
 
     public async Task<Notification?> GetByUserAndApplicationAsync(
-        string userId, string applicationName, CancellationToken ct)
+        string userId,
+        string applicationUid,
+        NotificationEventType eventType,
+        CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Notifications,
-            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationName = @appName",
-            [new QueryParameter("@userId", userId), new QueryParameter("@appName", applicationName)],
+            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationUid = @appUid AND c.eventType = @eventType",
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@appUid", applicationUid),
+                new QueryParameter("@eventType", eventType.ToString()),
+            ],
             userId,
             CosmosJsonSerializerContext.Default.NotificationDocument,
             ct).ConfigureAwait(false);

@@ -1,3 +1,4 @@
+using TownCrier.Domain.Notifications;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.Tests.Cosmos;
 
@@ -17,7 +18,8 @@ public sealed class CosmosNotificationRepositoryTests
         await repo.SaveAsync(notification, CancellationToken.None);
 
         // Assert
-        var result = await repo.GetByUserAndApplicationAsync("user-1", "APP/2026/0001", CancellationToken.None);
+        var result = await repo.GetByUserAndApplicationAsync(
+            "user-1", "test-uid-001", NotificationEventType.NewApplication, CancellationToken.None);
         await Assert.That(result).IsNotNull();
     }
 
@@ -29,7 +31,8 @@ public sealed class CosmosNotificationRepositoryTests
         var repo = new CosmosNotificationRepository(client);
 
         // Act
-        var result = await repo.GetByUserAndApplicationAsync("user-1", "nonexistent", CancellationToken.None);
+        var result = await repo.GetByUserAndApplicationAsync(
+            "user-1", "nonexistent", NotificationEventType.NewApplication, CancellationToken.None);
 
         // Assert
         await Assert.That(result).IsNull();

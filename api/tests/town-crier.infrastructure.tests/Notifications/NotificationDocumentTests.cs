@@ -117,6 +117,7 @@ public sealed class NotificationDocumentTests
         // Arrange
         var notification = Notification.Create(
             userId: "user-1",
+            applicationUid: "uid-0001",
             applicationName: "APP/2026/0001",
             watchZoneId: "zone-1",
             applicationAddress: "123 High Street",

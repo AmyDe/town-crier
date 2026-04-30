@@ -8,10 +8,16 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
 {
     private readonly ConcurrentBag<Notification> store = [];
 
-    public Task<Notification?> GetByUserAndApplicationAsync(string userId, string applicationName, CancellationToken ct)
+    public Task<Notification?> GetByUserAndApplicationAsync(
+        string userId,
+        string applicationUid,
+        NotificationEventType eventType,
+        CancellationToken ct)
     {
         var notification = this.store.FirstOrDefault(
-            n => n.UserId == userId && n.ApplicationName == applicationName);
+            n => n.UserId == userId
+                && n.ApplicationUid == applicationUid
+                && n.EventType == eventType);
         return Task.FromResult(notification);
     }
 
