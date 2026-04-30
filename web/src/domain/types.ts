@@ -105,9 +105,10 @@ export interface UserProfile {
 
 export interface ZoneNotificationPreferences {
   readonly zoneId: WatchZoneId;
-  readonly newApplications: boolean;
-  readonly statusChanges: boolean;
-  readonly decisionUpdates: boolean;
+  readonly newApplicationPush: boolean;
+  readonly newApplicationEmail: boolean;
+  readonly decisionPush: boolean;
+  readonly decisionEmail: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,9 +254,10 @@ export interface UpdateWatchZoneRequest {
 }
 
 export interface UpdateZonePreferencesRequest {
-  readonly newApplications: boolean;
-  readonly statusChanges: boolean;
-  readonly decisionUpdates: boolean;
+  readonly newApplicationPush: boolean;
+  readonly newApplicationEmail: boolean;
+  readonly decisionPush: boolean;
+  readonly decisionEmail: boolean;
 }
 
 // ---------------------------------------------------------------------------

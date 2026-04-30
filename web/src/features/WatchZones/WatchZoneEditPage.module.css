@@ -109,6 +109,19 @@
   margin: 0 0 var(--tc-space-md) 0;
 }
 
+.preferencesGroupTitle {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tc-text-secondary);
+  margin: var(--tc-space-md) 0 var(--tc-space-xs) 0;
+}
+
+.preferencesGroupTitle:first-child {
+  margin-top: 0;
+}
+
 .toggle {
   display: flex;
   align-items: center;
@@ -119,6 +132,11 @@
 
 .toggle + .toggle {
   border-top: 1px solid var(--tc-border);
+}
+
+.toggle + .preferencesGroupTitle {
+  border-top: 1px solid var(--tc-border);
+  padding-top: var(--tc-space-md);
 }
 
 .toggleLabel {

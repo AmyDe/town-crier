@@ -117,7 +117,7 @@ describe('WatchZoneEditPage', () => {
       <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
     );
 
-    await screen.findByRole('checkbox', { name: /new applications/i });
+    await screen.findByRole('checkbox', { name: /new applications.*push/i });
     const selectedRadio = screen.getByRole('radio', { name: '2 km' });
     expect(selectedRadio).toBeChecked();
   });
