@@ -40,6 +40,11 @@ public static class ApiMetrics
             "towncrier.notifications.created",
             description: "Notification records created (may or may not result in push)");
 
+    public static readonly Counter<long> DigestRowsEmitted =
+        Meter.CreateCounter<long>(
+            "towncrier.digest.rows_emitted",
+            description: "Notification rows included in a digest send (tagged cadence + event_type)");
+
     public static readonly Counter<long> EmailsSent =
         Meter.CreateCounter<long>(
             "towncrier.emails.sent",

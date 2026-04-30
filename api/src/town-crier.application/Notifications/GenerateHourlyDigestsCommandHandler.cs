@@ -1,3 +1,4 @@
+using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Entitlements;
@@ -79,6 +80,11 @@ public sealed class GenerateHourlyDigestsCommandHandler
 
             foreach (var notification in notifications)
             {
+                ApiMetrics.DigestRowsEmitted.Add(
+                    1,
+                    new KeyValuePair<string, object?>("cadence", "hourly"),
+                    new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()));
+
                 notification.MarkEmailSent();
                 await this.notificationRepository.SaveAsync(notification, ct)
                     .ConfigureAwait(false);
