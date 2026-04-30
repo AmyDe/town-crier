@@ -6,11 +6,12 @@ public sealed class Notification
         string id,
         string userId,
         string applicationName,
-        string watchZoneId,
+        string? watchZoneId,
         string applicationAddress,
         string applicationDescription,
         string? applicationType,
         int authorityId,
+        string? decision,
         bool pushSent,
         bool emailSent,
         DateTimeOffset createdAt)
@@ -23,6 +24,7 @@ public sealed class Notification
         this.ApplicationDescription = applicationDescription;
         this.ApplicationType = applicationType;
         this.AuthorityId = authorityId;
+        this.Decision = decision;
         this.PushSent = pushSent;
         this.EmailSent = emailSent;
         this.CreatedAt = createdAt;
@@ -34,7 +36,7 @@ public sealed class Notification
 
     public string ApplicationName { get; }
 
-    public string WatchZoneId { get; }
+    public string? WatchZoneId { get; }
 
     public string ApplicationAddress { get; }
 
@@ -43,6 +45,15 @@ public sealed class Notification
     public string? ApplicationType { get; }
 
     public int AuthorityId { get; }
+
+    /// <summary>
+    /// Gets the raw PlanIt application state when the notification represents a
+    /// decision update (e.g. "Permitted", "Conditions", "Rejected",
+    /// "Appealed"). Null for new-application notifications. Use
+    /// <see cref="UkPlanningVocabulary.GetDisplayString(string?)"/> to render
+    /// for display.
+    /// </summary>
+    public string? Decision { get; }
 
     public bool PushSent { get; private set; }
 
@@ -53,16 +64,16 @@ public sealed class Notification
     public static Notification Create(
         string userId,
         string applicationName,
-        string watchZoneId,
+        string? watchZoneId,
         string applicationAddress,
         string applicationDescription,
         string? applicationType,
         int authorityId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? decision = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationName);
-        ArgumentException.ThrowIfNullOrWhiteSpace(watchZoneId);
 
         return new Notification(
             id: Guid.NewGuid().ToString(),
@@ -73,6 +84,7 @@ public sealed class Notification
             applicationDescription: applicationDescription,
             applicationType: applicationType,
             authorityId: authorityId,
+            decision: decision,
             pushSent: false,
             emailSent: false,
             createdAt: now);
@@ -92,11 +104,12 @@ public sealed class Notification
         string id,
         string userId,
         string applicationName,
-        string watchZoneId,
+        string? watchZoneId,
         string applicationAddress,
         string applicationDescription,
         string? applicationType,
         int authorityId,
+        string? decision,
         bool pushSent,
         bool emailSent,
         DateTimeOffset createdAt)
@@ -110,6 +123,7 @@ public sealed class Notification
             applicationDescription,
             applicationType,
             authorityId,
+            decision,
             pushSent,
             emailSent,
             createdAt);
