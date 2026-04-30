@@ -179,13 +179,12 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GenerateOfferCodesCommandHandler>();
         services.AddTransient<RedeemOfferCodeCommandHandler>();
 
-        // Decision-alert dispatch — registered for symmetry with the worker
+        // Decision-alert handler — registered for symmetry with the worker
         // host. The polling loop runs in the worker, so the load-bearing
-        // registration is there; this keeps the dispatcher available to any
-        // future API endpoints that surface decision history. See
-        // docs/specs/decision-state-vocabulary.md#dispatch.
+        // dispatch is there. The legacy dispatcher port has been retired
+        // (tc-so3a.21); the handler container itself is being removed in
+        // tc-so3a.11. See docs/specs/decision-state-vocabulary.md#dispatch.
         services.AddTransient<DispatchDecisionAlertCommandHandler>();
-        services.AddTransient<IDecisionAlertDispatcher, DispatchDecisionAlertViaHandler>();
 
         return services;
     }

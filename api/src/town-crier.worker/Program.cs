@@ -160,14 +160,15 @@ builder.Services.AddSingleton<DispatchDecisionEventCommandHandler>();
 builder.Services.AddSingleton<IDecisionEventDispatcher, DispatchDecisionEventViaHandler>();
 builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
 
-// Decision-alert dispatch — wires the polling pipeline to the
-// DispatchDecisionAlertCommandHandler via the IDecisionAlertDispatcher port.
-// The push sender is a no-op until an APNS-backed implementation lands; the
-// handler still records DecisionAlert documents so bookmark holders can see
-// the outcome on their next app launch. See docs/specs/decision-state-vocabulary.md#dispatch.
+// Decision-alert dispatch — handler still records DecisionAlert documents so
+// bookmark holders can see the outcome on their next app launch. The push
+// sender is a no-op until an APNS-backed implementation lands. See
+// docs/specs/decision-state-vocabulary.md#dispatch. Note: the legacy
+// dispatcher port has been retired; PollPlanItCommandHandler now dispatches
+// via IDecisionEventDispatcher (registered above). The
+// DispatchDecisionAlertCommandHandler container is being removed in tc-so3a.11.
 builder.Services.AddSingleton<IDecisionAlertPushSender, NoOpDecisionAlertPushSender>();
 builder.Services.AddSingleton<DispatchDecisionAlertCommandHandler>();
-builder.Services.AddSingleton<IDecisionAlertDispatcher, DispatchDecisionAlertViaHandler>();
 
 builder.Services.AddSingleton(TimeProvider.System);
 
