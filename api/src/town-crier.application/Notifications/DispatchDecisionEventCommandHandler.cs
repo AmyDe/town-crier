@@ -142,7 +142,10 @@ public sealed class DispatchDecisionEventCommandHandler
             eventType: NotificationEventType.DecisionUpdate,
             sources: sources);
 
-        ApiMetrics.NotificationsCreated.Add(1);
+        ApiMetrics.NotificationsCreated.Add(
+            1,
+            new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
+            new KeyValuePair<string, object?>("sources", notification.Sources.ToString()));
 
         // OR-merge per-channel toggles across the matching sources. A user may
         // hit this path via Zone, Saved, or both — push fires when either
@@ -168,7 +171,11 @@ public sealed class DispatchDecisionEventCommandHandler
                 await this.pushNotificationSender.SendAsync(notification, devices, ct)
                     .ConfigureAwait(false);
                 notification.MarkPushSent();
-                ApiMetrics.NotificationsSent.Add(1);
+                ApiMetrics.NotificationsSent.Add(
+                    1,
+                    new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
+                    new KeyValuePair<string, object?>("sources", notification.Sources.ToString()),
+                    new KeyValuePair<string, object?>("tier", profile.Tier.ToString()));
             }
         }
 
