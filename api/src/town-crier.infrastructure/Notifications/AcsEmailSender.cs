@@ -19,10 +19,18 @@ public sealed class AcsEmailSender : IEmailSender
         this.logger = logger;
     }
 
-    public async Task SendDigestAsync(string userId, string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
+    public async Task SendDigestAsync(
+        string userId,
+        string email,
+        IReadOnlyList<WatchZoneDigest> zoneSections,
+        IReadOnlyList<Notification> savedApplications,
+        CancellationToken ct)
     {
-        var totalCount = digests.Sum(d => d.Notifications.Count);
-        var htmlBody = BuildDigestHtml(digests, totalCount);
+        ArgumentNullException.ThrowIfNull(zoneSections);
+        ArgumentNullException.ThrowIfNull(savedApplications);
+
+        var totalCount = zoneSections.Sum(d => d.Notifications.Count) + savedApplications.Count;
+        var htmlBody = BuildDigestHtml(zoneSections, savedApplications, totalCount);
 
         var emailMessage = new EmailMessage(
             senderAddress: SenderAddress,
@@ -78,9 +86,12 @@ public sealed class AcsEmailSender : IEmailSender
         return $"Planning update — {totalCount} new applications near you";
     }
 
-    internal static string BuildDigestHtml(IReadOnlyList<WatchZoneDigest> digests, int totalCount)
+    internal static string BuildDigestHtml(
+        IReadOnlyList<WatchZoneDigest> zoneSections,
+        IReadOnlyList<Notification> savedApplications,
+        int totalCount)
     {
-        var zoneBlocks = string.Join(string.Empty, digests.Select(d =>
+        var zoneBlocks = string.Join(string.Empty, zoneSections.Select(d =>
         {
             var cards = string.Join(string.Empty, d.Notifications.Select(BuildNotificationCard));
 

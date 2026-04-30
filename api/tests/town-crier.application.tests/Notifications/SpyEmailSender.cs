@@ -5,16 +5,21 @@ namespace TownCrier.Application.Tests.Notifications;
 
 internal sealed class SpyEmailSender : IEmailSender
 {
-    private readonly List<(string UserId, string Email, IReadOnlyList<WatchZoneDigest> Digests)> digestsSent = [];
+    private readonly List<DigestSendRecord> digestsSent = [];
     private readonly List<(string UserId, string Email, Notification Notification)> notificationsSent = [];
 
-    public IReadOnlyList<(string UserId, string Email, IReadOnlyList<WatchZoneDigest> Digests)> DigestsSent => this.digestsSent;
+    public IReadOnlyList<DigestSendRecord> DigestsSent => this.digestsSent;
 
     public IReadOnlyList<(string UserId, string Email, Notification Notification)> NotificationsSent => this.notificationsSent;
 
-    public Task SendDigestAsync(string userId, string email, IReadOnlyList<WatchZoneDigest> digests, CancellationToken ct)
+    public Task SendDigestAsync(
+        string userId,
+        string email,
+        IReadOnlyList<WatchZoneDigest> zoneSections,
+        IReadOnlyList<Notification> savedApplications,
+        CancellationToken ct)
     {
-        this.digestsSent.Add((userId, email, digests));
+        this.digestsSent.Add(new DigestSendRecord(userId, email, zoneSections, savedApplications));
         return Task.CompletedTask;
     }
 

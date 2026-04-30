@@ -61,7 +61,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).DoesNotContain("Weekly");
@@ -84,7 +84,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("Live Planning Update");
@@ -105,7 +105,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("[Approved]");
@@ -125,7 +125,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("[Refused]");
@@ -145,7 +145,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("[Approved with conditions]");
@@ -165,7 +165,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("[Refusal appealed]");
@@ -184,7 +184,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).Contains("saved");
@@ -204,7 +204,7 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert -- avoid false positives by checking for the indicator-class marker
         await Assert.That(html).DoesNotContain("data-saved-indicator");
@@ -223,10 +223,56 @@ public sealed class AcsEmailDigestCopyTests
         };
 
         // Act
-        var html = AcsEmailSender.BuildDigestHtml(digests, totalCount: 1);
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
 
         // Assert
         await Assert.That(html).DoesNotContain("[Approved]");
         await Assert.That(html).DoesNotContain("[Refused]");
+    }
+
+    [Test]
+    public async Task Should_RenderSavedApplicationsSection_When_BookmarkOnlyDecisionsPresent()
+    {
+        // Arrange — a decision on an app the user only knows via bookmarks
+        var savedDecision = new NotificationBuilder()
+            .WithApplicationAddress("9 Hill Lane")
+            .WithWatchZoneIdOrNull(null)
+            .WithEventType(NotificationEventType.DecisionUpdate)
+            .WithDecision("Rejected")
+            .WithSources(NotificationSources.Saved)
+            .Build();
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(
+            zoneSections: Array.Empty<WatchZoneDigest>(),
+            savedApplications: new List<Notification> { savedDecision },
+            totalCount: 1);
+
+        // Assert
+        await Assert.That(html).Contains("Saved Applications");
+        await Assert.That(html).Contains("[Refused]");
+        await Assert.That(html).Contains("9 Hill Lane");
+    }
+
+    [Test]
+    public async Task Should_NotRenderSavedApplicationsSection_When_NoBookmarkOnlyNotifications()
+    {
+        // Arrange
+        var zoneRow = new NotificationBuilder()
+            .WithApplicationAddress("12 Acacia Ave")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { zoneRow }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(
+            zoneSections: digests,
+            savedApplications: Array.Empty<Notification>(),
+            totalCount: 1);
+
+        // Assert
+        await Assert.That(html).DoesNotContain("Saved Applications");
     }
 }
