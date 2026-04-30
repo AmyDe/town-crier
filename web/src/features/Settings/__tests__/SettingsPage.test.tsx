@@ -211,4 +211,61 @@ describe('SettingsPage', () => {
     expect(spy.updateProfileCalls).toBe(1);
     expect(spy.updateProfileLastRequest?.digestDay).toBe(5);
   });
+
+  it('renders saved-application decision push and email toggles reflecting current state', async () => {
+    spy.fetchProfileResult = freeUserProfile({
+      savedDecisionPush: true,
+      savedDecisionEmail: false,
+    });
+
+    renderSettingsPage(spy);
+
+    const pushToggle = await screen.findByRole('switch', {
+      name: /saved applications.*push/i,
+    });
+    expect(pushToggle).toHaveAttribute('aria-checked', 'true');
+
+    const emailToggle = screen.getByRole('switch', {
+      name: /saved applications.*email/i,
+    });
+    expect(emailToggle).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('calls updateProfile when saved-application push toggle is clicked', async () => {
+    const user = userEvent.setup();
+    spy.fetchProfileResult = freeUserProfile({
+      savedDecisionPush: true,
+      savedDecisionEmail: true,
+    });
+
+    renderSettingsPage(spy);
+
+    const pushToggle = await screen.findByRole('switch', {
+      name: /saved applications.*push/i,
+    });
+    await user.click(pushToggle);
+
+    expect(spy.updateProfileCalls).toBe(1);
+    expect(spy.updateProfileLastRequest?.savedDecisionPush).toBe(false);
+    expect(spy.updateProfileLastRequest?.savedDecisionEmail).toBe(true);
+  });
+
+  it('calls updateProfile when saved-application email toggle is clicked', async () => {
+    const user = userEvent.setup();
+    spy.fetchProfileResult = freeUserProfile({
+      savedDecisionPush: true,
+      savedDecisionEmail: true,
+    });
+
+    renderSettingsPage(spy);
+
+    const emailToggle = await screen.findByRole('switch', {
+      name: /saved applications.*email/i,
+    });
+    await user.click(emailToggle);
+
+    expect(spy.updateProfileCalls).toBe(1);
+    expect(spy.updateProfileLastRequest?.savedDecisionPush).toBe(true);
+    expect(spy.updateProfileLastRequest?.savedDecisionEmail).toBe(false);
+  });
 });
