@@ -91,6 +91,70 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(notification.WatchZoneId).IsEqualTo("zone-1");
     }
 
+    [Test]
+    public async Task Should_NotCreateDuplicate_When_DecisionUpdateAlreadyExistsForUser()
+    {
+        // Arrange — Pro user matches via zone, but a DecisionUpdate row already
+        // exists for (user, applicationUid). Re-dispatch must be a no-op.
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        var existing = Notification.Create(
+            userId: "user-1",
+            applicationUid: "test-uid-001",
+            applicationName: "app-001",
+            watchZoneId: "zone-1",
+            applicationAddress: "1 High St",
+            applicationDescription: "Extension",
+            applicationType: "Householder",
+            authorityId: 1,
+            now: March2026,
+            decision: "Permitted",
+            eventType: NotificationEventType.DecisionUpdate,
+            sources: NotificationSources.Zone);
+        harness.NotificationRepo.Seed(existing);
+
+        // Act — re-dispatch the same decision event
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — still exactly one row
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_CreateDecisionUpdate_When_NewApplicationAlreadyExistsForSameUid()
+    {
+        // Arrange — user already has a NewApplication row for this uid; the
+        // DecisionUpdate must NOT collide (dedup keys on eventType too).
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        var existing = Notification.Create(
+            userId: "user-1",
+            applicationUid: "test-uid-001",
+            applicationName: "app-001",
+            watchZoneId: "zone-1",
+            applicationAddress: "1 High St",
+            applicationDescription: "Extension",
+            applicationType: "Householder",
+            authorityId: 1,
+            now: March2026,
+            eventType: NotificationEventType.NewApplication);
+        harness.NotificationRepo.Seed(existing);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — both rows exist
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(2);
+        await Assert.That(harness.NotificationRepo.All.Count(n => n.EventType == NotificationEventType.NewApplication)).IsEqualTo(1);
+        await Assert.That(harness.NotificationRepo.All.Count(n => n.EventType == NotificationEventType.DecisionUpdate)).IsEqualTo(1);
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
