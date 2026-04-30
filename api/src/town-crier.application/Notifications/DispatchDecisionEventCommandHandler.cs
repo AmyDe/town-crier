@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.Observability;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
@@ -141,6 +142,8 @@ public sealed class DispatchDecisionEventCommandHandler
             eventType: NotificationEventType.DecisionUpdate,
             sources: sources);
 
+        ApiMetrics.NotificationsCreated.Add(1);
+
         // OR-merge per-channel toggles across the matching sources. A user may
         // hit this path via Zone, Saved, or both — push fires when either
         // matching subscription opted into decision pushes.
@@ -165,6 +168,7 @@ public sealed class DispatchDecisionEventCommandHandler
                 await this.pushNotificationSender.SendAsync(notification, devices, ct)
                     .ConfigureAwait(false);
                 notification.MarkPushSent();
+                ApiMetrics.NotificationsSent.Add(1);
             }
         }
 
