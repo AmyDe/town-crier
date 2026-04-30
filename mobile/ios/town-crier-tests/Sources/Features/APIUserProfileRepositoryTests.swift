@@ -107,6 +107,8 @@ struct APIUserProfileRepositoryTests {
         "pushEnabled": false,
         "digestDay": "Wednesday",
         "emailDigestEnabled": true,
+        "savedDecisionPush": false,
+        "savedDecisionEmail": true,
         "tier": "Personal"
       }
       """
@@ -127,6 +129,30 @@ struct APIUserProfileRepositoryTests {
     #expect(result.pushEnabled == false)
     #expect(result.digestDay == .wednesday)
     #expect(result.emailDigestEnabled == true)
+    #expect(result.savedDecisionPush == false)
+    #expect(result.savedDecisionEmail == true)
+  }
+
+  @Test("fetch defaults savedDecision flags to true when omitted from response")
+  func fetch_savedDecisionFlagsDefaultTrue() async throws {
+    let json = """
+      {
+        "userId": "auth0|user-001",
+        "pushEnabled": true,
+        "digestDay": "Monday",
+        "emailDigestEnabled": true,
+        "tier": "Free"
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let profile = try await sut.fetch()
+
+    let result = try #require(profile)
+    #expect(result.savedDecisionPush == true)
+    #expect(result.savedDecisionEmail == true)
   }
 
   @Test("fetch returns nil on 404")
