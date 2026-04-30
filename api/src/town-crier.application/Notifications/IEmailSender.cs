@@ -4,11 +4,9 @@ namespace TownCrier.Application.Notifications;
 
 public interface IEmailSender
 {
-    /// <summary>
-    /// Sends a hourly/weekly digest email composed of zone-grouped notifications
-    /// and an optional Saved Applications section for bookmark-only decisions
-    /// that don't fall inside any of the user's watch zones.
-    /// </summary>
+    // Sends a hourly/weekly digest email composed of zone-grouped notifications
+    // (zoneSections) plus an optional Saved Applications section for bookmark-only
+    // decisions that don't fall inside any of the user's watch zones.
     Task SendDigestAsync(
         string userId,
         string email,
