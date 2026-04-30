@@ -69,6 +69,28 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(notification.EventType).IsEqualTo(NotificationEventType.DecisionUpdate);
     }
 
+    [Test]
+    public async Task Should_OrMergeIntoSingleNotification_When_UserMatchesViaBothZoneAndSaved()
+    {
+        // Arrange — Pro user has BOTH a covering zone AND a saved bookmark
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            CancellationToken.None);
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — exactly ONE row with Sources flags OR-merged
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        var notification = harness.NotificationRepo.All[0];
+        await Assert.That(notification.Sources).IsEqualTo(NotificationSources.Zone | NotificationSources.Saved);
+        await Assert.That(notification.WatchZoneId).IsEqualTo("zone-1");
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
