@@ -2,6 +2,7 @@ namespace TownCrier.Application.UserProfiles;
 
 public sealed record GetZonePreferencesResult(
     string ZoneId,
-    bool NewApplications,
-    bool StatusChanges,
-    bool DecisionUpdates);
+    bool NewApplicationPush,
+    bool NewApplicationEmail,
+    bool DecisionPush,
+    bool DecisionEmail);

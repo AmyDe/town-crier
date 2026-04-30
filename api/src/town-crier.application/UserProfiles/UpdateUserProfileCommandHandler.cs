@@ -21,7 +21,9 @@ public sealed class UpdateUserProfileCommandHandler
         profile.UpdatePreferences(new NotificationPreferences(
             command.PushEnabled,
             command.DigestDay,
-            command.EmailDigestEnabled));
+            command.EmailDigestEnabled,
+            command.SavedDecisionPush,
+            command.SavedDecisionEmail));
         await this.repository.SaveAsync(profile, ct).ConfigureAwait(false);
 
         return new UpdateUserProfileResult(
@@ -29,6 +31,8 @@ public sealed class UpdateUserProfileCommandHandler
             profile.NotificationPreferences.PushEnabled,
             profile.NotificationPreferences.DigestDay,
             profile.NotificationPreferences.EmailDigestEnabled,
+            profile.NotificationPreferences.SavedDecisionPush,
+            profile.NotificationPreferences.SavedDecisionEmail,
             profile.Tier);
     }
 }

@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Web.Endpoints;
 
@@ -169,9 +168,10 @@ internal static class WatchZoneEndpoints
             var fullCommand = new UpdateZonePreferencesCommand(
                 userId,
                 zoneId,
-                command.NewApplications,
-                command.StatusChanges,
-                command.DecisionUpdates);
+                command.NewApplicationPush,
+                command.NewApplicationEmail,
+                command.DecisionPush,
+                command.DecisionEmail);
 
             try
             {
@@ -181,13 +181,6 @@ internal static class WatchZoneEndpoints
             catch (UserProfileNotFoundException)
             {
                 return Results.NotFound();
-            }
-            catch (InsufficientTierException)
-            {
-                return Results.Json(
-                    new ApiErrorResponse("This feature requires a Pro subscription."),
-                    AppJsonSerializerContext.Default.ApiErrorResponse,
-                    statusCode: 403);
             }
         });
     }

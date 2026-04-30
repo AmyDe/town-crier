@@ -21,9 +21,10 @@ public sealed class GetZonePreferencesQueryHandlerTests
 
         // Assert
         await Assert.That(result.ZoneId).IsEqualTo("zone-1");
-        await Assert.That(result.NewApplications).IsTrue();
-        await Assert.That(result.StatusChanges).IsFalse();
-        await Assert.That(result.DecisionUpdates).IsFalse();
+        await Assert.That(result.NewApplicationPush).IsTrue();
+        await Assert.That(result.NewApplicationEmail).IsTrue();
+        await Assert.That(result.DecisionPush).IsTrue();
+        await Assert.That(result.DecisionEmail).IsTrue();
     }
 
     [Test]
@@ -38,9 +39,10 @@ public sealed class GetZonePreferencesQueryHandlerTests
         profile.SetZonePreferences(
             "zone-1",
             new ZoneNotificationPreferences(
-                NewApplications: true,
-                StatusChanges: true,
-                DecisionUpdates: false));
+                NewApplicationPush: true,
+                NewApplicationEmail: true,
+                DecisionPush: false,
+                DecisionEmail: false));
         await repo.SaveAsync(profile, CancellationToken.None);
 
         // Act
@@ -49,9 +51,10 @@ public sealed class GetZonePreferencesQueryHandlerTests
             CancellationToken.None);
 
         // Assert
-        await Assert.That(result.NewApplications).IsTrue();
-        await Assert.That(result.StatusChanges).IsTrue();
-        await Assert.That(result.DecisionUpdates).IsFalse();
+        await Assert.That(result.NewApplicationPush).IsTrue();
+        await Assert.That(result.NewApplicationEmail).IsTrue();
+        await Assert.That(result.DecisionPush).IsFalse();
+        await Assert.That(result.DecisionEmail).IsFalse();
     }
 
     [Test]

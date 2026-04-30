@@ -12,6 +12,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
 
         var n1 = Notification.Create(
             "user-1",
+            "uid-001",
             "APP/001",
             "zone-1",
             "1 High St",
@@ -21,6 +22,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
             new DateTimeOffset(2026, 3, 15, 10, 0, 0, TimeSpan.Zero));
         var n2 = Notification.Create(
             "user-2",
+            "uid-002",
             "APP/002",
             "zone-2",
             "2 High St",
@@ -30,6 +32,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
             new DateTimeOffset(2026, 3, 15, 11, 0, 0, TimeSpan.Zero));
         var n3 = Notification.Create(
             "user-1",
+            "uid-003",
             "APP/003",
             "zone-1",
             "3 High St",
@@ -59,6 +62,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
 
         var unsent = Notification.Create(
             "user-1",
+            "uid-001",
             "APP/001",
             "zone-1",
             "1 High St",
@@ -69,6 +73,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
 
         var sent = Notification.Create(
             "user-2",
+            "uid-002",
             "APP/002",
             "zone-2",
             "2 High St",
@@ -97,6 +102,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
 
         var sent = Notification.Create(
             "user-1",
+            "uid-001",
             "APP/001",
             "zone-1",
             "1 High St",

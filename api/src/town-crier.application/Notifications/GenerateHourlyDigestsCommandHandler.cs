@@ -68,7 +68,7 @@ public sealed class GenerateHourlyDigestsCommandHandler
             var zoneLookup = zones.ToDictionary(z => z.Id, z => z.Name);
 
             var digests = notifications
-                .GroupBy(n => n.WatchZoneId)
+                .GroupBy(n => n.WatchZoneId ?? string.Empty)
                 .Select(g => new WatchZoneDigest(
                     zoneLookup.GetValueOrDefault(g.Key, "Unknown Zone"),
                     g.ToList()))

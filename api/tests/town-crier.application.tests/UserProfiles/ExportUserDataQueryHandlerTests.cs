@@ -70,9 +70,10 @@ public sealed class ExportUserDataQueryHandlerTests
             DigestDay: DayOfWeek.Friday,
             EmailDigestEnabled: false));
         profile.SetZonePreferences("zone-1", new ZoneNotificationPreferences(
-            NewApplications: true,
-            StatusChanges: false,
-            DecisionUpdates: false));
+            NewApplicationPush: true,
+            NewApplicationEmail: false,
+            DecisionPush: false,
+            DecisionEmail: false));
         await harness.UserProfileRepository.SaveAsync(profile, CancellationToken.None);
 
         // Act
@@ -86,7 +87,31 @@ public sealed class ExportUserDataQueryHandlerTests
         await Assert.That(result.NotificationPreferences.EmailDigestEnabled).IsFalse();
         await Assert.That(result.NotificationPreferences.ZonePreferences).HasCount().EqualTo(1);
         await Assert.That(result.NotificationPreferences.ZonePreferences[0].ZoneId).IsEqualTo("zone-1");
-        await Assert.That(result.NotificationPreferences.ZonePreferences[0].NewApplications).IsTrue();
+        await Assert.That(result.NotificationPreferences.ZonePreferences[0].NewApplicationPush).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_IncludeSavedDecisionFlags_When_ExportingNotificationPreferences()
+    {
+        // Arrange
+        var harness = new ExportUserDataHarness();
+        var profile = UserProfile.Register("auth0|user1");
+        profile.UpdatePreferences(new NotificationPreferences(
+            PushEnabled: true,
+            DigestDay: DayOfWeek.Monday,
+            EmailDigestEnabled: true,
+            SavedDecisionPush: false,
+            SavedDecisionEmail: false));
+        await harness.UserProfileRepository.SaveAsync(profile, CancellationToken.None);
+
+        // Act
+        var result = await harness.Handler.HandleAsync(
+            new ExportUserDataQuery("auth0|user1"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.NotificationPreferences.SavedDecisionPush).IsFalse();
+        await Assert.That(result.NotificationPreferences.SavedDecisionEmail).IsFalse();
     }
 
     [Test]
@@ -290,6 +315,7 @@ public sealed class ExportUserDataQueryHandlerTests
     {
         return Notification.Create(
             userId: userId,
+            applicationUid: $"uid-{applicationName}",
             applicationName: applicationName,
             watchZoneId: "zone-1",
             applicationAddress: "10 Example St",

@@ -36,9 +36,14 @@ public sealed class DispatchNotificationCommandHandler
         var zone = command.MatchedZone;
         var now = this.timeProvider.GetUtcNow();
 
-        // Duplicate suppression: same application + same user = one notification
+        // Duplicate suppression: dedup by (userId, applicationUid, eventType).
+        // This handler always emits NewApplication; DecisionUpdate dispatch lives
+        // on a separate path so the same user can receive one of each per app.
         var existing = await this.notificationRepository.GetByUserAndApplicationAsync(
-            zone.UserId, application.Name, ct).ConfigureAwait(false);
+            zone.UserId,
+            application.Uid,
+            NotificationEventType.NewApplication,
+            ct).ConfigureAwait(false);
 
         if (existing is not null)
         {
@@ -57,6 +62,7 @@ public sealed class DispatchNotificationCommandHandler
         // Create notification record
         var notification = Notification.Create(
             userId: zone.UserId,
+            applicationUid: application.Uid,
             applicationName: application.Name,
             watchZoneId: zone.Id,
             applicationAddress: application.Address,
@@ -76,7 +82,7 @@ public sealed class DispatchNotificationCommandHandler
 
         // Check zone-level preferences for new applications
         var zonePrefs = profile.GetZonePreferences(zone.Id);
-        if (!zonePrefs.NewApplications)
+        if (!zonePrefs.NewApplicationPush)
         {
             await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
             return;

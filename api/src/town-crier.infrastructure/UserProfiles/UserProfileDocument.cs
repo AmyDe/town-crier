@@ -21,6 +21,12 @@ internal sealed class UserProfileDocument
     // — so we use `bool?` and coalesce at `ToDomain` time.
     public bool? EmailDigestEnabled { get; init; }
 
+    // Nullable for the same reason as EmailDigestEnabled — legacy Cosmos documents
+    // predating tc-so3a's saved-decision flags must hydrate with default-true.
+    public bool? SavedDecisionPush { get; init; }
+
+    public bool? SavedDecisionEmail { get; init; }
+
     // Legacy field — kept for backward compatibility with existing Cosmos documents.
     // No longer written; ignored during domain reconstitution.
     public bool EmailInstantEnabled { get; init; }
@@ -53,6 +59,8 @@ internal sealed class UserProfileDocument
             PushEnabled = profile.NotificationPreferences.PushEnabled,
             DigestDay = profile.NotificationPreferences.DigestDay,
             EmailDigestEnabled = profile.NotificationPreferences.EmailDigestEnabled,
+            SavedDecisionPush = profile.NotificationPreferences.SavedDecisionPush,
+            SavedDecisionEmail = profile.NotificationPreferences.SavedDecisionEmail,
             ZonePreferences = new Dictionary<string, ZoneNotificationPreferences>(profile.AllZonePreferences),
             Tier = profile.Tier.ToString(),
             SubscriptionExpiry = profile.SubscriptionExpiry,
@@ -68,7 +76,9 @@ internal sealed class UserProfileDocument
         var notificationPreferences = new NotificationPreferences(
             this.PushEnabled,
             this.DigestDay,
-            this.EmailDigestEnabled ?? true);
+            this.EmailDigestEnabled ?? true,
+            this.SavedDecisionPush ?? true,
+            this.SavedDecisionEmail ?? true);
 
         return UserProfile.Reconstitute(
             this.UserId,

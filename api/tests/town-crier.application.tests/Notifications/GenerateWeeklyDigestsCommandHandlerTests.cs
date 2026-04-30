@@ -393,6 +393,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         {
             var notification = Notification.Create(
                 userId: userId,
+                applicationUid: $"uid-{watchZoneId}-{i:D3}",
                 applicationName: $"app-{watchZoneId}-{i:D3}",
                 watchZoneId: watchZoneId,
                 applicationAddress: $"{i} Test Street",

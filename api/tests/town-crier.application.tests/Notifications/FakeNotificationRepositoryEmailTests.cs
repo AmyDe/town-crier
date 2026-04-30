@@ -12,6 +12,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var unsent = Notification.Create(
             "user-1",
+            "uid-0001",
             "APP/2026/0001",
             "zone-1",
             "1 High St",
@@ -22,6 +23,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var sent = Notification.Create(
             "user-1",
+            "uid-0002",
             "APP/2026/0002",
             "zone-1",
             "2 High St",
@@ -50,6 +52,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var older = Notification.Create(
             "user-1",
+            "uid-0001",
             "APP/2026/0001",
             "zone-1",
             "1 High St",
@@ -60,6 +63,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var newer = Notification.Create(
             "user-1",
+            "uid-0002",
             "APP/2026/0002",
             "zone-1",
             "2 High St",
@@ -87,6 +91,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var sent = Notification.Create(
             "user-1",
+            "uid-0001",
             "APP/2026/0001",
             "zone-1",
             "1 High St",
@@ -113,6 +118,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var user1Notification = Notification.Create(
             "user-1",
+            "uid-0001",
             "APP/2026/0001",
             "zone-1",
             "1 High St",
@@ -123,6 +129,7 @@ public sealed class FakeNotificationRepositoryEmailTests
 
         var user2Notification = Notification.Create(
             "user-2",
+            "uid-0002",
             "APP/2026/0002",
             "zone-2",
             "2 High St",

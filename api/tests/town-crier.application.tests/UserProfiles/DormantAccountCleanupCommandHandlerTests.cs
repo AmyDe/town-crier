@@ -88,6 +88,7 @@ public sealed class DormantAccountCleanupCommandHandlerTests
         harness.NotificationRepository.Seed(
             TownCrier.Domain.Notifications.Notification.Create(
                 userId: "auth0|dormant",
+                applicationUid: "uid-app-a",
                 applicationName: "app-a",
                 watchZoneId: "zone-1",
                 applicationAddress: "10 Example St",

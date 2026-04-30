@@ -21,9 +21,10 @@ public sealed class UpdateZonePreferencesCommandHandler
             ?? throw UserProfileNotFoundException.ForUser(command.UserId);
 
         var preferences = new ZoneNotificationPreferences(
-            command.NewApplications,
-            command.StatusChanges,
-            command.DecisionUpdates);
+            command.NewApplicationPush,
+            command.NewApplicationEmail,
+            command.DecisionPush,
+            command.DecisionEmail);
 
         profile.SetZonePreferences(command.ZoneId, preferences);
 
@@ -31,8 +32,9 @@ public sealed class UpdateZonePreferencesCommandHandler
 
         return new UpdateZonePreferencesResult(
             command.ZoneId,
-            preferences.NewApplications,
-            preferences.StatusChanges,
-            preferences.DecisionUpdates);
+            preferences.NewApplicationPush,
+            preferences.NewApplicationEmail,
+            preferences.DecisionPush,
+            preferences.DecisionEmail);
     }
 }

@@ -60,4 +60,30 @@ public sealed class GetUserProfileQueryHandlerTests
         await Assert.That(result!.EmailDigestEnabled).IsTrue();
         await Assert.That(result.DigestDay).IsEqualTo(DayOfWeek.Monday);
     }
+
+    [Test]
+    public async Task Should_ReturnSavedDecisionFlags_When_ProfileExists()
+    {
+        // Arrange — toggle saved-decision flags off so the test verifies persistence rather than defaults.
+        var repository = new FakeUserProfileRepository();
+        var profile = UserProfile.Register("auth0|saved-decision-user");
+        profile.UpdatePreferences(new NotificationPreferences(
+            PushEnabled: true,
+            DigestDay: DayOfWeek.Monday,
+            EmailDigestEnabled: true,
+            SavedDecisionPush: false,
+            SavedDecisionEmail: false));
+        await repository.SaveAsync(profile, CancellationToken.None);
+
+        var handler = new GetUserProfileQueryHandler(repository);
+        var query = new GetUserProfileQuery("auth0|saved-decision-user");
+
+        // Act
+        var result = await handler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.SavedDecisionPush).IsFalse();
+        await Assert.That(result.SavedDecisionEmail).IsFalse();
+    }
 }

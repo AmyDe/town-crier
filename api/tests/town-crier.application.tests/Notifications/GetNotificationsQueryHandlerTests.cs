@@ -47,6 +47,7 @@ public sealed class GetNotificationsQueryHandlerTests
 
         var older = Notification.Create(
             "user-1",
+            "uid-001",
             "app-001",
             "zone-1",
             "1 High St",
@@ -56,6 +57,7 @@ public sealed class GetNotificationsQueryHandlerTests
             March2026.AddDays(-2));
         var newer = Notification.Create(
             "user-1",
+            "uid-002",
             "app-002",
             "zone-1",
             "2 High St",
@@ -119,6 +121,7 @@ public sealed class GetNotificationsQueryHandlerTests
         {
             var notification = Notification.Create(
                 "user-1",
+                $"uid-{i:D3}",
                 $"app-{i:D3}",
                 "zone-1",
                 "Address",
@@ -147,6 +150,7 @@ public sealed class GetNotificationsQueryHandlerTests
 
         var notification = Notification.Create(
             "user-1",
+            "uid-001",
             "app-001",
             "zone-1",
             "1 High St",
@@ -183,6 +187,7 @@ public sealed class GetNotificationsQueryHandlerTests
         {
             var notification = Notification.Create(
                 userId,
+                $"{userId}-uid-{i:D3}",
                 $"{userId}-app-{i:D3}",
                 "zone-1",
                 "Address",

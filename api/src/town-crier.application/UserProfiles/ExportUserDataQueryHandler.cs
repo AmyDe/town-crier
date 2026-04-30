@@ -60,12 +60,15 @@ public sealed class ExportUserDataQueryHandler
                 PushEnabled: profile.NotificationPreferences.PushEnabled,
                 DigestDay: profile.NotificationPreferences.DigestDay,
                 EmailDigestEnabled: profile.NotificationPreferences.EmailDigestEnabled,
+                SavedDecisionPush: profile.NotificationPreferences.SavedDecisionPush,
+                SavedDecisionEmail: profile.NotificationPreferences.SavedDecisionEmail,
                 ZonePreferences: profile.AllZonePreferences
                     .Select(kvp => new ExportedZonePreferences(
                         ZoneId: kvp.Key,
-                        NewApplications: kvp.Value.NewApplications,
-                        StatusChanges: kvp.Value.StatusChanges,
-                        DecisionUpdates: kvp.Value.DecisionUpdates))
+                        NewApplicationPush: kvp.Value.NewApplicationPush,
+                        NewApplicationEmail: kvp.Value.NewApplicationEmail,
+                        DecisionPush: kvp.Value.DecisionPush,
+                        DecisionEmail: kvp.Value.DecisionEmail))
                     .ToList()),
             Subscription: new ExportedSubscription(
                 Tier: profile.Tier,
@@ -91,6 +94,7 @@ public sealed class ExportUserDataQueryHandler
                     ApplicationDescription: n.ApplicationDescription,
                     ApplicationType: n.ApplicationType,
                     AuthorityId: n.AuthorityId,
+                    Decision: n.Decision,
                     PushSent: n.PushSent,
                     EmailSent: n.EmailSent,
                     CreatedAt: n.CreatedAt))
