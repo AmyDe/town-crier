@@ -251,6 +251,66 @@ public sealed class GenerateHourlyDigestsCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_RouteBookmarkOnlyDecisionsToSavedApplications_When_NoZoneAssociation()
+    {
+        // Arrange — user has one zone-matched new app and one bookmark-only decision
+        var (handler, notificationRepo, userProfileRepo, emailSender, watchZoneRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithEmail("test@example.com")
+            .WithTier(SubscriptionTier.Personal)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("Home")
+            .Build();
+        await watchZoneRepo.SaveAsync(zone, CancellationToken.None);
+
+        var zoneRow = Notification.Create(
+            userId: "user-1",
+            applicationUid: "uid-zone",
+            applicationName: "APP/ZONE",
+            watchZoneId: "zone-1",
+            applicationAddress: "12 Acacia Ave",
+            applicationDescription: "Extension",
+            applicationType: "Householder",
+            authorityId: 1,
+            now: DateTimeOffset.UtcNow);
+        notificationRepo.Seed(zoneRow);
+
+        var savedRow = Notification.Create(
+            userId: "user-1",
+            applicationUid: "uid-saved",
+            applicationName: "APP/SAVED",
+            watchZoneId: null,
+            applicationAddress: "9 Hill Lane",
+            applicationDescription: "Change of use",
+            applicationType: "Full",
+            authorityId: 1,
+            now: DateTimeOffset.UtcNow,
+            decision: "Rejected",
+            eventType: NotificationEventType.DecisionUpdate,
+            sources: NotificationSources.Saved);
+        notificationRepo.Seed(savedRow);
+
+        // Act
+        await handler.HandleAsync(new GenerateHourlyDigestsCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(emailSender.DigestsSent).HasCount().EqualTo(1);
+        var record = emailSender.DigestsSent[0];
+        await Assert.That(record.Digests).HasCount().EqualTo(1);
+        await Assert.That(record.Digests[0].WatchZoneName).IsEqualTo("Home");
+        await Assert.That(record.Digests[0].Notifications).HasCount().EqualTo(1);
+        await Assert.That(record.SavedApplications).HasCount().EqualTo(1);
+        await Assert.That(record.SavedApplications[0].ApplicationUid).IsEqualTo("uid-saved");
+    }
+
+    [Test]
     public async Task Should_NotMarkAsSent_When_UserSkipped()
     {
         // Arrange
