@@ -60,20 +60,28 @@ struct UserProfileRepositoryTests {
         tier: .personal,
         pushEnabled: false,
         digestDay: .wednesday,
-        emailDigestEnabled: false
+        emailDigestEnabled: false,
+        savedDecisionPush: false,
+        savedDecisionEmail: true
       ))
 
     let updated = try await spy.update(
       pushEnabled: false,
       digestDay: .wednesday,
-      emailDigestEnabled: false
+      emailDigestEnabled: false,
+      savedDecisionPush: false,
+      savedDecisionEmail: true
     )
 
     #expect(spy.updateCalls.count == 1)
     #expect(spy.updateCalls[0].pushEnabled == false)
     #expect(spy.updateCalls[0].digestDay == .wednesday)
     #expect(spy.updateCalls[0].emailDigestEnabled == false)
+    #expect(spy.updateCalls[0].savedDecisionPush == false)
+    #expect(spy.updateCalls[0].savedDecisionEmail == true)
     #expect(updated.pushEnabled == false)
+    #expect(updated.savedDecisionPush == false)
+    #expect(updated.savedDecisionEmail == true)
   }
 
   @Test("protocol requires delete method")
