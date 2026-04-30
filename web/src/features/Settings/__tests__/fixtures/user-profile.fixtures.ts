@@ -8,6 +8,8 @@ export function freeUserProfile(
     pushEnabled: true,
     emailDigestEnabled: true,
     digestDay: 1,
+    savedDecisionPush: true,
+    savedDecisionEmail: true,
     tier: 'Free' as SubscriptionTier,
     ...overrides,
   };

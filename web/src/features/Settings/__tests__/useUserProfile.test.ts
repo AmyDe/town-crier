@@ -160,6 +160,8 @@ describe('useUserProfile', () => {
       pushEnabled: true,
       emailDigestEnabled: false,
       digestDay: 1,
+      savedDecisionPush: true,
+      savedDecisionEmail: true,
     });
   });
 
