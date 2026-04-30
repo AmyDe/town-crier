@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.UserProfiles;
@@ -60,6 +61,14 @@ public sealed class GenerateWeeklyDigestsCommandHandler
             if (notifications.Count == 0)
             {
                 continue;
+            }
+
+            foreach (var notification in notifications)
+            {
+                ApiMetrics.DigestRowsEmitted.Add(
+                    1,
+                    new KeyValuePair<string, object?>("cadence", "weekly"),
+                    new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()));
             }
 
             if (wantsPush)
