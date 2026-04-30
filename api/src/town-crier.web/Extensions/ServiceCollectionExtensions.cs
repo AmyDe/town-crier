@@ -187,6 +187,12 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<DispatchDecisionAlertCommandHandler>();
         services.AddTransient<IDecisionAlertDispatcher, DispatchDecisionAlertViaHandler>();
 
+        // Decision-event dispatch — unified fan-out for zone matchers and
+        // bookmark holders. Wiring it into the polling pipeline is the
+        // responsibility of bead tc-so3a.7. Registered here for symmetry
+        // with the worker host.
+        services.AddTransient<DispatchDecisionEventCommandHandler>();
+
         return services;
     }
 
