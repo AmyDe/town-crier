@@ -28,6 +28,8 @@
              Link="Polling\Shared\FakeCycleSelector.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\FakeDecisionAlertDispatcher.cs"
              Link="Polling\Shared\FakeDecisionAlertDispatcher.cs" />
+    <Compile Include="..\town-crier.application.tests\Polling\FakeDecisionEventDispatcher.cs"
+             Link="Polling\Shared\FakeDecisionEventDispatcher.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\FakeNotificationEnqueuer.cs"
              Link="Polling\Shared\FakeNotificationEnqueuer.cs" />
     <Compile Include="..\town-crier.application.tests\Polling\FakePlanItClient.cs"
