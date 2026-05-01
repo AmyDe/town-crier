@@ -45,4 +45,27 @@ struct NotificationsViewTests {
 
     _ = view
   }
+
+  // MARK: - Row Badge
+
+  @Test("NotificationRow exposes a decision badge for DecisionUpdate items")
+  func notificationRow_decisionUpdate_hasBadge() {
+    let row = NotificationRow(item: .permittedDecision)
+
+    #expect(row.shouldShowDecisionBadge)
+  }
+
+  @Test("NotificationRow hides badge for NewApplication items")
+  func notificationRow_newApplication_hidesBadge() {
+    let row = NotificationRow(item: .rearExtension)
+
+    #expect(!row.shouldShowDecisionBadge)
+  }
+
+  @Test("NotificationRow hides badge when DecisionUpdate has unknown decision")
+  func notificationRow_unknownDecision_hidesBadge() {
+    let row = NotificationRow(item: .unknownDecision)
+
+    #expect(!row.shouldShowDecisionBadge)
+  }
 }
