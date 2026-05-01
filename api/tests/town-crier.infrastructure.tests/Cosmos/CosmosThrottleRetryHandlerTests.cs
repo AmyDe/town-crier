@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 using System.Net;
 using TownCrier.Infrastructure.Cosmos;
+using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.Tests.Cosmos;
 
@@ -235,6 +237,147 @@ public sealed class CosmosThrottleRetryHandlerTests
         // Default fallback should be > 0 and within the per-attempt cap.
         await Assert.That(delays[0]).IsGreaterThan(TimeSpan.Zero);
         await Assert.That(delays[0]).IsLessThanOrEqualTo(TimeSpan.FromMilliseconds(750));
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_IncrementThrottleCounter_When_429ResponseObserved()
+    {
+        // Arrange — one 429 followed by a 200 so we observe a single throttle
+        // event regardless of whether the retry succeeds.
+        var inner = new StubHttpHandler();
+        inner.EnqueueResponse(
+            HttpStatusCode.TooManyRequests,
+            content: null,
+            headers: [new("x-ms-retry-after-ms", "10")]);
+        inner.EnqueueResponse(HttpStatusCode.OK, """{"ok":true}""");
+
+        var throttleMeasurements = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == CosmosInstrumentation.MeterName
+                && instrument.Name == "towncrier.cosmos.throttles")
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>(
+            (_, measurement, _, _) => throttleMeasurements.Add(measurement));
+        listener.Start();
+
+        var handler = new CosmosThrottleRetryHandler(
+            maxAttempts: 3,
+            totalWaitBudget: TimeSpan.FromMilliseconds(1500),
+            perAttemptCap: TimeSpan.FromMilliseconds(750),
+            jitter: _ => 0,
+            delay: (_, _) => Task.CompletedTask)
+        {
+            InnerHandler = inner,
+        };
+
+        using var client = new HttpClient(handler) { BaseAddress = BaseAddress };
+
+        // Act
+        using var response = await client.GetAsync(Path);
+
+        // Assert
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(throttleMeasurements).HasCount().EqualTo(1);
+        await Assert.That(throttleMeasurements[0]).IsEqualTo(1L);
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_IncrementThrottleCounterPerObserved429_When_MultipleRetriesFire()
+    {
+        // Arrange — two 429s (both retries fire), then a 200.
+        var inner = new StubHttpHandler();
+        inner.EnqueueResponse(
+            HttpStatusCode.TooManyRequests,
+            content: null,
+            headers: [new("x-ms-retry-after-ms", "10")]);
+        inner.EnqueueResponse(
+            HttpStatusCode.TooManyRequests,
+            content: null,
+            headers: [new("x-ms-retry-after-ms", "10")]);
+        inner.EnqueueResponse(HttpStatusCode.OK);
+
+        var throttleMeasurements = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == CosmosInstrumentation.MeterName
+                && instrument.Name == "towncrier.cosmos.throttles")
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>(
+            (_, measurement, _, _) => throttleMeasurements.Add(measurement));
+        listener.Start();
+
+        var handler = new CosmosThrottleRetryHandler(
+            maxAttempts: 5,
+            totalWaitBudget: TimeSpan.FromMilliseconds(1500),
+            perAttemptCap: TimeSpan.FromMilliseconds(750),
+            jitter: _ => 0,
+            delay: (_, _) => Task.CompletedTask)
+        {
+            InnerHandler = inner,
+        };
+
+        using var client = new HttpClient(handler) { BaseAddress = BaseAddress };
+
+        // Act
+        using var response = await client.GetAsync(Path);
+
+        // Assert — every 429 observed by the handler increments the counter,
+        // including ones that are subsequently retried successfully.
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(throttleMeasurements).HasCount().EqualTo(2);
+    }
+
+    [Test]
+    [NotInParallel]
+    public async Task Should_NotIncrementThrottleCounter_When_NoThrottleObserved()
+    {
+        // Arrange — clean 200, the counter must not fire.
+        var inner = new StubHttpHandler();
+        inner.EnqueueResponse(HttpStatusCode.OK);
+
+        var throttleMeasurements = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Meter.Name == CosmosInstrumentation.MeterName
+                && instrument.Name == "towncrier.cosmos.throttles")
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>(
+            (_, measurement, _, _) => throttleMeasurements.Add(measurement));
+        listener.Start();
+
+        var handler = new CosmosThrottleRetryHandler(
+            maxAttempts: 3,
+            totalWaitBudget: TimeSpan.FromMilliseconds(1500),
+            perAttemptCap: TimeSpan.FromMilliseconds(750),
+            jitter: _ => 0,
+            delay: (_, _) => Task.CompletedTask)
+        {
+            InnerHandler = inner,
+        };
+
+        using var client = new HttpClient(handler) { BaseAddress = BaseAddress };
+
+        // Act
+        using var response = await client.GetAsync(Path);
+
+        // Assert
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        await Assert.That(throttleMeasurements).IsEmpty();
     }
 
     [Test]
