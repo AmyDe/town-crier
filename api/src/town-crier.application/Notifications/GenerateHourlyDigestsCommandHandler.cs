@@ -68,7 +68,27 @@ public sealed class GenerateHourlyDigestsCommandHandler
 
             var zoneLookup = zones.ToDictionary(z => z.Id, z => z.Name);
 
-            var digests = notifications
+            // Per-zone instant-email gating (T2 — WatchZone.EmailInstantEnabled).
+            // Notifications attached to a zone with EmailInstantEnabled=false are
+            // excluded from this hourly digest (and left unsent so the weekly
+            // digest can still pick them up — weekly is unaffected by per-zone
+            // flags). Saved-only notifications (WatchZoneId null) bypass the
+            // per-zone gate; they're driven by the saved bookmark contract.
+            var instantEnabledZones = zones
+                .Where(z => z.EmailInstantEnabled)
+                .Select(z => z.Id)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var includedNotifications = notifications
+                .Where(n => n.WatchZoneId is null || instantEnabledZones.Contains(n.WatchZoneId))
+                .ToList();
+
+            if (includedNotifications.Count == 0)
+            {
+                continue;
+            }
+
+            var digests = includedNotifications
                 .Where(n => n.WatchZoneId is not null)
                 .GroupBy(n => n.WatchZoneId!)
                 .Select(g => new WatchZoneDigest(
@@ -76,7 +96,7 @@ public sealed class GenerateHourlyDigestsCommandHandler
                     g.ToList()))
                 .ToList();
 
-            var savedApplications = notifications
+            var savedApplications = includedNotifications
                 .Where(n => n.WatchZoneId is null)
                 .ToList();
 
@@ -84,7 +104,7 @@ public sealed class GenerateHourlyDigestsCommandHandler
                 .SendDigestAsync(profile.UserId, profile.Email, digests, savedApplications, ct)
                 .ConfigureAwait(false);
 
-            foreach (var notification in notifications)
+            foreach (var notification in includedNotifications)
             {
                 ApiMetrics.DigestRowsEmitted.Add(
                     1,

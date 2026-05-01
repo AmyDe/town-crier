@@ -352,12 +352,19 @@ public sealed class GenerateHourlyDigestsCommandHandlerTests
         await Assert.That(digests[0].WatchZoneName).IsEqualTo("Home");
         await Assert.That(digests[0].Notifications).HasCount().EqualTo(2);
 
-        // Zone-1 notifications marked sent; zone-2 notifications still unsent
-        // (so they remain available for the weekly digest, which ignores per-zone flags).
-        var zone1Sent = notificationRepo.All.Count(n => n.WatchZoneId == "zone-1" && n.EmailSent);
-        var zone2Unsent = notificationRepo.All.Count(n => n.WatchZoneId == "zone-2" && !n.EmailSent);
-        await Assert.That(zone1Sent).IsEqualTo(2);
-        await Assert.That(zone2Unsent).IsEqualTo(3);
+        // Zone-1 notifications all marked email-sent; zone-2 notifications all
+        // still unsent (so they remain available for the weekly digest, which
+        // ignores per-zone flags). Note: FakeNotificationRepository.SaveAsync
+        // appends rather than upserts so checking the *distinct* state per
+        // application UID — same Notification reference is shared.
+        var zone1Sent = notificationRepo.All
+            .Where(n => n.WatchZoneId == "zone-1")
+            .All(n => n.EmailSent);
+        var zone2Unsent = notificationRepo.All
+            .Where(n => n.WatchZoneId == "zone-2")
+            .All(n => !n.EmailSent);
+        await Assert.That(zone1Sent).IsTrue();
+        await Assert.That(zone2Unsent).IsTrue();
     }
 
     [Test]
