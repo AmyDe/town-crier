@@ -335,7 +335,7 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        FakeDecisionAlertDispatcher? decisionAlertDispatcher = null,
+        FakeDecisionEventDispatcher? decisionEventDispatcher = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
         PollingOptions? options = null)
@@ -348,7 +348,7 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            decisionAlertDispatcher ?? new FakeDecisionAlertDispatcher(),
+            decisionEventDispatcher ?? new FakeDecisionEventDispatcher(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);
@@ -363,7 +363,7 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         FakePlanningApplicationRepository? repository = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        FakeDecisionAlertDispatcher? decisionAlertDispatcher = null,
+        FakeDecisionEventDispatcher? decisionEventDispatcher = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
         PollingOptions? options = null)
@@ -376,7 +376,7 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
             authorityProvider,
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            decisionAlertDispatcher ?? new FakeDecisionAlertDispatcher(),
+            decisionEventDispatcher ?? new FakeDecisionEventDispatcher(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);

@@ -23,7 +23,10 @@ public sealed class GetNotificationsQueryHandler
                 n.ApplicationDescription,
                 n.ApplicationType,
                 n.AuthorityId,
-                n.CreatedAt))
+                n.CreatedAt,
+                n.EventType.ToString(),
+                n.Decision,
+                n.Sources.ToString()))
             .ToList();
 
         return new GetNotificationsResult(notifications, total, query.Page);

@@ -40,7 +40,9 @@ internal static class UserProfileEndpoints
                 userId,
                 command.PushEnabled,
                 command.DigestDay,
-                command.EmailDigestEnabled);
+                command.EmailDigestEnabled,
+                command.SavedDecisionPush,
+                command.SavedDecisionEmail);
 
             try
             {

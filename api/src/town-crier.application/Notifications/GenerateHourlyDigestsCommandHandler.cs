@@ -1,3 +1,4 @@
+using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Domain.Entitlements;
@@ -68,17 +69,28 @@ public sealed class GenerateHourlyDigestsCommandHandler
             var zoneLookup = zones.ToDictionary(z => z.Id, z => z.Name);
 
             var digests = notifications
-                .GroupBy(n => n.WatchZoneId ?? string.Empty)
+                .Where(n => n.WatchZoneId is not null)
+                .GroupBy(n => n.WatchZoneId!)
                 .Select(g => new WatchZoneDigest(
                     zoneLookup.GetValueOrDefault(g.Key, "Unknown Zone"),
                     g.ToList()))
                 .ToList();
 
-            await this.emailSender.SendDigestAsync(profile.UserId, profile.Email, digests, ct)
+            var savedApplications = notifications
+                .Where(n => n.WatchZoneId is null)
+                .ToList();
+
+            await this.emailSender
+                .SendDigestAsync(profile.UserId, profile.Email, digests, savedApplications, ct)
                 .ConfigureAwait(false);
 
             foreach (var notification in notifications)
             {
+                ApiMetrics.DigestRowsEmitted.Add(
+                    1,
+                    new KeyValuePair<string, object?>("cadence", "hourly"),
+                    new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()));
+
                 notification.MarkEmailSent();
                 await this.notificationRepository.SaveAsync(notification, ct)
                     .ConfigureAwait(false);

@@ -1,4 +1,3 @@
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.OfferCodes;
@@ -12,7 +11,6 @@ public sealed class ExportUserDataQueryHandler
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly INotificationRepository notificationRepository;
-    private readonly IDecisionAlertRepository decisionAlertRepository;
     private readonly ISavedApplicationRepository savedApplicationRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IOfferCodeRepository offerCodeRepository;
@@ -21,7 +19,6 @@ public sealed class ExportUserDataQueryHandler
         IUserProfileRepository userProfileRepository,
         IWatchZoneRepository watchZoneRepository,
         INotificationRepository notificationRepository,
-        IDecisionAlertRepository decisionAlertRepository,
         ISavedApplicationRepository savedApplicationRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IOfferCodeRepository offerCodeRepository)
@@ -29,7 +26,6 @@ public sealed class ExportUserDataQueryHandler
         this.userProfileRepository = userProfileRepository;
         this.watchZoneRepository = watchZoneRepository;
         this.notificationRepository = notificationRepository;
-        this.decisionAlertRepository = decisionAlertRepository;
         this.savedApplicationRepository = savedApplicationRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.offerCodeRepository = offerCodeRepository;
@@ -48,7 +44,6 @@ public sealed class ExportUserDataQueryHandler
         var watchZones = await this.watchZoneRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
         var notifications = await this.notificationRepository.GetByUserSinceAsync(
             query.UserId, DateTimeOffset.MinValue, ct).ConfigureAwait(false);
-        var decisionAlerts = await this.decisionAlertRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
         var savedApplications = await this.savedApplicationRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
         var deviceRegistrations = await this.deviceRegistrationRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
         var offerCodes = await this.offerCodeRepository.GetRedeemedByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
@@ -98,16 +93,6 @@ public sealed class ExportUserDataQueryHandler
                     PushSent: n.PushSent,
                     EmailSent: n.EmailSent,
                     CreatedAt: n.CreatedAt))
-                .ToList(),
-            DecisionAlerts: decisionAlerts
-                .Select(a => new ExportedDecisionAlert(
-                    Id: a.Id,
-                    ApplicationUid: a.ApplicationUid,
-                    ApplicationName: a.ApplicationName,
-                    ApplicationAddress: a.ApplicationAddress,
-                    Decision: a.Decision,
-                    PushSent: a.PushSent,
-                    CreatedAt: a.CreatedAt))
                 .ToList(),
             SavedApplications: savedApplications
                 .Select(s => new ExportedSavedApplication(

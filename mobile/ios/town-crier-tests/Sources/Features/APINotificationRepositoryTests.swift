@@ -75,7 +75,10 @@ struct APINotificationRepositoryTests {
             "applicationDescription": "Erection of two-storey rear extension",
             "applicationType": "Full Planning Application",
             "authorityId": 123,
-            "createdAt": "2026-04-10T14:30:00Z"
+            "createdAt": "2026-04-10T14:30:00Z",
+            "eventType": "DecisionUpdate",
+            "decision": "Permitted",
+            "sources": "Zone, Saved"
           }
         ],
         "total": 42,
@@ -97,6 +100,72 @@ struct APINotificationRepositoryTests {
     #expect(item.applicationDescription == "Erection of two-storey rear extension")
     #expect(item.applicationType == "Full Planning Application")
     #expect(item.authorityId == 123)
+    #expect(item.eventType == "DecisionUpdate")
+    #expect(item.decision == "Permitted")
+    #expect(item.sources == "Zone, Saved")
+  }
+
+  @Test("fetch maps NewApplication event with null decision")
+  func fetch_newApplicationEvent_nullDecision() async throws {
+    let json = """
+      {
+        "notifications": [
+          {
+            "applicationName": "New app",
+            "applicationAddress": "Address",
+            "applicationDescription": "Description",
+            "applicationType": "Full",
+            "authorityId": 1,
+            "createdAt": "2026-04-10T14:30:00Z",
+            "eventType": "NewApplication",
+            "decision": null,
+            "sources": "Zone"
+          }
+        ],
+        "total": 1,
+        "page": 1
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let result = try await sut.fetch(page: 1, pageSize: 20)
+
+    let item = result.notifications[0]
+    #expect(item.eventType == "NewApplication")
+    #expect(item.decision == nil)
+    #expect(item.sources == "Zone")
+  }
+
+  @Test("fetch tolerates missing eventType, decision, sources for older API responses")
+  func fetch_missingNewFields_defaultsApplied() async throws {
+    let json = """
+      {
+        "notifications": [
+          {
+            "applicationName": "Legacy",
+            "applicationAddress": "Address",
+            "applicationDescription": "Description",
+            "applicationType": "Full",
+            "authorityId": 1,
+            "createdAt": "2026-04-10T14:30:00Z"
+          }
+        ],
+        "total": 1,
+        "page": 1
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let result = try await sut.fetch(page: 1, pageSize: 20)
+
+    let item = result.notifications[0]
+    #expect(item.eventType == "NewApplication")
+    #expect(item.decision == nil)
+    #expect(item.sources.isEmpty)
   }
 
   @Test("fetch maps empty response correctly")

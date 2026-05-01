@@ -71,7 +71,10 @@ public sealed class DispatchNotificationCommandHandler
             authorityId: application.AreaId,
             now: now);
 
-        ApiMetrics.NotificationsCreated.Add(1);
+        ApiMetrics.NotificationsCreated.Add(
+            1,
+            new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
+            new KeyValuePair<string, object?>("sources", notification.Sources.ToString()));
 
         // Check notification preferences — record but don't push
         if (!profile.NotificationPreferences.PushEnabled)
@@ -105,7 +108,11 @@ public sealed class DispatchNotificationCommandHandler
             await this.pushNotificationSender.SendAsync(notification, devices, ct)
                 .ConfigureAwait(false);
             notification.MarkPushSent();
-            ApiMetrics.NotificationsSent.Add(1);
+            ApiMetrics.NotificationsSent.Add(
+                1,
+                new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
+                new KeyValuePair<string, object?>("sources", notification.Sources.ToString()),
+                new KeyValuePair<string, object?>("tier", profile.Tier.ToString()));
         }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);

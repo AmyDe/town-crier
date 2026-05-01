@@ -1,16 +1,13 @@
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.Tests.Admin;
-using TownCrier.Application.Tests.DecisionAlerts;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Notifications;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Domain.DecisionAlerts;
 using TownCrier.Domain.DeviceRegistrations;
 using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.Notifications;
@@ -124,31 +121,6 @@ public sealed class DeleteUserProfileCommandHandlerTests
 
         // Assert
         var remaining = harness.NotificationRepository.All;
-        await Assert.That(remaining).HasCount().EqualTo(1);
-        await Assert.That(remaining[0].UserId).IsEqualTo("auth0|user2");
-    }
-
-    [Test]
-    public async Task Should_CascadeDeleteDecisionAlerts_When_ProfileIsDeleted()
-    {
-        // Arrange
-        var harness = new DeleteUserProfileHarness();
-        await harness.Repository.SaveAsync(UserProfile.Register("auth0|user1"), CancellationToken.None);
-        await harness.Repository.SaveAsync(UserProfile.Register("auth0|user2"), CancellationToken.None);
-
-        await harness.DecisionAlertRepository.SaveAsync(
-            DecisionAlert.Create("auth0|user1", "app-a", "ref-a", "10 Example St", "GRANTED", DateTimeOffset.UtcNow),
-            CancellationToken.None);
-        await harness.DecisionAlertRepository.SaveAsync(
-            DecisionAlert.Create("auth0|user2", "app-b", "ref-b", "20 Example St", "GRANTED", DateTimeOffset.UtcNow),
-            CancellationToken.None);
-
-        // Act
-        await harness.Handler.HandleAsync(
-            new DeleteUserProfileCommand("auth0|user1"), CancellationToken.None);
-
-        // Assert
-        var remaining = harness.DecisionAlertRepository.All;
         await Assert.That(remaining).HasCount().EqualTo(1);
         await Assert.That(remaining[0].UserId).IsEqualTo("auth0|user2");
     }
@@ -294,8 +266,6 @@ public sealed class DeleteUserProfileCommandHandlerTests
 
         public FakeNotificationRepository NotificationRepository { get; } = new();
 
-        public FakeDecisionAlertRepository DecisionAlertRepository { get; } = new();
-
         public FakeWatchZoneRepository WatchZoneRepository { get; } = new();
 
         public FakeSavedApplicationRepository SavedApplicationRepository { get; } = new();
@@ -306,7 +276,6 @@ public sealed class DeleteUserProfileCommandHandlerTests
             this.Repository,
             this.Auth0Client,
             this.NotificationRepository,
-            this.DecisionAlertRepository,
             this.WatchZoneRepository,
             this.SavedApplicationRepository,
             this.DeviceRegistrationRepository);

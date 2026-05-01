@@ -37,9 +37,10 @@ export function zonePreferences(
 ): ZoneNotificationPreferences {
   return {
     zoneId: asWatchZoneId('zone-1'),
-    newApplications: true,
-    statusChanges: true,
-    decisionUpdates: false,
+    newApplicationPush: true,
+    newApplicationEmail: true,
+    decisionPush: true,
+    decisionEmail: true,
     ...overrides,
   };
 }

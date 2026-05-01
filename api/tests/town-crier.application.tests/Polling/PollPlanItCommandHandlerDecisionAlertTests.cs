@@ -6,7 +6,7 @@ namespace TownCrier.Application.Tests.Polling;
 public sealed class PollPlanItCommandHandlerDecisionAlertTests
 {
     [Test]
-    public async Task Should_DispatchDecisionAlert_When_NewApplicationArrivesAlreadyDecided()
+    public async Task Should_RaiseDecisionEvent_When_NewApplicationArrivesAlreadyDecided()
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -20,11 +20,11 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
                 .WithAppState("Permitted")
                 .Build());
 
-        var dispatcher = new FakeDecisionAlertDispatcher();
+        var dispatcher = new FakeDecisionEventDispatcher();
         var handler = CreateHandler(
             planItClient: planItClient,
             authorityProvider: authorityProvider,
-            decisionAlertDispatcher: dispatcher);
+            decisionEventDispatcher: dispatcher);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -37,7 +37,7 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
     [Arguments("Conditions")]
     [Arguments("Rejected")]
     [Arguments("Appealed")]
-    public async Task Should_DispatchDecisionAlert_When_StateTransitionsFromUndecidedToDecision(string newState)
+    public async Task Should_RaiseDecisionEvent_When_StateTransitionsFromUndecidedToDecision(string newState)
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -59,12 +59,12 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
                 .WithAppState(newState)
                 .Build());
 
-        var dispatcher = new FakeDecisionAlertDispatcher();
+        var dispatcher = new FakeDecisionEventDispatcher();
         var handler = CreateHandler(
             planItClient: planItClient,
             authorityProvider: authorityProvider,
             repository: repository,
-            decisionAlertDispatcher: dispatcher);
+            decisionEventDispatcher: dispatcher);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -76,7 +76,7 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
     [Arguments("Withdrawn")]
     [Arguments("Unresolved")]
     [Arguments("Referred")]
-    public async Task Should_NotDispatchDecisionAlert_When_StateTransitionsFromUndecidedToNonDecision(string newState)
+    public async Task Should_NotRaiseDecisionEvent_When_StateTransitionsFromUndecidedToNonDecision(string newState)
     {
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -98,12 +98,12 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
                 .WithAppState(newState)
                 .Build());
 
-        var dispatcher = new FakeDecisionAlertDispatcher();
+        var dispatcher = new FakeDecisionEventDispatcher();
         var handler = CreateHandler(
             planItClient: planItClient,
             authorityProvider: authorityProvider,
             repository: repository,
-            decisionAlertDispatcher: dispatcher);
+            decisionEventDispatcher: dispatcher);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -111,11 +111,11 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
     }
 
     [Test]
-    public async Task Should_NotDispatchDecisionAlert_When_DecidedStateChangesToAnotherDecidedState()
+    public async Task Should_NotRaiseDecisionEvent_When_DecidedStateChangesToAnotherDecidedState()
     {
         // Permitted -> Conditions is a same-decision-class change. The first
-        // decision already triggered the alert; downstream idempotency in
-        // DispatchDecisionAlertCommandHandler would suppress it anyway, but we
+        // decision already triggered the event; downstream idempotency in
+        // DispatchDecisionEventCommandHandler would suppress it anyway, but we
         // gate at the transition layer to keep telemetry honest.
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -137,12 +137,12 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
                 .WithAppState("Conditions")
                 .Build());
 
-        var dispatcher = new FakeDecisionAlertDispatcher();
+        var dispatcher = new FakeDecisionEventDispatcher();
         var handler = CreateHandler(
             planItClient: planItClient,
             authorityProvider: authorityProvider,
             repository: repository,
-            decisionAlertDispatcher: dispatcher);
+            decisionEventDispatcher: dispatcher);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -150,11 +150,11 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
     }
 
     [Test]
-    public async Task Should_NotDispatchDecisionAlert_When_BusinessFieldsUnchanged()
+    public async Task Should_NotRaiseDecisionEvent_When_BusinessFieldsUnchanged()
     {
         // The hot-path optimisation in PollPlanItCommandHandler skips the upsert
         // and zone fan-out when HasSameBusinessFieldsAs returns true. The decision
-        // alert must also be skipped — re-dispatching on every rescrape of an
+        // event must also be skipped — re-dispatching on every rescrape of an
         // already-decided application would burn push budget.
         var authorityProvider = new FakeActiveAuthorityProvider();
         authorityProvider.Add(1);
@@ -178,12 +178,12 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
                 .WithAppState("Permitted")
                 .Build());
 
-        var dispatcher = new FakeDecisionAlertDispatcher();
+        var dispatcher = new FakeDecisionEventDispatcher();
         var handler = CreateHandler(
             planItClient: planItClient,
             authorityProvider: authorityProvider,
             repository: repository,
-            decisionAlertDispatcher: dispatcher);
+            decisionEventDispatcher: dispatcher);
 
         await handler.HandleAsync(new PollPlanItCommand(), CancellationToken.None);
 
@@ -197,7 +197,7 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
         FakeActiveAuthorityProvider? authorityProvider = null,
         FakeWatchZoneRepository? watchZoneRepository = null,
         FakeNotificationEnqueuer? notificationEnqueuer = null,
-        FakeDecisionAlertDispatcher? decisionAlertDispatcher = null,
+        FakeDecisionEventDispatcher? decisionEventDispatcher = null,
         TimeProvider? timeProvider = null,
         ICycleSelector? cycleSelector = null,
         PollingOptions? options = null)
@@ -210,7 +210,7 @@ public sealed class PollPlanItCommandHandlerDecisionAlertTests
             authorityProvider ?? new FakeActiveAuthorityProvider(),
             watchZoneRepository ?? new FakeWatchZoneRepository(),
             notificationEnqueuer ?? new FakeNotificationEnqueuer(),
-            decisionAlertDispatcher ?? new FakeDecisionAlertDispatcher(),
+            decisionEventDispatcher ?? new FakeDecisionEventDispatcher(),
             cycleSelector ?? new FakeCycleSelector(CycleType.Watched),
             options ?? new PollingOptions(),
             NullLogger<PollPlanItCommandHandler>.Instance);

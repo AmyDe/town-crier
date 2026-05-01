@@ -12,10 +12,26 @@ using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests.Observability;
 
+// [NotInParallel] (no constraint key) serializes this entire class against every
+// other test in the assembly. The ASP.NET Core ActivitySource is process-global,
+// so each WebApplicationFactory's TracerProvider observes server activities from
+// sibling tests' requests too. Without serialization, an InMemoryExporter in this
+// test can latch onto a server span produced by a parallel /v1/me request — e.g.
+// one whose exception event carries BadHttpRequestException — and the assertion
+// on InvalidOperationException flakes. tc-85d2's poll-and-flush made isolated
+// runs deterministic; this attribute closes the cross-class race in full-suite
+// runs. (See tc-3mez.)
+[NotInParallel]
 public sealed class ServerRequestTracingTests
 {
+    // Maximum time to wait for the ASP.NET Core server activity to be ended
+    // and exported to the in-memory exporter. The activity is stopped by the
+    // framework as the request pipeline unwinds, which can race with HttpClient
+    // returning from GetAsync — the response body completes before the
+    // server-side activity.Stop() is observed by the exporter.
+    private static readonly TimeSpan SpanWaitTimeout = TimeSpan.FromSeconds(5);
+
     [Test]
-    [Retry(3)]
     public async Task Should_ExportServerSpan_When_HttpRequestIsHandled()
     {
         // Arrange -- configure a fake App Insights connection string so the
@@ -43,20 +59,17 @@ public sealed class ServerRequestTracingTests
         // Act
         using var response = await client.GetAsync(new Uri("/health", UriKind.Relative));
 
-        // Force flush to ensure all spans are exported
-        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
-        tracerProvider.ForceFlush();
-
         // Assert -- verify a Server span was exported (maps to App Insights requests table)
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-        var serverSpan = exportedActivities.Find(a => a.Kind == ActivityKind.Server);
+        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
+        var serverSpan = await WaitForSpanAsync(
+            exportedActivities, tracerProvider, a => a.Kind == ActivityKind.Server);
         await Assert.That(serverSpan).IsNotNull()
             .Because("ASP.NET Core server spans must be exported for the App Insights requests table");
     }
 
     [Test]
-    [Retry(3)]
     public async Task Should_ExportExceptionEvent_When_EndpointThrows()
     {
         // Arrange -- replace the user profile repository with one that always throws,
@@ -88,29 +101,34 @@ public sealed class ServerRequestTracingTests
         // Act
         using var response = await client.GetAsync(new Uri("/v1/me", UriKind.Relative));
 
-        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
-        tracerProvider.ForceFlush();
-
         // Assert -- the response should be 500 and the server span must carry the exception
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.InternalServerError);
 
-        var serverSpan = exportedActivities.Find(a => a.Kind == ActivityKind.Server);
+        // Wait for the server span to be ended and exported. The activity is stopped
+        // by the ASP.NET Core hosting layer as the request unwinds, which can race
+        // with HttpClient returning. Poll with bounded timeout for a span that has
+        // both Server kind AND the exception event recorded by ErrorResponseMiddleware,
+        // so we don't observe a half-built activity that has been exported but whose
+        // exception hasn't been attached yet.
+        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
+        var serverSpan = await WaitForSpanAsync(
+            exportedActivities,
+            tracerProvider,
+            a => a.Kind == ActivityKind.Server
+                && a.Events.Any(e => e.Name == "exception"));
         await Assert.That(serverSpan).IsNotNull()
-            .Because("a server span must be exported even when the request fails");
+            .Because("a server span with an exception event must be exported when the request fails");
 
-        var exceptionEvent = serverSpan!.Events.FirstOrDefault(e => e.Name == "exception");
-        await Assert.That(exceptionEvent.Name).IsEqualTo("exception")
-            .Because("ErrorResponseMiddleware must record the exception on the span for App Insights");
-
+        var exceptionEvent = serverSpan!.Events.First(e => e.Name == "exception");
         var exceptionType = exceptionEvent.Tags
             .FirstOrDefault(t => t.Key == "exception.type").Value as string;
-        await Assert.That(exceptionType).IsEqualTo("System.InvalidOperationException");
+        await Assert.That(exceptionType).IsEqualTo("System.InvalidOperationException")
+            .Because("ErrorResponseMiddleware must record the exception type on the span for App Insights");
 
         await Assert.That(serverSpan.Status).IsEqualTo(ActivityStatusCode.Error);
     }
 
     [Test]
-    [Retry(3)]
     public async Task Should_IncludeHttpAttributesOnServerSpan_When_HttpRequestIsHandled()
     {
         // Arrange
@@ -136,15 +154,14 @@ public sealed class ServerRequestTracingTests
         // Act
         using var response = await client.GetAsync(new Uri("/v1/health", UriKind.Relative));
 
-        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
-        tracerProvider.ForceFlush();
-
         // Assert -- the server span must have HTTP semantic attributes that the
         // Azure Monitor exporter uses to populate the requests table. Without these
         // attributes, spans are exported but result in empty/malformed RequestData.
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
 
-        var serverSpan = exportedActivities.Find(a => a.Kind == ActivityKind.Server);
+        var tracerProvider = factory.Services.GetRequiredService<TracerProvider>();
+        var serverSpan = await WaitForSpanAsync(
+            exportedActivities, tracerProvider, a => a.Kind == ActivityKind.Server);
         await Assert.That(serverSpan).IsNotNull();
 
         // Check for HTTP method attribute (new semantic conventions: http.request.method)
@@ -164,6 +181,44 @@ public sealed class ServerRequestTracingTests
             ?? serverSpan.GetTagItem("url.path");
         await Assert.That(route).IsNotNull()
             .Because("server span must include http.route for App Insights request naming");
+    }
+
+    // Polls the in-memory exporter until a matching activity has been recorded, or
+    // SpanWaitTimeout elapses. ASP.NET Core ends the server activity asynchronously
+    // as the request pipeline unwinds — that can race with HttpClient returning from
+    // GetAsync, leaving a window where exportedActivities is briefly empty. We call
+    // ForceFlush on every iteration so SimpleActivityExportProcessor drains any
+    // pending activities synchronously, and snapshot the list under a lock to avoid
+    // racing with concurrent writes from the exporter thread.
+    private static async Task<Activity?> WaitForSpanAsync(
+        List<Activity> exportedActivities,
+        TracerProvider tracerProvider,
+        Func<Activity, bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow + SpanWaitTimeout;
+        while (true)
+        {
+            tracerProvider.ForceFlush(timeoutMilliseconds: 100);
+
+            Activity[] snapshot;
+            lock (exportedActivities)
+            {
+                snapshot = [.. exportedActivities];
+            }
+
+            var match = Array.Find(snapshot, new Predicate<Activity>(predicate));
+            if (match is not null)
+            {
+                return match;
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                return null;
+            }
+
+            await Task.Delay(25);
+        }
     }
 
     private sealed class ThrowingUserProfileRepository : IUserProfileRepository

@@ -91,8 +91,21 @@ public struct NotificationsView: View {
 // MARK: - Notification Row
 
 /// A single row in the notifications list showing application event details.
-private struct NotificationRow: View {
+///
+/// Internal (not `private`) so unit tests can probe the decision-badge gate
+/// directly via ``shouldShowDecisionBadge`` without scraping a SwiftUI render
+/// tree. The view body itself is built via ``NotificationDecisionBadge`` so
+/// the visual chip and the gating helper share a single source of truth.
+struct NotificationRow: View {
   let item: NotificationItem
+
+  /// Whether this row will display the decision badge for `item`.
+  ///
+  /// Mirrors ``NotificationDecisionBadge/displayLabel(for:)`` so tests can
+  /// assert visibility without rendering the SwiftUI tree.
+  var shouldShowDecisionBadge: Bool {
+    NotificationDecisionBadge.displayLabel(for: item) != nil
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: TCSpacing.small) {
@@ -128,6 +141,8 @@ private struct NotificationRow: View {
           .foregroundStyle(Color.tcTextTertiary)
           .lineLimit(2)
       }
+
+      NotificationDecisionBadge(item: item)
     }
     .padding(.vertical, TCSpacing.small)
   }

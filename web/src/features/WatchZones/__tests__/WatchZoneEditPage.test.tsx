@@ -17,8 +17,13 @@ describe('WatchZoneEditPage', () => {
     spy = new SpyWatchZoneRepository();
   });
 
-  it('renders zone name and notification preferences', async () => {
-    spy.getPreferencesResult = zonePreferences();
+  it('renders zone name and four notification preference checkboxes', async () => {
+    spy.getPreferencesResult = zonePreferences({
+      newApplicationPush: true,
+      newApplicationEmail: true,
+      decisionPush: false,
+      decisionEmail: true,
+    });
 
     renderWithRouter(
       <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
@@ -27,34 +32,62 @@ describe('WatchZoneEditPage', () => {
     const nameInput = screen.getByRole('textbox', { name: /zone name/i });
     expect(nameInput).toHaveValue('Home');
 
-    // Wait for preferences to load
-    const newAppsCheckbox = await screen.findByRole('checkbox', { name: /new applications/i });
-    expect(newAppsCheckbox).toBeChecked();
+    // Wait for preferences to load — each event x channel pair has its own toggle
+    const newAppPushCheckbox = await screen.findByRole('checkbox', {
+      name: /new applications.*push/i,
+    });
+    expect(newAppPushCheckbox).toBeChecked();
 
-    const statusCheckbox = screen.getByRole('checkbox', { name: /status changes/i });
-    expect(statusCheckbox).toBeChecked();
+    const newAppEmailCheckbox = screen.getByRole('checkbox', {
+      name: /new applications.*email/i,
+    });
+    expect(newAppEmailCheckbox).toBeChecked();
 
-    const decisionCheckbox = screen.getByRole('checkbox', { name: /decision updates/i });
-    expect(decisionCheckbox).not.toBeChecked();
+    const decisionPushCheckbox = screen.getByRole('checkbox', {
+      name: /decision.*push/i,
+    });
+    expect(decisionPushCheckbox).not.toBeChecked();
+
+    const decisionEmailCheckbox = screen.getByRole('checkbox', {
+      name: /decision.*email/i,
+    });
+    expect(decisionEmailCheckbox).toBeChecked();
   });
 
-  it('saves updated preferences on toggle', async () => {
+  it('saves updated preferences when a per-channel toggle is clicked', async () => {
     const user = userEvent.setup();
-    spy.getPreferencesResult = zonePreferences();
+    spy.getPreferencesResult = zonePreferences({
+      newApplicationPush: true,
+      newApplicationEmail: true,
+      decisionPush: false,
+      decisionEmail: true,
+    });
 
     renderWithRouter(
       <WatchZoneEditPage repository={spy} zone={aWatchZone()} />,
     );
 
-    const decisionCheckbox = await screen.findByRole('checkbox', { name: /decision updates/i });
+    const decisionPushCheckbox = await screen.findByRole('checkbox', {
+      name: /decision.*push/i,
+    });
 
     // Update preferences result for the refetch
-    spy.getPreferencesResult = zonePreferences({ decisionUpdates: true });
+    spy.getPreferencesResult = zonePreferences({
+      newApplicationPush: true,
+      newApplicationEmail: true,
+      decisionPush: true,
+      decisionEmail: true,
+    });
 
-    await user.click(decisionCheckbox);
+    await user.click(decisionPushCheckbox);
 
     expect(spy.updatePreferencesCalls).toHaveLength(1);
-    expect(spy.updatePreferencesCalls[0]?.data.decisionUpdates).toBe(true);
+    expect(spy.updatePreferencesCalls[0]?.data).toEqual({
+      newApplicationPush: true,
+      newApplicationEmail: true,
+      decisionPush: true,
+      decisionEmail: true,
+    });
   });
 
   it('shows loading state while preferences load', () => {
@@ -84,7 +117,7 @@ describe('WatchZoneEditPage', () => {
       <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
     );
 
-    await screen.findByRole('checkbox', { name: /new applications/i });
+    await screen.findByRole('checkbox', { name: /new applications.*push/i });
     const selectedRadio = screen.getByRole('radio', { name: '2 km' });
     expect(selectedRadio).toBeChecked();
   });

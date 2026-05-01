@@ -29,12 +29,27 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
   const zoneEdit = useZoneEdit(repository, zone);
   const showZoneNotificationToggles = tier !== 'Free';
 
-  function handleToggle(field: 'newApplications' | 'statusChanges' | 'decisionUpdates') {
+  type PreferenceField =
+    | 'newApplicationPush'
+    | 'newApplicationEmail'
+    | 'decisionPush'
+    | 'decisionEmail';
+
+  function handleToggle(field: PreferenceField) {
     if (!preferences) return;
     updatePreferences({
-      newApplications: field === 'newApplications' ? !preferences.newApplications : preferences.newApplications,
-      statusChanges: field === 'statusChanges' ? !preferences.statusChanges : preferences.statusChanges,
-      decisionUpdates: field === 'decisionUpdates' ? !preferences.decisionUpdates : preferences.decisionUpdates,
+      newApplicationPush:
+        field === 'newApplicationPush'
+          ? !preferences.newApplicationPush
+          : preferences.newApplicationPush,
+      newApplicationEmail:
+        field === 'newApplicationEmail'
+          ? !preferences.newApplicationEmail
+          : preferences.newApplicationEmail,
+      decisionPush:
+        field === 'decisionPush' ? !preferences.decisionPush : preferences.decisionPush,
+      decisionEmail:
+        field === 'decisionEmail' ? !preferences.decisionEmail : preferences.decisionEmail,
     });
   }
 
@@ -117,34 +132,46 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
         <section className={styles.preferencesSection}>
           <h2 className={styles.sectionTitle}>Notification Preferences</h2>
 
+          <h3 className={styles.preferencesGroupTitle}>New applications</h3>
           <label className={styles.toggle}>
             <input
               type="checkbox"
-              checked={preferences.newApplications}
-              onChange={() => handleToggle('newApplications')}
-              aria-label="New applications"
+              checked={preferences.newApplicationPush}
+              onChange={() => handleToggle('newApplicationPush')}
+              aria-label="New applications — push"
             />
-            <span className={styles.toggleLabel}>New applications</span>
+            <span className={styles.toggleLabel}>Push</span>
           </label>
 
           <label className={styles.toggle}>
             <input
               type="checkbox"
-              checked={preferences.statusChanges}
-              onChange={() => handleToggle('statusChanges')}
-              aria-label="Status changes"
+              checked={preferences.newApplicationEmail}
+              onChange={() => handleToggle('newApplicationEmail')}
+              aria-label="New applications — email"
             />
-            <span className={styles.toggleLabel}>Status changes</span>
+            <span className={styles.toggleLabel}>Email</span>
+          </label>
+
+          <h3 className={styles.preferencesGroupTitle}>Decision updates</h3>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={preferences.decisionPush}
+              onChange={() => handleToggle('decisionPush')}
+              aria-label="Decision updates — push"
+            />
+            <span className={styles.toggleLabel}>Push</span>
           </label>
 
           <label className={styles.toggle}>
             <input
               type="checkbox"
-              checked={preferences.decisionUpdates}
-              onChange={() => handleToggle('decisionUpdates')}
-              aria-label="Decision updates"
+              checked={preferences.decisionEmail}
+              onChange={() => handleToggle('decisionEmail')}
+              aria-label="Decision updates — email"
             />
-            <span className={styles.toggleLabel}>Decision updates</span>
+            <span className={styles.toggleLabel}>Email</span>
           </label>
         </section>
       )}

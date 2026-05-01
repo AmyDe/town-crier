@@ -100,14 +100,26 @@ export interface UserProfile {
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
   readonly digestDay: DayOfWeek;
+  /**
+   * Profile-level toggle for push notifications when a saved application's
+   * decision changes (Permitted, Conditions, Rejected, Appealed). Defaults
+   * to true on the API for new and legacy users.
+   */
+  readonly savedDecisionPush: boolean;
+  /**
+   * Profile-level toggle for email notifications when a saved application's
+   * decision changes. Defaults to true on the API for new and legacy users.
+   */
+  readonly savedDecisionEmail: boolean;
   readonly tier: SubscriptionTier;
 }
 
 export interface ZoneNotificationPreferences {
   readonly zoneId: WatchZoneId;
-  readonly newApplications: boolean;
-  readonly statusChanges: boolean;
-  readonly decisionUpdates: boolean;
+  readonly newApplicationPush: boolean;
+  readonly newApplicationEmail: boolean;
+  readonly decisionPush: boolean;
+  readonly decisionEmail: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +255,8 @@ export interface UpdateProfileRequest {
   readonly pushEnabled: boolean;
   readonly emailDigestEnabled: boolean;
   readonly digestDay: DayOfWeek;
+  readonly savedDecisionPush: boolean;
+  readonly savedDecisionEmail: boolean;
 }
 
 export interface UpdateWatchZoneRequest {
@@ -253,9 +267,10 @@ export interface UpdateWatchZoneRequest {
 }
 
 export interface UpdateZonePreferencesRequest {
-  readonly newApplications: boolean;
-  readonly statusChanges: boolean;
-  readonly decisionUpdates: boolean;
+  readonly newApplicationPush: boolean;
+  readonly newApplicationEmail: boolean;
+  readonly decisionPush: boolean;
+  readonly decisionEmail: boolean;
 }
 
 // ---------------------------------------------------------------------------

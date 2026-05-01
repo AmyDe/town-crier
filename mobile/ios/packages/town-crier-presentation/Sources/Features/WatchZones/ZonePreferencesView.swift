@@ -1,13 +1,12 @@
 import SwiftUI
 import TownCrierDomain
 
-/// Per-zone notification preferences screen with entitlement-gated toggles.
+/// Per-zone notification preferences screen with four per-channel toggles
+/// (push/email × new-application/decision) grouped under two semantic sections.
 ///
-/// - `newApplications` is available to all tiers.
-/// - `statusChanges` and `decisionUpdates` use ``GatedToggle`` and require Personal+.
-///
-/// Presents a ``SubscriptionUpsellSheet`` via the `.entitlementGateSheet` modifier
-/// when a Free user taps a gated toggle or the API returns 403.
+/// Mirrors the web counterpart's accessibility shape — each toggle exposes an
+/// em-dash-separated accessibility label (e.g. "New applications — push") so
+/// VoiceOver and UI tests can address each control unambiguously.
 public struct ZonePreferencesView: View {
   @StateObject private var viewModel: ZonePreferencesViewModel
   @Environment(\.dismiss) private var dismiss
@@ -19,8 +18,8 @@ public struct ZonePreferencesView: View {
   public var body: some View {
     NavigationStack {
       Form {
-        ungatedSection
-        gatedSection
+        newApplicationsSection
+        decisionUpdatesSection
         if let error = viewModel.error {
           errorSection(error)
         }
@@ -37,7 +36,7 @@ public struct ZonePreferencesView: View {
           Button("Save") {
             Task {
               await viewModel.savePreferences()
-              if viewModel.error == nil && viewModel.entitlementGate == nil {
+              if viewModel.error == nil {
                 dismiss()
               }
             }
@@ -48,20 +47,22 @@ public struct ZonePreferencesView: View {
       .task {
         await viewModel.loadPreferences()
       }
-      .entitlementGateSheet(entitlement: $viewModel.entitlementGate) {
-        // onViewPlans -- parent coordinator would handle navigation to SubscriptionView
-      }
     }
   }
 
   // MARK: - Sections
 
-  private var ungatedSection: some View {
+  private var newApplicationsSection: some View {
     Section {
-      Toggle("New Applications", isOn: $viewModel.newApplications)
+      Toggle("Push", isOn: $viewModel.newApplicationPush)
         .tint(Color.tcAmber)
+        .accessibilityLabel("New applications — push")
+
+      Toggle("Email", isOn: $viewModel.newApplicationEmail)
+        .tint(Color.tcAmber)
+        .accessibilityLabel("New applications — email")
     } header: {
-      Text("Alerts")
+      Text("New applications")
     } footer: {
       Text("Get notified when a new planning application is submitted in this zone.")
         .font(.system(.caption))
@@ -69,29 +70,19 @@ public struct ZonePreferencesView: View {
     }
   }
 
-  private var gatedSection: some View {
+  private var decisionUpdatesSection: some View {
     Section {
-      GatedToggle(
-        label: "Status Changes",
-        isOn: $viewModel.statusChanges,
-        entitlement: .statusChangeAlerts,
-        featureGate: viewModel.featureGate
-      ) {
-        viewModel.showUpgradeSheet(for: .statusChangeAlerts)
-      }
+      Toggle("Push", isOn: $viewModel.decisionPush)
+        .tint(Color.tcAmber)
+        .accessibilityLabel("Decision updates — push")
 
-      GatedToggle(
-        label: "Decision Updates",
-        isOn: $viewModel.decisionUpdates,
-        entitlement: .decisionUpdateAlerts,
-        featureGate: viewModel.featureGate
-      ) {
-        viewModel.showUpgradeSheet(for: .decisionUpdateAlerts)
-      }
+      Toggle("Email", isOn: $viewModel.decisionEmail)
+        .tint(Color.tcAmber)
+        .accessibilityLabel("Decision updates — email")
     } header: {
-      Text("Premium Alerts")
+      Text("Decision updates")
     } footer: {
-      Text("Requires a Personal or Pro subscription.")
+      Text("Get notified when a decision is made on an application in this zone.")
         .font(.system(.caption))
         .foregroundStyle(Color.tcTextSecondary)
     }

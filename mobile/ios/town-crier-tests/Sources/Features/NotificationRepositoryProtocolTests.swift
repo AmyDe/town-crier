@@ -35,7 +35,10 @@ struct NotificationRepositoryProtocolTests {
       applicationDescription: "Description",
       applicationType: "Type",
       authorityId: 1,
-      createdAt: date
+      createdAt: date,
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
     )
     spy.fetchResult = .success(NotificationPage(notifications: [item], total: 1, page: 1))
 

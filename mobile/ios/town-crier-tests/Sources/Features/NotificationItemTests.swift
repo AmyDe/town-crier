@@ -14,7 +14,10 @@ struct NotificationItemTests {
       applicationDescription: "Erection of two-storey rear extension",
       applicationType: "Full Planning Application",
       authorityId: 123,
-      createdAt: date
+      createdAt: date,
+      eventType: "DecisionUpdate",
+      decision: "Permitted",
+      sources: "Zone, Saved"
     )
 
     #expect(item.applicationName == "Rear extension at 12 Mill Road")
@@ -23,6 +26,27 @@ struct NotificationItemTests {
     #expect(item.applicationType == "Full Planning Application")
     #expect(item.authorityId == 123)
     #expect(item.createdAt == date)
+    #expect(item.eventType == "DecisionUpdate")
+    #expect(item.decision == "Permitted")
+    #expect(item.sources == "Zone, Saved")
+  }
+
+  @Test("decision is optional")
+  func decisionIsOptional() {
+    let item = NotificationItem(
+      applicationName: "New application",
+      applicationAddress: "Address",
+      applicationDescription: "Description",
+      applicationType: "Type",
+      authorityId: 1,
+      createdAt: Date(timeIntervalSince1970: 1_712_000_000),
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
+    )
+
+    #expect(item.decision == nil)
+    #expect(item.eventType == "NewApplication")
   }
 
   @Test("conforms to Equatable")
@@ -34,7 +58,10 @@ struct NotificationItemTests {
       applicationDescription: "Description",
       applicationType: "Type",
       authorityId: 1,
-      createdAt: date
+      createdAt: date,
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
     )
     let itemB = NotificationItem(
       applicationName: "Test",
@@ -42,7 +69,10 @@ struct NotificationItemTests {
       applicationDescription: "Description",
       applicationType: "Type",
       authorityId: 1,
-      createdAt: date
+      createdAt: date,
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
     )
 
     #expect(itemA == itemB)
@@ -57,7 +87,10 @@ struct NotificationItemTests {
       applicationDescription: "Description",
       applicationType: "Type",
       authorityId: 1,
-      createdAt: date
+      createdAt: date,
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
     )
     let sendable: any Sendable = item
     #expect(sendable is NotificationItem)
@@ -76,7 +109,10 @@ struct NotificationPageTests {
       applicationDescription: "Description",
       applicationType: "Type",
       authorityId: 1,
-      createdAt: date
+      createdAt: date,
+      eventType: "NewApplication",
+      decision: nil,
+      sources: "Zone"
     )
   }
 

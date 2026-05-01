@@ -35,6 +35,8 @@ export function useUserProfile(
       pushEnabled: base.pushEnabled,
       emailDigestEnabled: base.emailDigestEnabled,
       digestDay: base.digestDay,
+      savedDecisionPush: base.savedDecisionPush,
+      savedDecisionEmail: base.savedDecisionEmail,
       ...changes,
     };
 

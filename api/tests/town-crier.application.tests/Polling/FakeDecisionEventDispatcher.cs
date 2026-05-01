@@ -1,9 +1,9 @@
-using TownCrier.Application.DecisionAlerts;
+using TownCrier.Application.Notifications;
 using TownCrier.Domain.PlanningApplications;
 
 namespace TownCrier.Application.Tests.Polling;
 
-internal sealed class FakeDecisionAlertDispatcher : IDecisionAlertDispatcher
+internal sealed class FakeDecisionEventDispatcher : IDecisionEventDispatcher
 {
     private readonly List<PlanningApplication> dispatched = [];
 

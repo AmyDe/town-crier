@@ -17,7 +17,6 @@ public sealed class CosmosContainerNamesTests
         string users = CosmosContainerNames.Users;
         string notifications = CosmosContainerNames.Notifications;
         string deviceRegistrations = CosmosContainerNames.DeviceRegistrations;
-        string decisionAlerts = CosmosContainerNames.DecisionAlerts;
         string savedApplications = CosmosContainerNames.SavedApplications;
         string watchZones = CosmosContainerNames.WatchZones;
         string applications = CosmosContainerNames.Applications;
@@ -26,7 +25,6 @@ public sealed class CosmosContainerNamesTests
         await Assert.That(users).IsNotEmpty();
         await Assert.That(notifications).IsNotEmpty();
         await Assert.That(deviceRegistrations).IsNotEmpty();
-        await Assert.That(decisionAlerts).IsNotEmpty();
         await Assert.That(savedApplications).IsNotEmpty();
         await Assert.That(watchZones).IsNotEmpty();
         await Assert.That(applications).IsNotEmpty();

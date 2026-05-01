@@ -133,6 +133,24 @@ export function SettingsPage({ repository, redeemOfferCodeClient, onRedeemSucces
               </select>
             </div>
           )}
+
+          <h3 className={styles.preferencesGroupTitle}>Saved applications</h3>
+          <div className={styles.toggleRow}>
+            <span className={styles.label}>Push</span>
+            <Toggle
+              checked={profile?.savedDecisionPush ?? true}
+              onChange={(checked) => updatePreferences({ savedDecisionPush: checked })}
+              label="Saved applications — push"
+            />
+          </div>
+          <div className={styles.toggleRow}>
+            <span className={styles.label}>Email</span>
+            <Toggle
+              checked={profile?.savedDecisionEmail ?? true}
+              onChange={(checked) => updatePreferences({ savedDecisionEmail: checked })}
+              label="Saved applications — email"
+            />
+          </div>
         </div>
       </section>
 

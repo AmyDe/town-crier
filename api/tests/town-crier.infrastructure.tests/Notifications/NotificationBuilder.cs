@@ -13,6 +13,9 @@ internal sealed class NotificationBuilder
     private string applicationType = "Householder";
     private int authorityId = 42;
     private DateTimeOffset createdAt = new(2026, 3, 15, 10, 0, 0, TimeSpan.Zero);
+    private string? decision;
+    private NotificationEventType eventType = NotificationEventType.NewApplication;
+    private NotificationSources sources = NotificationSources.Zone;
 
     public NotificationBuilder WithUserId(string userId)
     {
@@ -68,17 +71,44 @@ internal sealed class NotificationBuilder
         return this;
     }
 
+    public NotificationBuilder WithDecision(string? decision)
+    {
+        this.decision = decision;
+        return this;
+    }
+
+    public NotificationBuilder WithEventType(NotificationEventType eventType)
+    {
+        this.eventType = eventType;
+        return this;
+    }
+
+    public NotificationBuilder WithSources(NotificationSources sources)
+    {
+        this.sources = sources;
+        return this;
+    }
+
+    public NotificationBuilder WithWatchZoneIdOrNull(string? watchZoneId)
+    {
+        this.watchZoneId = watchZoneId!;
+        return this;
+    }
+
     public Notification Build()
     {
         return Notification.Create(
-            this.userId,
-            this.applicationUid,
-            this.applicationName,
-            this.watchZoneId,
-            this.applicationAddress,
-            this.applicationDescription,
-            this.applicationType,
-            this.authorityId,
-            this.createdAt);
+            userId: this.userId,
+            applicationUid: this.applicationUid,
+            applicationName: this.applicationName,
+            watchZoneId: this.watchZoneId,
+            applicationAddress: this.applicationAddress,
+            applicationDescription: this.applicationDescription,
+            applicationType: this.applicationType,
+            authorityId: this.authorityId,
+            now: this.createdAt,
+            decision: this.decision,
+            eventType: this.eventType,
+            sources: this.sources);
     }
 }

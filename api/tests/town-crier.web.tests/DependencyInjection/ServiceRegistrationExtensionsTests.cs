@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TownCrier.Application.Authorities;
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
@@ -44,7 +43,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<IPlanningApplicationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IUserProfileRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IWatchZoneRepository>()).IsNotNull();
-        await Assert.That(provider.GetService<IDecisionAlertRepository>()).IsNotNull();
         await Assert.That(provider.GetService<IDeviceRegistrationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<INotificationRepository>()).IsNotNull();
         await Assert.That(provider.GetService<ISavedApplicationRepository>()).IsNotNull();

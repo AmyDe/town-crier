@@ -172,6 +172,34 @@ public sealed class UpdateUserProfileCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_RoundTripBothSavedDecisionFlags_When_SetFromTrueToFalse()
+    {
+        // Arrange — profile defaults SavedDecisionPush/Email to true.
+        var repository = new FakeUserProfileRepository();
+        var profile = UserProfile.Register("auth0|user-789");
+        await repository.SaveAsync(profile, CancellationToken.None);
+        await Assert.That(profile.NotificationPreferences.SavedDecisionPush).IsTrue();
+        await Assert.That(profile.NotificationPreferences.SavedDecisionEmail).IsTrue();
+
+        var handler = new UpdateUserProfileCommandHandler(repository);
+        var command = new UpdateUserProfileCommand(
+            "auth0|user-789",
+            PushEnabled: true,
+            SavedDecisionPush: false,
+            SavedDecisionEmail: false);
+
+        // Act
+        var result = await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — both fields flipped in the result and the persisted profile.
+        await Assert.That(result.SavedDecisionPush).IsFalse();
+        await Assert.That(result.SavedDecisionEmail).IsFalse();
+        var saved = repository.GetByUserId("auth0|user-789");
+        await Assert.That(saved!.NotificationPreferences.SavedDecisionPush).IsFalse();
+        await Assert.That(saved.NotificationPreferences.SavedDecisionEmail).IsFalse();
+    }
+
+    [Test]
     public async Task Should_DefaultSavedDecisionFlagsToTrue_When_NotProvidedInCommand()
     {
         // Arrange

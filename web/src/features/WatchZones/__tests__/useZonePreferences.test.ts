@@ -49,26 +49,28 @@ describe('useZonePreferences', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    const updatedPrefs = zonePreferences({ decisionUpdates: true });
+    const updatedPrefs = zonePreferences({ decisionPush: false });
     spy.getPreferencesResult = updatedPrefs;
 
     await act(async () => {
       await result.current.updatePreferences({
-        newApplications: true,
-        statusChanges: true,
-        decisionUpdates: true,
+        newApplicationPush: true,
+        newApplicationEmail: true,
+        decisionPush: false,
+        decisionEmail: true,
       });
     });
 
     expect(spy.updatePreferencesCalls).toEqual([{
       zoneId: 'zone-1',
       data: {
-        newApplications: true,
-        statusChanges: true,
-        decisionUpdates: true,
+        newApplicationPush: true,
+        newApplicationEmail: true,
+        decisionPush: false,
+        decisionEmail: true,
       },
     }]);
-    expect(result.current.preferences?.decisionUpdates).toBe(true);
+    expect(result.current.preferences?.decisionPush).toBe(false);
   });
 
   it('sets error when update fails', async () => {
@@ -84,9 +86,10 @@ describe('useZonePreferences', () => {
 
     await act(async () => {
       await result.current.updatePreferences({
-        newApplications: false,
-        statusChanges: false,
-        decisionUpdates: false,
+        newApplicationPush: false,
+        newApplicationEmail: false,
+        decisionPush: false,
+        decisionEmail: false,
       });
     });
 
@@ -106,9 +109,10 @@ describe('useZonePreferences', () => {
 
     await act(async () => {
       await result.current.updatePreferences({
-        newApplications: true,
-        statusChanges: true,
-        decisionUpdates: true,
+        newApplicationPush: true,
+        newApplicationEmail: true,
+        decisionPush: true,
+        decisionEmail: true,
       });
     });
 

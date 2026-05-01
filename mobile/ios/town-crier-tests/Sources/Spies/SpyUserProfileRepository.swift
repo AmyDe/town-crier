@@ -29,6 +29,8 @@ final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable
     let pushEnabled: Bool
     let digestDay: DayOfWeek
     let emailDigestEnabled: Bool
+    let savedDecisionPush: Bool
+    let savedDecisionEmail: Bool
   }
 
   private(set) var updateCalls: [UpdateCall] = []
@@ -45,13 +47,17 @@ final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable
   func update(
     pushEnabled: Bool,
     digestDay: DayOfWeek,
-    emailDigestEnabled: Bool
+    emailDigestEnabled: Bool,
+    savedDecisionPush: Bool,
+    savedDecisionEmail: Bool
   ) async throws -> ServerProfile {
     updateCalls.append(
       UpdateCall(
         pushEnabled: pushEnabled,
         digestDay: digestDay,
-        emailDigestEnabled: emailDigestEnabled
+        emailDigestEnabled: emailDigestEnabled,
+        savedDecisionPush: savedDecisionPush,
+        savedDecisionEmail: savedDecisionEmail
       ))
     return try updateResult.get()
   }

@@ -1,9 +1,7 @@
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.OfferCodes;
 using TownCrier.Application.SavedApplications;
-using TownCrier.Application.Tests.DecisionAlerts;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Notifications;
 using TownCrier.Application.Tests.OfferCodes;
@@ -11,7 +9,6 @@ using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Domain.DecisionAlerts;
 using TownCrier.Domain.DeviceRegistrations;
 using TownCrier.Domain.Geocoding;
 using TownCrier.Domain.Notifications;
@@ -180,32 +177,6 @@ public sealed class ExportUserDataQueryHandlerTests
     }
 
     [Test]
-    public async Task Should_IncludeDecisionAlerts_OnlyForQueriedUser()
-    {
-        // Arrange
-        var harness = new ExportUserDataHarness();
-        await harness.UserProfileRepository.SaveAsync(UserProfile.Register("auth0|user1"), CancellationToken.None);
-        await harness.DecisionAlertRepository.SaveAsync(
-            DecisionAlert.Create("auth0|user1", "app-a", "ref-a", "10 Example St", "GRANTED", DateTimeOffset.UtcNow),
-            CancellationToken.None);
-        await harness.DecisionAlertRepository.SaveAsync(
-            DecisionAlert.Create("auth0|user1", "app-b", "ref-b", "20 Example St", "REFUSED", DateTimeOffset.UtcNow),
-            CancellationToken.None);
-        await harness.DecisionAlertRepository.SaveAsync(
-            DecisionAlert.Create("auth0|other", "app-c", "ref-c", "30 Example St", "GRANTED", DateTimeOffset.UtcNow),
-            CancellationToken.None);
-
-        // Act
-        var result = await harness.Handler.HandleAsync(
-            new ExportUserDataQuery("auth0|user1"), CancellationToken.None);
-
-        // Assert
-        await Assert.That(result).IsNotNull();
-        await Assert.That(result!.DecisionAlerts).HasCount().EqualTo(2);
-        await Assert.That(result.DecisionAlerts.All(a => a.ApplicationUid == "app-a" || a.ApplicationUid == "app-b")).IsTrue();
-    }
-
-    [Test]
     public async Task Should_IncludeSavedApplications_OnlyForQueriedUser()
     {
         // Arrange
@@ -304,7 +275,6 @@ public sealed class ExportUserDataQueryHandlerTests
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.WatchZones).IsEmpty();
         await Assert.That(result.Notifications).IsEmpty();
-        await Assert.That(result.DecisionAlerts).IsEmpty();
         await Assert.That(result.SavedApplications).IsEmpty();
         await Assert.That(result.DeviceRegistrations).IsEmpty();
         await Assert.That(result.OfferCodeRedemptions).IsEmpty();
@@ -345,8 +315,6 @@ public sealed class ExportUserDataQueryHandlerTests
 
         public FakeNotificationRepository NotificationRepository { get; } = new();
 
-        public FakeDecisionAlertRepository DecisionAlertRepository { get; } = new();
-
         public FakeSavedApplicationRepository SavedApplicationRepository { get; } = new();
 
         public FakeDeviceRegistrationRepository DeviceRegistrationRepository { get; } = new();
@@ -357,7 +325,6 @@ public sealed class ExportUserDataQueryHandlerTests
             this.UserProfileRepository,
             this.WatchZoneRepository,
             this.NotificationRepository,
-            this.DecisionAlertRepository,
             this.SavedApplicationRepository,
             this.DeviceRegistrationRepository,
             this.OfferCodeRepository);

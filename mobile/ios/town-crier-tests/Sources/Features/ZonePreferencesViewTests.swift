@@ -16,60 +16,35 @@ struct ZonePreferencesViewTests {
     spy.fetchResult = .success(
       ZoneNotificationPreferences(
         zoneId: "zone-001",
-        newApplications: true,
-        statusChanges: true,
-        decisionUpdates: false
+        newApplicationPush: true,
+        newApplicationEmail: false,
+        decisionPush: true,
+        decisionEmail: false
       )
     )
     let vm = ZonePreferencesViewModel(
       zoneId: "zone-001",
       zoneName: "CB1 2AD",
-      repository: spy,
-      tier: .personal
+      repository: spy
     )
 
     // Load
     await vm.loadPreferences()
-    #expect(vm.newApplications == true)
-    #expect(vm.statusChanges == true)
-    #expect(vm.decisionUpdates == false)
+    #expect(vm.newApplicationPush == true)
+    #expect(vm.newApplicationEmail == false)
+    #expect(vm.decisionPush == true)
+    #expect(vm.decisionEmail == false)
 
-    // User toggles decisionUpdates on
-    vm.decisionUpdates = true
+    // User toggles decisionEmail on
+    vm.decisionEmail = true
     await vm.savePreferences()
 
     #expect(spy.updateCalls.count == 1)
     let saved = spy.updateCalls[0]
-    #expect(saved.decisionUpdates == true)
-    #expect(saved.statusChanges == true)
-    #expect(saved.newApplications == true)
-  }
-
-  @Test func viewModel_freeTier_gatedTogglesShowUpgradeBadge() {
-    let spy = SpyZonePreferencesRepository()
-    let vm = ZonePreferencesViewModel(
-      zoneId: "zone-001",
-      zoneName: "CB1 2AD",
-      repository: spy,
-      tier: .free
-    )
-
-    // Free tier: gated toggles should show upgrade badge
-    #expect(vm.featureGate.shouldShowUpgradeBadge(for: .statusChangeAlerts) == true)
-    #expect(vm.featureGate.shouldShowUpgradeBadge(for: .decisionUpdateAlerts) == true)
-  }
-
-  @Test func viewModel_proTier_allTogglesEnabled() {
-    let spy = SpyZonePreferencesRepository()
-    let vm = ZonePreferencesViewModel(
-      zoneId: "zone-001",
-      zoneName: "CB1 2AD",
-      repository: spy,
-      tier: .pro
-    )
-
-    #expect(vm.featureGate.hasEntitlement(.statusChangeAlerts) == true)
-    #expect(vm.featureGate.hasEntitlement(.decisionUpdateAlerts) == true)
+    #expect(saved.newApplicationPush == true)
+    #expect(saved.newApplicationEmail == false)
+    #expect(saved.decisionPush == true)
+    #expect(saved.decisionEmail == true)
   }
 
   @Test func viewCanBeInstantiated() {
@@ -77,8 +52,7 @@ struct ZonePreferencesViewTests {
     let vm = ZonePreferencesViewModel(
       zoneId: "zone-001",
       zoneName: "CB1 2AD",
-      repository: spy,
-      tier: .personal
+      repository: spy
     )
 
     // Verify the View can be constructed without crashing

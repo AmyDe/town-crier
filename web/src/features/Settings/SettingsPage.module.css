@@ -173,6 +173,19 @@
   border-top: 1px solid var(--tc-border);
 }
 
+.preferencesGroupTitle {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tc-text-secondary);
+  margin: var(--tc-space-md) 0 var(--tc-space-xs) 0;
+}
+
+.preferencesGroupTitle + .toggleRow {
+  border-top: none;
+}
+
 .selectRow {
   display: flex;
   justify-content: space-between;

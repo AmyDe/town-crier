@@ -87,4 +87,108 @@ struct NotificationPayloadParserTests {
 
     #expect(result == nil)
   }
+
+  // MARK: - renderBody (DecisionUpdate)
+
+  @Test func renderBody_forDecisionUpdateWithPermitted_returnsApprovedSentence() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "12345",
+      "decision": "Permitted",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == "Application 12345 was Approved")
+  }
+
+  @Test func renderBody_forDecisionUpdateWithConditions_returnsApprovedWithConditionsSentence() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "2026/0099",
+      "decision": "Conditions",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == "Application 2026/0099 was Approved with conditions")
+  }
+
+  @Test func renderBody_forDecisionUpdateWithRejected_returnsRefusedSentence() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "APP-1",
+      "decision": "Rejected",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == "Application APP-1 was Refused")
+  }
+
+  @Test func renderBody_forDecisionUpdateWithAppealed_returnsRefusalAppealedSentence() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "APP-1",
+      "decision": "Appealed",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == "Application APP-1 was Refusal appealed")
+  }
+
+  @Test func renderBody_forDecisionUpdateWithUnrecognisedDecision_returnsNil() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "APP-1",
+      "decision": "Withdrawn",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func renderBody_forDecisionUpdateMissingDecision_returnsNil() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "applicationName": "APP-1",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func renderBody_forDecisionUpdateMissingApplicationName_returnsNil() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "DecisionUpdate",
+      "decision": "Permitted",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func renderBody_forNonDecisionEventType_returnsNil() {
+    let userInfo: [AnyHashable: Any] = [
+      "eventType": "NewApplication",
+      "applicationName": "APP-1",
+      "decision": "Permitted",
+    ]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func renderBody_forEmptyPayload_returnsNil() {
+    let userInfo: [AnyHashable: Any] = [:]
+
+    let result = NotificationPayloadParser.renderBody(from: userInfo)
+
+    #expect(result == nil)
+  }
 }
