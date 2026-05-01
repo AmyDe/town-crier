@@ -18,6 +18,12 @@ using TownCrier.Web.Endpoints;
 
 namespace TownCrier.Web;
 
+// UseStringEnumConverter = true makes all enums round-trip as their JSON name
+// (e.g. "Wednesday") rather than the underlying integer. This matches how
+// platform clients (iOS Swift JSONEncoder, Android Kotlinx, web JSON.stringify)
+// serialise string-backed enums, and keeps GET responses self-describing.
+// Per-type [JsonConverter] attributes (e.g. on SubscriptionTier) take precedence.
+[JsonSourceGenerationOptions(UseStringEnumConverter = true)]
 [JsonSerializable(typeof(ApiErrorResponse))]
 [JsonSerializable(typeof(EntitlementErrorResponse))]
 [JsonSerializable(typeof(UserIdResponse))]
