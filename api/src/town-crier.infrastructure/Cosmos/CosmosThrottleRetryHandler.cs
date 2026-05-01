@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using TownCrier.Infrastructure.Observability;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
@@ -64,6 +65,11 @@ internal sealed class CosmosThrottleRetryHandler : DelegatingHandler
             {
                 return response;
             }
+
+            // Every 429 the handler observes — including ones that subsequently
+            // succeed on retry — increments the throttle counter. This is the
+            // canonical RU-pressure signal for dashboards.
+            CosmosInstrumentation.Throttles.Add(1);
 
             if (attempt >= this.maxAttempts)
             {
