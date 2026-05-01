@@ -228,7 +228,17 @@ public static class EnvironmentStack
             ManagedEnvironmentId = containerAppsEnvironmentId,
             Configuration = new ConfigurationArgs
             {
-                ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
+                // Single in prod: the platform deactivates old revisions automatically
+                // on each deploy, keeping the active list at 1 (was 73 in prod / 156 in
+                // dev under Multiple mode — see bead tc-xwlc).
+                //
+                // Multiple in dev: pr-gate.yml stages per-PR revisions with
+                // --revision-suffix and --traffic-weight, which Single mode rejects.
+                // The dev backlog is cleaned via a one-time
+                // `az containerapp revision deactivate` loop after this change merges.
+                ActiveRevisionsMode = env == "prod"
+                    ? ActiveRevisionsMode.Single
+                    : ActiveRevisionsMode.Multiple,
                 // Cap inactive revisions to prevent ACR storage growth. Azure's default
                 // is 100; each revision holds image layers in ACR, which pushes the
                 // shared Basic-tier registry over its 10 GB quota (see bead tc-vjrn).
