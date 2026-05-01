@@ -6,4 +6,7 @@ public sealed record NotificationItem(
     string ApplicationDescription,
     string? ApplicationType,
     int AuthorityId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string EventType,
+    string? Decision,
+    string Sources);
