@@ -311,6 +311,88 @@ public sealed class GenerateHourlyDigestsCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_ExcludeZoneFromDigest_When_WatchZoneEmailInstantEnabledFalse()
+    {
+        // Arrange — Personal user with two zones; one has EmailInstantEnabled=false.
+        // The notifications for the muted zone must not appear in the hourly digest.
+        var (handler, notificationRepo, userProfileRepo, emailSender, watchZoneRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithEmail("test@example.com")
+            .WithTier(SubscriptionTier.Personal)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone1 = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("Home")
+            .WithEmailInstantEnabled(true)
+            .Build();
+        var zone2 = new WatchZoneBuilder()
+            .WithId("zone-2")
+            .WithUserId("user-1")
+            .WithName("Office")
+            .WithEmailInstantEnabled(false)
+            .Build();
+        await watchZoneRepo.SaveAsync(zone1, CancellationToken.None);
+        await watchZoneRepo.SaveAsync(zone2, CancellationToken.None);
+
+        SeedUnsentNotifications(notificationRepo, "user-1", "zone-1", count: 2);
+        SeedUnsentNotifications(notificationRepo, "user-1", "zone-2", count: 3);
+
+        // Act
+        await handler.HandleAsync(new GenerateHourlyDigestsCommand(), CancellationToken.None);
+
+        // Assert — only zone-1 in the digest; zone-2 notifications still unsent
+        await Assert.That(emailSender.DigestsSent).HasCount().EqualTo(1);
+        var digests = emailSender.DigestsSent[0].Digests;
+        await Assert.That(digests).HasCount().EqualTo(1);
+        await Assert.That(digests[0].WatchZoneName).IsEqualTo("Home");
+        await Assert.That(digests[0].Notifications).HasCount().EqualTo(2);
+
+        // Zone-1 notifications marked sent; zone-2 notifications still unsent
+        // (so they remain available for the weekly digest, which ignores per-zone flags).
+        var zone1Sent = notificationRepo.All.Count(n => n.WatchZoneId == "zone-1" && n.EmailSent);
+        var zone2Unsent = notificationRepo.All.Count(n => n.WatchZoneId == "zone-2" && !n.EmailSent);
+        await Assert.That(zone1Sent).IsEqualTo(2);
+        await Assert.That(zone2Unsent).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_NotSendDigest_When_AllUserZonesHaveEmailInstantDisabled()
+    {
+        // Arrange — Personal user, single zone with EmailInstantEnabled=false.
+        // No digest should be sent.
+        var (handler, notificationRepo, userProfileRepo, emailSender, watchZoneRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithEmail("test@example.com")
+            .WithTier(SubscriptionTier.Personal)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var zone = new WatchZoneBuilder()
+            .WithId("zone-1")
+            .WithUserId("user-1")
+            .WithName("Home")
+            .WithEmailInstantEnabled(false)
+            .Build();
+        await watchZoneRepo.SaveAsync(zone, CancellationToken.None);
+
+        SeedUnsentNotifications(notificationRepo, "user-1", "zone-1", count: 3);
+
+        // Act
+        await handler.HandleAsync(new GenerateHourlyDigestsCommand(), CancellationToken.None);
+
+        // Assert — no digest, notifications still unsent (weekly digest can pick up).
+        await Assert.That(emailSender.DigestsSent).HasCount().EqualTo(0);
+        await Assert.That(notificationRepo.All.All(n => !n.EmailSent)).IsTrue();
+    }
+
+    [Test]
     public async Task Should_NotMarkAsSent_When_UserSkipped()
     {
         // Arrange
