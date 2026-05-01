@@ -174,6 +174,100 @@ public sealed class GetNotificationsQueryHandlerTests
         await Assert.That(item.CreatedAt).IsEqualTo(March2026);
     }
 
+    [Test]
+    public async Task Should_PopulateEventTypeOnlyWithoutDecision_When_NotificationIsNewApplication()
+    {
+        // Arrange
+        var (handler, repo) = CreateHandler();
+
+        var notification = Notification.Create(
+            "user-1",
+            "uid-001",
+            "app-001",
+            "zone-1",
+            "1 High St",
+            "Rear extension",
+            "Householder",
+            42,
+            March2026,
+            decision: null,
+            eventType: NotificationEventType.NewApplication,
+            sources: NotificationSources.Zone);
+        repo.Seed(notification);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetNotificationsQuery("user-1", Page: 1, PageSize: 20), CancellationToken.None);
+
+        // Assert
+        var item = result.Notifications[0];
+        await Assert.That(item.EventType).IsEqualTo("NewApplication");
+        await Assert.That(item.Decision).IsNull();
+        await Assert.That(item.Sources).IsEqualTo("Zone");
+    }
+
+    [Test]
+    public async Task Should_PopulateEventTypeAndDecisionAndSources_When_NotificationIsDecisionUpdate()
+    {
+        // Arrange
+        var (handler, repo) = CreateHandler();
+
+        var notification = Notification.Create(
+            "user-1",
+            "uid-001",
+            "app-001",
+            "zone-1",
+            "1 High St",
+            "Rear extension",
+            "Householder",
+            42,
+            March2026,
+            decision: "Permitted",
+            eventType: NotificationEventType.DecisionUpdate,
+            sources: NotificationSources.Saved);
+        repo.Seed(notification);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetNotificationsQuery("user-1", Page: 1, PageSize: 20), CancellationToken.None);
+
+        // Assert
+        var item = result.Notifications[0];
+        await Assert.That(item.EventType).IsEqualTo("DecisionUpdate");
+        await Assert.That(item.Decision).IsEqualTo("Permitted");
+        await Assert.That(item.Sources).IsEqualTo("Saved");
+    }
+
+    [Test]
+    public async Task Should_RenderSourcesAsCommaSeparatedFlags_When_NotificationMatchedMultipleSources()
+    {
+        // Arrange
+        var (handler, repo) = CreateHandler();
+
+        var notification = Notification.Create(
+            "user-1",
+            "uid-001",
+            "app-001",
+            "zone-1",
+            "1 High St",
+            "Rear extension",
+            "Householder",
+            42,
+            March2026,
+            decision: null,
+            eventType: NotificationEventType.NewApplication,
+            sources: NotificationSources.Zone | NotificationSources.Saved);
+        repo.Seed(notification);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetNotificationsQuery("user-1", Page: 1, PageSize: 20), CancellationToken.None);
+
+        // Assert
+        var item = result.Notifications[0];
+        await Assert.That(item.Sources).IsEqualTo("Zone, Saved");
+    }
+
     private static (GetNotificationsQueryHandler Handler, FakeNotificationRepository Repo) CreateHandler()
     {
         var repo = new FakeNotificationRepository();

@@ -25,7 +25,6 @@
     <Compile Remove="Polling\WatchZoneActiveAuthorityProviderTests.cs" />
     <Compile Remove="Polling\PollPlanItHealthMonitoringTests.cs" />
     <Compile Remove="Polling\PollingScheduleTests.cs" />
-    <Compile Remove="Notifications\GetNotificationsQueryHandlerTests.cs" />
   </ItemGroup>
 
 </Project>
