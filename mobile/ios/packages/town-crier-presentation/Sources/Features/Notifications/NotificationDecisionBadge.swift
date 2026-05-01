@@ -38,7 +38,7 @@ struct NotificationDecisionBadge: View {
   /// Suppression cases:
   /// * `eventType` is anything other than `"DecisionUpdate"`.
   /// * `decision` is `nil`, empty, or not in the recognised PlanIt vocabulary.
-  static func displayLabel(for item: NotificationItem) -> String? {
+  nonisolated static func displayLabel(for item: NotificationItem) -> String? {
     guard item.eventType == "DecisionUpdate" else { return nil }
     return DecisionVocabulary.displayLabel(forPlanItAppState: item.decision)
   }
