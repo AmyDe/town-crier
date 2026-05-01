@@ -1,14 +1,21 @@
-using System.Net;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Http.Resilience;
-using Polly;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
 public static class CosmosServiceExtensions
 {
+    /// <summary>
+    /// Bounded retry budget for Cosmos 429s.
+    /// 3 attempts × 750ms cap × 1500ms total budget keeps user-facing
+    /// requests under a predictable p99 even when the partition is throttling.
+    /// </summary>
+    private const int CosmosMaxRetryAttempts = 3;
+
+    private static readonly TimeSpan CosmosTotalRetryWaitBudget = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan CosmosPerAttemptCap = TimeSpan.FromMilliseconds(750);
+
     public static IServiceCollection AddCosmosRestClient(
         this IServiceCollection services, IConfiguration configuration)
     {
@@ -32,25 +39,20 @@ public static class CosmosServiceExtensions
         services.AddSingleton(new CosmosAuthProvider(new DefaultAzureCredential()));
 #pragma warning restore CA2000
 
+        services.AddTransient<CosmosThrottleRetryHandler>(_ => new CosmosThrottleRetryHandler(
+            maxAttempts: CosmosMaxRetryAttempts,
+            totalWaitBudget: CosmosTotalRetryWaitBudget,
+            perAttemptCap: CosmosPerAttemptCap,
+#pragma warning disable CA5394 // Jitter for retry backoff — non-security-sensitive randomness.
+            jitter: ms => Random.Shared.Next(0, ms),
+#pragma warning restore CA5394
+            delay: Task.Delay));
+
         services.AddHttpClient("CosmosRest", client =>
         {
             client.BaseAddress = new Uri(accountEndpoint);
         })
-        .AddResilienceHandler("CosmosRetry", builder =>
-        {
-            builder.AddRetry(new HttpRetryStrategyOptions
-            {
-                MaxRetryAttempts = 5,
-                BackoffType = DelayBackoffType.Exponential,
-                Delay = TimeSpan.FromMilliseconds(500),
-                ShouldHandle = args => ValueTask.FromResult(
-                    args.Outcome.Result?.StatusCode is
-                        HttpStatusCode.TooManyRequests or // 429
-                        HttpStatusCode.RequestTimeout or // 408
-                        HttpStatusCode.ServiceUnavailable or // 503
-                        (HttpStatusCode)449), // 449 Retry With
-            });
-        });
+        .AddHttpMessageHandler<CosmosThrottleRetryHandler>();
 
         services.AddSingleton<ICosmosRestClient>(sp =>
         {

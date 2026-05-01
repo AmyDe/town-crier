@@ -460,10 +460,11 @@ internal sealed class CosmosRestClient : ICosmosRestClient
             }
         }
 
-        if (statusCode == 429)
-        {
-            CosmosInstrumentation.Throttles.Add(1);
-        }
+        // 429s are counted by CosmosThrottleRetryHandler (every observed
+        // throttle, including ones that are retried successfully).
+        // Counting again here would double-count the final 429 of an
+        // exhausted retry budget — and is unreachable for callers that use
+        // ThrowOnFailureAsync / ThrowOnCosmosErrorAsync first.
     }
 
     private static async Task ThrowOnFailureAsync(

@@ -611,6 +611,50 @@ public sealed class CosmosRestClientTests
         await Assert.That(request.Headers.IfMatch.Single().Tag).IsEqualTo("\"stale\"");
     }
 
+    [Test]
+    public async Task Should_RetryOnCosmos429AndReturnResults_When_RetryHandlerWraps()
+    {
+        var stub = new StubHttpHandler();
+        stub.EnqueueResponse(
+            HttpStatusCode.TooManyRequests,
+            content: null,
+            headers: [new("x-ms-retry-after-ms", "5")]);
+        stub.EnqueueResponse(
+            HttpStatusCode.OK,
+            """{"Documents":[{"id":"d1","name":"After-Retry"}],"_count":1}""");
+
+        var retryHandler = new CosmosThrottleRetryHandler(
+            maxAttempts: 3,
+            totalWaitBudget: TimeSpan.FromMilliseconds(1500),
+            perAttemptCap: TimeSpan.FromMilliseconds(750),
+            jitter: _ => 0,
+            delay: (_, _) => Task.CompletedTask)
+        {
+            InnerHandler = stub,
+        };
+
+        var httpClient = new HttpClient(retryHandler) { BaseAddress = new Uri(AccountEndpoint) };
+        var authProvider = new CosmosAuthProvider(new StubTokenCredential("fake-token"));
+        var options = new CosmosRestOptions
+        {
+            AccountEndpoint = AccountEndpoint,
+            DatabaseName = DatabaseName,
+        };
+        var client = new CosmosRestClient(httpClient, authProvider, options);
+
+        var results = await client.QueryAsync(
+            "Users",
+            "SELECT * FROM c WHERE c.uid = @uid",
+            null,
+            "pk1",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(results).HasCount().EqualTo(1);
+        await Assert.That(results[0].Name).IsEqualTo("After-Retry");
+        await Assert.That(stub.SentRequests).HasCount().EqualTo(2);
+    }
+
     private static JsonTypeInfo<TestDocument> BuildCountingTypeInfo(
         CountingTestDocumentConverter converter)
     {

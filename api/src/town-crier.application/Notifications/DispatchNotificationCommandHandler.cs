@@ -83,6 +83,15 @@ public sealed class DispatchNotificationCommandHandler
             return;
         }
 
+        // Per-zone push toggle (T2 — WatchZone.PushEnabled). Independent of the
+        // user-profile-level zone preferences, this is the toggle the user
+        // controls in the WatchZone editor on iOS/web.
+        if (!zone.PushEnabled)
+        {
+            await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
+            return;
+        }
+
         // Check zone-level preferences for new applications
         var zonePrefs = profile.GetZonePreferences(zone.Id);
         if (!zonePrefs.NewApplicationPush)

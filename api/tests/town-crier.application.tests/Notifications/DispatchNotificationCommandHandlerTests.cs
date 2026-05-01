@@ -312,6 +312,36 @@ public sealed class DispatchNotificationCommandHandlerTests
         await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
     }
 
+    [Test]
+    public async Task Should_RecordButNotPush_When_WatchZonePushEnabledFalse()
+    {
+        // Arrange — Pro user with a registered device, but the matched WatchZone
+        // has PushEnabled=false (per-zone toggle from T1). Notification row must
+        // still be persisted (in-app feed + weekly digest pick it up) but no
+        // APNs push fires.
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        var application = new PlanningApplicationBuilder()
+            .WithUid("test-uid-001")
+            .WithName("app-001")
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+        var zone = new WatchZoneBuilder()
+            .WithUserId("user-1")
+            .WithId("zone-1")
+            .WithPushEnabled(false)
+            .Build();
+
+        // Act
+        await handler.HandleAsync(new DispatchNotificationCommand(application, zone), CancellationToken.None);
+
+        // Assert
+        await Assert.That(notificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(notificationRepo.All[0].PushSent).IsFalse();
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(0);
+    }
+
     private static (DispatchNotificationCommandHandler Handler,
         FakeNotificationRepository NotificationRepo,
         FakeUserProfileRepository UserProfileRepo,
