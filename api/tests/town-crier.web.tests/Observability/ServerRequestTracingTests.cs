@@ -12,6 +12,16 @@ using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests.Observability;
 
+// [NotInParallel] (no constraint key) serializes this entire class against every
+// other test in the assembly. The ASP.NET Core ActivitySource is process-global,
+// so each WebApplicationFactory's TracerProvider observes server activities from
+// sibling tests' requests too. Without serialization, an InMemoryExporter in this
+// test can latch onto a server span produced by a parallel /v1/me request — e.g.
+// one whose exception event carries BadHttpRequestException — and the assertion
+// on InvalidOperationException flakes. tc-85d2's poll-and-flush made isolated
+// runs deterministic; this attribute closes the cross-class race in full-suite
+// runs. (See tc-3mez.)
+[NotInParallel]
 public sealed class ServerRequestTracingTests
 {
     // Maximum time to wait for the ASP.NET Core server activity to be ended
