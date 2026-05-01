@@ -159,9 +159,6 @@ public static class EnvironmentStack
             // SavedApplications — partitioned by userId
             new("SavedApplications", "/userId"),
 
-            // DecisionAlerts — partitioned by userId
-            new("DecisionAlerts", "/userId"),
-
             // PollState — single document storing last poll timestamp
             new("PollState", "/id"),
 
