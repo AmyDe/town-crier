@@ -51,6 +51,12 @@ struct NotificationPageDTO: Decodable, Sendable {
 }
 
 /// Individual notification item from the API response.
+///
+/// `eventType` is the API's discriminator (e.g. `"NewApplication"`,
+/// `"DecisionUpdate"`); `decision` is the raw PlanIt `app_state` for decision
+/// events and `nil` otherwise; `sources` is the comma-separated user-signal
+/// flag (e.g. `"Zone, Saved"`). All three default to safe values when missing
+/// so older clients keep working against newer API responses and vice versa.
 struct NotificationItemDTO: Decodable, Sendable {
   let applicationName: String
   let applicationAddress: String
@@ -58,6 +64,9 @@ struct NotificationItemDTO: Decodable, Sendable {
   let applicationType: String
   let authorityId: Int
   let createdAt: String
+  let eventType: String?
+  let decision: String?
+  let sources: String?
 
   func toDomain() -> NotificationItem {
     let formatter = ISO8601DateFormatter()
@@ -69,7 +78,10 @@ struct NotificationItemDTO: Decodable, Sendable {
       applicationDescription: applicationDescription,
       applicationType: applicationType,
       authorityId: authorityId,
-      createdAt: date
+      createdAt: date,
+      eventType: eventType ?? "NewApplication",
+      decision: decision,
+      sources: sources ?? ""
     )
   }
 }
