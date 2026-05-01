@@ -5,14 +5,12 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
-using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -36,7 +34,6 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IUserProfileRepository, InMemoryUserProfileRepository>();
-            services.AddSingleton<IDecisionAlertRepository, InMemoryDecisionAlertRepository>();
             services.AddSingleton<IPlanningApplicationRepository, InMemoryPlanningApplicationRepository>();
             services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
             services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();

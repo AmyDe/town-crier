@@ -1,5 +1,4 @@
 using TownCrier.Application.Tests.Admin;
-using TownCrier.Application.Tests.DecisionAlerts;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Notifications;
 using TownCrier.Application.Tests.Polling;
@@ -153,8 +152,6 @@ public sealed class DormantAccountCleanupCommandHandlerTests
 
         public FakeNotificationRepository NotificationRepository { get; } = new();
 
-        public FakeDecisionAlertRepository DecisionAlertRepository { get; } = new();
-
         public FakeWatchZoneRepository WatchZoneRepository { get; } = new();
 
         public FakeSavedApplicationRepository SavedApplicationRepository { get; } = new();
@@ -165,7 +162,6 @@ public sealed class DormantAccountCleanupCommandHandlerTests
             this.Repository,
             this.Auth0Client,
             this.NotificationRepository,
-            this.DecisionAlertRepository,
             this.WatchZoneRepository,
             this.SavedApplicationRepository,
             this.DeviceRegistrationRepository);

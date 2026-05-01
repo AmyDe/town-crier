@@ -11,7 +11,6 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using TownCrier.Application.Auth;
 using TownCrier.Application.Authorities;
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Observability;
@@ -24,7 +23,6 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Auth;
 using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
-using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.Observability;
@@ -115,7 +113,6 @@ builder.Services.AddSingleton<IActiveAuthorityProvider, CycleAlternatingAuthorit
 builder.Services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
 builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
-builder.Services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
 builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
 builder.Services.AddSingleton<IPushNotificationSender, NoOpPushNotificationSender>();
 
@@ -159,16 +156,6 @@ builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
 builder.Services.AddSingleton<DispatchDecisionEventCommandHandler>();
 builder.Services.AddSingleton<IDecisionEventDispatcher, DispatchDecisionEventViaHandler>();
 builder.Services.AddSingleton<INotificationEnqueuer, DispatchNotificationEnqueuer>();
-
-// Decision-alert dispatch — handler still records DecisionAlert documents so
-// bookmark holders can see the outcome on their next app launch. The push
-// sender is a no-op until an APNS-backed implementation lands. See
-// docs/specs/decision-state-vocabulary.md#dispatch. Note: the legacy
-// dispatcher port has been retired; PollPlanItCommandHandler now dispatches
-// via IDecisionEventDispatcher (registered above). The
-// DispatchDecisionAlertCommandHandler container is being removed in tc-so3a.11.
-builder.Services.AddSingleton<IDecisionAlertPushSender, NoOpDecisionAlertPushSender>();
-builder.Services.AddSingleton<DispatchDecisionAlertCommandHandler>();
 
 builder.Services.AddSingleton(TimeProvider.System);
 

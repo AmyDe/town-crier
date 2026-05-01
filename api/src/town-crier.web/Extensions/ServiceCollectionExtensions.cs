@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using TownCrier.Application.Admin;
 using TownCrier.Application.Auth;
 using TownCrier.Application.Authorities;
-using TownCrier.Application.DecisionAlerts;
 using TownCrier.Application.DemoAccount;
 using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
@@ -19,7 +18,6 @@ using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Auth;
 using TownCrier.Infrastructure.Authorities;
 using TownCrier.Infrastructure.Cosmos;
-using TownCrier.Infrastructure.DecisionAlerts;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
@@ -41,8 +39,6 @@ internal static class ServiceCollectionExtensions
     {
         services.AddCosmosRestClient(configuration);
 
-        services.AddSingleton<IDecisionAlertRepository, CosmosDecisionAlertRepository>();
-        services.AddSingleton<IDecisionAlertPushSender, NoOpDecisionAlertPushSender>();
         services.AddSingleton<IPlanningApplicationRepository, CosmosPlanningApplicationRepository>();
         services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
         services.AddSingleton<IWatchZoneRepository, CosmosWatchZoneRepository>();
@@ -178,13 +174,6 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<GenerateOfferCodesCommandHandler>();
         services.AddTransient<RedeemOfferCodeCommandHandler>();
-
-        // Decision-alert handler — registered for symmetry with the worker
-        // host. The polling loop runs in the worker, so the load-bearing
-        // dispatch is there. The legacy dispatcher port has been retired
-        // (tc-so3a.21); the handler container itself is being removed in
-        // tc-so3a.11. See docs/specs/decision-state-vocabulary.md#dispatch.
-        services.AddTransient<DispatchDecisionAlertCommandHandler>();
 
         return services;
     }

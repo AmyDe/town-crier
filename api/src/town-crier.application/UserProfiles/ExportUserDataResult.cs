@@ -7,7 +7,6 @@ public sealed record ExportUserDataResult(
     ExportedSubscription Subscription,
     IReadOnlyList<ExportedWatchZone> WatchZones,
     IReadOnlyList<ExportedNotification> Notifications,
-    IReadOnlyList<ExportedDecisionAlert> DecisionAlerts,
     IReadOnlyList<ExportedSavedApplication> SavedApplications,
     IReadOnlyList<ExportedDeviceRegistration> DeviceRegistrations,
     IReadOnlyList<ExportedOfferCodeRedemption> OfferCodeRedemptions);
