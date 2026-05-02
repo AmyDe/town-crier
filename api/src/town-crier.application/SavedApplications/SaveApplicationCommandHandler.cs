@@ -34,7 +34,10 @@ public sealed class SaveApplicationCommandHandler
             return;
         }
 
-        var savedApplication = SavedApplication.Create(command.UserId, command.Application.Uid, this.timeProvider.GetUtcNow());
+        // Embed the full snapshot so the saved-list endpoint renders with one
+        // partitioned query and never fans out to N cross-partition reads. See
+        // bd tc-udby for the 429 storm this design eliminates.
+        var savedApplication = SavedApplication.Create(command.UserId, command.Application, this.timeProvider.GetUtcNow());
         await this.repository.SaveAsync(savedApplication, ct).ConfigureAwait(false);
     }
 }
