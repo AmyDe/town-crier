@@ -47,7 +47,8 @@ struct ApplicationDetailSaveTests {
 
     await sut.toggleSave()
 
-    #expect(spy.saveCalls == [PlanningApplication.pendingReview.id.value])
+    #expect(spy.saveCalls.count == 1)
+    #expect(spy.saveCalls[0].id == PlanningApplication.pendingReview.id)
   }
 
   @Test("toggleSave sets isSaved to true on success")

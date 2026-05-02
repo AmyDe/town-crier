@@ -7,7 +7,7 @@ import TownCrierDomain
 /// always injects a real repository — this is purely defensive for tests and
 /// preview environments.
 struct UnavailableSavedApplicationRepository: SavedApplicationRepository {
-  func save(applicationUid: String) async throws {}
+  func save(application: PlanningApplication) async throws {}
   func remove(applicationUid: String) async throws {}
   func loadAll() async throws -> [SavedApplication] { [] }
 }

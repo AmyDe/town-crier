@@ -10,7 +10,7 @@ final class ControllableSavedApplicationRepository: SavedApplicationRepository, 
   private var didReceiveCall = false
   private let lock = NSLock()
 
-  func save(applicationUid: String) async throws {}
+  func save(application: PlanningApplication) async throws {}
 
   func remove(applicationUid: String) async throws {}
 

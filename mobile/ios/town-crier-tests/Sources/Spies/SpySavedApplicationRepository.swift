@@ -1,11 +1,11 @@
 import TownCrierDomain
 
 final class SpySavedApplicationRepository: SavedApplicationRepository, @unchecked Sendable {
-  private(set) var saveCalls: [String] = []
+  private(set) var saveCalls: [PlanningApplication] = []
   var saveResult: Result<Void, Error> = .success(())
 
-  func save(applicationUid: String) async throws {
-    saveCalls.append(applicationUid)
+  func save(application: PlanningApplication) async throws {
+    saveCalls.append(application)
     try saveResult.get()
   }
 

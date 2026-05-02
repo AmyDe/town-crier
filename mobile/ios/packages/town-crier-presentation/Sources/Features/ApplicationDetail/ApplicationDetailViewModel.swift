@@ -45,15 +45,17 @@ public final class ApplicationDetailViewModel: ObservableObject {
     !timelineItems.isEmpty
   }
 
-  private let applicationId: PlanningApplicationId
+  private let application: PlanningApplication
   private let savedApplicationRepository: SavedApplicationRepository?
+
+  private var applicationId: PlanningApplicationId { application.id }
 
   public init(
     application: PlanningApplication,
     savedApplicationRepository: SavedApplicationRepository? = nil,
     isSaved: Bool = false
   ) {
-    self.applicationId = application.id
+    self.application = application
     self.savedApplicationRepository = savedApplicationRepository
     self.isSaved = isSaved
     description = application.description
@@ -120,7 +122,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
       }
     } else {
       do {
-        try await repository.save(applicationUid: applicationId.value)
+        try await repository.save(application: application)
         isSaved = true
       } catch {
         // Preserve current state on failure
