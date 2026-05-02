@@ -6,8 +6,16 @@ namespace TownCrier.Application.Tests.DeviceRegistrations;
 internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepository
 {
     private readonly Dictionary<string, DeviceRegistration> store = [];
+    private readonly List<string> deletedTokens = [];
 
     public int Count => this.store.Count;
+
+    /// <summary>
+    /// Records every token passed to <see cref="DeleteByTokenAsync"/> in call
+    /// order. Tests use this to assert that handler-level pruning paths
+    /// dispatched the expected removals — even if the token wasn't seeded.
+    /// </summary>
+    public IReadOnlyList<string> DeletedTokens => this.deletedTokens;
 
     public Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
     {
@@ -31,6 +39,7 @@ internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepo
 
     public Task DeleteByTokenAsync(string token, CancellationToken ct)
     {
+        this.deletedTokens.Add(token);
         this.store.Remove(token);
         return Task.CompletedTask;
     }
