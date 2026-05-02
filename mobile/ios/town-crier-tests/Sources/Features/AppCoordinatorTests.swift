@@ -213,6 +213,61 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
+  // MARK: - Search Authorities
+
+  @Test func loadSearchAuthorities_returnsAuthoritiesFromRepository() async {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    let cambridge = LocalAuthority(code: "123", name: "Cambridge")
+    authoritySpy.fetchAuthoritiesResult = .success(
+      ApplicationAuthorityResult(authorities: [cambridge], count: 1)
+    )
+    let coordinator = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+
+    let authorities = await coordinator.loadSearchAuthorities()
+
+    #expect(authorities == [cambridge])
+  }
+
+  @Test func loadSearchAuthorities_returnsEmpty_onFailure() async {
+    let authoritySpy = SpyApplicationAuthorityRepository()
+    authoritySpy.fetchAuthoritiesResult = .failure(DomainError.networkUnavailable)
+    let coordinator = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      authorityRepository: authoritySpy,
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService()
+    )
+
+    let authorities = await coordinator.loadSearchAuthorities()
+
+    #expect(authorities.isEmpty)
+  }
+
+  @Test func loadSearchAuthorities_returnsEmpty_whenNoRepositoryInjected() async {
+    let (sut, _) = makeSUT()
+
+    let authorities = await sut.loadSearchAuthorities()
+
+    #expect(authorities.isEmpty)
+  }
+
   // MARK: - Search ViewModel Factory
 
   @Test func makeSearchViewModel_returnsConfiguredViewModel() {

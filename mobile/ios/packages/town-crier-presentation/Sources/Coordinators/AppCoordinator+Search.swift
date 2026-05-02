@@ -20,4 +20,17 @@ extension AppCoordinator {
     }
     return viewModel
   }
+
+  /// Loads the user's authority list for the Search tab. Returns an empty list
+  /// on failure or when no authority repository is wired — Search will still
+  /// render with a disabled picker.
+  public func loadSearchAuthorities() async -> [LocalAuthority] {
+    guard let authorityRepository else { return [] }
+    do {
+      let result = try await authorityRepository.fetchAuthorities()
+      return result.authorities
+    } catch {
+      return []
+    }
+  }
 }

@@ -41,7 +41,7 @@ public final class AppCoordinator: ObservableObject {
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
-  private let authorityRepository: ApplicationAuthorityRepository?
+  let authorityRepository: ApplicationAuthorityRepository?
   private let watchZoneRepository: WatchZoneRepository
   private let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
