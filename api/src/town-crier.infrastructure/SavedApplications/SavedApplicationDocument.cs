@@ -16,7 +16,7 @@ internal sealed class SavedApplicationDocument
     public required DateTimeOffset SavedAt { get; init; }
 
     /// <summary>
-    /// Embedded planning-application snapshot. Renders the saved-list with one
+    /// Gets the embedded planning-application snapshot. Renders the saved-list with one
     /// partitioned query, eliminating the cross-partition fan-out that blew the
     /// per-second RU budget on Cosmos serverless (bd tc-udby). Null only for
     /// legacy rows persisted before the snapshot column existed; the list handler

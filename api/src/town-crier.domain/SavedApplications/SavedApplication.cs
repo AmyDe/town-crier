@@ -19,9 +19,9 @@ public sealed class SavedApplication
     public DateTimeOffset SavedAt { get; }
 
     /// <summary>
-    /// Embedded snapshot of the planning application at save time. Renders the saved-list
-    /// without an N-fan-out cross-partition hydration (see bd tc-udby). Null only for
-    /// legacy rows persisted before the snapshot column existed; the list handler
+    /// Gets the embedded snapshot of the planning application at save time. Renders the
+    /// saved-list without an N-fan-out cross-partition hydration (see bd tc-udby). Null only
+    /// for legacy rows persisted before the snapshot column existed; the list handler
     /// hydrates and persists those once on first read (lazy backfill).
     /// </summary>
     public PlanningApplication? Application { get; }
