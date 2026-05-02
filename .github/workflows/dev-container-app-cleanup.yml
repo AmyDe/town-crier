@@ -1,0 +1,166 @@
+# Deactivates non-latest active Container App revisions in rg-town-crier-dev.
+#
+# Background: dev's API Container App runs in Multiple revisions mode so that
+# pr-gate.yml can deploy a PR-suffixed staging revision with traffic-weight 0
+# and integration-test it without disturbing the live revision. The cleanup
+# step in pr-gate.yml deactivates the staging revision for the PR it ran on,
+# but external/abandoned PRs and intermittent failures leave stale active
+# revisions behind. Without housekeeping the count drifts towards Azure's
+# 100-revision-per-app limit (see tc-xwlc).
+#
+# This workflow self-discovers any Container App in the dev resource group
+# that runs in Multiple mode and deactivates every active revision except
+# the one Azure considers latest. Single-mode apps are skipped — Azure
+# already auto-deactivates their stale revisions.
+#
+# Requires secrets:
+#   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
+#   AZURE_TENANT_ID        — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  — Azure subscription
+#
+# Requires GitHub Environment:
+#   development            — with OIDC federated credential (environment:development)
+
+name: Dev Container App Cleanup
+
+on:
+  schedule:
+    # Every Monday at 03:00 UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: dev-container-app-cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  RESOURCE_GROUP: rg-town-crier-dev
+
+jobs:
+  cleanup:
+    name: Deactivate stale dev revisions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Discover Multiple-mode Container Apps
+        id: discover
+        run: |
+          set -euo pipefail
+          APPS=$(az containerapp list \
+            --resource-group "${RESOURCE_GROUP}" \
+            --query "[?properties.configuration.activeRevisionsMode=='Multiple'].name" \
+            -o tsv)
+
+          if [ -z "${APPS}" ]; then
+            echo "No Multiple-mode Container Apps found in ${RESOURCE_GROUP}."
+          else
+            echo "Found Multiple-mode apps:"
+            echo "${APPS}"
+          fi
+
+          # Persist the newline-separated list for the next step.
+          {
+            echo 'apps<<EOF'
+            echo "${APPS}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deactivate non-latest revisions
+        id: deactivate
+        env:
+          APPS: ${{ steps.discover.outputs.apps }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Dev Container App revision cleanup"
+            echo
+            echo "Resource group: \`${RESOURCE_GROUP}\`"
+            echo
+            echo "| App | Mode | Deactivated | Active after |"
+            echo "| --- | --- | ---: | ---: |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "${APPS}" ]; then
+            {
+              echo "| _(none)_ | — | 0 | 0 |"
+              echo
+              echo "_No Multiple-mode Container Apps found — nothing to do._"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "fail=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          fail=false
+
+          while IFS= read -r APP; do
+            [ -z "${APP}" ] && continue
+            echo "::group::${APP}"
+
+            # Revisions whose active flag is true but which are not the latest.
+            STALE=$(az containerapp revision list \
+              --resource-group "${RESOURCE_GROUP}" \
+              --name "${APP}" \
+              --query "[?properties.active && properties.name!=properties.latestRevisionName].name" \
+              -o tsv)
+
+            count=0
+            if [ -n "${STALE}" ]; then
+              while IFS= read -r REV; do
+                [ -z "${REV}" ] && continue
+                echo "Deactivating ${REV}"
+                az containerapp revision deactivate \
+                  --resource-group "${RESOURCE_GROUP}" \
+                  --name "${APP}" \
+                  --revision "${REV}"
+                count=$((count + 1))
+              done <<< "${STALE}"
+            else
+              echo "No stale active revisions on ${APP}."
+            fi
+
+            ACTIVE_AFTER=$(az containerapp revision list \
+              --resource-group "${RESOURCE_GROUP}" \
+              --name "${APP}" \
+              --query "length([?properties.active])" \
+              -o tsv)
+
+            echo "Active revisions after cleanup: ${ACTIVE_AFTER}"
+            echo "| \`${APP}\` | Multiple | ${count} | ${ACTIVE_AFTER} |" >> "$GITHUB_STEP_SUMMARY"
+
+            # A Multiple-mode app should normally settle to 1 active revision
+            # (the latest). We allow up to 2 so a deploy that has just rolled
+            # to a new revision but not yet had its predecessor torn down
+            # doesn't fail the run.
+            if [ "${ACTIVE_AFTER}" -gt 2 ]; then
+              echo "::error::${APP} still has ${ACTIVE_AFTER} active revisions after cleanup (expected <=2)"
+              fail=true
+            fi
+
+            echo "::endgroup::"
+          done <<< "${APPS}"
+
+          if [ "${fail}" = "true" ]; then
+            echo "fail=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fail=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail run if any app exceeds 2 active revisions
+        if: steps.deactivate.outputs.fail == 'true'
+        run: |
+          echo "::error::One or more Container Apps still have more than 2 active revisions after cleanup."
+          exit 1

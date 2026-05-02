@@ -22,6 +22,9 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
   @Published public var isRedeemOfferCodePresented = false
+  /// Toggled to `true` when the user taps the gear icon on any tab. The view
+  /// layer presents the Settings view as a sheet bound to this flag.
+  @Published public var isSettingsPresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
 
   public var isOnboardingComplete: Bool {
@@ -38,12 +41,13 @@ public final class AppCoordinator: ObservableObject {
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
-  private let authorityRepository: ApplicationAuthorityRepository?
+  let authorityRepository: ApplicationAuthorityRepository?
   private let watchZoneRepository: WatchZoneRepository
   private let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
+  let searchRepository: SearchRepository?
   private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
@@ -73,6 +77,7 @@ public final class AppCoordinator: ObservableObject {
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
+    searchRepository: SearchRepository? = nil,
     offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil
   ) {
@@ -91,6 +96,7 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
+    self.searchRepository = searchRepository
     self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
 
@@ -305,6 +311,12 @@ public final class AppCoordinator: ObservableObject {
     isManageSubscriptionPresented = true
   }
 
+  /// Presents the Settings view as a sheet from any tab. Bound to the gear
+  /// icon installed via the `.settingsToolbar` ViewModifier.
+  public func showSettings() {
+    isSettingsPresented = true
+  }
+
   /// Requests that the view layer deep-link to the iOS system Settings page
   /// for the app, where the user can manage push notification permissions
   /// (alert style, banners, lock screen, sounds, badges, focus, etc.).
@@ -374,7 +386,7 @@ public final class AppCoordinator: ObservableObject {
     }
   }
 
-  private func showApplicationDetail(_ id: PlanningApplicationId) {
+  func showApplicationDetail(_ id: PlanningApplicationId) {
     Task {
       do {
         detailApplication = try await repository.fetchApplication(by: id)

@@ -41,20 +41,39 @@ struct APISavedApplicationRepositoryTests {
 
   // MARK: - save
 
-  @Test("save sends PUT /v1/me/saved-applications/{uid} with no body")
+  @Test("save sends PUT /v1/me/saved-applications/{uid} with full PlanningApplication body")
   func save_sendsCorrectRequest() async throws {
     let (sut, _, transport) = makeSUT(responses: [
       (Data(), httpResponse(statusCode: 204))
     ])
+    let app = PlanningApplication(
+      id: PlanningApplicationId("BK/2026/0042"),
+      reference: ApplicationReference("2026/0042"),
+      authority: LocalAuthority(code: "123", name: "Cambridge"),
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+      description: "Erection of two-storey rear extension",
+      address: "12 Mill Road, Cambridge, CB1 2AD"
+    )
 
-    try await sut.save(applicationUid: "BK/2026/0042")
+    try await sut.save(application: app)
 
     #expect(transport.requests.count == 1)
     let request = transport.requests[0]
     #expect(request.httpMethod == "PUT")
     let url = try #require(request.url)
     #expect(url.path().contains("/v1/me/saved-applications/BK/2026/0042"))
-    #expect(request.httpBody == nil)
+    let body = try #require(request.httpBody)
+    let json = try #require(
+      try JSONSerialization.jsonObject(with: body) as? [String: Any]
+    )
+    #expect(json["uid"] as? String == "BK/2026/0042")
+    #expect(json["name"] as? String == "2026/0042")
+    #expect(json["areaName"] as? String == "Cambridge")
+    #expect(json["areaId"] as? Int == 123)
+    #expect(json["address"] as? String == "12 Mill Road, Cambridge, CB1 2AD")
+    #expect(json["description"] as? String == "Erection of two-storey rear extension")
+    #expect(json["lastDifferent"] != nil)
   }
 
   @Test("save with network error throws networkUnavailable")
@@ -71,7 +90,7 @@ struct APISavedApplicationRepositoryTests {
     let sut = APISavedApplicationRepository(apiClient: apiClient)
 
     await #expect(throws: DomainError.networkUnavailable) {
-      try await sut.save(applicationUid: "UID-1")
+      try await sut.save(application: .pendingReview)
     }
   }
 
@@ -82,7 +101,7 @@ struct APISavedApplicationRepositoryTests {
     ])
 
     await #expect(throws: DomainError.serverError(statusCode: 400, message: "Bad Request")) {
-      try await sut.save(applicationUid: "UID-1")
+      try await sut.save(application: .pendingReview)
     }
   }
 

@@ -2,9 +2,11 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useSavedApplication } from '../useSavedApplication';
 import { SpySavedApplicationRepository } from './spies/spy-saved-application-repository';
+import { fullApplication } from './fixtures/planning-application.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
 const APP_UID = asApplicationUid('APP-001');
+const APP = fullApplication({ uid: APP_UID });
 
 describe('useSavedApplication', () => {
   it('detects the application is saved when it appears in the saved list', async () => {
@@ -33,7 +35,7 @@ describe('useSavedApplication', () => {
     expect(result.current.isSaved).toBe(false);
   });
 
-  it('saves the application when toggled from unsaved', async () => {
+  it('saves the full application when toggled from unsaved', async () => {
     const spy = new SpySavedApplicationRepository();
     spy.listSavedResult = [];
 
@@ -44,10 +46,10 @@ describe('useSavedApplication', () => {
     });
 
     await act(async () => {
-      await result.current.toggleSave();
+      await result.current.toggleSave(APP);
     });
 
-    expect(spy.saveCalls).toEqual([APP_UID]);
+    expect(spy.saveCalls).toEqual([APP]);
     expect(result.current.isSaved).toBe(true);
   });
 
@@ -62,7 +64,7 @@ describe('useSavedApplication', () => {
     });
 
     await act(async () => {
-      await result.current.toggleSave();
+      await result.current.toggleSave(APP);
     });
 
     expect(spy.removeCalls).toEqual([APP_UID]);
@@ -81,7 +83,7 @@ describe('useSavedApplication', () => {
     });
 
     await act(async () => {
-      await result.current.toggleSave();
+      await result.current.toggleSave(APP);
     });
 
     expect(result.current.isSaved).toBe(false);

@@ -114,7 +114,13 @@ builder.Services.AddSingleton<INotificationRepository, CosmosNotificationReposit
 builder.Services.AddSingleton<IUserProfileRepository, CosmosUserProfileRepository>();
 builder.Services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
 builder.Services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
-builder.Services.AddSingleton<IPushNotificationSender, NoOpPushNotificationSender>();
+
+// APNs push pipeline. When Apns:Enabled=false (local dev / unit tests),
+// registers NoOpPushNotificationSender. When true, registers the real
+// ApnsPushNotificationSender + ApnsJwtProvider singleton + named HTTP/2
+// HttpClient. Validation runs eagerly here so a misconfigured deployment
+// crashes at startup, not on the first push.
+builder.Services.AddApnsPushNotifications(builder.Configuration);
 
 // Dormant account cleanup needs the full delete-cascade pipeline. Auth0
 // management is configured identically to the web host — prefer the real
@@ -152,6 +158,7 @@ else
     builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
 }
 
+builder.Services.AddSingleton<RemoveInvalidDeviceTokenCommandHandler>();
 builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
 builder.Services.AddSingleton<DispatchDecisionEventCommandHandler>();
 builder.Services.AddSingleton<IDecisionEventDispatcher, DispatchDecisionEventViaHandler>();

@@ -81,6 +81,14 @@ internal static class ServiceCollectionExtensions
 
         services.AddSingleton(TimeProvider.System);
 
+        // APNs push pipeline. When Apns:Enabled=false (default — local dev,
+        // unit tests, web instances that don't dispatch pushes), registers
+        // NoOpPushNotificationSender. When true, registers the real
+        // ApnsPushNotificationSender + ApnsJwtProvider singleton + named
+        // HTTP/2 HttpClient. Validation runs eagerly here so a misconfigured
+        // deployment crashes at startup, not on the first push.
+        services.AddApnsPushNotifications(configuration);
+
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
         services.Configure<RateLimitOptions>(configuration.GetSection("RateLimiting"));
 

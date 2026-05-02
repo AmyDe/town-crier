@@ -26,6 +26,7 @@ public sealed class DispatchDecisionEventCommandHandler
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
+    private readonly RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler;
     private readonly TimeProvider timeProvider;
 
     public DispatchDecisionEventCommandHandler(
@@ -35,6 +36,7 @@ public sealed class DispatchDecisionEventCommandHandler
         IWatchZoneRepository watchZoneRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
+        RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler,
         TimeProvider timeProvider)
     {
         this.notificationRepository = notificationRepository;
@@ -43,6 +45,7 @@ public sealed class DispatchDecisionEventCommandHandler
         this.watchZoneRepository = watchZoneRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
+        this.removeInvalidDeviceTokenHandler = removeInvalidDeviceTokenHandler;
         this.timeProvider = timeProvider;
     }
 
@@ -168,7 +171,7 @@ public sealed class DispatchDecisionEventCommandHandler
 
             if (devices.Count > 0)
             {
-                await this.pushNotificationSender.SendAsync(notification, devices, ct)
+                var sendResult = await this.pushNotificationSender.SendAsync(notification, devices, ct)
                     .ConfigureAwait(false);
                 notification.MarkPushSent();
                 ApiMetrics.NotificationsSent.Add(
@@ -176,6 +179,16 @@ public sealed class DispatchDecisionEventCommandHandler
                     new KeyValuePair<string, object?>("event_type", notification.EventType.ToString()),
                     new KeyValuePair<string, object?>("sources", notification.Sources.ToString()),
                     new KeyValuePair<string, object?>("tier", profile.Tier.ToString()));
+
+                // Prune device tokens APNs reported as permanently invalid (e.g.
+                // 410 Unregistered, 400 BadDeviceToken). Idempotent — empty
+                // InvalidTokens dispatches no commands.
+                foreach (var invalidToken in sendResult.InvalidTokens)
+                {
+                    await this.removeInvalidDeviceTokenHandler
+                        .HandleAsync(new RemoveInvalidDeviceTokenCommand(invalidToken), ct)
+                        .ConfigureAwait(false);
+                }
             }
         }
 

@@ -71,7 +71,8 @@ struct MapViewModelSaveTests {
 
     await sut.toggleSaveSelectedApplication()
 
-    #expect(spy.saveCalls == ["APP-001"])
+    #expect(spy.saveCalls.count == 1)
+    #expect(spy.saveCalls[0].id == PlanningApplicationId("APP-001"))
     #expect(sut.isSelectedApplicationSaved)
   }
 

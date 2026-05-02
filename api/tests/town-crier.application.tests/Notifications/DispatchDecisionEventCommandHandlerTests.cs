@@ -1,3 +1,4 @@
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Polling;
@@ -414,6 +415,50 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(harness.NotificationRepo.All.Any(n => n.UserId == "user-2")).IsTrue();
     }
 
+    [Test]
+    public async Task Should_PruneInvalidTokens_When_DecisionSenderReportsRejections()
+    {
+        // Arrange — Pro user with two devices; sender reports the second invalid.
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "good-token");
+
+        // Add a second device to the same user
+        var staleDevice = DeviceRegistration.Create("user-1", "stale-token", DevicePlatform.Ios, March2026);
+        await harness.DeviceRepo.SaveAsync(staleDevice, CancellationToken.None);
+
+        harness.PushSender.NextInvalidTokens = new[] { "stale-token" };
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — exactly one removal, against the stale token
+        await Assert.That(harness.DeviceRepo.DeletedTokens).HasCount().EqualTo(1);
+        await Assert.That(harness.DeviceRepo.DeletedTokens[0]).IsEqualTo("stale-token");
+        await Assert.That(harness.DeviceRepo.GetByToken("good-token")).IsNotNull();
+        await Assert.That(harness.DeviceRepo.GetByToken("stale-token")).IsNull();
+    }
+
+    [Test]
+    public async Task Should_NotPruneAnyTokens_When_DecisionSenderReportsNoRejections()
+    {
+        // Arrange — happy path on the decision dispatch path; no rejections.
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "good-token");
+
+        // Default NextInvalidTokens is empty.
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(BuildPermittedApplication()),
+            CancellationToken.None);
+
+        // Assert — push sent, no removal calls
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(harness.DeviceRepo.DeletedTokens).HasCount().EqualTo(0);
+    }
+
     private static PlanningApplication BuildPermittedApplication(
         string uid = "test-uid-001",
         string name = "app-001",
@@ -437,6 +482,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
             this.WatchZoneRepo = new FakeWatchZoneRepository();
             this.DeviceRepo = new FakeDeviceRegistrationRepository();
             this.PushSender = new SpyPushNotificationSender();
+            this.RemoveInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(this.DeviceRepo);
             this.TimeProvider = new FakeTimeProvider(March2026);
 
             this.Handler = new DispatchDecisionEventCommandHandler(
@@ -446,6 +492,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
                 this.WatchZoneRepo,
                 this.DeviceRepo,
                 this.PushSender,
+                this.RemoveInvalidHandler,
                 this.TimeProvider);
         }
 
@@ -462,6 +509,8 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         public FakeDeviceRegistrationRepository DeviceRepo { get; }
 
         public SpyPushNotificationSender PushSender { get; }
+
+        public RemoveInvalidDeviceTokenCommandHandler RemoveInvalidHandler { get; }
 
         public FakeTimeProvider TimeProvider { get; }
 

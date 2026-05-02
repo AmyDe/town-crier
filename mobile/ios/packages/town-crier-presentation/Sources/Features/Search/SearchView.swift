@@ -3,8 +3,10 @@ import TownCrierDomain
 
 /// Search screen with authority selector and paginated results.
 ///
-/// Pro-gated: free and personal tier users see a disabled state with an upgrade prompt.
-/// Pro users can select an authority, enter a search query, and browse paginated results.
+/// Soft-paywall pattern: the search field is visible to all users. Free and
+/// personal tier users can type a query, but submitting (or tapping "Search")
+/// triggers the entitlement gate sheet via ``SearchViewModel.search`` instead
+/// of executing the network call. Pro users execute searches normally.
 public struct SearchView: View {
   @StateObject private var viewModel: SearchViewModel
   private let authorities: [LocalAuthority]
@@ -24,10 +26,9 @@ public struct SearchView: View {
     ZStack {
       Color.tcBackground.ignoresSafeArea()
 
-      if viewModel.isSearchEnabled {
-        enabledContent
-      } else {
-        gatedContent
+      VStack(spacing: 0) {
+        searchHeader
+        resultContent
       }
     }
     .navigationTitle("Search")
@@ -36,15 +37,6 @@ public struct SearchView: View {
     #endif
     .entitlementGateSheet(entitlement: $viewModel.entitlementGate) {
       onViewPlans()
-    }
-  }
-
-  // MARK: - Enabled Content (Pro)
-
-  private var enabledContent: some View {
-    VStack(spacing: 0) {
-      searchHeader
-      resultContent
     }
   }
 
@@ -192,33 +184,4 @@ public struct SearchView: View {
     .listStyle(.plain)
   }
 
-  // MARK: - Gated Content (Free / Personal)
-
-  private var gatedContent: some View {
-    VStack(spacing: TCSpacing.large) {
-      Spacer()
-
-      Image(systemName: "magnifyingglass")
-        .font(.system(.largeTitle))
-        .foregroundStyle(Color.tcTextTertiary)
-
-      Text("Search Applications")
-        .font(TCTypography.displaySmall)
-        .foregroundStyle(Color.tcTextPrimary)
-
-      Text("Search across all planning applications by keyword, address, or reference number.")
-        .font(TCTypography.body)
-        .foregroundStyle(Color.tcTextSecondary)
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, TCSpacing.medium)
-
-      UpgradeBadgeView()
-
-      PrimaryButton("Upgrade to Pro", action: onViewPlans)
-        .padding(.horizontal, TCSpacing.medium)
-
-      Spacer()
-    }
-    .padding(TCSpacing.medium)
-  }
 }

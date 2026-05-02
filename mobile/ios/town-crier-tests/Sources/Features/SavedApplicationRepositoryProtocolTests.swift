@@ -11,13 +11,15 @@ struct SavedApplicationRepositoryProtocolTests {
     #expect(spy is SpySavedApplicationRepository)
   }
 
-  @Test("save records the applicationUid")
-  func save_recordsUid() async throws {
+  @Test("save records the full PlanningApplication")
+  func save_recordsApplication() async throws {
     let spy = SpySavedApplicationRepository()
+    let app = PlanningApplication.pendingReview
 
-    try await spy.save(applicationUid: "BK/2026/0042")
+    try await spy.save(application: app)
 
-    #expect(spy.saveCalls == ["BK/2026/0042"])
+    #expect(spy.saveCalls.count == 1)
+    #expect(spy.saveCalls[0].id == app.id)
   }
 
   @Test("remove records the applicationUid")

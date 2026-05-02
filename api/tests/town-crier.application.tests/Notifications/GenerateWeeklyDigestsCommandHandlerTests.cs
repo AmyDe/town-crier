@@ -1,3 +1,4 @@
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Polling;
@@ -112,6 +113,57 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
 
         // Assert
         await Assert.That(pushSender.DigestsSent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_PruneInvalidTokens_When_DigestSenderReportsRejections()
+    {
+        // Arrange — Pro user with two devices, one rejected by APNs on digest send.
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        await deviceRepo.SaveAsync(
+            DeviceRegistration.Create("user-1", "good-token", DevicePlatform.Ios, MondayMarch2026),
+            CancellationToken.None);
+        await deviceRepo.SaveAsync(
+            DeviceRegistration.Create("user-1", "stale-token", DevicePlatform.Ios, MondayMarch2026),
+            CancellationToken.None);
+
+        SeedNotifications(notificationRepo, "user-1", count: 3, createdAt: MondayMarch2026.AddDays(-2));
+
+        pushSender.NextInvalidDigestTokens = new[] { "stale-token" };
+
+        // Act
+        await handler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None);
+
+        // Assert — exactly one removal, against the stale token
+        await Assert.That(deviceRepo.DeletedTokens).HasCount().EqualTo(1);
+        await Assert.That(deviceRepo.DeletedTokens[0]).IsEqualTo("stale-token");
+        await Assert.That(deviceRepo.GetByToken("good-token")).IsNotNull();
+        await Assert.That(deviceRepo.GetByToken("stale-token")).IsNull();
+    }
+
+    [Test]
+    public async Task Should_NotPruneAnyTokens_When_DigestSenderReportsNoRejections()
+    {
+        // Arrange — happy path: digest delivered, InvalidTokens empty.
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
+        SeedNotifications(notificationRepo, "user-1", count: 3, createdAt: MondayMarch2026.AddDays(-2));
+
+        // Default NextInvalidDigestTokens is empty.
+
+        // Act
+        await handler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None);
+
+        // Assert — digest sent, no removal calls
+        await Assert.That(pushSender.DigestsSent).HasCount().EqualTo(1);
+        await Assert.That(deviceRepo.DeletedTokens).HasCount().EqualTo(0);
     }
 
     [Test]
@@ -406,12 +458,13 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var emailSender = new SpyEmailSender();
         var watchZoneRepo = new FakeWatchZoneRepository();
         var tp = timeProvider ?? new FakeTimeProvider(MondayMarch2026);
 
         var handler = new GenerateWeeklyDigestsCommandHandler(
-            userProfileRepo, notificationRepo, deviceRepo, pushSender, emailSender, watchZoneRepo, tp);
+            userProfileRepo, notificationRepo, deviceRepo, pushSender, removeInvalidHandler, emailSender, watchZoneRepo, tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, watchZoneRepo);
     }

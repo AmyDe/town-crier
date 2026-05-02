@@ -234,7 +234,8 @@ describe('ApplicationDetailPage', () => {
   it('renders a save button that toggles on click', async () => {
     const user = userEvent.setup();
     const appRepo = new SpyApplicationRepository();
-    appRepo.fetchApplicationResult = fullApplication();
+    const application = fullApplication();
+    appRepo.fetchApplicationResult = application;
 
     const savedRepo = new SpySavedApplicationRepository();
     savedRepo.listSavedResult = [];
@@ -246,7 +247,7 @@ describe('ApplicationDetailPage', () => {
 
     await user.click(saveButton);
 
-    expect(savedRepo.saveCalls).toEqual([asApplicationUid('APP-001')]);
+    expect(savedRepo.saveCalls).toEqual([application]);
   });
 
   it('shows unsave when application is already saved', async () => {

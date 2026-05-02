@@ -13,15 +13,35 @@ internal sealed class SpyPushNotificationSender : IPushNotificationSender
 
     public IReadOnlyList<(int ApplicationCount, IReadOnlyList<DeviceRegistration> Devices)> DigestsSent => this.digestsSent;
 
-    public Task SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    /// <summary>
+    /// Gets or sets tokens to surface in <see cref="PushSendResult.InvalidTokens"/>
+    /// on the next <see cref="SendAsync"/> call. Mirrors the real APNs sender's
+    /// 410 Unregistered / 400 BadDeviceToken signal so handlers can be exercised
+    /// against the prune path. Defaults to empty (no rejections).
+    /// </summary>
+    public IReadOnlyList<string> NextInvalidTokens { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets tokens to surface in <see cref="PushSendResult.InvalidTokens"/>
+    /// on the next <see cref="SendDigestAsync"/> call.
+    /// </summary>
+    public IReadOnlyList<string> NextInvalidDigestTokens { get; set; } = Array.Empty<string>();
+
+    public Task<PushSendResult> SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
     {
         this.sent.Add((notification, devices));
-        return Task.CompletedTask;
+        var result = this.NextInvalidTokens.Count == 0
+            ? PushSendResult.Empty
+            : new PushSendResult(this.NextInvalidTokens);
+        return Task.FromResult(result);
     }
 
-    public Task SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public Task<PushSendResult> SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
     {
         this.digestsSent.Add((applicationCount, devices));
-        return Task.CompletedTask;
+        var result = this.NextInvalidDigestTokens.Count == 0
+            ? PushSendResult.Empty
+            : new PushSendResult(this.NextInvalidDigestTokens);
+        return Task.FromResult(result);
     }
 }

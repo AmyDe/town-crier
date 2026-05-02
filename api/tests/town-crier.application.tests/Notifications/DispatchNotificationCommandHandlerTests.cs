@@ -1,3 +1,4 @@
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
@@ -313,6 +314,90 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_PruneInvalidTokens_When_SenderReportsRejections()
+    {
+        // Arrange — Pro user with two devices; sender reports the second as invalid.
+        // Handler must dispatch RemoveInvalidDeviceTokenCommand for each rejected
+        // token (one call per token, exactly).
+        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        var goodDevice = DeviceRegistration.Create("user-1", "good-token", DevicePlatform.Ios, March2026);
+        var staleDevice = DeviceRegistration.Create("user-1", "stale-token", DevicePlatform.Ios, March2026);
+        await deviceRepo.SaveAsync(goodDevice, CancellationToken.None);
+        await deviceRepo.SaveAsync(staleDevice, CancellationToken.None);
+
+        pushSender.NextInvalidTokens = new[] { "stale-token" };
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — exactly one removal, against the stale token
+        await Assert.That(deviceRepo.DeletedTokens).HasCount().EqualTo(1);
+        await Assert.That(deviceRepo.DeletedTokens[0]).IsEqualTo("stale-token");
+        await Assert.That(deviceRepo.GetByToken("good-token")).IsNotNull();
+        await Assert.That(deviceRepo.GetByToken("stale-token")).IsNull();
+    }
+
+    [Test]
+    public async Task Should_NotPruneAnyTokens_When_SenderReportsNoRejections()
+    {
+        // Arrange — happy path: device delivered successfully, InvalidTokens empty.
+        // Idempotency guard — no spurious removal commands.
+        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        // Default NextInvalidTokens is empty.
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — push sent, no removal calls
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(deviceRepo.DeletedTokens).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_PruneEachInvalidToken_When_MultipleTokensRejected()
+    {
+        // Arrange — three devices; two reported invalid by APNs. Verifies the
+        // handler iterates all entries in PushSendResult.InvalidTokens.
+        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+
+        var profile = new UserProfileBuilder()
+            .WithUserId("user-1")
+            .WithTier(SubscriptionTier.Pro)
+            .Build();
+        await userProfileRepo.SaveAsync(profile, CancellationToken.None);
+
+        await deviceRepo.SaveAsync(
+            DeviceRegistration.Create("user-1", "token-a", DevicePlatform.Ios, March2026),
+            CancellationToken.None);
+        await deviceRepo.SaveAsync(
+            DeviceRegistration.Create("user-1", "token-b", DevicePlatform.Ios, March2026),
+            CancellationToken.None);
+        await deviceRepo.SaveAsync(
+            DeviceRegistration.Create("user-1", "token-c", DevicePlatform.Ios, March2026),
+            CancellationToken.None);
+
+        pushSender.NextInvalidTokens = new[] { "token-a", "token-c" };
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert — both rejected tokens removed exactly once, good token retained
+        await Assert.That(deviceRepo.DeletedTokens).HasCount().EqualTo(2);
+        await Assert.That(deviceRepo.DeletedTokens).Contains("token-a");
+        await Assert.That(deviceRepo.DeletedTokens).Contains("token-c");
+        await Assert.That(deviceRepo.GetByToken("token-b")).IsNotNull();
+    }
+
+    [Test]
     public async Task Should_RecordButNotPush_When_WatchZonePushEnabledFalse()
     {
         // Arrange — Pro user with a registered device, but the matched WatchZone
@@ -352,10 +437,11 @@ public sealed class DispatchNotificationCommandHandlerTests
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var tp = timeProvider ?? new FakeTimeProvider(March2026);
 
         var handler = new DispatchNotificationCommandHandler(
-            notificationRepo, userProfileRepo, deviceRepo, pushSender, tp);
+            notificationRepo, userProfileRepo, deviceRepo, pushSender, removeInvalidHandler, tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
     }

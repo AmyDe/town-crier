@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ApplicationUid } from '../../domain/types';
+import type { ApplicationUid, PlanningApplication } from '../../domain/types';
 import type { SavedApplicationRepository } from '../../domain/ports/saved-application-repository';
 import { useFetchData } from '../../hooks/useFetchData';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
@@ -20,21 +20,24 @@ export function useSavedApplication(
     error: string | null;
   } | null>(null);
 
-  const toggleSave = useCallback(async () => {
-    const wasSaved = optimistic?.isSaved ?? isSavedFromFetch;
-    setOptimistic({ isSaved: !wasSaved, error: null });
+  const toggleSave = useCallback(
+    async (application: PlanningApplication) => {
+      const wasSaved = optimistic?.isSaved ?? isSavedFromFetch;
+      setOptimistic({ isSaved: !wasSaved, error: null });
 
-    try {
-      if (wasSaved) {
-        await repository.remove(uid);
-      } else {
-        await repository.save(uid);
+      try {
+        if (wasSaved) {
+          await repository.remove(uid);
+        } else {
+          await repository.save(application);
+        }
+      } catch (err: unknown) {
+        const message = extractErrorMessage(err, 'Unknown error');
+        setOptimistic({ isSaved: wasSaved, error: message });
       }
-    } catch (err: unknown) {
-      const message = extractErrorMessage(err, 'Unknown error');
-      setOptimistic({ isSaved: wasSaved, error: message });
-    }
-  }, [repository, uid, optimistic, isSavedFromFetch]);
+    },
+    [repository, uid, optimistic, isSavedFromFetch],
+  );
 
   return {
     isSaved: optimistic?.isSaved ?? isSavedFromFetch,

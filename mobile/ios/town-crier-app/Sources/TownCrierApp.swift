@@ -51,6 +51,7 @@ struct TownCrierApp: App {
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
+    let searchRepository = APISearchRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -65,7 +66,8 @@ struct TownCrierApp: App {
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
-      savedApplicationRepository: savedApplicationRepository
+      savedApplicationRepository: savedApplicationRepository,
+      searchRepository: searchRepository
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
@@ -146,9 +148,11 @@ struct TownCrierApp: App {
 
   private var mainTabView: some View {
     TabView {
+      // 1. Applications
       NavigationStack {
         ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
           .id(coordinator.subscriptionTier)
+          .settingsToolbar { coordinator.showSettings() }
       }
       .sheet(item: $coordinator.detailApplication) { application in
         NavigationStack {
@@ -163,11 +167,32 @@ struct TownCrierApp: App {
         Label("Applications", systemImage: "doc.text.magnifyingglass")
       }
 
+      // 2. Search (replaces Settings tab; Settings now opens via gear icon)
+      NavigationStack {
+        SearchTabContainer(coordinator: coordinator)
+          .id(coordinator.subscriptionTier)
+          .settingsToolbar { coordinator.showSettings() }
+      }
+      .sheet(item: $coordinator.detailApplication) { application in
+        NavigationStack {
+          ApplicationDetailView(
+            viewModel: coordinator.makeApplicationDetailViewModel(
+              application: application
+            )
+          )
+        }
+      }
+      .tabItem {
+        Label("Search", systemImage: "magnifyingglass")
+      }
+
+      // 3. Saved
       NavigationStack {
         SavedApplicationListView(
           viewModel: coordinator.makeSavedApplicationListViewModel()
         )
         .id(coordinator.subscriptionTier)
+        .settingsToolbar { coordinator.showSettings() }
       }
       .sheet(item: $coordinator.detailApplication) { application in
         NavigationStack {
@@ -182,6 +207,7 @@ struct TownCrierApp: App {
         Label("Saved", systemImage: "bookmark.fill")
       }
 
+      // 4. Map
       NavigationStack {
         MapView(viewModel: coordinator.makeMapViewModel())
           .id(coordinator.subscriptionTier)
@@ -189,14 +215,17 @@ struct TownCrierApp: App {
           #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
           #endif
+          .settingsToolbar { coordinator.showSettings() }
       }
       .tabItem {
         Label("Map", systemImage: "map")
       }
 
+      // 5. Zones
       NavigationStack {
         WatchZoneListView(viewModel: coordinator.makeWatchZoneListViewModel())
           .id(coordinator.subscriptionTier)
+          .settingsToolbar { coordinator.showSettings() }
       }
       .sheet(isPresented: $coordinator.isAddingWatchZone) {
         WatchZoneEditorView(
@@ -211,45 +240,71 @@ struct TownCrierApp: App {
       .tabItem {
         Label("Zones", systemImage: "mappin.and.ellipse")
       }
-
-      NavigationStack {
-        SettingsView(
-          viewModel: settingsViewModel,
-          onNotificationPreferences: {
-            coordinator.showSystemNotificationSettings()
-          },
-          onManageSubscription: {
-            coordinator.showManageSubscription()
-          },
-          onPrivacyPolicy: {
-            coordinator.showPrivacyPolicy()
-          },
-          onTermsOfService: {
-            coordinator.showTermsOfService()
-          }
-        )
-      }
-      .sheet(item: $coordinator.presentedLegalDocument) { documentType in
-        NavigationStack {
-          LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
-        }
-      }
-      #if os(iOS)
-        .manageSubscriptionsSheet(
-          isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
-        )
-      #endif
-      .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
-        guard requested else { return }
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-          openURL(url)
-        }
-        coordinator.isOpeningSystemNotificationSettings = false
-      }
-      .tabItem {
-        Label("Settings", systemImage: "gearshape")
-      }
     }
     .tint(Color.tcAmber)
+    .sheet(isPresented: $coordinator.isSettingsPresented) {
+      settingsSheet
+    }
+  }
+
+  /// Settings sheet — presented from the gear icon installed on every tab.
+  /// Hosts the existing SettingsView and the legal/notification/manage-sub
+  /// side-effects that were previously bound to the Settings tab.
+  @ViewBuilder
+  private var settingsSheet: some View {
+    NavigationStack {
+      SettingsView(
+        viewModel: settingsViewModel,
+        onNotificationPreferences: {
+          coordinator.showSystemNotificationSettings()
+        },
+        onManageSubscription: {
+          coordinator.showManageSubscription()
+        },
+        onPrivacyPolicy: {
+          coordinator.showPrivacyPolicy()
+        },
+        onTermsOfService: {
+          coordinator.showTermsOfService()
+        }
+      )
+    }
+    .sheet(item: $coordinator.presentedLegalDocument) { documentType in
+      NavigationStack {
+        LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+      }
+    }
+    #if os(iOS)
+      .manageSubscriptionsSheet(
+        isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
+      )
+    #endif
+    .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
+      guard requested else { return }
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        openURL(url)
+      }
+      coordinator.isOpeningSystemNotificationSettings = false
+    }
+  }
+}
+
+/// Container that loads the Search tab's authority list lazily on first
+/// appearance. Owned by the app target so the AppCoordinator stays free of
+/// SwiftUI state-management plumbing.
+private struct SearchTabContainer: View {
+  let coordinator: AppCoordinator
+  @State private var authorities: [LocalAuthority] = []
+
+  var body: some View {
+    SearchView(
+      viewModel: coordinator.makeSearchViewModel(),
+      authorities: authorities
+    ) {
+      coordinator.isSubscriptionPresented = true
+    }
+    .task {
+      authorities = await coordinator.loadSearchAuthorities()
+    }
   }
 }

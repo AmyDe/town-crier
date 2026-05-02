@@ -189,7 +189,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
       }
     } else {
       do {
-        try await repository.save(applicationUid: uid)
+        try await repository.save(application: selected)
         savedApplicationUids.insert(uid)
       } catch {
         // Preserve current state on failure

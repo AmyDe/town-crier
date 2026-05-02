@@ -48,4 +48,32 @@ struct SearchViewTests {
 
     _ = view
   }
+
+  // MARK: - Soft Paywall
+
+  @Test(
+    "free user submitting empty/no-authority does not trigger gate (matches enabled-tier guards)"
+  )
+  func freeUser_submitWithoutAuthority_doesNotTriggerGate() async {
+    let (vm, spy) = makeViewModel(tier: .free)
+    vm.query = "extension"
+    vm.selectedAuthorityId = nil
+
+    await vm.search()
+
+    #expect(vm.entitlementGate == nil)
+    #expect(spy.searchCalls.isEmpty)
+  }
+
+  @Test("free user submitting valid query triggers paywall (soft paywall)")
+  func freeUser_submitValidQuery_triggersPaywall() async {
+    let (vm, spy) = makeViewModel(tier: .free)
+    vm.query = "extension"
+    vm.selectedAuthorityId = 123
+
+    await vm.search()
+
+    #expect(vm.entitlementGate == .searchApplications)
+    #expect(spy.searchCalls.isEmpty)
+  }
 }

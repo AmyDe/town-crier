@@ -161,10 +161,11 @@ describe('MapPage', () => {
     });
   });
 
-  it('calls saveApplication when save button is clicked', async () => {
+  it('calls saveApplication with the full application when save button is clicked', async () => {
     const zone = aZone();
+    const application = anApplication();
     spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
+    spy.fetchApplicationsByZoneResults.set(zone.id as string, [application]);
     spy.fetchSavedApplicationsResult = [];
 
     render(
@@ -180,7 +181,7 @@ describe('MapPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save application' }));
 
     await waitFor(() => {
-      expect(spy.saveApplicationCalls).toEqual([asApplicationUid('app-001')]);
+      expect(spy.saveApplicationCalls).toEqual([application]);
     });
   });
 

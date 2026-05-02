@@ -76,4 +76,5 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(GenerateOfferCodesRequest))]
 [JsonSerializable(typeof(RedeemOfferCodeRequest))]
 [JsonSerializable(typeof(RedeemOfferCodeResponse))]
+[JsonSerializable(typeof(SaveApplicationRequest))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;

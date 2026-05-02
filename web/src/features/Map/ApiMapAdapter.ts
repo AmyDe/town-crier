@@ -28,8 +28,8 @@ export class ApiMapAdapter implements MapPort {
     return this.saved.list();
   }
 
-  async saveApplication(uid: ApplicationUid): Promise<void> {
-    await this.saved.save(uid as string);
+  async saveApplication(application: PlanningApplication): Promise<void> {
+    await this.saved.save(application);
   }
 
   async unsaveApplication(uid: ApplicationUid): Promise<void> {

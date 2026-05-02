@@ -1,12 +1,16 @@
 import type { SavedApplicationRepository } from '../../../../domain/ports/saved-application-repository';
-import type { ApplicationUid, SavedApplication } from '../../../../domain/types';
+import type {
+  ApplicationUid,
+  PlanningApplication,
+  SavedApplication,
+} from '../../../../domain/types';
 
 export class SpySavedApplicationRepository implements SavedApplicationRepository {
   listSavedCalls = 0;
   listSavedResult: readonly SavedApplication[] = [];
   listSavedError: Error | null = null;
 
-  saveCalls: ApplicationUid[] = [];
+  saveCalls: PlanningApplication[] = [];
   saveError: Error | null = null;
 
   removeCalls: ApplicationUid[] = [];
@@ -20,8 +24,8 @@ export class SpySavedApplicationRepository implements SavedApplicationRepository
     return this.listSavedResult;
   }
 
-  async save(uid: ApplicationUid): Promise<void> {
-    this.saveCalls.push(uid);
+  async save(application: PlanningApplication): Promise<void> {
+    this.saveCalls.push(application);
     if (this.saveError) {
       throw this.saveError;
     }
