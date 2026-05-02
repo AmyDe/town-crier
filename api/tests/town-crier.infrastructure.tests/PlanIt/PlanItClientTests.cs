@@ -921,6 +921,67 @@ public sealed class PlanItClientTests
         await Assert.That(page.HasMorePages).IsFalse();
     }
 
+    [Test]
+    public async Task Should_ReturnApplication_When_GetByUidFindsSingleApp()
+    {
+        // Arrange — PlanIt's per-application endpoint is /planapplic/{uid}/json. The
+        // response is a single record (not wrapped in {records:[]}).
+        const string singleAppResponse = """
+            {
+                "name": "Leeds/26/01471/TR",
+                "uid": "26/01471/TR",
+                "area_name": "Leeds",
+                "area_id": 292,
+                "address": "Highgate House Grove Lane Leeds",
+                "postcode": "LS6 2AP",
+                "description": "T1 lime tree - crown reduction",
+                "app_type": "Trees",
+                "app_state": "Permitted",
+                "app_size": "Small",
+                "start_date": "2026-03-13",
+                "decided_date": "2026-04-21",
+                "consulted_date": null,
+                "location_x": -1.577373,
+                "location_y": 53.824035,
+                "url": "https://publicaccess.leeds.gov.uk/example",
+                "link": "https://www.planit.org.uk/planapplic/Leeds/26/01471/TR/",
+                "last_different": "2026-04-30T20:51:23.072719"
+            }
+            """;
+        using var handler = new FakePlanItHandler();
+        handler.SetupJsonResponse("/planapplic/", singleAppResponse);
+        var client = CreateClient(handler);
+
+        // Act
+        var application = await client.GetByUidAsync("26/01471/TR", CancellationToken.None);
+
+        // Assert
+        await Assert.That(application).IsNotNull();
+        await Assert.That(application!.Uid).IsEqualTo("26/01471/TR");
+        await Assert.That(application.Name).IsEqualTo("Leeds/26/01471/TR");
+        await Assert.That(application.AreaId).IsEqualTo(292);
+        await Assert.That(application.AppState).IsEqualTo("Permitted");
+        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
+        await Assert.That(handler.RequestUrls[0]).Contains("/planapplic/26/01471/TR/json");
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_GetByUidReturns404()
+    {
+        // Arrange — PlanIt returns 404 (HTML page) for unknown uids. The client
+        // must surface this as a null result rather than throwing, so the
+        // GetApplicationByUid handler can decide the application doesn't exist.
+        using var handler = new FakePlanItHandler();
+        handler.SetupStatusCodeResponse("/planapplic/", HttpStatusCode.NotFound);
+        var client = CreateClient(handler);
+
+        // Act
+        var application = await client.GetByUidAsync("nonexistent-uid", CancellationToken.None);
+
+        // Assert
+        await Assert.That(application).IsNull();
+    }
+
     private static PlanItClient CreateClient(
         FakePlanItHandler handler,
         PlanItThrottleOptions? throttleOptions = null,
