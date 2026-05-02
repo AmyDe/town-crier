@@ -15,7 +15,7 @@ public sealed class ApnsJwtProviderTests
         var pem = ApnsJwtProviderTestKey.GeneratePkcs8Pem();
         var time = new FakeTimeProvider();
         time.SetUtcNow(new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.Zero));
-        var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
+        using var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
 
         // Act
         var jwt = provider.Current();
