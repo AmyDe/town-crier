@@ -10,7 +10,6 @@ using TownCrier.Application.Legal;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
-using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.VersionConfig;
 using TownCrier.Application.WatchZones;
@@ -56,7 +55,6 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(RemoveInvalidDeviceTokenRequest))]
 [JsonSerializable(typeof(PlanningApplicationResult))]
 [JsonSerializable(typeof(IReadOnlyList<PlanningApplicationResult>))]
-[JsonSerializable(typeof(SearchPlanningApplicationsResult))]
 [JsonSerializable(typeof(GetUserApplicationAuthoritiesResult))]
 [JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]

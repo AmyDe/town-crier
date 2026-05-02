@@ -12,7 +12,6 @@ internal sealed class FakePlanItClient : IPlanItClient
     private readonly Dictionary<int, List<PlanningApplication>> applicationsByAuthority = [];
     private readonly Dictionary<int, Exception> exceptionsByAuthority = [];
     private readonly Dictionary<int, (int Count, Exception Exception)> throwAfterYieldingByAuthority = [];
-    private readonly List<PlanningApplication> searchResults = [];
     private readonly Dictionary<int, int> yieldedByAuthority = [];
 
     public DateTimeOffset? LastDifferentStartUsed { get; private set; }
@@ -38,12 +37,6 @@ internal sealed class FakePlanItClient : IPlanItClient
     /// </summary>
     public int? TotalOverride { get; set; }
 
-    public int SearchTotal { get; set; }
-
-    public string? LastSearchText { get; private set; }
-
-    public int? LastAuthorityId { get; private set; }
-
     public Dictionary<string, PlanningApplication> ApplicationsByUid { get; } = [];
 
     public List<string> GetByUidCalls { get; } = [];
@@ -55,11 +48,6 @@ internal sealed class FakePlanItClient : IPlanItClient
     /// across pages (used by handler-budget tests).
     /// </summary>
     public Action<int, int>? OnFetchComplete { get; set; }
-
-    public void AddSearchResult(PlanningApplication application)
-    {
-        this.searchResults.Add(application);
-    }
 
     public void ThrowForAuthority(int authorityId, Exception exception)
     {
@@ -153,17 +141,6 @@ internal sealed class FakePlanItClient : IPlanItClient
         var result = new FetchPageResult(page, pageItems, total, hasMorePages);
         this.OnFetchComplete?.Invoke(authorityId, page);
         return result;
-    }
-
-    public Task<PlanItSearchResult> SearchApplicationsAsync(
-        string searchText,
-        int authorityId,
-        int page,
-        CancellationToken ct)
-    {
-        this.LastSearchText = searchText;
-        this.LastAuthorityId = authorityId;
-        return Task.FromResult(new PlanItSearchResult(this.searchResults, this.SearchTotal));
     }
 
     public void AddByUid(PlanningApplication application)

@@ -12,7 +12,6 @@ using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
-using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Auth;
@@ -167,7 +166,6 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<GetApplicationByUidQueryHandler>();
         services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
-        services.AddTransient<SearchPlanningApplicationsQueryHandler>();
 
         services.AddTransient<GetNotificationsQueryHandler>();
 

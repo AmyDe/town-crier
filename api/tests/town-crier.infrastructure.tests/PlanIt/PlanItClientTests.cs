@@ -230,24 +230,6 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_UseSearchParameter_When_SearchingApplications()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
-        var client = CreateClient(handler);
-
-        // Act
-        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
-
-        // Assert — must use 'search=' not 'q=', and pg_sz must be small (not 100)
-        await Assert.That(handler.RequestUrls).HasCount().EqualTo(1);
-        await Assert.That(handler.RequestUrls[0]).Contains("search=car%20park");
-        await Assert.That(handler.RequestUrls[0]).DoesNotContain("&q=");
-        await Assert.That(handler.RequestUrls[0]).Contains("pg_sz=20");
-    }
-
-    [Test]
     public async Task Should_DelayBeforeEachRequest_When_ThrottleConfigured()
     {
         // Arrange
@@ -290,24 +272,6 @@ public sealed class PlanItClientTests
         await Assert.That(throttleDelays).HasCount().EqualTo(2);
         await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(200));
         await Assert.That(throttleDelays[1]).IsEqualTo(TimeSpan.FromMilliseconds(200));
-    }
-
-    [Test]
-    public async Task Should_DelayBeforeSearchRequest_When_ThrottleConfigured()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
-        var throttleDelays = new List<TimeSpan>();
-        var throttleOptions = new PlanItThrottleOptions { DelayBetweenRequestsSeconds = 0.3 };
-        var client = CreateClient(handler, throttleOptions: throttleOptions, delays: throttleDelays);
-
-        // Act
-        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
-
-        // Assert — one throttle delay before the search request
-        await Assert.That(throttleDelays).HasCount().EqualTo(1);
-        await Assert.That(throttleDelays[0]).IsEqualTo(TimeSpan.FromMilliseconds(300));
     }
 
     [Test]
@@ -357,43 +321,6 @@ public sealed class PlanItClientTests
     }
 
     [Test]
-    public async Task Should_ReturnZeroTotal_When_SearchResponseHasNullTotal()
-    {
-        // Arrange
-        const string nullTotalSearchResponse = """
-            {
-                "records": [
-                    {
-                        "name": "Leeds/26/01471/TR",
-                        "uid": "26/01471/TR",
-                        "area_name": "Leeds",
-                        "area_id": 292,
-                        "address": "Highgate House Grove Lane Leeds",
-                        "description": "T1 lime tree - crown reduction",
-                        "app_type": "Trees",
-                        "app_state": "Undecided",
-                        "last_different": "2026-03-14T11:59:17.642"
-                    }
-                ],
-                "pg_sz": null,
-                "from": null,
-                "total": null
-            }
-            """;
-
-        using var handler = new FakePlanItHandler();
-        handler.SetupJsonResponse("/api/applics/json", nullTotalSearchResponse);
-        var client = CreateClient(handler);
-
-        // Act
-        var result = await client.SearchApplicationsAsync("tree", 292, 1, CancellationToken.None);
-
-        // Assert — null total should be treated as 0
-        await Assert.That(result.Total).IsEqualTo(0);
-        await Assert.That(result.Applications).HasCount().EqualTo(1);
-    }
-
-    [Test]
     public async Task Should_UseDefaultTwoSecondDelay_When_NoThrottleOptionsProvided()
     {
         // Arrange
@@ -424,21 +351,6 @@ public sealed class PlanItClientTests
         // Assert — polling uses ascending sort for resumable progress
         await Assert.That(handler.RequestUrls[0]).Contains("sort=last_different");
         await Assert.That(handler.RequestUrls[0]).DoesNotContain("sort=-last_different");
-    }
-
-    [Test]
-    public async Task Should_UseDescendingSortOrder_When_SearchingApplications()
-    {
-        // Arrange
-        using var handler = new FakePlanItHandler();
-        handler.SetupJsonResponse("/api/applics/json", SingleRecordResponse);
-        var client = CreateClient(handler);
-
-        // Act
-        await client.SearchApplicationsAsync("car park", 314, 1, CancellationToken.None);
-
-        // Assert — search uses descending sort (newest first)
-        await Assert.That(handler.RequestUrls[0]).Contains("sort=-last_different");
     }
 
     [Test]
