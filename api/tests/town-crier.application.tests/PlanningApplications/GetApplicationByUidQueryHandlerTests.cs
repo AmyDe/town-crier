@@ -40,9 +40,10 @@ public sealed class GetApplicationByUidQueryHandlerTests
     [Test]
     public async Task Should_FetchFromPlanItAndUpsert_When_CosmosMisses()
     {
-        // Arrange — Cosmos has never seen this uid (search no longer upserts;
-        // see tc-if12). The handler must call PlanIt, upsert the result, and
-        // return it so search→tap→details still works for never-polled uids.
+        // Arrange. Cosmos has never seen this uid because search no longer
+        // upserts. See bead tc-if12. Handler must call PlanIt, upsert the
+        // result, and return it, so search-then-tap-then-details still works
+        // for never-polled uids.
         var repository = new FakePlanningApplicationRepository();
         var planItApp = new PlanningApplicationBuilder()
             .WithUid("planit-uid-002")
