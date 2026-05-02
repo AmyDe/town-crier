@@ -482,6 +482,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
             this.WatchZoneRepo = new FakeWatchZoneRepository();
             this.DeviceRepo = new FakeDeviceRegistrationRepository();
             this.PushSender = new SpyPushNotificationSender();
+            this.RemoveInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(this.DeviceRepo);
             this.TimeProvider = new FakeTimeProvider(March2026);
 
             this.Handler = new DispatchDecisionEventCommandHandler(
@@ -491,6 +492,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
                 this.WatchZoneRepo,
                 this.DeviceRepo,
                 this.PushSender,
+                this.RemoveInvalidHandler,
                 this.TimeProvider);
         }
 
@@ -507,6 +509,8 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         public FakeDeviceRegistrationRepository DeviceRepo { get; }
 
         public SpyPushNotificationSender PushSender { get; }
+
+        public RemoveInvalidDeviceTokenCommandHandler RemoveInvalidHandler { get; }
 
         public FakeTimeProvider TimeProvider { get; }
 

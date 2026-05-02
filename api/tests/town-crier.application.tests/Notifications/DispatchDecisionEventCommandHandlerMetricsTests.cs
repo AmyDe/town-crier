@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.DeviceRegistrations;
 using TownCrier.Application.Tests.Polling;
@@ -131,6 +132,7 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
             this.WatchZoneRepo = new FakeWatchZoneRepository();
             this.DeviceRepo = new FakeDeviceRegistrationRepository();
             this.PushSender = new SpyPushNotificationSender();
+            this.RemoveInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(this.DeviceRepo);
             this.TimeProvider = new FakeTimeProvider(March2026);
 
             this.Handler = new DispatchDecisionEventCommandHandler(
@@ -140,6 +142,7 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
                 this.WatchZoneRepo,
                 this.DeviceRepo,
                 this.PushSender,
+                this.RemoveInvalidHandler,
                 this.TimeProvider);
         }
 
@@ -156,6 +159,8 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
         public FakeDeviceRegistrationRepository DeviceRepo { get; }
 
         public SpyPushNotificationSender PushSender { get; }
+
+        public RemoveInvalidDeviceTokenCommandHandler RemoveInvalidHandler { get; }
 
         public FakeTimeProvider TimeProvider { get; }
 
