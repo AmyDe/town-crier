@@ -409,5 +409,11 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
         {
             return Task.FromResult(new PlanItSearchResult([], 0));
         }
+
+        public Task<TownCrier.Domain.PlanningApplications.PlanningApplication?> GetByUidAsync(
+            string uid, CancellationToken ct)
+        {
+            return Task.FromResult<TownCrier.Domain.PlanningApplications.PlanningApplication?>(null);
+        }
     }
 }

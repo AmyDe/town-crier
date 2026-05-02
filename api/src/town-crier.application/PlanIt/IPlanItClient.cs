@@ -1,3 +1,5 @@
+using TownCrier.Domain.PlanningApplications;
+
 namespace TownCrier.Application.PlanIt;
 
 public interface IPlanItClient
@@ -17,4 +19,12 @@ public interface IPlanItClient
         int authorityId,
         int page,
         CancellationToken ct);
+
+    // Fetches a single application by UID via PlanIt's per-application endpoint
+    // (/planapplic/{uid}/json). Returns null when PlanIt has no record (404).
+    // Used by GetApplicationByUidQueryHandler as a fallback when Cosmos has
+    // never seen the application — closes the search→tap→details gap that
+    // otherwise opens once SearchPlanningApplicationsQueryHandler stops
+    // upserting search results (see bd tc-if12).
+    Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct);
 }
