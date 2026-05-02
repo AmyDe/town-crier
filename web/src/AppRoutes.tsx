@@ -40,9 +40,6 @@ const ConnectedWatchZoneEditPage = lazy(() =>
 const ConnectedMapPage = lazy(() =>
   import('./features/Map/ConnectedMapPage').then((m) => ({ default: m.ConnectedMapPage })),
 );
-const ConnectedSearchPage = lazy(() =>
-  import('./features/Search/ConnectedSearchPage').then((m) => ({ default: m.ConnectedSearchPage })),
-);
 const ConnectedNotificationsPage = lazy(() =>
   import('./features/Notifications/ConnectedNotificationsPage').then((m) => ({
     default: m.ConnectedNotificationsPage,
@@ -73,7 +70,6 @@ export function AppRoutes() {
             <Route path="/watch-zones/new" element={<ConnectedWatchZoneCreatePage />} />
             <Route path="/watch-zones/:zoneId" element={<ConnectedWatchZoneEditPage />} />
             <Route path="/map" element={<ConnectedMapPage />} />
-            <Route path="/search" element={<ConnectedSearchPage />} />
             <Route path="/notifications" element={<ConnectedNotificationsPage />} />
             <Route path="/settings" element={<ConnectedSettingsPage />} />
           </Route>
