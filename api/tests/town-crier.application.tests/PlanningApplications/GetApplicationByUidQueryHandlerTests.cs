@@ -180,6 +180,7 @@ public sealed class GetApplicationByUidQueryHandlerTests
         await repository.UpsertAsync(fresh, CancellationToken.None);
 
         var savedRepository = new FakeSavedApplicationRepository();
+
         // Pre-seed a save under a different user — handler must not touch this.
         var prior = new PlanningApplicationBuilder()
             .WithUid("planit-uid-001").WithAppState("Undecided").Build();
