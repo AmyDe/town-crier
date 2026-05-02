@@ -4,8 +4,7 @@ import TownCrierDomain
 /// Paginated list of notifications about planning application events.
 ///
 /// Available to all tiers. Shows a chronological list of notification items
-/// with load-more pagination, empty state, and error handling following
-/// the same pattern as ``SearchView``.
+/// with load-more pagination, empty state, and error handling.
 public struct NotificationsView: View {
   @StateObject private var viewModel: NotificationsViewModel
 

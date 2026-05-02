@@ -196,7 +196,7 @@ struct URLSessionAPIClientTests {
     let authService = SpyAuthenticationService()
     authService.currentSessionResult = .valid
 
-    let body = #"{"error":"insufficient_entitlement","required":"searchApplications"}"#
+    let body = #"{"error":"insufficient_entitlement","required":"statusChangeAlerts"}"#
     transport.responses = [
       (Data(body.utf8), httpResponse(url: baseURL, statusCode: 403))
     ]
@@ -208,9 +208,9 @@ struct URLSessionAPIClientTests {
     )
 
     await #expect(
-      throws: DomainError.insufficientEntitlement(required: "searchApplications")
+      throws: DomainError.insufficientEntitlement(required: "statusChangeAlerts")
     ) {
-      let _: TestResponse = try await sut.request(.get("/search"))
+      let _: TestResponse = try await sut.request(.get("/notifications"))
     }
   }
 

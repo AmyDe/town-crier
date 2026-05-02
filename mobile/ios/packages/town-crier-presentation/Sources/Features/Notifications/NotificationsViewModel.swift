@@ -4,8 +4,7 @@ import TownCrierDomain
 /// ViewModel driving the notifications list with pagination.
 ///
 /// Notifications are available to all tiers -- no entitlement gating required.
-/// Follows the same pagination pattern as ``SearchViewModel``: initial load
-/// fetches page 1, and `loadMore()` appends subsequent pages.
+/// Initial load fetches page 1, and `loadMore()` appends subsequent pages.
 @MainActor
 public final class NotificationsViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var notifications: [NotificationItem] = []

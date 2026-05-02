@@ -10,7 +10,7 @@ import TownCrierDomain
 /// Usage:
 /// ```swift
 /// let gate = FeatureGate(tier: session.subscriptionTier)
-/// if gate.hasEntitlement(.searchApplications) { ... }
+/// if gate.hasEntitlement(.statusChangeAlerts) { ... }
 /// if gate.shouldShowUpgradeBadge(for: .watchZones, currentCount: zones.count) { ... }
 /// ```
 public struct FeatureGate: Equatable, Sendable {

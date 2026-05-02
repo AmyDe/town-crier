@@ -6,13 +6,11 @@ public enum EntitlementMap {
 
   // MARK: - Entitlement sets per tier
 
-  private static let personalEntitlements: Set<Entitlement> = [
+  private static let paidEntitlements: Set<Entitlement> = [
     .statusChangeAlerts,
     .decisionUpdateAlerts,
     .hourlyDigestEmails,
   ]
-
-  private static let proEntitlements: Set<Entitlement> = Set(Entitlement.allCases)
 
   // MARK: - Public API
 
@@ -21,10 +19,8 @@ public enum EntitlementMap {
     switch tier {
     case .free:
       return []
-    case .personal:
-      return personalEntitlements
-    case .pro:
-      return proEntitlements
+    case .personal, .pro:
+      return paidEntitlements
     }
   }
 

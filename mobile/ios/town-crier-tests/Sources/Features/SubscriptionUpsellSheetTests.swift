@@ -12,7 +12,7 @@ struct SubscriptionUpsellSheetTests {
 
   @Test func init_withEntitlement_createsView() {
     let sut = SubscriptionUpsellSheet(
-      entitlement: .searchApplications,
+      entitlement: .statusChangeAlerts,
       onViewPlans: {},
       onDismiss: {}
     )

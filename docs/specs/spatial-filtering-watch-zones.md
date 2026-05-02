@@ -34,7 +34,6 @@ Replace the authority-scoped browse endpoint with a zone-scoped endpoint that us
 |----------|--------|
 | `GET /v1/me/watch-zones` | Listing zones -- still needed |
 | `GET /v1/applications/{uid}` | Single application detail view |
-| `GET /v1/search?q=&authorityId=&page=` | PlanIt search -- always requires a search term, no bulk exposure |
 | `GET /v1/me/application-authorities` | Used during zone creation flow (picking which authority) |
 
 ### Repository Interface
@@ -84,11 +83,10 @@ Zone selector replaces authority selector as the primary filter. Zone list alrea
 ## What Stays Unchanged
 
 - **Polling flow** -- still ingests by authority from PlanIt, still does reverse spatial matching (`FindZonesContainingAsync`) for push notifications.
-- **Search flow** -- still queries PlanIt with a required search term, caches results in Cosmos.
 - **Zone CRUD** -- create, list, delete watch zones unchanged.
 
 ## Design Decisions
 
-- **Applications without coordinates are excluded.** Not all PlanIt applications have lat/long. These are dropped from zone results since the whole point is geographic relevance. They remain findable via search.
+- **Applications without coordinates are excluded.** Not all PlanIt applications have lat/long. These are dropped from zone results since the whole point is geographic relevance.
 - **Per-zone endpoint (not aggregated).** The UI already navigates by zone. A single zone query maps to one `FindNearbyAsync` call (one partition key, one `ST_DISTANCE`). Clients can aggregate across zones if needed.
 - **Authority endpoint removed (not deprecated).** Keeping it would leave the security hole open. There is no legitimate client use case for it once zone-scoped fetching exists.

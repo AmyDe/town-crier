@@ -142,13 +142,13 @@ struct APIApplicationAuthorityRepositoryTests {
   @Test("fetchAuthorities with 403 insufficient entitlement throws insufficientEntitlement")
   func fetchAuthorities_insufficientEntitlement() async {
     let json = """
-      { "error": "insufficient_entitlement", "required": "searchApplications" }
+      { "error": "insufficient_entitlement", "required": "statusChangeAlerts" }
       """
     let (sut, _, _) = makeSUT(responses: [
       (Data(json.utf8), httpResponse(statusCode: 403))
     ])
 
-    await #expect(throws: DomainError.insufficientEntitlement(required: "searchApplications")) {
+    await #expect(throws: DomainError.insufficientEntitlement(required: "statusChangeAlerts")) {
       _ = try await sut.fetchAuthorities()
     }
   }
