@@ -78,7 +78,8 @@ public sealed class GenerateWeeklyDigestsCommandHandler
 
                 if (devices.Count > 0)
                 {
-                    await this.pushNotificationSender.SendDigestAsync(notifications.Count, devices, ct)
+                    // Token pruning lands in tc-fqun.5 — discard InvalidTokens for now.
+                    _ = await this.pushNotificationSender.SendDigestAsync(notifications.Count, devices, ct)
                         .ConfigureAwait(false);
                 }
             }

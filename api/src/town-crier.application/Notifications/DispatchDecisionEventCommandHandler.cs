@@ -168,7 +168,8 @@ public sealed class DispatchDecisionEventCommandHandler
 
             if (devices.Count > 0)
             {
-                await this.pushNotificationSender.SendAsync(notification, devices, ct)
+                // Token pruning lands in tc-fqun.5 — discard InvalidTokens for now.
+                _ = await this.pushNotificationSender.SendAsync(notification, devices, ct)
                     .ConfigureAwait(false);
                 notification.MarkPushSent();
                 ApiMetrics.NotificationsSent.Add(

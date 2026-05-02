@@ -13,15 +13,15 @@ internal sealed class SpyPushNotificationSender : IPushNotificationSender
 
     public IReadOnlyList<(int ApplicationCount, IReadOnlyList<DeviceRegistration> Devices)> DigestsSent => this.digestsSent;
 
-    public Task SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public Task<PushSendResult> SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
     {
         this.sent.Add((notification, devices));
-        return Task.CompletedTask;
+        return Task.FromResult(PushSendResult.Empty);
     }
 
-    public Task SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public Task<PushSendResult> SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
     {
         this.digestsSent.Add((applicationCount, devices));
-        return Task.CompletedTask;
+        return Task.FromResult(PushSendResult.Empty);
     }
 }
