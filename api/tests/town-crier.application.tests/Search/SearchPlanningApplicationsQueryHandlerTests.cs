@@ -22,8 +22,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
 
         var planItClient = new FakePlanItClient();
         planItClient.SearchTotal = 0;
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
 
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
@@ -53,8 +52,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         planItClient.AddSearchResult(application);
         planItClient.SearchTotal = 1;
 
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
         // Act
@@ -94,7 +92,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         planItClient.SearchTotal = 1;
 
         var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
         // Act
@@ -120,8 +118,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         var planItClient = new FakePlanItClient();
         planItClient.SearchTotal = 0;
 
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "nonexistent", AuthorityId: 42);
 
         // Act
@@ -138,8 +135,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         // Arrange
         var userProfileRepository = new FakeUserProfileRepository();
         var planItClient = new FakePlanItClient();
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("nonexistent-user", "extension", AuthorityId: 42);
 
         // Act & Assert

@@ -1,6 +1,5 @@
 using TownCrier.Application.Observability;
 using TownCrier.Application.PlanIt;
-using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.UserProfiles;
 
 namespace TownCrier.Application.Search;
@@ -9,16 +8,13 @@ public sealed class SearchPlanningApplicationsQueryHandler
 {
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IPlanItClient planItClient;
-    private readonly IPlanningApplicationRepository applicationRepository;
 
     public SearchPlanningApplicationsQueryHandler(
         IUserProfileRepository userProfileRepository,
-        IPlanItClient planItClient,
-        IPlanningApplicationRepository applicationRepository)
+        IPlanItClient planItClient)
     {
         this.userProfileRepository = userProfileRepository;
         this.planItClient = planItClient;
-        this.applicationRepository = applicationRepository;
     }
 
     public async Task<SearchPlanningApplicationsResult> HandleAsync(
@@ -33,11 +29,11 @@ public sealed class SearchPlanningApplicationsQueryHandler
         var result = await this.planItClient.SearchApplicationsAsync(
             query.SearchText, query.AuthorityId, query.Page, ct).ConfigureAwait(false);
 
-        foreach (var application in result.Applications)
-        {
-            await this.applicationRepository.UpsertAsync(application, ct).ConfigureAwait(false);
-        }
-
+        // Do NOT upsert search results into Cosmos. The previous per-application
+        // upsert loop was the dominant source of the user-facing 429 burst.
+        // Apps are upserted lazily on save (SaveApplicationCommandHandler) and
+        // on detail-page Cosmos miss (GetApplicationByUidQueryHandler).
+        // See bead tc-if12.
         var summaries = result.Applications.Select(a => new PlanningApplicationSummary(
             a.Uid,
             a.Name,
