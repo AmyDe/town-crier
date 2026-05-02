@@ -39,6 +39,7 @@ public sealed class ApnsOptions
     /// <summary>
     /// Resolves the APNs base URL for the configured environment.
     /// </summary>
+    /// <returns>The sandbox URL when <see cref="UseSandbox"/> is true, otherwise the production URL.</returns>
     public Uri ResolveBaseAddress()
     {
         return new Uri(this.UseSandbox ? SandboxUrl : ProductionUrl);

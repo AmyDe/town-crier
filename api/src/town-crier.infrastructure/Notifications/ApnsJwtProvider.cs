@@ -60,6 +60,20 @@ public sealed class ApnsJwtProvider : IDisposable
         }
     }
 
+    /// <summary>
+    /// Invalidates the cached JWT so the next <see cref="Current"/> call mints a fresh
+    /// one. Used by the sender on 403 ExpiredProviderToken — APNs has signalled the
+    /// current token is unusable (clock skew or stale process), so we drop it and
+    /// re-sign before retrying the request.
+    /// </summary>
+    public void Invalidate()
+    {
+        lock (this.gate)
+        {
+            this.cached = null;
+        }
+    }
+
     public void Dispose()
     {
         this.key.Dispose();
