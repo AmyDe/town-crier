@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using TownCrier.Infrastructure.Notifications;
@@ -68,6 +69,27 @@ public sealed class ApnsJwtProviderTests
     }
 
     [Test]
+    public async Task Should_SignJwtWithEs256_When_Minting()
+    {
+        // Arrange — use a key whose public side we keep so we can verify the signature.
+        var (pem, publicVerifier) = ApnsJwtProviderTestKey.GeneratePkcs8PemWithPublicVerifier();
+        using var verifier = publicVerifier;
+        var time = new FakeTimeProvider();
+        time.SetUtcNow(new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.Zero));
+        using var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
+
+        // Act
+        var jwt = provider.Current();
+
+        // Assert
+        var parts = jwt.Split('.');
+        var signingInput = Encoding.UTF8.GetBytes($"{parts[0]}.{parts[1]}");
+        var signature = DecodeBase64UrlBytes(parts[2]);
+        var verified = publicVerifier.VerifyData(signingInput, signature, HashAlgorithmName.SHA256);
+        await Assert.That(verified).IsTrue();
+    }
+
+    [Test]
     public async Task Should_ReturnCachedJwt_When_CalledAgainBeforeRefreshInterval()
     {
         // Arrange
@@ -108,7 +130,7 @@ public sealed class ApnsJwtProviderTests
             .IsEqualTo(time.GetUtcNow().ToUnixTimeSeconds());
     }
 
-    private static JsonElement DecodeJsonSegment(string base64UrlSegment)
+    private static byte[] DecodeBase64UrlBytes(string base64UrlSegment)
     {
         var padded = base64UrlSegment
             .Replace('-', '+')
@@ -119,7 +141,12 @@ public sealed class ApnsJwtProviderTests
             case 3: padded += "="; break;
         }
 
-        var bytes = Convert.FromBase64String(padded);
+        return Convert.FromBase64String(padded);
+    }
+
+    private static JsonElement DecodeJsonSegment(string base64UrlSegment)
+    {
+        var bytes = DecodeBase64UrlBytes(base64UrlSegment);
         var json = Encoding.UTF8.GetString(bytes);
         return JsonDocument.Parse(json).RootElement.Clone();
     }
