@@ -20,6 +20,7 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(List<DeviceRegistrationDocument>))]
 [JsonSerializable(typeof(SavedApplicationDocument))]
 [JsonSerializable(typeof(List<SavedApplicationDocument>))]
+[JsonSerializable(typeof(SavedApplicationSnapshotDocument))]
 [JsonSerializable(typeof(WatchZoneDocument))]
 [JsonSerializable(typeof(List<WatchZoneDocument>))]
 [JsonSerializable(typeof(AuthorityZoneCountResult))]

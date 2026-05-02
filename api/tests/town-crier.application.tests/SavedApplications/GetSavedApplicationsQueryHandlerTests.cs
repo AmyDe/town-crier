@@ -25,30 +25,31 @@ public sealed class GetSavedApplicationsQueryHandlerTests
     }
 
     [Test]
-    public async Task Should_ReturnSavedApplicationsWithDetails_When_UserHasSaved()
+    public async Task Should_ProjectFromEmbeddedSnapshot_WithoutTouchingPlanningRepository_When_AllSavesCarrySnapshot()
     {
-        // Arrange
+        // Arrange — the saved-list endpoint must render with one partitioned
+        // query and zero hydration calls on the happy path. A spy fake fails the
+        // test if the handler reaches into the planning repository at all.
+        // See bd tc-udby for the 429 storm this design eliminates.
         var savedRepository = new FakeSavedApplicationRepository();
-        var applicationRepository = new FakePlanningApplicationRepository();
-        var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
+        var planningRepository = new FailIfCalledPlanningApplicationRepository();
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
-        var app1 = CreateApplication("planit-uid-abc", "APP/2026/001", "Wiltshire");
-        var app2 = CreateApplication("planit-uid-def", "APP/2026/002", "Somerset");
-        await applicationRepository.UpsertAsync(app1, CancellationToken.None);
-        await applicationRepository.UpsertAsync(app2, CancellationToken.None);
+        var app1 = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-abc").WithName("APP/2026/001").WithAreaName("Wiltshire").Build();
+        var app2 = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-def").WithName("APP/2026/002").WithAreaName("Somerset").Build();
 
-        await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt), CancellationToken.None);
-        await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-def", savedAt.AddHours(1)), CancellationToken.None);
+        await savedRepository.SaveAsync(SavedApplication.Create("auth0|user-1", app1, savedAt), CancellationToken.None);
+        await savedRepository.SaveAsync(SavedApplication.Create("auth0|user-1", app2, savedAt.AddHours(1)), CancellationToken.None);
 
-        var handler = new GetSavedApplicationsQueryHandler(savedRepository, applicationRepository);
+        var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
 
         // Act
         var result = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert
+        // Assert — both items projected from the embedded snapshot
         await Assert.That(result).HasCount().EqualTo(2);
         await Assert.That(result[0].ApplicationUid).IsEqualTo("planit-uid-abc");
         await Assert.That(result[0].Application.Name).IsEqualTo("APP/2026/001");
@@ -62,20 +63,16 @@ public sealed class GetSavedApplicationsQueryHandlerTests
     {
         // Arrange
         var savedRepository = new FakeSavedApplicationRepository();
-        var applicationRepository = new FakePlanningApplicationRepository();
+        var planningRepository = new FailIfCalledPlanningApplicationRepository();
         var savedAt = DateTimeOffset.UtcNow;
 
-        var app1 = CreateApplication("planit-uid-abc", "APP/2026/001", "Wiltshire");
-        var app2 = CreateApplication("planit-uid-def", "APP/2026/002", "Somerset");
-        await applicationRepository.UpsertAsync(app1, CancellationToken.None);
-        await applicationRepository.UpsertAsync(app2, CancellationToken.None);
+        var app1 = new PlanningApplicationBuilder().WithUid("planit-uid-abc").Build();
+        var app2 = new PlanningApplicationBuilder().WithUid("planit-uid-def").Build();
 
-        await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt), CancellationToken.None);
-        await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-2", "planit-uid-def", savedAt), CancellationToken.None);
+        await savedRepository.SaveAsync(SavedApplication.Create("auth0|user-1", app1, savedAt), CancellationToken.None);
+        await savedRepository.SaveAsync(SavedApplication.Create("auth0|user-2", app2, savedAt), CancellationToken.None);
 
-        var handler = new GetSavedApplicationsQueryHandler(savedRepository, applicationRepository);
+        var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
 
         // Act
@@ -87,55 +84,70 @@ public sealed class GetSavedApplicationsQueryHandlerTests
     }
 
     [Test]
-    public async Task Should_HydrateApplicationsInParallel_When_UserHasManySaves()
+    public async Task Should_LazilyBackfillSnapshot_When_LegacyRowHasUidOnly()
     {
-        // Arrange — a barrier-style fake that blocks every GetByUidAsync call until
-        // every expected call has arrived. If hydration were sequential, only one call
-        // would ever be in-flight and the test would dead-lock (caught by the timeout).
+        // Arrange — rows persisted before the snapshot column existed hold only
+        // the uid. The handler hydrates them once via the planning repo and
+        // upserts the snapshot back so subsequent reads are zero-hydration.
         var savedRepository = new FakeSavedApplicationRepository();
-        var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
-        const int saveCount = 8;
+        var planningRepository = new FakePlanningApplicationRepository();
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
-        var uids = new List<string>();
-        for (var i = 0; i < saveCount; i++)
-        {
-            var uid = $"planit-uid-{i:D3}";
-            uids.Add(uid);
-            await savedRepository.SaveAsync(
-                SavedApplication.Create("auth0|user-1", uid, savedAt.AddSeconds(i)), CancellationToken.None);
-        }
+        // Seed: planning record exists, saved row does NOT carry the snapshot.
+        var app = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-legacy").WithName("APP/legacy").WithAreaName("Camden").Build();
+        await planningRepository.UpsertAsync(app, CancellationToken.None);
+        await savedRepository.SaveAsync(
+            SavedApplication.Create("auth0|user-1", "planit-uid-legacy", savedAt), CancellationToken.None);
 
-        var applicationRepository = new BarrierPlanningApplicationRepository(saveCount, uids);
-        var handler = new GetSavedApplicationsQueryHandler(savedRepository, applicationRepository);
+        var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
 
-        // Act — bound the wait so a sequential implementation visibly deadlocks.
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var result = await handler.HandleAsync(query, cts.Token);
+        // Act — first read triggers backfill.
+        var firstResult = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert — every save was hydrated and all calls were in-flight at once.
-        await Assert.That(result).HasCount().EqualTo(saveCount);
-        await Assert.That(applicationRepository.PeakConcurrentCalls).IsEqualTo(saveCount);
-        await Assert.That(applicationRepository.TotalCalls).IsEqualTo(saveCount);
+        // Assert — first read returned the hydrated snapshot.
+        await Assert.That(firstResult).HasCount().EqualTo(1);
+        await Assert.That(firstResult[0].ApplicationUid).IsEqualTo("planit-uid-legacy");
+        await Assert.That(firstResult[0].Application.Name).IsEqualTo("APP/legacy");
+
+        // Assert — saved row was rewritten with the embedded snapshot persisted.
+        var rows = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
+        await Assert.That(rows).HasCount().EqualTo(1);
+        await Assert.That(rows[0].Application).IsNotNull();
+        await Assert.That(rows[0].Application!.Name).IsEqualTo("APP/legacy");
+
+        // Act — second read with the planning repo unavailable: still works
+        // because backfill self-healed and there are no more legacy rows.
+        var sealedRepository = new FailIfCalledPlanningApplicationRepository();
+        var sealedHandler = new GetSavedApplicationsQueryHandler(savedRepository, sealedRepository);
+        var secondResult = await sealedHandler.HandleAsync(query, CancellationToken.None);
+
+        // Assert
+        await Assert.That(secondResult).HasCount().EqualTo(1);
+        await Assert.That(secondResult[0].Application.Name).IsEqualTo("APP/legacy");
     }
 
     [Test]
-    public async Task Should_ExcludeSavedApplication_When_PlanningApplicationNoLongerExists()
+    public async Task Should_ExcludeSavedApplication_When_LegacyRowAndPlanningApplicationNoLongerExists()
     {
-        // Arrange
+        // Arrange — legacy uid-only row whose master planning application is
+        // no longer in Cosmos. Excluded from the result rather than failing the
+        // entire response.
         var savedRepository = new FakeSavedApplicationRepository();
-        var applicationRepository = new FakePlanningApplicationRepository();
-        var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
+        var planningRepository = new FakePlanningApplicationRepository();
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
-        var app = CreateApplication("planit-uid-abc", "APP/2026/001", "Wiltshire");
-        await applicationRepository.UpsertAsync(app, CancellationToken.None);
+        var present = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-abc").WithName("APP/abc").Build();
+        await planningRepository.UpsertAsync(present, CancellationToken.None);
 
         await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt), CancellationToken.None);
+            SavedApplication.Create("auth0|user-1", present, savedAt), CancellationToken.None);
         await savedRepository.SaveAsync(
             SavedApplication.Create("auth0|user-1", "planit-uid-orphaned", savedAt.AddHours(1)), CancellationToken.None);
 
-        var handler = new GetSavedApplicationsQueryHandler(savedRepository, applicationRepository);
+        var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
 
         // Act
@@ -144,28 +156,5 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         // Assert
         await Assert.That(result).HasCount().EqualTo(1);
         await Assert.That(result[0].ApplicationUid).IsEqualTo("planit-uid-abc");
-    }
-
-    private static PlanningApplication CreateApplication(string uid, string name, string areaName)
-    {
-        return new PlanningApplication(
-            name: name,
-            uid: uid,
-            areaName: areaName,
-            areaId: 1,
-            address: "1 Test Street",
-            postcode: "BA1 1AA",
-            description: "Test application",
-            appType: "Full",
-            appState: "Undecided",
-            appSize: null,
-            startDate: new DateOnly(2026, 1, 15),
-            decidedDate: null,
-            consultedDate: null,
-            longitude: -2.36,
-            latitude: 51.38,
-            url: null,
-            link: null,
-            lastDifferent: DateTimeOffset.UtcNow);
     }
 }

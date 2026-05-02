@@ -41,7 +41,7 @@ struct APISearchRepositoryTests {
 
   // MARK: - Request format
 
-  @Test("search sends GET /v1/applications/search with query, authorityId, and page params")
+  @Test("search sends GET /v1/search with q, authorityId, and page params")
   func search_sendsCorrectRequest() async throws {
     let json = """
       { "applications": [], "total": 0, "page": 1 }
@@ -56,9 +56,10 @@ struct APISearchRepositoryTests {
     let request = transport.requests[0]
     #expect(request.httpMethod == "GET")
     let url = try #require(request.url)
-    #expect(url.path().contains("/v1/applications/search"))
+    #expect(url.path() == "/v1/search")
     let query = try #require(url.query())
-    #expect(query.contains("query=extension"))
+    #expect(query.contains("q=extension"))
+    #expect(!query.contains("query=extension"))
     #expect(query.contains("authorityId=123"))
     #expect(query.contains("page=2"))
   }
@@ -189,9 +190,11 @@ struct APISearchRepositoryTests {
 
     let url = try #require(transport.requests.first?.url)
     let query = try #require(url.query())
-    // URLQueryItem handles encoding — the ampersand should not split the query
-    #expect(query.contains("rear"))
-    #expect(query.contains("extension"))
-    #expect(query.contains("garage"))
+    // URLQueryItem handles encoding — the ampersand must be percent-encoded so
+    // it does not split the query string into a separate parameter.
+    #expect(!query.contains("authorityId=123&garage"))
+    let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+    let qItem = try #require(components.queryItems?.first { $0.name == "q" })
+    #expect(qItem.value == "rear extension & garage")
   }
 }
