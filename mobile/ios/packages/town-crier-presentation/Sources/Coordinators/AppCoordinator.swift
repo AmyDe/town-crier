@@ -22,6 +22,9 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
   @Published public var isRedeemOfferCodePresented = false
+  /// Toggled to `true` when the user taps the gear icon on any tab. The view
+  /// layer presents the Settings view as a sheet bound to this flag.
+  @Published public var isSettingsPresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
 
   public var isOnboardingComplete: Bool {
@@ -306,6 +309,12 @@ public final class AppCoordinator: ObservableObject {
 
   public func showManageSubscription() {
     isManageSubscriptionPresented = true
+  }
+
+  /// Presents the Settings view as a sheet from any tab. Bound to the gear
+  /// icon installed via the `.settingsToolbar` ViewModifier.
+  public func showSettings() {
+    isSettingsPresented = true
   }
 
   /// Requests that the view layer deep-link to the iOS system Settings page
