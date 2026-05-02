@@ -44,6 +44,10 @@ internal sealed class FakePlanItClient : IPlanItClient
 
     public int? LastAuthorityId { get; private set; }
 
+    public Dictionary<string, PlanningApplication> ApplicationsByUid { get; } = [];
+
+    public List<string> GetByUidCalls { get; } = [];
+
     /// <summary>
     /// Gets or sets a callback invoked after each page fetch has assembled its
     /// result but before <see cref="FetchApplicationsPageAsync"/> returns. Lets
@@ -160,5 +164,17 @@ internal sealed class FakePlanItClient : IPlanItClient
         this.LastSearchText = searchText;
         this.LastAuthorityId = authorityId;
         return Task.FromResult(new PlanItSearchResult(this.searchResults, this.SearchTotal));
+    }
+
+    public void AddByUid(PlanningApplication application)
+    {
+        this.ApplicationsByUid[application.Uid] = application;
+    }
+
+    public Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    {
+        this.GetByUidCalls.Add(uid);
+        this.ApplicationsByUid.TryGetValue(uid, out var application);
+        return Task.FromResult(application);
     }
 }

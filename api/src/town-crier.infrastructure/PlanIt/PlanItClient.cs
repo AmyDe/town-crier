@@ -88,6 +88,38 @@ public sealed class PlanItClient : IPlanItClient
         return new PlanItSearchResult(applications, planItResponse.Total ?? 0);
     }
 
+    public async Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    {
+        // PlanIt's per-application endpoint returns a single record (not wrapped
+        // in {"records":[]}). 404 indicates the uid is unknown — surface that as
+        // null so callers can decide the application doesn't exist.
+        var url = new Uri(BuildByUidUrl(uid), UriKind.Relative);
+
+        // authorityId is unknown for a uid-only lookup; pass 0 for telemetry tagging.
+        using var response = await this.SendWithThrottleAsync(url, authorityId: 0, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        EnsureSuccessOrThrow(response);
+
+        var record = await JsonSerializer.DeserializeAsync(
+            await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
+            PlanItJsonSerializerContext.Default.PlanItApplicationRecord,
+            ct).ConfigureAwait(false);
+
+        return record is null ? null : MapToDomain(record);
+    }
+
+    private static string BuildByUidUrl(string uid)
+    {
+        // Don't escape '/' — PlanIt uids contain slashes (e.g. "26/01471/TR")
+        // and the routing depends on the literal path segments.
+        return $"/planapplic/{uid}/json";
+    }
+
     private static string BuildSearchUrl(string searchText, int authorityId, int page)
     {
         var encodedQuery = Uri.EscapeDataString(searchText);

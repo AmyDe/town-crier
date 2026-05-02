@@ -22,8 +22,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
 
         var planItClient = new FakePlanItClient();
         planItClient.SearchTotal = 0;
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
 
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
@@ -53,8 +52,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         planItClient.AddSearchResult(application);
         planItClient.SearchTotal = 1;
 
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
         // Act
@@ -71,9 +69,13 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
     }
 
     [Test]
-    public async Task Should_UpsertSearchResults_Into_Repository()
+    public async Task Should_NotUpsertSearchResults_Into_Repository()
     {
-        // Arrange
+        // Arrange. Search must not upsert results into Cosmos. The previous
+        // per-application upsert was the dominant source of the 429 burst on
+        // user-facing requests. Apps are upserted lazily on save (see
+        // SaveApplicationCommandHandler) and on detail-page Cosmos miss (see
+        // GetApplicationByUidQueryHandler). Bead tc-if12.
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
             .WithTier(SubscriptionTier.Pro)
@@ -90,16 +92,16 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         planItClient.SearchTotal = 1;
 
         var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "extension", AuthorityId: 42);
 
         // Act
         await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert
+        // Assert. Zero Cosmos writes per search — the acceptance criterion.
+        await Assert.That(appRepo.UpsertCallCount).IsEqualTo(0);
         var stored = await appRepo.GetByUidAsync("planit-123", CancellationToken.None);
-        await Assert.That(stored).IsNotNull();
-        await Assert.That(stored!.Name).IsEqualTo("Extension to rear");
+        await Assert.That(stored).IsNull();
     }
 
     [Test]
@@ -116,8 +118,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         var planItClient = new FakePlanItClient();
         planItClient.SearchTotal = 0;
 
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("user-1", "nonexistent", AuthorityId: 42);
 
         // Act
@@ -134,8 +135,7 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         // Arrange
         var userProfileRepository = new FakeUserProfileRepository();
         var planItClient = new FakePlanItClient();
-        var appRepo = new FakePlanningApplicationRepository();
-        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient, appRepo);
+        var handler = new SearchPlanningApplicationsQueryHandler(userProfileRepository, planItClient);
         var query = new SearchPlanningApplicationsQuery("nonexistent-user", "extension", AuthorityId: 42);
 
         // Act & Assert
