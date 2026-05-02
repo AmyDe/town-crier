@@ -131,7 +131,7 @@ export function ApplicationDetailPage({
       <div className={styles.actions}>
         <button
           className={`${styles.saveButton} ${isSaved ? styles.saved : ''}`}
-          onClick={toggleSave}
+          onClick={() => toggleSave(application)}
           type="button"
         >
           {isSaved ? 'Saved' : 'Save'}
