@@ -54,6 +54,17 @@ public static class EnvironmentStack
         var auth0M2mClientId = config.RequireSecret("auth0M2mClientId");
         var auth0M2mClientSecret = config.RequireSecret("auth0M2mClientSecret");
 
+        // APNs (Apple Push Notification service) — see docs/specs/apns-push-sender.md
+        // AuthKey is the .p8 PEM contents (secret); KeyId and TeamId are 10-char identifiers
+        // from the Apple Developer Portal. BundleId is hard-coded since it's the iOS app's
+        // identifier and not user-configurable per stack. UseSandbox derives from the env:
+        // dev hits api.sandbox.push.apple.com, prod hits api.push.apple.com.
+        var apnsAuthKey = config.RequireSecret("apnsAuthKey");
+        var apnsKeyId = config.Require("apnsKeyId");
+        var apnsTeamId = config.Require("apnsTeamId");
+        const string apnsBundleId = "uk.towncrierapp.mobile";
+        var apnsUseSandbox = env == "dev" ? "true" : "false";
+
         // Shared stack outputs
         var shared = new StackReference("AmyDe/town-crier/shared");
         var acrLoginServer = shared.GetOutput("containerRegistryLoginServer").Apply(o => o?.ToString() ?? "");
@@ -250,6 +261,7 @@ public static class EnvironmentStack
                     new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
                     new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId },
                     new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret },
+                    new SecretArgs { Name = "apns-auth-key", Value = apnsAuthKey },
                 },
                 Ingress = new IngressArgs
                 {
@@ -321,6 +333,12 @@ public static class EnvironmentStack
                             new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
                             new EnvironmentVarArgs { Name = "Auth0__M2M__ClientId", SecretRef = "auth0-m2m-client-id" },
                             new EnvironmentVarArgs { Name = "Auth0__M2M__ClientSecret", SecretRef = "auth0-m2m-client-secret" },
+                            new EnvironmentVarArgs { Name = "Apns__Enabled", Value = "true" },
+                            new EnvironmentVarArgs { Name = "Apns__AuthKey", SecretRef = "apns-auth-key" },
+                            new EnvironmentVarArgs { Name = "Apns__KeyId", Value = apnsKeyId },
+                            new EnvironmentVarArgs { Name = "Apns__TeamId", Value = apnsTeamId },
+                            new EnvironmentVarArgs { Name = "Apns__BundleId", Value = apnsBundleId },
+                            new EnvironmentVarArgs { Name = "Apns__UseSandbox", Value = apnsUseSandbox },
                         },
                     },
                 },
@@ -377,14 +395,16 @@ public static class EnvironmentStack
                 env, resourceGroup.Name, containerAppsEnvironmentId,
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-                appInsightsConnectionString, acsConnectionString, tags,
+                appInsightsConnectionString, acsConnectionString,
+                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags,
                 pollingBus);
 
             _ = CreateWorkerJob("poll-bootstrap", cronExpression: "*/30 * * * *", replicaTimeout: 120, workerMode: "poll-bootstrap",
                 env, resourceGroup.Name, containerAppsEnvironmentId,
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-                appInsightsConnectionString, acsConnectionString, tags,
+                appInsightsConnectionString, acsConnectionString,
+                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags,
                 pollingBus);
         }
 
@@ -392,13 +412,15 @@ public static class EnvironmentStack
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-            appInsightsConnectionString, acsConnectionString, tags);
+            appInsightsConnectionString, acsConnectionString,
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
 
         CreateWorkerJob("digest-hourly", "0 * * * *", replicaTimeout: 300, workerMode: "hourly-digest",
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-            appInsightsConnectionString, acsConnectionString, tags);
+            appInsightsConnectionString, acsConnectionString,
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
 
         // Dormant account cleanup — daily at 03:30 UTC (off-peak, avoids top-of-hour
         // digest-hourly run). Cascades UK GDPR Art.5(1)(e) erasure for UserProfiles
@@ -407,7 +429,8 @@ public static class EnvironmentStack
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
-            appInsightsConnectionString, acsConnectionString, tags);
+            appInsightsConnectionString, acsConnectionString,
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
 
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
@@ -497,9 +520,18 @@ public static class EnvironmentStack
         Output<string> cosmosDataIdentityClientId,
         Output<string> appInsightsConnectionString,
         Output<string> acsConnectionString,
+        Output<string> apnsAuthKey,
+        string apnsKeyId,
+        string apnsTeamId,
+        string apnsBundleId,
+        string apnsUseSandbox,
         InputMap<string> tags,
         ServiceBusPollingInfra? pollingBus = null)
     {
+        // Every worker today (digest, digest-hourly, and future dispatch workers) resolves
+        // IPushNotificationSender, so APNs config is part of the shared env block. Workers
+        // that don't push (e.g. dormant-cleanup) just ignore the vars — Apns:Enabled is a
+        // feature flag the API/worker DI both read.
         var envVars = new List<EnvironmentVarArgs>
         {
             new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
@@ -508,6 +540,12 @@ public static class EnvironmentStack
             new() { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
             new() { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
             new() { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
+            new() { Name = "Apns__Enabled", Value = "true" },
+            new() { Name = "Apns__AuthKey", SecretRef = "apns-auth-key" },
+            new() { Name = "Apns__KeyId", Value = apnsKeyId },
+            new() { Name = "Apns__TeamId", Value = apnsTeamId },
+            new() { Name = "Apns__BundleId", Value = apnsBundleId },
+            new() { Name = "Apns__UseSandbox", Value = apnsUseSandbox },
         };
 
         if (workerMode is not null)
@@ -545,6 +583,7 @@ public static class EnvironmentStack
             Secrets = new[]
             {
                 new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
+                new SecretArgs { Name = "apns-auth-key", Value = apnsAuthKey },
             },
         };
 
