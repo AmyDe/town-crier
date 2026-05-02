@@ -71,9 +71,13 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
     }
 
     [Test]
-    public async Task Should_UpsertSearchResults_Into_Repository()
+    public async Task Should_NotUpsertSearchResults_Into_Repository()
     {
-        // Arrange
+        // Arrange. Search must not upsert results into Cosmos. The previous
+        // per-application upsert was the dominant source of the 429 burst on
+        // user-facing requests. Apps are upserted lazily on save (see
+        // SaveApplicationCommandHandler) and on detail-page Cosmos miss (see
+        // GetApplicationByUidQueryHandler). Bead tc-if12.
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
             .WithTier(SubscriptionTier.Pro)
@@ -96,10 +100,10 @@ public sealed class SearchPlanningApplicationsQueryHandlerTests
         // Act
         await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert
+        // Assert. Zero Cosmos writes per search — the acceptance criterion.
+        await Assert.That(appRepo.UpsertCallCount).IsEqualTo(0);
         var stored = await appRepo.GetByUidAsync("planit-123", CancellationToken.None);
-        await Assert.That(stored).IsNotNull();
-        await Assert.That(stored!.Name).IsEqualTo("Extension to rear");
+        await Assert.That(stored).IsNull();
     }
 
     [Test]
