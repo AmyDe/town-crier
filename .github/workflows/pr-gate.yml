@@ -17,6 +17,7 @@ name: PR Gate
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
 
 concurrency:
   group: pr-gate-${{ github.ref }}
@@ -36,6 +37,7 @@ env:
 jobs:
   changes:
     name: Detect changes
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -276,6 +278,37 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
+  # ── PR-close cleanup: deactivate preview revision on merge/close ───
+  # Catches PRs closed before api-staging-cleanup ran (e.g., closed
+  # without merging, or where api-staging failed mid-flight). Reuses
+  # the same `pr<short-sha>` suffix scheme that api-staging applies via
+  # `--revision-suffix`, so the revision name matches deterministically.
+
+  pr-preview-cleanup:
+    name: "API: Deactivate preview revision (PR closed)"
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deactivate PR preview revision
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          REVISION="${{ env.CONTAINER_APP_NAME }}--pr${SHORT_SHA}"
+          echo "Deactivating revision: $REVISION"
+          az containerapp revision deactivate \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --revision "$REVISION" || true
+
   # ── CLI ──────────────────────────────────────────────
 
   cli-format:
@@ -446,7 +479,7 @@ jobs:
   gate:
     name: PR Gate
     needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
-    if: always()
+    if: always() && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
