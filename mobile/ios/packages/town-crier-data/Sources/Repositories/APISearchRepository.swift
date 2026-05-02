@@ -3,7 +3,7 @@ import TownCrierDomain
 
 /// Searches planning applications via the Town Crier API.
 ///
-/// Calls `GET /v1/applications/search` with query, authorityId, and page parameters.
+/// Calls `GET /v1/search` with `q`, `authorityId`, and `page` parameters.
 /// Gated server-side by `Entitlement.searchApplications` (Pro tier).
 public final class APISearchRepository: SearchRepository, Sendable {
   private let apiClient: URLSessionAPIClient
@@ -17,9 +17,9 @@ public final class APISearchRepository: SearchRepository, Sendable {
     do {
       dto = try await apiClient.request(
         .get(
-          "/v1/applications/search",
+          "/v1/search",
           query: [
-            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "authorityId", value: String(authorityId)),
             URLQueryItem(name: "page", value: String(page)),
           ]
@@ -36,7 +36,7 @@ public final class APISearchRepository: SearchRepository, Sendable {
 
 // MARK: - Response DTO
 
-/// Wraps the paginated search response from `GET /v1/applications/search`.
+/// Wraps the paginated search response from `GET /v1/search`.
 /// Reuses ``PlanningApplicationDTO`` for individual application mapping.
 struct SearchResponseDTO: Decodable, Sendable {
   let applications: [PlanningApplicationDTO]
