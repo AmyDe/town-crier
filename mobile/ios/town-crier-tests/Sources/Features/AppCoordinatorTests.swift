@@ -8,7 +8,8 @@ import TownCrierDomain
 @MainActor
 struct AppCoordinatorTests {
   private func makeSUT(
-    savedApplicationRepository: SavedApplicationRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil,
+    searchRepository: SearchRepository? = nil
   ) -> (AppCoordinator, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     let coordinator = AppCoordinator(
@@ -22,7 +23,8 @@ struct AppCoordinatorTests {
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService(),
-      savedApplicationRepository: savedApplicationRepository
+      savedApplicationRepository: savedApplicationRepository,
+      searchRepository: searchRepository
     )
     return (coordinator, spy)
   }
@@ -209,6 +211,31 @@ struct AppCoordinatorTests {
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+  }
+
+  // MARK: - Search ViewModel Factory
+
+  @Test func makeSearchViewModel_returnsConfiguredViewModel() {
+    let searchSpy = SpySearchRepository()
+    let (sut, _) = makeSUT(searchRepository: searchSpy)
+
+    let vm = sut.makeSearchViewModel()
+
+    #expect(vm.applications.isEmpty)
+  }
+
+  @Test func searchViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+    let searchSpy = SpySearchRepository()
+    let (sut, planningSpy) = makeSUT(searchRepository: searchSpy)
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let vm = sut.makeSearchViewModel()
+
+    vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
+
+    try await Task.sleep(for: .milliseconds(200))
+
+    #expect(sut.detailApplication == .permitted)
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
   // MARK: - Settings ViewModel Factory
