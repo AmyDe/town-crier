@@ -437,10 +437,11 @@ public sealed class DispatchNotificationCommandHandlerTests
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var tp = timeProvider ?? new FakeTimeProvider(March2026);
 
         var handler = new DispatchNotificationCommandHandler(
-            notificationRepo, userProfileRepo, deviceRepo, pushSender, tp);
+            notificationRepo, userProfileRepo, deviceRepo, pushSender, removeInvalidHandler, tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
     }

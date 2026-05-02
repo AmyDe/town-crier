@@ -152,6 +152,7 @@ else
     builder.Services.AddSingleton<IEmailSender, NoOpEmailSender>();
 }
 
+builder.Services.AddSingleton<RemoveInvalidDeviceTokenCommandHandler>();
 builder.Services.AddSingleton<DispatchNotificationCommandHandler>();
 builder.Services.AddSingleton<DispatchDecisionEventCommandHandler>();
 builder.Services.AddSingleton<IDecisionEventDispatcher, DispatchDecisionEventViaHandler>();

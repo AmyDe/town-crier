@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
@@ -91,10 +92,11 @@ public sealed class DispatchNotificationCommandHandlerMetricsTests
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var tp = new FakeTimeProvider(March2026);
 
         var handler = new DispatchNotificationCommandHandler(
-            notificationRepo, userProfileRepo, deviceRepo, pushSender, tp);
+            notificationRepo, userProfileRepo, deviceRepo, pushSender, removeInvalidHandler, tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
     }
