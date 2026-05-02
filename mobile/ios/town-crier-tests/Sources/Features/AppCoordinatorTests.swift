@@ -258,6 +258,22 @@ struct AppCoordinatorTests {
     #expect(!vm.requiresUpdate)
   }
 
+  // MARK: - Settings Sheet Presentation
+
+  @Test func isSettingsPresented_isFalseByDefault() {
+    let (sut, _) = makeSUT()
+
+    #expect(!sut.isSettingsPresented)
+  }
+
+  @Test func showSettings_setsIsSettingsPresentedToTrue() {
+    let (sut, _) = makeSUT()
+
+    sut.showSettings()
+
+    #expect(sut.isSettingsPresented)
+  }
+
   // MARK: - Settings Navigation (Legal Documents)
 
   @Test func showPrivacyPolicy_setsPresentedLegalDocumentToPrivacyPolicy() {
