@@ -38,11 +38,11 @@ export class SpyMapPort implements MapPort {
     return this.fetchSavedApplicationsResult;
   }
 
-  saveApplicationCalls: ApplicationUid[] = [];
+  saveApplicationCalls: PlanningApplication[] = [];
   saveApplicationError: Error | null = null;
 
-  async saveApplication(uid: ApplicationUid): Promise<void> {
-    this.saveApplicationCalls.push(uid);
+  async saveApplication(application: PlanningApplication): Promise<void> {
+    this.saveApplicationCalls.push(application);
     if (this.saveApplicationError) {
       throw this.saveApplicationError;
     }

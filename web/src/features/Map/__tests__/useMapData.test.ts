@@ -111,8 +111,9 @@ describe('useMapData', () => {
 
   it('adds uid to savedUids on save', async () => {
     const spy = new SpyMapPort();
+    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
     spy.fetchSavedApplicationsResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -122,11 +123,11 @@ describe('useMapData', () => {
     });
 
     await act(async () => {
-      await result.current.saveApplication(asApplicationUid('app-001'));
+      await result.current.saveApplication(application);
     });
 
     expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(true);
-    expect(spy.saveApplicationCalls).toEqual([asApplicationUid('app-001')]);
+    expect(spy.saveApplicationCalls).toEqual([application]);
   });
 
   it('removes uid from savedUids on unsave', async () => {
@@ -151,8 +152,9 @@ describe('useMapData', () => {
 
   it('reverts savedUids when save fails', async () => {
     const spy = new SpyMapPort();
+    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
     spy.fetchSavedApplicationsResult = [];
     spy.saveApplicationError = new Error('Server error');
 
@@ -163,7 +165,7 @@ describe('useMapData', () => {
     });
 
     await act(async () => {
-      await result.current.saveApplication(asApplicationUid('app-001'));
+      await result.current.saveApplication(application);
     });
 
     expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(false);
@@ -191,8 +193,9 @@ describe('useMapData', () => {
 
   it('shows uid as saved after save-unsave-save toggle sequence', async () => {
     const spy = new SpyMapPort();
+    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
     spy.fetchSavedApplicationsResult = [];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -204,7 +207,7 @@ describe('useMapData', () => {
     const uid = asApplicationUid('app-001');
 
     await act(async () => {
-      await result.current.saveApplication(uid);
+      await result.current.saveApplication(application);
     });
     expect(result.current.savedUids.has(uid)).toBe(true);
 
@@ -214,15 +217,16 @@ describe('useMapData', () => {
     expect(result.current.savedUids.has(uid)).toBe(false);
 
     await act(async () => {
-      await result.current.saveApplication(uid);
+      await result.current.saveApplication(application);
     });
     expect(result.current.savedUids.has(uid)).toBe(true);
   });
 
   it('shows uid as unsaved after unsave-save-unsave toggle sequence on initially saved item', async () => {
     const spy = new SpyMapPort();
+    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -239,7 +243,7 @@ describe('useMapData', () => {
     expect(result.current.savedUids.has(uid)).toBe(false);
 
     await act(async () => {
-      await result.current.saveApplication(uid);
+      await result.current.saveApplication(application);
     });
     expect(result.current.savedUids.has(uid)).toBe(true);
 
@@ -251,11 +255,10 @@ describe('useMapData', () => {
 
   it('handles save and unsave of different UIDs independently', async () => {
     const spy = new SpyMapPort();
+    const appA = anApplication();
+    const appB = aSecondApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [
-      anApplication(),
-      aSecondApplication(),
-    ]);
+    spy.fetchApplicationsByZoneResults.set('zone-001', [appA, appB]);
     spy.fetchSavedApplicationsResult = [aSavedApplication()];
 
     const { result } = renderHook(() => useMapData(spy));
@@ -276,13 +279,13 @@ describe('useMapData', () => {
       await result.current.unsaveApplication(uidA);
     });
     await act(async () => {
-      await result.current.saveApplication(uidB);
+      await result.current.saveApplication(appB);
     });
 
     expect(result.current.savedUids.has(uidA)).toBe(false);
     expect(result.current.savedUids.has(uidB)).toBe(true);
 
     expect(spy.unsaveApplicationCalls).toEqual([uidA]);
-    expect(spy.saveApplicationCalls).toEqual([uidB]);
+    expect(spy.saveApplicationCalls).toEqual([appB]);
   });
 });
