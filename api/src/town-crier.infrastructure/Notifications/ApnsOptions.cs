@@ -1,18 +1,55 @@
+using System.Globalization;
+using Microsoft.Extensions.Configuration;
+
 namespace TownCrier.Infrastructure.Notifications;
 
 /// <summary>
-/// Subset of APNs sender configuration consumed by
-/// <see cref="ApnsPushNotificationSender"/>. Full configuration binding,
-/// validation, and DI swap-out behind the <c>Apns:Enabled</c> flag are wired
-/// in tc-fqun.6 — this minimal shape keeps the sender's surface narrow.
+/// Configuration for the APNs push notification sender. Bound from
+/// <c>IConfiguration</c> section <c>"Apns"</c>. When <see cref="Enabled"/> is
+/// false the host registers <see cref="NoOpPushNotificationSender"/> so the
+/// app boots cleanly in local dev without a real .p8 auth key. When true, the
+/// host registers <see cref="ApnsPushNotificationSender"/> + a singleton
+/// <see cref="ApnsJwtProvider"/> + a named HTTP/2 <c>HttpClient</c>.
 /// </summary>
 public sealed class ApnsOptions
 {
+    /// <summary>
+    /// The configuration section name bound by <see cref="LoadFromConfiguration"/>.
+    /// </summary>
+    public const string SectionName = "Apns";
+
     // S1075: APNs endpoints are well-known Apple-published URLs, not configurable infrastructure.
 #pragma warning disable S1075
     private const string ProductionUrl = "https://api.push.apple.com";
     private const string SandboxUrl = "https://api.sandbox.push.apple.com";
 #pragma warning restore S1075
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the APNs sender is enabled.
+    /// When false, the host wires a no-op sender so missing auth keys are not
+    /// fatal in local dev. When true, the host wires the real APNs sender
+    /// and validates that all auth fields are populated.
+    /// </summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the PEM-encoded contents of the .p8 APNs auth key issued
+    /// by Apple. Required when <see cref="Enabled"/> is true; loaded once at
+    /// startup into <see cref="ApnsJwtProvider"/> for ES256 JWT signing.
+    /// </summary>
+    public string AuthKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the 10-character Apple Key ID associated with the .p8
+    /// auth key. Carried in the JWT header's <c>kid</c> claim.
+    /// </summary>
+    public string KeyId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the 10-character Apple Team ID. Carried in the JWT
+    /// payload's <c>iss</c> claim.
+    /// </summary>
+    public string TeamId { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the iOS app's bundle identifier. Sent on every request as
@@ -37,11 +74,51 @@ public sealed class ApnsOptions
     public int MaxParallelism { get; set; } = 10;
 
     /// <summary>
+    /// Loads APNs options from the <c>"Apns"</c> section of an
+    /// <see cref="IConfiguration"/>. Native AOT-friendly: properties are read
+    /// directly from <see cref="IConfiguration"/> indexers, no reflection-based
+    /// <see cref="ConfigurationBinder"/> path.
+    /// </summary>
+    /// <param name="configuration">The configuration root or section to read from.</param>
+    /// <returns>A populated <see cref="ApnsOptions"/>; defaults are kept when keys are missing.</returns>
+    public static ApnsOptions LoadFromConfiguration(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var section = configuration.GetSection(SectionName);
+        return new ApnsOptions
+        {
+            Enabled = ReadBool(section, nameof(Enabled), defaultValue: false),
+            AuthKey = section[nameof(AuthKey)] ?? string.Empty,
+            KeyId = section[nameof(KeyId)] ?? string.Empty,
+            TeamId = section[nameof(TeamId)] ?? string.Empty,
+            BundleId = section[nameof(BundleId)] ?? string.Empty,
+            UseSandbox = ReadBool(section, nameof(UseSandbox), defaultValue: false),
+            MaxParallelism = ReadInt(section, nameof(MaxParallelism), defaultValue: 10),
+        };
+    }
+
+    /// <summary>
     /// Resolves the APNs base URL for the configured environment.
     /// </summary>
     /// <returns>The sandbox URL when <see cref="UseSandbox"/> is true, otherwise the production URL.</returns>
     public Uri ResolveBaseAddress()
     {
         return new Uri(this.UseSandbox ? SandboxUrl : ProductionUrl);
+    }
+
+    private static bool ReadBool(IConfigurationSection section, string key, bool defaultValue)
+    {
+        var raw = section[key];
+        return string.IsNullOrWhiteSpace(raw) || !bool.TryParse(raw, out var parsed) ? defaultValue : parsed;
+    }
+
+    private static int ReadInt(IConfigurationSection section, string key, int defaultValue)
+    {
+        var raw = section[key];
+        return string.IsNullOrWhiteSpace(raw)
+            || !int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? defaultValue
+                : parsed;
     }
 }
