@@ -301,51 +301,9 @@ public static class SharedStack
             PrincipalId = cosmosDataIdentity.PrincipalId,
         });
 
-        // Azure Communication Services (Email) — Europe data location.
-        //
-        // DEPRECATED: These resources hold email content and recipient addresses in EEA data
-        // centres, which is inconsistent with our UK South data residency commitment. Azure
-        // does NOT allow mutating DataLocation on an existing ACS resource, so we cannot
-        // migrate in place. The replacement UK-located resources are provisioned below
-        // (acs-town-crier-uk / email-town-crier-uk / domain-towncrierapp-uk-new) and will
-        // take over once the domain is re-verified on Cloudflare DNS and the Key Vault
-        // connection-string secret is swapped. These Europe-located resources will be
-        // removed in a follow-up bead after the swap is complete. See tc-8634.
-        var communicationService = new CommunicationService("acs-town-crier-shared", new CommunicationServiceArgs
-        {
-            CommunicationServiceName = "acs-town-crier-shared",
-            ResourceGroupName = resourceGroup.Name,
-            Location = "global",
-            DataLocation = "Europe",
-            Tags = tags,
-        });
-
-        var emailService = new EmailService("email-town-crier-shared", new EmailServiceArgs
-        {
-            EmailServiceName = "email-town-crier-shared",
-            ResourceGroupName = resourceGroup.Name,
-            Location = "global",
-            DataLocation = "Europe",
-            Tags = tags,
-        });
-
-        _ = new Domain("domain-towncrierapp-uk", new DomainArgs
-        {
-            DomainName = "towncrierapp.uk",
-            EmailServiceName = emailService.Name,
-            ResourceGroupName = resourceGroup.Name,
-            Location = "global",
-            DomainManagement = DomainManagement.CustomerManaged,
-            Tags = tags,
-        });
-
         // Azure Communication Services (Email) — UK data location.
-        //
-        // New resources introduced by tc-8634 to bring ACS into UK data residency. They
-        // are provisioned alongside the Europe-located resources above; the swap is an
-        // operational follow-up (DNS re-verification, Key Vault secret rotation, app
-        // redeploy) that requires human coordination. Control plane for ACS is always
-        // Location="global"; DataLocation="UK" pins storage/processing to UK data centres.
+        // Control plane is Location="global"; DataLocation="UK" pins storage/processing
+        // to UK data centres for compliance with our UK data residency commitment.
         var communicationServiceUk = new CommunicationService("acs-town-crier-uk", new CommunicationServiceArgs
         {
             CommunicationServiceName = "acs-town-crier-uk",
@@ -364,12 +322,10 @@ public static class SharedStack
             Tags = tags,
         });
 
-        // Domain resource wraps the same custom domain (towncrierapp.uk) but hangs off the
-        // new UK-located EmailService, so Azure treats it as a distinct sender identity and
-        // issues a fresh set of DKIM/SPF/TXT records. Those records must be added to
-        // Cloudflare DNS before this domain will verify (CustomerManaged) — tracked under
-        // the tc-8634 follow-ups. The Pulumi logical name differs from the existing
-        // `domain-towncrierapp-uk` to avoid resource-name collision inside this stack.
+        // Custom-domain sender identity for the UK EmailService. CustomerManaged means we
+        // own the DKIM/SPF/Domain TXT records in Cloudflare DNS (see project_cloudflare_dns
+        // memory). Logical name retains the `-new` suffix from the dual-resource migration
+        // (tc-8634, tc-zx5g) to avoid a Pulumi replace; rename via `aliases` if desired.
         _ = new Domain("domain-towncrierapp-uk-new", new DomainArgs
         {
             DomainName = "towncrierapp.uk",
@@ -506,18 +462,7 @@ public static class SharedStack
             ["cosmosAccountEndpoint"] = cosmosAccount.DocumentEndpoint,
             ["appInsightsId"] = appInsights.Id,
             ["appInsightsConnectionString"] = appInsights.ConnectionString,
-            ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationService.Name)
-                .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
-                {
-                    ResourceGroupName = names.Item1,
-                    CommunicationServiceName = names.Item2,
-                }))
-                .Apply(keys => keys.PrimaryConnectionString),
-            // Connection string for the new UK-located ACS resource. Kept as a separate
-            // output so operators can pick it up when rotating the Key Vault secret during
-            // the tc-8634 migration; the legacy `acsConnectionString` above still powers
-            // the running app until the swap happens.
-            ["acsConnectionStringUk"] = Output.Tuple(resourceGroup.Name, communicationServiceUk.Name)
+            ["acsConnectionString"] = Output.Tuple(resourceGroup.Name, communicationServiceUk.Name)
                 .Apply(names => ListCommunicationServiceKeys.InvokeAsync(new ListCommunicationServiceKeysArgs
                 {
                     ResourceGroupName = names.Item1,

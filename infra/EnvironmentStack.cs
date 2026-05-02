@@ -76,7 +76,7 @@ public static class EnvironmentStack
         var cosmosAccountEndpoint = shared.GetOutput("cosmosAccountEndpoint").Apply(o => o?.ToString() ?? "");
         var appInsightsId = shared.GetOutput("appInsightsId").Apply(o => o?.ToString() ?? "");
         var appInsightsConnectionString = shared.GetOutput("appInsightsConnectionString").Apply(o => o?.ToString() ?? "");
-        var acsConnectionString = shared.GetOutput("acsConnectionStringUk").Apply(o => o?.ToString() ?? "");
+        var acsConnectionString = shared.GetOutput("acsConnectionString").Apply(o => o?.ToString() ?? "");
         // Extract the CAE name from its resource ID to avoid
         // requiring a shared stack deploy before the env stack can preview.
         // ID format: /subscriptions/.../resourceGroups/{rg}/providers/Microsoft.App/managedEnvironments/{name}
