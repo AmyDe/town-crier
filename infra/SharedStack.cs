@@ -349,6 +349,55 @@ public static class SharedStack
             },
         });
 
+        // Subscription-wide cost guard rail — fires when cumulative monthly spend
+        // across the entire Town Crier subscription crosses £50. Current run-rate
+        // is ~£29/mo (2026-05-02), giving ~£21 headroom before this trips. Catches
+        // run-aways the Cosmos-scoped budget (tc-guwt) would miss: a misconfigured
+        // Container App scaling to many replicas, an unbounded Log Analytics
+        // ingestion spike, accidentally provisioning a non-serverless service, etc.
+        // Ref: tc-yica and docs/cost-forecast/2026-05-02.md.
+        //
+        // Scope is the entire subscription, not a resource group, so no Filter
+        // is set — the budget aggregates all billed resources under the sub.
+        // Notifications include a 50% (early-warning) and 100% (red-alert) tier,
+        // both at Actual cost; Forecasted alerts are noisy on serverless workloads
+        // with bursty daily spend so we omit them.
+        _ = new Budget("budget-subscription-monthly", new BudgetArgs
+        {
+            BudgetName = "budget-subscription-monthly",
+            Scope = $"/subscriptions/{armSubscriptionId}",
+            Amount = 50,
+            Category = CategoryType.Cost,
+            TimeGrain = TimeGrainType.Monthly,
+            TimePeriod = new BudgetTimePeriodArgs
+            {
+                // Budget start date must be the first of a month, on or after 2017-06-01.
+                // Pinned to a static past date so subsequent `pulumi up` runs are no-ops.
+                StartDate = "2026-05-01T00:00:00Z",
+            },
+            Notifications =
+            {
+                ["actual_GreaterThan_50_Percent"] = new NotificationArgs
+                {
+                    Enabled = true,
+                    Operator = OperatorType.GreaterThan,
+                    Threshold = 50,
+                    ThresholdType = ThresholdType.Actual,
+                    ContactEmails = new[] { alertEmail },
+                    Locale = CultureCode.En_gb,
+                },
+                ["actual_GreaterThan_100_Percent"] = new NotificationArgs
+                {
+                    Enabled = true,
+                    Operator = OperatorType.GreaterThan,
+                    Threshold = 100,
+                    ThresholdType = ThresholdType.Actual,
+                    ContactEmails = new[] { alertEmail },
+                    Locale = CultureCode.En_gb,
+                },
+            },
+        });
+
         // Cosmos DB Built-in Data Contributor role — allows CRUD on documents.
         // Role definition ID is well-known: 00000000-0000-0000-0000-000000000002.
         // Scoped to the Cosmos account; environment-level isolation is via database name.
