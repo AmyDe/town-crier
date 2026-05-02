@@ -11,7 +11,7 @@ internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepo
     public int Count => this.store.Count;
 
     /// <summary>
-    /// Records every token passed to <see cref="DeleteByTokenAsync"/> in call
+    /// Gets every token passed to <see cref="DeleteByTokenAsync"/> in call
     /// order. Tests use this to assert that handler-level pruning paths
     /// dispatched the expected removals — even if the token wasn't seeded.
     /// </summary>
