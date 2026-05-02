@@ -130,6 +130,28 @@ public sealed class ApnsJwtProviderTests
             .IsEqualTo(time.GetUtcNow().ToUnixTimeSeconds());
     }
 
+    [Test]
+    public async Task Should_RemainStable_When_AccessedConcurrently()
+    {
+        // Arrange
+        var pem = ApnsJwtProviderTestKey.GeneratePkcs8Pem();
+        var time = new FakeTimeProvider();
+        time.SetUtcNow(new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.Zero));
+        using var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
+        var jwts = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        // Act — 20 threads concurrently fetch the current JWT within the cache window.
+        // A non-thread-safe provider could throw or return malformed tokens.
+        var tasks = Enumerable.Range(0, 20)
+            .Select(_ => Task.Run(() => jwts.Add(provider.Current())))
+            .ToArray();
+        await Task.WhenAll(tasks);
+
+        // Assert — all callers saw the same cached token (lock guarantees one mint within window).
+        await Assert.That(jwts.Count).IsEqualTo(20);
+        await Assert.That(jwts.Distinct().Count()).IsEqualTo(1);
+    }
+
     private static byte[] DecodeBase64UrlBytes(string base64UrlSegment)
     {
         var padded = base64UrlSegment
