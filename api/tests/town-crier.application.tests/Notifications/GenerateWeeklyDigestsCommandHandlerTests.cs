@@ -458,12 +458,13 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var emailSender = new SpyEmailSender();
         var watchZoneRepo = new FakeWatchZoneRepository();
         var tp = timeProvider ?? new FakeTimeProvider(MondayMarch2026);
 
         var handler = new GenerateWeeklyDigestsCommandHandler(
-            userProfileRepo, notificationRepo, deviceRepo, pushSender, emailSender, watchZoneRepo, tp);
+            userProfileRepo, notificationRepo, deviceRepo, pushSender, removeInvalidHandler, emailSender, watchZoneRepo, tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, watchZoneRepo);
     }

@@ -12,6 +12,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
     private readonly INotificationRepository notificationRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
+    private readonly RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler;
     private readonly IEmailSender emailSender;
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly TimeProvider timeProvider;
@@ -21,6 +22,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
         INotificationRepository notificationRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
+        RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler,
         IEmailSender emailSender,
         IWatchZoneRepository watchZoneRepository,
         TimeProvider timeProvider)
@@ -29,6 +31,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
         this.notificationRepository = notificationRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
+        this.removeInvalidDeviceTokenHandler = removeInvalidDeviceTokenHandler;
         this.emailSender = emailSender;
         this.watchZoneRepository = watchZoneRepository;
         this.timeProvider = timeProvider;
@@ -78,9 +81,19 @@ public sealed class GenerateWeeklyDigestsCommandHandler
 
                 if (devices.Count > 0)
                 {
-                    // Token pruning lands in tc-fqun.5 — discard InvalidTokens for now.
-                    _ = await this.pushNotificationSender.SendDigestAsync(notifications.Count, devices, ct)
+                    var sendResult = await this.pushNotificationSender
+                        .SendDigestAsync(notifications.Count, devices, ct)
                         .ConfigureAwait(false);
+
+                    // Prune device tokens APNs reported as permanently invalid
+                    // (e.g. 410 Unregistered, 400 BadDeviceToken). Idempotent —
+                    // empty InvalidTokens dispatches no commands.
+                    foreach (var invalidToken in sendResult.InvalidTokens)
+                    {
+                        await this.removeInvalidDeviceTokenHandler
+                            .HandleAsync(new RemoveInvalidDeviceTokenCommand(invalidToken), ct)
+                            .ConfigureAwait(false);
+                    }
                 }
             }
 

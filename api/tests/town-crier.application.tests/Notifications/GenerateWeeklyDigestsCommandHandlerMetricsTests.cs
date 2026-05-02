@@ -1,4 +1,5 @@
 using System.Diagnostics.Metrics;
+using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
@@ -41,8 +42,9 @@ public sealed class GenerateWeeklyDigestsCommandHandlerMetricsTests
         notificationRepo.Seed(BuildNotification("user-1", "zone-1", "uid-2", NotificationEventType.NewApplication, createdAt));
         notificationRepo.Seed(BuildNotification("user-1", "zone-1", "uid-3", NotificationEventType.DecisionUpdate, createdAt));
 
+        var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var handler = new GenerateWeeklyDigestsCommandHandler(
-            userProfileRepo, notificationRepo, deviceRepo, pushSender, emailSender, watchZoneRepo, timeProvider);
+            userProfileRepo, notificationRepo, deviceRepo, pushSender, removeInvalidHandler, emailSender, watchZoneRepo, timeProvider);
 
         var recorded = new List<(long Value, Dictionary<string, string?> Tags)>();
         using var listener = BuildListener("towncrier.digest.rows_emitted", recorded);
