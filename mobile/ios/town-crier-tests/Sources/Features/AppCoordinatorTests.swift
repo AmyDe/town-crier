@@ -303,4 +303,22 @@ struct AppCoordinatorTests {
     #expect(sut.isOpeningSystemNotificationSettings)
   }
 
+  // MARK: - Deterministic detail-load synchronisation
+
+  /// Regression guard for tc-nsrh (CI flakes on `Task.sleep(...)` waits in
+  /// the `showApplicationDetail` path). The Coordinator must expose a way to
+  /// await the in-flight detail fetch without sleeping so deep-link and
+  /// list-selection tests are deterministic.
+  @Test func waitForPendingDetailLoad_awaitsShowApplicationDetail() async throws {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationResult = .success(.permitted)
+
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(sut.detailApplication == .permitted)
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+  }
+
 }
