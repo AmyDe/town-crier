@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using TownCrier.Application.SavedApplications;
+using TownCrier.Domain.PlanningApplications;
 
 namespace TownCrier.Web.Endpoints;
 
@@ -10,11 +11,40 @@ internal static class SavedApplicationEndpoints
         group.MapPut("/me/saved-applications/{**applicationUid}", async (
             ClaimsPrincipal user,
             string applicationUid,
+            SaveApplicationRequest request,
             SaveApplicationCommandHandler handler,
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
-            await handler.HandleAsync(new SaveApplicationCommand(userId, applicationUid), ct).ConfigureAwait(false);
+            if (request is null || string.IsNullOrWhiteSpace(request.Uid) || request.Uid != applicationUid)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("Body uid must match path uid."),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 400);
+            }
+
+            var application = new PlanningApplication(
+                name: request.Name,
+                uid: request.Uid,
+                areaName: request.AreaName,
+                areaId: request.AreaId,
+                address: request.Address,
+                postcode: request.Postcode,
+                description: request.Description,
+                appType: request.AppType,
+                appState: request.AppState,
+                appSize: request.AppSize,
+                startDate: request.StartDate,
+                decidedDate: request.DecidedDate,
+                consultedDate: request.ConsultedDate,
+                longitude: request.Longitude,
+                latitude: request.Latitude,
+                url: request.Url,
+                link: request.Link,
+                lastDifferent: request.LastDifferent);
+
+            await handler.HandleAsync(new SaveApplicationCommand(userId, application), ct).ConfigureAwait(false);
             return Results.NoContent();
         });
 
