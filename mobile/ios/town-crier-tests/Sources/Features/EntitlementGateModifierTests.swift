@@ -14,7 +14,7 @@ struct EntitlementGateModifierTests {
   // is validated by the SubscriptionUpsellSheet render tests.
 
   @Test func modifier_canBeAppliedToView_withEntitlement() {
-    var gate: Entitlement? = .searchApplications
+    var gate: Entitlement? = .statusChangeAlerts
     let binding = Binding(get: { gate }, set: { gate = $0 })
     // Verifies the modifier compiles and returns an opaque View.
     _ = AnyView(

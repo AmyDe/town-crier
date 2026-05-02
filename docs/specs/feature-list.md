@@ -13,7 +13,7 @@
 3. [User Profile & Account Management](#3-user-profile--account-management)
 4. [Watch Zones](#4-watch-zones)
 5. [Planning Applications](#5-planning-applications)
-6. [Search](#6-search)
+6. ~~Search~~ — removed pre-launch (see bead tc-b1jo)
 7. [Saved Applications](#7-saved-applications)
 8. [Notifications](#8-notifications)
 9. [Map Visualisation](#9-map-visualisation)
@@ -181,7 +181,7 @@ Each watch zone has independent notification preferences:
 
 ### 4.6 Linked authorities
 
-- User can see the distinct list of planning authorities covered by their watch zones (for use in browsing and search).
+- User can see the distinct list of planning authorities covered by their watch zones (for use in browsing).
 
 ---
 
@@ -245,25 +245,15 @@ Each watch zone has independent notification preferences:
 
 ---
 
-## 6. Search
+## 6. Search — removed pre-launch (bead tc-b1jo)
 
-### 6.1 Free-text search
-
-- User can search planning applications by keyword within a specific planning authority.
-- Results are paginated (20 per page).
-- Each result shows the same summary fields as the browse list.
-
-### 6.2 Authority selection for search
-
-- User must select an authority before searching.
-- Authority selection is via an autocomplete/typeahead (minimum 2 characters, debounced).
-- Any UK authority can be searched — not limited to the user's watch zones.
-
-### 6.3 Tier restriction
-
-- Search is a **Pro-only** feature.
-- A Free-tier user who attempts to search receives a 403 response.
-- The app surfaces an upgrade prompt in this case.
+Free-text search across PlanIt's full historical dataset was removed before launch.
+The Town Crier corpus only goes back to ~March 2026 while PlanIt has data from 2000+,
+so a locally-served search would silently return partial results — worse than no
+feature. Polling already saturates the per-key PlanIt budget, so user-facing search
+competed for the same budget and lost. Address-anchored history may return as a
+narrower feature later; PlanIt's own free public search (planit.org.uk) covers
+the broader use case in the meantime.
 
 ---
 
@@ -369,7 +359,6 @@ The system applies these rules before delivering a push notification (in order):
 | Weekly digest (push) | No | Yes |
 | Weekly digest (email) | No | Yes |
 | Instant email notifications | No | Yes |
-| Full-text search | No | Yes |
 | 90-day backfill on zone creation | No | Yes |
 | Data export | Yes | Yes |
 | Account deletion | Yes | Yes |
@@ -553,7 +542,6 @@ The system applies these rules before delivering a push notification (in order):
 | Applications | Browse applications by authority |
 | Watch Zones | List, create, edit, and delete zones |
 | Map | Geographic map of applications |
-| Search | Free-text application search (Pro) |
 | Saved | Saved applications list |
 | Notifications | Notification history |
 | Settings | Profile, preferences, account, legal |
@@ -657,7 +645,6 @@ Destructive or irreversible actions require explicit user confirmation before pr
 | Applications | GET | /v1/applications?authorityId={id} | Required | Any |
 | Applications | GET | /v1/applications/{**uid} | Required | Any |
 | Authorities (user) | GET | /v1/me/application-authorities | Required | Any |
-| Search | GET | /v1/search?q={}&authorityId={}&page={} | Required | Pro |
 | Saved | PUT | /v1/me/saved-applications/{**uid} | Required | Any |
 | Saved | DELETE | /v1/me/saved-applications/{**uid} | Required | Any |
 | Saved | GET | /v1/me/saved-applications | Required | Any |

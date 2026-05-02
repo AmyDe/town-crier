@@ -1,5 +1,6 @@
 #pragma warning disable CA1062
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using TownCrier.Application.Designations;
 using TownCrier.Domain.Designations;
@@ -33,6 +34,14 @@ public sealed class GovUkPlanningDataClient : IDesignationDataProvider
         using var response = await this.httpClient
             .GetAsync(url, ct)
             .ConfigureAwait(false);
+
+        // The entity endpoint returns 404 when the query geometry doesn't
+        // intersect any entity in the requested datasets — most UK points
+        // aren't inside a conservation area, listed building, or article-4 area.
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return DesignationContext.None;
+        }
 
         response.EnsureSuccessStatusCode();
 

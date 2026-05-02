@@ -199,6 +199,28 @@ public sealed class GovUkPlanningDataClientTests
             async () => await client.GetDesignationsAsync(51.5, -0.1, CancellationToken.None));
     }
 
+    [Test]
+    public async Task Should_ReturnNone_When_ApiReturnsNotFound()
+    {
+        // Arrange
+        // The planning.data.gov.uk entity endpoint returns 404 when the query
+        // geometry doesn't intersect any entity in the requested datasets.
+        // That's an expected "no designations here" response, not an error.
+        using var handler = new FakeGovUkHandler();
+        handler.SetupErrorResponse("entity.json", System.Net.HttpStatusCode.NotFound);
+        var client = CreateClient(handler);
+
+        // Act
+        var result = await client.GetDesignationsAsync(54.0, -2.0, CancellationToken.None);
+
+        // Assert
+        await Assert.That(result.IsWithinConservationArea).IsFalse();
+        await Assert.That(result.ConservationAreaName).IsNull();
+        await Assert.That(result.IsWithinListedBuildingCurtilage).IsFalse();
+        await Assert.That(result.ListedBuildingGrade).IsNull();
+        await Assert.That(result.IsWithinArticle4Area).IsFalse();
+    }
+
     private static GovUkPlanningDataClient CreateClient(FakeGovUkHandler handler)
     {
         var httpClient = new HttpClient(handler, disposeHandler: false)

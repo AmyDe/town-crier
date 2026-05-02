@@ -11,7 +11,6 @@ namespace TownCrier.Infrastructure.PlanIt;
 public sealed class PlanItClient : IPlanItClient
 {
     private const int DefaultPageSize = 100;
-    private const int SearchPageSize = 20;
 
     private readonly HttpClient httpClient;
     private readonly PlanItThrottleOptions throttleOptions;
@@ -61,33 +60,6 @@ public sealed class PlanItClient : IPlanItClient
         return new FetchPageResult(page, applications, planItResponse.Total, hasMorePages);
     }
 
-    public async Task<PlanItSearchResult> SearchApplicationsAsync(
-        string searchText,
-        int authorityId,
-        int page,
-        CancellationToken ct)
-    {
-        var url = new Uri(BuildSearchUrl(searchText, authorityId, page), UriKind.Relative);
-        using var response = await this.SendWithThrottleAsync(url, authorityId, ct).ConfigureAwait(false);
-        EnsureSuccessOrThrow(response);
-
-        var planItResponse = await JsonSerializer.DeserializeAsync(
-            await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false),
-            PlanItJsonSerializerContext.Default.PlanItResponse,
-            ct).ConfigureAwait(false);
-
-        if (planItResponse is null)
-        {
-            return new PlanItSearchResult([], 0);
-        }
-
-        var applications = planItResponse.Records
-            .Select(MapToDomain)
-            .ToList();
-
-        return new PlanItSearchResult(applications, planItResponse.Total ?? 0);
-    }
-
     public async Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
     {
         // PlanIt's per-application endpoint returns a single record (not wrapped
@@ -118,12 +90,6 @@ public sealed class PlanItClient : IPlanItClient
         // Don't escape '/' — PlanIt uids contain slashes (e.g. "26/01471/TR")
         // and the routing depends on the literal path segments.
         return $"/planapplic/{uid}/json";
-    }
-
-    private static string BuildSearchUrl(string searchText, int authorityId, int page)
-    {
-        var encodedQuery = Uri.EscapeDataString(searchText);
-        return $"/api/applics/json?pg_sz={SearchPageSize}&sort=-last_different&page={page}&auth={authorityId}&search={encodedQuery}";
     }
 
     private static string BuildUrl(int authorityId, DateTimeOffset? differentStart, int page)

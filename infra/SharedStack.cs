@@ -15,6 +15,8 @@ using Pulumi.AzureNative.Portal;
 using Pulumi.AzureNative.Portal.Inputs;
 using Pulumi.AzureNative.Communication;
 using Pulumi.AzureNative.Communication.Inputs;
+using Pulumi.AzureNative.Consumption;
+using Pulumi.AzureNative.Consumption.Inputs;
 
 public static class SharedStack
 {
@@ -285,6 +287,115 @@ public static class SharedStack
                 },
             },
             Tags = tags,
+        });
+
+        // Cost Management budget alert — fires when cumulative monthly spend on the
+        // shared Cosmos account crosses £25. Cosmos serverless is the dominant cost
+        // line (~£18/mo at 2026-05-02 and growing with polling volume); a single
+        // admin batch (e.g. Apr 19-20 GDPR sweep) can triple the daily bill, so an
+        // explicit guard rail is cheaper than waiting for the monthly invoice. See
+        // bead tc-guwt and docs/cost-forecast/2026-05-02.md.
+        //
+        // Why a Budget vs an App Insights metric alert on RU consumption:
+        //   - The threshold is denominated in GBP, which Budget tracks natively;
+        //     translating to a daily RU ceiling is brittle (depends on Microsoft's
+        //     per-million-RU price) and would need re-tuning every price change.
+        //   - Budgets respect the actual billed amount, so deployment-day Cosmos
+        //     spikes that are absorbed by the monthly average don't false-trigger.
+        //
+        // Scope is the resource group; the resource-id Filter narrows the budget to
+        // just cosmos-town-crier-shared (Azure Budgets at resource scope are not a
+        // supported scope level, so RG + ResourceId dimension filter is the
+        // canonical pattern). Threshold is expressed as a percentage of Amount, so
+        // Amount=25 + Threshold=100 fires at exactly £25 actual spend.
+        //
+        // alertEmail comes from Pulumi config (Pulumi.shared.yaml). Budgets at
+        // RG scope require at least one contactEmail or contactGroup; we use email
+        // for simplicity — no Action Group needed.
+        var alertEmail = config.Require("alertEmail");
+        _ = new Budget("budget-cosmos-shared-monthly", new BudgetArgs
+        {
+            BudgetName = "budget-cosmos-shared-monthly",
+            Scope = resourceGroup.Id,
+            Amount = 25,
+            Category = CategoryType.Cost,
+            TimeGrain = TimeGrainType.Monthly,
+            TimePeriod = new BudgetTimePeriodArgs
+            {
+                // Budget start date must be the first of a month, on or after 2017-06-01.
+                // Pinned to a static past date so subsequent `pulumi up` runs are no-ops.
+                StartDate = "2026-05-01T00:00:00Z",
+            },
+            Filter = new BudgetFilterArgs
+            {
+                Dimensions = new BudgetComparisonExpressionArgs
+                {
+                    Name = "ResourceId",
+                    Operator = BudgetOperatorType.In,
+                    Values = new[] { cosmosAccount.Id },
+                },
+            },
+            Notifications =
+            {
+                ["actual_GreaterThan_100_Percent"] = new NotificationArgs
+                {
+                    Enabled = true,
+                    Operator = OperatorType.GreaterThan,
+                    Threshold = 100,
+                    ThresholdType = ThresholdType.Actual,
+                    ContactEmails = new[] { alertEmail },
+                    Locale = CultureCode.En_gb,
+                },
+            },
+        });
+
+        // Subscription-wide cost guard rail — fires when cumulative monthly spend
+        // across the entire Town Crier subscription crosses £50. Current run-rate
+        // is ~£29/mo (2026-05-02), giving ~£21 headroom before this trips. Catches
+        // run-aways the Cosmos-scoped budget (tc-guwt) would miss: a misconfigured
+        // Container App scaling to many replicas, an unbounded Log Analytics
+        // ingestion spike, accidentally provisioning a non-serverless service, etc.
+        // Ref: tc-yica and docs/cost-forecast/2026-05-02.md.
+        //
+        // Scope is the entire subscription, not a resource group, so no Filter
+        // is set — the budget aggregates all billed resources under the sub.
+        // Notifications include a 50% (early-warning) and 100% (red-alert) tier,
+        // both at Actual cost; Forecasted alerts are noisy on serverless workloads
+        // with bursty daily spend so we omit them.
+        _ = new Budget("budget-subscription-monthly", new BudgetArgs
+        {
+            BudgetName = "budget-subscription-monthly",
+            Scope = $"/subscriptions/{armSubscriptionId}",
+            Amount = 50,
+            Category = CategoryType.Cost,
+            TimeGrain = TimeGrainType.Monthly,
+            TimePeriod = new BudgetTimePeriodArgs
+            {
+                // Budget start date must be the first of a month, on or after 2017-06-01.
+                // Pinned to a static past date so subsequent `pulumi up` runs are no-ops.
+                StartDate = "2026-05-01T00:00:00Z",
+            },
+            Notifications =
+            {
+                ["actual_GreaterThan_50_Percent"] = new NotificationArgs
+                {
+                    Enabled = true,
+                    Operator = OperatorType.GreaterThan,
+                    Threshold = 50,
+                    ThresholdType = ThresholdType.Actual,
+                    ContactEmails = new[] { alertEmail },
+                    Locale = CultureCode.En_gb,
+                },
+                ["actual_GreaterThan_100_Percent"] = new NotificationArgs
+                {
+                    Enabled = true,
+                    Operator = OperatorType.GreaterThan,
+                    Threshold = 100,
+                    ThresholdType = ThresholdType.Actual,
+                    ContactEmails = new[] { alertEmail },
+                    Locale = CultureCode.En_gb,
+                },
+            },
         });
 
         // Cosmos DB Built-in Data Contributor role — allows CRUD on documents.

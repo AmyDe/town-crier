@@ -29,12 +29,6 @@ struct EntitlementMapEntitlementsForTierTests {
     #expect(entitlements.contains(.hourlyDigestEmails))
   }
 
-  @Test("personal tier does not include searchApplications")
-  func personalDoesNotHaveSearch() {
-    let entitlements = EntitlementMap.entitlements(for: .personal)
-    #expect(!entitlements.contains(.searchApplications))
-  }
-
   @Test("personal tier has exactly 3 entitlements")
   func personalHasThreeEntitlements() {
     let entitlements = EntitlementMap.entitlements(for: .personal)
@@ -49,10 +43,10 @@ struct EntitlementMapEntitlementsForTierTests {
     }
   }
 
-  @Test("pro tier has exactly 4 entitlements")
-  func proHasFourEntitlements() {
+  @Test("pro tier has exactly 3 entitlements")
+  func proHasThreeEntitlements() {
     let entitlements = EntitlementMap.entitlements(for: .pro)
-    #expect(entitlements.count == 4)
+    #expect(entitlements.count == 3)
   }
 }
 
@@ -83,9 +77,9 @@ struct EntitlementMapLimitForTierQuotaTests {
 
 @Suite("EntitlementMap — hasEntitlement(_:for:)")
 struct EntitlementMapHasEntitlementTests {
-  @Test("free tier does not have searchApplications")
-  func freeDoesNotHaveSearch() {
-    #expect(!EntitlementMap.hasEntitlement(.searchApplications, for: .free))
+  @Test("free tier does not have statusChangeAlerts")
+  func freeDoesNotHaveStatusAlerts() {
+    #expect(!EntitlementMap.hasEntitlement(.statusChangeAlerts, for: .free))
   }
 
   @Test("personal tier has statusChangeAlerts")
@@ -93,9 +87,9 @@ struct EntitlementMapHasEntitlementTests {
     #expect(EntitlementMap.hasEntitlement(.statusChangeAlerts, for: .personal))
   }
 
-  @Test("pro tier has searchApplications")
-  func proHasSearch() {
-    #expect(EntitlementMap.hasEntitlement(.searchApplications, for: .pro))
+  @Test("pro tier has hourlyDigestEmails")
+  func proHasDigest() {
+    #expect(EntitlementMap.hasEntitlement(.hourlyDigestEmails, for: .pro))
   }
 }
 

@@ -7,18 +7,9 @@ public static class EntitlementMap
     private static readonly IReadOnlySet<Entitlement> EmptySet =
         new HashSet<Entitlement>();
 
-    private static readonly IReadOnlySet<Entitlement> PersonalEntitlements =
+    private static readonly IReadOnlySet<Entitlement> PaidEntitlements =
         new HashSet<Entitlement>
         {
-            Entitlement.StatusChangeAlerts,
-            Entitlement.DecisionUpdateAlerts,
-            Entitlement.HourlyDigestEmails,
-        };
-
-    private static readonly IReadOnlySet<Entitlement> ProEntitlements =
-        new HashSet<Entitlement>
-        {
-            Entitlement.SearchApplications,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts,
             Entitlement.HourlyDigestEmails,
@@ -26,8 +17,8 @@ public static class EntitlementMap
 
     public static IReadOnlySet<Entitlement> EntitlementsFor(SubscriptionTier tier) => tier switch
     {
-        SubscriptionTier.Personal => PersonalEntitlements,
-        SubscriptionTier.Pro => ProEntitlements,
+        SubscriptionTier.Personal => PaidEntitlements,
+        SubscriptionTier.Pro => PaidEntitlements,
         _ => EmptySet,
     };
 

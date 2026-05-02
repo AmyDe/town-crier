@@ -11,10 +11,10 @@ import TownCrierDomain
 /// Usage:
 /// ```swift
 /// GatedButton(
-///     label: "Search Applications",
-///     entitlement: .searchApplications,
+///     label: "Status Change Alerts",
+///     entitlement: .statusChangeAlerts,
 ///     featureGate: viewModel.featureGate,
-///     action: { viewModel.openSearch() },
+///     action: { viewModel.enableAlerts() },
 ///     onUpgradeRequired: { viewModel.showUpgradeSheet() }
 /// )
 /// ```

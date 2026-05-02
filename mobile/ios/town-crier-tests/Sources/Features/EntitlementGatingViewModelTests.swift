@@ -20,9 +20,9 @@ struct EntitlementGatingViewModelTests {
   @Test func handleError_insufficientEntitlement_setsEntitlementGate() {
     let sut = TestGatingViewModel()
 
-    sut.handleError(DomainError.insufficientEntitlement(required: "searchApplications"))
+    sut.handleError(DomainError.insufficientEntitlement(required: "decisionUpdateAlerts"))
 
-    #expect(sut.entitlementGate == .searchApplications)
+    #expect(sut.entitlementGate == .decisionUpdateAlerts)
     #expect(sut.error == nil)
   }
 
@@ -69,7 +69,7 @@ struct EntitlementGatingViewModelTests {
 
   @Test func handleError_overwritesPreviousGate() {
     let sut = TestGatingViewModel()
-    sut.entitlementGate = .searchApplications
+    sut.entitlementGate = .decisionUpdateAlerts
 
     sut.handleError(DomainError.insufficientEntitlement(required: "statusChangeAlerts"))
 
@@ -78,7 +78,7 @@ struct EntitlementGatingViewModelTests {
 
   @Test func handleError_nonEntitlementError_clearsGate() {
     let sut = TestGatingViewModel()
-    sut.entitlementGate = .searchApplications
+    sut.entitlementGate = .decisionUpdateAlerts
 
     sut.handleError(DomainError.networkUnavailable)
 

@@ -34,7 +34,6 @@ describe('Sidebar', () => {
       'Saved',
       'Watch Zones',
       'Map',
-      'Search',
       'Notifications',
       'Settings',
     ];
@@ -44,13 +43,20 @@ describe('Sidebar', () => {
     }
   });
 
-  it('renders exactly 8 nav links', () => {
+  it('renders exactly 7 nav links', () => {
     renderSidebar();
 
     const nav = screen.getByRole('navigation', { name: /main/i });
     const links = within(nav).getAllByRole('link');
-    // 8 section links + 1 app name link = 9
-    expect(links).toHaveLength(9);
+    // 7 section links + 1 app name link = 8
+    expect(links).toHaveLength(8);
+  });
+
+  it('does not render a Search nav link', () => {
+    renderSidebar();
+
+    const nav = screen.getByRole('navigation', { name: /main/i });
+    expect(within(nav).queryByRole('link', { name: 'Search' })).not.toBeInTheDocument();
   });
 
   it('does not render a Groups nav link', () => {

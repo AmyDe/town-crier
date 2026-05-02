@@ -277,12 +277,6 @@ export interface UpdateZonePreferencesRequest {
 // Paginated result types
 // ---------------------------------------------------------------------------
 
-export interface SearchResult {
-  readonly applications: readonly PlanningApplicationSummary[];
-  readonly total: number;
-  readonly page: number;
-}
-
 export interface NotificationsResult {
   readonly notifications: readonly NotificationItem[];
   readonly total: number;

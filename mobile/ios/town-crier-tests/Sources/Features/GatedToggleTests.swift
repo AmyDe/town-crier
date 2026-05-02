@@ -54,12 +54,12 @@ struct GatedToggleTests {
     #expect(!sut.isEnabled)
   }
 
-  @Test func isEnabled_proUser_searchApplications_returnsTrue() {
+  @Test func isEnabled_proUser_decisionUpdateAlerts_returnsTrue() {
     let gate = FeatureGate(tier: .pro)
     let sut = GatedToggle(
-      label: "Search",
+      label: "Decision Updates",
       isOn: .constant(true),
-      entitlement: .searchApplications,
+      entitlement: .decisionUpdateAlerts,
       featureGate: gate
     ) {}
 

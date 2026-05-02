@@ -51,7 +51,6 @@ struct TownCrierApp: App {
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
-    let searchRepository = APISearchRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -66,8 +65,7 @@ struct TownCrierApp: App {
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
-      savedApplicationRepository: savedApplicationRepository,
-      searchRepository: searchRepository
+      savedApplicationRepository: savedApplicationRepository
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
@@ -167,26 +165,7 @@ struct TownCrierApp: App {
         Label("Applications", systemImage: "doc.text.magnifyingglass")
       }
 
-      // 2. Search (replaces Settings tab; Settings now opens via gear icon)
-      NavigationStack {
-        SearchTabContainer(coordinator: coordinator)
-          .id(coordinator.subscriptionTier)
-          .settingsToolbar { coordinator.showSettings() }
-      }
-      .sheet(item: $coordinator.detailApplication) { application in
-        NavigationStack {
-          ApplicationDetailView(
-            viewModel: coordinator.makeApplicationDetailViewModel(
-              application: application
-            )
-          )
-        }
-      }
-      .tabItem {
-        Label("Search", systemImage: "magnifyingglass")
-      }
-
-      // 3. Saved
+      // 2. Saved
       NavigationStack {
         SavedApplicationListView(
           viewModel: coordinator.makeSavedApplicationListViewModel()
@@ -207,7 +186,7 @@ struct TownCrierApp: App {
         Label("Saved", systemImage: "bookmark.fill")
       }
 
-      // 4. Map
+      // 3. Map
       NavigationStack {
         MapView(viewModel: coordinator.makeMapViewModel())
           .id(coordinator.subscriptionTier)
@@ -221,7 +200,7 @@ struct TownCrierApp: App {
         Label("Map", systemImage: "map")
       }
 
-      // 5. Zones
+      // 4. Zones
       NavigationStack {
         WatchZoneListView(viewModel: coordinator.makeWatchZoneListViewModel())
           .id(coordinator.subscriptionTier)
@@ -285,26 +264,6 @@ struct TownCrierApp: App {
         openURL(url)
       }
       coordinator.isOpeningSystemNotificationSettings = false
-    }
-  }
-}
-
-/// Container that loads the Search tab's authority list lazily on first
-/// appearance. Owned by the app target so the AppCoordinator stays free of
-/// SwiftUI state-management plumbing.
-private struct SearchTabContainer: View {
-  let coordinator: AppCoordinator
-  @State private var authorities: [LocalAuthority] = []
-
-  var body: some View {
-    SearchView(
-      viewModel: coordinator.makeSearchViewModel(),
-      authorities: authorities
-    ) {
-      coordinator.isSubscriptionPresented = true
-    }
-    .task {
-      authorities = await coordinator.loadSearchAuthorities()
     }
   }
 }

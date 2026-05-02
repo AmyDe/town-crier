@@ -20,7 +20,6 @@ An `Entitlement` enum defines every gatable feature:
 public enum Entitlement
 {
     InstantEmails,
-    SearchApplications,
     StatusChangeAlerts,
     DecisionUpdateAlerts
 }
@@ -33,16 +32,9 @@ public static class EntitlementMap
 {
     public static IReadOnlySet<Entitlement> For(SubscriptionTier tier) => tier switch
     {
-        SubscriptionTier.Personal => new HashSet<Entitlement>
+        SubscriptionTier.Personal or SubscriptionTier.Pro => new HashSet<Entitlement>
         {
             Entitlement.InstantEmails,
-            Entitlement.StatusChangeAlerts,
-            Entitlement.DecisionUpdateAlerts
-        },
-        SubscriptionTier.Pro => new HashSet<Entitlement>
-        {
-            Entitlement.InstantEmails,
-            Entitlement.SearchApplications,
             Entitlement.StatusChangeAlerts,
             Entitlement.DecisionUpdateAlerts
         },
@@ -172,7 +164,7 @@ Between purchases, the claim refreshes naturally when the access token expires.
 - **Named entitlements, not tier levels** on endpoints — decouples features from pricing tiers. Rearranging what each tier includes means changing the mapping, not every endpoint.
 - **JWT claim defaults to `Free` if missing** — fail-safe, never accidentally grants access.
 - **Stale preferences on downgrade are acceptable** — if a user downgrades with `emailInstantEnabled = true`, the preference persists in Cosmos but is never acted on. Re-subscribing restores their settings.
-- **Existing ad-hoc tier checks** (`ProTierRequiredException` in search, `InsufficientTierException` in zone preferences) migrated to the new pattern over time, not urgently.
+- **Existing ad-hoc tier checks** (`InsufficientTierException` in zone preferences) migrated to the new pattern over time, not urgently.
 
 ## Migration Path
 

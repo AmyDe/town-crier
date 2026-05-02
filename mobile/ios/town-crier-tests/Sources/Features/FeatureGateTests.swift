@@ -8,12 +8,6 @@ struct FeatureGateTests {
 
   // MARK: - Entitlement checks
 
-  @Test func hasEntitlement_freeUser_searchApplications_returnsFalse() {
-    let sut = FeatureGate(tier: .free)
-
-    #expect(!sut.hasEntitlement(.searchApplications))
-  }
-
   @Test func hasEntitlement_freeUser_statusChangeAlerts_returnsFalse() {
     let sut = FeatureGate(tier: .free)
 
@@ -30,18 +24,6 @@ struct FeatureGateTests {
     let sut = FeatureGate(tier: .personal)
 
     #expect(sut.hasEntitlement(.statusChangeAlerts))
-  }
-
-  @Test func hasEntitlement_personalUser_searchApplications_returnsFalse() {
-    let sut = FeatureGate(tier: .personal)
-
-    #expect(!sut.hasEntitlement(.searchApplications))
-  }
-
-  @Test func hasEntitlement_proUser_searchApplications_returnsTrue() {
-    let sut = FeatureGate(tier: .pro)
-
-    #expect(sut.hasEntitlement(.searchApplications))
   }
 
   @Test func hasEntitlement_proUser_allEntitlements_returnsTrue() {
@@ -80,16 +62,16 @@ struct FeatureGateTests {
 
   // MARK: - Upgrade badge
 
-  @Test func shouldShowUpgradeBadge_entitlement_freeUserLacksSearch_returnsTrue() {
+  @Test func shouldShowUpgradeBadge_entitlement_freeUserLacksAlerts_returnsTrue() {
     let sut = FeatureGate(tier: .free)
 
-    #expect(sut.shouldShowUpgradeBadge(for: .searchApplications))
+    #expect(sut.shouldShowUpgradeBadge(for: .statusChangeAlerts))
   }
 
-  @Test func shouldShowUpgradeBadge_entitlement_proUserHasSearch_returnsFalse() {
+  @Test func shouldShowUpgradeBadge_entitlement_proUserHasAlerts_returnsFalse() {
     let sut = FeatureGate(tier: .pro)
 
-    #expect(!sut.shouldShowUpgradeBadge(for: .searchApplications))
+    #expect(!sut.shouldShowUpgradeBadge(for: .statusChangeAlerts))
   }
 
   @Test func shouldShowUpgradeBadge_quota_freeAtLimit_returnsTrue() {

@@ -2,3 +2,4 @@ config:
   azure-native:location: uksouth
   town-crier:environment: shared
   town-crier:ciServicePrincipalId: 8efcb7cf-f17e-4a93-aab5-df7bc3c2c2cc
+  town-crier:alertEmail: christy@salter.uk

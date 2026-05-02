@@ -47,7 +47,6 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
-  let searchRepository: SearchRepository?
   private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
@@ -61,6 +60,9 @@ public final class AppCoordinator: ObservableObject {
   // Tracks the in-flight post-save watch-zone reload task so tests can await
   // it deterministically rather than racing it with `Task.sleep`.
   private var pendingWatchZoneRefresh: Task<Void, Never>?
+  // Tracks the in-flight `showApplicationDetail` fetch task; tests await it
+  // via `waitForPendingDetailLoad()` instead of `Task.sleep` (tc-nsrh).
+  private var pendingDetailLoad: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -77,7 +79,6 @@ public final class AppCoordinator: ObservableObject {
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
-    searchRepository: SearchRepository? = nil,
     offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil
   ) {
@@ -96,7 +97,6 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
-    self.searchRepository = searchRepository
     self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
 
@@ -210,15 +210,11 @@ public final class AppCoordinator: ObservableObject {
 
   // MARK: - Subscription Tier Resolution
 
-  /// Resolves the subscription tier by consulting the JWT session, StoreKit,
-  /// and the server profile, then picks the highest tier. Mirrors the same
-  /// triple-source resolution used by ``SettingsViewModel``.
-  ///
-  /// When the server profile ensure-or-fetch call fails (network error, auth
-  /// issue, etc.), the previously resolved tier is preserved rather than
-  /// silently falling back to `.free`. This prevents paying users from losing
-  /// feature access due to transient failures — a common scenario on the
-  /// simulator where JWT and StoreKit always return `.free`.
+  /// Resolves the subscription tier by consulting JWT, StoreKit and the
+  /// server profile, then picks the highest tier (mirrors ``SettingsViewModel``).
+  /// When the server fetch fails (nil), the previously resolved tier is
+  /// preserved so paying users don't lose feature access due to transient errors
+  /// — common on the simulator where JWT and StoreKit always return `.free`.
   public func resolveSubscriptionTier() async {
     var jwtTier: SubscriptionTier = .free
     if let session = await authService.currentSession() {
@@ -317,13 +313,10 @@ public final class AppCoordinator: ObservableObject {
     isSettingsPresented = true
   }
 
-  /// Requests that the view layer deep-link to the iOS system Settings page
-  /// for the app, where the user can manage push notification permissions
-  /// (alert style, banners, lock screen, sounds, badges, focus, etc.).
-  ///
-  /// The Coordinator stays UIKit-free; `TownCrierApp` observes the flag and
-  /// performs the actual ``UIApplication/openSettingsURLString`` open via
-  /// SwiftUI's ``Environment(\.openURL)``.
+  /// Requests the view layer deep-link to the iOS system Settings page for
+  /// the app (push permissions: banners, sounds, badges, focus, etc.). The
+  /// Coordinator stays UIKit-free; `TownCrierApp` observes the flag and
+  /// performs the actual ``UIApplication/openSettingsURLString`` open.
   public func showSystemNotificationSettings() {
     isOpeningSystemNotificationSettings = true
   }
@@ -387,7 +380,8 @@ public final class AppCoordinator: ObservableObject {
   }
 
   func showApplicationDetail(_ id: PlanningApplicationId) {
-    Task {
+    pendingDetailLoad = Task { [weak self] in
+      guard let self else { return }
       do {
         detailApplication = try await repository.fetchApplication(by: id)
       } catch let domainError as DomainError {
@@ -396,5 +390,11 @@ public final class AppCoordinator: ObservableObject {
         deepLinkError = .unexpected(error.localizedDescription)
       }
     }
+  }
+
+  /// Test-only synchronisation: await the most recent
+  /// `showApplicationDetail` fetch. Replaces flaky `Task.sleep` waits.
+  public func waitForPendingDetailLoad() async {
+    await pendingDetailLoad?.value
   }
 }

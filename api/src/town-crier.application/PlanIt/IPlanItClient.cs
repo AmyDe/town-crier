@@ -14,17 +14,9 @@ public interface IPlanItClient
         int page,
         CancellationToken ct);
 
-    Task<PlanItSearchResult> SearchApplicationsAsync(
-        string searchText,
-        int authorityId,
-        int page,
-        CancellationToken ct);
-
     // Fetches a single application by UID via PlanIt's per-application endpoint
     // (/planapplic/{uid}/json). Returns null when PlanIt has no record (404).
     // Used by GetApplicationByUidQueryHandler as a fallback when Cosmos has
-    // never seen the application — closes the search→tap→details gap that
-    // otherwise opens once SearchPlanningApplicationsQueryHandler stops
-    // upserting search results (see bd tc-if12).
+    // never seen the application.
     Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct);
 }

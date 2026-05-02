@@ -9,7 +9,6 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
-using TownCrier.Application.Search;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Cosmos;
@@ -78,7 +77,6 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<DeleteWatchZoneCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<RegisterDeviceTokenCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetApplicationByUidQueryHandler>()).IsNotNull();
-        await Assert.That(provider.GetService<SearchPlanningApplicationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetNotificationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<SaveApplicationCommandHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetSavedApplicationsQueryHandler>()).IsNotNull();

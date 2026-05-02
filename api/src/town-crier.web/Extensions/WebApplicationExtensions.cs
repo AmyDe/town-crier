@@ -35,7 +35,6 @@ internal static class WebApplicationExtensions
         v1.MapGeocodeEndpoints();
         v1.MapUserProfileEndpoints();
         v1.MapDeviceTokenEndpoints();
-        v1.MapSearchEndpoints();
         v1.MapNotificationEndpoints();
         v1.MapSavedApplicationEndpoints();
         v1.MapWatchZoneEndpoints();

@@ -401,15 +401,6 @@ public sealed class PollPlanItCommandHandlerCursorTelemetryTests
                 HasMorePages: false));
         }
 
-        public Task<PlanItSearchResult> SearchApplicationsAsync(
-            string searchText,
-            int authorityId,
-            int page,
-            CancellationToken ct)
-        {
-            return Task.FromResult(new PlanItSearchResult([], 0));
-        }
-
         public Task<TownCrier.Domain.PlanningApplications.PlanningApplication?> GetByUidAsync(
             string uid, CancellationToken ct)
         {

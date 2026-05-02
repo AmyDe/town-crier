@@ -8,8 +8,7 @@ import TownCrierDomain
 @MainActor
 struct AppCoordinatorTests {
   private func makeSUT(
-    savedApplicationRepository: SavedApplicationRepository? = nil,
-    searchRepository: SearchRepository? = nil
+    savedApplicationRepository: SavedApplicationRepository? = nil
   ) -> (AppCoordinator, SpyPlanningApplicationRepository) {
     let spy = SpyPlanningApplicationRepository()
     let coordinator = AppCoordinator(
@@ -23,8 +22,7 @@ struct AppCoordinatorTests {
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService(),
-      savedApplicationRepository: savedApplicationRepository,
-      searchRepository: searchRepository
+      savedApplicationRepository: savedApplicationRepository
     )
     return (coordinator, spy)
   }
@@ -94,14 +92,14 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
   }
 
-  @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+  @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
     let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
@@ -199,7 +197,7 @@ struct AppCoordinatorTests {
     #expect(vm.applications.count == 1)
   }
 
-  @Test func savedApplicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+  @Test func savedApplicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async {
     let savedSpy = SpySavedApplicationRepository()
     let (sut, spy) = makeSUT(savedApplicationRepository: savedSpy)
     spy.fetchApplicationResult = .success(.permitted)
@@ -207,90 +205,10 @@ struct AppCoordinatorTests {
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
-  }
-
-  // MARK: - Search Authorities
-
-  @Test func loadSearchAuthorities_returnsAuthoritiesFromRepository() async {
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    let cambridge = LocalAuthority(code: "123", name: "Cambridge")
-    authoritySpy.fetchAuthoritiesResult = .success(
-      ApplicationAuthorityResult(authorities: [cambridge], count: 1)
-    )
-    let coordinator = AppCoordinator(
-      repository: SpyPlanningApplicationRepository(),
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-
-    let authorities = await coordinator.loadSearchAuthorities()
-
-    #expect(authorities == [cambridge])
-  }
-
-  @Test func loadSearchAuthorities_returnsEmpty_onFailure() async {
-    let authoritySpy = SpyApplicationAuthorityRepository()
-    authoritySpy.fetchAuthoritiesResult = .failure(DomainError.networkUnavailable)
-    let coordinator = AppCoordinator(
-      repository: SpyPlanningApplicationRepository(),
-      authService: SpyAuthenticationService(),
-      subscriptionService: SpySubscriptionService(),
-      userProfileRepository: SpyUserProfileRepository(),
-      authorityRepository: authoritySpy,
-      watchZoneRepository: SpyWatchZoneRepository(),
-      onboardingRepository: SpyOnboardingRepository(),
-      notificationService: SpyNotificationService(),
-      appVersionProvider: SpyAppVersionProvider(),
-      versionConfigService: SpyVersionConfigService()
-    )
-
-    let authorities = await coordinator.loadSearchAuthorities()
-
-    #expect(authorities.isEmpty)
-  }
-
-  @Test func loadSearchAuthorities_returnsEmpty_whenNoRepositoryInjected() async {
-    let (sut, _) = makeSUT()
-
-    let authorities = await sut.loadSearchAuthorities()
-
-    #expect(authorities.isEmpty)
-  }
-
-  // MARK: - Search ViewModel Factory
-
-  @Test func makeSearchViewModel_returnsConfiguredViewModel() {
-    let searchSpy = SpySearchRepository()
-    let (sut, _) = makeSUT(searchRepository: searchSpy)
-
-    let vm = sut.makeSearchViewModel()
-
-    #expect(vm.applications.isEmpty)
-  }
-
-  @Test func searchViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
-    let searchSpy = SpySearchRepository()
-    let (sut, planningSpy) = makeSUT(searchRepository: searchSpy)
-    planningSpy.fetchApplicationResult = .success(.permitted)
-    let vm = sut.makeSearchViewModel()
-
-    vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
-
-    try await Task.sleep(for: .milliseconds(200))
-
-    #expect(sut.detailApplication == .permitted)
-    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
   // MARK: - Settings ViewModel Factory
@@ -383,6 +301,24 @@ struct AppCoordinatorTests {
     sut.showSystemNotificationSettings()
 
     #expect(sut.isOpeningSystemNotificationSettings)
+  }
+
+  // MARK: - Deterministic detail-load synchronisation
+
+  /// Regression guard for tc-nsrh (CI flakes on `Task.sleep(...)` waits in
+  /// the `showApplicationDetail` path). The Coordinator must expose a way to
+  /// await the in-flight detail fetch without sleeping so deep-link and
+  /// list-selection tests are deterministic.
+  @Test func waitForPendingDetailLoad_awaitsShowApplicationDetail() async throws {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationResult = .success(.permitted)
+
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(sut.detailApplication == .permitted)
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
 }

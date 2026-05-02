@@ -22,7 +22,6 @@ public sealed class EntitlementMapTests
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
         await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);
-        await Assert.That(entitlements).DoesNotContain(Entitlement.SearchApplications);
     }
 
     [Test]
@@ -30,8 +29,7 @@ public sealed class EntitlementMapTests
     {
         var entitlements = EntitlementMap.EntitlementsFor(SubscriptionTier.Pro);
 
-        await Assert.That(entitlements).HasCount().EqualTo(4);
-        await Assert.That(entitlements).Contains(Entitlement.SearchApplications);
+        await Assert.That(entitlements).HasCount().EqualTo(3);
         await Assert.That(entitlements).Contains(Entitlement.StatusChangeAlerts);
         await Assert.That(entitlements).Contains(Entitlement.DecisionUpdateAlerts);
         await Assert.That(entitlements).Contains(Entitlement.HourlyDigestEmails);

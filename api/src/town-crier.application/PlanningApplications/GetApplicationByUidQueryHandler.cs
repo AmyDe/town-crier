@@ -48,8 +48,8 @@ public sealed class GetApplicationByUidQueryHandler
         if (application is null)
         {
             // Cosmos miss: fall back to PlanIt's per-application endpoint. This
-            // closes the search→tap→details gap left when SearchPlanningApplications
-            // stopped upserting search results (see tc-if12).
+            // closes the gap when Cosmos has not yet ingested an application that
+            // a saved-list snapshot or a deep link references.
             var fetched = await this.planItClient.GetByUidAsync(query.Uid, ct).ConfigureAwait(false);
             if (fetched is null)
             {
