@@ -59,8 +59,11 @@ public sealed class ApnsOptionsTests
         // Arrange — disabled options with no auth fields. Local-dev mode.
         var options = new ApnsOptions { Enabled = false };
 
-        // Act + Assert
-        await Assert.That(options.Validate).ThrowsNothing();
+        // Act
+        options.Validate();
+
+        // Assert — no exception is the contract; reach the next line.
+        await Assert.That(options.Enabled).IsFalse();
     }
 
     [Test]
@@ -69,8 +72,11 @@ public sealed class ApnsOptionsTests
         // Arrange
         var options = ValidEnabledOptions();
 
-        // Act + Assert
-        await Assert.That(options.Validate).ThrowsNothing();
+        // Act
+        options.Validate();
+
+        // Assert — no exception is the contract; reach the next line.
+        await Assert.That(options.Enabled).IsTrue();
     }
 
     [Test]
@@ -91,14 +97,13 @@ public sealed class ApnsOptionsTests
         }
 
         // Act + Assert
-        var exception = await Assert.That(options.Validate).Throws<InvalidOperationException>();
+        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
         await Assert.That(exception!.Message).Contains(emptyField);
     }
 
     [Test]
     [Arguments("ABCDEFGHI")] // 9 chars — too short
     [Arguments("ABCDEFGHIJK")] // 11 chars — too long
-    [Arguments("")] // empty — required-fields check would also catch this; included for completeness
     public async Task Should_Throw_When_EnabledAndKeyIdNotTenCharacters(string badKeyId)
     {
         // Arrange
@@ -106,7 +111,8 @@ public sealed class ApnsOptionsTests
         options.KeyId = badKeyId;
 
         // Act + Assert
-        await Assert.That(options.Validate).Throws<InvalidOperationException>();
+        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
+        await Assert.That(exception!.Message).Contains("KeyId");
     }
 
     [Test]
@@ -119,7 +125,7 @@ public sealed class ApnsOptionsTests
         options.TeamId = badTeamId;
 
         // Act + Assert
-        var exception = await Assert.That(options.Validate).Throws<InvalidOperationException>();
+        var exception = Assert.Throws<InvalidOperationException>(options.Validate);
         await Assert.That(exception!.Message).Contains("TeamId");
     }
 

@@ -18,6 +18,12 @@ public sealed class ApnsOptions
     /// </summary>
     public const string SectionName = "Apns";
 
+    /// <summary>
+    /// The required length of an Apple Key ID and Team ID. Apple issues both as
+    /// fixed 10-character identifiers; any other length is a misconfiguration.
+    /// </summary>
+    private const int AppleIdLength = 10;
+
     // S1075: APNs endpoints are well-known Apple-published URLs, not configurable infrastructure.
 #pragma warning disable S1075
     private const string ProductionUrl = "https://api.push.apple.com";
@@ -105,6 +111,59 @@ public sealed class ApnsOptions
     public Uri ResolveBaseAddress()
     {
         return new Uri(this.UseSandbox ? SandboxUrl : ProductionUrl);
+    }
+
+    /// <summary>
+    /// Validates the options. When <see cref="Enabled"/> is true, all of
+    /// <see cref="AuthKey"/>, <see cref="KeyId"/>, <see cref="TeamId"/>, and
+    /// <see cref="BundleId"/> must be non-empty, and <see cref="KeyId"/> /
+    /// <see cref="TeamId"/> must be exactly 10 characters (Apple's fixed
+    /// identifier length). When <see cref="Enabled"/> is false this method
+    /// is a no-op so local dev hosts can boot without auth fields.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when validation fails.</exception>
+    public void Validate()
+    {
+        if (!this.Enabled)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(this.AuthKey))
+        {
+            throw new InvalidOperationException(
+                $"Apns:Enabled is true but {nameof(this.AuthKey)} is empty. Set Apns:AuthKey to the PEM contents of the .p8 file.");
+        }
+
+        if (string.IsNullOrWhiteSpace(this.KeyId))
+        {
+            throw new InvalidOperationException(
+                $"Apns:Enabled is true but {nameof(this.KeyId)} is empty. Set Apns:KeyId to the 10-character Apple Key ID.");
+        }
+
+        if (this.KeyId.Length != AppleIdLength)
+        {
+            throw new InvalidOperationException(
+                $"Apns:{nameof(this.KeyId)} must be exactly {AppleIdLength} characters (Apple's fixed Key ID length). Got {this.KeyId.Length}.");
+        }
+
+        if (string.IsNullOrWhiteSpace(this.TeamId))
+        {
+            throw new InvalidOperationException(
+                $"Apns:Enabled is true but {nameof(this.TeamId)} is empty. Set Apns:TeamId to the 10-character Apple Team ID.");
+        }
+
+        if (this.TeamId.Length != AppleIdLength)
+        {
+            throw new InvalidOperationException(
+                $"Apns:{nameof(this.TeamId)} must be exactly {AppleIdLength} characters (Apple's fixed Team ID length). Got {this.TeamId.Length}.");
+        }
+
+        if (string.IsNullOrWhiteSpace(this.BundleId))
+        {
+            throw new InvalidOperationException(
+                $"Apns:Enabled is true but {nameof(this.BundleId)} is empty. Set Apns:BundleId to the iOS app's bundle identifier.");
+        }
     }
 
     private static bool ReadBool(IConfigurationSection section, string key, bool defaultValue)
