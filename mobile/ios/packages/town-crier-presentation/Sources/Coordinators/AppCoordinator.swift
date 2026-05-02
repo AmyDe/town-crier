@@ -44,6 +44,7 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
+  let searchRepository: SearchRepository?
   private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
   // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
@@ -73,6 +74,7 @@ public final class AppCoordinator: ObservableObject {
     appVersionProvider: AppVersionProvider,
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
+    searchRepository: SearchRepository? = nil,
     offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil
   ) {
@@ -91,6 +93,7 @@ public final class AppCoordinator: ObservableObject {
     self.appVersionProvider = appVersionProvider
     self.versionConfigService = versionConfigService
     self.savedApplicationRepository = savedApplicationRepository
+    self.searchRepository = searchRepository
     self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
 
@@ -374,7 +377,7 @@ public final class AppCoordinator: ObservableObject {
     }
   }
 
-  private func showApplicationDetail(_ id: PlanningApplicationId) {
+  func showApplicationDetail(_ id: PlanningApplicationId) {
     Task {
       do {
         detailApplication = try await repository.fetchApplication(by: id)
