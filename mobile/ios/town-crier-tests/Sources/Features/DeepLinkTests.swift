@@ -23,39 +23,39 @@ struct DeepLinkTests {
     return (coordinator, spy)
   }
 
-  @Test func handleDeepLink_applicationDetail_fetchesAndSetsDetailApplication() async throws {
+  @Test func handleDeepLink_applicationDetail_fetchesAndSetsDetailApplication() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
-  @Test func handleDeepLink_successClearsPreviousError() async throws {
+  @Test func handleDeepLink_successClearsPreviousError() async {
     let (sut, spy) = makeSUT()
     sut.deepLinkError = .applicationNotFound(PlanningApplicationId("OLD"))
     spy.fetchApplicationResult = .success(.permitted)
 
     sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.deepLinkError == nil)
     #expect(sut.detailApplication == .permitted)
   }
 
-  @Test func handleDeepLink_applicationNotFound_setsDeepLinkError() async throws {
+  @Test func handleDeepLink_applicationNotFound_setsDeepLinkError() async {
     let (sut, spy) = makeSUT()
     let missingId = PlanningApplicationId("GONE-001")
     spy.fetchApplicationResult = .failure(DomainError.applicationNotFound(missingId))
 
     sut.handleDeepLink(.applicationDetail(missingId))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == nil)
     #expect(sut.deepLinkError == .applicationNotFound(missingId))

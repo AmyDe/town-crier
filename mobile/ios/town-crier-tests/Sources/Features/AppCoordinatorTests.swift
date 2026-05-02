@@ -92,14 +92,14 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
   }
 
-  @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+  @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
     let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
@@ -197,7 +197,7 @@ struct AppCoordinatorTests {
     #expect(vm.applications.count == 1)
   }
 
-  @Test func savedApplicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async throws {
+  @Test func savedApplicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async {
     let savedSpy = SpySavedApplicationRepository()
     let (sut, spy) = makeSUT(savedApplicationRepository: savedSpy)
     spy.fetchApplicationResult = .success(.permitted)
@@ -205,7 +205,7 @@ struct AppCoordinatorTests {
 
     vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
 
-    try await Task.sleep(for: .milliseconds(200))
+    await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
