@@ -67,6 +67,47 @@ public sealed class ApnsJwtProviderTests
         await Assert.That(payload.GetProperty("iat").GetInt64()).IsEqualTo(now.ToUnixTimeSeconds());
     }
 
+    [Test]
+    public async Task Should_ReturnCachedJwt_When_CalledAgainBeforeRefreshInterval()
+    {
+        // Arrange
+        var pem = ApnsJwtProviderTestKey.GeneratePkcs8Pem();
+        var time = new FakeTimeProvider();
+        time.SetUtcNow(new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.Zero));
+        using var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
+
+        // Act
+        var first = provider.Current();
+        time.Advance(TimeSpan.FromMinutes(49));
+        var second = provider.Current();
+
+        // Assert
+        await Assert.That(second).IsEqualTo(first);
+    }
+
+    [Test]
+    public async Task Should_MintFreshJwt_When_CachedTokenOlderThanRefreshInterval()
+    {
+        // Arrange
+        var pem = ApnsJwtProviderTestKey.GeneratePkcs8Pem();
+        var time = new FakeTimeProvider();
+        time.SetUtcNow(new DateTimeOffset(2026, 5, 2, 12, 0, 0, TimeSpan.Zero));
+        using var provider = new ApnsJwtProvider(pem, TestKeyId, TestTeamId, time);
+
+        // Act
+        var first = provider.Current();
+        time.Advance(TimeSpan.FromMinutes(50) + TimeSpan.FromSeconds(1));
+        var second = provider.Current();
+
+        // Assert
+        await Assert.That(second).IsNotEqualTo(first);
+
+        // The newly minted JWT carries the advanced clock's iat.
+        var payload = DecodeJsonSegment(second.Split('.')[1]);
+        await Assert.That(payload.GetProperty("iat").GetInt64())
+            .IsEqualTo(time.GetUtcNow().ToUnixTimeSeconds());
+    }
+
     private static JsonElement DecodeJsonSegment(string base64UrlSegment)
     {
         var padded = base64UrlSegment
