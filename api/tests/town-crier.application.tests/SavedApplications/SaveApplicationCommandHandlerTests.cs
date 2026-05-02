@@ -41,6 +41,38 @@ public sealed class SaveApplicationCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_EmbedSnapshot_OnSavedRecord_When_Saving()
+    {
+        // Arrange — saved-list rendering reads the embedded snapshot directly to
+        // eliminate the cross-partition fan-out hydration storm (bd tc-udby).
+        var savedRepository = new FakeSavedApplicationRepository();
+        var planningRepository = new FakePlanningApplicationRepository();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero));
+        var handler = new SaveApplicationCommandHandler(savedRepository, planningRepository, timeProvider);
+
+        var application = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-abc")
+            .WithName("Camden/CAM/24/0042/FUL")
+            .WithAreaId(42)
+            .WithAreaName("Camden")
+            .WithAppState("Permitted")
+            .Build();
+        var command = new SaveApplicationCommand("auth0|user-1", application);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert
+        var saved = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
+        await Assert.That(saved).HasCount().EqualTo(1);
+        await Assert.That(saved[0].Application).IsNotNull();
+        await Assert.That(saved[0].Application!.Uid).IsEqualTo("planit-uid-abc");
+        await Assert.That(saved[0].Application!.Name).IsEqualTo("Camden/CAM/24/0042/FUL");
+        await Assert.That(saved[0].Application!.AreaId).IsEqualTo(42);
+        await Assert.That(saved[0].Application!.AppState).IsEqualTo("Permitted");
+    }
+
+    [Test]
     public async Task Should_BeIdempotent_When_ApplicationAlreadySaved()
     {
         // Arrange
