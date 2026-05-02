@@ -44,6 +44,7 @@ public sealed class ApnsJwtProvider : IDisposable
     /// Returns the current cached JWT, minting a fresh one if no JWT has been minted
     /// or the cached one is older than the refresh interval.
     /// </summary>
+    /// <returns>A signed APNs provider JWT suitable for the Authorization header.</returns>
     public string Current()
     {
         lock (this.gate)
