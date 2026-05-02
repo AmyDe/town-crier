@@ -5,3 +5,7 @@ config:
   town-crier:apiDomain: api-dev.towncrierapp.uk
   town-crier:auth0Domain: towncrierapp.uk.auth0.com
   town-crier:auth0Audience: https://api-dev.towncrierapp.uk
+  town-crier:apnsKeyId: L2J5PQASN5
+  town-crier:apnsTeamId: 4574VQ7N2X
+  town-crier:apnsAuthKey:
+    secure: AAABAJGCaZXEDG8x2DVfI2ubWIyFsVbs/Wu9vhDOqbmw9oAEqEe0JulgqpvI1yeMw9J7xKkTKabPhIDQQFBr0qRV/a2ngb9M984mC/lKh0iaj7bAMNE9JpmQ09GeG79OzASS4JGLOmtjxbvrPX5gg9wwPxr9ZLtiMdrznaduAEXC+wKaIqRdhLIraBJ1XqK5cwiTIxtHrGghkCy3O+i16y0UnEVJWTuw7Gn62g/QCh1rTiUzEZqPIfkL5jvOQ3/+bSRnalcjMpK/FYQfVjyooCOk+tQO+HwWbq+WfJOZDT+jCqQQ6aoQdy94v9aBbjyAXpGjuMjHZTU0pIz/me8vImjNgP9t4AnCxvYs6KU0vi/vQ2TGaVpgyxsJj3HHLt0Krw==

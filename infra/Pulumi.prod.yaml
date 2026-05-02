@@ -6,3 +6,7 @@ config:
   town-crier:auth0Domain: towncrierapp.uk.auth0.com
   town-crier:auth0Audience: https://api.towncrierapp.uk
   town-crier:customDomainPhase: "2"
+  town-crier:apnsAuthKey:
+    secure: AAABAP37+De7jCYlvZRjpDywQNmh0191AtYoBN/lozkmkoquI2b7Ld/DLyOmO5Xj10N3f1CgtpeKHnE+JmqxbFkzfIn8p5mCy0aaW714XM/u1+Hnm+joY07yC50A/a/KbdCxpW99fv9QHueyNDelc3MVn+9/GPa3n1N1ljvIe7TPngFs6Hy62CDisKwgwo5lreNGAXOvcbxqWVTGqdiUi5+GLg5usi8WHIj4IRlYqxjEwXaiNA+Z3fbzuI/6r8mFlknMfDrKWI9C4TuVIdYoQxFnjR5HixGzt4/9o+3ItuJBJ5TLzi1eaM40AMenqSOyvn0KYmU2B/GReeG5pOfmtlPNGWxrIBuOS4hmbp7arJ8TDtgh+Lb2lrbhISdshO8UPQ==
+  town-crier:apnsKeyId: L2J5PQASN5
+  town-crier:apnsTeamId: 4574VQ7N2X
