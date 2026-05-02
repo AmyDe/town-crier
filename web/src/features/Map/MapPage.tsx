@@ -79,7 +79,7 @@ export function MapPage({ port }: Props) {
                     <BookmarkButton
                       isSaved={isSaved}
                       onToggle={() =>
-                        isSaved ? unsaveApplication(app.uid) : saveApplication(app.uid)
+                        isSaved ? unsaveApplication(app.uid) : saveApplication(app)
                       }
                     />
                   </div>

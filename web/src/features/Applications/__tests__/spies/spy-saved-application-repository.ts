@@ -1,4 +1,8 @@
-import type { ApplicationUid, SavedApplication } from '../../../../domain/types';
+import type {
+  ApplicationUid,
+  PlanningApplication,
+  SavedApplication,
+} from '../../../../domain/types';
 import type { SavedApplicationRepository } from '../../../../domain/ports/saved-application-repository';
 
 export class SpySavedApplicationRepository implements SavedApplicationRepository {
@@ -14,10 +18,10 @@ export class SpySavedApplicationRepository implements SavedApplicationRepository
     return this.listSavedResult;
   }
 
-  saveCalls: ApplicationUid[] = [];
+  saveCalls: PlanningApplication[] = [];
 
-  async save(uid: ApplicationUid): Promise<void> {
-    this.saveCalls.push(uid);
+  async save(application: PlanningApplication): Promise<void> {
+    this.saveCalls.push(application);
   }
 
   removeCalls: ApplicationUid[] = [];

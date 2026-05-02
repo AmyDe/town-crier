@@ -1,4 +1,4 @@
-import { useState, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useMemo, useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { ApplicationUid, PlanningApplication } from '../../domain/types';
 import type { MapPort } from '../../domain/ports/map-port';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -10,28 +10,25 @@ interface MapData {
 
 type UidSetSetter = Dispatch<SetStateAction<Set<ApplicationUid>>>;
 
-function makeToggle(
+function applyOptimisticToggle(
+  uid: ApplicationUid,
   setAdd: UidSetSetter,
   setRemove: UidSetSetter,
-  portAction: (uid: ApplicationUid) => Promise<void>,
-) {
-  return async (uid: ApplicationUid) => {
-    setRemove(prev => {
-      const next = new Set(prev);
-      next.delete(uid);
-      return next;
-    });
-    setAdd(prev => new Set([...prev, uid]));
-    try {
-      await portAction(uid);
-    } catch {
-      setAdd(prev => {
-        const next = new Set(prev);
-        next.delete(uid);
-        return next;
-      });
-    }
-  };
+): void {
+  setRemove(prev => {
+    const next = new Set(prev);
+    next.delete(uid);
+    return next;
+  });
+  setAdd(prev => new Set([...prev, uid]));
+}
+
+function revertOptimisticToggle(uid: ApplicationUid, setAdd: UidSetSetter): void {
+  setAdd(prev => {
+    const next = new Set(prev);
+    next.delete(uid);
+    return next;
+  });
 }
 
 export function useMapData(port: MapPort) {
@@ -76,13 +73,28 @@ export function useMapData(port: MapPort) {
     return result;
   }, [data?.fetchedSavedUids, pendingSaves, pendingRemoves]);
 
-  const saveApplication = useMemo(
-    () => makeToggle(setPendingSaves, setPendingRemoves, uid => port.saveApplication(uid)),
+  const saveApplication = useCallback(
+    async (application: PlanningApplication) => {
+      const uid = application.uid;
+      applyOptimisticToggle(uid, setPendingSaves, setPendingRemoves);
+      try {
+        await port.saveApplication(application);
+      } catch {
+        revertOptimisticToggle(uid, setPendingSaves);
+      }
+    },
     [port],
   );
 
-  const unsaveApplication = useMemo(
-    () => makeToggle(setPendingRemoves, setPendingSaves, uid => port.unsaveApplication(uid)),
+  const unsaveApplication = useCallback(
+    async (uid: ApplicationUid) => {
+      applyOptimisticToggle(uid, setPendingRemoves, setPendingSaves);
+      try {
+        await port.unsaveApplication(uid);
+      } catch {
+        revertOptimisticToggle(uid, setPendingRemoves);
+      }
+    },
     [port],
   );
 
