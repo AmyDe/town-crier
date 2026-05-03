@@ -13,15 +13,17 @@ public final class AppCoordinator: ObservableObject {
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
   @Published public var isSubscriptionPresented = false
-  /// Toggled to `true` when the user taps "Notification Preferences"; the view
-  /// layer opens `UIApplication/openSettingsURLString` and resets the flag.
-  /// Keeps the coordinator UIKit-free while staying testable.
+  /// Set to `true` from the in-app preferences screen footer; the view layer
+  /// opens `UIApplication/openSettingsURLString` and resets the flag.
   @Published public var isOpeningSystemNotificationSettings = false
+  /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
+  @Published public var isNotificationPreferencesPresented = false
+  /// Selected main tab; bound to the root `TabView` for coordinator-driven tab switches.
+  @Published public var selectedTab: MainTab = .applications
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
   @Published public var isRedeemOfferCodePresented = false
-  /// Toggled to `true` when the user taps the gear icon on any tab. The view
-  /// layer presents the Settings view as a sheet bound to this flag.
+  /// Settings sheet — bound to the gear-icon toolbar action installed on each tab.
   @Published public var isSettingsPresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
 
@@ -34,14 +36,14 @@ public final class AppCoordinator: ObservableObject {
   private let repository: PlanningApplicationRepository
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
-  private let userProfileRepository: UserProfileRepository
+  let userProfileRepository: UserProfileRepository
   private let serverTierResolver: ServerTierResolving
   private let tierResolver: SubscriptionTierResolving
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
   let authorityRepository: ApplicationAuthorityRepository?
-  private let watchZoneRepository: WatchZoneRepository
+  let watchZoneRepository: WatchZoneRepository
   private let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
@@ -307,10 +309,8 @@ public final class AppCoordinator: ObservableObject {
     isSettingsPresented = true
   }
 
-  /// Requests the view layer deep-link to the iOS system Settings page for
-  /// the app (push permissions: banners, sounds, badges, focus, etc.). The
-  /// Coordinator stays UIKit-free; `TownCrierApp` observes the flag and
-  /// performs the actual ``UIApplication/openSettingsURLString`` open.
+  /// Deep-links to iOS system Settings (push permissions). Coordinator stays
+  /// UIKit-free; `TownCrierApp` observes the flag and opens the settings URL.
   public func showSystemNotificationSettings() {
     isOpeningSystemNotificationSettings = true
   }
