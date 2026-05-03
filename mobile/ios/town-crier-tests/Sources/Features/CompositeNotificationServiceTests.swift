@@ -91,6 +91,39 @@ struct CompositeNotificationServiceTests {
     #expect(remoteRegistrar.registerForRemoteNotificationsCallCount == 0)
   }
 
+  // MARK: - authorizationStatus
+
+  @Test("authorizationStatus delegates to permission provider — notDetermined")
+  func authorizationStatus_delegatesToProvider_notDetermined() async throws {
+    let (sut, permissionSpy, _, _) = try makeSUT()
+    permissionSpy.nextAuthorizationStatus = .notDetermined
+
+    let status = await sut.authorizationStatus()
+
+    #expect(status == .notDetermined)
+    #expect(permissionSpy.authorizationStatusCallCount == 1)
+  }
+
+  @Test("authorizationStatus delegates to permission provider — denied")
+  func authorizationStatus_delegatesToProvider_denied() async throws {
+    let (sut, permissionSpy, _, _) = try makeSUT()
+    permissionSpy.nextAuthorizationStatus = .denied
+
+    let status = await sut.authorizationStatus()
+
+    #expect(status == .denied)
+  }
+
+  @Test("authorizationStatus delegates to permission provider — authorized")
+  func authorizationStatus_delegatesToProvider_authorized() async throws {
+    let (sut, permissionSpy, _, _) = try makeSUT()
+    permissionSpy.nextAuthorizationStatus = .authorized
+
+    let status = await sut.authorizationStatus()
+
+    #expect(status == .authorized)
+  }
+
   // MARK: - registerDeviceToken
 
   @Test("registerDeviceToken delegates to API service")
