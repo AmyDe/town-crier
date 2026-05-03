@@ -82,6 +82,39 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     )
   }
 
+  /// Toggle saved-application email notifications. See ``setSavedDecisionPush(_:)``
+  /// for round-trip and rollback semantics.
+  public func setSavedDecisionEmail(_ value: Bool) async {
+    await persist(
+      savedDecisionPush: savedDecisionPush,
+      savedDecisionEmail: value,
+      emailDigestEnabled: emailDigestEnabled,
+      digestDay: digestDay
+    )
+  }
+
+  /// Toggle the weekly email digest. See ``setSavedDecisionPush(_:)`` for
+  /// round-trip and rollback semantics.
+  public func setEmailDigestEnabled(_ value: Bool) async {
+    await persist(
+      savedDecisionPush: savedDecisionPush,
+      savedDecisionEmail: savedDecisionEmail,
+      emailDigestEnabled: value,
+      digestDay: digestDay
+    )
+  }
+
+  /// Set the day-of-week the weekly digest is sent on. See ``setSavedDecisionPush(_:)``
+  /// for round-trip and rollback semantics.
+  public func setDigestDay(_ value: DayOfWeek) async {
+    await persist(
+      savedDecisionPush: savedDecisionPush,
+      savedDecisionEmail: savedDecisionEmail,
+      emailDigestEnabled: emailDigestEnabled,
+      digestDay: value
+    )
+  }
+
   private func loadProfile() async -> ServerProfile? {
     do {
       return try await userProfileRepository.create()
