@@ -130,7 +130,7 @@ public sealed class AcsEmailSender : IEmailSender
                 </table>
                 <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                   <tr><td align="center">
-                    <a href="https://towncrierapp.uk" style="display:inline-block;background:#4a6cf7;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">View All in App</a>
+                    <a href="https://towncrierapp.uk/applications" style="display:inline-block;background:#4a6cf7;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">View All in App</a>
                   </td></tr>
                 </table>
               </td></tr>
@@ -163,17 +163,39 @@ public sealed class AcsEmailSender : IEmailSender
                 ? "<span data-saved-indicator style=\"display:inline-block;background:#fff3cd;color:#664d03;font-size:11px;font-weight:600;letter-spacing:0.3px;padding:2px 6px;border-radius:4px;margin-left:6px;\">★ saved</span>"
                 : string.Empty;
 
+        // Wrap each card line in a link to the application detail page so iOS
+        // Universal Links intercepts the tap and opens the app, falling back to
+        // the web app otherwise. Wrapping each <div> individually (not a
+        // surrounding <tr>/<td>) keeps Outlook happy.
+        var appUrl = BuildApplicationDetailUrl(notification.ApplicationUid);
+        var openLink = $"<a href=\"{appUrl}\" style=\"text-decoration:none;color:inherit;\">";
+        const string closeLink = "</a>";
+
         return $"""
             <tr><td style="padding:0 0 8px 0;">
               <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:6px;">
                 <tr><td style="padding:12px;">
-                  <div style="font-weight:600;color:#1a1a2e;">{addressLine}{savedIndicator}</div>
-                  <div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(notification.ApplicationType ?? "Planning Application")}</div>
-                  <div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(notification.ApplicationDescription, 120))}</div>
+                  {openLink}<div style="font-weight:600;color:#1a1a2e;">{addressLine}{savedIndicator}</div>{closeLink}
+                  {openLink}<div style="color:#4a6cf7;font-size:13px;">{HtmlEncode(notification.ApplicationType ?? "Planning Application")}</div>{closeLink}
+                  {openLink}<div style="color:#666;font-size:13px;margin-top:4px;">{HtmlEncode(Truncate(notification.ApplicationDescription, 120))}</div>{closeLink}
                 </td></tr>
               </table>
             </td></tr>
             """;
+    }
+
+    private static string BuildApplicationDetailUrl(string applicationUid)
+    {
+        // Slash-containing PlanIt UIDs (e.g. "19/00123/FUL") must keep their
+        // slashes as path separators while every other reserved character in a
+        // segment gets percent-encoded — otherwise the link would be malformed.
+        var segments = applicationUid.Split('/');
+        for (var i = 0; i < segments.Length; i++)
+        {
+            segments[i] = Uri.EscapeDataString(segments[i]);
+        }
+
+        return $"https://towncrierapp.uk/applications/{string.Join('/', segments)}";
     }
 
     private static string BuildNotificationHtml(Notification notification)
