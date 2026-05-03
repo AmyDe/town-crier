@@ -46,7 +46,6 @@ public struct SettingsView: View {
       accountSection
       appearanceSection
       notificationSection
-      savedApplicationsSection
       subscriptionSection
       attributionSection
       legalSection
@@ -174,39 +173,6 @@ public struct SettingsView: View {
       }
     } header: {
       Text("Notifications")
-        .font(TCTypography.captionEmphasis)
-    }
-  }
-
-  // MARK: - Saved Applications
-
-  private var savedApplicationsSection: some View {
-    Section {
-      Toggle(
-        "Saved applications — push",
-        isOn: Binding(
-          get: { viewModel.savedDecisionPush },
-          set: { newValue in
-            Task { await viewModel.setSavedDecisionPush(newValue) }
-          }
-        )
-      )
-      .font(TCTypography.body)
-      .foregroundStyle(Color.tcTextPrimary)
-
-      Toggle(
-        "Saved applications — email",
-        isOn: Binding(
-          get: { viewModel.savedDecisionEmail },
-          set: { newValue in
-            Task { await viewModel.setSavedDecisionEmail(newValue) }
-          }
-        )
-      )
-      .font(TCTypography.body)
-      .foregroundStyle(Color.tcTextPrimary)
-    } header: {
-      Text("Saved Applications")
         .font(TCTypography.captionEmphasis)
     }
   }

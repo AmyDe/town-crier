@@ -18,19 +18,6 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
       defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
     }
   }
-  /// Push notifications for decision updates on saved applications. Defaults to
-  /// `true` to match the API's documented opt-out semantics — when no server
-  /// profile is available the user is treated as opted in until they say
-  /// otherwise.
-  @Published public private(set) var savedDecisionPush: Bool = true
-  /// Email notifications for decision updates on saved applications. Defaults
-  /// to `true` for the same opt-out reasons as ``savedDecisionPush``.
-  @Published public private(set) var savedDecisionEmail: Bool = true
-
-  /// Most recently loaded server profile. Used as the source for fields that
-  /// `update(...)` must round-trip unchanged when only one preference toggles
-  /// (e.g. flipping `savedDecisionPush` should not also reset `digestDay`).
-  private var cachedServerProfile: ServerProfile?
 
   public var onLogout: (() -> Void)?
 
@@ -125,31 +112,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     subscriptionTier = resolved.tier
     isTrialPeriod = resolved.isTrialPeriod
 
-    await loadSavedDecisionPreferences()
-
     isLoading = false
-  }
-
-  /// Toggle the saved-application push preference and persist via
-  /// `userProfileRepository.update(...)`. Other preference fields round-trip
-  /// from the cached server profile so toggling one flag never silently
-  /// rewrites another. On failure the published value rolls back so the UI
-  /// reflects the server's last-known state.
-  public func setSavedDecisionPush(_ value: Bool) async {
-    await persistSavedDecisionPreference(
-      savedDecisionPush: value,
-      savedDecisionEmail: savedDecisionEmail
-    )
-  }
-
-  /// Toggle the saved-application email preference. Mirrors
-  /// ``setSavedDecisionPush(_:)`` — see its documentation for rollback and
-  /// round-trip semantics.
-  public func setSavedDecisionEmail(_ value: Bool) async {
-    await persistSavedDecisionPreference(
-      savedDecisionPush: savedDecisionPush,
-      savedDecisionEmail: value
-    )
   }
 
   public func logout() async {
@@ -195,64 +158,5 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     authMethod = nil
     subscriptionTier = .free
     isTrialPeriod = false
-    cachedServerProfile = nil
-    savedDecisionPush = true
-    savedDecisionEmail = true
-  }
-
-  /// Populates ``savedDecisionPush`` and ``savedDecisionEmail`` from the
-  /// server profile. When the call fails (or no profile exists) both default
-  /// to `true` to match the API's opt-out semantics — the user is treated as
-  /// opted in until they explicitly toggle off.
-  private func loadSavedDecisionPreferences() async {
-    do {
-      let profile = try await userProfileRepository.create()
-      cachedServerProfile = profile
-      savedDecisionPush = profile.savedDecisionPush
-      savedDecisionEmail = profile.savedDecisionEmail
-    } catch {
-      cachedServerProfile = nil
-      savedDecisionPush = true
-      savedDecisionEmail = true
-    }
-  }
-
-  /// Shared persistence path for the two saved-decision toggles. Callers pass
-  /// the desired values for both flags; the unchanged one is supplied as the
-  /// current published value so the server-side update is a single round trip.
-  private func persistSavedDecisionPreference(
-    savedDecisionPush nextPush: Bool,
-    savedDecisionEmail nextEmail: Bool
-  ) async {
-    error = nil
-    let previousPush = savedDecisionPush
-    let previousEmail = savedDecisionEmail
-
-    // Optimistic UI: reflect the desired value immediately, roll back on
-    // failure. Mirrors the web counterpart (tc-so3a.17) which also flips the
-    // toggle ahead of the network round trip.
-    savedDecisionPush = nextPush
-    savedDecisionEmail = nextEmail
-
-    let pushEnabled = cachedServerProfile?.pushEnabled ?? true
-    let digestDay = cachedServerProfile?.digestDay ?? .monday
-    let emailDigestEnabled = cachedServerProfile?.emailDigestEnabled ?? true
-
-    do {
-      let updated = try await userProfileRepository.update(
-        pushEnabled: pushEnabled,
-        digestDay: digestDay,
-        emailDigestEnabled: emailDigestEnabled,
-        savedDecisionPush: nextPush,
-        savedDecisionEmail: nextEmail
-      )
-      cachedServerProfile = updated
-      savedDecisionPush = updated.savedDecisionPush
-      savedDecisionEmail = updated.savedDecisionEmail
-    } catch {
-      savedDecisionPush = previousPush
-      savedDecisionEmail = previousEmail
-      handleError(error)
-    }
   }
 }
