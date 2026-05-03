@@ -80,6 +80,39 @@ struct AppCoordinatorTests {
     #expect(vm.isSaved)
   }
 
+  // MARK: - Stale-While-Revalidate Detail Open (tc-sslz)
+
+  @Test func makeApplicationDetailViewModel_refreshUsesPlanningRepository() async {
+    let (sut, planningSpy) = makeSUT()
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
+
+    await vm.refresh()
+
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplication.pendingReview.id])
+  }
+
+  @Test func showApplicationDetail_withPayload_setsDetailSynchronously() {
+    let (sut, _) = makeSUT()
+
+    sut.showApplicationDetail(.permitted)
+
+    #expect(sut.detailApplication == .permitted)
+  }
+
+  @Test func showApplicationDetail_withPayload_doesNotFetchByIdEagerly() async {
+    let (sut, planningSpy) = makeSUT()
+    planningSpy.fetchApplicationResult = .success(.rejected)
+
+    sut.showApplicationDetail(.permitted)
+
+    // No coordinator-driven fetch — refresh() in the view model owns the
+    // background fetch once the sheet appears (tc-sslz).
+    await sut.waitForPendingDetailLoad()
+    #expect(planningSpy.fetchApplicationCalls.isEmpty)
+    #expect(sut.detailApplication == .permitted)
+  }
+
   // MARK: - Application List Factory
 
   @Test func makeApplicationListViewModel_createsViewModelWithZone() async {
