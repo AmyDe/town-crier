@@ -244,6 +244,20 @@ struct AppCoordinatorTests {
     #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
   }
 
+  @Test func savedApplicationListViewModel_onApplicationSelectedWithPayload_setsDetailSync() async {
+    let savedSpy = SpySavedApplicationRepository()
+    let (sut, spy) = makeSUT(savedApplicationRepository: savedSpy)
+    let vm = sut.makeSavedApplicationListViewModel()
+
+    vm.onApplicationSelectedWithPayload?(.permitted)
+
+    // Detail set immediately from the row payload — no per-id fetch from the
+    // coordinator (the detail VM owns refresh via .task in tc-sslz).
+    #expect(sut.detailApplication == .permitted)
+    await sut.waitForPendingDetailLoad()
+    #expect(spy.fetchApplicationCalls.isEmpty)
+  }
+
   // MARK: - Settings ViewModel Factory
 
   @Test func makeSettingsViewModel_withRequiredDeps_createsViewModel() {
