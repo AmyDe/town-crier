@@ -87,4 +87,19 @@ struct NotificationPreferencesViewModelTests {
 
     #expect(sut.watchZoneCount == 2)
   }
+
+  @Test func loadFallsBackToDefaultsOnRepositoryThrow() async {
+    let (sut, _, _) = makeSUT(
+      profile: .failure(DomainError.networkUnavailable),
+      zones: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.savedDecisionPush == true)
+    #expect(sut.savedDecisionEmail == true)
+    #expect(sut.emailDigestEnabled == true)
+    #expect(sut.digestDay == .monday)
+    #expect(sut.watchZoneCount == 0)
+  }
 }
