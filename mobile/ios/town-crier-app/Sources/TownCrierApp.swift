@@ -145,7 +145,7 @@ struct TownCrierApp: App {
   }
 
   private var mainTabView: some View {
-    TabView {
+    TabView(selection: $coordinator.selectedTab) {
       // 1. Applications
       NavigationStack {
         ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
@@ -164,6 +164,7 @@ struct TownCrierApp: App {
       .tabItem {
         Label("Applications", systemImage: "doc.text.magnifyingglass")
       }
+      .tag(MainTab.applications)
 
       // 2. Saved
       NavigationStack {
@@ -185,6 +186,7 @@ struct TownCrierApp: App {
       .tabItem {
         Label("Saved", systemImage: "bookmark.fill")
       }
+      .tag(MainTab.saved)
 
       // 3. Map
       NavigationStack {
@@ -199,6 +201,7 @@ struct TownCrierApp: App {
       .tabItem {
         Label("Map", systemImage: "map")
       }
+      .tag(MainTab.map)
 
       // 4. Zones
       NavigationStack {
@@ -219,6 +222,7 @@ struct TownCrierApp: App {
       .tabItem {
         Label("Zones", systemImage: "mappin.and.ellipse")
       }
+      .tag(MainTab.zones)
     }
     .tint(Color.tcAmber)
     .sheet(isPresented: $coordinator.isSettingsPresented) {
@@ -235,7 +239,7 @@ struct TownCrierApp: App {
       SettingsView(
         viewModel: settingsViewModel,
         onNotificationPreferences: {
-          coordinator.showSystemNotificationSettings()
+          coordinator.showNotificationPreferences()
         },
         onManageSubscription: {
           coordinator.showManageSubscription()
@@ -247,6 +251,18 @@ struct TownCrierApp: App {
           coordinator.showTermsOfService()
         }
       )
+      .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
+        NotificationPreferencesView(
+          viewModel: coordinator.makeNotificationPreferencesViewModel(),
+          onZonesTap: {
+            coordinator.isSettingsPresented = false
+            coordinator.selectedTab = .zones
+          },
+          onSystemSettingsTap: {
+            coordinator.showSystemNotificationSettings()
+          }
+        )
+      }
     }
     .sheet(item: $coordinator.presentedLegalDocument) { documentType in
       NavigationStack {
