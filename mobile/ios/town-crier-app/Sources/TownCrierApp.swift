@@ -123,6 +123,12 @@ struct TownCrierApp: App {
       .onOpenURL { url in
         AuthCallbackHandler.handle(url: url)
       }
+      .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+        guard let url = activity.webpageURL,
+          let deepLink = UniversalLinkParser.parse(url)
+        else { return }
+        coordinator.handleDeepLink(deepLink)
+      }
       .task {
         await coordinator.resolveSubscriptionTier()
         await forceUpdateViewModel.checkVersion()

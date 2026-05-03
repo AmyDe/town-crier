@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["4574VQ7N2X.uk.towncrierapp.mobile"],
+        "components": [
+          { "/": "/applications" },
+          { "/": "/applications/*" }
+        ]
+      }
+    ]
+  }
+}

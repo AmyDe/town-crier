@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { AuthProvider } from './auth-context';
-import type { AuthPort } from '../domain/ports/auth-port';
+import { readPendingAuth0RedirectReturnTo } from './auth0-redirect-return-to';
+import type { AuthPort, LoginWithRedirectOptions } from '../domain/ports/auth-port';
 
 interface Props {
   children: ReactNode;
@@ -10,6 +11,8 @@ interface Props {
 
 export function Auth0AuthAdapter({ children }: Props) {
   const { isAuthenticated, isLoading, loginWithRedirect, logout: auth0Logout, error } = useAuth0();
+
+  const [returnTo] = useState<string | undefined>(() => readPendingAuth0RedirectReturnTo());
 
   const logout = useCallback(
     () =>
@@ -21,15 +24,22 @@ export function Auth0AuthAdapter({ children }: Props) {
     [auth0Logout],
   );
 
+  const wrappedLoginWithRedirect = useCallback(
+    (options?: LoginWithRedirectOptions) =>
+      loginWithRedirect(options ? { appState: options.appState } : undefined),
+    [loginWithRedirect],
+  );
+
   const auth: AuthPort = useMemo(
     () => ({
       isAuthenticated,
       isLoading,
       error,
-      loginWithRedirect: () => loginWithRedirect(),
+      returnTo,
+      loginWithRedirect: wrappedLoginWithRedirect,
       logout,
     }),
-    [isAuthenticated, isLoading, error, loginWithRedirect, logout],
+    [isAuthenticated, isLoading, error, returnTo, wrappedLoginWithRedirect, logout],
   );
 
   return (

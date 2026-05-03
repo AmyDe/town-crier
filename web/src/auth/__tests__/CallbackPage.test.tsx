@@ -9,7 +9,9 @@ function renderWithAuth(authOverrides: Partial<AuthPort> = {}) {
     isAuthenticated: false,
     isLoading: false,
     error: undefined,
+    returnTo: undefined,
     loginWithRedirect: vi.fn(),
+    logout: vi.fn(),
     ...authOverrides,
   };
 
@@ -19,6 +21,7 @@ function renderWithAuth(authOverrides: Partial<AuthPort> = {}) {
         <Routes>
           <Route path="/callback" element={<CallbackPage />} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
+          <Route path="/applications/*" element={<div>Application Detail</div>} />
           <Route path="/" element={<div>Landing</div>} />
         </Routes>
       </MemoryRouter>
@@ -53,5 +56,26 @@ describe('CallbackPage', () => {
     });
 
     expect(screen.getByText('Landing')).toBeInTheDocument();
+  });
+
+  it('redirects to returnTo path when present in appState after authentication', () => {
+    renderWithAuth({
+      isAuthenticated: true,
+      isLoading: false,
+      returnTo: '/applications/19/00123/FUL',
+    });
+
+    expect(screen.getByText('Application Detail')).toBeInTheDocument();
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+  });
+
+  it('falls back to /dashboard when returnTo is not present', () => {
+    renderWithAuth({
+      isAuthenticated: true,
+      isLoading: false,
+      returnTo: undefined,
+    });
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
   });
 });
