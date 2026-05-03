@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from './auth-context';
 
 export function CallbackPage() {
-  const { isLoading, isAuthenticated, error } = useAuth();
+  const { isLoading, isAuthenticated, error, returnTo } = useAuth();
 
   if (isLoading) {
     return null;
@@ -16,5 +16,5 @@ export function CallbackPage() {
     return <Navigate to="/" replace />;
   }
 
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={returnTo ?? '/dashboard'} replace />;
 }
