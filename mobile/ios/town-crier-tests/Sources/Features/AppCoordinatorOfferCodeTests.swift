@@ -15,6 +15,7 @@ struct AppCoordinatorOfferCodeTests {
     authSession: AuthSession? = nil,
     entitlement: SubscriptionEntitlement? = nil,
     serverProfile: ServerProfile? = nil,
+    tierResolver: SubscriptionTierResolving? = nil,
     tierCache: UserDefaults = UserDefaults(suiteName: UUID().uuidString) ?? .standard
   ) -> (AppCoordinator, SpyAuthenticationService, SpyUserProfileRepository) {
     let authSpy = SpyAuthenticationService()
@@ -30,6 +31,7 @@ struct AppCoordinatorOfferCodeTests {
       authService: authSpy,
       subscriptionService: subscriptionSpy,
       userProfileRepository: profileSpy,
+      tierResolver: tierResolver,
       watchZoneRepository: SpyWatchZoneRepository(),
       geocoder: SpyPostcodeGeocoder(),
       onboardingRepository: SpyOnboardingRepository(),
@@ -93,7 +95,14 @@ struct AppCoordinatorOfferCodeTests {
   @Test("onRedeemed refreshes the session via the auth service")
   func onRedeemed_refreshesSession() async {
     let service = SpyOfferCodeService()
-    let (sut, authSpy, _) = makeSUT(offerCodeService: service)
+    // Inject a fake resolver so this test isolates the offer-code flow's
+    // refreshSession() call from the resolver's own free-tier retry
+    // (tc-exg6.1).
+    let fakeResolver = FakeSubscriptionTierResolver()
+    let (sut, authSpy, _) = makeSUT(
+      offerCodeService: service,
+      tierResolver: fakeResolver
+    )
     guard let vm = sut.makeRedeemOfferCodeViewModel() else {
       Issue.record("expected viewmodel")
       return
@@ -148,7 +157,11 @@ struct AppCoordinatorOfferCodeTests {
   func onRedeemedCallback_notInvokedOnFailure() async {
     let service = SpyOfferCodeService()
     service.redeemResult = .failure(OfferCodeError.notFound)
-    let (sut, authSpy, _) = makeSUT(offerCodeService: service)
+    // Fake resolver so the assertion isolates the offer-code-failure path.
+    let (sut, authSpy, _) = makeSUT(
+      offerCodeService: service,
+      tierResolver: FakeSubscriptionTierResolver()
+    )
     guard let vm = sut.makeRedeemOfferCodeViewModel() else {
       Issue.record("expected viewmodel")
       return
