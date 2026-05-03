@@ -79,13 +79,16 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    let server = serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    let server =
+      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
     self.serverTierResolver = server
-    self.tierResolver = tierResolver ?? SubscriptionTierResolver(
-      serverFetcher: { await server.ensureServerProfileTier() },
-      storeKitFetcher: { await subscriptionService.currentEntitlement() },
-      authService: authService
-    )
+    self.tierResolver =
+      tierResolver
+      ?? SubscriptionTierResolver(
+        serverFetcher: { await server.ensureServerProfileTier() },
+        storeKitFetcher: { await subscriptionService.currentEntitlement() },
+        authService: authService
+      )
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository

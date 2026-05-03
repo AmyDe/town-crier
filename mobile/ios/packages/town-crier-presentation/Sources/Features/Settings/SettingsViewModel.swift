@@ -58,13 +58,16 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    let server = serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    let server =
+      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
     self.serverTierResolver = server
-    self.tierResolver = tierResolver ?? SubscriptionTierResolver(
-      serverFetcher: { await server.ensureServerProfileTier() },
-      storeKitFetcher: { await subscriptionService.currentEntitlement() },
-      authService: authService
-    )
+    self.tierResolver =
+      tierResolver
+      ?? SubscriptionTierResolver(
+        serverFetcher: { await server.ensureServerProfileTier() },
+        storeKitFetcher: { await subscriptionService.currentEntitlement() },
+        authService: authService
+      )
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
     self.defaults = defaults
