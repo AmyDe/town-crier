@@ -18,6 +18,9 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
   @Published public private(set) var emailDigestEnabled: Bool = true
   @Published public private(set) var digestDay: DayOfWeek = .monday
   @Published public private(set) var watchZoneCount: Int?
+  /// Reflects the system notification permission. `nil` until the first
+  /// `load()` completes — the view treats `nil` as "no section, no flash".
+  @Published public private(set) var authorizationStatus: NotificationAuthorizationStatus?
   @Published public internal(set) var error: DomainError?
 
   /// Most recently loaded server profile. Source of truth for fields that
@@ -27,13 +30,16 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
 
   private let userProfileRepository: UserProfileRepository
   private let watchZoneRepository: WatchZoneRepository
+  private let notificationService: NotificationService
 
   public init(
     userProfileRepository: UserProfileRepository,
-    watchZoneRepository: WatchZoneRepository
+    watchZoneRepository: WatchZoneRepository,
+    notificationService: NotificationService
   ) {
     self.userProfileRepository = userProfileRepository
     self.watchZoneRepository = watchZoneRepository
+    self.notificationService = notificationService
   }
 
   /// Loads the server profile and watch-zone count in parallel.
@@ -48,9 +54,11 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
 
     async let profileResult = loadProfile()
     async let zoneCount = loadZoneCount()
+    async let status = notificationService.authorizationStatus()
 
     let profile = await profileResult
     let count = await zoneCount
+    let resolvedStatus = await status
 
     if let profile {
       cachedServerProfile = profile
@@ -68,6 +76,28 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
       pushEnabled = true
     }
     watchZoneCount = count
+    authorizationStatus = resolvedStatus
+  }
+
+  /// Asks the system for notification permission and re-reads the resulting
+  /// authorization status. Surfaces request failures via ``handleError(_:)``
+  /// while still re-querying the status so the UI reflects the user's
+  /// final choice (e.g. "Don't allow" still produces `.denied`).
+  public func requestPermission() async {
+    error = nil
+    do {
+      _ = try await notificationService.requestPermission()
+    } catch {
+      handleError(error)
+    }
+    authorizationStatus = await notificationService.authorizationStatus()
+  }
+
+  /// Re-reads the system authorization status without prompting. Called from
+  /// the View on `scenePhase == .active` so changes the user makes in iOS
+  /// Settings are reflected without a manual reload.
+  public func refreshAuthorizationStatus() async {
+    authorizationStatus = await notificationService.authorizationStatus()
   }
 
   /// Toggle saved-application push notifications. Optimistic update with

@@ -40,7 +40,7 @@ public final class AppCoordinator: ObservableObject {
   private let serverTierResolver: ServerTierResolving
   private let tierResolver: SubscriptionTierResolving
   private let onboardingRepository: OnboardingRepository
-  private let notificationService: NotificationService
+  let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
   let authorityRepository: ApplicationAuthorityRepository?
   let watchZoneRepository: WatchZoneRepository
