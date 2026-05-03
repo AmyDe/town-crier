@@ -94,6 +94,17 @@ struct NotificationPreferencesViewModelTests {
     #expect(sut.watchZoneCount == 2)
   }
 
+  @Test func watchZoneCountStaysNilWhenZoneRepositoryThrows() async {
+    let (sut, _, _) = makeSUT(
+      profile: .success(.freeUser),
+      zones: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.watchZoneCount == nil)
+  }
+
   @Test func loadFallsBackToDefaultsOnRepositoryThrow() async {
     let (sut, _, _) = makeSUT(
       profile: .failure(DomainError.networkUnavailable),
