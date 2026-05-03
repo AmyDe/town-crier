@@ -350,6 +350,13 @@ struct AppCoordinatorTests {
     #expect(sut.isOpeningSystemNotificationSettings)
   }
 
+  /// Regression guard for tc-kdik: must deep-link to the iOS Notifications
+  /// subpage (`app-settings:notification`), not the general app Settings page
+  /// (`app-settings:`).
+  @Test func systemNotificationSettingsURLString_deepLinksToNotificationsSubpage() {
+    #expect(AppCoordinator.systemNotificationSettingsURLString == "app-settings:notification")
+  }
+
   // MARK: - Deterministic detail-load synchronisation
 
   /// Regression guard for tc-nsrh (CI flakes on `Task.sleep(...)` waits in
