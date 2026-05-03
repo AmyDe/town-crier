@@ -102,4 +102,37 @@ struct NotificationPreferencesViewModelTests {
     #expect(sut.digestDay == .monday)
     #expect(sut.watchZoneCount == 0)
   }
+
+  // MARK: - Setters
+
+  @Test func setSavedDecisionPushRoundTripsOtherFields() async {
+    let initial = Self.profile(
+      pushEnabled: true,
+      digestDay: .friday,
+      emailDigestEnabled: false,
+      savedDecisionPush: true,
+      savedDecisionEmail: true
+    )
+    let updated = Self.profile(
+      pushEnabled: true,
+      digestDay: .friday,
+      emailDigestEnabled: false,
+      savedDecisionPush: false,
+      savedDecisionEmail: true
+    )
+    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    profileSpy.updateResult = .success(updated)
+    await sut.load()
+
+    await sut.setSavedDecisionPush(false)
+
+    #expect(profileSpy.updateCalls.count == 1)
+    let call = profileSpy.updateCalls[0]
+    #expect(call.pushEnabled == true)
+    #expect(call.digestDay == .friday)
+    #expect(call.emailDigestEnabled == false)
+    #expect(call.savedDecisionPush == false)
+    #expect(call.savedDecisionEmail == true)
+    #expect(sut.savedDecisionPush == false)
+  }
 }
