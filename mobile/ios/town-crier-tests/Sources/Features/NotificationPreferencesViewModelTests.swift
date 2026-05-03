@@ -135,4 +135,129 @@ struct NotificationPreferencesViewModelTests {
     #expect(call.savedDecisionEmail == true)
     #expect(sut.savedDecisionPush == false)
   }
+
+  @Test func setSavedDecisionEmailRoundTripsOtherFields() async {
+    let initial = Self.profile(
+      pushEnabled: false,
+      digestDay: .wednesday,
+      emailDigestEnabled: true,
+      savedDecisionPush: true,
+      savedDecisionEmail: true
+    )
+    let updated = Self.profile(
+      pushEnabled: false,
+      digestDay: .wednesday,
+      emailDigestEnabled: true,
+      savedDecisionPush: true,
+      savedDecisionEmail: false
+    )
+    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    profileSpy.updateResult = .success(updated)
+    await sut.load()
+
+    await sut.setSavedDecisionEmail(false)
+
+    #expect(profileSpy.updateCalls.count == 1)
+    let call = profileSpy.updateCalls[0]
+    #expect(call.pushEnabled == false)
+    #expect(call.digestDay == .wednesday)
+    #expect(call.emailDigestEnabled == true)
+    #expect(call.savedDecisionPush == true)
+    #expect(call.savedDecisionEmail == false)
+    #expect(sut.savedDecisionEmail == false)
+  }
+
+  @Test func setEmailDigestEnabledRoundTripsOtherFields() async {
+    let initial = Self.profile(
+      pushEnabled: true,
+      digestDay: .tuesday,
+      emailDigestEnabled: true,
+      savedDecisionPush: false,
+      savedDecisionEmail: true
+    )
+    let updated = Self.profile(
+      pushEnabled: true,
+      digestDay: .tuesday,
+      emailDigestEnabled: false,
+      savedDecisionPush: false,
+      savedDecisionEmail: true
+    )
+    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    profileSpy.updateResult = .success(updated)
+    await sut.load()
+
+    await sut.setEmailDigestEnabled(false)
+
+    #expect(profileSpy.updateCalls.count == 1)
+    let call = profileSpy.updateCalls[0]
+    #expect(call.pushEnabled == true)
+    #expect(call.digestDay == .tuesday)
+    #expect(call.emailDigestEnabled == false)
+    #expect(call.savedDecisionPush == false)
+    #expect(call.savedDecisionEmail == true)
+    #expect(sut.emailDigestEnabled == false)
+  }
+
+  @Test func setDigestDayRoundTripsOtherFields() async {
+    let initial = Self.profile(
+      pushEnabled: true,
+      digestDay: .monday,
+      emailDigestEnabled: true,
+      savedDecisionPush: true,
+      savedDecisionEmail: false
+    )
+    let updated = Self.profile(
+      pushEnabled: true,
+      digestDay: .saturday,
+      emailDigestEnabled: true,
+      savedDecisionPush: true,
+      savedDecisionEmail: false
+    )
+    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    profileSpy.updateResult = .success(updated)
+    await sut.load()
+
+    await sut.setDigestDay(.saturday)
+
+    #expect(profileSpy.updateCalls.count == 1)
+    let call = profileSpy.updateCalls[0]
+    #expect(call.pushEnabled == true)
+    #expect(call.digestDay == .saturday)
+    #expect(call.emailDigestEnabled == true)
+    #expect(call.savedDecisionPush == true)
+    #expect(call.savedDecisionEmail == false)
+    #expect(sut.digestDay == .saturday)
+  }
+
+  // MARK: - Rollback / error
+
+  @Test func failedUpdateRollsBackOptimisticChange() async {
+    let initial = Self.profile(
+      pushEnabled: true,
+      digestDay: .monday,
+      emailDigestEnabled: true,
+      savedDecisionPush: true,
+      savedDecisionEmail: true
+    )
+    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    profileSpy.updateResult = .failure(DomainError.networkUnavailable)
+    await sut.load()
+
+    await sut.setSavedDecisionPush(false)
+
+    #expect(sut.savedDecisionPush == true)
+    #expect(sut.savedDecisionEmail == true)
+    #expect(sut.emailDigestEnabled == true)
+    #expect(sut.digestDay == .monday)
+  }
+
+  @Test func failedUpdatePopulatesError() async {
+    let (sut, profileSpy, _) = makeSUT(profile: .success(.freeUser))
+    profileSpy.updateResult = .failure(DomainError.networkUnavailable)
+    await sut.load()
+
+    await sut.setEmailDigestEnabled(false)
+
+    #expect(sut.error == .networkUnavailable)
+  }
 }
