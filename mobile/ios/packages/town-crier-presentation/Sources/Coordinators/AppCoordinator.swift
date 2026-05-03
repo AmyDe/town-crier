@@ -363,14 +363,6 @@ public final class AppCoordinator: ObservableObject {
     }
   }
 
-  public func handleDeepLink(_ deepLink: DeepLink) {
-    deepLinkError = nil
-    switch deepLink {
-    case .applicationDetail(let id):
-      showApplicationDetail(id)
-    }
-  }
-
   /// Presents the detail sheet synchronously from a row payload — bypasses the
   /// per-id fetch so the sheet appears instantly. The detail view model still
   /// runs `refresh()` in `.task` to keep saved-row snapshots fresh on the
