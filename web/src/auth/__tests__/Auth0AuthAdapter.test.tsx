@@ -1,6 +1,7 @@
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Auth0AuthAdapter, captureAuth0RedirectReturnTo } from '../Auth0AuthAdapter';
+import { Auth0AuthAdapter } from '../Auth0AuthAdapter';
+import { captureAuth0RedirectReturnTo } from '../auth0-redirect-return-to';
 import { useAuth } from '../auth-context';
 
 const mockLogout = vi.fn<() => Promise<void>>();
