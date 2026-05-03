@@ -71,3 +71,75 @@ describe('robots.txt', () => {
     expect(content).toContain('Allow: /');
   });
 });
+
+describe('apple-app-site-association', () => {
+  interface AasaComponent {
+    '/': string;
+  }
+
+  interface AasaDetail {
+    appIDs: string[];
+    components: AasaComponent[];
+  }
+
+  interface Aasa {
+    applinks: {
+      details: AasaDetail[];
+    };
+  }
+
+  function loadAasa(): Aasa {
+    const aasaPath = resolve(
+      __dirname,
+      '../../public/.well-known/apple-app-site-association',
+    );
+    const raw = readFileSync(aasaPath, 'utf-8');
+    return JSON.parse(raw) as Aasa;
+  }
+
+  it('declares the iOS app bundle ID with team prefix', () => {
+    const aasa = loadAasa();
+
+    expect(aasa.applinks.details[0]?.appIDs).toContain(
+      '4574VQ7N2X.uk.towncrierapp.mobile',
+    );
+  });
+
+  it('claims /applications and /applications/* paths only', () => {
+    const aasa = loadAasa();
+
+    const components = aasa.applinks.details[0]?.components ?? [];
+    const paths = components.map((c) => c['/']);
+
+    expect(paths).toEqual(['/applications', '/applications/*']);
+  });
+});
+
+describe('staticwebapp.config.json — AASA route', () => {
+  interface RouteRule {
+    route: string;
+    headers?: Record<string, string>;
+    rewrite?: string;
+  }
+
+  interface ConfigWithRoutes {
+    routes: RouteRule[];
+  }
+
+  function loadConfigWithRoutes(): ConfigWithRoutes {
+    const configPath = resolve(__dirname, '../../public/staticwebapp.config.json');
+    const raw = readFileSync(configPath, 'utf-8');
+    return JSON.parse(raw) as ConfigWithRoutes;
+  }
+
+  it('serves apple-app-site-association with application/json Content-Type', () => {
+    const config = loadConfigWithRoutes();
+
+    const aasaRoute = config.routes.find(
+      (r) => r.route === '/.well-known/apple-app-site-association',
+    );
+
+    expect(aasaRoute).toBeDefined();
+    expect(aasaRoute?.headers?.['Content-Type']).toBe('application/json');
+  });
+});
