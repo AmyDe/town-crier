@@ -36,6 +36,7 @@ public final class AppCoordinator: ObservableObject {
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
   private let serverTierResolver: ServerTierResolving
+  private let tierResolver: SubscriptionTierResolving
   private let onboardingRepository: OnboardingRepository
   private let notificationService: NotificationService
   private let offlineRepository: OfflineAwareRepository?
@@ -61,6 +62,7 @@ public final class AppCoordinator: ObservableObject {
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
     serverTierResolver: ServerTierResolving? = nil,
+    tierResolver: SubscriptionTierResolving? = nil,
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
     watchZoneRepository: WatchZoneRepository,
@@ -77,8 +79,13 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    self.serverTierResolver =
-      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    let server = serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    self.serverTierResolver = server
+    self.tierResolver = tierResolver ?? SubscriptionTierResolver(
+      serverFetcher: { await server.ensureServerProfileTier() },
+      storeKitFetcher: { await subscriptionService.currentEntitlement() },
+      authService: authService
+    )
     self.offlineRepository = offlineRepository
     self.authorityRepository = authorityRepository
     self.watchZoneRepository = watchZoneRepository
@@ -203,27 +210,18 @@ public final class AppCoordinator: ObservableObject {
 
   // MARK: - Subscription Tier Resolution
 
-  /// Resolves the subscription tier by consulting JWT, StoreKit and the
-  /// server profile, then picks the highest tier (mirrors ``SettingsViewModel``).
-  /// When the server fetch fails (nil), the previously resolved tier is
-  /// preserved so paying users don't lose feature access due to transient errors
-  /// — common on the simulator where JWT and StoreKit always return `.free`.
+  /// Resolves the subscription tier via the shared ``SubscriptionTierResolver``
+  /// so this coordinator and ``SettingsViewModel`` cannot drift apart again
+  /// (third recurrence after tc-aza5; original bug tc-exg6).
   public func resolveSubscriptionTier() async {
-    var jwtTier: SubscriptionTier = .free
-    if let session = await authService.currentSession() {
-      jwtTier = session.subscriptionTier
-    }
-
-    let serverTier = await serverTierResolver.ensureServerProfileTier()
-    let storeKitTier = await subscriptionService.currentEntitlement()?.tier ?? .free
-
-    // When the server profile ensure-or-fetch call failed (nil), fall back to
-    // the current tier so we don't downgrade a paying user due to a transient
-    // error.
-    let effectiveServerTier = serverTier ?? subscriptionTier
-    let resolved = max(effectiveServerTier, max(storeKitTier, jwtTier))
-    subscriptionTier = resolved
-    tierCache.set(resolved.rawValue, forKey: Self.tierCacheKey)
+    let session = await authService.currentSession()
+    let result = await tierResolver.resolve(
+      jwtTier: session?.subscriptionTier ?? .free,
+      previousTier: subscriptionTier,
+      userSub: session?.userProfile.userId
+    )
+    subscriptionTier = result.tier
+    tierCache.set(result.tier.rawValue, forKey: Self.tierCacheKey)
   }
 
   // MARK: - Watch Zone Factories
