@@ -276,7 +276,7 @@ struct TownCrierApp: App {
     #endif
     .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
       guard requested else { return }
-      if let url = URL(string: UIApplication.openSettingsURLString) {
+      if let url = URL(string: AppCoordinator.systemNotificationSettingsURLString) {
         openURL(url)
       }
       coordinator.isOpeningSystemNotificationSettings = false
