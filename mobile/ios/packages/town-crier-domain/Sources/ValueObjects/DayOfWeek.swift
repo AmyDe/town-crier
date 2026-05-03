@@ -9,4 +9,11 @@ public enum DayOfWeek: String, CaseIterable, Codable, Equatable, Hashable, Senda
   case thursday = "Thursday"
   case friday = "Friday"
   case saturday = "Saturday"
+
+  /// Human-readable name for display in UI (e.g. picker labels). Currently
+  /// equal to `rawValue` because the API uses English day names; kept as a
+  /// distinct property so the UI doesn't depend on the wire format.
+  public var displayName: String {
+    rawValue
+  }
 }
