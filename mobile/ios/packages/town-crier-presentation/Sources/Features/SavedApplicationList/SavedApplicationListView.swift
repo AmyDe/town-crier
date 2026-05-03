@@ -102,7 +102,10 @@ public struct SavedApplicationListView: View {
           .listRowBackground(Color.tcSurface)
           .contentShape(Rectangle())
           .onTapGesture {
-            viewModel.selectApplication(application.id)
+            // Pass the full payload so the detail sheet opens instantly from
+            // the cached row data; the detail VM runs `refresh()` in `.task`
+            // to keep the saved-row snapshot fresh on the server (tc-sslz).
+            viewModel.selectApplication(application)
           }
       }
     }

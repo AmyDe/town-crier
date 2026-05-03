@@ -21,6 +21,12 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
+  /// Payload-bearing selection callback used by the Saved tab so the detail
+  /// sheet can be presented synchronously from the cached row data; the detail
+  /// view model then runs `refresh()` in the background to keep the saved-row
+  /// snapshot fresh on the server (bd tc-sslz, tc-udby).
+  var onApplicationSelectedWithPayload: ((PlanningApplication) -> Void)?
+
   public var filteredApplications: [PlanningApplication] {
     guard let filter = selectedStatusFilter else { return applications }
     return applications.filter { $0.status == filter }
@@ -68,5 +74,12 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
 
   public func selectApplication(_ id: PlanningApplicationId) {
     onApplicationSelected?(id)
+  }
+
+  /// Payload-bearing selection used by the Saved tab — the row already has the
+  /// full `PlanningApplication` so the detail sheet opens instantly. The
+  /// detail view model fires the per-id refresh in the background.
+  public func selectApplication(_ application: PlanningApplication) {
+    onApplicationSelectedWithPayload?(application)
   }
 }

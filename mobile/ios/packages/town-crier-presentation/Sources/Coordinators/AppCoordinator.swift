@@ -13,11 +13,9 @@ public final class AppCoordinator: ObservableObject {
   @Published public var presentedLegalDocument: LegalDocumentType?
   @Published public var isManageSubscriptionPresented = false
   @Published public var isSubscriptionPresented = false
-  /// Toggled to `true` when the user taps "Notification Preferences" in
-  /// Settings. The view layer observes this and deep-links to the iOS system
-  /// Settings page for the app via ``UIApplication/openSettingsURLString``,
-  /// then resets the flag to `false`. This pattern lets the Coordinator stay
-  /// UIKit-free while making the navigation testable.
+  /// Toggled to `true` when the user taps "Notification Preferences"; the view
+  /// layer opens `UIApplication/openSettingsURLString` and resets the flag.
+  /// Keeps the coordinator UIKit-free while staying testable.
   @Published public var isOpeningSystemNotificationSettings = false
   @Published public var isAddingWatchZone = false
   @Published public var editingWatchZone: WatchZone?
@@ -49,19 +47,12 @@ public final class AppCoordinator: ObservableObject {
   private let savedApplicationRepository: SavedApplicationRepository?
   private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
-  // Cached strongly so that SwiftUI re-rendering the view hierarchy (which
-  // re-evaluates the factory argument each time) does not leave the
-  // coordinator holding a dangling reference. The editor's `onSave`
-  // callback needs a live VM to trigger a reload against.
+  // Cached strongly so SwiftUI's factory re-evaluation doesn't leave the
+  // coordinator with a dangling reference; editor `onSave` needs a live VM.
   private var watchZoneListViewModel: WatchZoneListViewModel?
-  // Tracks the in-flight post-redemption refresh task so tests can await it
-  // and SwiftUI's dismiss happens after session + tier are up to date.
+  // In-flight tasks tests can await deterministically (no `Task.sleep`).
   private var pendingOfferCodeRefresh: Task<Void, Never>?
-  // Tracks the in-flight post-save watch-zone reload task so tests can await
-  // it deterministically rather than racing it with `Task.sleep`.
   private var pendingWatchZoneRefresh: Task<Void, Never>?
-  // Tracks the in-flight `showApplicationDetail` fetch task; tests await it
-  // via `waitForPendingDetailLoad()` instead of `Task.sleep` (tc-nsrh).
   private var pendingDetailLoad: Task<Void, Never>?
 
   public init(
@@ -163,17 +154,18 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
-  /// Factory for the dedicated Saved tab view model.
-  ///
-  /// Falls back to a no-op repository when no `SavedApplicationRepository` was
-  /// injected. The Saved tab is only meaningful when bookmarking is wired, so
-  /// in production this branch is unreachable; surfacing a fatal error there
-  /// would crash the app for users who never tap the tab.
+  /// Factory for the dedicated Saved tab view model. Falls back to a no-op
+  /// repository when no `SavedApplicationRepository` was injected — the Saved
+  /// tab is meaningful only when bookmarking is wired, but a fatal error here
+  /// would crash users who never tap the tab.
   public func makeSavedApplicationListViewModel() -> SavedApplicationListViewModel {
     let repository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
     let viewModel = SavedApplicationListViewModel(savedApplicationRepository: repository)
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
+    }
+    viewModel.onApplicationSelectedWithPayload = { [weak self] application in
+      self?.showApplicationDetail(application)
     }
     return viewModel
   }
@@ -200,7 +192,8 @@ public final class AppCoordinator: ObservableObject {
   ) -> ApplicationDetailViewModel {
     let viewModel = ApplicationDetailViewModel(
       application: application,
-      savedApplicationRepository: savedApplicationRepository
+      savedApplicationRepository: savedApplicationRepository,
+      planningApplicationRepository: repository
     )
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
@@ -345,19 +338,17 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
-  /// Test-only synchronisation: await the most recently kicked-off
-  /// post-redemption refresh so assertions happen after the session has been
-  /// rotated and the tier re-resolved.
+  /// Test-only synchronisation: await the post-redemption refresh so
+  /// assertions happen after the session and tier have been re-resolved.
   public func waitForPendingOfferCodeRefresh() async {
     await pendingOfferCodeRefresh?.value
   }
 
   private func handleOfferCodeRedeemed() {
     isRedeemOfferCodePresented = false
-    // Kick off the refresh on a detached task so we can await it in tests.
-    // Session refresh rotates the JWT so the next server call sees the new
-    // `subscription_tier` claim; re-resolving the tier pulls the updated
-    // profile and updates `subscriptionTier` for all tier-gated views.
+    // Detached task so tests can await it. Session refresh rotates the JWT so
+    // the next server call sees the new `subscription_tier` claim, then
+    // re-resolving the tier picks up the updated profile.
     pendingOfferCodeRefresh = Task { [weak self] in
       guard let self else { return }
       do {
@@ -377,6 +368,14 @@ public final class AppCoordinator: ObservableObject {
     case .applicationDetail(let id):
       showApplicationDetail(id)
     }
+  }
+
+  /// Presents the detail sheet synchronously from a row payload — bypasses the
+  /// per-id fetch so the sheet appears instantly. The detail view model still
+  /// runs `refresh()` in `.task` to keep saved-row snapshots fresh on the
+  /// server (bd tc-sslz, tc-udby).
+  func showApplicationDetail(_ application: PlanningApplication) {
+    detailApplication = application
   }
 
   func showApplicationDetail(_ id: PlanningApplicationId) {

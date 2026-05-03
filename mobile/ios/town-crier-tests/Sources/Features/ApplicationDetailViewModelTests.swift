@@ -135,4 +135,57 @@ struct ApplicationDetailViewModelTests {
 
     #expect(dismissed)
   }
+
+  // MARK: - Stale-While-Revalidate refresh (tc-sslz)
+
+  @Test func refresh_updatesApplication_whenServerReturnsNewerPayload() async {
+    let repo = SpyPlanningApplicationRepository()
+    repo.fetchApplicationResult = .success(.permitted)
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      planningApplicationRepository: repo
+    )
+
+    await sut.refresh()
+
+    #expect(sut.statusLabel == "Granted")
+    #expect(sut.reference == "2026/0099")
+  }
+
+  @Test func refresh_callsRepositoryWithApplicationId() async {
+    let repo = SpyPlanningApplicationRepository()
+    repo.fetchApplicationResult = .success(.pendingReview)
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      planningApplicationRepository: repo
+    )
+
+    await sut.refresh()
+
+    #expect(repo.fetchApplicationCalls == [PlanningApplication.pendingReview.id])
+  }
+
+  @Test func refresh_keepsCachedPayload_whenRepositoryFails() async {
+    let repo = SpyPlanningApplicationRepository()
+    repo.fetchApplicationResult = .failure(DomainError.networkUnavailable)
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      planningApplicationRepository: repo
+    )
+
+    await sut.refresh()
+
+    // Cached payload remains visible — refresh is silent on error.
+    #expect(sut.reference == "2026/0042")
+    #expect(sut.statusLabel == "Pending")
+  }
+
+  @Test func refresh_isNoOp_whenRepositoryNotInjected() async {
+    let sut = ApplicationDetailViewModel(application: .pendingReview)
+
+    await sut.refresh()
+
+    // No crash and the cached payload is unchanged.
+    #expect(sut.reference == "2026/0042")
+  }
 }
