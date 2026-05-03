@@ -144,4 +144,17 @@ struct SavedApplicationListViewModelTests {
 
     #expect(selectedId == PlanningApplicationId("APP-001"))
   }
+
+  // MARK: - Stale-While-Revalidate selection (tc-sslz)
+
+  @Test func selectApplicationWithPayload_notifiesPayloadCallback() async throws {
+    var selectedApplication: PlanningApplication?
+    let repo = SpySavedApplicationRepository()
+    let sut = SavedApplicationListViewModel(savedApplicationRepository: repo)
+    sut.onApplicationSelectedWithPayload = { selectedApplication = $0 }
+
+    sut.selectApplication(.permitted)
+
+    #expect(selectedApplication == .permitted)
+  }
 }
