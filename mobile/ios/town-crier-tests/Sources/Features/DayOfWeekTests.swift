@@ -35,4 +35,15 @@ struct DayOfWeekTests {
     let string = String(data: encoded, encoding: .utf8)
     #expect(string == #""Friday""#)
   }
+
+  @Test("displayName is the human-readable form for each day")
+  func displayNameMatchesEachDay() {
+    #expect(DayOfWeek.sunday.displayName == "Sunday")
+    #expect(DayOfWeek.monday.displayName == "Monday")
+    #expect(DayOfWeek.tuesday.displayName == "Tuesday")
+    #expect(DayOfWeek.wednesday.displayName == "Wednesday")
+    #expect(DayOfWeek.thursday.displayName == "Thursday")
+    #expect(DayOfWeek.friday.displayName == "Friday")
+    #expect(DayOfWeek.saturday.displayName == "Saturday")
+  }
 }
