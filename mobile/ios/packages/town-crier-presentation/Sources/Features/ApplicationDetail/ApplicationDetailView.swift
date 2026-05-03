@@ -54,6 +54,11 @@ public struct ApplicationDetailView: View {
     #endif
     .task {
       await viewModel.loadSavedState()
+      // Stale-while-revalidate: the sheet was presented synchronously from
+      // the cached row payload, so refresh now to pick up any newer
+      // server-side state and to fire `TryRefreshSavedSnapshotAsync` on the
+      // backend (bd tc-sslz, tc-udby).
+      await viewModel.refresh()
     }
     .toolbar {
       if viewModel.canSave {
