@@ -58,6 +58,12 @@ struct NotificationPreferencesViewModelTests {
 
   // MARK: - Load
 
+  @Test func watchZoneCountIsNilBeforeLoad() {
+    let (sut, _, _) = makeSUT()
+
+    #expect(sut.watchZoneCount == nil)
+  }
+
   @Test func loadPopulatesFieldsFromProfile() async {
     let (sut, _, _) = makeSUT(
       profile: .success(
