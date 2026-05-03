@@ -40,6 +40,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
   private let serverTierResolver: ServerTierResolving
+  private let tierResolver: SubscriptionTierResolving
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
   private let defaults: UserDefaults
@@ -49,6 +50,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
     serverTierResolver: ServerTierResolving? = nil,
+    tierResolver: SubscriptionTierResolving? = nil,
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService,
     defaults: UserDefaults = .standard
@@ -56,8 +58,13 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    self.serverTierResolver =
-      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    let server = serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
+    self.serverTierResolver = server
+    self.tierResolver = tierResolver ?? SubscriptionTierResolver(
+      serverFetcher: { await server.ensureServerProfileTier() },
+      storeKitFetcher: { await subscriptionService.currentEntitlement() },
+      authService: authService
+    )
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
     self.defaults = defaults
@@ -98,16 +105,22 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     error = nil
 
     var jwtTier: SubscriptionTier = .free
+    var userSub: String?
     if let session = await authService.currentSession() {
       userEmail = session.userProfile.email
       userName = session.userProfile.name
       authMethod = session.userProfile.authMethod
       jwtTier = session.subscriptionTier
+      userSub = session.userProfile.userId
     }
 
-    let resolvedTier = await resolveSubscriptionTier(jwtTier: jwtTier)
-    subscriptionTier = resolvedTier.tier
-    isTrialPeriod = resolvedTier.isTrialPeriod
+    let resolved = await tierResolver.resolve(
+      jwtTier: jwtTier,
+      previousTier: subscriptionTier,
+      userSub: userSub
+    )
+    subscriptionTier = resolved.tier
+    isTrialPeriod = resolved.isTrialPeriod
 
     await loadSavedDecisionPreferences()
 
@@ -171,38 +184,6 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     } catch {
       handleError(error)
     }
-  }
-
-  /// Resolves the subscription tier by consulting the backend API profile
-  /// (source of truth), StoreKit (for App Store purchases), and the JWT
-  /// access token claim, then picking the highest tier. This handles
-  /// web-purchased subscriptions that StoreKit does not know about, recently
-  /// App-Store-purchased subscriptions that the server may not have synced
-  /// yet, and API failures where the JWT claim provides a viable fallback.
-  private func resolveSubscriptionTier(
-    jwtTier: SubscriptionTier
-  ) async -> (tier: SubscriptionTier, isTrialPeriod: Bool) {
-    let serverTier = await fetchServerTier()
-    let storeKitEntitlement = await subscriptionService.currentEntitlement()
-
-    let storeKitTier = storeKitEntitlement?.tier ?? .free
-    let highestTier = max(serverTier, max(storeKitTier, jwtTier))
-
-    // Only report trial status from StoreKit — the server profile doesn't
-    // carry trial information. Trial period is only meaningful when the
-    // StoreKit tier is the one that won.
-    let isTrialPeriod =
-      storeKitEntitlement?.isTrialPeriod == true && storeKitTier >= max(serverTier, jwtTier)
-
-    return (highestTier, isTrialPeriod)
-  }
-
-  private func fetchServerTier() async -> SubscriptionTier {
-    // Delegated to the shared `ServerTierResolver` so this VM and
-    // `AppCoordinator` cannot drift apart again (tc-aza5). When the
-    // ensure-or-fetch call fails, fall back to `.free` — JWT and StoreKit
-    // are folded in by `resolveSubscriptionTier`'s `max(...)`.
-    await serverTierResolver.ensureServerProfileTier() ?? .free
   }
 
   private func clearSession() {
