@@ -70,6 +70,18 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     watchZoneCount = count
   }
 
+  /// Toggle saved-application push notifications. Optimistic update with
+  /// rollback on failure; the four other preference fields are sourced from
+  /// `cachedServerProfile` so the PATCH always carries the full set.
+  public func setSavedDecisionPush(_ value: Bool) async {
+    await persist(
+      savedDecisionPush: value,
+      savedDecisionEmail: savedDecisionEmail,
+      emailDigestEnabled: emailDigestEnabled,
+      digestDay: digestDay
+    )
+  }
+
   private func loadProfile() async -> ServerProfile? {
     do {
       return try await userProfileRepository.create()
@@ -83,6 +95,52 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
       return try await watchZoneRepository.loadAll().count
     } catch {
       return 0
+    }
+  }
+
+  /// Shared persistence path for all four setters. Reflects the desired
+  /// values immediately (optimistic UI), PATCHes the full preference set
+  /// using `cachedServerProfile` for any field the caller hasn't changed,
+  /// and rolls back the published values on failure.
+  private func persist(
+    savedDecisionPush nextSavedDecisionPush: Bool,
+    savedDecisionEmail nextSavedDecisionEmail: Bool,
+    emailDigestEnabled nextEmailDigestEnabled: Bool,
+    digestDay nextDigestDay: DayOfWeek
+  ) async {
+    error = nil
+    let previousSavedDecisionPush = savedDecisionPush
+    let previousSavedDecisionEmail = savedDecisionEmail
+    let previousEmailDigestEnabled = emailDigestEnabled
+    let previousDigestDay = digestDay
+
+    savedDecisionPush = nextSavedDecisionPush
+    savedDecisionEmail = nextSavedDecisionEmail
+    emailDigestEnabled = nextEmailDigestEnabled
+    digestDay = nextDigestDay
+
+    let pushEnabledForUpdate = cachedServerProfile?.pushEnabled ?? pushEnabled
+
+    do {
+      let updated = try await userProfileRepository.update(
+        pushEnabled: pushEnabledForUpdate,
+        digestDay: nextDigestDay,
+        emailDigestEnabled: nextEmailDigestEnabled,
+        savedDecisionPush: nextSavedDecisionPush,
+        savedDecisionEmail: nextSavedDecisionEmail
+      )
+      cachedServerProfile = updated
+      pushEnabled = updated.pushEnabled
+      savedDecisionPush = updated.savedDecisionPush
+      savedDecisionEmail = updated.savedDecisionEmail
+      emailDigestEnabled = updated.emailDigestEnabled
+      digestDay = updated.digestDay
+    } catch {
+      savedDecisionPush = previousSavedDecisionPush
+      savedDecisionEmail = previousSavedDecisionEmail
+      emailDigestEnabled = previousEmailDigestEnabled
+      digestDay = previousDigestDay
+      handleError(error)
     }
   }
 }
