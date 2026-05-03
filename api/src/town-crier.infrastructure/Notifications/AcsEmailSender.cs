@@ -130,7 +130,7 @@ public sealed class AcsEmailSender : IEmailSender
                 </table>
                 <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                   <tr><td align="center">
-                    <a href="https://towncrierapp.uk" style="display:inline-block;background:#4a6cf7;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">View All in App</a>
+                    <a href="https://towncrierapp.uk/applications" style="display:inline-block;background:#4a6cf7;color:#ffffff;padding:12px 32px;border-radius:6px;text-decoration:none;font-weight:600;">View All in App</a>
                   </td></tr>
                 </table>
               </td></tr>
