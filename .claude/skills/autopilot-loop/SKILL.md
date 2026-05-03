@@ -1,20 +1,37 @@
 ---
 name: autopilot-loop
-description: End-to-end wrapper that drains the entire ready/in-progress bead backlog via the autopilot skill, then ships the resulting branch as a PR, watches it through the gate, and either cuts a patch release on success or attempts ONE recovery cycle on failure. MUST use this skill whenever the user says "autopilot loop", "autopilot-loop", "drain and ship", "work the backlog and release", "ship the backlog", or "/autopilot-loop". Replaces the manual `/loop 5m /autopilot ... then ship then release` pattern with a single command.
+description: End-to-end wrapper that drains the entire ready/in-progress bead backlog via the autopilot skill, then ships the resulting branch as a PR, watches it through the gate, and either cuts a patch release on success or attempts ONE recovery cycle on failure. On exit, arms an hourly cron so beads created later (e.g. from autonomous triage while the user is away) get processed automatically. MUST use this skill whenever the user says "autopilot loop", "autopilot-loop", "drain and ship", "work the backlog and release", "ship the backlog", or "/autopilot-loop". Replaces the manual `/loop 5m /autopilot ... then ship then release` pattern with a single command.
 ---
 
 # Autopilot Loop
 
-End-to-end orchestrator: drain → ship → release, with one recovery attempt on PR failure.
+End-to-end orchestrator: drain → ship → release, with one recovery attempt on PR failure. Self-perpetuating: arms an hourly cron at exit so new beads get picked up automatically.
 
 ```
-DRAIN ──▶ SHIP ──▶ ┬─ merged ──▶ RELEASE (patch) ──▶ DONE
-                   │
-                   └─ failed ──▶ RECOVER (once) ──▶ DRAIN ──▶ SHIP ──▶ ┬─ merged ──▶ RELEASE ──▶ DONE
-                                                                       └─ failed ──▶ STOP (report)
+[entry] ──▶ §0 cron-tick fast-path ──▶ (idle?) ──▶ ENSURE NEXT TICK ──▶ DONE
+                       │
+                       └─ (work present) ──▶ DRAIN ──▶ SHIP ──▶ ┬─ merged ──▶ RELEASE ──▶ ENSURE NEXT TICK ──▶ DONE
+                                                                │
+                                                                └─ failed ──▶ RECOVER (once) ──▶ DRAIN ──▶ SHIP ──▶ ┬─ merged ──▶ RELEASE ──▶ ENSURE NEXT TICK ──▶ DONE
+                                                                                                                    └─ failed ──▶ ENSURE NEXT TICK ──▶ STOP (report)
 ```
 
-This skill is invoked once and runs the full sequence inline. It does not use a cron — it calls `/autopilot`, `/ship`, and `/release` directly via the Skill tool, one phase at a time, until the workflow terminates.
+This skill is invoked once and runs the full sequence inline. It calls `/autopilot`, `/ship`, and `/release` directly via the Skill tool, one phase at a time. Before exiting, it uses `CronCreate` to arm an hourly tick that re-invokes itself, so the orchestrator keeps draining new beads without manual restart. The hourly cron is registered idempotently (via `CronList` first) so re-entry from a tick does not stack duplicate jobs.
+
+## Phase 0: Cron-tick fast-path
+
+This phase runs on every entry, including the very first interactive invocation. Its job is to make tick-fired re-entries cheap when there is nothing to do.
+
+```bash
+ready_count=$(bd ready --json 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+inprog_count=$(bd list --status=in_progress --json 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
+echo "Pre-flight: ready=$ready_count in_progress=$inprog_count"
+```
+
+- **Both zero:** there is no work. Jump to **Phase 6: ENSURE NEXT TICK**, then exit. Do NOT run drain/ship/release. Final summary should be one line ("autopilot-loop: idle, cron armed for next hour"), not a full report.
+- **Either non-zero:** proceed to Phase 1 (DRAIN).
+
+This is what makes the hourly cron safe — an idle tick costs one `bd ready` + one `CronList`, then exits.
 
 ## State
 
@@ -95,7 +112,7 @@ fi
 git log main..HEAD --oneline
 ```
 
-- **No commits ahead of main:** autopilot found no work or every bead failed. Stop and report.
+- **No commits ahead of main:** autopilot found no work or every bead failed. Run **Phase 6: ENSURE NEXT TICK**, then stop and report.
 - **Commits exist:** proceed to SHIP.
 
 ## Phase 2: SHIP
@@ -125,7 +142,7 @@ Invoke the `ship` skill via the Skill tool. It will:
 
 Invoke the `release` skill via the Skill tool with intent "patch release". The release skill handles version computation, release notes, and `gh release create`.
 
-When release completes, report the release URL and exit cleanly. **DONE.**
+When release completes, run **Phase 6: ENSURE NEXT TICK**, then report the release URL and exit cleanly. **DONE.**
 
 ## Phase 4: RECOVER (one attempt only)
 
@@ -160,7 +177,7 @@ bd create \
 
 If the failure is environmental (staging deploy, integration tests failing on infra) rather than code, file ONE bead summarising the issue with priority=1 and STOP — don't enter another drain loop, since environmental fixes need human attention. Report and exit.
 
-If failures are unfixable (e.g. unclear cause, no actionable signal in logs), STOP and report.
+If failures are unfixable (e.g. unclear cause, no actionable signal in logs), run **Phase 6: ENSURE NEXT TICK** then STOP and report.
 
 ### 4.3 Reset to a clean session base
 
@@ -187,8 +204,8 @@ bd dolt push
 
 Return to **Phase 1: DRAIN**. The new beads should be ready. Process them, re-ship, then evaluate the PR outcome:
 
-- **Merged:** Phase 3 (RELEASE) → DONE.
-- **Failed again:** STOP and report. Both PRs and the original failures should be in the report.
+- **Merged:** Phase 3 (RELEASE) → ENSURE NEXT TICK → DONE.
+- **Failed again:** Run **Phase 6: ENSURE NEXT TICK** then STOP and report. Both PRs and the original failures should be in the report.
 
 ## Phase 5: STOP / DONE
 
@@ -221,13 +238,63 @@ Returning to Phase 1.2 to continue draining.
 
 ### 5.2 Final summary
 
-Once the pre-flight confirms an authorized stop, produce a single summary message containing:
+Once the pre-flight confirms an authorized stop, run **Phase 6: ENSURE NEXT TICK** UNLESS the stop reason is Condition E (user abort) — in that case the user explicitly told us to stop, so do not re-arm.
+
+Then produce a single summary message containing:
 
 - What was achieved (beads closed, PR URL, release URL if any)
 - Why we stopped — name the condition (A/B/C/D/E) explicitly
 - Any follow-up beads filed
+- **Cron status** — one line stating whether the hourly cron was armed (and the job ID), or skipped because of user abort, with a `CronDelete` reminder when armed.
 
 Update the orchestrator bead's notes via `bd update tc-ophh --append-notes="..."` if relevant.
+
+## Phase 6: ENSURE NEXT TICK
+
+Goal: guarantee that an hourly `/autopilot-loop` cron is registered before exit, so beads created later (e.g. by an autonomous triage process) get drained and shipped without manual restart.
+
+This phase is **idempotent** and **never asks the user for input** — it must run cleanly when the user is away from the keyboard.
+
+### 6.1 Skip conditions
+
+Skip this phase only when:
+
+- **Condition E (user abort)** fired in §1.3 — the user explicitly told us to stop. Re-arming would defy that instruction.
+
+In every other exit path (DONE after RELEASE, DONE after recovery success, STOP after recovery exhausted, STOP after no-commits, STOP after 50-tick cap, STOP after same-bead-blocked-twice, idle exit from §0), proceed.
+
+### 6.2 Check for an existing cron
+
+```
+CronList
+```
+
+Inspect the returned jobs. If any job's `prompt` contains `/autopilot-loop` (or otherwise re-invokes this skill), it is already armed. Do nothing — return.
+
+### 6.3 Register the hourly cron
+
+If no existing autopilot-loop cron is present:
+
+```
+CronCreate
+  cron: "7 * * * *"
+  prompt: "/autopilot-loop"
+  recurring: true
+  durable: true
+```
+
+Notes on the parameter choices:
+
+- `cron: "7 * * * *"` — hourly at :07 to avoid the :00 fleet-wide thundering herd (see CronCreate guidance).
+- `recurring: true` — fires every hour, not one-shot.
+- `durable: true` — persisted to `.claude/scheduled_tasks.json` so the cron survives Claude Code restarts. The user is walking away from the machine; in-memory cron would die with the session.
+- 7-day auto-expiry still applies. The first tick after expiry that finds work will re-register a fresh cron via this same Phase 6, so the loop is self-healing as long as it fires at least once per week.
+
+Capture the returned job ID and surface it in the §5.2 final summary.
+
+### 6.4 Failure handling
+
+If `CronCreate` fails (tool error, permission, etc.), do NOT retry, do NOT block exit, do NOT escalate to the user. Log the failure in the final summary so the next interactive session can see it, and exit normally — a missed hourly schedule is recoverable; blocking exit is not.
 
 ## Rules
 
@@ -239,7 +306,9 @@ Update the orchestrator bead's notes via `bd update tc-ophh --append-notes="..."
 - **Cap the drain at 50 autopilot ticks per pass.** Infinite drains usually mean a single bead is being repeatedly blocked.
 - **Do not invent stop conditions.** §1.3 enumerates every authorized reason to leave the drain (A–E). §1.4 lists the reasons that masquerade as stop conditions but aren't. §5.1 mechanically rejects unauthorized stops and re-enters the drain.
 - **Default to patch release.** If commits since the last tag look like a feature release (any `feat:`), the release skill will detect that itself — don't override.
-- **Bead-first.** This skill assumes there is at least one ready bead at start. If there are none and nothing in-progress, report "Nothing to do" and exit.
+- **Bead-first.** This skill no longer requires a ready bead at start — Phase 0 short-circuits the empty case to "ensure cron, exit" so hourly ticks are cheap.
+- **Always re-arm the hourly cron at exit (Phase 6) — except on user abort.** The skill is self-perpetuating by design so beads created later (autonomous triage, deferred decisions) get drained without manual restart.
+- **Never ask the user before scheduling the cron.** The whole point of Phase 6 is that the user can walk away from the machine. Any prompt-to-confirm defeats the design.
 
 ## Edge cases
 
