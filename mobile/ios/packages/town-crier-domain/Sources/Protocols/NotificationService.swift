@@ -3,4 +3,8 @@ public protocol NotificationService: Sendable {
   func requestPermission() async throws -> Bool
   func registerDeviceToken(_ token: String) async throws
   func removeDeviceToken() async throws
+
+  /// Reports the current notification authorization state from the underlying
+  /// platform permission provider.
+  func authorizationStatus() async -> NotificationAuthorizationStatus
 }

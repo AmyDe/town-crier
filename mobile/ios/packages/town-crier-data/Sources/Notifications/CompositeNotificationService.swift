@@ -33,4 +33,8 @@ public final class CompositeNotificationService: NotificationService, @unchecked
   public func removeDeviceToken() async throws {
     try await apiService.removeDeviceToken()
   }
+
+  public func authorizationStatus() async -> NotificationAuthorizationStatus {
+    await permissionProvider.authorizationStatus()
+  }
 }

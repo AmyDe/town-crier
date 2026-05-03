@@ -14,7 +14,8 @@ struct NotificationPreferencesViewTests {
   private func makeViewModel() -> NotificationPreferencesViewModel {
     NotificationPreferencesViewModel(
       userProfileRepository: SpyUserProfileRepository(),
-      watchZoneRepository: SpyWatchZoneRepository()
+      watchZoneRepository: SpyWatchZoneRepository(),
+      notificationService: SpyNotificationService()
     )
   }
 
@@ -67,5 +68,117 @@ struct NotificationPreferencesViewTests {
     view.requestSystemSettingsTap()
 
     #expect(tapped)
+  }
+
+  // MARK: - Permission section
+
+  @Test("hidesSystemSettingsLink computes from VM authorization status")
+  func hidesSystemSettingsLink_whenNotDetermined() async {
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.freeUser)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = .notDetermined
+    let vm = NotificationPreferencesViewModel(
+      userProfileRepository: profileSpy,
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
+    )
+    await vm.load()
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    #expect(view.shouldHideSystemSettingsLink)
+  }
+
+  @Test("system settings link visible when denied")
+  func systemSettingsLink_visibleWhenDenied() async {
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.freeUser)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = .denied
+    let vm = NotificationPreferencesViewModel(
+      userProfileRepository: profileSpy,
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
+    )
+    await vm.load()
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    #expect(!view.shouldHideSystemSettingsLink)
+  }
+
+  @Test("system settings link visible when authorized")
+  func systemSettingsLink_visibleWhenAuthorized() async {
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.freeUser)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = .authorized
+    let vm = NotificationPreferencesViewModel(
+      userProfileRepository: profileSpy,
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
+    )
+    await vm.load()
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    #expect(!view.shouldHideSystemSettingsLink)
+  }
+
+  @Test("system settings link visible while status still loading")
+  func systemSettingsLink_visibleWhenStatusNil() {
+    let vm = makeViewModel()
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    #expect(!view.shouldHideSystemSettingsLink)
+  }
+
+  @Test("requestPermissionButtonTap invokes VM requestPermission")
+  func requestPermissionButtonTap_invokesViewModel() async {
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.freeUser)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = .notDetermined
+    let vm = NotificationPreferencesViewModel(
+      userProfileRepository: profileSpy,
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
+    )
+    await vm.load()
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    await view.requestPermissionButtonTap()
+
+    #expect(notificationSpy.requestPermissionCallCount == 1)
+  }
+
+  @Test("scenePhase becoming active refreshes authorization status")
+  func scenePhaseActive_refreshesAuthorizationStatus() async {
+    let profileSpy = SpyUserProfileRepository()
+    profileSpy.createResult = .success(.freeUser)
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = .denied
+    let vm = NotificationPreferencesViewModel(
+      userProfileRepository: profileSpy,
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
+    )
+    await vm.load()
+    let callsAfterLoad = notificationSpy.authorizationStatusCallCount
+    notificationSpy.nextAuthorizationStatus = .authorized
+    let view = NotificationPreferencesView(viewModel: vm)
+
+    await view.requestScenePhaseActive()
+
+    #expect(notificationSpy.authorizationStatusCallCount == callsAfterLoad + 1)
+    #expect(vm.authorizationStatus == .authorized)
   }
 }

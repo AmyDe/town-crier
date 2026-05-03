@@ -26,7 +26,8 @@ extension AppCoordinator {
   public func makeNotificationPreferencesViewModel() -> NotificationPreferencesViewModel {
     NotificationPreferencesViewModel(
       userProfileRepository: userProfileRepository,
-      watchZoneRepository: watchZoneRepository
+      watchZoneRepository: watchZoneRepository,
+      notificationService: notificationService
     )
   }
 }

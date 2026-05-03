@@ -25,4 +25,12 @@ final class SpyNotificationService: NotificationService, @unchecked Sendable {
     removeDeviceTokenCallCount += 1
     try removeDeviceTokenResult.get()
   }
+
+  private(set) var authorizationStatusCallCount = 0
+  var nextAuthorizationStatus: NotificationAuthorizationStatus = .authorized
+
+  func authorizationStatus() async -> NotificationAuthorizationStatus {
+    authorizationStatusCallCount += 1
+    return nextAuthorizationStatus
+  }
 }

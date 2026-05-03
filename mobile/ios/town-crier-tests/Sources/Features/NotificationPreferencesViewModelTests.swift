@@ -17,17 +17,26 @@ struct NotificationPreferencesViewModelTests {
 
   private func makeSUT(
     profile: Result<ServerProfile, Error> = .success(.freeUser),
-    zones: Result<[WatchZone], Error> = .success([])
-  ) -> (NotificationPreferencesViewModel, SpyUserProfileRepository, SpyWatchZoneRepository) {
+    zones: Result<[WatchZone], Error> = .success([]),
+    authorizationStatus: NotificationAuthorizationStatus = .authorized
+  ) -> (
+    NotificationPreferencesViewModel,
+    SpyUserProfileRepository,
+    SpyWatchZoneRepository,
+    SpyNotificationService
+  ) {
     let profileSpy = SpyUserProfileRepository()
     profileSpy.createResult = profile
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = zones
+    let notificationSpy = SpyNotificationService()
+    notificationSpy.nextAuthorizationStatus = authorizationStatus
     let sut = NotificationPreferencesViewModel(
       userProfileRepository: profileSpy,
-      watchZoneRepository: zoneSpy
+      watchZoneRepository: zoneSpy,
+      notificationService: notificationSpy
     )
-    return (sut, profileSpy, zoneSpy)
+    return (sut, profileSpy, zoneSpy, notificationSpy)
   }
 
   private static func profile(
@@ -59,13 +68,13 @@ struct NotificationPreferencesViewModelTests {
   // MARK: - Load
 
   @Test func watchZoneCountIsNilBeforeLoad() {
-    let (sut, _, _) = makeSUT()
+    let (sut, _, _, _) = makeSUT()
 
     #expect(sut.watchZoneCount == nil)
   }
 
   @Test func loadPopulatesFieldsFromProfile() async {
-    let (sut, _, _) = makeSUT(
+    let (sut, _, _, _) = makeSUT(
       profile: .success(
         Self.profile(
           digestDay: .friday,
@@ -87,7 +96,7 @@ struct NotificationPreferencesViewModelTests {
 
   @Test func loadPopulatesWatchZoneCount() async throws {
     let zones = [try Self.zone(name: "CB1 2AD"), try Self.zone(name: "CB2 1LA")]
-    let (sut, _, _) = makeSUT(zones: .success(zones))
+    let (sut, _, _, _) = makeSUT(zones: .success(zones))
 
     await sut.load()
 
@@ -95,7 +104,7 @@ struct NotificationPreferencesViewModelTests {
   }
 
   @Test func watchZoneCountStaysNilWhenZoneRepositoryThrows() async {
-    let (sut, _, _) = makeSUT(
+    let (sut, _, _, _) = makeSUT(
       profile: .success(.freeUser),
       zones: .failure(DomainError.networkUnavailable)
     )
@@ -106,7 +115,7 @@ struct NotificationPreferencesViewModelTests {
   }
 
   @Test func loadFallsBackToDefaultsOnRepositoryThrow() async {
-    let (sut, _, _) = makeSUT(
+    let (sut, _, _, _) = makeSUT(
       profile: .failure(DomainError.networkUnavailable),
       zones: .failure(DomainError.networkUnavailable)
     )
@@ -137,7 +146,7 @@ struct NotificationPreferencesViewModelTests {
       savedDecisionPush: false,
       savedDecisionEmail: true
     )
-    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(initial))
     profileSpy.updateResult = .success(updated)
     await sut.load()
 
@@ -168,7 +177,7 @@ struct NotificationPreferencesViewModelTests {
       savedDecisionPush: true,
       savedDecisionEmail: false
     )
-    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(initial))
     profileSpy.updateResult = .success(updated)
     await sut.load()
 
@@ -199,7 +208,7 @@ struct NotificationPreferencesViewModelTests {
       savedDecisionPush: false,
       savedDecisionEmail: true
     )
-    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(initial))
     profileSpy.updateResult = .success(updated)
     await sut.load()
 
@@ -230,7 +239,7 @@ struct NotificationPreferencesViewModelTests {
       savedDecisionPush: true,
       savedDecisionEmail: false
     )
-    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(initial))
     profileSpy.updateResult = .success(updated)
     await sut.load()
 
@@ -256,7 +265,7 @@ struct NotificationPreferencesViewModelTests {
       savedDecisionPush: true,
       savedDecisionEmail: true
     )
-    let (sut, profileSpy, _) = makeSUT(profile: .success(initial))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(initial))
     profileSpy.updateResult = .failure(DomainError.networkUnavailable)
     await sut.load()
 
@@ -269,12 +278,79 @@ struct NotificationPreferencesViewModelTests {
   }
 
   @Test func failedUpdatePopulatesError() async {
-    let (sut, profileSpy, _) = makeSUT(profile: .success(.freeUser))
+    let (sut, profileSpy, _, _) = makeSUT(profile: .success(.freeUser))
     profileSpy.updateResult = .failure(DomainError.networkUnavailable)
     await sut.load()
 
     await sut.setEmailDigestEnabled(false)
 
     #expect(sut.error == .networkUnavailable)
+  }
+
+  // MARK: - Authorization Status
+
+  @Test func authorizationStatusIsNilBeforeLoad() {
+    let (sut, _, _, _) = makeSUT()
+
+    #expect(sut.authorizationStatus == nil)
+  }
+
+  @Test func loadPopulatesAuthorizationStatus_notDetermined() async {
+    let (sut, _, _, _) = makeSUT(authorizationStatus: .notDetermined)
+
+    await sut.load()
+
+    #expect(sut.authorizationStatus == .notDetermined)
+  }
+
+  @Test func loadPopulatesAuthorizationStatus_denied() async {
+    let (sut, _, _, _) = makeSUT(authorizationStatus: .denied)
+
+    await sut.load()
+
+    #expect(sut.authorizationStatus == .denied)
+  }
+
+  @Test func loadPopulatesAuthorizationStatus_authorized() async {
+    let (sut, _, _, _) = makeSUT(authorizationStatus: .authorized)
+
+    await sut.load()
+
+    #expect(sut.authorizationStatus == .authorized)
+  }
+
+  @Test func requestPermissionRefreshesAuthorizationStatus() async {
+    let (sut, _, _, notificationSpy) = makeSUT(authorizationStatus: .notDetermined)
+    await sut.load()
+    notificationSpy.nextAuthorizationStatus = .authorized
+
+    await sut.requestPermission()
+
+    #expect(notificationSpy.requestPermissionCallCount == 1)
+    #expect(sut.authorizationStatus == .authorized)
+  }
+
+  @Test func requestPermissionFailureSurfacesError() async {
+    let (sut, _, _, notificationSpy) = makeSUT(authorizationStatus: .notDetermined)
+    notificationSpy.requestPermissionResult = .failure(DomainError.networkUnavailable)
+    await sut.load()
+    notificationSpy.nextAuthorizationStatus = .denied
+
+    await sut.requestPermission()
+
+    #expect(sut.error == .networkUnavailable)
+    #expect(sut.authorizationStatus == .denied)
+  }
+
+  @Test func refreshAuthorizationStatusReQueriesService() async {
+    let (sut, _, _, notificationSpy) = makeSUT(authorizationStatus: .notDetermined)
+    await sut.load()
+    let callsAfterLoad = notificationSpy.authorizationStatusCallCount
+    notificationSpy.nextAuthorizationStatus = .authorized
+
+    await sut.refreshAuthorizationStatus()
+
+    #expect(notificationSpy.authorizationStatusCallCount == callsAfterLoad + 1)
+    #expect(sut.authorizationStatus == .authorized)
   }
 }
