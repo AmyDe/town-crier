@@ -14,7 +14,8 @@ struct NotificationPreferencesViewTests {
   private func makeViewModel() -> NotificationPreferencesViewModel {
     NotificationPreferencesViewModel(
       userProfileRepository: SpyUserProfileRepository(),
-      watchZoneRepository: SpyWatchZoneRepository()
+      watchZoneRepository: SpyWatchZoneRepository(),
+      notificationService: SpyNotificationService()
     )
   }
 
