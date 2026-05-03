@@ -29,6 +29,27 @@ public sealed class AcsEmailSenderTests
         await Assert.That(CountOccurrences(html, expectedHref)).IsEqualTo(3);
     }
 
+    [Test]
+    public async Task Should_PointBottomCtaAtApplicationsList_When_BuildingDigestHtml()
+    {
+        // Arrange
+        var notification = new NotificationBuilder().Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { notification }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
+
+        // Assert — the bottom "View All in App" CTA must point to the
+        // applications list so iOS Universal Links opens the apps tab.
+        await Assert.That(html).Contains("href=\"https://towncrierapp.uk/applications\"");
+
+        // The bare-domain CTA href would defeat the universal link match.
+        await Assert.That(html).DoesNotContain("href=\"https://towncrierapp.uk\"");
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         if (needle.Length == 0)
