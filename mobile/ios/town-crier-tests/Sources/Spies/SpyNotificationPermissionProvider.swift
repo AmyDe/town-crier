@@ -9,4 +9,12 @@ final class SpyNotificationPermissionProvider: NotificationPermissionProvider, @
     requestPermissionCallCount += 1
     return try requestPermissionResult.get()
   }
+
+  private(set) var authorizationStatusCallCount = 0
+  var nextAuthorizationStatus: NotificationAuthorizationStatus = .authorized
+
+  func authorizationStatus() async -> NotificationAuthorizationStatus {
+    authorizationStatusCallCount += 1
+    return nextAuthorizationStatus
+  }
 }
