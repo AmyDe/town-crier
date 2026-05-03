@@ -15,6 +15,7 @@ struct AppCoordinatorTierResolutionTests {
     entitlement: SubscriptionEntitlement? = nil,
     serverProfile: ServerProfile? = nil,
     serverProfileError: Error? = nil,
+    tierResolver: SubscriptionTierResolving? = nil,
     tierCache: UserDefaults = UserDefaults(suiteName: UUID().uuidString) ?? .standard
   ) -> (AppCoordinator, SpyAuthenticationService, SpySubscriptionService, SpyUserProfileRepository) {
     let authSpy = SpyAuthenticationService()
@@ -32,6 +33,7 @@ struct AppCoordinatorTierResolutionTests {
       authService: authSpy,
       subscriptionService: subscriptionSpy,
       userProfileRepository: profileSpy,
+      tierResolver: tierResolver,
       watchZoneRepository: SpyWatchZoneRepository(),
       geocoder: SpyPostcodeGeocoder(),
       onboardingRepository: SpyOnboardingRepository(),
@@ -206,6 +208,33 @@ struct AppCoordinatorTierResolutionTests {
 
     let (sut, _, _, _) = makeSUT(tierCache: defaults)
 
+    #expect(sut.subscriptionTier == .pro)
+  }
+
+  // MARK: - Shared resolver delegation (tc-exg6.1)
+
+  @Test
+  func resolveSubscriptionTier_delegatesToSharedResolver_passingJwtAndPreviousTiers() async throws {
+    // The coordinator must hand off to the injected `SubscriptionTierResolving`
+    // so the resolution rule (server / StoreKit / JWT folding + no-downgrade
+    // fallback) lives in one place — the third recurrence of the Settings ↔
+    // Coordinator drift fixed by tc-exg6.
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    defaults.set("personal", forKey: "cachedSubscriptionTier")
+    let fakeResolver = FakeSubscriptionTierResolver()
+    fakeResolver.resolveResult = (.pro, false)
+    let (sut, _, _, _) = makeSUT(
+      authSession: .pro,
+      tierResolver: fakeResolver,
+      tierCache: defaults
+    )
+
+    await sut.resolveSubscriptionTier()
+
+    let call = try #require(fakeResolver.resolveCalls.first)
+    #expect(fakeResolver.resolveCalls.count == 1)
+    #expect(call.jwtTier == .pro)
+    #expect(call.previousTier == .personal)
     #expect(sut.subscriptionTier == .pro)
   }
 

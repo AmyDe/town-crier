@@ -41,8 +41,15 @@ public final class ServerTierResolver: ServerTierResolving {
       let profile = try await userProfileRepository.create()
       return profile.tier
     } catch {
-      Self.logger.error(
-        "Failed to ensure server profile for subscription tier: \(error.localizedDescription)"
+      // `notice` (not `error`) because the failure is recoverable —
+      // `SubscriptionTierResolver` falls back to `max(previousTier, jwtTier)`
+      // so a transient server error never silently downgrades a paying user
+      // (tc-exg6).
+      Self.logger.notice(
+        """
+        Failed to ensure server profile for subscription tier: \
+        \(error.localizedDescription, privacy: .public)
+        """
       )
       return nil
     }

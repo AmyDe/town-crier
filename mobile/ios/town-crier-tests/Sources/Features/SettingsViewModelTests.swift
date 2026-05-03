@@ -11,6 +11,7 @@ struct SettingsViewModelTests {
     session: AuthSession? = .valid,
     entitlement: SubscriptionEntitlement? = nil,
     serverProfile: Result<ServerProfile, Error> = .success(.freeUser),
+    tierResolver: SubscriptionTierResolving? = nil,
     version: String = "1.0.0",
     buildNumber: String = "42"
   ) -> (
@@ -32,6 +33,7 @@ struct SettingsViewModelTests {
       authService: authSpy,
       subscriptionService: subscriptionSpy,
       userProfileRepository: profileSpy,
+      tierResolver: tierResolver,
       appVersionProvider: versionProvider,
       notificationService: notificationSpy,
       defaults: defaults ?? .standard

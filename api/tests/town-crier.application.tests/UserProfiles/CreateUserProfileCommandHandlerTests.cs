@@ -1,3 +1,4 @@
+using TownCrier.Application.Tests.Admin;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.UserProfiles;
 
@@ -10,7 +11,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|user-123");
 
         // Act
@@ -27,7 +28,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|user-123");
 
         // Act
@@ -44,7 +45,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|user-email", "user@example.com");
 
         // Act
@@ -60,7 +61,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|user-123");
 
         // Create first
@@ -79,7 +80,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|family-1", "alice@family.uk", EmailVerified: true);
 
         // Act
@@ -96,7 +97,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|unverified-1", "alice@family.uk", EmailVerified: false);
 
         // Act
@@ -111,7 +112,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|other-1", "someone@gmail.com", EmailVerified: true);
 
         // Act
@@ -126,7 +127,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|no-email");
 
         // Act
@@ -141,7 +142,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk, vip.com"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk, vip.com"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|vip-1", "bob@vip.com", EmailVerified: true);
 
         // Act
@@ -156,7 +157,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var command = new CreateUserProfileCommand("auth0|upper-1", "Alice@FAMILY.UK", EmailVerified: true);
 
         // Act
@@ -171,12 +172,12 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange — existing user is on Free tier
         var repository = new FakeUserProfileRepository();
-        var noAutoGrant = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var noAutoGrant = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         await noAutoGrant.HandleAsync(
             new CreateUserProfileCommand("auth0|existing", "alice@family.uk", EmailVerified: true), CancellationToken.None);
 
         // Act — re-register with auto-grant enabled (should return existing, not upgrade)
-        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"));
+        var handler = new CreateUserProfileCommandHandler(repository, AutoGrantFor("family.uk"), new FakeAuth0ManagementClient());
         var result = await handler.HandleAsync(
             new CreateUserProfileCommand("auth0|existing", "alice@family.uk", EmailVerified: true), CancellationToken.None);
 
@@ -189,7 +190,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange — profile created without email (the bug scenario)
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         await handler.HandleAsync(
             new CreateUserProfileCommand("auth0|no-email-user"), CancellationToken.None);
 
@@ -210,7 +211,7 @@ public sealed class CreateUserProfileCommandHandlerTests
     {
         // Arrange — profile created with email
         var repository = new FakeUserProfileRepository();
-        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant());
+        var handler = new CreateUserProfileCommandHandler(repository, NoAutoGrant(), new FakeAuth0ManagementClient());
         await handler.HandleAsync(
             new CreateUserProfileCommand("auth0|has-email", "original@example.com"), CancellationToken.None);
 
