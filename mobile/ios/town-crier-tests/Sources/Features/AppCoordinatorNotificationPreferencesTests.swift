@@ -49,7 +49,7 @@ struct AppCoordinatorNotificationPreferencesTests {
     #expect(vm.savedDecisionEmail == true)
     #expect(vm.emailDigestEnabled == true)
     #expect(vm.digestDay == .monday)
-    #expect(vm.watchZoneCount == 0)
+    #expect(vm.watchZoneCount == nil)
   }
 
   // MARK: - Selected Tab

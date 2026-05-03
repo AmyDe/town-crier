@@ -106,7 +106,7 @@ struct NotificationPreferencesViewModelTests {
     #expect(sut.savedDecisionEmail == true)
     #expect(sut.emailDigestEnabled == true)
     #expect(sut.digestDay == .monday)
-    #expect(sut.watchZoneCount == 0)
+    #expect(sut.watchZoneCount == nil)
   }
 
   // MARK: - Setters
