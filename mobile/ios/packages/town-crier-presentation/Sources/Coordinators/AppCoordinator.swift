@@ -14,7 +14,7 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isManageSubscriptionPresented = false
   @Published public var isSubscriptionPresented = false
   /// Set to `true` from the in-app preferences screen footer; the view layer
-  /// opens `UIApplication/openSettingsURLString` and resets the flag.
+  /// opens ``AppCoordinator/systemNotificationSettingsURLString`` and resets it.
   @Published public var isOpeningSystemNotificationSettings = false
   /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
   @Published public var isNotificationPreferencesPresented = false
