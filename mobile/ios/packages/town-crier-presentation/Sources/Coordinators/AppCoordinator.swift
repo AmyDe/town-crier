@@ -154,17 +154,18 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
-  /// Factory for the dedicated Saved tab view model.
-  ///
-  /// Falls back to a no-op repository when no `SavedApplicationRepository` was
-  /// injected. The Saved tab is only meaningful when bookmarking is wired, so
-  /// in production this branch is unreachable; surfacing a fatal error there
-  /// would crash the app for users who never tap the tab.
+  /// Factory for the dedicated Saved tab view model. Falls back to a no-op
+  /// repository when no `SavedApplicationRepository` was injected — the Saved
+  /// tab is meaningful only when bookmarking is wired, but a fatal error here
+  /// would crash users who never tap the tab.
   public func makeSavedApplicationListViewModel() -> SavedApplicationListViewModel {
     let repository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
     let viewModel = SavedApplicationListViewModel(savedApplicationRepository: repository)
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
+    }
+    viewModel.onApplicationSelectedWithPayload = { [weak self] application in
+      self?.showApplicationDetail(application)
     }
     return viewModel
   }
@@ -337,19 +338,17 @@ public final class AppCoordinator: ObservableObject {
     return viewModel
   }
 
-  /// Test-only synchronisation: await the most recently kicked-off
-  /// post-redemption refresh so assertions happen after the session has been
-  /// rotated and the tier re-resolved.
+  /// Test-only synchronisation: await the post-redemption refresh so
+  /// assertions happen after the session and tier have been re-resolved.
   public func waitForPendingOfferCodeRefresh() async {
     await pendingOfferCodeRefresh?.value
   }
 
   private func handleOfferCodeRedeemed() {
     isRedeemOfferCodePresented = false
-    // Kick off the refresh on a detached task so we can await it in tests.
-    // Session refresh rotates the JWT so the next server call sees the new
-    // `subscription_tier` claim; re-resolving the tier pulls the updated
-    // profile and updates `subscriptionTier` for all tier-gated views.
+    // Detached task so tests can await it. Session refresh rotates the JWT so
+    // the next server call sees the new `subscription_tier` claim, then
+    // re-resolving the tier picks up the updated profile.
     pendingOfferCodeRefresh = Task { [weak self] in
       guard let self else { return }
       do {
@@ -371,10 +370,10 @@ public final class AppCoordinator: ObservableObject {
     }
   }
 
-  /// Presents the detail sheet from a list row that already has the full
-  /// payload — bypasses the per-id fetch so the sheet appears instantly. The
-  /// detail view model still calls `refresh()` in `.task` to keep the
-  /// saved-row snapshot fresh on the server (bd tc-sslz, tc-udby).
+  /// Presents the detail sheet synchronously from a row payload — bypasses the
+  /// per-id fetch so the sheet appears instantly. The detail view model still
+  /// runs `refresh()` in `.task` to keep saved-row snapshots fresh on the
+  /// server (bd tc-sslz, tc-udby).
   func showApplicationDetail(_ application: PlanningApplication) {
     detailApplication = application
   }
