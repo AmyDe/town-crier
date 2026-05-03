@@ -50,6 +50,32 @@ public sealed class AcsEmailSenderTests
         await Assert.That(html).DoesNotContain("href=\"https://towncrierapp.uk\"");
     }
 
+    [Test]
+    public async Task Should_PercentEncodeEachSegment_When_ApplicationUidContainsSlashesOrSpaces()
+    {
+        // Arrange — a PlanIt UID containing both path separators and a space
+        // segment (a common shape, e.g. authority slug + case ref).
+        var notification = new NotificationBuilder()
+            .WithApplicationUid("east riding/19/00123 a/FUL")
+            .Build();
+        var digests = new List<WatchZoneDigest>
+        {
+            new("Home", new List<Notification> { notification }),
+        };
+
+        // Act
+        var html = AcsEmailSender.BuildDigestHtml(digests, Array.Empty<Notification>(), totalCount: 1);
+
+        // Assert — slashes stay as path separators, every other reserved
+        // character inside a segment is percent-encoded.
+        await Assert.That(html).Contains(
+            "https://towncrierapp.uk/applications/east%20riding/19/00123%20a/FUL");
+
+        // Sanity-check: the raw unencoded form must NOT appear in any href.
+        await Assert.That(html).DoesNotContain(
+            "https://towncrierapp.uk/applications/east riding/19/00123 a/FUL");
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         if (needle.Length == 0)
