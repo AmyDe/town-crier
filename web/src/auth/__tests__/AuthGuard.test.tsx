@@ -62,4 +62,29 @@ describe('AuthGuard', () => {
 
     expect(spy.loginWithRedirectCalls).toBe(0);
   });
+
+  it('passes appState.returnTo with current pathname when redirecting to login', async () => {
+    const spy = new SpyAuthPort();
+    spy.isAuthenticated = false;
+    spy.isLoading = false;
+
+    render(
+      <MemoryRouter initialEntries={['/applications/19/00123/FUL']}>
+        <AuthProvider value={spy}>
+          <Routes>
+            <Route element={<AuthGuard />}>
+              <Route path="/applications/*" element={<div>Detail</div>} />
+            </Route>
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(spy.loginWithRedirectCalls).toBe(1);
+    });
+    expect(spy.lastLoginWithRedirectOptions).toEqual({
+      appState: { returnTo: '/applications/19/00123/FUL' },
+    });
+  });
 });
