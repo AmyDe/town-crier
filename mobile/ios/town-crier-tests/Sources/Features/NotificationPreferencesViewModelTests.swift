@@ -58,6 +58,12 @@ struct NotificationPreferencesViewModelTests {
 
   // MARK: - Load
 
+  @Test func watchZoneCountIsNilBeforeLoad() {
+    let (sut, _, _) = makeSUT()
+
+    #expect(sut.watchZoneCount == nil)
+  }
+
   @Test func loadPopulatesFieldsFromProfile() async {
     let (sut, _, _) = makeSUT(
       profile: .success(
@@ -88,6 +94,17 @@ struct NotificationPreferencesViewModelTests {
     #expect(sut.watchZoneCount == 2)
   }
 
+  @Test func watchZoneCountStaysNilWhenZoneRepositoryThrows() async {
+    let (sut, _, _) = makeSUT(
+      profile: .success(.freeUser),
+      zones: .failure(DomainError.networkUnavailable)
+    )
+
+    await sut.load()
+
+    #expect(sut.watchZoneCount == nil)
+  }
+
   @Test func loadFallsBackToDefaultsOnRepositoryThrow() async {
     let (sut, _, _) = makeSUT(
       profile: .failure(DomainError.networkUnavailable),
@@ -100,7 +117,7 @@ struct NotificationPreferencesViewModelTests {
     #expect(sut.savedDecisionEmail == true)
     #expect(sut.emailDigestEnabled == true)
     #expect(sut.digestDay == .monday)
-    #expect(sut.watchZoneCount == 0)
+    #expect(sut.watchZoneCount == nil)
   }
 
   // MARK: - Setters

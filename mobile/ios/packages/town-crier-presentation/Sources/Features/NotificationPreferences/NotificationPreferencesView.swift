@@ -144,9 +144,14 @@ public struct NotificationPreferencesView: View {
             .font(TCTypography.body)
             .foregroundStyle(Color.tcTextPrimary)
           Spacer()
-          Text(zonesValueLabel)
-            .font(TCTypography.body)
-            .foregroundStyle(Color.tcTextSecondary)
+          if let count = viewModel.watchZoneCount {
+            Text(zonesValueLabel(for: count))
+              .font(TCTypography.body)
+              .foregroundStyle(Color.tcTextSecondary)
+          } else {
+            ProgressView()
+              .accessibilityLabel("Loading watch-zone count")
+          }
           Image(systemName: "chevron.right")
             .font(.system(.caption))
             .foregroundStyle(Color.tcTextTertiary)
@@ -199,14 +204,14 @@ public struct NotificationPreferencesView: View {
     }
   }
 
-  private var zonesValueLabel: String {
-    switch viewModel.watchZoneCount {
+  private func zonesValueLabel(for count: Int) -> String {
+    switch count {
     case 0:
       return "No zones yet"
     case 1:
       return "1 zone"
     default:
-      return "\(viewModel.watchZoneCount) zones"
+      return "\(count) zones"
     }
   }
 }

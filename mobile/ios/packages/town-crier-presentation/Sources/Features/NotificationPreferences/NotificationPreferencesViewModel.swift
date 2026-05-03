@@ -17,7 +17,7 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
   @Published public private(set) var savedDecisionEmail: Bool = true
   @Published public private(set) var emailDigestEnabled: Bool = true
   @Published public private(set) var digestDay: DayOfWeek = .monday
-  @Published public private(set) var watchZoneCount: Int = 0
+  @Published public private(set) var watchZoneCount: Int?
   @Published public internal(set) var error: DomainError?
 
   /// Most recently loaded server profile. Source of truth for fields that
@@ -123,11 +123,11 @@ public final class NotificationPreferencesViewModel: ObservableObject, ErrorHand
     }
   }
 
-  private func loadZoneCount() async -> Int {
+  private func loadZoneCount() async -> Int? {
     do {
       return try await watchZoneRepository.loadAll().count
     } catch {
-      return 0
+      return nil
     }
   }
 
