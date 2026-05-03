@@ -15,7 +15,9 @@ internal static class UserProfileEndpoints
             var userId = user.FindFirstValue("sub")!;
             var email = user.FindFirstValue("email");
             var emailVerified = string.Equals(user.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
-            var result = await handler.HandleAsync(new CreateUserProfileCommand(userId, email, emailVerified), ct).ConfigureAwait(false);
+            var jwtSubscriptionTier = user.FindFirstValue("subscription_tier");
+            var result = await handler.HandleAsync(
+                new CreateUserProfileCommand(userId, email, emailVerified, jwtSubscriptionTier), ct).ConfigureAwait(false);
             return Results.Ok(result);
         });
 
