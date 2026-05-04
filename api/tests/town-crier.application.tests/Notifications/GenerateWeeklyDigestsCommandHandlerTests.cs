@@ -5,8 +5,8 @@ using TownCrier.Application.Tests.NotificationState;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
-using TownCrier.Domain.NotificationState;
 using TownCrier.Domain.Notifications;
+using TownCrier.Domain.NotificationState;
 using TownCrier.Domain.UserProfiles;
 using FakeTimeProvider = TownCrier.Application.Tests.DeviceRegistrations.FakeTimeProvider;
 
@@ -72,8 +72,8 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         // Act
         await handler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None);
 
-        // Assert — applicationCount is the digest window (4 total in last 7 days);
-        // totalUnreadCount is only the 3 strictly after lastReadAt.
+        // Assert: the digest body's application count covers the full 7-day window
+        // (4 total), while the unread badge counts only the 3 strictly after lastReadAt.
         await Assert.That(pushSender.DigestsSent).HasCount().EqualTo(1);
         await Assert.That(pushSender.DigestsSent[0].ApplicationCount).IsEqualTo(4);
         await Assert.That(pushSender.DigestsSent[0].TotalUnreadCount).IsEqualTo(3);
