@@ -10,6 +10,7 @@ public static class CosmosContainerNames
 
     public const string Users = "Users";
     public const string Notifications = "Notifications";
+    public const string NotificationState = "NotificationState";
     public const string DeviceRegistrations = "DeviceRegistrations";
     public const string SavedApplications = "SavedApplications";
     public const string WatchZones = "WatchZones";
