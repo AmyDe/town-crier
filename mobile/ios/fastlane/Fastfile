@@ -95,12 +95,11 @@ platform :ios do
     # the beta lane consumes so CI plumbing stays identical.
     require "spaceship"
 
-    token = Spaceship::ConnectAPI::Token.create_from_hash(
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.from(
       key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
       issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
       filepath: File.absolute_path(ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH")),
     )
-    Spaceship::ConnectAPI.token = token
 
     app = Spaceship::ConnectAPI::BundleId.find(bundle_id)
     UI.user_error!("Bundle ID #{bundle_id} not found in App Store Connect") if app.nil?
@@ -137,6 +136,7 @@ platform :ios do
     match(
       api_key: api_key,
       type: "appstore",
+      readonly: false,
       force: true,
     )
   end
