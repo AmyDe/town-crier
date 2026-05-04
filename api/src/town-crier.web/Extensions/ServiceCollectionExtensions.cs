@@ -170,8 +170,6 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetApplicationByUidQueryHandler>();
         services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
 
-        services.AddTransient<GetNotificationsQueryHandler>();
-
         services.AddTransient<SaveApplicationCommandHandler>();
         services.AddTransient<RemoveSavedApplicationCommandHandler>();
         services.AddTransient<GetSavedApplicationsQueryHandler>();
