@@ -174,6 +174,10 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<RemoveSavedApplicationCommandHandler>();
         services.AddTransient<GetSavedApplicationsQueryHandler>();
 
+        services.AddTransient<GetNotificationStateQueryHandler>();
+        services.AddTransient<MarkAllNotificationsReadCommandHandler>();
+        services.AddTransient<AdvanceNotificationStateCommandHandler>();
+
         services.AddTransient<GetDemoAccountQueryHandler>();
 
         services.AddTransient<GrantSubscriptionCommandHandler>();
