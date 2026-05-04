@@ -13,6 +13,7 @@ function summaryForUid(uid: string, overrides?: Partial<PlanningApplicationSumma
     areaName: 'Cambridge City Council',
     startDate: '2026-01-15',
     url: 'https://planit.org.uk/planapplic/' + uid,
+    latestUnreadEvent: null,
     ...overrides,
   };
 }

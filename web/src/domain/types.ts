@@ -58,6 +58,30 @@ export function isApplicationStatus(value: unknown): value is ApplicationStatus 
   return typeof value === "string" && APPLICATION_STATUSES.includes(value);
 }
 
+/**
+ * Wire-format tag distinguishing the lifecycle event a notification was raised
+ * for. Mirrors the `.NET` `NotificationEventType` enum which serialises as a
+ * string via `UseStringEnumConverter`.
+ *
+ * - `NewApplication` — a new planning application appeared in PlanIt.
+ * - `DecisionUpdate` — a previously-tracked application transitioned to a
+ *   decision state (Permitted, Conditions, Rejected, Appealed).
+ */
+export type NotificationEventType = "NewApplication" | "DecisionUpdate";
+
+const NOTIFICATION_EVENT_TYPES: readonly string[] = [
+  "NewApplication",
+  "DecisionUpdate",
+];
+
+export function isNotificationEventType(
+  value: unknown,
+): value is NotificationEventType {
+  return (
+    typeof value === "string" && NOTIFICATION_EVENT_TYPES.includes(value)
+  );
+}
+
 export type SubscriptionTier = "Free" | "Personal" | "Pro";
 
 const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Personal", "Pro"];
@@ -160,6 +184,30 @@ export interface PlanningApplication {
   readonly url: string | null;
   readonly link: string | null;
   readonly lastDifferent: string;
+  /**
+   * Populated only by the per-zone applications endpoint — `null` for
+   * applications fetched by uid or via paths that do not surface the
+   * watermark-aware row data.
+   */
+  readonly latestUnreadEvent: LatestUnreadEvent | null;
+}
+
+/**
+ * Per-row unread-notification descriptor surfaced by
+ * `GET /v1/me/watch-zones/{zoneId}/applications`. `null` when no notification
+ * exists strictly after the user's `lastReadAt` watermark for this row, or the
+ * user has no watermark document yet (first-touch path; clients seed via
+ * `GET /v1/me/notification-state`).
+ *
+ * Drives the saturated/muted styling of the application card status pill —
+ * see spec `docs/specs/notifications-unread-watermark.md#api-augment-applications`.
+ */
+export interface LatestUnreadEvent {
+  readonly type: NotificationEventType;
+  /** Raw PlanIt decision string for `DecisionUpdate` events; `null` otherwise. */
+  readonly decision: string | null;
+  /** ISO-8601 instant the notification was raised. */
+  readonly createdAt: string;
 }
 
 export interface PlanningApplicationSummary {
@@ -173,6 +221,28 @@ export interface PlanningApplicationSummary {
   readonly areaName: string;
   readonly startDate: string | null;
   readonly url: string | null;
+  /**
+   * The latest notification raised for this application that is strictly
+   * newer than the user's read-state watermark. `null` for already-read rows
+   * and first-touch users (no watermark yet).
+   */
+  readonly latestUnreadEvent: LatestUnreadEvent | null;
+}
+
+/**
+ * Snapshot of the caller's notification read-state watermark, returned by
+ * `GET /v1/me/notification-state`. A notification is "unread" iff its
+ * `createdAt` is strictly after `lastReadAt`. The server returns
+ * `totalUnreadCount` precomputed so the client can drive the Unread chip
+ * without rescanning the notification list locally. `version` bumps on every
+ * successful mark-all-read or advance — useful for detecting out-of-band
+ * mutations across devices.
+ */
+export interface NotificationStateSnapshot {
+  /** ISO-8601 instant; notifications strictly newer than this are unread. */
+  readonly lastReadAt: string;
+  readonly version: number;
+  readonly totalUnreadCount: number;
 }
 
 // ---------------------------------------------------------------------------

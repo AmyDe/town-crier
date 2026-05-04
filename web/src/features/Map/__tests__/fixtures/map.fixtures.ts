@@ -45,6 +45,7 @@ export function anApplication(overrides?: Partial<PlanningApplication>): Plannin
     url: null,
     link: null,
     lastDifferent: '2026-01-10',
+    latestUnreadEvent: null,
     ...overrides,
   };
 }
@@ -69,6 +70,7 @@ export function aSecondApplication(overrides?: Partial<PlanningApplication>): Pl
     url: null,
     link: null,
     lastDifferent: '2026-02-15',
+    latestUnreadEvent: null,
     ...overrides,
   };
 }
@@ -88,6 +90,7 @@ export function aSavedApplication(overrides?: Partial<SavedApplication>): SavedA
       areaName: 'Cambridge City Council',
       startDate: '2026-01-15',
       url: null,
+      latestUnreadEvent: null,
     },
     ...overrides,
   };
