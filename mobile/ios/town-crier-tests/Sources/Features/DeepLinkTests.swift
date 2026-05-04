@@ -64,15 +64,29 @@ struct DeepLinkTests {
 
 @Suite("NotificationPayloadParser")
 struct NotificationPayloadParserTests {
-  @Test func parseDeepLink_withApplicationId_returnsApplicationDetailLink() {
-    let userInfo: [AnyHashable: Any] = ["applicationId": "APP-001"]
+  // The API contract (api/src/town-crier.infrastructure/Notifications/ApnsAlertPayload.cs)
+  // sends `applicationRef` — see docs/specs/apns-push-sender.md. The parser must read
+  // the same key. Reading the wrong key returned nil for every push, taking the
+  // delegate's early-return path and triggering the actor-hop crash (tc-fcwv).
+  @Test func parseDeepLink_withApplicationRef_returnsApplicationDetailLink() {
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-001"]
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
 
     #expect(result == .applicationDetail(PlanningApplicationId("APP-001")))
   }
 
-  @Test func parseDeepLink_withoutApplicationId_returnsNil() {
+  @Test func parseDeepLink_withLegacyApplicationIdKey_returnsNil() {
+    // Guard against accidental reintroduction of the wrong key. The API never
+    // sends `applicationId`; only `applicationRef` is in the contract.
+    let userInfo: [AnyHashable: Any] = ["applicationId": "APP-001"]
+
+    let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseDeepLink_withoutApplicationRef_returnsNil() {
     let userInfo: [AnyHashable: Any] = ["unrelated": "data"]
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
@@ -81,7 +95,27 @@ struct NotificationPayloadParserTests {
   }
 
   @Test func parseDeepLink_withEmptyPayload_returnsNil() {
+    // Digest pushes contain no applicationRef — this is the no-deep-link
+    // early-return path that previously crashed when the delegate failed to
+    // hop back to MainActor (tc-fcwv). Production code now wraps the
+    // delegate body in `await MainActor.run { ... }` so this nil path is safe.
     let userInfo: [AnyHashable: Any] = [:]
+
+    let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseDeepLink_withDigestPayloadShape_returnsNil() {
+    // Real digest payload shape per docs/specs/apns-push-sender.md — no
+    // applicationRef, just aps + badge. Must return nil, not crash.
+    let userInfo: [AnyHashable: Any] = [
+      "aps": [
+        "alert": ["title": "Town Crier", "body": "5 new applications this week"],
+        "sound": "default",
+        "badge": 5,
+      ]
+    ]
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
 

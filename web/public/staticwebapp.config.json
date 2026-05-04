@@ -19,9 +19,7 @@
     },
     {
       "route": "/.well-known/apple-app-site-association",
-      "headers": {
-        "Content-Type": "application/json"
-      }
+      "rewrite": "/.well-known/aasa.json"
     }
   ]
 }
