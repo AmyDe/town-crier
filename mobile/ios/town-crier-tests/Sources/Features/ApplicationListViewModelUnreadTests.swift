@@ -238,62 +238,9 @@ struct ApplicationListViewModelUnreadTests {
     #expect(labels == labels.sorted())
   }
 
-  // MARK: - Distance sort (tc-mso6)
-
-  @Test("ApplicationsSort.distance has stable raw value mirroring web sibling")
-  func sort_distance_rawValueMatchesWeb() {
-    #expect(ApplicationsSort.distance.rawValue == "distance")
-  }
-
-  @Test("ApplicationsSort.distance has a user-facing label")
-  func sort_distance_displayLabel() {
-    #expect(ApplicationsSort.distance.displayLabel == "Distance")
-  }
-
-  @Test("distance sort orders by haversine distance from active zone centre, ascending")
-  func sort_distance_ordersByHaversineFromZoneCentre() async throws {
-    // Cambridge centre: 52.2053, 0.1218.
-    // permitted    location 52.2053, 0.1218 — exactly at centre (~0m)
-    // pendingReview location 52.2043, 0.1243 — close
-    // rejected     location 52.2010, 0.1300 — further
-    // (See PlanningApplication+Fixtures for source-of-truth coords.)
-    let (sut, _, _, _) = try makeSUT(
-      applications: [.rejected, .pendingReview, .permitted]
-    )
-
-    await sut.loadApplications()
-    sut.sort = .distance
-
-    #expect(
-      sut.filteredApplications.map(\.id) == [
-        PlanningApplication.permitted.id,
-        PlanningApplication.pendingReview.id,
-        PlanningApplication.rejected.id,
-      ]
-    )
-  }
-
-  @Test("distance sort places apps without a location last")
-  func sort_distance_appsWithoutLocationLast() async throws {
-    let withoutLocation = PlanningApplication(
-      id: PlanningApplicationId("APP-NO-LOC"),
-      reference: ApplicationReference("2026/9999"),
-      authority: .cambridge,
-      status: .undecided,
-      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
-      description: "Application missing coordinates",
-      address: "Unknown",
-      location: nil
-    )
-    let (sut, _, _, _) = try makeSUT(
-      applications: [withoutLocation, .permitted, .pendingReview]
-    )
-
-    await sut.loadApplications()
-    sut.sort = .distance
-
-    #expect(sut.filteredApplications.last?.id == withoutLocation.id)
-  }
+  // Distance-sort tests live in `ApplicationListViewModelDistanceSortTests`
+  // (tc-mso6) — split out to keep this file under SwiftLint's 400-line
+  // ceiling.
 
   // MARK: - Mark all read
 
