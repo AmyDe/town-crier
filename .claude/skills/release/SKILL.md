@@ -111,6 +111,46 @@ After creation, report the release URL to the user.
 
 If there are any open beads that were completed by the released commits, offer to close them. Then run `bd dolt push` to sync beads state.
 
+### Step 7: Close resolved GitHub issues
+
+Sweep open GitHub issues whose linked beads are all closed, and close them with a pointer to the release. The `bead-created` label (added by the `triage-inbox` skill) marks issues that have been converted into beads; the linkage lives in a triage comment of the form `Triaged → bead **tc-xxxx**` (and optionally `, child tasks: tc-aaaa, tc-bbbb`).
+
+```bash
+gh issue list --state=open --label=bead-created --limit=200 --json=number,title,url
+```
+
+If empty, skip the step.
+
+For each issue:
+
+1. **Extract linked bead IDs** from the comment trail:
+   ```bash
+   gh issue view <number> --json comments --jq '[.comments[].body] | join(" ")' \
+     | grep -oE 'tc-[a-z0-9]+' | sort -u
+   ```
+2. **Skip if no bead IDs are found.** Don't close issues whose linkage can't be confirmed — surface them for manual review instead.
+3. **Check each bead's status:**
+   ```bash
+   bd show <bead-id> --json | jq -r '.[0].status'
+   ```
+   Treat a missing bead (no JSON returned) as still-open and skip the issue — a deleted bead shouldn't auto-close an issue.
+4. **If every linked bead is `closed`**, close the GitHub issue:
+   ```bash
+   gh issue close <number> --comment "All linked beads are closed; shipped in [<version>](<release-url>)."
+   ```
+   If at least one linked bead is still `open` or `in_progress`, leave the issue alone.
+
+Report a one-line tally:
+```
+Closed 3 GH issue(s) whose beads all shipped: #358, #360, #362
+```
+or
+```
+No GH issues ready to close.
+```
+
+This step is best-effort — failures here must not roll back the release. Log and continue.
+
 ## Edge cases
 
 - **No commits since last tag**: Tell the user there's nothing to release and stop.

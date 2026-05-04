@@ -4,6 +4,7 @@ import type { WatchZoneRepository } from '../../domain/ports/watch-zone-reposito
 import { useZonePreferences } from './useZonePreferences';
 import { useZoneEdit } from './useZoneEdit';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
+import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { Toggle } from '../../components/Toggle/Toggle';
 import styles from './WatchZoneEditPage.module.css';
 
@@ -85,6 +86,8 @@ export function WatchZoneEditPage({ repository, zone, tier = 'Free' }: Props) {
           selectedMetres={zoneEdit.radiusMetres}
           onSelect={zoneEdit.setRadiusMetres}
         />
+
+        <LargeRadiusWarning radiusMetres={zoneEdit.radiusMetres} />
 
         {showZoneNotificationToggles && (
           <div className={styles.zoneNotifications}>

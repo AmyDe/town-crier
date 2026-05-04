@@ -66,6 +66,13 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     tier != .free
   }
 
+  /// Whether to surface the "this zone may produce lots of notifications" callout
+  /// (tc-1zb7). Triggered at or above 2 km, the upper edge of the recommended
+  /// "small zone" range — see `LargeRadiusWarningView`.
+  public var showsLargeRadiusWarning: Bool {
+    selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
+  }
+
   public func submitPostcode() async {
     isLoading = true
     error = nil

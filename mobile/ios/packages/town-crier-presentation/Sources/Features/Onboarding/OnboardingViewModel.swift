@@ -92,6 +92,13 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     isLoading = false
   }
 
+  /// Whether to surface the "this zone may produce lots of notifications" callout
+  /// (tc-1zb7). Triggered at or above 2 km, the upper edge of the recommended
+  /// "small zone" range — see `LargeRadiusWarningView`.
+  public var showsLargeRadiusWarning: Bool {
+    selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
+  }
+
   public func confirmRadius() {
     guard let coordinate = geocodedCoordinate, let postcode = validatedPostcode else { return }
     do {

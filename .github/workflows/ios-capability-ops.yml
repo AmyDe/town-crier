@@ -1,0 +1,97 @@
+# Manual ops workflow for one-shot iOS signing/capability changes that should
+# NOT run on every release. Two lanes are exposed via workflow_dispatch:
+#
+#   - enable_associated_domains: idempotently enables the Associated Domains
+#     capability on the App ID `uk.towncrierapp.mobile` via Spaceship/App
+#     Store Connect API. Run once after entitlement changes that add a new
+#     capability.
+#
+#   - regenerate_appstore_profile: forces fastlane match to recreate the
+#     AppStore provisioning profile and write it back to the certs repo
+#     (AmyDe/town-crier-ios-certs). The CD beta lane's `readonly: true`
+#     match call will then serve the new profile on the next run.
+#
+# Typical usage after adding a new entitlement (e.g. Associated Domains for
+# Universal Links): run `enable_associated_domains` once, then
+# `regenerate_appstore_profile`, then re-run the CD iOS TestFlight workflow.
+#
+# Bead: tc-8dbp (parent: tc-1ums). Lanes defined in mobile/ios/fastlane/Fastfile.
+#
+# Requires repo-level secrets (same set as cd-ios-testflight.yml — no new
+# secrets are introduced):
+#   APP_STORE_CONNECT_API_KEY_ID       — App Store Connect API key ID
+#   APP_STORE_CONNECT_ISSUER_ID        — App Store Connect issuer ID
+#   APP_STORE_CONNECT_API_KEY_CONTENT  — base64-encoded .p8 file contents
+#   MATCH_PASSWORD                     — fastlane match decryption password
+#   MATCH_GIT_DEPLOY_KEY               — SSH private key with write access to
+#                                        AmyDe/town-crier-ios-certs
+#   APPLE_TEAM_ID                      — 10-character Apple Developer team ID
+
+name: iOS Capability Ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        type: choice
+        options:
+          - enable_associated_domains
+          - regenerate_appstore_profile
+
+concurrency:
+  # Serialise both lanes against each other — they both touch Apple Developer
+  # Portal / certs-repo state and must not race.
+  group: ios-capability-ops
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-lane:
+    name: Run fastlane ${{ inputs.lane }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode (latest stable — needs Swift 6.1+ for our Package.swift)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Ruby + bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: mobile/ios
+
+      - name: Setup SSH key for fastlane match
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MATCH_GIT_DEPLOY_KEY }}
+
+      - name: Decode App Store Connect API key
+        env:
+          P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          set -euo pipefail
+          mkdir -p mobile/ios/fastlane/certs
+          printf '%s' "$P8_BASE64" | base64 --decode > mobile/ios/fastlane/certs/AuthKey.p8
+          chmod 600 mobile/ios/fastlane/certs/AuthKey.p8
+
+      - name: Run fastlane ${{ inputs.lane }}
+        working-directory: mobile/ios
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_PATH: fastlane/certs/AuthKey.p8
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          FASTLANE_DISABLE_COLORS: "1"
+          CI: "true"
+        run: bundle exec fastlane ${{ inputs.lane }}

@@ -116,6 +116,11 @@ public struct WatchZoneEditorView: View {
         }
         .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
+
+        if viewModel.showsLargeRadiusWarning {
+          LargeRadiusWarningView()
+            .padding(.top, TCSpacing.small)
+        }
       }
     }
   }
