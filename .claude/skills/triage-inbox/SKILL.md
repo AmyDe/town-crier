@@ -88,14 +88,13 @@ Bead description is **two lines max**: a one-line restatement so workers don't n
 
 ### Decompose (epic + tasks)
 
-Follow the plan-to-beads pattern but skip the user-confirmation step (this is autonomous):
+The GitHub issue body **is** the spec. Never write a `docs/specs/*.md` file. Follow the plan-to-beads pattern, skipping the user-confirmation step (this is autonomous):
 
-1. Write spec to `docs/specs/<slug>.md` from the issue body
-2. `bd create --type=epic --title=… --priority=…`
-3. `bd create --type=task --parent=<epic-id> --description="Spec: docs/specs/<slug>.md#<section>. GH: <url>" …` for each task
-4. Wire dependencies with `bd dep add`
+1. `bd create --type=epic --title=… --priority=… --description="GH: <issue url>"`
+2. `bd create --type=task --parent=<epic-id> --description="GH: <issue url>#<section-anchor>" …` for each task — use markdown heading anchors from the issue body to scope each task.
+3. Wire dependencies with `bd dep add`.
 
-Commit the new spec file with message `docs: spec for #<issue-number> <title>`.
+If the issue body lacks the structure to decompose against, comment on the GH issue asking the user to expand it (or fall back to a single bead) — do NOT invent a spec file to bridge the gap.
 
 ## Phase 7: Mark the GH issue processed
 

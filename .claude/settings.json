@@ -2,8 +2,7 @@
   "enabledPlugins": {
     "beads@beads-marketplace": true,
     "code-review@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true
+    "skill-creator@claude-plugins-official": true
   },
   "hooks": {
     "PostToolUse": [
@@ -46,7 +45,7 @@
       {
         "hooks": [
           {
-            "command": "echo '{\"decision\":\"block\",\"reason\":\"This project uses beads (bd) for ALL task tracking — TodoWrite/TaskCreate are blocked. Mapping:\\n  TodoWrite create task    → bd create --title=\\\"...\\\" --description=\\\"...\\\" --type=task --priority=2\\n  TodoWrite in_progress    → bd update \u003cid\u003e --status=in_progress  (or --claim)\\n  TodoWrite completed      → bd close \u003cid\u003e\\n  TodoRead / list tasks    → bd list --status=open\\nFor superpowers workflows: run plan-to-beads after writing-plans to create the bead ledger, then use bd commands above instead of TodoWrite throughout execution. See CLAUDE.md Superpowers Workflow Integration section.\"}'",
+            "command": "echo '{\"decision\":\"block\",\"reason\":\"This project uses beads (bd) for ALL task tracking — TodoWrite/TaskCreate are blocked. Mapping:\\n  TodoWrite create task    → bd create --title=\\\"...\\\" --description=\\\"...\\\" --type=task --priority=2\\n  TodoWrite in_progress    → bd update \u003cid\u003e --status=in_progress  (or --claim)\\n  TodoWrite completed      → bd close \u003cid\u003e\\n  TodoRead / list tasks    → bd list --status=open\"}'",
             "timeout": 5,
             "type": "command"
           }

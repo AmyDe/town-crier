@@ -55,9 +55,9 @@ Read the ADRs if the request touches a core architectural pattern:
 ls docs/adr/ && grep -l "<relevant term>" docs/adr/*.md
 ```
 
-Read relevant spec files if they exist:
+Search prior GitHub issues for context on related work:
 ```bash
-ls docs/specs/ 2>/dev/null && grep -l "<relevant term>" docs/specs/*.md 2>/dev/null
+gh issue list --search "<relevant term> in:title,body" --state=all --limit=10
 ```
 
 For API work — find the handler, command/query, repository, and domain model:

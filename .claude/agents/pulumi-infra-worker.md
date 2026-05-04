@@ -15,7 +15,7 @@ You implement Azure infrastructure using Pulumi with C# in an isolated worktree.
 2. `/beads:update <bead-id> --status=in_progress`
 3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
 4. Review existing infrastructure: read `infra/Program.cs` and any `Pulumi*.yaml` files
-5. If the bead references a spec file, read it for full context
+5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
 
