@@ -45,6 +45,23 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
+    public Task<Notification?> GetLatestUnreadByApplicationAsync(
+        string userId,
+        string applicationUid,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct)
+    {
+        // Strictly greater than the watermark; pick the most-recent CreatedAt so
+        // the row's status pill reflects the latest event for this application.
+        var latest = this.store
+            .Where(n => n.UserId == userId
+                && n.ApplicationUid == applicationUid
+                && n.CreatedAt > lastReadAt)
+            .OrderByDescending(n => n.CreatedAt)
+            .FirstOrDefault();
+        return Task.FromResult(latest);
+    }
+
     public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {

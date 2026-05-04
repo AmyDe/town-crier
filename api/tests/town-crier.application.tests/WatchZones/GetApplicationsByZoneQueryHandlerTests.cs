@@ -108,7 +108,7 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
         // row's latestUnreadEvent.
         var watermark = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
 
-        var (handler, notificationRepo, stateRepo) = CreateBuilt();
+        var (_, notificationRepo, stateRepo) = CreateBuilt();
         SeedZone(stateRepo, watermark);
 
         var nearby = new PlanningApplicationBuilder()
@@ -233,6 +233,7 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.Count).IsEqualTo(1);
         await Assert.That(result[0].LatestUnreadEvent).IsNull();
+
         // And state must NOT have been seeded on the read-only path.
         await Assert.That(stateRepo.All).IsEmpty();
     }

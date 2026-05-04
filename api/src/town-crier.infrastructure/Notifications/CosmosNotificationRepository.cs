@@ -62,6 +62,34 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task<Notification?> GetLatestUnreadByApplicationAsync(
+        string userId,
+        string applicationUid,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct)
+    {
+        // TOP 1 by createdAt DESC, strictly after the watermark — the most-recent
+        // unread event for (userId, applicationUid). Container is partitioned by
+        // userId so this stays single-partition.
+        const string sql = "SELECT TOP 1 * FROM c "
+            + "WHERE c.userId = @userId AND c.applicationUid = @appUid AND c.createdAt > @lastReadAt "
+            + "ORDER BY c.createdAt DESC";
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            sql,
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@appUid", applicationUid),
+                new QueryParameter("@lastReadAt", lastReadAt),
+            ],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
+    }
+
     public async Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {
