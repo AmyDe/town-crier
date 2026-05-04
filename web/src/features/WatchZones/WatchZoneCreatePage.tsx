@@ -4,6 +4,7 @@ import type { GeocodingPort } from '../../domain/ports/geocoding-port';
 import { useCreateWatchZone } from './useCreateWatchZone';
 import { PostcodeInput } from '../../components/PostcodeInput/PostcodeInput';
 import { RadiusPicker } from '../../components/RadiusPicker/RadiusPicker';
+import { LargeRadiusWarning } from '../../components/LargeRadiusWarning/LargeRadiusWarning';
 import { ConfirmMap } from '../../components/ConfirmMap/ConfirmMap';
 import styles from './WatchZoneCreatePage.module.css';
 
@@ -64,6 +65,8 @@ export function WatchZoneCreatePage({ repository, geocodingPort, navigate }: Pro
           </div>
 
           <RadiusPicker selectedMetres={radiusMetres} onSelect={setRadiusMetres} />
+
+          <LargeRadiusWarning radiusMetres={radiusMetres} />
 
           {error && (
             <p className={styles.error} role="alert">
