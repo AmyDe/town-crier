@@ -234,6 +234,59 @@ describe('WatchZoneEditPage', () => {
     expect(saveButton).toBeInTheDocument();
   });
 
+  describe('large-radius warning', () => {
+    it('shows the warning copy when the zone radius is at or above 2km', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 2000 })} />,
+      );
+
+      expect(
+        screen.getByText(/hundreds of notifications a day/i),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/100[–-]500m/i)).toBeInTheDocument();
+      expect(screen.getByText(/under 2km/i)).toBeInTheDocument();
+    });
+
+    it('hides the warning when the zone radius is below 2km', () => {
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 1000 })} />,
+      );
+
+      expect(
+        screen.queryByText(/hundreds of notifications a day/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('appears when the user picks a large radius and disappears when they pick a small one', async () => {
+      const user = userEvent.setup();
+      spy.getPreferencesResult = zonePreferences();
+
+      renderWithRouter(
+        <WatchZoneEditPage repository={spy} zone={aWatchZone({ radiusMetres: 1000 })} />,
+      );
+
+      expect(
+        screen.queryByText(/hundreds of notifications a day/i),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('radio', { name: '5 km' }));
+
+      expect(
+        screen.getByText(/hundreds of notifications a day/i),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('radio', { name: '1 km' }));
+
+      expect(
+        screen.queryByText(/hundreds of notifications a day/i),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('per-zone notification toggles', () => {
     it('renders push and instant-email toggles for Pro tier reflecting zone state', async () => {
       spy.getPreferencesResult = zonePreferences();
