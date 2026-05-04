@@ -71,23 +71,6 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         return Task.FromResult<IReadOnlyList<Notification>>(notifications);
     }
 
-    public Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
-        string userId, int page, int pageSize, CancellationToken ct)
-    {
-        var userNotifications = this.store
-            .Where(n => n.UserId == userId)
-            .OrderByDescending(n => n.CreatedAt)
-            .ToList();
-
-        var total = userNotifications.Count;
-        var items = userNotifications
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        return Task.FromResult<(IReadOnlyList<Notification> Items, int Total)>((items, total));
-    }
-
     public Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct)
     {
         var notifications = this.store

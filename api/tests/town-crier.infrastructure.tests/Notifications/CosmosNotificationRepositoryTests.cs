@@ -54,21 +54,4 @@ public sealed class CosmosNotificationRepositoryTests
         // Assert
         await Assert.That(result).IsGreaterThanOrEqualTo(1);
     }
-
-    [Test]
-    public async Task Should_ReturnPaginatedResults_When_GetByUserPaginatedCalled()
-    {
-        // Arrange
-        var client = new FakeCosmosRestClient();
-        var repo = new CosmosNotificationRepository(client);
-        var notification = new NotificationBuilder().Build();
-        await repo.SaveAsync(notification, CancellationToken.None);
-
-        // Act
-        var (items, total) = await repo.GetByUserPaginatedAsync("user-1", 1, 10, CancellationToken.None);
-
-        // Assert
-        await Assert.That(total).IsGreaterThanOrEqualTo(1);
-        await Assert.That(items.Count).IsGreaterThanOrEqualTo(1);
-    }
 }

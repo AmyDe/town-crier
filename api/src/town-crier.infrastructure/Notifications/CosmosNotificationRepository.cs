@@ -104,43 +104,6 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
-        string userId, int page, int pageSize, CancellationToken ct)
-    {
-        // Count total notifications for this user
-        var total = await this.client.ScalarQueryAsync(
-            CosmosContainerNames.Notifications,
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId",
-            [new QueryParameter("@userId", userId)],
-            userId,
-            CosmosJsonSerializerContext.Default.Int32,
-            ct).ConfigureAwait(false);
-
-        if (total == 0)
-        {
-            return (Array.Empty<Notification>(), 0);
-        }
-
-        // Fetch page -- reverse-chronological by _ts
-        var offset = (page - 1) * pageSize;
-
-        var documents = await this.client.QueryAsync(
-            CosmosContainerNames.Notifications,
-            "SELECT * FROM c WHERE c.userId = @userId ORDER BY c._ts DESC OFFSET @offset LIMIT @limit",
-            [
-                new QueryParameter("@userId", userId),
-                new QueryParameter("@offset", offset),
-                new QueryParameter("@limit", pageSize),
-            ],
-            userId,
-            CosmosJsonSerializerContext.Default.NotificationDocument,
-            ct).ConfigureAwait(false);
-
-        var items = documents.ConvertAll(doc => doc.ToDomain());
-
-        return (items, total);
-    }
-
     public async Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(
         string userId, CancellationToken ct)
     {
