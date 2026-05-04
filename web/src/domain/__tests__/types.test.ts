@@ -3,11 +3,14 @@ import {
   type ApplicationUid,
   type WatchZoneId,
   type AuthorityId,
+  type LatestUnreadEvent,
+  type NotificationStateSnapshot,
   asApplicationUid,
   asWatchZoneId,
   asAuthorityId,
   isApplicationStatus,
   isSubscriptionTier,
+  isNotificationEventType,
 } from "../types";
 import * as types from "../types";
 
@@ -65,6 +68,42 @@ describe("type guards", () => {
     });
   });
 
+});
+
+describe("notification-state types", () => {
+  it("isNotificationEventType returns true for the wire-format names", () => {
+    expect(isNotificationEventType("NewApplication")).toBe(true);
+    expect(isNotificationEventType("DecisionUpdate")).toBe(true);
+  });
+
+  it("isNotificationEventType returns false for unknown values", () => {
+    expect(isNotificationEventType("Other")).toBe(false);
+    expect(isNotificationEventType("")).toBe(false);
+    expect(isNotificationEventType(0)).toBe(false);
+    expect(isNotificationEventType(null)).toBe(false);
+  });
+
+  it("LatestUnreadEvent surfaces type, decision and createdAt", () => {
+    const event: LatestUnreadEvent = {
+      type: "DecisionUpdate",
+      decision: "Permitted",
+      createdAt: "2026-05-04T12:00:00Z",
+    };
+    expect(event.type).toBe("DecisionUpdate");
+    expect(event.decision).toBe("Permitted");
+    expect(event.createdAt).toBe("2026-05-04T12:00:00Z");
+  });
+
+  it("NotificationStateSnapshot surfaces lastReadAt, version and totalUnreadCount", () => {
+    const state: NotificationStateSnapshot = {
+      lastReadAt: "2026-05-04T12:00:00Z",
+      version: 3,
+      totalUnreadCount: 7,
+    };
+    expect(state.lastReadAt).toBe("2026-05-04T12:00:00Z");
+    expect(state.version).toBe(3);
+    expect(state.totalUnreadCount).toBe(7);
+  });
 });
 
 describe("Groups removal", () => {
