@@ -46,28 +46,27 @@ struct NotificationDelegateActorHopTests {
     #expect(returnedDeepLink != nil)
   }
 
-  /// Surrogate for the production delegate body. Has the exact same shape:
-  /// `nonisolated` outer function, `await MainActor.run { ... }` wraps the
-  /// body, parser runs inside the wrap, returns whether the exit ran on main.
-  /// Takes a pre-built sendable `applicationRef` to avoid `[AnyHashable: Any]`
-  /// sendability noise — the userInfo dict itself is constructed inside the
-  /// MainActor closure, mirroring how the real delegate hands `userInfo` off.
+  /// Surrogate for the production delegate body. Mirrors the exact shape of
+  /// `NotificationDelegate.userNotificationCenter(_:didReceive:)`:
+  /// 1. `nonisolated async` outer function (same as the protocol callback).
+  /// 2. Parse the non-Sendable `userInfo` dict on the calling actor.
+  /// 3. Hop to MainActor with only a Sendable `DeepLink?` payload.
+  /// 4. Return on MainActor regardless of whether a deep link was parsed.
   ///
-  /// The shape of this surrogate is load-bearing: any change that drops the
-  /// `await MainActor.run` (e.g. a refactor that "simplifies" by relying on
-  /// AppCoordinator's `@MainActor` to hop implicitly) breaks the contract
-  /// the production delegate now depends on. The two Test cases above
-  /// would catch a regression of `didExitOnMain` flipping to `false`.
+  /// The shape is load-bearing: dropping `await MainActor.run` (e.g. a
+  /// refactor that relies on `AppCoordinator`'s `@MainActor` to hop
+  /// implicitly only on the routed path) reintroduces the early-return
+  /// crash that this test guards against.
   private nonisolated func simulateDelegateBody(
     applicationRef: String?
   ) async -> (didExitOnMain: Bool, deepLink: DeepLink?) {
-    await MainActor.run {
-      var userInfo: [AnyHashable: Any] = [:]
-      if let applicationRef {
-        userInfo["applicationRef"] = applicationRef
-      }
-      let deepLink = NotificationPayloadParser.parseDeepLink(from: userInfo)
-      return (Thread.isMainThread, deepLink)
+    var userInfo: [AnyHashable: Any] = [:]
+    if let applicationRef {
+      userInfo["applicationRef"] = applicationRef
+    }
+    let deepLink = NotificationPayloadParser.parseDeepLink(from: userInfo)
+    return await MainActor.run {
+      (Thread.isMainThread, deepLink)
     }
   }
 }
