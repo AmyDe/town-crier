@@ -35,6 +35,16 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
+    public Task<int> GetUnreadCountAsync(string userId, DateTimeOffset lastReadAt, CancellationToken ct)
+    {
+        // Watermark semantics: a notification is unread iff its CreatedAt is
+        // strictly greater than lastReadAt. The boundary instant itself is read.
+        var count = this.store.Count(n =>
+            n.UserId == userId &&
+            n.CreatedAt > lastReadAt);
+        return Task.FromResult(count);
+    }
+
     public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {

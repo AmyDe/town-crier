@@ -47,6 +47,21 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task<int> GetUnreadCountAsync(
+        string userId, DateTimeOffset lastReadAt, CancellationToken ct)
+    {
+        // Strictly-greater-than: a notification created at exactly lastReadAt is
+        // considered read (the watermark is the cutoff itself). Mirrors the
+        // FakeNotificationRepository implementation and the spec's read model.
+        return await this.client.ScalarQueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt > @lastReadAt",
+            [new QueryParameter("@userId", userId), new QueryParameter("@lastReadAt", lastReadAt)],
+            userId,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {
