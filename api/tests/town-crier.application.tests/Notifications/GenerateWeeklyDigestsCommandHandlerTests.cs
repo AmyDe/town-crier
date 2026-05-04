@@ -5,6 +5,7 @@ using TownCrier.Application.Tests.NotificationState;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
+using TownCrier.Domain.NotificationState;
 using TownCrier.Domain.Notifications;
 using TownCrier.Domain.UserProfiles;
 using FakeTimeProvider = TownCrier.Application.Tests.DeviceRegistrations.FakeTimeProvider;
@@ -21,7 +22,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     {
         // Arrange
         var timeProvider = new FakeTimeProvider(MondayMarch2026);
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) =
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) =
             CreateHandler(timeProvider);
 
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
@@ -37,10 +38,52 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_PassUnreadCountFromWatermark_When_DigestSent()
+    {
+        // Arrange — three notifications strictly after the user's lastReadAt
+        // and one at-or-before; only the strictly-later ones drive the badge.
+        // Distinct from the digest body's applicationCount, which counts the
+        // 7-day window of notifications regardless of read state.
+        var timeProvider = new FakeTimeProvider(MondayMarch2026);
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, stateRepo) =
+            CreateHandler(timeProvider);
+
+        await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
+
+        var lastReadAt = MondayMarch2026.AddDays(-3);
+        stateRepo.Seed(NotificationStateAggregate.Reconstitute("user-1", lastReadAt, version: 1));
+
+        // One notification AT the watermark — read by the > comparison. Sits
+        // inside the 7-day digest window so it counts in the body copy.
+        notificationRepo.Seed(Notification.Create(
+            userId: "user-1",
+            applicationUid: "uid-at-watermark",
+            applicationName: "app-at-watermark",
+            watchZoneId: "zone-1",
+            applicationAddress: "0 Test Street",
+            applicationDescription: "At watermark",
+            applicationType: "Full",
+            authorityId: 1,
+            now: lastReadAt));
+
+        // Three after the watermark and within the 7-day digest window.
+        SeedNotifications(notificationRepo, "user-1", count: 3, createdAt: MondayMarch2026.AddDays(-2));
+
+        // Act
+        await handler.HandleAsync(new GenerateWeeklyDigestsCommand(), CancellationToken.None);
+
+        // Assert — applicationCount is the digest window (4 total in last 7 days);
+        // totalUnreadCount is only the 3 strictly after lastReadAt.
+        await Assert.That(pushSender.DigestsSent).HasCount().EqualTo(1);
+        await Assert.That(pushSender.DigestsSent[0].ApplicationCount).IsEqualTo(4);
+        await Assert.That(pushSender.DigestsSent[0].TotalUnreadCount).IsEqualTo(3);
+    }
+
+    [Test]
     public async Task Should_NotSendDigest_When_UserIsFreesTier()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -64,7 +107,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_NotSendDigest_When_ZeroNewApplications()
     {
         // Arrange
-        var (handler, _, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
 
         // No notifications seeded
@@ -80,7 +123,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_OnlySendDigest_When_DigestDayMatchesToday()
     {
         // Arrange — today is Monday, user digest day is Wednesday
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1", digestDay: DayOfWeek.Wednesday);
         SeedNotifications(notificationRepo, "user-1", count: 3, createdAt: MondayMarch2026.AddDays(-2));
 
@@ -95,7 +138,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_NotSendDigest_When_PushDisabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -120,7 +163,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_PruneInvalidTokens_When_DigestSenderReportsRejections()
     {
         // Arrange — Pro user with two devices, one rejected by APNs on digest send.
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -153,7 +196,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_NotPruneAnyTokens_When_DigestSenderReportsNoRejections()
     {
         // Arrange — happy path: digest delivered, InvalidTokens empty.
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
         SeedNotifications(notificationRepo, "user-1", count: 3, createdAt: MondayMarch2026.AddDays(-2));
 
@@ -171,7 +214,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_NotSendDigest_When_NoRegisteredDevices()
     {
         // Arrange — Pro user, no device registered
-        var (handler, notificationRepo, userProfileRepo, pushSender, _, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, _, _, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -192,7 +235,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_ExcludeOldNotifications_When_OlderThanSevenDays()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
 
         // Seed notifications older than 7 days
@@ -209,7 +252,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_SendDigestsToMultipleProUsers_When_EachHasNotifications()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-1");
         await SeedProUserWithDevice(userProfileRepo, deviceRepo, "user-2");
 
@@ -227,7 +270,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     public async Task Should_DefaultDigestDay_When_UsingDefaultPreferences()
     {
         // Arrange — user with default preferences (digest day = Monday), today is Monday
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -249,7 +292,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     [Test]
     public async Task Should_SendDigestEmail_When_FreeUserHasEmailAndNotifications()
     {
-        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -276,7 +319,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     [Test]
     public async Task Should_NotSendDigestEmail_When_EmailDigestDisabled()
     {
-        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -300,7 +343,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     [Test]
     public async Task Should_NotSendDigestEmail_When_NoEmailAddress()
     {
-        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -323,7 +366,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     [Test]
     public async Task Should_SendBothPushAndEmail_When_ProUserHasBothEnabled()
     {
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -351,7 +394,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     [Test]
     public async Task Should_GroupNotificationsByWatchZone_When_SendingDigestEmail()
     {
-        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, watchZoneRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, watchZoneRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -391,7 +434,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
     {
         // Arrange — free-tier user (weekly digest is the only signal) with one
         // zone-matched new app and one bookmark-only decision.
-        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, watchZoneRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, _, emailSender, watchZoneRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -453,7 +496,8 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         SpyPushNotificationSender PushSender,
         FakeDeviceRegistrationRepository DeviceRepo,
         SpyEmailSender EmailSender,
-        FakeWatchZoneRepository WatchZoneRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
+        FakeWatchZoneRepository WatchZoneRepo,
+        FakeNotificationStateRepository NotificationStateRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
     {
         var notificationRepo = new FakeNotificationRepository();
         var notificationStateRepo = new FakeNotificationStateRepository();
@@ -476,7 +520,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
             watchZoneRepo,
             tp);
 
-        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, watchZoneRepo);
+        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, watchZoneRepo, notificationStateRepo);
     }
 
     private static async Task SeedProUserWithDevice(
