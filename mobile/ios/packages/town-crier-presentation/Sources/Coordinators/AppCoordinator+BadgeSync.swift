@@ -43,6 +43,21 @@ extension AppCoordinator {
     }
   }
 
+  /// Single entry point for push-notification taps. Parses the APNs
+  /// `userInfo` payload, routes the resulting deep link (when present), and
+  /// advances the read-state watermark to the notification's `createdAt`
+  /// (when present). Either side of the parse may yield nothing — digest
+  /// pushes carry neither field, older API builds may omit `createdAt` — so
+  /// each branch is independently no-oppable.
+  public func handlePushTap(userInfo: [AnyHashable: Any]) {
+    if let deepLink = NotificationPayloadParser.parseDeepLink(from: userInfo) {
+      handleDeepLink(deepLink)
+    }
+    if let createdAt = NotificationPayloadParser.parseCreatedAt(from: userInfo) {
+      advanceWatermark(asOf: createdAt)
+    }
+  }
+
   /// Test-only synchronisation: await the most recent foreground badge sync.
   public func waitForPendingBadgeSync() async {
     await pendingBadgeSync?.value
