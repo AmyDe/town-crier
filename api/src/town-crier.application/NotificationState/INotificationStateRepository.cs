@@ -25,5 +25,6 @@ public interface INotificationStateRepository
     /// </summary>
     /// <param name="state">The aggregate to persist.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once the persist round-trip resolves.</returns>
     Task SaveAsync(NotificationStateAggregate state, CancellationToken ct);
 }
