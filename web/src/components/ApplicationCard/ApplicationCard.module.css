@@ -35,6 +35,20 @@
   margin: 0;
 }
 
+/*
+ * Read-state knob — when a row is unread, the entire card sits at full
+ * saturation. After the user marks-all-read (or scrolls past it server-side),
+ * the row drops to the muted variant: text recedes and the status pill loses
+ * its colour fill, matching the iOS ApplicationStatusPill.isMuted treatment.
+ */
+.cardUnread {
+  /* Saturated rendering uses the default tokens — no additional rules. */
+}
+
+.cardRead {
+  opacity: 0.7;
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -46,6 +60,17 @@
   line-height: var(--tc-leading-normal);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.statusBadgeRead {
+  /*
+   * Muted treatment: drop the status colour fill and recede to neutral text.
+   * Mirrors `ApplicationStatusPill.isMuted` on iOS so cross-platform users
+   * see the same "this row has been read" affordance.
+   */
+  background: transparent !important;
+  color: var(--tc-text-secondary) !important;
+  border: 1px solid var(--tc-border);
 }
 
 .statusUndecided {

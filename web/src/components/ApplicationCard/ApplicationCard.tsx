@@ -17,16 +17,25 @@ function truncate(text: string | null, maxLength: number): string {
 }
 
 export function ApplicationCard({ application }: Props) {
+  const isUnread = application.latestUnreadEvent !== null;
   const statusClass = statusClassName(application.appState, styles);
 
   return (
     <Link
       to={`/applications/${application.uid}`}
-      className={styles.card}
+      className={`${styles.card} ${isUnread ? styles.cardUnread : styles.cardRead}`}
+      data-testid="application-card"
+      data-unread={isUnread ? 'true' : 'false'}
     >
       <div className={styles.header}>
         <h3 className={styles.reference}>{application.name}</h3>
-        <span className={`${styles.statusBadge} ${statusClass}`}>
+        <span
+          className={`${styles.statusBadge} ${statusClass} ${
+            isUnread ? styles.statusBadgeUnread : styles.statusBadgeRead
+          }`}
+          data-testid="application-status-badge"
+          data-unread={isUnread ? 'true' : 'false'}
+        >
           {statusDisplayLabel(application.appState)}
         </span>
       </div>
