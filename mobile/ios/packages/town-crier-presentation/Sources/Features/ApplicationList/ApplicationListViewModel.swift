@@ -302,6 +302,9 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.sorted { $0.receivedDate < $1.receivedDate }
     case .status:
       return applications.sorted { $0.status.rawValue < $1.status.rawValue }
+    case .distance:
+      // Behaviour added in a follow-up Red-Green cycle (tc-mso6).
+      return applications
     }
   }
 
