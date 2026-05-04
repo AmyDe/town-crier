@@ -62,6 +62,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let url: String?
   let link: String?
   let lastDifferent: String
+  let latestUnreadEvent: LatestUnreadEventDTO?
 
   func toDomain() -> PlanningApplication {
     let status = ApplicationStatus(rawValue: appState ?? "") ?? .unknown
@@ -80,7 +81,8 @@ struct PlanningApplicationDTO: Decodable, Sendable {
       address: address,
       location: location,
       portalUrl: portalUrl,
-      statusHistory: history
+      statusHistory: history,
+      latestUnreadEvent: latestUnreadEvent?.toDomain()
     )
   }
 
@@ -126,5 +128,32 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   private func parseDate(_ dateString: String?) -> Date? {
     guard let dateString else { return nil }
     return Self.dateFormatter.date(from: dateString)
+  }
+}
+
+/// Wire shape for the per-row `latestUnreadEvent` descriptor returned by the
+/// per-zone applications endpoint (tc-1nsa.3). Older API builds may omit the
+/// field entirely; absence and explicit `null` both decode to `nil` on the
+/// domain entity. Spec: `docs/specs/notifications-unread-watermark.md`.
+struct LatestUnreadEventDTO: Decodable, Sendable {
+  let type: String
+  let decision: String?
+  let createdAt: String
+
+  func toDomain() -> LatestUnreadEvent? {
+    // Server may emit either fractional or integer-second precision so
+    // try fractional first and fall back to plain ISO-8601 — both are
+    // legal `DateTimeOffset` outputs from `System.Text.Json` on .NET.
+    let withFractional = ISO8601DateFormatter()
+    withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let parsed = withFractional.date(from: createdAt) {
+      return LatestUnreadEvent(type: type, decision: decision, createdAt: parsed)
+    }
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    guard let parsed = plain.date(from: createdAt) else {
+      return nil
+    }
+    return LatestUnreadEvent(type: type, decision: decision, createdAt: parsed)
   }
 }
