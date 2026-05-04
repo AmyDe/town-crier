@@ -238,6 +238,18 @@ struct ApplicationListViewModelUnreadTests {
     #expect(labels == labels.sorted())
   }
 
+  // MARK: - Distance sort (tc-mso6)
+
+  @Test("ApplicationsSort.distance has stable raw value mirroring web sibling")
+  func sort_distance_rawValueMatchesWeb() {
+    #expect(ApplicationsSort.distance.rawValue == "distance")
+  }
+
+  @Test("ApplicationsSort.distance has a user-facing label")
+  func sort_distance_displayLabel() {
+    #expect(ApplicationsSort.distance.displayLabel == "Distance")
+  }
+
   // MARK: - Mark all read
 
   @Test("markAllRead calls the notification-state repository")
