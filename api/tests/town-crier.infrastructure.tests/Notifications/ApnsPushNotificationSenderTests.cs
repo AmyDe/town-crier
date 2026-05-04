@@ -372,6 +372,31 @@ public sealed class ApnsPushNotificationSenderTests
     }
 
     [Test]
+    public async Task Should_IncludeNotificationCreatedAtAsIso8601InAlertPayload_When_Sending()
+    {
+        // Arrange — iOS push-tap watermark advance (spec
+        // docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push)
+        // parses userInfo["createdAt"] as ISO-8601 to fire the advance call.
+        // Pin a deterministic CreatedAt so the wire format is asserted exactly.
+        using var fixture = SenderFixture.Create();
+        fixture.Handler.EnqueueOk();
+        var createdAt = new DateTimeOffset(2026, 5, 4, 9, 30, 15, TimeSpan.Zero);
+        var notification = new NotificationBuilder().WithCreatedAt(createdAt).Build();
+        var devices = OneDevice("token-1");
+
+        // Act
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
+
+        // Assert
+        var bodyJson = fixture.Handler.SentRequests[0].Body;
+        using var doc = JsonDocument.Parse(bodyJson);
+        var raw = doc.RootElement.GetProperty("createdAt").GetString();
+        await Assert.That(raw).IsNotNull();
+        await Assert.That(DateTimeOffset.Parse(raw!, System.Globalization.CultureInfo.InvariantCulture))
+            .IsEqualTo(createdAt);
+    }
+
+    [Test]
     public async Task Should_SetAlertBadgeToTotalUnreadCount_When_Sending()
     {
         // Arrange — pin the new contract: the alert payload's badge is the caller's
