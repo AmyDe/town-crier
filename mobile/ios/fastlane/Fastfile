@@ -138,6 +138,12 @@ platform :ios do
 
     setup_ci if ENV["CI"]
 
+    # Match also reads APP_STORE_CONNECT_API_KEY_PATH (one of its api_key_path
+    # env_names). With api_key passed explicitly as a hash and api_key_path
+    # populated from the env, match's force: true codepath rejects the pair as
+    # conflicting_options. Drop the env so only the explicit hash remains.
+    ENV.delete("APP_STORE_CONNECT_API_KEY_PATH")
+
     match(
       api_key: api_key,
       type: "appstore",
