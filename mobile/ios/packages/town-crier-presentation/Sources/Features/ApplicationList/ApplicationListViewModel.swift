@@ -73,6 +73,18 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     unreadCount > 0
   }
 
+  /// Sort modes the picker should expose right now. The `.distance` option
+  /// is only meaningful relative to a chosen zone, so it's filtered out
+  /// when no zone is active (multi-zone "all"-style surfaces or the
+  /// transient state before the first zone is loaded). Mirrors the web
+  /// sibling's picker filtering (tc-mso6 / tc-ge7j).
+  public var availableSortOptions: [ApplicationsSort] {
+    let active = selectedZone ?? zone
+    return ApplicationsSort.allCases.filter { mode in
+      mode != .distance || active != nil
+    }
+  }
+
   public var filteredApplications: [PlanningApplication] {
     let base = filterApplications(applications)
     return sortApplications(base, by: sort)
