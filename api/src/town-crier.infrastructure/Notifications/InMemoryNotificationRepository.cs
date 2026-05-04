@@ -29,6 +29,32 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
+    public Task<int> GetUnreadCountAsync(string userId, DateTimeOffset lastReadAt, CancellationToken ct)
+    {
+        // Watermark-aware unread count: strictly greater than lastReadAt. The
+        // boundary instant itself counts as already read.
+        var count = this.store.Count(n =>
+            n.UserId == userId &&
+            n.CreatedAt > lastReadAt);
+        return Task.FromResult(count);
+    }
+
+    public Task<Notification?> GetLatestUnreadByApplicationAsync(
+        string userId,
+        string applicationUid,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct)
+    {
+        // Strictly greater than the watermark, ordered by CreatedAt desc.
+        var latest = this.store
+            .Where(n => n.UserId == userId
+                && n.ApplicationUid == applicationUid
+                && n.CreatedAt > lastReadAt)
+            .OrderByDescending(n => n.CreatedAt)
+            .FirstOrDefault();
+        return Task.FromResult(latest);
+    }
+
     public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {
@@ -36,23 +62,6 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
             .Where(n => n.UserId == userId && n.CreatedAt >= since)
             .ToList();
         return Task.FromResult<IReadOnlyList<Notification>>(notifications);
-    }
-
-    public Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
-        string userId, int page, int pageSize, CancellationToken ct)
-    {
-        var userNotifications = this.store
-            .Where(n => n.UserId == userId)
-            .OrderByDescending(n => n.CreatedAt)
-            .ToList();
-
-        var total = userNotifications.Count;
-        var items = userNotifications
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        return Task.FromResult<(IReadOnlyList<Notification> Items, int Total)>((items, total));
     }
 
     public Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct)

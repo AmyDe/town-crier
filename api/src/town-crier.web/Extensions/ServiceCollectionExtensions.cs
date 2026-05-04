@@ -7,6 +7,7 @@ using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.OfferCodes;
 using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
@@ -21,6 +22,7 @@ using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Geocoding;
 using TownCrier.Infrastructure.GovUkPlanningData;
 using TownCrier.Infrastructure.Notifications;
+using TownCrier.Infrastructure.NotificationState;
 using TownCrier.Infrastructure.OfferCodes;
 using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
@@ -44,6 +46,7 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<ISavedApplicationRepository, CosmosSavedApplicationRepository>();
         services.AddSingleton<IDeviceRegistrationRepository, CosmosDeviceRegistrationRepository>();
         services.AddSingleton<INotificationRepository, CosmosNotificationRepository>();
+        services.AddSingleton<INotificationStateRepository, CosmosNotificationStateRepository>();
         services.AddSingleton<IOfferCodeRepository, CosmosOfferCodeRepository>();
         services.AddSingleton<IOfferCodeGenerator, OfferCodeGenerator>();
 
@@ -167,11 +170,13 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<GetApplicationByUidQueryHandler>();
         services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
 
-        services.AddTransient<GetNotificationsQueryHandler>();
-
         services.AddTransient<SaveApplicationCommandHandler>();
         services.AddTransient<RemoveSavedApplicationCommandHandler>();
         services.AddTransient<GetSavedApplicationsQueryHandler>();
+
+        services.AddTransient<GetNotificationStateQueryHandler>();
+        services.AddTransient<MarkAllNotificationsReadCommandHandler>();
+        services.AddTransient<AdvanceNotificationStateCommandHandler>();
 
         services.AddTransient<GetDemoAccountQueryHandler>();
 

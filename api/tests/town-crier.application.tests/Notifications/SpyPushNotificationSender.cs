@@ -6,12 +6,12 @@ namespace TownCrier.Application.Tests.Notifications;
 
 internal sealed class SpyPushNotificationSender : IPushNotificationSender
 {
-    private readonly List<(Notification Notification, IReadOnlyList<DeviceRegistration> Devices)> sent = [];
-    private readonly List<(int ApplicationCount, IReadOnlyList<DeviceRegistration> Devices)> digestsSent = [];
+    private readonly List<(Notification Notification, IReadOnlyList<DeviceRegistration> Devices, int TotalUnreadCount)> sent = [];
+    private readonly List<(int ApplicationCount, int TotalUnreadCount, IReadOnlyList<DeviceRegistration> Devices)> digestsSent = [];
 
-    public IReadOnlyList<(Notification Notification, IReadOnlyList<DeviceRegistration> Devices)> Sent => this.sent;
+    public IReadOnlyList<(Notification Notification, IReadOnlyList<DeviceRegistration> Devices, int TotalUnreadCount)> Sent => this.sent;
 
-    public IReadOnlyList<(int ApplicationCount, IReadOnlyList<DeviceRegistration> Devices)> DigestsSent => this.digestsSent;
+    public IReadOnlyList<(int ApplicationCount, int TotalUnreadCount, IReadOnlyList<DeviceRegistration> Devices)> DigestsSent => this.digestsSent;
 
     /// <summary>
     /// Gets or sets tokens to surface in <see cref="PushSendResult.InvalidTokens"/>
@@ -27,18 +27,26 @@ internal sealed class SpyPushNotificationSender : IPushNotificationSender
     /// </summary>
     public IReadOnlyList<string> NextInvalidDigestTokens { get; set; } = Array.Empty<string>();
 
-    public Task<PushSendResult> SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public Task<PushSendResult> SendAsync(
+        Notification notification,
+        IReadOnlyList<DeviceRegistration> devices,
+        int totalUnreadCount,
+        CancellationToken ct)
     {
-        this.sent.Add((notification, devices));
+        this.sent.Add((notification, devices, totalUnreadCount));
         var result = this.NextInvalidTokens.Count == 0
             ? PushSendResult.Empty
             : new PushSendResult(this.NextInvalidTokens);
         return Task.FromResult(result);
     }
 
-    public Task<PushSendResult> SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public Task<PushSendResult> SendDigestAsync(
+        int applicationCount,
+        int totalUnreadCount,
+        IReadOnlyList<DeviceRegistration> devices,
+        CancellationToken ct)
     {
-        this.digestsSent.Add((applicationCount, devices));
+        this.digestsSent.Add((applicationCount, totalUnreadCount, devices));
         var result = this.NextInvalidDigestTokens.Count == 0
             ? PushSendResult.Empty
             : new PushSendResult(this.NextInvalidDigestTokens);

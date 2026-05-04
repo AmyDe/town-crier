@@ -47,6 +47,49 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
     }
 
+    public async Task<int> GetUnreadCountAsync(
+        string userId, DateTimeOffset lastReadAt, CancellationToken ct)
+    {
+        // Strictly-greater-than: a notification created at exactly lastReadAt is
+        // considered read (the watermark is the cutoff itself). Mirrors the
+        // FakeNotificationRepository implementation and the spec's read model.
+        return await this.client.ScalarQueryAsync(
+            CosmosContainerNames.Notifications,
+            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt > @lastReadAt",
+            [new QueryParameter("@userId", userId), new QueryParameter("@lastReadAt", lastReadAt)],
+            userId,
+            CosmosJsonSerializerContext.Default.Int32,
+            ct).ConfigureAwait(false);
+    }
+
+    public async Task<Notification?> GetLatestUnreadByApplicationAsync(
+        string userId,
+        string applicationUid,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct)
+    {
+        // TOP 1 by createdAt DESC, strictly after the watermark — the most-recent
+        // unread event for (userId, applicationUid). Container is partitioned by
+        // userId so this stays single-partition.
+        const string sql = "SELECT TOP 1 * FROM c "
+            + "WHERE c.userId = @userId AND c.applicationUid = @appUid AND c.createdAt > @lastReadAt "
+            + "ORDER BY c.createdAt DESC";
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            sql,
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@appUid", applicationUid),
+                new QueryParameter("@lastReadAt", lastReadAt),
+            ],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        return documents.Count > 0 ? documents[0].ToDomain() : null;
+    }
+
     public async Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
         string userId, DateTimeOffset since, CancellationToken ct)
     {
@@ -59,43 +102,6 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
 
         return documents.ConvertAll(doc => doc.ToDomain());
-    }
-
-    public async Task<(IReadOnlyList<Notification> Items, int Total)> GetByUserPaginatedAsync(
-        string userId, int page, int pageSize, CancellationToken ct)
-    {
-        // Count total notifications for this user
-        var total = await this.client.ScalarQueryAsync(
-            CosmosContainerNames.Notifications,
-            "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId",
-            [new QueryParameter("@userId", userId)],
-            userId,
-            CosmosJsonSerializerContext.Default.Int32,
-            ct).ConfigureAwait(false);
-
-        if (total == 0)
-        {
-            return (Array.Empty<Notification>(), 0);
-        }
-
-        // Fetch page -- reverse-chronological by _ts
-        var offset = (page - 1) * pageSize;
-
-        var documents = await this.client.QueryAsync(
-            CosmosContainerNames.Notifications,
-            "SELECT * FROM c WHERE c.userId = @userId ORDER BY c._ts DESC OFFSET @offset LIMIT @limit",
-            [
-                new QueryParameter("@userId", userId),
-                new QueryParameter("@offset", offset),
-                new QueryParameter("@limit", pageSize),
-            ],
-            userId,
-            CosmosJsonSerializerContext.Default.NotificationDocument,
-            ct).ConfigureAwait(false);
-
-        var items = documents.ConvertAll(doc => doc.ToDomain());
-
-        return (items, total);
     }
 
     public async Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(

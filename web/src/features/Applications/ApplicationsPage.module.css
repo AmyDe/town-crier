@@ -105,6 +105,52 @@
   color: var(--tc-text-on-accent);
 }
 
+.sortLabel {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sortSelector {
+  font: inherit;
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-primary);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-sm);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  cursor: pointer;
+}
+
+.sortSelector:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.markAllReadButton {
+  font: inherit;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-amber);
+  background: transparent;
+  border: 1px solid var(--tc-amber);
+  border-radius: var(--tc-radius-full);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--tc-duration-fast) ease, color var(--tc-duration-fast) ease;
+}
+
+.markAllReadButton:hover {
+  background: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+}
+
+.markAllReadButton:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
 .list {
   list-style: none;
   padding: 0;

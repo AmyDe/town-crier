@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
-import { useApplications } from './useApplications';
+import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
+import { useApplications, type ApplicationsSort } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import { useFetchData } from '../../hooks/useFetchData';
@@ -14,6 +15,7 @@ interface ZonesPort {
 interface Props {
   zonesPort: ZonesPort;
   browsePort: ApplicationsBrowsePort;
+  notificationStateRepository: NotificationStateRepository;
 }
 
 interface StatusChip {
@@ -31,7 +33,23 @@ const STATUS_CHIPS: readonly StatusChip[] = [
   { label: 'Appealed', status: 'Appealed' },
 ];
 
-export function ApplicationsPage({ zonesPort, browsePort }: Props) {
+interface SortOption {
+  readonly value: ApplicationsSort;
+  readonly label: string;
+}
+
+const SORT_OPTIONS: readonly SortOption[] = [
+  { value: 'recent-activity', label: 'Recent activity' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'status', label: 'Status' },
+];
+
+export function ApplicationsPage({
+  zonesPort,
+  browsePort,
+  notificationStateRepository,
+}: Props) {
   const navigate = useNavigate();
   const {
     data: zones,
@@ -45,14 +63,22 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
     isLoading: isLoadingApps,
     error: appsError,
     selectedStatusFilter,
+    unreadOnly,
+    unreadCount,
+    sort,
     selectZone,
     setStatusFilter,
+    setUnreadOnly,
+    setSort,
+    markAllRead,
   } = useApplications({
     browsePort,
     zones: zones ?? [],
+    notificationStateRepository,
   });
 
   const hasZones = (zones ?? []).length > 0;
+  const hasUnread = unreadCount > 0;
 
   function handleZoneChange(value: string) {
     const zone = (zones ?? []).find((z) => z.id === value);
@@ -63,6 +89,20 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
 
   function handleStatusClick(status: ApplicationStatus | null) {
     setStatusFilter(status);
+  }
+
+  function handleUnreadClick() {
+    setUnreadOnly(!unreadOnly);
+  }
+
+  function handleSortChange(value: string) {
+    if (isApplicationsSort(value)) {
+      setSort(value);
+    }
+  }
+
+  async function handleMarkAllRead() {
+    await markAllRead();
   }
 
   const zoneSelectorValue = selectedZone?.id ?? '';
@@ -109,8 +149,19 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
             </label>
 
             <div className={styles.statusChips} role="group" aria-label="Status filter">
+              {hasUnread && (
+                <button
+                  type="button"
+                  className={`${styles.chip} ${unreadOnly ? styles.chipPressed : ''}`}
+                  aria-pressed={unreadOnly}
+                  onClick={handleUnreadClick}
+                >
+                  Unread ({unreadCount})
+                </button>
+              )}
               {STATUS_CHIPS.map((chip) => {
-                const isPressed = selectedStatusFilter === chip.status;
+                const isPressed =
+                  !unreadOnly && selectedStatusFilter === chip.status;
                 return (
                   <button
                     key={chip.label}
@@ -124,6 +175,32 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
                 );
               })}
             </div>
+
+            <label className={styles.sortLabel}>
+              <span className={styles.srOnly}>Sort</span>
+              <select
+                className={styles.sortSelector}
+                aria-label="Sort"
+                value={sort}
+                onChange={(e) => handleSortChange(e.target.value)}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {hasUnread && (
+              <button
+                type="button"
+                className={styles.markAllReadButton}
+                onClick={handleMarkAllRead}
+              >
+                Mark all read
+              </button>
+            )}
           </div>
 
           {isLoadingApps && (
@@ -159,5 +236,14 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
         </>
       )}
     </div>
+  );
+}
+
+function isApplicationsSort(value: string): value is ApplicationsSort {
+  return (
+    value === 'recent-activity' ||
+    value === 'newest' ||
+    value === 'oldest' ||
+    value === 'status'
   );
 }

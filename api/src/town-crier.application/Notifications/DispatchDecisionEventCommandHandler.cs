@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.Observability;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
@@ -21,6 +22,7 @@ namespace TownCrier.Application.Notifications;
 public sealed class DispatchDecisionEventCommandHandler
 {
     private readonly INotificationRepository notificationRepository;
+    private readonly INotificationStateRepository notificationStateRepository;
     private readonly IUserProfileRepository userProfileRepository;
     private readonly ISavedApplicationRepository savedApplicationRepository;
     private readonly IWatchZoneRepository watchZoneRepository;
@@ -31,6 +33,7 @@ public sealed class DispatchDecisionEventCommandHandler
 
     public DispatchDecisionEventCommandHandler(
         INotificationRepository notificationRepository,
+        INotificationStateRepository notificationStateRepository,
         IUserProfileRepository userProfileRepository,
         ISavedApplicationRepository savedApplicationRepository,
         IWatchZoneRepository watchZoneRepository,
@@ -40,6 +43,7 @@ public sealed class DispatchDecisionEventCommandHandler
         TimeProvider timeProvider)
     {
         this.notificationRepository = notificationRepository;
+        this.notificationStateRepository = notificationStateRepository;
         this.userProfileRepository = userProfileRepository;
         this.savedApplicationRepository = savedApplicationRepository;
         this.watchZoneRepository = watchZoneRepository;
@@ -171,7 +175,14 @@ public sealed class DispatchDecisionEventCommandHandler
 
             if (devices.Count > 0)
             {
-                var sendResult = await this.pushNotificationSender.SendAsync(notification, devices, ct)
+                // Watermark-driven badge — count of unread (createdAt > lastReadAt)
+                // plus 1 for the just-created notification not yet persisted.
+                // First-touch users get DateTimeOffset.MinValue so everything counts.
+                var totalUnreadCount = await this.ComputeTotalUnreadCountAsync(userId, ct)
+                    .ConfigureAwait(false) + 1;
+
+                var sendResult = await this.pushNotificationSender
+                    .SendAsync(notification, devices, totalUnreadCount, ct)
                     .ConfigureAwait(false);
                 notification.MarkPushSent();
                 ApiMetrics.NotificationsSent.Add(
@@ -193,5 +204,16 @@ public sealed class DispatchDecisionEventCommandHandler
         }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
+    }
+
+    private async Task<int> ComputeTotalUnreadCountAsync(string userId, CancellationToken ct)
+    {
+        // No notification-state row yet → assume nothing has ever been read; the
+        // endpoint adapter writes a real document on first GET.
+        var state = await this.notificationStateRepository
+            .GetByUserIdAsync(userId, ct).ConfigureAwait(false);
+        var lastReadAt = state?.LastReadAt ?? DateTimeOffset.MinValue;
+        return await this.notificationRepository
+            .GetUnreadCountAsync(userId, lastReadAt, ct).ConfigureAwait(false);
     }
 }

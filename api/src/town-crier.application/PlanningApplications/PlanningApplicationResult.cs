@@ -19,5 +19,6 @@ public sealed record PlanningApplicationResult(
     double? Latitude,
     string? Url,
     string? Link,
-    DateTimeOffset LastDifferent);
+    DateTimeOffset LastDifferent,
+    LatestUnreadEvent? LatestUnreadEvent = null);
 #pragma warning restore CA1054, CA1056

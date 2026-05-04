@@ -23,17 +23,24 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse
   ) async {
-    // Parse the (non-Sendable) userInfo dict on the calling actor and hand
-    // only a Sendable `DeepLink?` across the MainActor hop. The hop must run
-    // unconditionally — even when no deep link is parsed — because Swift's
-    // synthesized @objc thunk fires the original ObjC completion handler
-    // when this function returns, and UIKit asserts that completion runs
-    // on the main thread (tc-fcwv).
+    // Parse the (non-Sendable) userInfo on the calling actor into Sendable
+    // values, then hop to MainActor. The hop must run unconditionally —
+    // even when neither a deep link nor a createdAt surfaces — because
+    // Swift's synthesized @objc thunk fires the original ObjC completion
+    // handler when this function returns, and UIKit asserts that
+    // completion runs on the main thread (tc-fcwv).
     let userInfo = response.notification.request.content.userInfo
     let deepLink = NotificationPayloadParser.parseDeepLink(from: userInfo)
+    let createdAt = NotificationPayloadParser.parseCreatedAt(from: userInfo)
     await MainActor.run {
-      guard let deepLink else { return }
-      coordinator.handleDeepLink(deepLink)
+      // Each branch is independently no-oppable when the payload omits
+      // the relevant field (tc-1nsa.9).
+      if let deepLink {
+        coordinator.handleDeepLink(deepLink)
+      }
+      if let createdAt {
+        coordinator.advanceWatermark(asOf: createdAt)
+      }
     }
   }
 

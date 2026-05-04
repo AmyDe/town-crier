@@ -8,6 +8,7 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Health;
 using TownCrier.Application.Legal;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
@@ -56,7 +57,6 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(PlanningApplicationResult))]
 [JsonSerializable(typeof(IReadOnlyList<PlanningApplicationResult>))]
 [JsonSerializable(typeof(GetUserApplicationAuthoritiesResult))]
-[JsonSerializable(typeof(GetNotificationsResult))]
 [JsonSerializable(typeof(IReadOnlyList<SavedApplicationResult>))]
 [JsonSerializable(typeof(CreateWatchZoneRequest))]
 [JsonSerializable(typeof(CreateWatchZoneResult))]
@@ -75,4 +75,6 @@ namespace TownCrier.Web;
 [JsonSerializable(typeof(RedeemOfferCodeRequest))]
 [JsonSerializable(typeof(RedeemOfferCodeResponse))]
 [JsonSerializable(typeof(SaveApplicationRequest))]
+[JsonSerializable(typeof(GetNotificationStateResult))]
+[JsonSerializable(typeof(AdvanceNotificationStateRequest))]
 internal sealed partial class AppJsonSerializerContext : JsonSerializerContext;

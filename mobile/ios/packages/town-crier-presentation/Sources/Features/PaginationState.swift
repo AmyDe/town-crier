@@ -1,9 +1,9 @@
 /// Tracks page number and availability of further pages for paginated API calls.
 ///
-/// Used by ``NotificationsViewModel`` (and any future paginated list): start at
-/// page 1, record whether the last response had more pages, and advance on
-/// `loadMore()`. This value type centralises that state so ViewModels delegate
-/// to it instead of duplicating the bookkeeping.
+/// Used by paginated list ViewModels: start at page 1, record whether the
+/// last response had more pages, and advance on `loadMore()`. This value type
+/// centralises that state so ViewModels delegate to it instead of duplicating
+/// the bookkeeping.
 ///
 /// Usage:
 /// ```swift

@@ -13,7 +13,7 @@ public sealed class NoOpPushNotificationSenderTests
         var notification = new NotificationBuilder().Build();
         var devices = new List<DeviceRegistration>();
 
-        var result = await sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await sender.SendAsync(notification, devices, totalUnreadCount: 0, CancellationToken.None);
 
         await Assert.That(result.InvalidTokens).IsEmpty();
     }
@@ -24,7 +24,8 @@ public sealed class NoOpPushNotificationSenderTests
         var sender = new NoOpPushNotificationSender();
         var devices = new List<DeviceRegistration>();
 
-        var result = await sender.SendDigestAsync(applicationCount: 5, devices, CancellationToken.None);
+        var result = await sender.SendDigestAsync(
+            applicationCount: 5, totalUnreadCount: 0, devices, CancellationToken.None);
 
         await Assert.That(result.InvalidTokens).IsEmpty();
     }

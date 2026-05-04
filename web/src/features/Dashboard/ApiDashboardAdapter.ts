@@ -16,6 +16,7 @@ function toSummary(app: PlanningApplication): PlanningApplicationSummary {
     areaName: app.areaName,
     startDate: app.startDate,
     url: app.url,
+    latestUnreadEvent: app.latestUnreadEvent,
   };
 }
 

@@ -5,21 +5,56 @@ import TownCrierDomain
 /// ViewModel driving the per-zone planning-application list. Status filtering
 /// is free for all subscription tiers (tc-acf0); cross-zone Saved listing now
 /// lives in `SavedApplicationListViewModel`.
+///
+/// Owns the unread-watermark plumbing (tc-1nsa.8) when a
+/// ``NotificationStateRepository`` is injected: surfaces the global unread
+/// count, exposes the four sort modes from the spec, drives the Mark-All-Read
+/// toolbar action, and supplies an Unread filter that mirrors the web bead's
+/// single-select status-chip group.
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var applications: [PlanningApplication] = []
-  @Published var selectedStatusFilter: ApplicationStatus?
+  @Published var selectedStatusFilter: ApplicationStatus? {
+    didSet {
+      // Status and Unread chips share a single-select group (spec decision #7)
+      if selectedStatusFilter != nil {
+        unreadOnly = false
+      }
+    }
+  }
+  @Published var unreadOnly = false {
+    didSet {
+      if unreadOnly {
+        selectedStatusFilter = nil
+      }
+    }
+  }
   @Published private(set) var isLoading = false
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
+  @Published private(set) var unreadCount: Int = 0
+  /// Bound by the sort menu. Setter persists the choice to `UserDefaults`
+  /// under `sortKey` so user intent survives relaunches (spec decision #10).
+  @Published var sort: ApplicationsSort {
+    didSet {
+      userDefaults.set(sort.rawValue, forKey: sortKey)
+    }
+  }
 
   private let repository: PlanningApplicationRepository?
   private let offlineRepository: OfflineAwareRepository?
   private let watchZoneRepository: WatchZoneRepository?
+  private let notificationStateRepository: NotificationStateRepository?
   private var zone: WatchZone?
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
+  private let sortKey: String
+
+  /// Default `UserDefaults` key for the persisted sort choice. Mirrors the
+  /// web localStorage key `applicationsListSort` so cross-platform users
+  /// recognise the setting in support discussions.
+  public static let defaultSortKey = "applicationsListSort"
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
@@ -31,9 +66,16 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     zones.count > 1
   }
 
+  /// True when the global watermark reports at least one unread notification.
+  /// Drives the conditional visibility of the Unread chip and Mark-All-Read
+  /// toolbar action (spec decision #8).
+  public var hasUnread: Bool {
+    unreadCount > 0
+  }
+
   public var filteredApplications: [PlanningApplication] {
-    guard let filter = selectedStatusFilter else { return applications }
-    return applications.filter { $0.status == filter }
+    let base = filterApplications(applications)
+    return sortApplications(base, by: sort)
   }
 
   public var isEmpty: Bool {
@@ -55,54 +97,76 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   public init(
     repository: PlanningApplicationRepository,
-    zone: WatchZone
+    zone: WatchZone,
+    notificationStateRepository: NotificationStateRepository? = nil,
+    userDefaults: UserDefaults = .standard,
+    sortKey: String = defaultSortKey
   ) {
     self.repository = repository
     self.offlineRepository = nil
     self.watchZoneRepository = nil
+    self.notificationStateRepository = notificationStateRepository
     self.zone = zone
-    self.userDefaults = .standard
+    self.userDefaults = userDefaults
     self.zoneSelectionKey = ""
+    self.sortKey = sortKey
+    self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
   }
 
   public init(
     offlineRepository: OfflineAwareRepository,
-    zone: WatchZone
+    zone: WatchZone,
+    notificationStateRepository: NotificationStateRepository? = nil,
+    userDefaults: UserDefaults = .standard,
+    sortKey: String = defaultSortKey
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = nil
+    self.notificationStateRepository = notificationStateRepository
     self.zone = zone
-    self.userDefaults = .standard
+    self.userDefaults = userDefaults
     self.zoneSelectionKey = ""
+    self.sortKey = sortKey
+    self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
   }
 
   public init(
     watchZoneRepository: WatchZoneRepository,
     repository: PlanningApplicationRepository,
+    notificationStateRepository: NotificationStateRepository? = nil,
     userDefaults: UserDefaults = .standard,
-    zoneSelectionKey: String = "lastSelectedZone.applications"
+    zoneSelectionKey: String = "lastSelectedZone.applications",
+    sortKey: String = defaultSortKey
   ) {
     self.repository = repository
     self.offlineRepository = nil
     self.watchZoneRepository = watchZoneRepository
+    self.notificationStateRepository = notificationStateRepository
     self.zone = nil
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
+    self.sortKey = sortKey
+    self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
   }
 
   public init(
     watchZoneRepository: WatchZoneRepository,
     offlineRepository: OfflineAwareRepository,
+    notificationStateRepository: NotificationStateRepository? = nil,
     userDefaults: UserDefaults = .standard,
-    zoneSelectionKey: String = "lastSelectedZone.applications"
+    zoneSelectionKey: String = "lastSelectedZone.applications",
+    sortKey: String = defaultSortKey
   ) {
     self.repository = nil
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = watchZoneRepository
+    self.notificationStateRepository = notificationStateRepository
     self.zone = nil
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
+    self.sortKey = sortKey
+    self.sort = Self.readPersistedSort(from: userDefaults, key: sortKey)
   }
 
   public func loadApplications() async {
@@ -126,25 +190,26 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       guard let activeZone = selectedZone ?? zone else {
         applications = []
         isLoading = false
+        await refreshUnreadCount()
         return
       }
       applications = try await fetchApplications(for: activeZone)
-        .sorted { $0.receivedDate > $1.receivedDate }
     } catch {
       handleError(error)
     }
+    await refreshUnreadCount()
     isLoading = false
   }
 
   public func selectZone(_ zone: WatchZone) async {
     selectedZone = zone
     selectedStatusFilter = nil
+    unreadOnly = false
     userDefaults.set(zone.id.value, forKey: zoneSelectionKey)
     isLoading = true
     error = nil
     do {
       applications = try await fetchApplications(for: zone)
-        .sorted { $0.receivedDate > $1.receivedDate }
     } catch {
       handleError(error)
     }
@@ -153,6 +218,29 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   public func selectApplication(_ id: PlanningApplicationId) {
     onApplicationSelected?(id)
+  }
+
+  /// Stamps the watermark to "now" via the notification-state repository.
+  /// Optimistically clears `unreadCount` before the network call returns
+  /// so the chip and Mark-All-Read button hide immediately, then refetches
+  /// the active zone so each row's `latestUnreadEvent` drops to `nil`.
+  /// Repository failures are swallowed — the optimistic UI already shows
+  /// the desired result and a subsequent fetch will reconcile any drift.
+  /// Spec decision #8 (silent optimistic).
+  public func markAllRead() async {
+    guard let notificationStateRepository else { return }
+    unreadCount = 0
+    do {
+      try await notificationStateRepository.markAllRead()
+    } catch {
+      // Swallow — optimistic UI per spec decision #8.
+    }
+    guard let activeZone = selectedZone ?? zone else { return }
+    do {
+      applications = try await fetchApplications(for: activeZone)
+    } catch {
+      // Refetch failure is non-fatal — the existing rows stay rendered.
+    }
   }
 
   /// Restores the previous-session zone selection from `UserDefaults`,
@@ -175,5 +263,65 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
+  }
+
+  private func refreshUnreadCount() async {
+    guard let notificationStateRepository else { return }
+    do {
+      let state = try await notificationStateRepository.fetchState()
+      unreadCount = state.totalUnreadCount
+    } catch {
+      // Silent fallback per spec — the Unread chip just hides.
+    }
+  }
+
+  private func filterApplications(
+    _ applications: [PlanningApplication]
+  ) -> [PlanningApplication] {
+    if unreadOnly {
+      return applications.filter { $0.latestUnreadEvent != nil }
+    }
+    if let filter = selectedStatusFilter {
+      return applications.filter { $0.status == filter }
+    }
+    return applications
+  }
+
+  private func sortApplications(
+    _ applications: [PlanningApplication],
+    by sort: ApplicationsSort
+  ) -> [PlanningApplication] {
+    switch sort {
+    case .recentActivity:
+      return applications.sorted { lhs, rhs in
+        recentActivityScore(lhs) > recentActivityScore(rhs)
+      }
+    case .newest:
+      return applications.sorted { $0.receivedDate > $1.receivedDate }
+    case .oldest:
+      return applications.sorted { $0.receivedDate < $1.receivedDate }
+    case .status:
+      return applications.sorted { $0.status.rawValue < $1.status.rawValue }
+    }
+  }
+
+  /// `max(receivedDate, latestUnreadEvent.createdAt)` per spec decision #9 —
+  /// surfaces newly-decided rows alongside newly-received ones.
+  private func recentActivityScore(_ application: PlanningApplication) -> Date {
+    if let event = application.latestUnreadEvent {
+      return max(application.receivedDate, event.createdAt)
+    }
+    return application.receivedDate
+  }
+
+  private static func readPersistedSort(
+    from defaults: UserDefaults,
+    key: String
+  ) -> ApplicationsSort {
+    if let raw = defaults.string(forKey: key),
+       let parsed = ApplicationsSort(rawValue: raw) {
+      return parsed
+    }
+    return .recentActivity
   }
 }

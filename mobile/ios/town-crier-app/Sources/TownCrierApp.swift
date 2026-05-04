@@ -10,6 +10,7 @@ import UserNotifications
 struct TownCrierApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @Environment(\.openURL) private var openURL
+  @Environment(\.scenePhase) private var scenePhase
   @StateObject private var coordinator: AppCoordinator
   @StateObject private var loginViewModel: LoginViewModel
   @StateObject private var forceUpdateViewModel: ForceUpdateViewModel
@@ -51,6 +52,7 @@ struct TownCrierApp: App {
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
+    let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -65,7 +67,9 @@ struct TownCrierApp: App {
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
-      savedApplicationRepository: savedApplicationRepository
+      savedApplicationRepository: savedApplicationRepository,
+      notificationStateRepository: notificationStateRepository,
+      badgeSetter: UIApplicationBadgeSetter()
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
@@ -132,6 +136,16 @@ struct TownCrierApp: App {
       .task {
         await coordinator.resolveSubscriptionTier()
         await forceUpdateViewModel.checkVersion()
+      }
+      .onChange(of: scenePhase) { _, newPhase in
+        // Reconcile the app icon badge with the server-side unread watermark
+        // whenever the scene becomes active — both on first launch and on
+        // every foreground entry. We deliberately pull rather than rely on
+        // silent push so cross-device read-state changes propagate without
+        // server-side push fan-out (spec
+        // docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push).
+        guard newPhase == .active else { return }
+        Task { await coordinator.syncBadge() }
       }
       .preferredColorScheme(settingsViewModel.appearanceMode.preferredColorScheme)
       .alert(

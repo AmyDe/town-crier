@@ -10,11 +10,11 @@ import TownCrierDomain
 /// Usage in a ViewModel:
 /// ```swift
 /// @MainActor
-/// final class NotificationsViewModel: ObservableObject, EntitlementGatingViewModel {
+/// final class WatchZoneEditorViewModel: ObservableObject, EntitlementGatingViewModel {
 ///     @Published var error: DomainError?
 ///     @Published var entitlementGate: Entitlement?
 ///     ...
-///     func loadNotifications() async {
+///     func save() async {
 ///         do { ... } catch { handleError(error) }
 ///     }
 /// }

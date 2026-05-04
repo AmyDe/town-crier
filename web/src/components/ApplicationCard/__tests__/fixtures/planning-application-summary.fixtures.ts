@@ -15,6 +15,7 @@ export function undecidedApplication(
     areaName: 'Cambridge City Council',
     startDate: '2026-01-15',
     url: 'https://planit.org.uk/planapplic/APP-001',
+    latestUnreadEvent: null,
     ...overrides,
   };
 }
@@ -33,6 +34,7 @@ export function permittedApplication(
     areaName: 'Cambridge City Council',
     startDate: '2026-02-20',
     url: null,
+    latestUnreadEvent: null,
     ...overrides,
   };
 }
@@ -51,6 +53,7 @@ export function conditionsApplication(
     areaName: 'Cambridge City Council',
     startDate: '2026-02-25',
     url: null,
+    latestUnreadEvent: null,
     ...overrides,
   };
 }
@@ -69,6 +72,7 @@ export function rejectedApplication(
     areaName: 'Cambridge City Council',
     startDate: '2026-02-28',
     url: null,
+    latestUnreadEvent: null,
     ...overrides,
   };
 }

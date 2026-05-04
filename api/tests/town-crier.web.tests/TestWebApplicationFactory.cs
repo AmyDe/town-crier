@@ -7,12 +7,14 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.DeviceRegistrations;
 using TownCrier.Infrastructure.Notifications;
+using TownCrier.Infrastructure.NotificationState;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.SavedApplications;
 using TownCrier.Infrastructure.UserProfiles;
@@ -38,6 +40,7 @@ internal sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<IWatchZoneRepository, InMemoryWatchZoneRepository>();
             services.AddSingleton<IDeviceRegistrationRepository, InMemoryDeviceRegistrationRepository>();
             services.AddSingleton<INotificationRepository, InMemoryNotificationRepository>();
+            services.AddSingleton<INotificationStateRepository, InMemoryNotificationStateRepository>();
             services.AddSingleton<ISavedApplicationRepository, InMemorySavedApplicationRepository>();
 
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>

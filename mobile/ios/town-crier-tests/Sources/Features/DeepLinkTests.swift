@@ -225,4 +225,64 @@ struct NotificationPayloadParserTests {
 
     #expect(result == nil)
   }
+
+  // MARK: - parseCreatedAt (push-tap watermark advance, tc-1nsa.9)
+
+  @Test func parseCreatedAt_withIso8601String_returnsDate() {
+    // The API serialises notification.createdAt as ISO-8601 (Z suffix). The
+    // parser must decode it without depending on a JSONDecoder strategy
+    // because userInfo is a plist-style [AnyHashable: Any], not JSON.
+    let userInfo: [AnyHashable: Any] = [
+      "createdAt": "2026-05-04T08:11:57Z"
+    ]
+
+    let result = NotificationPayloadParser.parseCreatedAt(from: userInfo)
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    #expect(result == formatter.date(from: "2026-05-04T08:11:57Z"))
+  }
+
+  @Test func parseCreatedAt_withFractionalSecondsIso8601_returnsDate() {
+    // Some payloads include sub-second precision. The parser must accept
+    // both shapes so a server change does not silently break watermark
+    // advance.
+    let userInfo: [AnyHashable: Any] = [
+      "createdAt": "2026-05-04T08:11:57.123Z"
+    ]
+
+    let result = NotificationPayloadParser.parseCreatedAt(from: userInfo)
+
+    #expect(result != nil)
+  }
+
+  @Test func parseCreatedAt_withMissingKey_returnsNil() {
+    // Older API builds (and digest pushes) do not carry createdAt. The
+    // parser must defensively return nil rather than crash so the push-tap
+    // path continues to deep-link even before the server-side payload is
+    // updated.
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-1"]
+
+    let result = NotificationPayloadParser.parseCreatedAt(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseCreatedAt_withMalformedString_returnsNil() {
+    let userInfo: [AnyHashable: Any] = ["createdAt": "not-a-date"]
+
+    let result = NotificationPayloadParser.parseCreatedAt(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseCreatedAt_withNonStringValue_returnsNil() {
+    // Defensive: APNs userInfo is loosely typed. A numeric value (e.g.
+    // accidental Unix timestamp) must not be coerced into a date.
+    let userInfo: [AnyHashable: Any] = ["createdAt": 1_712_000_000]
+
+    let result = NotificationPayloadParser.parseCreatedAt(from: userInfo)
+
+    #expect(result == nil)
+  }
 }

@@ -51,14 +51,13 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('No watch zones yet')).toBeInTheDocument();
   });
 
-  it('renders quick links to saved applications and notifications', async () => {
+  it('renders a quick link to saved applications', async () => {
     const spy = new SpyDashboardPort();
     spy.fetchWatchZonesResult = [cambridgeZone()];
 
     renderDashboard(spy);
 
     expect(await screen.findByRole('link', { name: /saved/i })).toHaveAttribute('href', '/saved');
-    expect(screen.getByRole('link', { name: /notifications/i })).toHaveAttribute('href', '/notifications');
   });
 
   it('shows loading state initially', () => {

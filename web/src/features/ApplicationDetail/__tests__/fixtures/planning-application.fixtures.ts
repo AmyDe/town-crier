@@ -23,6 +23,7 @@ export function fullApplication(
     url: 'https://council.example.com/planning/APP-001',
     link: 'https://planit.org.uk/planapplic/APP-001',
     lastDifferent: '2026-01-20',
+    latestUnreadEvent: null,
     ...overrides,
   };
 }

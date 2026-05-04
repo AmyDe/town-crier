@@ -6,7 +6,7 @@ import os
 /// Root coordinator managing top-level navigation.
 @MainActor
 public final class AppCoordinator: ObservableObject {
-  private static let logger = Logger(subsystem: "uk.towncrierapp", category: "AppCoordinator")
+  static let logger = Logger(subsystem: "uk.towncrierapp", category: "AppCoordinator")
 
   @Published public var detailApplication: PlanningApplication?
   @Published public var deepLinkError: DomainError?
@@ -34,7 +34,7 @@ public final class AppCoordinator: ObservableObject {
   private static let tierCacheKey = "cachedSubscriptionTier"
 
   private let repository: PlanningApplicationRepository
-  private let authService: AuthenticationService
+  let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   let userProfileRepository: UserProfileRepository
   private let serverTierResolver: ServerTierResolving
@@ -48,15 +48,22 @@ public final class AppCoordinator: ObservableObject {
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
-  private let offerCodeService: OfferCodeService?
+  let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
+  let notificationStateRepository: NotificationStateRepository?
+  let badgeSetter: BadgeSetting?
   // Cached strongly so SwiftUI's factory re-evaluation doesn't leave the
   // coordinator with a dangling reference; editor `onSave` needs a live VM.
   private var watchZoneListViewModel: WatchZoneListViewModel?
   // In-flight tasks tests can await deterministically (no `Task.sleep`).
-  private var pendingOfferCodeRefresh: Task<Void, Never>?
+  var pendingOfferCodeRefresh: Task<Void, Never>?
   private var pendingWatchZoneRefresh: Task<Void, Never>?
   private var pendingDetailLoad: Task<Void, Never>?
+  // Push-tap watermark advance — fire-and-forget but stored so tests can
+  // await deterministically (tc-1nsa.9).
+  var pendingWatermarkAdvance: Task<Void, Never>?
+  // Foreground badge sync (tc-1nsa.9).
+  var pendingBadgeSync: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -75,7 +82,9 @@ public final class AppCoordinator: ObservableObject {
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
     offerCodeService: OfferCodeService? = nil,
-    tierCache: UserDefaults? = nil
+    tierCache: UserDefaults? = nil,
+    notificationStateRepository: NotificationStateRepository? = nil,
+    badgeSetter: BadgeSetting? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -102,6 +111,8 @@ public final class AppCoordinator: ObservableObject {
     self.savedApplicationRepository = savedApplicationRepository
     self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
+    self.notificationStateRepository = notificationStateRepository
+    self.badgeSetter = badgeSetter
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -131,12 +142,14 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         offlineRepository: offlineRepository,
-        zone: zone
+        zone: zone,
+        notificationStateRepository: notificationStateRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         repository: repository,
-        zone: zone
+        zone: zone,
+        notificationStateRepository: notificationStateRepository
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -152,12 +165,14 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        offlineRepository: offlineRepository
+        offlineRepository: offlineRepository,
+        notificationStateRepository: notificationStateRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        repository: repository
+        repository: repository,
+        notificationStateRepository: notificationStateRepository
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -313,54 +328,6 @@ public final class AppCoordinator: ObservableObject {
   /// UIKit-free; `TownCrierApp` observes the flag and opens the settings URL.
   public func showSystemNotificationSettings() {
     isOpeningSystemNotificationSettings = true
-  }
-
-  // MARK: - Offer Codes
-
-  /// Presents the "Redeem Offer Code" sheet from Settings. Has no effect if
-  /// the Coordinator was constructed without an `OfferCodeService` (i.e. the
-  /// feature is not wired).
-  public func showRedeemOfferCode() {
-    guard offerCodeService != nil else { return }
-    isRedeemOfferCodePresented = true
-  }
-
-  /// Creates a `RedeemOfferCodeViewModel` wired to dismiss the sheet and
-  /// refresh the subscription tier on successful redemption.
-  ///
-  /// Returns `nil` when no `OfferCodeService` was injected — callers should
-  /// hide the Settings entry point in that case.
-  public func makeRedeemOfferCodeViewModel() -> RedeemOfferCodeViewModel? {
-    guard let offerCodeService else { return nil }
-    let viewModel = RedeemOfferCodeViewModel(offerCodeService: offerCodeService)
-    viewModel.onRedeemed = { [weak self] _ in
-      self?.handleOfferCodeRedeemed()
-    }
-    return viewModel
-  }
-
-  /// Test-only synchronisation: await the post-redemption refresh so
-  /// assertions happen after the session and tier have been re-resolved.
-  public func waitForPendingOfferCodeRefresh() async {
-    await pendingOfferCodeRefresh?.value
-  }
-
-  private func handleOfferCodeRedeemed() {
-    isRedeemOfferCodePresented = false
-    // Detached task so tests can await it. Session refresh rotates the JWT so
-    // the next server call sees the new `subscription_tier` claim, then
-    // re-resolving the tier picks up the updated profile.
-    pendingOfferCodeRefresh = Task { [weak self] in
-      guard let self else { return }
-      do {
-        _ = try await authService.refreshSession()
-      } catch {
-        Self.logger.error(
-          "Offer-code session refresh failed: \(error.localizedDescription)"
-        )
-      }
-      await resolveSubscriptionTier()
-    }
   }
 
   /// Presents the detail sheet synchronously from a row payload — bypasses the

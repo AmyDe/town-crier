@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApplicationsPage } from '../ApplicationsPage';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
+import { SpyNotificationStateRepository } from './spies/spy-notification-state-repository';
 import { cambridgeZone, oxfordZone } from './fixtures/zone.fixtures';
 import {
   undecidedApplication,
@@ -29,14 +30,25 @@ class SpyZonesPort {
 interface RenderInputs {
   zonesPort?: SpyZonesPort;
   browsePort?: SpyApplicationsBrowsePort;
+  notificationStateRepository?: SpyNotificationStateRepository;
 }
 
-function renderPage({ zonesPort, browsePort }: RenderInputs = {}) {
+function renderPage({
+  zonesPort,
+  browsePort,
+  notificationStateRepository,
+}: RenderInputs = {}) {
   const zones = zonesPort ?? new SpyZonesPort();
   const browse = browsePort ?? new SpyApplicationsBrowsePort();
+  const stateRepo =
+    notificationStateRepository ?? new SpyNotificationStateRepository();
   return render(
     <MemoryRouter>
-      <ApplicationsPage zonesPort={zones} browsePort={browse} />
+      <ApplicationsPage
+        zonesPort={zones}
+        browsePort={browse}
+        notificationStateRepository={stateRepo}
+      />
     </MemoryRouter>,
   );
 }
@@ -133,6 +145,204 @@ describe('ApplicationsPage — filter bar', () => {
       expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole('switch', { name: /saved/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('ApplicationsPage — Unread chip', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('renders an Unread chip with the totalUnreadCount badge when unread > 0', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 4,
+    };
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    const chip = await screen.findByRole('button', { name: /unread \(4\)/i });
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('hides the Unread chip when unreadCount is 0', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 0,
+    };
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /unread/i })).not.toBeInTheDocument();
+  });
+
+  it('toggles the unread filter when the Unread chip is clicked', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication(), // null
+    ];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 1,
+    };
+    const user = userEvent.setup();
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    await waitFor(() =>
+      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: /unread \(1\)/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('2026/0099/LBC')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
+  });
+});
+
+describe('ApplicationsPage — Mark all read', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('renders a Mark all read button when there are unread notifications', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 3,
+    };
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    expect(
+      await screen.findByRole('button', { name: /mark all read/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the Mark all read button when nothing is unread', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 0,
+    };
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole('button', { name: /mark all read/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('calls markAllRead on the repository when clicked', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const stateRepo = new SpyNotificationStateRepository();
+    stateRepo.getStateResult = {
+      lastReadAt: '2026-01-01T00:00:00Z',
+      version: 1,
+      totalUnreadCount: 2,
+    };
+    const user = userEvent.setup();
+
+    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    const button = await screen.findByRole('button', { name: /mark all read/i });
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(stateRepo.markAllReadCalls).toBe(1);
+    });
+  });
+});
+
+describe('ApplicationsPage — Sort menu', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('renders a sort selector defaulting to recent-activity', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+
+    renderPage({ zonesPort, browsePort });
+
+    const sort = await screen.findByRole('combobox', { name: /sort/i });
+    expect(sort).toHaveValue('recent-activity');
+    expect(
+      screen.getByRole('option', { name: /recent activity/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /newest/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /oldest/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /^status$/i })).toBeInTheDocument();
+  });
+
+  it('changes sort order when a different option is selected', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({ startDate: '2026-01-01' }),
+      permittedApplication({ startDate: '2026-03-01' }),
+    ];
+    const user = userEvent.setup();
+
+    renderPage({ zonesPort, browsePort });
+
+    await waitFor(() =>
+      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument(),
+    );
+
+    const sort = await screen.findByRole('combobox', { name: /sort/i });
+    await user.selectOptions(sort, 'oldest');
+
+    expect(sort).toHaveValue('oldest');
   });
 });
 

@@ -89,6 +89,25 @@ extension PlanningApplication {
     location: try! Coordinate(latitude: 52.2043, longitude: 0.1243),
     portalUrl: URL(string: "https://planning.cambridge.gov.uk/2026/0042")
   )
+
+  /// Returns a copy of `self` with `latestUnreadEvent` overwritten — used by
+  /// Applications-screen unread-UI tests to flip the read/unread bit on a
+  /// fixture without rebuilding every other field. (tc-1nsa.8)
+  func withLatestUnreadEvent(_ event: LatestUnreadEvent?) -> PlanningApplication {
+    PlanningApplication(
+      id: id,
+      reference: reference,
+      authority: authority,
+      status: status,
+      receivedDate: receivedDate,
+      description: description,
+      address: address,
+      location: location,
+      portalUrl: portalUrl,
+      statusHistory: statusHistory,
+      latestUnreadEvent: event
+    )
+  }
 }
 
 extension LocalAuthority {

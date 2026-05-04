@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Domain.Notifications;
@@ -9,6 +10,7 @@ namespace TownCrier.Application.Notifications;
 public sealed class DispatchNotificationCommandHandler
 {
     private readonly INotificationRepository notificationRepository;
+    private readonly INotificationStateRepository notificationStateRepository;
     private readonly IUserProfileRepository userProfileRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
@@ -17,6 +19,7 @@ public sealed class DispatchNotificationCommandHandler
 
     public DispatchNotificationCommandHandler(
         INotificationRepository notificationRepository,
+        INotificationStateRepository notificationStateRepository,
         IUserProfileRepository userProfileRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
@@ -24,6 +27,7 @@ public sealed class DispatchNotificationCommandHandler
         TimeProvider timeProvider)
     {
         this.notificationRepository = notificationRepository;
+        this.notificationStateRepository = notificationStateRepository;
         this.userProfileRepository = userProfileRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
@@ -117,7 +121,18 @@ public sealed class DispatchNotificationCommandHandler
 
         if (devices.Count > 0)
         {
-            var sendResult = await this.pushNotificationSender.SendAsync(notification, devices, ct)
+            // Compute the badge value from the watermark — count of unread
+            // notifications (createdAt > lastReadAt). The newly-created
+            // notification isn't persisted yet, but is unread by construction
+            // (now > lastReadAt for any sane watermark), so we add 1 for it.
+            // First-touch users have no notification-state document; we treat
+            // their watermark as DateTimeOffset.MinValue, making everything
+            // unread and the badge accurate from the very first push.
+            var totalUnreadCount = await this.ComputeTotalUnreadCountAsync(zone.UserId, ct)
+                .ConfigureAwait(false) + 1;
+
+            var sendResult = await this.pushNotificationSender
+                .SendAsync(notification, devices, totalUnreadCount, ct)
                 .ConfigureAwait(false);
             notification.MarkPushSent();
             ApiMetrics.NotificationsSent.Add(
@@ -138,5 +153,18 @@ public sealed class DispatchNotificationCommandHandler
         }
 
         await this.notificationRepository.SaveAsync(notification, ct).ConfigureAwait(false);
+    }
+
+    private async Task<int> ComputeTotalUnreadCountAsync(string userId, CancellationToken ct)
+    {
+        // First-touch users may have no notification-state row yet; treat the
+        // watermark as DateTimeOffset.MinValue so every persisted notification
+        // counts as unread. The endpoint adapter seeds a real document on first
+        // GET — until then we assume nothing has been read.
+        var state = await this.notificationStateRepository
+            .GetByUserIdAsync(userId, ct).ConfigureAwait(false);
+        var lastReadAt = state?.LastReadAt ?? DateTimeOffset.MinValue;
+        return await this.notificationRepository
+            .GetUnreadCountAsync(userId, lastReadAt, ct).ConfigureAwait(false);
     }
 }

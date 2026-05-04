@@ -140,3 +140,53 @@ describe('ApplicationCard', () => {
     expect(description.textContent).toBe('');
   });
 });
+
+describe('ApplicationCard — read-state aware status pill', () => {
+  it('marks the status badge unread when latestUnreadEvent is non-null', () => {
+    const app = permittedApplication({
+      latestUnreadEvent: {
+        type: 'DecisionUpdate',
+        decision: 'Permitted',
+        createdAt: '2026-04-01T00:00:00Z',
+      },
+    });
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByTestId('application-status-badge');
+    expect(badge).toHaveAttribute('data-unread', 'true');
+  });
+
+  it('marks the status badge read (muted) when latestUnreadEvent is null', () => {
+    const app = permittedApplication({ latestUnreadEvent: null });
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByTestId('application-status-badge');
+    expect(badge).toHaveAttribute('data-unread', 'false');
+  });
+
+  it('marks the application card unread when latestUnreadEvent is non-null', () => {
+    const app = undecidedApplication({
+      latestUnreadEvent: {
+        type: 'NewApplication',
+        decision: null,
+        createdAt: '2026-04-01T00:00:00Z',
+      },
+    });
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    const card = screen.getByTestId('application-card');
+    expect(card).toHaveAttribute('data-unread', 'true');
+  });
+});

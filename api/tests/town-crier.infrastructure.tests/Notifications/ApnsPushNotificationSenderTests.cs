@@ -27,7 +27,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -44,7 +44,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("abcdef0123456789");
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var request = fixture.Handler.SentRequests[0];
@@ -62,7 +62,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var auth = fixture.Handler.SentRequests[0].Authorization;
@@ -82,7 +82,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var headers = fixture.Handler.SentRequests[0].Headers;
@@ -102,7 +102,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(fixture.Handler.SentRequests[0].Version).IsEqualTo(HttpVersion.Version20);
@@ -122,7 +122,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var bodyJson = fixture.Handler.SentRequests[0].Body;
@@ -147,7 +147,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("dead-token");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEquivalentTo(DeadTokenList);
@@ -163,7 +163,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("garbage-token");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEquivalentTo(GarbageTokenList);
@@ -180,7 +180,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -197,7 +197,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -219,7 +219,7 @@ public sealed class ApnsPushNotificationSenderTests
         fixture.TimeProvider.Advance(TimeSpan.FromSeconds(1));
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var firstJwt = fixture.Handler.SentRequests[0].Authorization!.Parameter;
@@ -243,7 +243,7 @@ public sealed class ApnsPushNotificationSenderTests
         };
 
         // Act
-        await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         var firstJwt = fixture.Handler.SentRequests[0].Authorization!.Parameter;
@@ -262,7 +262,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert — token is not invalidated; we tried twice and stopped.
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -279,7 +279,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -297,7 +297,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -315,7 +315,7 @@ public sealed class ApnsPushNotificationSenderTests
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -340,7 +340,7 @@ public sealed class ApnsPushNotificationSenderTests
             .ToList();
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -351,13 +351,15 @@ public sealed class ApnsPushNotificationSenderTests
     [Test]
     public async Task Should_BuildDigestPayloadWithCount_When_SendingDigest()
     {
-        // Arrange
+        // Arrange — applicationCount drives the human-readable body copy ("7 new
+        // applications…") while totalUnreadCount drives the iOS badge.
         using var fixture = SenderFixture.Create();
         fixture.Handler.EnqueueOk();
         var devices = OneDevice("token-1");
 
         // Act
-        var result = await fixture.Sender.SendDigestAsync(applicationCount: 7, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendDigestAsync(
+            applicationCount: 7, totalUnreadCount: 12, devices, CancellationToken.None);
 
         // Assert
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -366,7 +368,52 @@ public sealed class ApnsPushNotificationSenderTests
         var aps = doc.RootElement.GetProperty("aps");
         await Assert.That(aps.GetProperty("alert").GetProperty("title").GetString()).IsEqualTo("Town Crier");
         await Assert.That(aps.GetProperty("alert").GetProperty("body").GetString()!).Contains("7");
-        await Assert.That(aps.GetProperty("badge").GetInt32()).IsEqualTo(7);
+        await Assert.That(aps.GetProperty("badge").GetInt32()).IsEqualTo(12);
+    }
+
+    [Test]
+    public async Task Should_IncludeNotificationCreatedAtAsIso8601InAlertPayload_When_Sending()
+    {
+        // Arrange — iOS push-tap watermark advance (spec
+        // docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push)
+        // parses userInfo["createdAt"] as ISO-8601 to fire the advance call.
+        // Pin a deterministic CreatedAt so the wire format is asserted exactly.
+        using var fixture = SenderFixture.Create();
+        fixture.Handler.EnqueueOk();
+        var createdAt = new DateTimeOffset(2026, 5, 4, 9, 30, 15, TimeSpan.Zero);
+        var notification = new NotificationBuilder().WithCreatedAt(createdAt).Build();
+        var devices = OneDevice("token-1");
+
+        // Act
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
+
+        // Assert
+        var bodyJson = fixture.Handler.SentRequests[0].Body;
+        using var doc = JsonDocument.Parse(bodyJson);
+        var raw = doc.RootElement.GetProperty("createdAt").GetString();
+        await Assert.That(raw).IsNotNull();
+        await Assert.That(DateTimeOffset.Parse(raw!, System.Globalization.CultureInfo.InvariantCulture))
+            .IsEqualTo(createdAt);
+    }
+
+    [Test]
+    public async Task Should_SetAlertBadgeToTotalUnreadCount_When_Sending()
+    {
+        // Arrange — pin the new contract: the alert payload's badge is the caller's
+        // totalUnreadCount, not a hardcoded 1. Per spec this drives the iOS app
+        // icon badge so post-mark-all-read pushes can decrement back to 0.
+        using var fixture = SenderFixture.Create();
+        fixture.Handler.EnqueueOk();
+        var notification = new NotificationBuilder().Build();
+        var devices = OneDevice("token-1");
+
+        // Act
+        await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 5, CancellationToken.None);
+
+        // Assert
+        var bodyJson = fixture.Handler.SentRequests[0].Body;
+        using var doc = JsonDocument.Parse(bodyJson);
+        await Assert.That(doc.RootElement.GetProperty("aps").GetProperty("badge").GetInt32()).IsEqualTo(5);
     }
 
     [Test]
@@ -377,7 +424,7 @@ public sealed class ApnsPushNotificationSenderTests
         var notification = new NotificationBuilder().Build();
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, [], CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, [], totalUnreadCount: 0, CancellationToken.None);
 
         // Assert — nothing sent, nothing rejected.
         await Assert.That(result.InvalidTokens).IsEmpty();
@@ -401,7 +448,7 @@ public sealed class ApnsPushNotificationSenderTests
         };
 
         // Act
-        var result = await fixture.Sender.SendAsync(notification, devices, CancellationToken.None);
+        var result = await fixture.Sender.SendAsync(notification, devices, totalUnreadCount: 1, CancellationToken.None);
 
         // Assert — both rejected tokens reported; OK token is not.
         await Assert.That(result.InvalidTokens).IsEquivalentTo(StaleAndBadTokens);

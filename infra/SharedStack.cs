@@ -415,15 +415,11 @@ public static class SharedStack
         // Azure Communication Services (Email) — UK data location.
         // Control plane is Location="global"; DataLocation="UK" pins storage/processing
         // to UK data centres for compliance with our UK data residency commitment.
-        var communicationServiceUk = new CommunicationService("acs-town-crier-uk", new CommunicationServiceArgs
-        {
-            CommunicationServiceName = "acs-town-crier-uk",
-            ResourceGroupName = resourceGroup.Name,
-            Location = "global",
-            DataLocation = "UK",
-            Tags = tags,
-        });
-
+        //
+        // Declaration order: EmailService → Domain → CommunicationService. The
+        // CommunicationService must be declared after the Domain so its `.Id` is in
+        // C# scope to pass via `LinkedDomains`. Pulumi handles Azure-side ordering
+        // via Output dependencies regardless of C# declaration order.
         var emailServiceUk = new EmailService("email-town-crier-uk", new EmailServiceArgs
         {
             EmailServiceName = "email-town-crier-uk",
@@ -437,13 +433,28 @@ public static class SharedStack
         // own the DKIM/SPF/Domain TXT records in Cloudflare DNS (see project_cloudflare_dns
         // memory). Logical name retains the `-new` suffix from the dual-resource migration
         // (tc-8634, tc-zx5g) to avoid a Pulumi replace; rename via `aliases` if desired.
-        _ = new Domain("domain-towncrierapp-uk-new", new DomainArgs
+        var towncrierAppDomain = new Domain("domain-towncrierapp-uk-new", new DomainArgs
         {
             DomainName = "towncrierapp.uk",
             EmailServiceName = emailServiceUk.Name,
             ResourceGroupName = resourceGroup.Name,
             Location = "global",
             DomainManagement = DomainManagement.CustomerManaged,
+            Tags = tags,
+        });
+
+        // LinkedDomains authorises the CommunicationService to send mail from the
+        // towncrierapp.uk Domain. Without this, every send fails with
+        // 404 DomainNotLinked (tc-luxj, GH#370). The Domain resource is declared
+        // above so its .Id is in C# scope; Pulumi tracks the Output dependency
+        // and provisions the Domain before applying the link.
+        var communicationServiceUk = new CommunicationService("acs-town-crier-uk", new CommunicationServiceArgs
+        {
+            CommunicationServiceName = "acs-town-crier-uk",
+            ResourceGroupName = resourceGroup.Name,
+            Location = "global",
+            DataLocation = "UK",
+            LinkedDomains = new[] { towncrierAppDomain.Id },
             Tags = tags,
         });
 
