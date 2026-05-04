@@ -89,10 +89,7 @@ describe('apple-app-site-association', () => {
   }
 
   function loadAasa(): Aasa {
-    const aasaPath = resolve(
-      __dirname,
-      '../../public/.well-known/apple-app-site-association',
-    );
+    const aasaPath = resolve(__dirname, '../../public/.well-known/aasa.json');
     const raw = readFileSync(aasaPath, 'utf-8');
     return JSON.parse(raw) as Aasa;
   }
@@ -132,7 +129,11 @@ describe('staticwebapp.config.json — AASA route', () => {
     return JSON.parse(raw) as ConfigWithRoutes;
   }
 
-  it('serves apple-app-site-association with application/json Content-Type', () => {
+  it('rewrites apple-app-site-association to a .json file so SWA serves application/json', () => {
+    // Apple's swcd daemon rejects the AASA file unless served as application/json.
+    // Azure SWA infers Content-Type from the file extension and ignores routes[].headers
+    // for extensionless files, so we rewrite the canonical path to a .json file
+    // whose extension causes SWA to set application/json automatically.
     const config = loadConfigWithRoutes();
 
     const aasaRoute = config.routes.find(
@@ -140,6 +141,14 @@ describe('staticwebapp.config.json — AASA route', () => {
     );
 
     expect(aasaRoute).toBeDefined();
-    expect(aasaRoute?.headers?.['Content-Type']).toBe('application/json');
+    expect(aasaRoute?.rewrite).toBe('/.well-known/aasa.json');
+  });
+
+  it('ships the AASA payload at the rewrite target /.well-known/aasa.json', () => {
+    const aasaJsonPath = resolve(__dirname, '../../public/.well-known/aasa.json');
+    const raw = readFileSync(aasaJsonPath, 'utf-8');
+    const parsed = JSON.parse(raw) as { applinks: { details: unknown[] } };
+
+    expect(parsed.applinks.details.length).toBeGreaterThan(0);
   });
 });
