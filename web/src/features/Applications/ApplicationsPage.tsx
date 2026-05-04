@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import type { WatchZoneSummary, ApplicationStatus } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
+import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
 import { useApplications } from './useApplications';
 import { ApplicationCard } from '../../components/ApplicationCard/ApplicationCard';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
@@ -14,6 +15,7 @@ interface ZonesPort {
 interface Props {
   zonesPort: ZonesPort;
   browsePort: ApplicationsBrowsePort;
+  notificationStateRepository: NotificationStateRepository;
 }
 
 interface StatusChip {
@@ -31,7 +33,11 @@ const STATUS_CHIPS: readonly StatusChip[] = [
   { label: 'Appealed', status: 'Appealed' },
 ];
 
-export function ApplicationsPage({ zonesPort, browsePort }: Props) {
+export function ApplicationsPage({
+  zonesPort,
+  browsePort,
+  notificationStateRepository,
+}: Props) {
   const navigate = useNavigate();
   const {
     data: zones,
@@ -50,6 +56,7 @@ export function ApplicationsPage({ zonesPort, browsePort }: Props) {
   } = useApplications({
     browsePort,
     zones: zones ?? [],
+    notificationStateRepository,
   });
 
   const hasZones = (zones ?? []).length > 0;

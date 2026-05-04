@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ApplicationsPage } from '../ApplicationsPage';
 import { SpyApplicationsBrowsePort } from './spies/spy-applications-browse-port';
+import { SpyNotificationStateRepository } from './spies/spy-notification-state-repository';
 import { cambridgeZone, oxfordZone } from './fixtures/zone.fixtures';
 import {
   undecidedApplication,
@@ -29,14 +30,25 @@ class SpyZonesPort {
 interface RenderInputs {
   zonesPort?: SpyZonesPort;
   browsePort?: SpyApplicationsBrowsePort;
+  notificationStateRepository?: SpyNotificationStateRepository;
 }
 
-function renderPage({ zonesPort, browsePort }: RenderInputs = {}) {
+function renderPage({
+  zonesPort,
+  browsePort,
+  notificationStateRepository,
+}: RenderInputs = {}) {
   const zones = zonesPort ?? new SpyZonesPort();
   const browse = browsePort ?? new SpyApplicationsBrowsePort();
+  const stateRepo =
+    notificationStateRepository ?? new SpyNotificationStateRepository();
   return render(
     <MemoryRouter>
-      <ApplicationsPage zonesPort={zones} browsePort={browse} />
+      <ApplicationsPage
+        zonesPort={zones}
+        browsePort={browse}
+        notificationStateRepository={stateRepo}
+      />
     </MemoryRouter>,
   );
 }

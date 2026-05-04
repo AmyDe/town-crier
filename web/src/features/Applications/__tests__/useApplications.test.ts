@@ -194,9 +194,11 @@ describe('useApplications — Unread filter', () => {
 
     expect(result.current.unreadOnly).toBe(true);
     expect(result.current.applications).toHaveLength(2);
+    // Default sort is recent-activity (desc) — rejected event 2026-04-15
+    // outranks undecided 2026-04-01.
     expect(result.current.applications.map((a) => a.uid)).toEqual([
-      undecidedApplication().uid,
       rejectedApplication().uid,
+      undecidedApplication().uid,
     ]);
   });
 
