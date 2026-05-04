@@ -50,6 +50,7 @@ public final class AppCoordinator: ObservableObject {
   private let savedApplicationRepository: SavedApplicationRepository?
   private let offerCodeService: OfferCodeService?
   private let tierCache: UserDefaults
+  private let notificationStateRepository: NotificationStateRepository?
   // Cached strongly so SwiftUI's factory re-evaluation doesn't leave the
   // coordinator with a dangling reference; editor `onSave` needs a live VM.
   private var watchZoneListViewModel: WatchZoneListViewModel?
@@ -75,7 +76,8 @@ public final class AppCoordinator: ObservableObject {
     versionConfigService: VersionConfigService,
     savedApplicationRepository: SavedApplicationRepository? = nil,
     offerCodeService: OfferCodeService? = nil,
-    tierCache: UserDefaults? = nil
+    tierCache: UserDefaults? = nil,
+    notificationStateRepository: NotificationStateRepository? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -102,6 +104,7 @@ public final class AppCoordinator: ObservableObject {
     self.savedApplicationRepository = savedApplicationRepository
     self.offerCodeService = offerCodeService
     self.tierCache = tierCache ?? .standard
+    self.notificationStateRepository = notificationStateRepository
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -131,12 +134,14 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         offlineRepository: offlineRepository,
-        zone: zone
+        zone: zone,
+        notificationStateRepository: notificationStateRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         repository: repository,
-        zone: zone
+        zone: zone,
+        notificationStateRepository: notificationStateRepository
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -152,12 +157,14 @@ public final class AppCoordinator: ObservableObject {
     if let offlineRepository {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        offlineRepository: offlineRepository
+        offlineRepository: offlineRepository,
+        notificationStateRepository: notificationStateRepository
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
-        repository: repository
+        repository: repository,
+        notificationStateRepository: notificationStateRepository
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in

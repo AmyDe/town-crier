@@ -10,6 +10,12 @@ import TownCrierDomain
 /// navigation bar hijacked the first one for its collapse
 /// animation, corrupting its rendering (chips invisible but
 /// still tappable).
+///
+/// The unread-watermark UI (tc-1nsa.8) layers on:
+/// - an Unread filter chip (visible only when `hasUnread`) that mirrors the
+///   web bead's single-select behaviour with the existing status chips,
+/// - a sort menu in the toolbar with the four sort modes from the spec,
+/// - a Mark-All-Read toolbar action (visible only when `hasUnread`).
 public struct ApplicationListView: View {
   @StateObject private var viewModel: ApplicationListViewModel
 
@@ -29,12 +35,66 @@ public struct ApplicationListView: View {
     #if os(iOS)
       .navigationBarTitleDisplayMode(.large)
     #endif
+    .toolbar {
+      sortToolbarItem
+      markAllReadToolbarItem
+    }
     .task {
       await viewModel.loadApplications()
     }
     .refreshable {
       await viewModel.loadApplications()
     }
+  }
+
+  // MARK: - Toolbar
+
+  @ToolbarContentBuilder
+  private var sortToolbarItem: some ToolbarContent {
+    ToolbarItem(placement: sortToolbarPlacement) {
+      Menu {
+        Picker("Sort", selection: sortBinding) {
+          ForEach(ApplicationsSort.allCases, id: \.self) { mode in
+            Text(mode.displayLabel).tag(mode)
+          }
+        }
+      } label: {
+        Image(systemName: "arrow.up.arrow.down")
+          .foregroundStyle(Color.tcTextPrimary)
+      }
+      .accessibilityLabel("Sort")
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var markAllReadToolbarItem: some ToolbarContent {
+    if viewModel.hasUnread {
+      ToolbarItem(placement: sortToolbarPlacement) {
+        Button("Mark all read") {
+          Task { await viewModel.markAllRead() }
+        }
+        .foregroundStyle(Color.tcTextPrimary)
+        .accessibilityLabel("Mark all read")
+      }
+    }
+  }
+
+  private var sortToolbarPlacement: ToolbarItemPlacement {
+    #if os(iOS)
+      return .topBarTrailing
+    #else
+      return .automatic
+    #endif
+  }
+
+  /// Two-way binding into the ViewModel's `sort` property — kept as a
+  /// computed property so the `Picker` re-renders correctly when the
+  /// persisted choice is read on launch.
+  private var sortBinding: Binding<ApplicationsSort> {
+    Binding(
+      get: { viewModel.sort },
+      set: { viewModel.sort = $0 }
+    )
   }
 
   // MARK: - Chip Rows
@@ -59,6 +119,9 @@ public struct ApplicationListView: View {
     if !viewModel.applications.isEmpty {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
+          if viewModel.hasUnread {
+            unreadChip
+          }
           filterChip(label: "All", status: nil)
           filterChip(label: "Pending", status: .undecided)
           filterChip(label: "Granted", status: .permitted)
@@ -140,7 +203,7 @@ public struct ApplicationListView: View {
   // MARK: - Filter Chips
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
-    let isSelected = viewModel.selectedStatusFilter == status
+    let isSelected = !viewModel.unreadOnly && viewModel.selectedStatusFilter == status
     return Text(label)
       .font(TCTypography.captionEmphasis)
       .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
@@ -156,5 +219,27 @@ public struct ApplicationListView: View {
       .onTapGesture {
         viewModel.selectedStatusFilter = status
       }
+  }
+
+  /// The Unread chip lives at the head of the chip group. Selecting it
+  /// clears any active status filter and toggles `unreadOnly`. The label
+  /// includes the watermark count so it doubles as the unread badge.
+  private var unreadChip: some View {
+    Text("Unread (\(viewModel.unreadCount))")
+      .font(TCTypography.captionEmphasis)
+      .foregroundStyle(viewModel.unreadOnly ? Color.tcTextOnAccent : Color.tcTextPrimary)
+      .padding(.horizontal, TCSpacing.small)
+      .padding(.vertical, TCSpacing.extraSmall)
+      .background(viewModel.unreadOnly ? Color.tcAmber : Color.tcSurface)
+      .clipShape(Capsule())
+      .overlay(
+        Capsule()
+          .stroke(Color.tcBorder, lineWidth: viewModel.unreadOnly ? 0 : 1)
+      )
+      .contentShape(Capsule())
+      .onTapGesture {
+        viewModel.unreadOnly.toggle()
+      }
+      .accessibilityLabel("Unread, \(viewModel.unreadCount) items")
   }
 }

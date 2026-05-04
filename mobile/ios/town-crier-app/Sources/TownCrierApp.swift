@@ -51,6 +51,7 @@ struct TownCrierApp: App {
     let watchZoneRepository = APIWatchZoneRepository(apiClient: apiClient)
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
+    let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -65,7 +66,8 @@ struct TownCrierApp: App {
       notificationService: notificationService,
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
-      savedApplicationRepository: savedApplicationRepository
+      savedApplicationRepository: savedApplicationRepository,
+      notificationStateRepository: notificationStateRepository
     )
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
