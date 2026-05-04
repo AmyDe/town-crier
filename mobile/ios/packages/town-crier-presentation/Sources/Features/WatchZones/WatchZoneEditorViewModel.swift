@@ -70,7 +70,7 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
   /// (tc-1zb7). Triggered at or above 2 km, the upper edge of the recommended
   /// "small zone" range — see `LargeRadiusWarningView`.
   public var showsLargeRadiusWarning: Bool {
-    selectedRadiusMetres >= LargeRadiusWarningView.thresholdMetres
+    selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
   }
 
   public func submitPostcode() async {

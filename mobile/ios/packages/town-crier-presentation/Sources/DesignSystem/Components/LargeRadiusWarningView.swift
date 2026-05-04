@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Threshold (in metres) at or above which `LargeRadiusWarningView` is shown.
+/// The bead (tc-1zb7) recommends "100–500 m in cities, under 2 km elsewhere",
+/// so any selection at or above 2 km warrants the heads-up.
+public enum LargeRadiusWarning {
+  public static let thresholdMetres: Double = 2000
+}
+
 /// Callout warning that a watch zone with a large radius may generate a high
 /// volume of notifications — surfaced on both the onboarding radius picker and
 /// the watch-zone editor (tc-1zb7).
@@ -8,12 +15,6 @@ import SwiftUI
 /// callout uses the brand amber at 15% opacity so it reads as a heads-up, not
 /// an error — the radius itself is still allowed.
 public struct LargeRadiusWarningView: View {
-  /// Radius (in metres) at or above which the warning is shown. The bead
-  /// recommends "100–500 m in cities, under 2 km elsewhere" — 2 km is the
-  /// upper edge of the recommended small-zone range, so any selection at or
-  /// above it warrants the heads-up.
-  public static let thresholdMetres: Double = 2000
-
   public init() {}
 
   public var body: some View {
