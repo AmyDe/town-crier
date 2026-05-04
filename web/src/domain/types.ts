@@ -186,19 +186,6 @@ export interface SavedApplication {
 }
 
 // ---------------------------------------------------------------------------
-// Notifications
-// ---------------------------------------------------------------------------
-
-export interface NotificationItem {
-  readonly applicationName: string;
-  readonly applicationAddress: string;
-  readonly applicationDescription: string;
-  readonly applicationType: string;
-  readonly authorityId: AuthorityId;
-  readonly createdAt: string;
-}
-
-// ---------------------------------------------------------------------------
 // Authorities
 // ---------------------------------------------------------------------------
 
@@ -276,12 +263,6 @@ export interface UpdateZonePreferencesRequest {
 // ---------------------------------------------------------------------------
 // Paginated result types
 // ---------------------------------------------------------------------------
-
-export interface NotificationsResult {
-  readonly notifications: readonly NotificationItem[];
-  readonly total: number;
-  readonly page: number;
-}
 
 export interface AuthoritiesResult {
   readonly authorities: readonly AuthorityListItem[];

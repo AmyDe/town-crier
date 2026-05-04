@@ -38,9 +38,6 @@ export function DashboardPage({ port }: Props) {
           <Link to="/saved" className={styles.quickLink}>
             Saved Applications
           </Link>
-          <Link to="/notifications" className={styles.quickLink}>
-            Notifications
-          </Link>
         </nav>
       </section>
 
