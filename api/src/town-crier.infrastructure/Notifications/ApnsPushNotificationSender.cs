@@ -96,7 +96,8 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
                 Sound: "default",
                 Badge: totalUnreadCount),
             NotificationId: notification.Id,
-            ApplicationRef: notification.ApplicationName);
+            ApplicationRef: notification.ApplicationName,
+            CreatedAt: notification.CreatedAt);
     }
 
     private static string BuildDecisionBody(Notification notification)
