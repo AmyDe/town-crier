@@ -91,15 +91,20 @@ platform :ios do
     # Run via workflow_dispatch only; do NOT wire into the beta lane.
     bundle_id = "uk.towncrierapp.mobile"
 
-    # Spaceship needs an App Store Connect API token. Reuse the same env vars
-    # the beta lane consumes so CI plumbing stays identical.
-    require "spaceship"
-
-    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.from(
+    # The action sets Spaceship::ConnectAPI.token as a side effect (default
+    # set_spaceship_token: true), so direct Spaceship calls below can omit
+    # explicit token wiring. Going through the action also avoids hand-rolling
+    # the file-path resolution — fastlane chdir's into the Fastfile directory
+    # before running a lane, which doubled the relative path when we read the
+    # P8 ourselves.
+    app_store_connect_api_key(
       key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
       issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
-      filepath: File.absolute_path(ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH")),
+      key_filepath: ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"),
+      in_house: false,
     )
+
+    require "spaceship"
 
     app = Spaceship::ConnectAPI::BundleId.find(bundle_id)
     UI.user_error!("Bundle ID #{bundle_id} not found in App Store Connect") if app.nil?
@@ -132,6 +137,12 @@ platform :ios do
     )
 
     setup_ci if ENV["CI"]
+
+    # Match also reads APP_STORE_CONNECT_API_KEY_PATH (one of its api_key_path
+    # env_names). With api_key passed explicitly as a hash and api_key_path
+    # populated from the env, match's force: true codepath rejects the pair as
+    # conflicting_options. Drop the env so only the explicit hash remains.
+    ENV.delete("APP_STORE_CONNECT_API_KEY_PATH")
 
     match(
       api_key: api_key,
