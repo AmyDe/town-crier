@@ -159,6 +159,52 @@ describe('WatchZoneCreatePage', () => {
     expect(navigatedTo).toBeNull();
   });
 
+  it('shows the large-radius warning on the details step at the default 2km radius', async () => {
+    const user = userEvent.setup();
+
+    renderWithRouter(
+      <WatchZoneCreatePage
+        repository={repoSpy}
+        geocodingPort={geocodingSpy}
+        navigate={navigate}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+
+    await screen.findByLabelText(/zone name/i);
+
+    // Default radius is 2km — warning is visible immediately on the details step.
+    expect(
+      screen.getByText(/hundreds of notifications a day/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/100[–-]500m/i)).toBeInTheDocument();
+    expect(screen.getByText(/under 2km/i)).toBeInTheDocument();
+  });
+
+  it('hides the large-radius warning when 1km is selected', async () => {
+    const user = userEvent.setup();
+
+    renderWithRouter(
+      <WatchZoneCreatePage
+        repository={repoSpy}
+        geocodingPort={geocodingSpy}
+        navigate={navigate}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /postcode/i }), 'CB1 2AD');
+    await user.click(screen.getByRole('button', { name: /look up/i }));
+
+    await screen.findByLabelText(/zone name/i);
+    await user.click(screen.getByLabelText('1 km'));
+
+    expect(
+      screen.queryByText(/hundreds of notifications a day/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('has a cancel link back to the list', () => {
     renderWithRouter(
       <WatchZoneCreatePage
