@@ -1,3 +1,4 @@
+import Foundation
 import TownCrierDomain
 
 /// Extracts deep-link destinations and renders user-facing copy from push
@@ -50,5 +51,30 @@ public enum NotificationPayloadParser {
       return nil
     }
     return "Application \(applicationName) was \(label)"
+  }
+
+  /// Extracts the notification's `createdAt` instant from an APNs userInfo
+  /// dictionary, used to advance the read-state watermark on push-tap (spec
+  /// `docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push`).
+  ///
+  /// The server emits ISO-8601 strings (with or without fractional seconds).
+  /// The value is decoded explicitly here because `userInfo` is a plist-style
+  /// `[AnyHashable: Any]`, not JSON, so `JSONDecoder` strategies do not apply.
+  ///
+  /// Returns `nil` when the key is missing, the value is not a string, or the
+  /// string cannot be parsed — older API builds and digest pushes do not
+  /// carry `createdAt`, and the push-tap deep-link path must continue to work
+  /// in those cases (advance is fire-and-forget).
+  public static func parseCreatedAt(from userInfo: [AnyHashable: Any]) -> Date? {
+    guard let raw = userInfo["createdAt"] as? String else {
+      return nil
+    }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    if let date = formatter.date(from: raw) {
+      return date
+    }
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.date(from: raw)
   }
 }
