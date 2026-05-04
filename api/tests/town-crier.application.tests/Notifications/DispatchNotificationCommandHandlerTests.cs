@@ -5,6 +5,7 @@ using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
 using TownCrier.Domain.Notifications;
+using TownCrier.Domain.NotificationState;
 using TownCrier.Domain.UserProfiles;
 using FakeDeviceRegistrationRepository = TownCrier.Application.Tests.DeviceRegistrations.FakeDeviceRegistrationRepository;
 
@@ -18,7 +19,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_CreateNotificationRecord_When_ApplicationMatchesWatchZone()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -35,7 +36,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_SendPushNotification_When_PaidUserHasRegisteredDevice()
     {
         // Arrange
-        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -51,7 +52,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_MarkPushSent_When_NotificationDispatchedToPaidUser()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act
@@ -65,7 +66,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotSendDuplicateNotification_When_SameApplicationAndUserAndEventType()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         var command = CreateCommand();
@@ -85,7 +86,7 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Arrange — DecisionUpdate already persisted for the same user + applicationUid.
         // Dedup key is (userId, applicationUid, eventType) so a NewApplication dispatch
         // must NOT collide with the pre-existing DecisionUpdate row.
-        var (handler, notificationRepo, userProfileRepo, _, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, _, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         var existingDecisionUpdate = Notification.Create(
@@ -116,7 +117,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange — pre-existing NewApplication for the same applicationUid; subsequent
         // NewApplication dispatch must dedup (same eventType + same uid + same user).
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         var existing = Notification.Create(
@@ -144,7 +145,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_RecordNotificationButNotPush_When_PushDisabled()
     {
         // Arrange — paid tier with push toggled off; row written, no push
-        var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -166,7 +167,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_RecordButNotPush_When_UserOnFreeTier()
     {
         // Arrange — free tier (default) gets weekly digest only, no instant push
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedFreeUserWithDevice(userProfileRepo, deviceRepo);
 
         // Act — dispatch 10 notifications well past any historical cap
@@ -190,7 +191,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_AllowUnlimitedNotifications_When_ProTier()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -221,7 +222,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotCreateNotification_When_UserProfileNotFound()
     {
         // Arrange — no user profile seeded
-        var (handler, notificationRepo, _, pushSender, _) = CreateHandler();
+        var (handler, notificationRepo, _, pushSender, _, _) = CreateHandler();
 
         // Act
         await handler.HandleAsync(CreateCommand(), CancellationToken.None);
@@ -235,7 +236,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_NotSendPush_When_NoRegisteredDevices()
     {
         // Arrange — paid user with no devices
-        var (handler, notificationRepo, userProfileRepo, pushSender, _) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, _, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -256,7 +257,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_RecordButNotPush_When_ZoneNewApplicationPushDisabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -287,7 +288,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     public async Task Should_SendPush_When_ZoneNewApplicationPushEnabled()
     {
         // Arrange
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -320,7 +321,7 @@ public sealed class DispatchNotificationCommandHandlerTests
         // Arrange — Pro user with two devices; sender reports the second as invalid.
         // Handler must dispatch RemoveInvalidDeviceTokenCommand for each rejected
         // token (one call per token, exactly).
-        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -350,7 +351,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange — happy path: device delivered successfully, InvalidTokens empty.
         // Idempotency guard — no spurious removal commands.
-        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         // Default NextInvalidTokens is empty.
@@ -368,7 +369,7 @@ public sealed class DispatchNotificationCommandHandlerTests
     {
         // Arrange — three devices; two reported invalid by APNs. Verifies the
         // handler iterates all entries in PushSendResult.InvalidTokens.
-        var (handler, _, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
 
         var profile = new UserProfileBuilder()
             .WithUserId("user-1")
@@ -399,13 +400,77 @@ public sealed class DispatchNotificationCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_PassUnreadCountIncludingNewNotification_When_PushSent()
+    {
+        // Arrange — two pre-existing notifications strictly after the user's
+        // watermark, plus the freshly-created one from this dispatch. Expected
+        // badge value is 3 (2 in repo + 1 just created, not yet persisted).
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, stateRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        var lastReadAt = new DateTimeOffset(2026, 3, 14, 0, 0, 0, TimeSpan.Zero);
+        stateRepo.Seed(NotificationStateAggregate.Reconstitute("user-1", lastReadAt, version: 5));
+
+        var earlyUnread = Notification.Create(
+            "user-1",
+            "uid-x",
+            "app-x",
+            "zone-1",
+            "x High St",
+            "X",
+            "Householder",
+            42,
+            new DateTimeOffset(2026, 3, 14, 12, 0, 0, TimeSpan.Zero));
+        var laterUnread = Notification.Create(
+            "user-1",
+            "uid-y",
+            "app-y",
+            "zone-1",
+            "y High St",
+            "Y",
+            "Householder",
+            42,
+            new DateTimeOffset(2026, 3, 15, 8, 0, 0, TimeSpan.Zero));
+        notificationRepo.Seed(earlyUnread);
+        notificationRepo.Seed(laterUnread);
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(pushSender.Sent[0].TotalUnreadCount).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task Should_PassUnreadCountOfOne_When_FirstTouchUserHasNoNotificationStateYet()
+    {
+        // Arrange — user with no notification-state document yet (first push ever).
+        // Implementation defaults the watermark to DateTimeOffset.MinValue so every
+        // existing row counts as unread; with zero pre-existing rows + 1 freshly
+        // created notification, badge = 1.
+        var (handler, _, userProfileRepo, pushSender, deviceRepo, stateRepo) = CreateHandler();
+        await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
+
+        // No stateRepo.Seed() — confirms the first-touch path.
+
+        // Act
+        await handler.HandleAsync(CreateCommand(), CancellationToken.None);
+
+        // Assert
+        await Assert.That(stateRepo.All).IsEmpty();
+        await Assert.That(pushSender.Sent).HasCount().EqualTo(1);
+        await Assert.That(pushSender.Sent[0].TotalUnreadCount).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task Should_RecordButNotPush_When_WatchZonePushEnabledFalse()
     {
         // Arrange — Pro user with a registered device, but the matched WatchZone
         // has PushEnabled=false (per-zone toggle from T1). Notification row must
         // still be persisted (in-app feed + weekly digest pick it up) but no
         // APNs push fires.
-        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo) = CreateHandler();
+        var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
         var application = new PlanningApplicationBuilder()
@@ -432,7 +497,8 @@ public sealed class DispatchNotificationCommandHandlerTests
         FakeNotificationRepository NotificationRepo,
         FakeUserProfileRepository UserProfileRepo,
         SpyPushNotificationSender PushSender,
-        FakeDeviceRegistrationRepository DeviceRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
+        FakeDeviceRegistrationRepository DeviceRepo,
+        FakeNotificationStateRepository NotificationStateRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
     {
         var notificationRepo = new FakeNotificationRepository();
         var notificationStateRepo = new FakeNotificationStateRepository();
@@ -451,7 +517,7 @@ public sealed class DispatchNotificationCommandHandlerTests
             removeInvalidHandler,
             tp);
 
-        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo);
+        return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, notificationStateRepo);
     }
 
     private static async Task SeedFreeUserWithDevice(
