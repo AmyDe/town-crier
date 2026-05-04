@@ -12,6 +12,12 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
   public let location: Coordinate?
   public let portalUrl: URL?
   public let statusHistory: [StatusEvent]
+  /// Per-row unread descriptor surfaced by the per-zone applications endpoint.
+  /// `nil` when no notification exists strictly after the user's
+  /// `lastReadAt` watermark — drives the muted styling of the row's status
+  /// pill on the Applications screen.
+  /// Spec: `docs/specs/notifications-unread-watermark.md#api-augment-applications`.
+  public let latestUnreadEvent: LatestUnreadEvent?
 
   public init(
     id: PlanningApplicationId,
@@ -23,7 +29,8 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     address: String,
     location: Coordinate? = nil,
     portalUrl: URL? = nil,
-    statusHistory: [StatusEvent] = []
+    statusHistory: [StatusEvent] = [],
+    latestUnreadEvent: LatestUnreadEvent? = nil
   ) {
     self.id = id
     self.reference = reference
@@ -35,6 +42,7 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     self.location = location
     self.portalUrl = portalUrl
     self.statusHistory = statusHistory
+    self.latestUnreadEvent = latestUnreadEvent
   }
 
   public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {
