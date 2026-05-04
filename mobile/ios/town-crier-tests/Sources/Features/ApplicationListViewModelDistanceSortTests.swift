@@ -132,4 +132,51 @@ struct ApplicationListViewModelDistanceSortTests {
 
     #expect(sut.sort == .distance)
   }
+
+  // MARK: - Picker visibility (multi-zone "no zone" guard)
+
+  @Test("availableSortOptions includes .distance when a zone is active")
+  func availableSortOptions_includesDistance_whenZoneActive() async throws {
+    let (sut, _, _) = try makeSUT()
+    await sut.loadApplications()
+    #expect(sut.availableSortOptions.contains(.distance))
+  }
+
+  @Test("availableSortOptions hides .distance when no zone is selected")
+  func availableSortOptions_hidesDistance_whenNoZoneSelected() async throws {
+    let appSpy = SpyPlanningApplicationRepository()
+    let zoneSpy = SpyWatchZoneRepository()
+    zoneSpy.loadAllResult = .success([])
+    let stateSpy = SpyNotificationStateRepository()
+    stateSpy.fetchStateResult = .success(
+      NotificationState(
+        lastReadAt: Date(timeIntervalSince1970: 0),
+        version: 1,
+        totalUnreadCount: 0
+      )
+    )
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let sut = ApplicationListViewModel(
+      watchZoneRepository: zoneSpy,
+      repository: appSpy,
+      notificationStateRepository: stateSpy,
+      userDefaults: defaults,
+      zoneSelectionKey: "no-zone.zone",
+      sortKey: "no-zone.sort"
+    )
+
+    await sut.loadApplications()
+
+    #expect(!sut.availableSortOptions.contains(.distance))
+  }
+
+  @Test("availableSortOptions retains all non-distance modes")
+  func availableSortOptions_retainsOtherModes() throws {
+    let (sut, _, _) = try makeSUT()
+    let modes = sut.availableSortOptions
+    #expect(modes.contains(.recentActivity))
+    #expect(modes.contains(.newest))
+    #expect(modes.contains(.oldest))
+    #expect(modes.contains(.status))
+  }
 }
