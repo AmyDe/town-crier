@@ -62,6 +62,14 @@ public struct WatchZone: Equatable, Hashable, Identifiable, Sendable {
     return distance <= radiusMetres
   }
 
+  /// Great-circle distance in metres from this zone's centre to the given
+  /// coordinate. Used by the Applications screen's distance sort
+  /// (tc-mso6) and any future "near me"-style features that need a
+  /// stable comparator across the domain layer.
+  public func distance(to coordinate: Coordinate) -> Double {
+    haversineDistance(from: centre, to: coordinate)
+  }
+
   private func haversineDistance(from a: Coordinate, to b: Coordinate) -> Double {
     let earthRadius: Double = 6_371_000
     let dLat = (b.latitude - a.latitude) * .pi / 180

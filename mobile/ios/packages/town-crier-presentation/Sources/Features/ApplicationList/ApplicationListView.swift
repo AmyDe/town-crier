@@ -54,7 +54,7 @@ public struct ApplicationListView: View {
     ToolbarItem(placement: sortToolbarPlacement) {
       Menu {
         Picker("Sort", selection: sortBinding) {
-          ForEach(ApplicationsSort.allCases, id: \.self) { mode in
+          ForEach(viewModel.availableSortOptions, id: \.self) { mode in
             Text(mode.displayLabel).tag(mode)
           }
         }
