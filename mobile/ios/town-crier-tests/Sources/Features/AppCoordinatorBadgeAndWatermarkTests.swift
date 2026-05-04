@@ -135,6 +135,103 @@ struct AppCoordinatorBadgeAndWatermarkTests {
     #expect(badgeSetter.setBadgeCalls.isEmpty)
   }
 
+  // MARK: - handlePushTap (integration of deep-link routing + watermark advance)
+
+  @Test func handlePushTap_withApplicationRefAndCreatedAt_routesAndAdvances() async {
+    // The end-to-end push-tap path: parser yields both a DeepLink and a
+    // createdAt; the coordinator must route the deep link AND fire the
+    // watermark advance with the parsed instant.
+    let stateRepo = SpyNotificationStateRepository()
+    let planningSpy = SpyPlanningApplicationRepository()
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let sut = AppCoordinator(
+      repository: planningSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService(),
+      notificationStateRepository: stateRepo
+    )
+    let userInfo: [AnyHashable: Any] = [
+      "applicationRef": "APP-002",
+      "createdAt": "2026-05-04T08:11:57Z",
+    ]
+
+    sut.handlePushTap(userInfo: userInfo)
+
+    await sut.waitForPendingDetailLoad()
+    await sut.waitForPendingWatermarkAdvance()
+
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    #expect(stateRepo.advanceCalls == [formatter.date(from: "2026-05-04T08:11:57Z")])
+  }
+
+  @Test func handlePushTap_withApplicationRefAndNoCreatedAt_routesWithoutAdvance() async {
+    // Older API builds (and any push that omits createdAt) must still deep-
+    // link. Watermark advance is skipped when the timestamp is unavailable.
+    let stateRepo = SpyNotificationStateRepository()
+    let planningSpy = SpyPlanningApplicationRepository()
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let sut = AppCoordinator(
+      repository: planningSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService(),
+      notificationStateRepository: stateRepo
+    )
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-003"]
+
+    sut.handlePushTap(userInfo: userInfo)
+
+    await sut.waitForPendingDetailLoad()
+    await sut.waitForPendingWatermarkAdvance()
+
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-003")])
+    #expect(stateRepo.advanceCalls.isEmpty)
+  }
+
+  @Test func handlePushTap_digestPayload_doesNothing() async {
+    // Digest pushes contain neither applicationRef nor a per-notification
+    // createdAt. The coordinator must no-op rather than fire spurious
+    // requests.
+    let stateRepo = SpyNotificationStateRepository()
+    let planningSpy = SpyPlanningApplicationRepository()
+    let sut = AppCoordinator(
+      repository: planningSpy,
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService(),
+      notificationStateRepository: stateRepo
+    )
+    let userInfo: [AnyHashable: Any] = [
+      "aps": ["alert": ["title": "Town Crier", "body": "5 new"], "badge": 5]
+    ]
+
+    sut.handlePushTap(userInfo: userInfo)
+
+    await sut.waitForPendingDetailLoad()
+    await sut.waitForPendingWatermarkAdvance()
+
+    #expect(planningSpy.fetchApplicationCalls.isEmpty)
+    #expect(stateRepo.advanceCalls.isEmpty)
+  }
+
   @Test func syncBadge_withoutBadgeSetter_doesNotCrash() async {
     let stateRepo = SpyNotificationStateRepository()
     stateRepo.fetchStateResult = .success(
