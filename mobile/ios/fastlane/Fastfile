@@ -82,4 +82,62 @@ platform :ios do
       distribute_external: false,
     )
   end
+
+  desc "Enable Associated Domains capability on the App ID (idempotent)"
+  lane :enable_associated_domains do
+    # One-shot ops lane. Apple Developer Portal capability changes are rare —
+    # this exists so PR #363's `applinks:towncrierapp.uk` entitlement has a
+    # matching capability registration on bundle ID uk.towncrierapp.mobile.
+    # Run via workflow_dispatch only; do NOT wire into the beta lane.
+    bundle_id = "uk.towncrierapp.mobile"
+
+    # Spaceship needs an App Store Connect API token. Reuse the same env vars
+    # the beta lane consumes so CI plumbing stays identical.
+    require "spaceship"
+
+    token = Spaceship::ConnectAPI::Token.create_from_hash(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      filepath: File.absolute_path(ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH")),
+    )
+    Spaceship::ConnectAPI.token = token
+
+    app = Spaceship::ConnectAPI::BundleId.find(bundle_id)
+    UI.user_error!("Bundle ID #{bundle_id} not found in App Store Connect") if app.nil?
+
+    capability_type = Spaceship::ConnectAPI::BundleIdCapability::Type::ASSOCIATED_DOMAINS
+
+    already_enabled = app.get_capabilities.any? do |cap|
+      cap.capability_type == capability_type
+    end
+
+    if already_enabled
+      UI.success("Associated Domains capability already enabled on #{bundle_id} — no-op.")
+    else
+      app.create_capability(capability_type)
+      UI.success("Enabled Associated Domains capability on #{bundle_id}.")
+    end
+  end
+
+  desc "Force-regenerate the AppStore provisioning profile in the certs repo"
+  lane :regenerate_appstore_profile do
+    # Run after enable_associated_domains so the new profile picks up the
+    # Associated Domains entitlement. Writes the new profile back to
+    # AmyDe/town-crier-ios-certs; the beta lane's readonly: true match call
+    # will then serve it on the next CD run.
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+      key_filepath: ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"),
+      in_house: false,
+    )
+
+    setup_ci if ENV["CI"]
+
+    match(
+      api_key: api_key,
+      type: "appstore",
+      force: true,
+    )
+  end
 end
