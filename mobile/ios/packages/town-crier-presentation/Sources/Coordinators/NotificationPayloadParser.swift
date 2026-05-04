@@ -10,10 +10,14 @@ import TownCrierDomain
 /// mapping; this parser owns the payload schema and sentence shape.
 public enum NotificationPayloadParser {
   public static func parseDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
-    guard let applicationId = userInfo["applicationId"] as? String else {
+    // The APNs payload uses `applicationRef` per docs/specs/apns-push-sender.md
+    // and api/src/town-crier.infrastructure/Notifications/ApnsAlertPayload.cs.
+    // Digest pushes have no applicationRef — those return nil here and the
+    // delegate must still complete on MainActor (see NotificationDelegate).
+    guard let applicationRef = userInfo["applicationRef"] as? String else {
       return nil
     }
-    return .applicationDetail(PlanningApplicationId(applicationId))
+    return .applicationDetail(PlanningApplicationId(applicationRef))
   }
 
   /// Renders the user-facing body string for a decision-update push payload.
