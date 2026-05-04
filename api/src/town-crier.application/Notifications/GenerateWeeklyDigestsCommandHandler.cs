@@ -1,4 +1,5 @@
 using TownCrier.Application.DeviceRegistrations;
+using TownCrier.Application.NotificationState;
 using TownCrier.Application.Observability;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
@@ -10,6 +11,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
 {
     private readonly IUserProfileRepository userProfileRepository;
     private readonly INotificationRepository notificationRepository;
+    private readonly INotificationStateRepository notificationStateRepository;
     private readonly IDeviceRegistrationRepository deviceRegistrationRepository;
     private readonly IPushNotificationSender pushNotificationSender;
     private readonly RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler;
@@ -20,6 +22,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
     public GenerateWeeklyDigestsCommandHandler(
         IUserProfileRepository userProfileRepository,
         INotificationRepository notificationRepository,
+        INotificationStateRepository notificationStateRepository,
         IDeviceRegistrationRepository deviceRegistrationRepository,
         IPushNotificationSender pushNotificationSender,
         RemoveInvalidDeviceTokenCommandHandler removeInvalidDeviceTokenHandler,
@@ -29,6 +32,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
     {
         this.userProfileRepository = userProfileRepository;
         this.notificationRepository = notificationRepository;
+        this.notificationStateRepository = notificationStateRepository;
         this.deviceRegistrationRepository = deviceRegistrationRepository;
         this.pushNotificationSender = pushNotificationSender;
         this.removeInvalidDeviceTokenHandler = removeInvalidDeviceTokenHandler;
@@ -81,8 +85,18 @@ public sealed class GenerateWeeklyDigestsCommandHandler
 
                 if (devices.Count > 0)
                 {
+                    // Digest path: notifications were already persisted by the
+                    // dispatch handlers, so we don't add 1 here. Watermark drives
+                    // the unread count; first-touch users get DateTimeOffset.MinValue.
+                    var state = await this.notificationStateRepository
+                        .GetByUserIdAsync(profile.UserId, ct).ConfigureAwait(false);
+                    var lastReadAt = state?.LastReadAt ?? DateTimeOffset.MinValue;
+                    var totalUnreadCount = await this.notificationRepository
+                        .GetUnreadCountAsync(profile.UserId, lastReadAt, ct)
+                        .ConfigureAwait(false);
+
                     var sendResult = await this.pushNotificationSender
-                        .SendDigestAsync(notifications.Count, devices, ct)
+                        .SendDigestAsync(notifications.Count, totalUnreadCount, devices, ct)
                         .ConfigureAwait(false);
 
                     // Prune device tokens APNs reported as permanently invalid

@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.Tests.NotificationState;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.Notifications;
@@ -22,6 +23,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerMetricsTests
         // Arrange — Pro user (eligible for weekly push + email), digest day=Monday,
         // mix of new-app and decision-update rows from the past week.
         var notificationRepo = new FakeNotificationRepository();
+        var notificationStateRepo = new FakeNotificationStateRepository();
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
@@ -44,7 +46,15 @@ public sealed class GenerateWeeklyDigestsCommandHandlerMetricsTests
 
         var removeInvalidHandler = new RemoveInvalidDeviceTokenCommandHandler(deviceRepo);
         var handler = new GenerateWeeklyDigestsCommandHandler(
-            userProfileRepo, notificationRepo, deviceRepo, pushSender, removeInvalidHandler, emailSender, watchZoneRepo, timeProvider);
+            userProfileRepo,
+            notificationRepo,
+            notificationStateRepo,
+            deviceRepo,
+            pushSender,
+            removeInvalidHandler,
+            emailSender,
+            watchZoneRepo,
+            timeProvider);
 
         var recorded = new List<(long Value, Dictionary<string, string?> Tags)>();
         using var listener = BuildListener("towncrier.digest.rows_emitted", recorded);

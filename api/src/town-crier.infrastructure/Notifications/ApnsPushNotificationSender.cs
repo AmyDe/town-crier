@@ -46,7 +46,11 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
         this.timeProvider = timeProvider;
     }
 
-    public async Task<PushSendResult> SendAsync(Notification notification, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public async Task<PushSendResult> SendAsync(
+        Notification notification,
+        IReadOnlyList<DeviceRegistration> devices,
+        int totalUnreadCount,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(notification);
         ArgumentNullException.ThrowIfNull(devices);
@@ -56,11 +60,15 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
             return PushSendResult.Empty;
         }
 
-        var payload = BuildAlertPayload(notification);
+        var payload = BuildAlertPayload(notification, totalUnreadCount);
         return await this.SendToDevicesAsync(devices, payload, ApnsJsonSerializerContext.Default.ApnsAlertPayload, ct).ConfigureAwait(false);
     }
 
-    public async Task<PushSendResult> SendDigestAsync(int applicationCount, IReadOnlyList<DeviceRegistration> devices, CancellationToken ct)
+    public async Task<PushSendResult> SendDigestAsync(
+        int applicationCount,
+        int totalUnreadCount,
+        IReadOnlyList<DeviceRegistration> devices,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(devices);
 
@@ -69,11 +77,11 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
             return PushSendResult.Empty;
         }
 
-        var payload = BuildDigestPayload(applicationCount);
+        var payload = BuildDigestPayload(applicationCount, totalUnreadCount);
         return await this.SendToDevicesAsync(devices, payload, ApnsJsonSerializerContext.Default.ApnsDigestPayload, ct).ConfigureAwait(false);
     }
 
-    private static ApnsAlertPayload BuildAlertPayload(Notification notification)
+    private static ApnsAlertPayload BuildAlertPayload(Notification notification, int totalUnreadCount)
     {
         var title = notification.WatchZoneId is not null
             ? "Planning update near you"
@@ -86,7 +94,7 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
             new ApnsAlertAps(
                 new ApnsAlertContent(title, bodyText),
                 Sound: "default",
-                Badge: 1),
+                Badge: totalUnreadCount),
             NotificationId: notification.Id,
             ApplicationRef: notification.ApplicationName);
     }
@@ -99,14 +107,14 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
             : $"{notification.ApplicationAddress} — {label}";
     }
 
-    private static ApnsDigestPayload BuildDigestPayload(int applicationCount)
+    private static ApnsDigestPayload BuildDigestPayload(int applicationCount, int totalUnreadCount)
     {
         var body = $"{applicationCount} new application{(applicationCount == 1 ? string.Empty : "s")} this week";
         return new ApnsDigestPayload(
             new ApnsDigestAps(
                 new ApnsAlertContent("Town Crier", body),
                 Sound: "default",
-                Badge: applicationCount));
+                Badge: totalUnreadCount));
     }
 
     private static async Task<string?> ReadReasonAsync(HttpResponseMessage response, CancellationToken ct)

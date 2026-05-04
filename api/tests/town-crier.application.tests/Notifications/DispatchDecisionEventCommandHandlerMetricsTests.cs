@@ -2,6 +2,7 @@ using System.Diagnostics.Metrics;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.DeviceRegistrations;
+using TownCrier.Application.Tests.NotificationState;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.SavedApplications;
 using TownCrier.Application.Tests.UserProfiles;
@@ -127,6 +128,7 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
         public Harness()
         {
             this.NotificationRepo = new FakeNotificationRepository();
+            this.NotificationStateRepo = new FakeNotificationStateRepository();
             this.UserProfileRepo = new FakeUserProfileRepository();
             this.SavedApplicationRepo = new FakeSavedApplicationRepository();
             this.WatchZoneRepo = new FakeWatchZoneRepository();
@@ -137,6 +139,7 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
 
             this.Handler = new DispatchDecisionEventCommandHandler(
                 this.NotificationRepo,
+                this.NotificationStateRepo,
                 this.UserProfileRepo,
                 this.SavedApplicationRepo,
                 this.WatchZoneRepo,
@@ -149,6 +152,8 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
         public DispatchDecisionEventCommandHandler Handler { get; }
 
         public FakeNotificationRepository NotificationRepo { get; }
+
+        public FakeNotificationStateRepository NotificationStateRepo { get; }
 
         public FakeUserProfileRepository UserProfileRepo { get; }
 

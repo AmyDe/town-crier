@@ -1,6 +1,7 @@
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.Tests.DeviceRegistrations;
+using TownCrier.Application.Tests.NotificationState;
 using TownCrier.Application.Tests.Polling;
 using TownCrier.Application.Tests.UserProfiles;
 using TownCrier.Domain.DeviceRegistrations;
@@ -455,6 +456,7 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         FakeWatchZoneRepository WatchZoneRepo) CreateHandler(FakeTimeProvider? timeProvider = null)
     {
         var notificationRepo = new FakeNotificationRepository();
+        var notificationStateRepo = new FakeNotificationStateRepository();
         var userProfileRepo = new FakeUserProfileRepository();
         var deviceRepo = new FakeDeviceRegistrationRepository();
         var pushSender = new SpyPushNotificationSender();
@@ -464,7 +466,15 @@ public sealed class GenerateWeeklyDigestsCommandHandlerTests
         var tp = timeProvider ?? new FakeTimeProvider(MondayMarch2026);
 
         var handler = new GenerateWeeklyDigestsCommandHandler(
-            userProfileRepo, notificationRepo, deviceRepo, pushSender, removeInvalidHandler, emailSender, watchZoneRepo, tp);
+            userProfileRepo,
+            notificationRepo,
+            notificationStateRepo,
+            deviceRepo,
+            pushSender,
+            removeInvalidHandler,
+            emailSender,
+            watchZoneRepo,
+            tp);
 
         return (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, emailSender, watchZoneRepo);
     }
