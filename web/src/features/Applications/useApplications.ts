@@ -216,6 +216,19 @@ export function useApplications(options: UseApplicationsOptions) {
     setState((prev) => ({ ...prev, sort }));
   }, []);
 
+  // Track the currently-selected zone in a ref so async actions like
+  // `markAllRead` can refetch the right zone after their await without
+  // closing over stale state. We use a small ref tracking only the zone id
+  // rather than mirroring the full state object — the latter conflicts with
+  // the `react-hooks/immutability` rule that forbids mutating values handed
+  // back from useState.
+  const selectedZoneIdRef = useRef<WatchZoneSummary['id'] | null>(
+    state.selectedZone?.id ?? null,
+  );
+  useEffect(() => {
+    selectedZoneIdRef.current = state.selectedZone?.id ?? null;
+  }, [state.selectedZone]);
+
   const markAllRead = useCallback(async () => {
     // Optimistic local state per spec decision #8 (silent optimistic). The
     // server treats mark-all-read as idempotent; we refresh the row data so
@@ -232,22 +245,16 @@ export function useApplications(options: UseApplicationsOptions) {
       // Swallow — the optimistic UI already shows the desired result. A
       // subsequent state fetch will correct any drift.
     }
-    const zone = stateRef.current.selectedZone;
-    if (zone) {
+    const activeZoneId = selectedZoneIdRef.current;
+    if (activeZoneId !== null) {
       try {
-        const apps = await browsePort.fetchByZone(zone.id);
+        const apps = await browsePort.fetchByZone(activeZoneId);
         setState((prev) => ({ ...prev, applications: apps }));
       } catch {
         // Refetch failure is non-fatal — the existing rows stay rendered.
       }
     }
   }, [browsePort, notificationStateRepository]);
-
-  // Track the latest state for callbacks that need it without re-binding.
-  const stateRef = useRef(state);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
 
   // Derived: filtered, sorted applications.
   const filteredApplications = useMemo<readonly PlanningApplicationSummary[]>(() => {
