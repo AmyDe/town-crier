@@ -353,10 +353,10 @@ describe('ApplicationsPage — Sort menu', () => {
 
     renderPage({ zonesPort, browsePort });
 
-    await screen.findByRole('combobox', { name: /sort/i });
-    expect(
-      screen.getByRole('option', { name: /^distance$/i }),
-    ).toBeInTheDocument();
+    // The auto-select effect in useApplications fires after zones load —
+    // wait for the resulting Distance option (only emitted once a zone is
+    // active) rather than racing the synchronous picker mount.
+    await screen.findByRole('option', { name: /^distance$/i });
   });
 
   it('hides the "Distance" option in the multi-zone (no-zone) state', async () => {
