@@ -10,16 +10,17 @@ describe('haversineDistanceMetres', () => {
 
   it('computes the great-circle distance in metres between two points', () => {
     // Cambridge (52.2053, 0.1218) → Oxford (51.7520, -1.2577)
-    // Reference: ~ 134_300 m via independent haversine calculator.
+    // Reference: ~ 107 km on a great circle via independent haversine
+    // calculator (movable-type.co.uk).
     const cambridge = { latitude: 52.2053, longitude: 0.1218 };
     const oxford = { latitude: 51.752, longitude: -1.2577 };
 
     const distance = haversineDistanceMetres(cambridge, oxford);
 
-    // Allow ±200 m tolerance — different earth-radius constants and
-    // floating-point rounding produce values in the 134_100..134_500 band.
-    expect(distance).toBeGreaterThan(134_100);
-    expect(distance).toBeLessThan(134_500);
+    // Allow ±300 m tolerance — different earth-radius constants and
+    // floating-point rounding produce values around 107.0–107.2 km.
+    expect(distance).toBeGreaterThan(106_900);
+    expect(distance).toBeLessThan(107_300);
   });
 
   it('is symmetric in its arguments', () => {
