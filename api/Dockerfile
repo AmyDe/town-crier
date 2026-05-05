@@ -26,7 +26,7 @@ USER appuser
 
 COPY --from=build /app .
 
-ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 
 ENTRYPOINT ["./town-crier.web"]
