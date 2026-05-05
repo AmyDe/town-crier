@@ -222,6 +222,12 @@ export interface PlanningApplicationSummary {
   readonly startDate: string | null;
   readonly url: string | null;
   /**
+   * Geographic location, when the upstream PlanIt record carried one.
+   * Drives the distance sort on the Applications list (tc-ge7j).
+   */
+  readonly latitude: number | null;
+  readonly longitude: number | null;
+  /**
    * The latest notification raised for this application that is strictly
    * newer than the user's read-state watermark. `null` for already-read rows
    * and first-touch users (no watermark yet).
