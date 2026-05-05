@@ -16,6 +16,8 @@ function toSummary(app: PlanningApplication): PlanningApplicationSummary {
     areaName: app.areaName,
     startDate: app.startDate,
     url: app.url,
+    latitude: app.latitude,
+    longitude: app.longitude,
     latestUnreadEvent: app.latestUnreadEvent,
   };
 }

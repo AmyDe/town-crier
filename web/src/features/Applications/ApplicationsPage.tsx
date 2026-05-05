@@ -33,17 +33,13 @@ const STATUS_CHIPS: readonly StatusChip[] = [
   { label: 'Appealed', status: 'Appealed' },
 ];
 
-interface SortOption {
-  readonly value: ApplicationsSort;
-  readonly label: string;
-}
-
-const SORT_OPTIONS: readonly SortOption[] = [
-  { value: 'recent-activity', label: 'Recent activity' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'status', label: 'Status' },
-];
+const SORT_OPTION_LABELS: Record<ApplicationsSort, string> = {
+  'recent-activity': 'Recent activity',
+  newest: 'Newest',
+  oldest: 'Oldest',
+  status: 'Status',
+  distance: 'Distance',
+};
 
 export function ApplicationsPage({
   zonesPort,
@@ -66,6 +62,7 @@ export function ApplicationsPage({
     unreadOnly,
     unreadCount,
     sort,
+    availableSortOptions,
     selectZone,
     setStatusFilter,
     setUnreadOnly,
@@ -184,9 +181,9 @@ export function ApplicationsPage({
                 value={sort}
                 onChange={(e) => handleSortChange(e.target.value)}
               >
-                {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {availableSortOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {SORT_OPTION_LABELS[option]}
                   </option>
                 ))}
               </select>
@@ -244,6 +241,7 @@ function isApplicationsSort(value: string): value is ApplicationsSort {
     value === 'recent-activity' ||
     value === 'newest' ||
     value === 'oldest' ||
-    value === 'status'
+    value === 'status' ||
+    value === 'distance'
   );
 }

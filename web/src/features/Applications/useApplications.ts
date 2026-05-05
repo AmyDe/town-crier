@@ -7,25 +7,30 @@ import type {
 } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
+import { haversineDistanceMetres } from '../../domain/geo/distance';
 
 /**
  * Sort modes for the Applications screen — persisted under
  * `applicationsListSort` in localStorage. Default: `recent-activity`.
  *
- * Spec: `docs/specs/notifications-unread-watermark.md` Pre-Resolved
- * Decisions #9 (default sort) and #10 (4 client-side options persisted).
+ * The `distance` mode orders rows by ascending haversine distance from the
+ * selected watch-zone centre and is only meaningful when a single zone is
+ * active; the picker hides it in multi-zone / no-zone surfaces. Mirrors the
+ * iOS sibling tc-mso6 (PR #374).
  */
 export type ApplicationsSort =
   | 'recent-activity'
   | 'newest'
   | 'oldest'
-  | 'status';
+  | 'status'
+  | 'distance';
 
 const APPLICATIONS_SORT_VALUES: readonly ApplicationsSort[] = [
   'recent-activity',
   'newest',
   'oldest',
   'status',
+  'distance',
 ];
 
 const SORT_STORAGE_KEY = 'applicationsListSort';
@@ -88,6 +93,7 @@ function startDateMs(app: PlanningApplicationSummary): number {
 function sortApplications(
   applications: readonly PlanningApplicationSummary[],
   sort: ApplicationsSort,
+  selectedZone: WatchZoneSummary | null,
 ): readonly PlanningApplicationSummary[] {
   const copy = [...applications];
   switch (sort) {
@@ -103,7 +109,58 @@ function sortApplications(
     case 'status':
       copy.sort((a, b) => a.appState.localeCompare(b.appState));
       return copy;
+    case 'distance':
+      return sortByDistance(copy, selectedZone);
   }
+}
+
+/**
+ * Ascending haversine distance from the active zone's centre. Apps without
+ * a location sort last (preserving their incoming relative order via a
+ * stable index tiebreaker so we don't surface arbitrary noise). Falls back
+ * to identity when no zone is selected — the option is filtered out of the
+ * picker in that state, but the defensive fallback keeps the function total.
+ * Mirrors `ApplicationListViewModel.sortByDistance` on iOS (tc-mso6).
+ */
+function sortByDistance(
+  applications: PlanningApplicationSummary[],
+  selectedZone: WatchZoneSummary | null,
+): readonly PlanningApplicationSummary[] {
+  if (selectedZone === null) {
+    return applications;
+  }
+  const centre = {
+    latitude: selectedZone.latitude,
+    longitude: selectedZone.longitude,
+  };
+  type Scored = {
+    readonly index: number;
+    readonly app: PlanningApplicationSummary;
+    readonly distance: number | null;
+  };
+  const scored: Scored[] = applications.map((app, index) => ({
+    index,
+    app,
+    distance: distanceFromCentre(app, centre),
+  }));
+  scored.sort((a, b) => {
+    if (a.distance === null && b.distance === null) return a.index - b.index;
+    if (a.distance === null) return 1;
+    if (b.distance === null) return -1;
+    return a.distance - b.distance;
+  });
+  return scored.map((s) => s.app);
+}
+
+function distanceFromCentre(
+  app: PlanningApplicationSummary,
+  centre: { latitude: number; longitude: number },
+): number | null {
+  if (app.latitude === null || app.longitude === null) return null;
+  return haversineDistanceMetres(centre, {
+    latitude: app.latitude,
+    longitude: app.longitude,
+  });
 }
 
 export function useApplications(options: UseApplicationsOptions) {
@@ -264,13 +321,24 @@ export function useApplications(options: UseApplicationsOptions) {
     } else if (state.selectedStatusFilter !== null) {
       rows = rows.filter((app) => app.appState === state.selectedStatusFilter);
     }
-    return sortApplications(rows, state.sort);
+    return sortApplications(rows, state.sort, state.selectedZone);
   }, [
     state.applications,
     state.selectedStatusFilter,
     state.unreadOnly,
     state.sort,
+    state.selectedZone,
   ]);
+
+  // Sort modes the picker should expose right now. The `distance` option is
+  // only meaningful relative to a chosen zone, so it's filtered out when no
+  // zone is active (multi-zone surfaces or the transient pre-auto-select
+  // state). Mirrors the iOS sibling's `availableSortOptions` (tc-mso6).
+  const availableSortOptions = useMemo<readonly ApplicationsSort[]>(() => {
+    return APPLICATIONS_SORT_VALUES.filter(
+      (mode) => mode !== 'distance' || state.selectedZone !== null,
+    );
+  }, [state.selectedZone]);
 
   return {
     selectedZone: state.selectedZone,
@@ -282,6 +350,7 @@ export function useApplications(options: UseApplicationsOptions) {
     unreadCount: state.notificationState?.totalUnreadCount ?? 0,
     notificationState: state.notificationState,
     sort: state.sort,
+    availableSortOptions,
     selectZone,
     setStatusFilter,
     setUnreadOnly,

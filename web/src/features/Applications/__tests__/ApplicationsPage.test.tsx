@@ -344,6 +344,35 @@ describe('ApplicationsPage — Sort menu', () => {
 
     expect(sort).toHaveValue('oldest');
   });
+
+  it('exposes a "Distance" option once a zone has been auto-selected', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+
+    renderPage({ zonesPort, browsePort });
+
+    // The auto-select effect in useApplications fires after zones load —
+    // wait for the resulting Distance option (only emitted once a zone is
+    // active) rather than racing the synchronous picker mount.
+    await screen.findByRole('option', { name: /^distance$/i });
+  });
+
+  it('hides the "Distance" option in the multi-zone (no-zone) state', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+
+    renderPage({ zonesPort, browsePort });
+
+    await waitFor(() => expect(zonesPort.fetchZonesCalls).toBe(1));
+    // No zones → no auto-selected zone → distance must not appear in any
+    // sort surface. The picker itself only renders once a zone exists, so
+    // simply assert the option is not in the document.
+    expect(screen.queryByRole('option', { name: /^distance$/i })).toBeNull();
+  });
 });
 
 describe('ApplicationsPage — list rendering', () => {

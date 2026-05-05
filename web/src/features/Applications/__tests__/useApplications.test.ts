@@ -417,3 +417,153 @@ describe('useApplications — sort', () => {
     expect(result.current.sort).toBe('recent-activity');
   });
 });
+
+describe('useApplications — distance sort', () => {
+  // Cambridge city centre. Test fixtures are placed at known offsets so the
+  // expected ordering is independent of haversine constants.
+  const cambridgeCentre = { latitude: 52.2053, longitude: 0.1218 };
+
+  function withLocation(
+    base: ReturnType<typeof undecidedApplication>,
+    location: { latitude: number; longitude: number } | null,
+  ) {
+    return {
+      ...base,
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
+    };
+  }
+
+  it('orders rows by ascending haversine distance from the selected zone centre', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    // Zone centre is Cambridge (52.2053, 0.1218).
+    // far    — Oxford (~107 km west)
+    // mid    — Royston (~ 17 km south-west)
+    // close  — 200 m east of the centre
+    const far = withLocation(undecidedApplication({ uid: undecidedApplication().uid }), {
+      latitude: 51.752,
+      longitude: -1.2577,
+    });
+    const mid = withLocation(permittedApplication(), {
+      latitude: 52.0497,
+      longitude: -0.0258,
+    });
+    const close = withLocation(rejectedApplication(), {
+      latitude: 52.2053,
+      longitude: 0.1247,
+    });
+    browsePort.fetchByZoneResult = [far, mid, close];
+    const zones = [cambridgeZone({ latitude: cambridgeCentre.latitude, longitude: cambridgeCentre.longitude })];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    await waitFor(() => expect(result.current.applications).toHaveLength(3));
+
+    act(() => result.current.setSort('distance'));
+
+    expect(result.current.applications.map((a) => a.uid)).toEqual([
+      close.uid,
+      mid.uid,
+      far.uid,
+    ]);
+  });
+
+  it('places applications without a location at the end of the distance sort', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    const located = withLocation(permittedApplication(), {
+      latitude: 52.2053,
+      longitude: 0.13,
+    });
+    const unlocated = withLocation(rejectedApplication(), null);
+    browsePort.fetchByZoneResult = [unlocated, located];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    await waitFor(() => expect(result.current.applications).toHaveLength(2));
+
+    act(() => result.current.setSort('distance'));
+
+    expect(result.current.applications.map((a) => a.uid)).toEqual([
+      located.uid,
+      unlocated.uid,
+    ]);
+  });
+
+  it('preserves incoming order between multiple unlocated rows (stable tiebreak)', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    const a = withLocation(undecidedApplication(), null);
+    const b = withLocation(permittedApplication(), null);
+    const c = withLocation(rejectedApplication(), null);
+    browsePort.fetchByZoneResult = [a, b, c];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    await waitFor(() => expect(result.current.applications).toHaveLength(3));
+
+    act(() => result.current.setSort('distance'));
+
+    expect(result.current.applications.map((a) => a.uid)).toEqual([
+      a.uid,
+      b.uid,
+      c.uid,
+    ]);
+  });
+
+  it('persists "distance" to localStorage under applicationsListSort', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    act(() => result.current.setSort('distance'));
+
+    expect(window.localStorage.getItem('applicationsListSort')).toBe('distance');
+  });
+
+  it('rehydrates "distance" from localStorage on mount when a zone is available', async () => {
+    window.localStorage.setItem('applicationsListSort', 'distance');
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    expect(result.current.sort).toBe('distance');
+  });
+});
+
+describe('useApplications — availableSortOptions', () => {
+  it('omits "distance" when no zone is selected (multi-zone view)', () => {
+    const { result } = renderHook(() => useApplications(makeOptions()));
+
+    expect(result.current.selectedZone).toBeNull();
+    expect(result.current.availableSortOptions).not.toContain('distance');
+  });
+
+  it('includes "distance" once a zone has been auto-selected', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    await waitFor(() => expect(result.current.selectedZone).not.toBeNull());
+
+    expect(result.current.availableSortOptions).toContain('distance');
+  });
+});
