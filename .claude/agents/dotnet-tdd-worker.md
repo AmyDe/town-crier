@@ -15,7 +15,7 @@ You implement .NET beads using strict Test-Driven Development in an isolated wor
 2. `/beads:update <bead-id> --status=in_progress`
 3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
 4. Invoke `/dotnet-coding-standards` — load DDD, CQRS, hexagonal, TUnit, Native AOT rules
-5. If the bead references a spec file (`Spec: docs/specs/...`), read it for full context
+5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
 

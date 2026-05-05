@@ -66,7 +66,7 @@ bd list --status=in_progress --json | jq 'length'
   2. **Do NOT call `ScheduleWakeup`.** Omitting the call ends a dynamic loop.
   3. Report `Autopilot: no ready beads — loop stopped.` and return.
 
-Walk highest priority first. For each candidate, `/beads:show` and read the bead fully — title, description, acceptance, design notes, and any referenced spec file (e.g. `docs/specs/<topic>.md#phase-1`):
+Walk highest priority first. For each candidate, `/beads:show` and read the bead fully — title, description, acceptance, design notes, and any referenced GitHub issue (`GH: <url>` or `#<n>`, fetched via `gh issue view <n>` — never look for spec files in the repo):
 
 - **Skip epics** — containers, not implementable.
 - **Multi-worker scope? Split, don't classify.** If the bead's scope requires more than one worker type (e.g. `/api` endpoint + `/mobile/ios` consumer + `/web` consumer, or code + `/infra`), jump to **Phase 1.5: Split Multi-Worker Beads** instead of classifying.
@@ -90,7 +90,7 @@ Walk highest priority first. For each candidate, `/beads:show` and read the bead
 When a bead's scope requires more than one worker type — e.g. `/api` endpoint + `/mobile/ios` consumer + `/web` consumer, or code + `/infra` — split it into children, one per worker type, instead of claiming.
 
 **Split when:**
-- The spec or description lists work across 2+ areas (`/api`, `/mobile/ios`, `/web`, `/infra`, `.github`).
+- The bead description or linked GitHub issue lists work across 2+ areas (`/api`, `/mobile/ios`, `/web`, `/infra`, `.github`).
 - A migration touches both code and infra/CI.
 
 **Do NOT split (fall through to the normal single-worker flow):**
@@ -120,7 +120,7 @@ bd create \
   --notes="Split from <parent-id> by autopilot. Worker: <worker-type>. Allowed path: <path>."
 ```
 
-Title convention: `<parent title> — API`, `<parent title> — iOS`, `<parent title> — web`, `<parent title> — infra`, etc. Type, priority, and any spec-file references in the parent carry into each child.
+Title convention: `<parent title> — API`, `<parent title> — iOS`, `<parent title> — web`, `<parent title> — infra`, etc. Type, priority, and any GitHub issue references in the parent carry into each child.
 
 ### 2. Supersede the parent
 
