@@ -143,4 +143,22 @@ struct WatchZoneTests {
     #expect(zone.pushEnabled)
     #expect(!zone.emailInstantEnabled)
   }
+
+  // MARK: - Distance helper (tc-mso6)
+
+  @Test("distance(to:) returns zero for the centre itself")
+  func distance_toCentre_isZero() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.distance(to: centre) == 0)
+  }
+
+  @Test("distance(to:) returns ascending values for further coordinates")
+  func distance_isOrderable() throws {
+    let centre = try Coordinate(latitude: 52.2053, longitude: 0.1218)
+    let near = try Coordinate(latitude: 52.2060, longitude: 0.1220)
+    let far = try Coordinate(latitude: 51.5074, longitude: -0.1278)
+    let zone = try WatchZone(name: "Home", centre: centre, radiusMetres: 1000)
+    #expect(zone.distance(to: near) < zone.distance(to: far))
+  }
 }

@@ -238,6 +238,10 @@ struct ApplicationListViewModelUnreadTests {
     #expect(labels == labels.sorted())
   }
 
+  // Distance-sort tests live in `ApplicationListViewModelDistanceSortTests`
+  // (tc-mso6) — split out to keep this file under SwiftLint's 400-line
+  // ceiling.
+
   // MARK: - Mark all read
 
   @Test("markAllRead calls the notification-state repository")

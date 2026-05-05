@@ -73,6 +73,18 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     unreadCount > 0
   }
 
+  /// Sort modes the picker should expose right now. The `.distance` option
+  /// is only meaningful relative to a chosen zone, so it's filtered out
+  /// when no zone is active (multi-zone "all"-style surfaces or the
+  /// transient state before the first zone is loaded). Mirrors the web
+  /// sibling's picker filtering (tc-mso6 / tc-ge7j).
+  public var availableSortOptions: [ApplicationsSort] {
+    let active = selectedZone ?? zone
+    return ApplicationsSort.allCases.filter { mode in
+      mode != .distance || active != nil
+    }
+  }
+
   public var filteredApplications: [PlanningApplication] {
     let base = filterApplications(applications)
     return sortApplications(base, by: sort)
@@ -302,7 +314,39 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.sorted { $0.receivedDate < $1.receivedDate }
     case .status:
       return applications.sorted { $0.status.rawValue < $1.status.rawValue }
+    case .distance:
+      return sortByDistance(applications)
     }
+  }
+
+  /// Ascending haversine distance from the active zone's centre. Apps
+  /// without a `location` sort last (preserving their incoming relative
+  /// order via the stable-pair tiebreaker so we don't surface arbitrary
+  /// noise). Falls back to identity when no zone is selected — the sort
+  /// option is hidden in that state, but defensive coding keeps the
+  /// switch total. Spec: tc-mso6 (mirrors the web sibling tc-ge7j).
+  private func sortByDistance(
+    _ applications: [PlanningApplication]
+  ) -> [PlanningApplication] {
+    guard let activeZone = selectedZone ?? zone else {
+      return applications
+    }
+    let scored = applications.enumerated().map { index, app in
+      (index: index, app: app, distance: app.location.map { activeZone.distance(to: $0) })
+    }
+    let sorted = scored.sorted { lhs, rhs in
+      switch (lhs.distance, rhs.distance) {
+      case let (.some(left), .some(right)):
+        return left < right
+      case (.some, .none):
+        return true
+      case (.none, .some):
+        return false
+      case (.none, .none):
+        return lhs.index < rhs.index
+      }
+    }
+    return sorted.map(\.app)
   }
 
   /// `max(receivedDate, latestUnreadEvent.createdAt)` per spec decision #9 —
