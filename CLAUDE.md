@@ -14,7 +14,6 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 /web          # React/TypeScript frontend
 /infra        # Pulumi IaC (.NET 10 / C#)
 /docs/adr     # Architecture Decision Records
-/docs/specs   # Feature specs referenced by beads
 ```
 
 ## Tech Stack
@@ -130,15 +129,22 @@ To update legal copy: edit the API JSON, then run `scripts/sync-legal.sh` to ref
 
 ### Philosophy
 
-Beads track *what to do* and *dependencies*. Specs capture *how* and *why*. Keep beads lightweight — one-line descriptions referencing spec files. ([Yegge, Issue #976](https://github.com/gastownhall/beads/issues/976))
+Beads track *what to do* and *dependencies*. The `how` and `why` of a feature live in **the GitHub issue body** — never in a committed spec file. ([Yegge, Issue #976](https://github.com/gastownhall/beads/issues/976))
 
-### Specs Convention
+### Spec Location: GitHub Issues Only
 
-Feature specifications live in `docs/specs/<topic>.md`. When breaking down a plan into beads, create the spec file first, then create beads that reference it:
+**Never commit spec files to the repo.** No `docs/specs/*.md`, no design markdown alongside code, no per-feature plan files. Doc rot makes them worse than useless — they go stale faster than the code and mislead future readers.
 
-```bash
-bd create --title="Implement auth flow" --description="Spec: docs/specs/auth-flow.md#phase-1" --type=task --priority=2
-```
+When a feature needs design context:
+
+1. Use the `file-issue` skill to raise a self-contained GitHub issue with the full design (problem, approach, acceptance criteria, edge cases, test plan).
+2. Beads reference the issue by URL or number, not a file path:
+   ```bash
+   bd create --title="Implement auth flow phase 1" --description="GH: https://github.com/<org>/<repo>/issues/123" --type=task --priority=2
+   ```
+3. Workers read the linked issue with `gh issue view <n>` for context.
+
+If a bead is too thin to act on, push the design context into the GitHub issue, not into a markdown file.
 
 ### Beads (Exclusive Issue Tracker)
 
@@ -193,19 +199,6 @@ Before editing code, create and enter an isolated worktree:
 A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. A second hook blocks raw `git worktree add` and directs you to `bd worktree create`. Do not try to work around them.
 
 **Who creates the worktree?** The orchestrator (top-level agent), not the subagent. Dispatch workers with the worktree path already in hand — this matches how `autopilot` and the TDD workers are wired and keeps worktree lifecycle (create, verify, remove) in one place.
-
-### Superpowers Workflow Integration
-
-When using the superpowers brainstorm → plan → execute workflow, beads are the task ledger:
-
-1. **After `writing-plans`:** ALWAYS run `plan-to-beads` before executing. This converts plan tasks into beads and is a required bridge step — not optional.
-2. **Instead of TodoWrite:** Use beads for all task state. The superpowers skills say "Create TodoWrite" and "Mark task complete in TodoWrite" — replace these with:
-   - Session start: `bd list --status=open` to see the task ledger
-   - Starting a task: `bd update <id> --status=in_progress`
-   - Completing a task: `bd close <id>`
-3. **Subagent implementers** should `bd update <id> --claim` at the start of their task and `bd close <id>` when done.
-
-This applies to both `superpowers:subagent-driven-development` and `superpowers:executing-plans`. User instructions take precedence over skill instructions per the superpowers contract.
 
 ### Cleanup Discipline
 
