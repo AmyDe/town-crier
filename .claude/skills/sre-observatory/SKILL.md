@@ -67,7 +67,7 @@ Town Crier's roles as of 2026-04-25:
 
 | AppRoleName | What it is |
 |---|---|
-| `town-crier-web` | The API (project lives at `api/src/town-crier.web/`, hardcoded `AddService("town-crier-web")` in `Program.cs:27`, container is `ca-town-crier-api-prod`) |
+| `town-crier-api` | The API (project lives at `api/src/town-crier.web/`, hardcoded `AddService("town-crier-api")` in `Program.cs:27`, container is `ca-town-crier-api-prod`) |
 | `town-crier-worker` | Background polling/digest jobs (Container App Jobs, event- or schedule-driven) |
 
 There is no role called `town-crier-api` — the env var on the API container says that, but the code overrides it. If you see `unknown_service:` as a prefix on any role, that IS a finding (means `AddService` was not called).
@@ -332,7 +332,7 @@ union AppRequests, AppMetrics, AppPerformanceCounters, AppDependencies, AppExcep
 | order by count_ desc
 ```
 
-Expected roles: `town-crier-web` (API), `town-crier-worker` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `ResourceBuilder.AddService(...)` is missing from the corresponding project's `Program.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
+Expected roles: `town-crier-api` (API), `town-crier-worker` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `ResourceBuilder.AddService(...)` is missing from the corresponding project's `Program.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
 
 ### Phase 5: User Frustration Signals
 
