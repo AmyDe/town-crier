@@ -458,6 +458,22 @@ public static class SharedStack
             Tags = tags,
         });
 
+        // Authorises the local-part `hello` for sends from towncrierapp.uk via the UK
+        // EmailService. ACS rejects sends with 400 InvalidSenderUserName if the
+        // local-part is not registered as a SenderUsername sub-resource. The legacy
+        // EU domain (tc-zx5g) had `hello` registered implicitly; the UK domain was
+        // provisioned without it, breaking every digest send (tc-luxj fix exposed
+        // this as the next failure mode). See tc-6tak.
+        _ = new SenderUsername("sender-hello-towncrier-uk", new SenderUsernameArgs
+        {
+            SenderUsername = "hello",
+            DomainName = towncrierAppDomain.Name,
+            EmailServiceName = emailServiceUk.Name,
+            ResourceGroupName = resourceGroup.Name,
+            Username = "hello",
+            DisplayName = "Town Crier",
+        });
+
         // Operational Dashboard
         var dashboard = new Dashboard("dash-towncrier-operational", new DashboardArgs
         {
