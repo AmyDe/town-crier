@@ -161,6 +161,9 @@ public static class EnvironmentStack
             new("Notifications", "/userId",
                 DefaultTtl: 90 * 24 * 60 * 60), // 90 days in seconds
 
+            // NotificationState — one watermark document per user (read-state cutoff)
+            new("NotificationState", "/userId"),
+
             // Leases — for change feed processor checkpointing
             new("Leases", "/id"),
 
