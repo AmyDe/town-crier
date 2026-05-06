@@ -3,7 +3,6 @@ import type {
   WatchZoneSummary,
   PlanningApplicationSummary,
   ApplicationStatus,
-  NotificationStateSnapshot,
 } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
@@ -69,7 +68,6 @@ interface State {
   readonly error: string | null;
   readonly selectedStatusFilter: ApplicationStatus | null;
   readonly unreadOnly: boolean;
-  readonly notificationState: NotificationStateSnapshot | null;
   readonly sort: ApplicationsSort;
 }
 
@@ -172,28 +170,9 @@ export function useApplications(options: UseApplicationsOptions) {
     error: null,
     selectedStatusFilter: null,
     unreadOnly: false,
-    notificationState: null,
     sort: readPersistedSort(),
   }));
   const hasAutoSelectedRef = useRef(false);
-
-  // Fetch the watermark snapshot once on mount. A failure is silent —
-  // the chip shows zero rather than blocking the screen.
-  useEffect(() => {
-    let cancelled = false;
-    notificationStateRepository
-      .getState()
-      .then((snapshot) => {
-        if (cancelled) return;
-        setState((prev) => ({ ...prev, notificationState: snapshot }));
-      })
-      .catch(() => {
-        // Silent fallback per spec — the Unread chip just hides.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [notificationStateRepository]);
 
   // Auto-select the first zone the first time zones become non-empty.
   useEffect(() => {
@@ -287,20 +266,16 @@ export function useApplications(options: UseApplicationsOptions) {
   }, [state.selectedZone]);
 
   const markAllRead = useCallback(async () => {
-    // Optimistic local state per spec decision #8 (silent optimistic). The
-    // server treats mark-all-read as idempotent; we refresh the row data so
-    // every `latestUnreadEvent` drops to null in one go.
-    setState((prev) => ({
-      ...prev,
-      notificationState: prev.notificationState
-        ? { ...prev.notificationState, totalUnreadCount: 0 }
-        : prev.notificationState,
-    }));
+    // Server-side mark-all-read is idempotent. The refetch below replaces
+    // every row with `latestUnreadEvent: null`, which collapses the
+    // client-derived `unreadCount` to zero — no separate snapshot fetch
+    // needed (tc-u6bm).
     try {
       await notificationStateRepository.markAllRead();
     } catch {
-      // Swallow — the optimistic UI already shows the desired result. A
-      // subsequent state fetch will correct any drift.
+      // Swallow — the post-mark refetch is the source of truth for the
+      // visible unread state. A retry can be added if drift becomes a
+      // problem in practice.
     }
     const activeZoneId = selectedZoneIdRef.current;
     if (activeZoneId !== null) {
@@ -312,6 +287,15 @@ export function useApplications(options: UseApplicationsOptions) {
       }
     }
   }, [browsePort, notificationStateRepository]);
+
+  // Derived: count of distinct applications in the active zone whose latest
+  // event is unread. Replaces the previous server-side `totalUnreadCount`
+  // (an event count) which inflated the chip beyond the visible row count
+  // when an app had multiple unread events (tc-u6bm).
+  const unreadCount = useMemo(
+    () => state.applications.filter((app) => app.latestUnreadEvent !== null).length,
+    [state.applications],
+  );
 
   // Derived: filtered, sorted applications.
   const filteredApplications = useMemo<readonly PlanningApplicationSummary[]>(() => {
@@ -347,8 +331,7 @@ export function useApplications(options: UseApplicationsOptions) {
     error: state.error,
     selectedStatusFilter: state.selectedStatusFilter,
     unreadOnly: state.unreadOnly,
-    unreadCount: state.notificationState?.totalUnreadCount ?? 0,
-    notificationState: state.notificationState,
+    unreadCount,
     sort: state.sort,
     availableSortOptions,
     selectZone,
