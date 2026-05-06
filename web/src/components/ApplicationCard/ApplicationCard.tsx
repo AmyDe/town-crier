@@ -27,14 +27,17 @@ export function ApplicationCard({ application }: Props) {
       data-testid="application-card"
       data-unread={isUnread ? 'true' : 'false'}
     >
+      <span
+        className={styles.unreadDot}
+        style={{ visibility: isUnread ? 'visible' : 'hidden' }}
+        data-testid="application-unread-dot"
+        {...(isUnread ? { 'aria-label': 'Unread' } : { 'aria-hidden': true })}
+      />
       <div className={styles.header}>
         <h3 className={styles.reference}>{application.name}</h3>
         <span
-          className={`${styles.statusBadge} ${statusClass} ${
-            isUnread ? styles.statusBadgeUnread : styles.statusBadgeRead
-          }`}
+          className={`${styles.statusBadge} ${statusClass}`}
           data-testid="application-status-badge"
-          data-unread={isUnread ? 'true' : 'false'}
         >
           {statusDisplayLabel(application.appState)}
         </span>
