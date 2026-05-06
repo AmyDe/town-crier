@@ -58,7 +58,7 @@ public final class AppCoordinator: ObservableObject {
   // In-flight tasks tests can await deterministically (no `Task.sleep`).
   var pendingOfferCodeRefresh: Task<Void, Never>?
   private var pendingWatchZoneRefresh: Task<Void, Never>?
-  private var pendingDetailLoad: Task<Void, Never>?
+  var pendingDetailLoad: Task<Void, Never>?
   // Push-tap watermark advance — fire-and-forget but stored so tests can
   // await deterministically (tc-1nsa.9).
   var pendingWatermarkAdvance: Task<Void, Never>?

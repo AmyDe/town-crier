@@ -60,6 +60,44 @@ struct DeepLinkTests {
     #expect(sut.detailApplication == nil)
     #expect(sut.deepLinkError == .applicationNotFound(missingId))
   }
+
+  // Regression for tc-dt3x: tapping a digest email card opened the app on
+  // whichever tab was previously active and the detail sheet never presented
+  // because the sheet modifier lived only on the Applications tab's
+  // NavigationStack. The deep-link handler must now switch to the
+  // Applications tab so the sheet binding is in scope when SwiftUI evaluates
+  // the modifier hierarchy.
+  @Test func handleDeepLink_applicationDetail_setsSelectedTabToApplications() async {
+    let (sut, spy) = makeSUT()
+    sut.selectedTab = .saved
+    spy.fetchApplicationResult = .success(.permitted)
+
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(sut.selectedTab == .applications)
+  }
+
+  // Regression for tc-dt3x: rapid 4× taps on a digest email card spawned
+  // four overlapping `pendingDetailLoad` tasks. The last to complete wins
+  // its mutation of `detailApplication`, but the earlier tasks could
+  // re-publish the property after a stale fetch resolved, causing the
+  // sheet to flicker or fail to present at all. The fix cancels any prior
+  // task before kicking off a new one and bails out post-`await` when the
+  // task has been cancelled.
+  @Test func showApplicationDetail_cancelsPriorPendingDetailLoad() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationResult = .success(.permitted)
+
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-001")))
+    let firstTask = sut.pendingDetailLoad
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(firstTask?.isCancelled == true)
+  }
 }
 
 @Suite("NotificationPayloadParser")
