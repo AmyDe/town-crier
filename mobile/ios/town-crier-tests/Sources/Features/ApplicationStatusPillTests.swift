@@ -4,11 +4,11 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Tests for ``ApplicationStatusPill`` — the saturation-aware status capsule
-/// rendered on `ApplicationListRow`. The pill defers all vocabulary, icon,
-/// and colour decisions to ``ApplicationStatus`` display extensions; what
-/// is unique here is the muted/saturated rendering knob driven by whether
-/// the row has an unread event.
+/// Tests for ``ApplicationStatusPill`` — the status capsule rendered on
+/// `ApplicationListRow`. The pill defers all vocabulary, icon, and colour
+/// decisions to ``ApplicationStatus`` display extensions; read/unread state
+/// is signalled by ``ApplicationListRow``'s leading dot, not by mutating
+/// the pill itself.
 @Suite("ApplicationStatusPill")
 @MainActor
 struct ApplicationStatusPillTests {
@@ -27,46 +27,9 @@ struct ApplicationStatusPillTests {
     ApplicationStatus.referred,
     ApplicationStatus.unknown,
   ])
-  func allStatuses_saturated_renderWithoutCrashing(status: ApplicationStatus) {
-    let sut = ApplicationStatusPill(status: status, isMuted: false)
+  func allStatuses_renderWithoutCrashing(status: ApplicationStatus) {
+    let sut = ApplicationStatusPill(status: status)
     _ = sut.body
-  }
-
-  @Test(arguments: [
-    ApplicationStatus.undecided,
-    ApplicationStatus.notAvailable,
-    ApplicationStatus.permitted,
-    ApplicationStatus.conditions,
-    ApplicationStatus.rejected,
-    ApplicationStatus.withdrawn,
-    ApplicationStatus.appealed,
-    ApplicationStatus.unresolved,
-    ApplicationStatus.referred,
-    ApplicationStatus.unknown,
-  ])
-  func allStatuses_muted_renderWithoutCrashing(status: ApplicationStatus) {
-    let sut = ApplicationStatusPill(status: status, isMuted: true)
-    _ = sut.body
-  }
-
-  // MARK: - Defaults
-
-  @Test("defaults to saturated (isMuted == false) when not specified")
-  func init_defaultsToSaturated() {
-    let sut = ApplicationStatusPill(status: .permitted)
-
-    #expect(!sut.isMuted)
-  }
-
-  // MARK: - Saturation knob
-
-  @Test("isMuted reflects the constructor argument")
-  func isMuted_reflectsInput() {
-    let saturated = ApplicationStatusPill(status: .permitted, isMuted: false)
-    let muted = ApplicationStatusPill(status: .permitted, isMuted: true)
-
-    #expect(!saturated.isMuted)
-    #expect(muted.isMuted)
   }
 
   // MARK: - Vocabulary delegation
