@@ -122,42 +122,68 @@ describe('useApplications — status filter', () => {
   });
 });
 
-describe('useApplications — notification state', () => {
-  it('fetches the notification-state snapshot on mount and exposes the unread count', async () => {
+describe('useApplications — unread chip count', () => {
+  it('derives unreadCount from the count of distinct applications with a latestUnreadEvent in the active zone', async () => {
+    // Three applications, two of which carry an unread event. The chip must
+    // report **two** (distinct apps), not a server-side event count — fixing
+    // the regression where multi-event apps inflated the chip beyond the
+    // visible row count (tc-u6bm).
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 5,
-    };
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication(), // null
+      rejectedApplication({
+        latestUnreadEvent: {
+          type: 'DecisionUpdate',
+          decision: 'Rejected',
+          createdAt: '2026-04-15T00:00:00Z',
+        },
+      }),
+    ];
     const zones = [cambridgeZone()];
 
     const { result } = renderHook(() =>
-      useApplications(
-        makeOptions({ browsePort, zones, notificationStateRepository: stateRepo }),
-      ),
+      useApplications(makeOptions({ browsePort, zones })),
     );
 
-    await waitFor(() => expect(result.current.unreadCount).toBe(5));
-    expect(stateRepo.getStateCalls).toBe(1);
+    await waitFor(() => expect(result.current.applications).toHaveLength(3));
+    expect(result.current.unreadCount).toBe(2);
   });
 
-  it('exposes 0 unread when the state fetch fails (silent fallback)', async () => {
+  it('does not call notificationStateRepository.getState — chip count is derived client-side', async () => {
     const browsePort = new SpyApplicationsBrowsePort();
     browsePort.fetchByZoneResult = [];
     const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateError = new Error('boom');
     const zones = [cambridgeZone()];
 
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useApplications(
         makeOptions({ browsePort, zones, notificationStateRepository: stateRepo }),
       ),
     );
 
-    await waitFor(() => expect(stateRepo.getStateCalls).toBe(1));
+    // Allow any pending effects to flush. The hook must not reach for the
+    // notification-state snapshot purely for the chip count.
+    await waitFor(() => expect(browsePort.fetchByZoneCalls.length).toBe(1));
+    expect(stateRepo.getStateCalls).toBe(0);
+  });
+
+  it('reports 0 unread when no applications carry a latestUnreadEvent', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones })),
+    );
+
+    await waitFor(() => expect(result.current.applications).toHaveLength(2));
     expect(result.current.unreadCount).toBe(0);
   });
 });
@@ -225,14 +251,28 @@ describe('useApplications — Unread filter', () => {
 
 describe('useApplications — markAllRead', () => {
   it('calls the repository, optimistically zeroes unreadCount, and refetches the row data', async () => {
+    // Initial load has two unread apps; the post-mark refetch returns the
+    // same apps with `latestUnreadEvent: null`, so the derived chip count
+    // collapses to zero without any server-side count fetch.
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
+    const initialApps = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication({
+        latestUnreadEvent: {
+          type: 'DecisionUpdate',
+          decision: 'Permitted',
+          createdAt: '2026-04-15T00:00:00Z',
+        },
+      }),
+    ];
+    browsePort.fetchByZoneResult = initialApps;
     const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 5,
-    };
     const zones = [cambridgeZone()];
 
     const { result } = renderHook(() =>
@@ -241,8 +281,14 @@ describe('useApplications — markAllRead', () => {
       ),
     );
 
-    await waitFor(() => expect(result.current.unreadCount).toBe(5));
+    await waitFor(() => expect(result.current.unreadCount).toBe(2));
     const initialFetchCount = browsePort.fetchByZoneCalls.length;
+
+    // Simulate the post-mark refetch returning rows with no unread events.
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({ latestUnreadEvent: null }),
+      permittedApplication({ latestUnreadEvent: null }),
+    ];
 
     await act(async () => {
       await result.current.markAllRead();
