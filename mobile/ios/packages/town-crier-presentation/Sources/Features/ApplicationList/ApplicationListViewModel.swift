@@ -7,9 +7,10 @@ import TownCrierDomain
 /// lives in `SavedApplicationListViewModel`.
 ///
 /// Owns the unread-watermark plumbing (tc-1nsa.8) when a
-/// ``NotificationStateRepository`` is injected: surfaces the global unread
-/// count, exposes the four sort modes from the spec, drives the Mark-All-Read
-/// toolbar action, and supplies an Unread filter that mirrors the web bead's
+/// ``NotificationStateRepository`` is injected: derives the per-zone unread
+/// count client-side from each row's `latestUnreadEvent` (tc-e9ox), exposes
+/// the four sort modes from the spec, drives the Mark-All-Read toolbar
+/// action, and supplies an Unread filter that mirrors the web bead's
 /// single-select status-chip group.
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
@@ -33,7 +34,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   @Published var error: DomainError?
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
-  @Published private(set) var unreadCount: Int = 0
+  /// Distinct unread applications visible in the current zone. Derived from
+  /// the loaded `applications` array so the chip auto-tracks zone switches
+  /// and Mark-All-Read refetches without an extra round-trip. Replaces the
+  /// previous `notification-state.totalUnreadCount` (global event count)
+  /// wiring so the chip aligns with what each zone actually shows
+  /// (GH#380 / tc-e9ox).
+  public var unreadCount: Int {
+    applications.filter { $0.latestUnreadEvent != nil }.count
+  }
   /// Bound by the sort menu. Setter persists the choice to `UserDefaults`
   /// under `sortKey` so user intent survives relaunches (spec decision #10).
   @Published var sort: ApplicationsSort {
@@ -202,14 +211,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       guard let activeZone = selectedZone ?? zone else {
         applications = []
         isLoading = false
-        await refreshUnreadCount()
         return
       }
       applications = try await fetchApplications(for: activeZone)
     } catch {
       handleError(error)
     }
-    await refreshUnreadCount()
     isLoading = false
   }
 
@@ -232,16 +239,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     onApplicationSelected?(id)
   }
 
-  /// Stamps the watermark to "now" via the notification-state repository.
-  /// Optimistically clears `unreadCount` before the network call returns
-  /// so the chip and Mark-All-Read button hide immediately, then refetches
-  /// the active zone so each row's `latestUnreadEvent` drops to `nil`.
-  /// Repository failures are swallowed — the optimistic UI already shows
-  /// the desired result and a subsequent fetch will reconcile any drift.
-  /// Spec decision #8 (silent optimistic).
+  /// Stamps the watermark to "now" via the notification-state repository,
+  /// then refetches the active zone so each row's `latestUnreadEvent` drops
+  /// to `nil` (which in turn zeros `unreadCount` via the computed property).
+  /// Repository failures are swallowed — a subsequent fetch will reconcile
+  /// any drift. Spec decision #8 (silent optimistic).
   public func markAllRead() async {
     guard let notificationStateRepository else { return }
-    unreadCount = 0
     do {
       try await notificationStateRepository.markAllRead()
     } catch {
@@ -275,16 +279,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
-  }
-
-  private func refreshUnreadCount() async {
-    guard let notificationStateRepository else { return }
-    do {
-      let state = try await notificationStateRepository.fetchState()
-      unreadCount = state.totalUnreadCount
-    } catch {
-      // Silent fallback per spec — the Unread chip just hides.
-    }
   }
 
   private func filterApplications(
