@@ -5,11 +5,10 @@ import TownCrierDomain
 @testable import TownCrierPresentation
 
 /// Tests for the unread-watermark wiring on `ApplicationListViewModel`:
-/// unread count, the four sort modes, the Mark-All-Read action, and the
-/// Unread filter. Mirrors the web `useApplications` hook (tc-1nsa.11) so
-/// the platforms stay behaviourally identical.
-///
-/// Spec: `docs/specs/notifications-unread-watermark.md#ios-applications-unread-ui`.
+/// per-zone unread count (derived client-side from the loaded apps' own
+/// `latestUnreadEvent`), the four sort modes, the Mark-All-Read action,
+/// and the Unread filter. Mirrors the web `useApplications` hook
+/// (tc-1nsa.11) so the platforms stay behaviourally identical.
 @Suite("ApplicationListViewModel — unread UI (tc-1nsa.8)")
 @MainActor
 struct ApplicationListViewModelUnreadTests {
@@ -53,31 +52,44 @@ struct ApplicationListViewModelUnreadTests {
     )
   }
 
-  // MARK: - Unread count
+  // MARK: - Unread count (per-zone, client-side)
 
-  @Test("unreadCount comes from the notification-state repository")
-  func unreadCount_fromState() async throws {
+  @Test("unreadCount counts loaded applications with non-nil latestUnreadEvent")
+  func unreadCount_countsRowsWithLatestUnreadEvent() async throws {
+    let unreadA = PlanningApplication.pendingReview
+      .withLatestUnreadEvent(event(at: 1_700_500_000))
+    let unreadB = PlanningApplication.permitted
+      .withLatestUnreadEvent(event(at: 1_700_600_000))
+    let read = PlanningApplication.rejected
+      .withLatestUnreadEvent(nil)
+    let (sut, _, _, _) = try makeSUT(applications: [unreadA, unreadB, read])
+
+    await sut.loadApplications()
+
+    #expect(sut.unreadCount == 2)
+  }
+
+  @Test("unreadCount is zero when no loaded application has a latestUnreadEvent")
+  func unreadCount_isZero_whenNoApplicationsHaveLatestUnreadEvent() async throws {
     let (sut, _, _, _) = try makeSUT(
-      state: NotificationState(
-        lastReadAt: Date(timeIntervalSince1970: 0),
-        version: 1,
-        totalUnreadCount: 7
-      )
+      applications: [
+        PlanningApplication.pendingReview.withLatestUnreadEvent(nil),
+        PlanningApplication.permitted.withLatestUnreadEvent(nil),
+      ]
     )
 
     await sut.loadApplications()
 
-    #expect(sut.unreadCount == 7)
+    #expect(sut.unreadCount == 0)
   }
 
-  @Test("hasUnread is true when totalUnreadCount > 0")
-  func hasUnread_trueWhenPositive() async throws {
+  @Test("hasUnread is true when at least one loaded row has an unread event")
+  func hasUnread_trueWhenAnyRowUnread() async throws {
     let (sut, _, _, _) = try makeSUT(
-      state: NotificationState(
-        lastReadAt: Date(timeIntervalSince1970: 0),
-        version: 1,
-        totalUnreadCount: 1
-      )
+      applications: [
+        PlanningApplication.pendingReview
+          .withLatestUnreadEvent(event(at: 1_700_500_000))
+      ]
     )
 
     await sut.loadApplications()
@@ -85,8 +97,8 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.hasUnread)
   }
 
-  @Test("hasUnread is false when totalUnreadCount is zero")
-  func hasUnread_falseWhenZero() async throws {
+  @Test("hasUnread is false when no loaded row has an unread event")
+  func hasUnread_falseWhenAllRead() async throws {
     let (sut, _, _, _) = try makeSUT()
 
     await sut.loadApplications()
@@ -94,15 +106,18 @@ struct ApplicationListViewModelUnreadTests {
     #expect(!sut.hasUnread)
   }
 
-  @Test("loadApplications keeps unread count zero when fetchState fails")
-  func unreadCount_silentOnFetchFailure() async throws {
-    let (sut, _, stateSpy, _) = try makeSUT()
-    stateSpy.fetchStateResult = .failure(DomainError.networkUnavailable)
+  @Test("loadApplications does not call fetchState (chip is derived client-side)")
+  func loadApplications_doesNotCallFetchState() async throws {
+    let (sut, _, stateSpy, _) = try makeSUT(
+      applications: [
+        PlanningApplication.pendingReview
+          .withLatestUnreadEvent(event(at: 1_700_500_000))
+      ]
+    )
 
     await sut.loadApplications()
 
-    #expect(sut.unreadCount == 0)
-    #expect(sut.error == nil) // applications still rendered, state failure silent
+    #expect(stateSpy.fetchStateCallCount == 0)
   }
 
   // MARK: - Unread filter
@@ -265,18 +280,19 @@ struct ApplicationListViewModelUnreadTests {
     #expect(stateSpy.markAllReadCallCount == 1)
   }
 
-  @Test("markAllRead optimistically clears unread count before refetch")
-  func markAllRead_optimisticallyZerosCount() async throws {
-    let (sut, _, _, _) = try makeSUT(
-      state: NotificationState(
-        lastReadAt: Date(timeIntervalSince1970: 0),
-        version: 1,
-        totalUnreadCount: 5
-      )
-    )
+  @Test("markAllRead drops the chip count to zero after refetch")
+  func markAllRead_zeroesCountAfterRefetch() async throws {
+    let unread = PlanningApplication.pendingReview
+      .withLatestUnreadEvent(event(at: 1_700_500_000))
+    let (sut, appSpy, _, _) = try makeSUT(applications: [unread])
 
     await sut.loadApplications()
-    #expect(sut.unreadCount == 5)
+    #expect(sut.unreadCount == 1)
+
+    // Server-side mark-all-read flips every row's latestUnreadEvent to nil.
+    appSpy.fetchApplicationsResult = .success([
+      PlanningApplication.pendingReview.withLatestUnreadEvent(nil)
+    ])
 
     await sut.markAllRead()
 
@@ -304,22 +320,15 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.applications.first?.latestUnreadEvent == nil)
   }
 
-  @Test("markAllRead silently swallows repository failure (optimistic UI)")
+  @Test("markAllRead silently swallows repository failure (no error surfaced)")
   func markAllRead_swallowsFailure() async throws {
-    let (sut, _, stateSpy, _) = try makeSUT(
-      state: NotificationState(
-        lastReadAt: Date(timeIntervalSince1970: 0),
-        version: 1,
-        totalUnreadCount: 3
-      )
-    )
+    let (sut, _, stateSpy, _) = try makeSUT()
     stateSpy.markAllReadResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
     await sut.markAllRead()
 
-    // Optimistic UI still shows zero per spec decision #8.
-    #expect(sut.unreadCount == 0)
+    // Repository failure is swallowed per spec decision #8.
     #expect(sut.error == nil)
   }
 }
