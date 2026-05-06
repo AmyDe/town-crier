@@ -339,13 +339,27 @@ public final class AppCoordinator: ObservableObject {
   }
 
   func showApplicationDetail(_ id: PlanningApplicationId) {
+    // Cancel any in-flight detail load so rapid 4× taps from a digest
+    // email card collapse to a single presentation. Without this, multiple
+    // overlapping tasks could each mutate `detailApplication` after their
+    // `await` resumed, causing the sheet to flicker or fail to present
+    // (tc-dt3x).
+    pendingDetailLoad?.cancel()
     pendingDetailLoad = Task { [weak self] in
       guard let self else { return }
       do {
-        detailApplication = try await repository.fetchApplication(by: id)
+        let application = try await repository.fetchApplication(by: id)
+        // The cancellation above only cancels the prior `Task`, which has
+        // no effect on `try await` calls that don't check cooperatively.
+        // After the await resumes we must check `Task.isCancelled` so a
+        // superseded fetch does not stomp the latest tap's mutation.
+        guard !Task.isCancelled else { return }
+        detailApplication = application
       } catch let domainError as DomainError {
+        guard !Task.isCancelled else { return }
         deepLinkError = domainError
       } catch {
+        guard !Task.isCancelled else { return }
         deepLinkError = .unexpected(error.localizedDescription)
       }
     }
