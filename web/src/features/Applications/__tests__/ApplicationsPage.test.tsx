@@ -153,38 +153,79 @@ describe('ApplicationsPage — Unread chip', () => {
     window.localStorage.clear();
   });
 
-  it('renders an Unread chip with the totalUnreadCount badge when unread > 0', async () => {
+  it('renders an Unread chip whose badge equals the distinct count of unread applications in the zone', async () => {
+    // Two of the three loaded apps carry an unread event — the chip must
+    // read "Unread (2)", not the inflated event count that would come from
+    // a server-side notification-state snapshot (tc-u6bm).
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 4,
-    };
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication(), // null — no unread
+      rejectedApplication({
+        latestUnreadEvent: {
+          type: 'DecisionUpdate',
+          decision: 'Rejected',
+          createdAt: '2026-04-15T00:00:00Z',
+        },
+      }),
+    ];
 
-    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+    renderPage({ zonesPort, browsePort });
 
-    const chip = await screen.findByRole('button', { name: /unread \(4\)/i });
+    const chip = await screen.findByRole('button', { name: /unread \(2\)/i });
     expect(chip).toBeInTheDocument();
     expect(chip).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('hides the Unread chip when unreadCount is 0', async () => {
+  it('chip count tracks distinct unread apps, not the server-side event total', async () => {
+    // The notification-state snapshot reports 7 (an event count — apps with
+    // multiple events inflate it). Only one of the loaded apps actually
+    // carries an unread event, so the chip must show 1.
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication(), // null
+    ];
     const stateRepo = new SpyNotificationStateRepository();
     stateRepo.getStateResult = {
       lastReadAt: '2026-01-01T00:00:00Z',
       version: 1,
-      totalUnreadCount: 0,
+      totalUnreadCount: 7,
     };
 
     renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+
+    expect(
+      await screen.findByRole('button', { name: /unread \(1\)/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /unread \(7\)/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the Unread chip when no application in the zone has an unread event', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
+
+    renderPage({ zonesPort, browsePort });
 
     await waitFor(() => {
       expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument();
@@ -206,15 +247,9 @@ describe('ApplicationsPage — Unread chip', () => {
       }),
       permittedApplication(), // null
     ];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 1,
-    };
     const user = userEvent.setup();
 
-    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+    renderPage({ zonesPort, browsePort });
 
     await waitFor(() =>
       expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument(),
@@ -235,38 +270,34 @@ describe('ApplicationsPage — Mark all read', () => {
     window.localStorage.clear();
   });
 
-  it('renders a Mark all read button when there are unread notifications', async () => {
+  it('renders a Mark all read button when at least one application is unread', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 3,
-    };
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+    ];
 
-    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+    renderPage({ zonesPort, browsePort });
 
     expect(
       await screen.findByRole('button', { name: /mark all read/i }),
     ).toBeInTheDocument();
   });
 
-  it('hides the Mark all read button when nothing is unread', async () => {
+  it('hides the Mark all read button when nothing in the zone is unread', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 0,
-    };
+    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
 
-    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
+    renderPage({ zonesPort, browsePort });
 
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument(),
@@ -280,13 +311,23 @@ describe('ApplicationsPage — Mark all read', () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
+    browsePort.fetchByZoneResult = [
+      undecidedApplication({
+        latestUnreadEvent: {
+          type: 'NewApplication',
+          decision: null,
+          createdAt: '2026-04-01T00:00:00Z',
+        },
+      }),
+      permittedApplication({
+        latestUnreadEvent: {
+          type: 'DecisionUpdate',
+          decision: 'Permitted',
+          createdAt: '2026-04-15T00:00:00Z',
+        },
+      }),
+    ];
     const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 2,
-    };
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });

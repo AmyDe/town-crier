@@ -161,6 +161,20 @@ struct TownCrierApp: App {
           Text(error.userMessage)
         }
       }
+      // Single sheet modifier observing `coordinator.detailApplication`.
+      // Hoisted from per-tab NavigationStacks so a deep link arriving
+      // while the app is on Saved/Map/Zones still presents the detail
+      // sheet — previously two sibling `.sheet(item:)` modifiers raced
+      // and only the active tab's sheet would fire (tc-dt3x).
+      .sheet(item: $coordinator.detailApplication) { application in
+        NavigationStack {
+          ApplicationDetailView(
+            viewModel: coordinator.makeApplicationDetailViewModel(
+              application: application
+            )
+          )
+        }
+      }
     }
   }
 
@@ -171,15 +185,6 @@ struct TownCrierApp: App {
         ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
           .id(coordinator.subscriptionTier)
           .settingsToolbar { coordinator.showSettings() }
-      }
-      .sheet(item: $coordinator.detailApplication) { application in
-        NavigationStack {
-          ApplicationDetailView(
-            viewModel: coordinator.makeApplicationDetailViewModel(
-              application: application
-            )
-          )
-        }
       }
       .tabItem {
         Label("Applications", systemImage: "doc.text.magnifyingglass")
@@ -193,15 +198,6 @@ struct TownCrierApp: App {
         )
         .id(coordinator.subscriptionTier)
         .settingsToolbar { coordinator.showSettings() }
-      }
-      .sheet(item: $coordinator.detailApplication) { application in
-        NavigationStack {
-          ApplicationDetailView(
-            viewModel: coordinator.makeApplicationDetailViewModel(
-              application: application
-            )
-          )
-        }
       }
       .tabItem {
         Label("Saved", systemImage: "bookmark.fill")

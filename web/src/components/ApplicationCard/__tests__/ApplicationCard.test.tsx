@@ -141,12 +141,12 @@ describe('ApplicationCard', () => {
   });
 });
 
-describe('ApplicationCard — read-state aware status pill', () => {
-  it('marks the status badge unread when latestUnreadEvent is non-null', () => {
-    const app = permittedApplication({
+describe('ApplicationCard — leading unread dot', () => {
+  it('renders a visible unread dot when latestUnreadEvent is non-null', () => {
+    const app = undecidedApplication({
       latestUnreadEvent: {
-        type: 'DecisionUpdate',
-        decision: 'Permitted',
+        type: 'NewApplication',
+        decision: null,
         createdAt: '2026-04-01T00:00:00Z',
       },
     });
@@ -156,11 +156,12 @@ describe('ApplicationCard — read-state aware status pill', () => {
       </MemoryRouter>,
     );
 
-    const badge = screen.getByTestId('application-status-badge');
-    expect(badge).toHaveAttribute('data-unread', 'true');
+    const dot = screen.getByLabelText('Unread');
+    expect(dot).toBeInTheDocument();
+    expect(dot).toBeVisible();
   });
 
-  it('marks the status badge read (muted) when latestUnreadEvent is null', () => {
+  it('keeps the unread dot in the DOM but hidden when latestUnreadEvent is null', () => {
     const app = permittedApplication({ latestUnreadEvent: null });
     render(
       <MemoryRouter>
@@ -168,8 +169,9 @@ describe('ApplicationCard — read-state aware status pill', () => {
       </MemoryRouter>,
     );
 
-    const badge = screen.getByTestId('application-status-badge');
-    expect(badge).toHaveAttribute('data-unread', 'false');
+    const dot = screen.getByTestId('application-unread-dot');
+    expect(dot).toBeInTheDocument();
+    expect(dot).not.toBeVisible();
   });
 
   it('marks the application card unread when latestUnreadEvent is non-null', () => {
@@ -188,5 +190,17 @@ describe('ApplicationCard — read-state aware status pill', () => {
 
     const card = screen.getByTestId('application-card');
     expect(card).toHaveAttribute('data-unread', 'true');
+  });
+
+  it('does not apply mute styling to the status badge when read', () => {
+    const app = permittedApplication({ latestUnreadEvent: null });
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} />
+      </MemoryRouter>,
+    );
+
+    const badge = screen.getByTestId('application-status-badge');
+    expect(badge).not.toHaveAttribute('data-unread');
   });
 });

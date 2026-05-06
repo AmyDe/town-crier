@@ -1,13 +1,32 @@
 .card {
   display: block;
+  position: relative;
   background: var(--tc-surface);
   border: 1px solid var(--tc-border);
   border-radius: var(--tc-radius-md);
   padding: var(--tc-space-md);
+  padding-left: calc(var(--tc-space-md) + var(--tc-space-md));
   box-shadow: var(--tc-shadow-card);
   text-decoration: none;
   color: inherit;
   transition: border-color var(--tc-duration-fast) ease;
+}
+
+/*
+ * Leading unread dot — placeholder always occupies space (visibility: hidden
+ * when read) so layout stays stable between unread and read rows. The
+ * visibility toggle is applied inline so tests can verify it through the
+ * computed style; colour and shape come from design tokens here.
+ */
+.unreadDot {
+  position: absolute;
+  left: var(--tc-space-sm);
+  top: var(--tc-space-md);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tc-amber);
+  flex-shrink: 0;
 }
 
 .card:hover {
@@ -36,10 +55,9 @@
 }
 
 /*
- * Read-state knob — when a row is unread, the entire card sits at full
- * saturation. After the user marks-all-read (or scrolls past it server-side),
- * the row drops to the muted variant: text recedes and the status pill loses
- * its colour fill, matching the iOS ApplicationStatusPill.isMuted treatment.
+ * Read-state knob — unread rows render at full saturation; read rows recede
+ * slightly via card opacity. The status pill itself is no longer muted —
+ * the leading unread dot is the canonical read/unread affordance.
  */
 .cardUnread {
   /* Saturated rendering uses the default tokens — no additional rules. */
@@ -60,17 +78,6 @@
   line-height: var(--tc-leading-normal);
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-.statusBadgeRead {
-  /*
-   * Muted treatment: drop the status colour fill and recede to neutral text.
-   * Mirrors `ApplicationStatusPill.isMuted` on iOS so cross-platform users
-   * see the same "this row has been read" affordance.
-   */
-  background: transparent !important;
-  color: var(--tc-text-secondary) !important;
-  border: 1px solid var(--tc-border);
 }
 
 .statusUndecided {
