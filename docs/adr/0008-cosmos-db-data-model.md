@@ -104,3 +104,13 @@ The Applications container change feed is consumed by the notification processor
 - Clarified: the `Leases` container mentioned in the original decision is provisioned in Pulumi (required historically for the Cosmos change-feed processor contemplated in [ADR 0009](0009-notification-delivery-architecture.md)) but is not currently populated — see the ADR 0009 2026-04-21 amendment for the actual notification dispatch path.
 - Clarified: `FailedNotifications` (referenced in ADR 0009) was never created as a container. Failed notifications are surfaced through OpenTelemetry counters rather than a dead-letter collection.
 - Total containers provisioned: **10** (Applications, Users, WatchZones, Notifications, Leases, DeviceRegistrations, SavedApplications, DecisionAlerts, PollState, OfferCodes).
+
+### 2026-05-15
+- Removed: **`DecisionAlerts`** container. The standalone decision-alert feed was folded into the regular `Notifications` container — decision updates are now emitted as ordinary notifications with a `decision-update` kind discriminator rather than living in a separate per-user feed. No domain entity, repository, or Pulumi container definition for `DecisionAlerts` remains.
+- Added: **`NotificationState`** container, partitioned by `/userId`. Holds a single watermark document per user that records the read-state cutoff (last-read timestamp / unread count) used by the iOS unread-dot/chip UX and the foreground badge sync. Point reads and upserts are scoped to the partition (one document per user). No TTL.
+
+| Container | Partition Key | Rationale |
+|-----------|--------------|-----------|
+| `NotificationState` | `/userId` | One read-state watermark document per user. Drives unread badge, unread chip, and iOS app-icon badge sync (see `BadgeSync` coordinator in `mobile/ios`). Single-partition point reads on login and on mark-all-read |
+
+- Total containers provisioned remains **10** (Applications, Users, WatchZones, Notifications, NotificationState, Leases, DeviceRegistrations, SavedApplications, PollState, OfferCodes). DecisionAlerts removed; NotificationState added.
