@@ -10,6 +10,12 @@ public interface INotificationRepository
     /// PlanIt uids are only unique within a council — without it, a Bradford
     /// decision would suppress a Kingston one for the same uid (bd tc-th98 / GH#384).
     /// </summary>
+    /// <param name="userId">The Auth0 sub for the owning user.</param>
+    /// <param name="applicationUid">The PlanIt-assigned application uid.</param>
+    /// <param name="authorityId">The PlanIt areaId for the council that issued the uid.</param>
+    /// <param name="eventType">The notification event type (NewApplication or DecisionUpdate).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The existing notification for the (userId, applicationUid, authorityId, eventType) tuple, or null if none.</returns>
     Task<Notification?> GetByUserAndApplicationAsync(
         string userId,
         string applicationUid,

@@ -20,5 +20,9 @@ public interface ISavedApplicationRepository
     /// cross-authority matches would dispatch the wrong council's payload
     /// (bd tc-th98 / GH#384).
     /// </summary>
+    /// <param name="applicationUid">The PlanIt-assigned uid for the application.</param>
+    /// <param name="authorityId">The PlanIt areaId for the council that issued the uid.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The userIds who have saved the given application within the specified authority.</returns>
     Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct);
 }
