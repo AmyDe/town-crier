@@ -98,7 +98,7 @@ public sealed class GetSavedApplicationsQueryHandlerTests
             .WithUid("planit-uid-legacy").WithName("APP/legacy").WithAreaName("Camden").Build();
         await planningRepository.UpsertAsync(app, CancellationToken.None);
         await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-legacy", savedAt), CancellationToken.None);
+            SavedApplication.Create("auth0|user-1", "planit-uid-legacy", authorityId: 1, savedAt), CancellationToken.None);
 
         var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
@@ -145,7 +145,7 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         await savedRepository.SaveAsync(
             SavedApplication.Create("auth0|user-1", present, savedAt), CancellationToken.None);
         await savedRepository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-orphaned", savedAt.AddHours(1)), CancellationToken.None);
+            SavedApplication.Create("auth0|user-1", "planit-uid-orphaned", authorityId: 1, savedAt.AddHours(1)), CancellationToken.None);
 
         var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");

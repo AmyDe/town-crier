@@ -4,9 +4,16 @@ namespace TownCrier.Application.Notifications;
 
 public interface INotificationRepository
 {
+    /// <summary>
+    /// Returns the existing notification (if any) for the (userId, applicationUid,
+    /// authorityId, eventType) tuple. Authority must be part of the key because
+    /// PlanIt uids are only unique within a council — without it, a Bradford
+    /// decision would suppress a Kingston one for the same uid (bd tc-th98 / GH#384).
+    /// </summary>
     Task<Notification?> GetByUserAndApplicationAsync(
         string userId,
         string applicationUid,
+        int authorityId,
         NotificationEventType eventType,
         CancellationToken ct);
 

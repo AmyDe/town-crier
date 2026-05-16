@@ -85,9 +85,12 @@ public sealed class DispatchDecisionEventCommandHandler
             }
         }
 
-        // Saved bookmark holders.
+        // Saved bookmark holders — scoped to the polled application's council.
+        // PlanIt uids are only unique within a council, so a uid-only lookup
+        // would falsely match users who saved a same-uid app in a different
+        // authority (bd tc-th98 / GH#384).
         var savedUserIds = await this.savedApplicationRepository
-            .GetUserIdsByApplicationUidAsync(application.Uid, ct)
+            .GetUserIdsForApplicationAsync(application.Uid, application.AreaId, ct)
             .ConfigureAwait(false);
 
         foreach (var userId in savedUserIds)
@@ -117,9 +120,12 @@ public sealed class DispatchDecisionEventCommandHandler
         DateTimeOffset now,
         CancellationToken ct)
     {
-        // Idempotency — one DecisionUpdate per (user, applicationUid) ever.
+        // Idempotency — one DecisionUpdate per (user, applicationUid, authorityId) ever.
+        // Authority must be part of the key: PlanIt uids are only unique within a
+        // council, so without it a Bradford decision would suppress a Kingston one
+        // for the same uid (bd tc-th98 / GH#384).
         var existing = await this.notificationRepository.GetByUserAndApplicationAsync(
-            userId, application.Uid, NotificationEventType.DecisionUpdate, ct)
+            userId, application.Uid, application.AreaId, NotificationEventType.DecisionUpdate, ct)
             .ConfigureAwait(false);
 
         if (existing is not null)

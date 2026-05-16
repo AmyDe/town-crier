@@ -120,6 +120,9 @@ public sealed class DispatchNotificationCommandHandlerTests
         var (handler, notificationRepo, userProfileRepo, pushSender, deviceRepo, _) = CreateHandler();
         await SeedPaidUserWithDevice(userProfileRepo, deviceRepo);
 
+        // AuthorityId must match the polled application — the dedup key now
+        // includes authorityId so cross-council uid collisions don't suppress
+        // each other (bd tc-th98 / GH#384). PlanningApplicationBuilder default is 1.
         var existing = Notification.Create(
             userId: "user-1",
             applicationUid: "test-uid-001",
@@ -128,7 +131,7 @@ public sealed class DispatchNotificationCommandHandlerTests
             applicationAddress: "1 High St",
             applicationDescription: "Extension",
             applicationType: "Householder",
-            authorityId: 42,
+            authorityId: 1,
             now: March2026,
             eventType: NotificationEventType.NewApplication);
         notificationRepo.Seed(existing);

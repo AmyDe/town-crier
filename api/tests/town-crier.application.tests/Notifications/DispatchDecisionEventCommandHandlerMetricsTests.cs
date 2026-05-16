@@ -47,7 +47,7 @@ public sealed class DispatchDecisionEventCommandHandlerMetricsTests
         var harness = new Harness();
         await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            SavedApplication.Create("user-1", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         var recorded = new List<(long Value, Dictionary<string, string?> Tags)>();

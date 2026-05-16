@@ -87,12 +87,21 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
         return document is not null;
     }
 
-    public async Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct)
     {
+        // Cross-partition by design — saved-app docs are partitioned by userId,
+        // but a polled decision-event needs every userId who saved this
+        // (uid, authorityId). Predicate must include authorityId because PlanIt
+        // uids collide across councils (bd tc-th98 / GH#384). Legacy rows
+        // persisted before the authorityId column was added fall through the
+        // filter naturally — they won't match until backfilled.
         return await this.client.QueryAsync(
             CosmosContainerNames.SavedApplications,
-            "SELECT VALUE c.userId FROM c WHERE c.applicationUid = @applicationUid",
-            [new QueryParameter("@applicationUid", applicationUid)],
+            "SELECT VALUE c.userId FROM c WHERE c.applicationUid = @applicationUid AND c.authorityId = @authorityId",
+            [
+                new QueryParameter("@applicationUid", applicationUid),
+                new QueryParameter("@authorityId", authorityId),
+            ],
             partitionKey: null,
             CosmosJsonSerializerContext.Default.String,
             ct).ConfigureAwait(false);

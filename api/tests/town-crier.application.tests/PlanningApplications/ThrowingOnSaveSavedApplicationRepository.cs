@@ -39,6 +39,6 @@ internal sealed class ThrowingOnSaveSavedApplicationRepository : ISavedApplicati
         return Task.FromResult(false);
     }
 
-    public Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct) =>
+    public Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<string>>([]);
 }

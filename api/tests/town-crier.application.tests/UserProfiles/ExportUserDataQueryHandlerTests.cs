@@ -183,13 +183,13 @@ public sealed class ExportUserDataQueryHandlerTests
         var harness = new ExportUserDataHarness();
         await harness.UserProfileRepository.SaveAsync(UserProfile.Register("auth0|user1"), CancellationToken.None);
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|user1", "app-a", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|user1", "app-a", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|user1", "app-b", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|user1", "app-b", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|other", "app-c", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|other", "app-c", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
 
         // Act

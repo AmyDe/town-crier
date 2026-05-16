@@ -47,7 +47,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         var harness = new Harness();
         await harness.SeedPaidUserAsync("user-1", "device-1");
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            SavedApplication.Create("user-1", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         // Act — application has no coords (only saved-bookmark holders)
@@ -78,7 +78,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         var harness = new Harness();
         await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            SavedApplication.Create("user-1", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         // Act
@@ -285,7 +285,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
 
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            SavedApplication.Create("user-1", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         var device = DeviceRegistration.Create("user-1", "device-1", DevicePlatform.Ios, March2026);
@@ -327,7 +327,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await harness.UserProfileRepo.SaveAsync(profile, CancellationToken.None);
 
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("user-1", "test-uid-001", March2026),
+            SavedApplication.Create("user-1", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         // Act
@@ -349,7 +349,7 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         // Arrange — saved bookmark held by an unknown user (race against profile delete)
         var harness = new Harness();
         await harness.SavedApplicationRepo.SaveAsync(
-            SavedApplication.Create("ghost-user", "test-uid-001", March2026),
+            SavedApplication.Create("ghost-user", "test-uid-001", authorityId: 1, March2026),
             CancellationToken.None);
 
         var application = new PlanningApplicationBuilder()
@@ -414,6 +414,114 @@ public sealed class DispatchDecisionEventCommandHandlerTests
         await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(2);
         await Assert.That(harness.NotificationRepo.All.Any(n => n.UserId == "user-1")).IsTrue();
         await Assert.That(harness.NotificationRepo.All.Any(n => n.UserId == "user-2")).IsTrue();
+    }
+
+    [Test]
+    public async Task Should_NotDispatch_When_SavedApplicationSharesUidButDifferentAuthority()
+    {
+        // Arrange — Pro user saved Kingston/25/02922/HOU (areaId=314). Polled
+        // application is Bradford/25/02922/HOU (areaId=289) — same uid, different
+        // council. Without authority scoping, the user gets a Bradford push
+        // stamped with Yorkshire content (bd tc-th98 + GH#384).
+        var harness = new Harness();
+        await harness.SeedPaidUserAsync("user-1", "device-1");
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "25/02922/HOU", authorityId: 314, March2026),
+            CancellationToken.None);
+
+        // Act — Bradford application with no coordinates, so saved path is the only one
+        var bradford = new PlanningApplicationBuilder()
+            .WithUid("25/02922/HOU")
+            .WithName("Bradford/25/02922/HOU")
+            .WithAreaId(289)
+            .WithAreaName("Bradford")
+            .WithAppState("Permitted")
+            .Build();
+
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(bradford),
+            CancellationToken.None);
+
+        // Assert — no notification, no push: the saved row belongs to a
+        // different council so this event is not for this user.
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(0);
+        await Assert.That(harness.PushSender.Sent).HasCount().EqualTo(0);
+    }
+
+    [Test]
+    public async Task Should_Dispatch_When_SavedApplicationMatchesUidAndAuthority()
+    {
+        // Arrange — Pro user saved Kingston/25/02922/HOU (areaId=314). Polled
+        // application is the same council's same uid, so dispatch should fire.
+        var harness = new Harness();
+        await harness.SeedPaidUserAsync("user-1", "device-1");
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", "25/02922/HOU", authorityId: 314, March2026),
+            CancellationToken.None);
+
+        var kingston = new PlanningApplicationBuilder()
+            .WithUid("25/02922/HOU")
+            .WithName("Kingston/25/02922/HOU")
+            .WithAreaId(314)
+            .WithAreaName("Kingston")
+            .WithAppState("Permitted")
+            .Build();
+
+        // Act
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(kingston),
+            CancellationToken.None);
+
+        // Assert
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].AuthorityId).IsEqualTo(314);
+        await Assert.That(harness.NotificationRepo.All[0].Sources).IsEqualTo(NotificationSources.Saved);
+    }
+
+    [Test]
+    public async Task Should_AllowSecondNotification_When_SameUserAndUidButDifferentAuthority()
+    {
+        // Arrange — idempotency check must include authorityId. After a Kingston
+        // decision fires, a Bradford decision for the same uid (saved in a
+        // hypothetical Bradford zone) must still fire — they're distinct events
+        // about distinct applications that happen to share a uid (bd tc-th98).
+        var harness = new Harness();
+        await harness.SeedPaidUserWithZoneAsync("user-1", "zone-1", "device-1");
+
+        // First: Kingston decision already persisted
+        var kingstonExisting = Notification.Create(
+            userId: "user-1",
+            applicationUid: "25/02922/HOU",
+            applicationName: "Kingston/25/02922/HOU",
+            watchZoneId: "zone-1",
+            applicationAddress: "5 Orchard Cottages, KT2 6BU",
+            applicationDescription: "Householder",
+            applicationType: "Householder",
+            authorityId: 314,
+            now: March2026,
+            decision: "Permitted",
+            eventType: NotificationEventType.DecisionUpdate,
+            sources: NotificationSources.Zone);
+        harness.NotificationRepo.Seed(kingstonExisting);
+
+        // Act — Bradford same-uid event arrives via a zone match
+        var bradford = new PlanningApplicationBuilder()
+            .WithUid("25/02922/HOU")
+            .WithName("Bradford/25/02922/HOU")
+            .WithAreaId(289)
+            .WithAreaName("Bradford")
+            .WithAppState("Permitted")
+            .WithCoordinates(51.5074, -0.1278)
+            .Build();
+
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(bradford),
+            CancellationToken.None);
+
+        // Assert — two notifications now, one per authority
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(2);
+        await Assert.That(harness.NotificationRepo.All.Count(n => n.AuthorityId == 314)).IsEqualTo(1);
+        await Assert.That(harness.NotificationRepo.All.Count(n => n.AuthorityId == 289)).IsEqualTo(1);
     }
 
     [Test]

@@ -83,7 +83,7 @@ public sealed class SavedApplicationTests
     {
         // Arrange — defensive: refusing to swap in a snapshot for the wrong uid
         // protects against handler bugs where the wrong application is paired with a save.
-        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 1, DateTimeOffset.UtcNow);
         var wrongUid = new PlanningApplicationBuilder().WithUid("planit-uid-other").Build();
 
         // Act + Assert

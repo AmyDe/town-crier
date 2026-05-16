@@ -14,5 +14,11 @@ public interface ISavedApplicationRepository
 
     Task<bool> ExistsAsync(string userId, string applicationUid, CancellationToken ct);
 
-    Task<IReadOnlyList<string>> GetUserIdsByApplicationUidAsync(string applicationUid, CancellationToken ct);
+    /// <summary>
+    /// Returns the userIds who have saved the given application — scoped to a
+    /// specific council. PlanIt uids are only unique within a council, so
+    /// cross-authority matches would dispatch the wrong council's payload
+    /// (bd tc-th98 / GH#384).
+    /// </summary>
+    Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct);
 }

@@ -19,7 +19,7 @@ public sealed class CosmosNotificationRepositoryTests
 
         // Assert
         var result = await repo.GetByUserAndApplicationAsync(
-            "user-1", "test-uid-001", NotificationEventType.NewApplication, CancellationToken.None);
+            "user-1", "test-uid-001", authorityId: 42, NotificationEventType.NewApplication, CancellationToken.None);
         await Assert.That(result).IsNotNull();
     }
 
@@ -32,7 +32,7 @@ public sealed class CosmosNotificationRepositoryTests
 
         // Act
         var result = await repo.GetByUserAndApplicationAsync(
-            "user-1", "nonexistent", NotificationEventType.NewApplication, CancellationToken.None);
+            "user-1", "nonexistent", authorityId: 42, NotificationEventType.NewApplication, CancellationToken.None);
 
         // Assert
         await Assert.That(result).IsNull();
