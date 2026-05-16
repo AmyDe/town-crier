@@ -17,15 +17,21 @@ public sealed class CosmosNotificationRepository : INotificationRepository
     public async Task<Notification?> GetByUserAndApplicationAsync(
         string userId,
         string applicationUid,
+        int authorityId,
         NotificationEventType eventType,
         CancellationToken ct)
     {
+        // Idempotency key includes authorityId because PlanIt uids collide
+        // across councils (bd tc-th98 / GH#384). A user can hold one notification
+        // per (uid, authorityId, eventType) but two different councils' rows must
+        // not suppress each other.
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Notifications,
-            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationUid = @appUid AND c.eventType = @eventType",
+            "SELECT * FROM c WHERE c.userId = @userId AND c.applicationUid = @appUid AND c.authorityId = @authorityId AND c.eventType = @eventType",
             [
                 new QueryParameter("@userId", userId),
                 new QueryParameter("@appUid", applicationUid),
+                new QueryParameter("@authorityId", authorityId),
                 new QueryParameter("@eventType", eventType.ToString()),
             ],
             userId,

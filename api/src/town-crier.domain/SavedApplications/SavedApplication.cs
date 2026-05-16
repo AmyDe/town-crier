@@ -4,10 +4,11 @@ namespace TownCrier.Domain.SavedApplications;
 
 public sealed class SavedApplication
 {
-    private SavedApplication(string userId, string applicationUid, DateTimeOffset savedAt, PlanningApplication? application)
+    private SavedApplication(string userId, string applicationUid, int authorityId, DateTimeOffset savedAt, PlanningApplication? application)
     {
         this.UserId = userId;
         this.ApplicationUid = applicationUid;
+        this.AuthorityId = authorityId;
         this.SavedAt = savedAt;
         this.Application = application;
     }
@@ -15,6 +16,15 @@ public sealed class SavedApplication
     public string UserId { get; }
 
     public string ApplicationUid { get; }
+
+    /// <summary>
+    /// Gets the PlanIt areaId for the council that issued <see cref="ApplicationUid"/>.
+    /// PlanIt uids are only unique within a council, so the saved-application identity
+    /// is (UserId, ApplicationUid, AuthorityId). Without this, decision-update dispatch
+    /// fires the wrong council's payload to users who saved a same-uid app in a
+    /// different council (bd tc-th98).
+    /// </summary>
+    public int AuthorityId { get; }
 
     public DateTimeOffset SavedAt { get; }
 
@@ -26,18 +36,18 @@ public sealed class SavedApplication
     /// </summary>
     public PlanningApplication? Application { get; }
 
-    public static SavedApplication Create(string userId, string applicationUid, DateTimeOffset now)
+    public static SavedApplication Create(string userId, string applicationUid, int authorityId, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationUid);
-        return new SavedApplication(userId, applicationUid, now, application: null);
+        return new SavedApplication(userId, applicationUid, authorityId, now, application: null);
     }
 
     public static SavedApplication Create(string userId, PlanningApplication application, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(application);
-        return new SavedApplication(userId, application.Uid, now, application);
+        return new SavedApplication(userId, application.Uid, application.AreaId, now, application);
     }
 
     /// <summary>
@@ -58,6 +68,6 @@ public sealed class SavedApplication
                 nameof(freshApplication));
         }
 
-        return new SavedApplication(this.UserId, this.ApplicationUid, this.SavedAt, freshApplication);
+        return new SavedApplication(this.UserId, this.ApplicationUid, this.AuthorityId, this.SavedAt, freshApplication);
     }
 }

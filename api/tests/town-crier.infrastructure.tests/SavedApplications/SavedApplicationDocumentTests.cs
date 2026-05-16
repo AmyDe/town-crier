@@ -115,7 +115,7 @@ public sealed class SavedApplicationDocumentTests
         // Arrange — backfill compatibility: existing saved rows persisted before
         // the snapshot column existed deserialize with a null Application.
         var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
-        var legacyDomain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var legacyDomain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt);
 
         // Act
         var document = SavedApplicationDocument.FromDomain(legacyDomain);
@@ -131,7 +131,7 @@ public sealed class SavedApplicationDocumentTests
     {
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
-        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt);
 
         // Act
         var document = SavedApplicationDocument.FromDomain(domain);
@@ -145,7 +145,7 @@ public sealed class SavedApplicationDocumentTests
     {
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
-        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt);
 
         // Act
         var document = SavedApplicationDocument.FromDomain(domain);
@@ -159,7 +159,7 @@ public sealed class SavedApplicationDocumentTests
     {
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
-        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var domain = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt);
 
         // Act
         var document = SavedApplicationDocument.FromDomain(domain);
@@ -174,7 +174,7 @@ public sealed class SavedApplicationDocumentTests
     {
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
-        var original = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var original = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt);
 
         // Act
         var document = SavedApplicationDocument.FromDomain(original);
@@ -192,7 +192,7 @@ public sealed class SavedApplicationDocumentTests
         // Arrange
         var savedAt = new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero);
         var original = SavedApplicationDocument.FromDomain(
-            SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt));
+            SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 42, savedAt));
 
         var jsonOptions = new JsonSerializerOptions
         {

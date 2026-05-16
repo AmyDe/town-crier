@@ -12,7 +12,7 @@ public sealed class CosmosSavedApplicationRepositoryTests
         // Arrange
         var client = new FakeCosmosRestClient();
         var repo = new CosmosSavedApplicationRepository(client);
-        var saved = SavedApplication.Create("user-1", "app-uid-1", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("user-1", "app-uid-1", authorityId: 1, DateTimeOffset.UtcNow);
 
         // Act
         await repo.SaveAsync(saved, CancellationToken.None);
@@ -29,7 +29,7 @@ public sealed class CosmosSavedApplicationRepositoryTests
         // Arrange
         var client = new FakeCosmosRestClient();
         var repo = new CosmosSavedApplicationRepository(client);
-        var saved = SavedApplication.Create("user-1", "app-uid-1", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("user-1", "app-uid-1", authorityId: 1, DateTimeOffset.UtcNow);
         await repo.SaveAsync(saved, CancellationToken.None);
 
         // Act
@@ -57,7 +57,7 @@ public sealed class CosmosSavedApplicationRepositoryTests
         // Arrange
         var client = new FakeCosmosRestClient();
         var repo = new CosmosSavedApplicationRepository(client);
-        var saved = SavedApplication.Create("user-1", "app-uid-1", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("user-1", "app-uid-1", authorityId: 1, DateTimeOffset.UtcNow);
         await repo.SaveAsync(saved, CancellationToken.None);
 
         // Act
@@ -82,14 +82,14 @@ public sealed class CosmosSavedApplicationRepositoryTests
     }
 
     [Test]
-    public async Task Should_ReturnEmptyList_When_GetUserIdsByApplicationUidWithNoData()
+    public async Task Should_ReturnEmptyList_When_GetUserIdsForApplicationWithNoData()
     {
         // Arrange
         var client = new FakeCosmosRestClient();
         var repo = new CosmosSavedApplicationRepository(client);
 
         // Act -- empty store, verifies wiring
-        var result = await repo.GetUserIdsByApplicationUidAsync("nonexistent", CancellationToken.None);
+        var result = await repo.GetUserIdsForApplicationAsync("nonexistent", authorityId: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);

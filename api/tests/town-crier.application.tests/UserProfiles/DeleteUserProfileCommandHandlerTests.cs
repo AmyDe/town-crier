@@ -157,13 +157,13 @@ public sealed class DeleteUserProfileCommandHandlerTests
         await harness.Repository.SaveAsync(UserProfile.Register("auth0|user2"), CancellationToken.None);
 
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|user1", "app-a", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|user1", "app-a", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|user1", "app-b", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|user1", "app-b", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
         await harness.SavedApplicationRepository.SaveAsync(
-            SavedApplication.Create("auth0|user2", "app-c", DateTimeOffset.UtcNow),
+            SavedApplication.Create("auth0|user2", "app-c", authorityId: 1, DateTimeOffset.UtcNow),
             CancellationToken.None);
 
         // Act

@@ -43,12 +43,15 @@ public sealed class DispatchNotificationCommandHandler
         var zone = command.MatchedZone;
         var now = this.timeProvider.GetUtcNow();
 
-        // Duplicate suppression: dedup by (userId, applicationUid, eventType).
+        // Duplicate suppression: dedup by (userId, applicationUid, authorityId, eventType).
         // This handler always emits NewApplication; DecisionUpdate dispatch lives
         // on a separate path so the same user can receive one of each per app.
+        // Authority is part of the key because PlanIt uids are only unique within
+        // a council (bd tc-th98 / GH#384).
         var existing = await this.notificationRepository.GetByUserAndApplicationAsync(
             zone.UserId,
             application.Uid,
+            application.AreaId,
             NotificationEventType.NewApplication,
             ct).ConfigureAwait(false);
 

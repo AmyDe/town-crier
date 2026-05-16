@@ -10,7 +10,7 @@ public sealed class RemoveSavedApplicationCommandHandlerTests
     {
         // Arrange
         var repository = new FakeSavedApplicationRepository();
-        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 1, DateTimeOffset.UtcNow);
         await repository.SaveAsync(saved, CancellationToken.None);
 
         var handler = new RemoveSavedApplicationCommandHandler(repository);
@@ -42,9 +42,9 @@ public sealed class RemoveSavedApplicationCommandHandlerTests
         // Arrange
         var repository = new FakeSavedApplicationRepository();
         await repository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-abc", DateTimeOffset.UtcNow), CancellationToken.None);
+            SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 1, DateTimeOffset.UtcNow), CancellationToken.None);
         await repository.SaveAsync(
-            SavedApplication.Create("auth0|user-1", "planit-uid-def", DateTimeOffset.UtcNow), CancellationToken.None);
+            SavedApplication.Create("auth0|user-1", "planit-uid-def", authorityId: 1, DateTimeOffset.UtcNow), CancellationToken.None);
 
         var handler = new RemoveSavedApplicationCommandHandler(repository);
         var command = new RemoveSavedApplicationCommand("auth0|user-1", "planit-uid-abc");

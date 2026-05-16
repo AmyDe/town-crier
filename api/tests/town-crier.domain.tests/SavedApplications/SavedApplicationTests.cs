@@ -15,6 +15,7 @@ public sealed class SavedApplicationTests
         var application = new PlanningApplicationBuilder()
             .WithUid("planit-uid-abc")
             .WithName("Camden/CAM/24/0042/FUL")
+            .WithAreaId(42)
             .Build();
 
         // Act
@@ -23,6 +24,7 @@ public sealed class SavedApplicationTests
         // Assert
         await Assert.That(saved.UserId).IsEqualTo("auth0|user-1");
         await Assert.That(saved.ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(saved.AuthorityId).IsEqualTo(42);
         await Assert.That(saved.SavedAt).IsEqualTo(savedAt);
         await Assert.That(saved.Application).IsNotNull();
         await Assert.That(saved.Application!.Uid).IsEqualTo("planit-uid-abc");
@@ -33,16 +35,18 @@ public sealed class SavedApplicationTests
     public async Task Should_HaveNullSnapshot_When_CreatedFromLegacyRowWithoutEmbed()
     {
         // Arrange — backfill path: rows persisted before the snapshot column existed
-        // hold only the uid. The list handler must be able to detect this and fall
-        // back to a one-time hydration.
+        // hold only the uid + authorityId. The list handler must detect a null
+        // snapshot and fall back to a one-time hydration. AuthorityId is part of the
+        // identity because PlanIt uids are only unique within a council (tc-th98).
         var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
         // Act
-        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", savedAt);
+        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 314, savedAt);
 
         // Assert
         await Assert.That(saved.UserId).IsEqualTo("auth0|user-1");
         await Assert.That(saved.ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(saved.AuthorityId).IsEqualTo(314);
         await Assert.That(saved.Application).IsNull();
     }
 
@@ -79,7 +83,7 @@ public sealed class SavedApplicationTests
     {
         // Arrange — defensive: refusing to swap in a snapshot for the wrong uid
         // protects against handler bugs where the wrong application is paired with a save.
-        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", DateTimeOffset.UtcNow);
+        var saved = SavedApplication.Create("auth0|user-1", "planit-uid-abc", authorityId: 1, DateTimeOffset.UtcNow);
         var wrongUid = new PlanningApplicationBuilder().WithUid("planit-uid-other").Build();
 
         // Act + Assert

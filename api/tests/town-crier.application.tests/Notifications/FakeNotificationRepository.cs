@@ -17,12 +17,14 @@ internal sealed class FakeNotificationRepository : INotificationRepository
     public Task<Notification?> GetByUserAndApplicationAsync(
         string userId,
         string applicationUid,
+        int authorityId,
         NotificationEventType eventType,
         CancellationToken ct)
     {
         var notification = this.store.Find(
             n => n.UserId == userId
                 && n.ApplicationUid == applicationUid
+                && n.AuthorityId == authorityId
                 && n.EventType == eventType);
         return Task.FromResult(notification);
     }

@@ -13,6 +13,15 @@ internal sealed class SavedApplicationDocument
 
     public required string ApplicationUid { get; init; }
 
+    /// <summary>
+    /// Gets the PlanIt areaId for the council that issued <see cref="ApplicationUid"/>.
+    /// Nullable so legacy rows persisted before this column was added hydrate via
+    /// the embedded snapshot's <c>application.areaId</c> fallback in <see cref="ToDomain"/>.
+    /// New rows always populate this projected column so that the dispatch query can
+    /// filter on (uid, authorityId) without cracking the embedded snapshot (bd tc-th98).
+    /// </summary>
+    public int? AuthorityId { get; init; }
+
     public required DateTimeOffset SavedAt { get; init; }
 
     /// <summary>
@@ -33,6 +42,7 @@ internal sealed class SavedApplicationDocument
             Id = MakeId(savedApplication.UserId, savedApplication.ApplicationUid),
             UserId = savedApplication.UserId,
             ApplicationUid = savedApplication.ApplicationUid,
+            AuthorityId = savedApplication.AuthorityId,
             SavedAt = savedApplication.SavedAt,
             Application = savedApplication.Application is null
                 ? null
@@ -42,8 +52,13 @@ internal sealed class SavedApplicationDocument
 
     public SavedApplication ToDomain()
     {
+        // Coalesce the projected authorityId from the embedded snapshot for legacy
+        // rows persisted before the column was added. Backfill semantics — same
+        // pattern as the snapshot null check below (bd tc-th98).
+        var authorityId = this.AuthorityId ?? this.Application?.AreaId ?? 0;
+
         return this.Application is null
-            ? SavedApplication.Create(this.UserId, this.ApplicationUid, this.SavedAt)
+            ? SavedApplication.Create(this.UserId, this.ApplicationUid, authorityId, this.SavedAt)
             : SavedApplication.Create(this.UserId, this.Application.ToDomain(), this.SavedAt);
     }
 
