@@ -80,17 +80,21 @@ cd web && npx tsc --noEmit          # Type check without emitting
 cd web && npx vitest run            # Run tests (when Vitest is added)
 ```
 
-## Coding Standards Skills
+## Coding Standards Skills and Workers
 
-This repo has Claude Code skills that are **auto-triggered** when writing code:
+When a bead targets a given tech stack, use the matching skill and worker agent. The mapping is a straight lookup — pick the row, use those tools.
 
-- `dotnet-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any C# code in `/api`. Covers DDD, CQRS, TUnit testing, Cosmos DB SDK, and Native AOT patterns.
-- `go-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Go code (initially `/api-go` for the Go API pilot per memo 0007). Covers flat feature-sliced layout under `internal/`, consumer-side interfaces, stdlib `net/http` + `log/slog`, hand-written fakes with stdlib `testing`, manual `main()` wiring, official Azure SDKs (`azcosmos`/`azservicebus`), and a hardened HTTP server profile. Intentionally diverges from `dotnet-coding-standards` — do not transliterate DDD/hexagonal layering into Go.
-- `ios-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Swift code in `/mobile/ios`. Covers MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency.
-- `react-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any React/TypeScript code in `/web`. Covers feature-sliced clean architecture, CSS Modules with design tokens, hooks-as-ViewModels, Vitest + Testing Library, and domain-layer purity.
-- `design-language` — Auto-invoked when creating or modifying any UI code, colors, themes, or visual components. Defines the cross-platform design system (colors, typography, spacing, components) with light, dark, and OLED dark theme support.
+| Tech stack          | Path             | Skill                     | Worker agent           |
+|---------------------|------------------|---------------------------|------------------------|
+| .NET / C#           | `/api`           | `dotnet-coding-standards` | `dotnet-tdd-worker`    |
+| Go                  | `/api-go`        | `go-coding-standards`     | `go-tdd-worker`        |
+| iOS / Swift         | `/mobile/ios`    | `ios-coding-standards`    | `ios-tdd-worker`       |
+| Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |
+| Pulumi infra (.NET) | `/infra`         | `dotnet-coding-standards` | `pulumi-infra-worker`  |
+| GitHub Actions      | `.github/`       | —                         | `github-actions-worker`|
+| UI (any platform)   | UI code in any of the above | `design-language` (in addition to the platform skill) | — |
 
-Skills are defined in `.claude/skills/` as `SKILL.md` files.
+Skills live in `.claude/skills/` as `SKILL.md` files. Agents live in `.claude/agents/`. Skills are auto-triggered when writing code in their target path; consult the skill before writing, reviewing, or scaffolding code for that stack.
 
 ## Key Architectural Constraints
 

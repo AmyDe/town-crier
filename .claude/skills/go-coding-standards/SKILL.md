@@ -1,19 +1,19 @@
 ---
 name: go-coding-standards
-description: MUST consult before writing ANY Go code. Enforces idiomatic, secure Go for the Town Crier API and any future Go module — flat feature-sliced layout under internal/, consumer-side interfaces, stdlib net/http + log/slog, hand-written test fakes with stdlib testing, manual main() wiring, official Azure SDK (azcosmos/azservicebus) usage, and a hardened HTTP server profile (timeouts, body limits, TLS, constant-time secret comparison). Trigger whenever the user asks you to write, scaffold, refactor, lint, or review any .go file or a Go module's go.mod, including HTTP handlers, repositories, background workers, tests, or main() wiring. Do NOT use for C#/.NET, iOS/Swift, React/TypeScript, Pulumi, GitHub Actions, or non-Go code. This skill INTENTIONALLY diverges from the dotnet-coding-standards skill — do not transliterate DDD/hexagonal layering or builder-pattern tests into Go.
+description: MUST consult before writing ANY Go code. Enforces idiomatic, secure Go for the Town Crier API and any future Go module — flat feature-sliced layout under internal/, consumer-side interfaces, stdlib net/http + log/slog, hand-written test fakes with stdlib testing, manual main() wiring, official Azure SDK (azcosmos/azservicebus) usage, and a hardened HTTP server profile (timeouts, body limits, TLS, constant-time secret comparison). Trigger whenever the user asks you to write, scaffold, refactor, lint, or review any .go file or a Go module's go.mod, including HTTP handlers, repositories, background workers, tests, or main() wiring. Do NOT use for iOS/Swift, React/TypeScript, Pulumi, GitHub Actions, or non-Go code.
 ---
 
 # Go Coding Standards
 
 ## Overview
 
-This skill enforces **idiomatic, secure Go** for any Go module in this repository — initially the API rewrite pilot, possibly later a polling worker. It deliberately diverges from `dotnet-coding-standards`: the .NET API uses DDD/hexagonal/builder tests because that is idiomatic C#. The Go API uses flat feature packages, consumer-side interfaces, and hand-written fakes because that is idiomatic Go. Do not translate C# patterns; write the Go that the next AI agent reading this codebase will recognise.
+This skill enforces **idiomatic, secure Go** for any Go module in this repository — initially the API pilot, possibly later a polling worker. Write Go the way Go is written: flat feature packages, consumer-side interfaces, hand-written fakes, stdlib over frameworks. The goal is code the next AI agent reading this codebase will recognise as idiomatic.
 
-The single overriding rule: **prioritise idiomatic, secure Go over preserving the .NET API's patterns**.
+The single overriding rule: **idiomatic, secure Go**. If a pattern would feel out of place in the Go standard library or in widely-respected open-source Go projects (Prometheus, Consul, the official Kubernetes client libraries), don't use it.
 
 ## Scope and target layout
 
-The Go module lives in `api-go/` (parallel to the .NET `api/` during the pilot/migration). The skill's rules apply to every `.go` file under that tree.
+The Go module lives in `api-go/`. The skill's rules apply to every `.go` file under that tree.
 
 ```
 api-go/
@@ -45,21 +45,21 @@ api-go/
 **Hard rules for layout**:
 
 - **No `pkg/` directory.** This is a private API; everything goes in `internal/`. (See [Go pkg antipattern](https://sub-pop.net/post/go-pkg-antipattern/).)
-- **No `domain/`, `application/`, `infrastructure/` directories.** These are .NET concepts that fight Go's package model. Slice by feature, not by layer.
+- **No `domain/`, `application/`, `infrastructure/` directories.** Layered-architecture directory names fight Go's package model. Slice by feature, not by layer.
 - **One feature = one package.** Handler, service, repository, and their tests live in the same directory. Promote shared code to a sibling package only when a *second* feature actually needs it.
 - **Cross-cutting platform code in `internal/platform/`.** Logger, HTTP server factory, telemetry, config loading. Nothing business-specific.
 - **One binary in `cmd/api/`.** If a second binary (e.g. polling worker) is added later, it goes in `cmd/worker/` as a sibling.
 
 ## Core mandates
 
-### 1. Idiomatic Go > C# DDD
+### 1. Plain structs, validated at construction
 
-The .NET API has rich domain entities with private setters and invariant-guarding methods. **Do not replicate this in Go.** Go's idiom is:
+Go's idiom is plain data with validation at the boundary, not "rich" domain models with private setters and invariant-guarding methods. Resist the urge to manufacture ceremony:
 
 - Simple `struct`s with exported fields (or unexported fields + small accessor methods only when an invariant truly needs guarding).
 - Validation in **constructors** (`func NewNotification(...) (Notification, error)`), not in setters. Go has no equivalent of `private set`; rely on the constructor returning a validated value and treat the struct as immutable by convention.
-- Receiver methods for behaviour, but **don't manufacture methods for the sake of "rich models"** — a function that takes a struct is fine.
-- No `[JsonSerializable]` source generators. `encoding/json` works with struct tags out of the box (`json:"reference"`).
+- Receiver methods for behaviour, but **don't manufacture methods for the sake of "rich models"** — a free function that takes a struct is fine.
+- `encoding/json` works with struct tags out of the box (`json:"reference"`); no source generators or codegen needed.
 
 **Example — idiomatic Go entity:**
 ```go
@@ -92,7 +92,7 @@ func NewNotification(userID UserID, authority, reference string, now time.Time) 
 
 ### 2. "Accept interfaces, return structs" + consumer-side interfaces
 
-This is the **direct opposite** of the .NET pattern of declaring `IRepository` in the application layer. In Go:
+Interfaces in Go are defined where they are *used*, not where they are *implemented*. This is one of the highest-leverage Go idioms and the one most often violated by transplants from other languages:
 
 - **Constructors return concrete `*struct`s**, never interfaces. `func NewCosmosNotificationRepo(...) *CosmosNotificationRepo` — not `... Repository`.
 - **Interfaces are declared by the consumer**, with only the methods that consumer actually uses. A handler that calls `Save` and `Get` defines:
@@ -104,7 +104,7 @@ This is the **direct opposite** of the .NET pattern of declaring `IRepository` i
   ```
   Lowercase — unexported — because no other package needs to satisfy this contract by name. Go's structural typing makes `*CosmosNotificationRepo` satisfy it implicitly.
 - **No `I` prefix on interface names** (`Notifier`, not `INotifier`). Idiomatic Go uses `-er` suffixes for single-method interfaces (`Reader`, `Saver`, `Validator`) or a descriptive noun.
-- **One large `Repository` interface in a shared package is an anti-pattern.** It's the .NET reflex; resist it. Beads' fat `Storage` interface is the exception for *public extension APIs*, not internal code.
+- **One large `Repository` interface in a shared package is an anti-pattern.** Keep interfaces small and consumer-local. Beads' fat `Storage` interface is the exception for *public extension APIs*, not internal code.
 
 This unlocks effortless test doubles: hand-write `type fakeNotificationStore struct { ... }` with the two methods the handler test needs, and the compiler accepts it.
 
@@ -201,7 +201,7 @@ This unlocks effortless test doubles: hand-write `type fakeNotificationStore str
   }
   ```
 - **HTTP integration tests** use `httptest.NewServer` with `http.HandlerFunc`. Outbound client tests assert against a captured `*http.Request`.
-- **No builder pattern.** Go has struct literals and small helper constructors. `notif := Notification{ID: "n1", ...}` or `notif := newTestNotification(t)`. Builders are .NET ceremony.
+- **No builder pattern.** Go has struct literals and small helper constructors. `notif := Notification{ID: "n1", ...}` or `notif := newTestNotification(t)`. Builders add ceremony Go does not need.
 - **`t.Parallel()`** on every test that doesn't share global state. Catches data races and keeps the suite fast.
 - **`t.Helper()`** in helper functions so failures point at the caller.
 - **`t.Cleanup()`** for teardown instead of `defer` when the cleanup is a fixture concern.
@@ -317,7 +317,7 @@ Every outbound client (PlanIt, Auth0, Cosmos REST fallback, APNs) MUST:
 ### 11. Data access — official Azure SDK
 
 - **Cosmos DB**: `github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos`. Official Microsoft SDK, actively maintained. Do **not** use `microsoft/gocosmos` (a `database/sql` driver that loses Cosmos semantics) or the community vippsas SDK.
-- **Service Bus**: `github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus`. The painful hand-rolled REST clients from the .NET side are not needed in Go — the official SDK works.
+- **Service Bus**: `github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus`. The official SDK is the only supported path — do not hand-roll a REST client.
 - **Auth**: `github.com/Azure/azure-sdk-for-go/sdk/azidentity`. Use `DefaultAzureCredential` in deployed environments; `ClientSecretCredential` only where required.
 - **Communication Services (email)**: `github.com/Azure/azure-sdk-for-go/sdk/messaging/azcommunicationservices/sender` (or the `azcommunication` namespace's email package — check the current name in `go.mod` when implementing).
 - **Repository struct holds the SDK client**, exposes only the methods the consumer interface declares. Map Cosmos documents ↔ domain structs at the repo boundary; consumers never see SDK types.
@@ -388,7 +388,7 @@ When this hits 200+ lines, reconsider — but until then, plain wiring beats cod
 
 ### 14. Cold-start checklist (Container Apps scales to zero)
 
-The .NET API uses Native AOT to hit sub-second cold starts. Go gives this for free, but you can still ruin it:
+A statically-linked Go binary hits sub-second cold starts out of the box, but you can still ruin it:
 
 - **`CGO_ENABLED=0`** in build — pure-Go static binary, no glibc dance.
 - **`-ldflags="-s -w" -trimpath`** — smaller binary, faster mmap.
@@ -477,21 +477,3 @@ cd api-go && \
 ```
 
 A single failing step blocks the PR.
-
-## Why this skill diverges from `dotnet-coding-standards`
-
-For the curious AI agent reading both skills back-to-back:
-
-| Aspect              | .NET (idiomatic C#)                       | Go (idiomatic Go)                                  |
-|---------------------|-------------------------------------------|----------------------------------------------------|
-| Layout              | `domain/`, `application/`, `infrastructure/` projects | Flat feature packages under `internal/`            |
-| Interfaces          | `IPort` declared in application layer     | Unexported, declared at consumer site              |
-| Test doubles        | Builder pattern + hand-written fakes      | Struct literals + hand-written fakes (no builders) |
-| Mocking             | No mocking libs (AOT-incompatible)        | No mocking libs (AI-unfriendly, opaque)            |
-| Logging             | OpenTelemetry + ILogger                   | `log/slog` + OpenTelemetry                         |
-| JSON                | `JsonSerializerContext` source generator  | `encoding/json` + struct tags                      |
-| Data access         | Hand-rolled REST clients (AOT)            | Official `azcosmos` / `azservicebus` SDKs          |
-| DI                  | `Microsoft.Extensions.DependencyInjection`| Manual wiring in `main()`                          |
-| Errors              | Exceptions                                 | `error` values + `errors.Is`/`errors.As` + `%w`    |
-
-Both skills produce maintainable code; neither dialect should be transliterated into the other language.
