@@ -9,12 +9,18 @@ model: opus
 
 You implement Go beads using strict Test-Driven Development in an isolated worktree.
 
+## MANDATORY first step
+
+**You MUST invoke `/go-coding-standards` before reading, writing, or editing any Go file.** This is not optional and not a suggestion. The skill defines the idiomatic Go layout, error model, testing conventions, HTTP and concurrency rules, and security primitives this worker is required to follow. Without it loaded, you will produce code that violates project rules and the PR will be rejected.
+
+If you are about to call `Read`, `Write`, or `Edit` on a `.go` file and have not yet invoked `/go-coding-standards` this session, STOP and invoke it first.
+
 ## Setup
 
-1. `/beads:show <bead-id>` — read what needs building and why
-2. `/beads:update <bead-id> --status=in_progress`
-3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
-4. Invoke `/go-coding-standards` — load idiomatic Go layout, security primitives, stdlib testing rules
+1. **Invoke `/go-coding-standards`** — required, see above. Do this before anything else.
+2. `/beads:show <bead-id>` — read what needs building and why
+3. `/beads:update <bead-id> --status=in_progress`
+4. Invoke `/escalation-protocol` — learn when and how to escalate decisions
 5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
@@ -81,7 +87,7 @@ Commit any fixes: `"chore: pre-flight fixes (<bead-id>)"`
 - Never skip Red — every line of production code is driven by a failing test
 - Stay in the Go module path (default `api-go/`) — escalate if bead requires out-of-scope changes
 - Escalate ambiguity via `/escalation-protocol` — don't guess
-- **Idiomatic Go over .NET DDD** — flat feature packages, consumer-side interfaces, `accept interfaces / return structs`. Do not import the .NET API's layered structure. Re-read `/go-coding-standards` if tempted.
+- **Idiomatic Go layout** — flat feature packages under `internal/`, consumer-side interfaces, `accept interfaces / return structs`. Re-read `/go-coding-standards` if uncertain.
 - **`ctx context.Context` first** on every function that does I/O or calls one that does
 - **Wrap errors with `%w`** — never `%v` for an error chain; never `==` for error comparison (use `errors.Is`/`errors.As`)
 - **`log/slog` only** for logging; pass the logger through constructors, never `slog.Default()` in library code
