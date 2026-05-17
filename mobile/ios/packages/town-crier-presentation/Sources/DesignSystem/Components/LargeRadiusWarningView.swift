@@ -25,7 +25,7 @@ public struct LargeRadiusWarningView: View {
         .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: TCSpacing.extraSmall) {
-        Text("Heads up — large zones get noisy")
+        Text("Heads up: large zones get noisy")
           .font(TCTypography.bodyEmphasis)
           .foregroundStyle(Color.tcTextPrimary)
 
