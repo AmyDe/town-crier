@@ -100,6 +100,9 @@ mobile/ios/build/
 extract-polling-job/
 email-notifications/
 
+# Beads 1.0+: issues.jsonl is local backup only; the Dolt server is the source of truth
+.beads/issues.jsonl
+
 # Skill evaluation workspaces
 .claude/skills/*-workspace/
 
