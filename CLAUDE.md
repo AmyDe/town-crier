@@ -85,6 +85,7 @@ cd web && npx vitest run            # Run tests (when Vitest is added)
 This repo has Claude Code skills that are **auto-triggered** when writing code:
 
 - `dotnet-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any C# code in `/api`. Covers DDD, CQRS, TUnit testing, Cosmos DB SDK, and Native AOT patterns.
+- `go-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Go code (initially `/api-go` for the Go API pilot per memo 0007). Covers flat feature-sliced layout under `internal/`, consumer-side interfaces, stdlib `net/http` + `log/slog`, hand-written fakes with stdlib `testing`, manual `main()` wiring, official Azure SDKs (`azcosmos`/`azservicebus`), and a hardened HTTP server profile. Intentionally diverges from `dotnet-coding-standards` — do not transliterate DDD/hexagonal layering into Go.
 - `ios-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any Swift code in `/mobile/ios`. Covers MVVM-C, protocol-oriented design, XCTest, and Swift Concurrency.
 - `react-coding-standards` — Auto-invoked when writing, reviewing, or scaffolding any React/TypeScript code in `/web`. Covers feature-sliced clean architecture, CSS Modules with design tokens, hooks-as-ViewModels, Vitest + Testing Library, and domain-layer purity.
 - `design-language` — Auto-invoked when creating or modifying any UI code, colors, themes, or visual components. Defines the cross-platform design system (colors, typography, spacing, components) with light, dark, and OLED dark theme support.
@@ -349,6 +350,7 @@ Current thinking, even if no decision has been made.
 
 Standard linting/formatting configs are bundled with their respective skills:
 - `.claude/skills/dotnet-coding-standards/assets/.editorconfig` and `Directory.Build.props` (SonarAnalyzer, StyleCop, warnings-as-errors)
+- `.claude/skills/go-coding-standards/assets/.golangci.yml` (errcheck, gosec, sloglint, bodyclose, contextcheck, errorlint, noctx — style-opinion linters deliberately disabled)
 - `.claude/skills/ios-coding-standards/assets/.swiftlint.yml` (force cast/try/unwrap as errors)
 
 ## Re-running `bd init` / `bd setup claude`
