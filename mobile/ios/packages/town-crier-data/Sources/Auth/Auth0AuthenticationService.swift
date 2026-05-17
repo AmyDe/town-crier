@@ -69,8 +69,12 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     do {
       let credentials = try await credentialsManager.credentials()
       return mapToSession(credentials)
+    } catch let error as CredentialsManagerError {
+      if Self.isUnrecoverable(error) {
+        _ = credentialsManager.clear()
+      }
+      throw DomainError.sessionExpired
     } catch {
-      _ = credentialsManager.clear()
       throw DomainError.sessionExpired
     }
   }
@@ -85,7 +89,11 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   }
 
   public func currentSession() async -> AuthSession? {
-    guard credentialsManager.hasValid() else {
+    // `hasValid()` only checks access-token expiry. Per Auth0 SDK docs, apps
+    // using refresh tokens must also consult `canRenew()` at startup —
+    // otherwise an expired access token forces a fresh login even though
+    // the refresh token is still valid (tc-funq).
+    guard credentialsManager.canRenew() || credentialsManager.hasValid() else {
       return nil
     }
 
@@ -94,6 +102,24 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       return mapToSession(credentials)
     } catch {
       return nil
+    }
+  }
+
+  /// Whether a credentials-manager failure means the refresh token is
+  /// permanently unusable. Only these failures justify wiping the keychain;
+  /// transient errors (network, biometrics, store failures) must not force
+  /// the user to re-authenticate.
+  private static func isUnrecoverable(_ error: CredentialsManagerError) -> Bool {
+    switch error {
+    case .noRefreshToken, .noCredentials:
+      return true
+    case .renewFailed, .apiExchangeFailed, .ssoExchangeFailed:
+      if let cause = error.cause as? AuthenticationError {
+        return cause.isInvalidRefreshToken || cause.isRefreshTokenDeleted
+      }
+      return false
+    default:
+      return false
     }
   }
 
