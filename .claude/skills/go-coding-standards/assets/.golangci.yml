@@ -1,0 +1,65 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck         # unhandled errors — Go's #1 bug class
+    - govet            # standard vet checks
+    - staticcheck      # broad correctness (replaces gosimple, stylecheck, staticcheck)
+    - gosec            # security: weak crypto, command injection, SQL injection patterns
+    - sloglint         # log/slog key/value hygiene
+    - bodyclose        # http.Response.Body must be closed
+    - contextcheck     # context.Context propagation correctness
+    - errorlint        # %w wrapping, errors.Is / errors.As enforcement
+    - noctx            # outbound HTTP requests without context
+    - rowserrcheck     # sql.Rows.Err() must be checked
+    - sqlclosecheck    # sql.Rows.Close() must be called
+    - copyloopvar      # Go 1.22 loop-variable semantics
+    - intrange         # Go 1.22 integer range loops
+    - misspell         # catch common typos
+    - unparam          # unused function parameters
+    - unconvert        # unnecessary type conversions
+    - nilerr           # returning nil after checking err != nil
+    - prealloc         # slices that could be preallocated
+    - thelper          # missing t.Helper() in test helpers
+    - tparallel        # missing t.Parallel() in safe tests
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+    gosec:
+      excludes:
+        # G104 is covered by errcheck more thoroughly
+        - G104
+        # G115 (integer overflow conversion) — too noisy on safe stdlib conversions;
+        # re-enable per-file with //nolint if a specific path warrants it
+        - G115
+    sloglint:
+      no-mixed-args: true
+      kv-only: false
+      attr-only: false
+      no-global: all
+      context: scope
+      static-msg: true
+      no-raw-keys: false
+      key-naming-case: camel
+      args-on-sep-lines: false
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck    # tests may discard errors deliberately for setup
+          - gosec       # tests may use weak randomness or HTTP for fixtures
+
+formatters:
+  enable:
+    - gofmt
