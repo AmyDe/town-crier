@@ -11,7 +11,7 @@ export function Hero() {
       </h1>
       <p className={styles.subheading}>
         Monitoring planning applications across 417 local authorities in England
-        and Wales — so you don&apos;t have to.
+        and Wales, so you don&apos;t have to.
       </p>
       <div className={styles.ctaGroup}>
         <a

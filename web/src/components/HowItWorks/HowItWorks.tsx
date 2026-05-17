@@ -17,7 +17,7 @@ const STEPS: Step[] = [
     icon: '🔭',
     title: 'Create a watch zone',
     description:
-      'Draw a circle around the area you care about — your street, neighbourhood, or an entire ward. You choose the radius.',
+      'Draw a circle around the area you care about: your street, neighbourhood, or an entire ward. You choose the radius.',
   },
   {
     icon: '🔔',

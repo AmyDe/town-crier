@@ -9,12 +9,12 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'Where does the data come from?',
     answer:
-      'Town Crier sources its data from PlanIt (planit.org.uk), the UK\u2019s most comprehensive aggregator of planning application data. We poll local authority feeds regularly so you see new applications shortly after they\u2019re published.',
+      'Town Crier sources its data from PlanIt (planit.org.uk), the UK\u2019s leading aggregator of planning application data. We poll local authority feeds regularly so you see new applications shortly after they\u2019re published.',
   },
   {
     question: 'Which areas do you cover?',
     answer:
-      'We cover local planning authorities across England, Scotland, and Wales. Coverage is expanding \u2014 if your area isn\u2019t listed yet, let us know and we\u2019ll prioritise it.',
+      'We cover local planning authorities across England, Scotland, and Wales. Coverage is expanding. If your area isn\u2019t listed yet, let us know and we\u2019ll prioritise it.',
   },
   {
     question: 'Is there a free tier?',
