@@ -17,8 +17,13 @@ import UserNotifications
 /// inheritance carry the body is Apple's WWDC23 guidance for
 /// `UNUserNotificationCenterDelegate` async overloads on a `@MainActor`
 /// class. Do not reintroduce `nonisolated` here.
+///
+/// The `@preconcurrency` on the conformance suppresses the strict-
+/// concurrency diagnostic that `UNUserNotificationCenter` /
+/// `UNNotificationResponse` are not `Sendable` — they are passed in by
+/// UIKit on the main thread already, so the actor crossing is safe.
 @MainActor
-final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+final class NotificationDelegate: NSObject, @preconcurrency UNUserNotificationCenterDelegate {
   let coordinator: AppCoordinator
 
   init(coordinator: AppCoordinator) {
