@@ -83,4 +83,27 @@ struct InMemoryApplicationCacheStoreTests {
 
     #expect(result == nil)
   }
+
+  // MARK: - invalidateAll (tc-e3bu)
+
+  @Test func invalidateAll_clearsEveryCachedZone() async {
+    let sut = InMemoryApplicationCacheStore()
+    let camEntry = CacheEntry(data: [PlanningApplication.pendingReview], fetchedAt: Date())
+    let londonEntry = CacheEntry(data: [PlanningApplication.permitted], fetchedAt: Date())
+    await sut.store(camEntry, for: WatchZone.cambridge)
+    await sut.store(londonEntry, for: WatchZone.london)
+
+    await sut.invalidateAll()
+
+    #expect(await sut.retrieve(for: WatchZone.cambridge) == nil)
+    #expect(await sut.retrieve(for: WatchZone.london) == nil)
+  }
+
+  @Test func invalidateAll_isNoOp_whenEmpty() async {
+    let sut = InMemoryApplicationCacheStore()
+
+    await sut.invalidateAll()
+
+    #expect(await sut.retrieve(for: WatchZone.cambridge) == nil)
+  }
 }

@@ -18,4 +18,8 @@ public actor InMemoryApplicationCacheStore: ApplicationCacheStore {
   public func invalidate(for zoneId: WatchZoneId) {
     entries.removeValue(forKey: zoneId.value)
   }
+
+  public func invalidateAll() {
+    entries.removeAll()
+  }
 }

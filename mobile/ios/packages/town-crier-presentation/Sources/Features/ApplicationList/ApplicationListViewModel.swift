@@ -244,6 +244,12 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// to `nil` (which in turn zeros `unreadCount` via the computed property).
   /// Repository failures are swallowed — a subsequent fetch will reconcile
   /// any drift. Spec decision #8 (silent optimistic).
+  ///
+  /// When backed by an `OfflineAwareRepository`, every cached zone is
+  /// invalidated before the refetch — mark-all-read is a global mutation
+  /// and a TTL-fresh per-zone cache hit would otherwise keep returning
+  /// rows with the old `latestUnreadEvent`, leaving the `Unread (N)` chip
+  /// stuck on the prior count (tc-e3bu).
   public func markAllRead() async {
     guard let notificationStateRepository else { return }
     do {
@@ -251,6 +257,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     } catch {
       // Swallow — optimistic UI per spec decision #8.
     }
+    await offlineRepository?.invalidateAllCaches()
     guard let activeZone = selectedZone ?? zone else { return }
     do {
       applications = try await fetchApplications(for: activeZone)

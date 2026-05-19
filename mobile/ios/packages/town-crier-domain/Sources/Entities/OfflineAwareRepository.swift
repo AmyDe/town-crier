@@ -60,4 +60,17 @@ public final class OfflineAwareRepository: Sendable {
   public func invalidateCache(for zoneId: WatchZoneId) async {
     await cache.invalidate(for: zoneId)
   }
+
+  /// Invalidates every cached zone.
+  ///
+  /// Callers should invoke this after a global state mutation that affects
+  /// every zone's view of applications — e.g. mark-all-read, where the
+  /// server advances the unread watermark so each row's
+  /// `latestUnreadEvent` becomes `nil`. Without invalidation, a TTL-fresh
+  /// per-zone cache hit would keep serving the old unread flags for up to
+  /// the cache TTL, leaving the `Unread (N)` chip stuck on the prior count
+  /// (tc-e3bu).
+  public func invalidateAllCaches() async {
+    await cache.invalidateAll()
+  }
 }

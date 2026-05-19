@@ -6,6 +6,7 @@ final class SpyApplicationCacheStore: ApplicationCacheStore, @unchecked Sendable
   private(set) var storeCalls: [(WatchZone, CacheEntry<[PlanningApplication]>)] = []
   private(set) var retrieveCalls: [WatchZone] = []
   private(set) var invalidateCalls: [WatchZoneId] = []
+  private(set) var invalidateAllCallCount = 0
 
   func store(_ entry: CacheEntry<[PlanningApplication]>, for zone: WatchZone) async {
     storeCalls.append((zone, entry))
@@ -19,6 +20,11 @@ final class SpyApplicationCacheStore: ApplicationCacheStore, @unchecked Sendable
 
   func invalidate(for zoneId: WatchZoneId) async {
     invalidateCalls.append(zoneId)
+    storedEntry = nil
+  }
+
+  func invalidateAll() async {
+    invalidateAllCallCount += 1
     storedEntry = nil
   }
 }

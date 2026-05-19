@@ -167,4 +167,36 @@ struct OfflineAwareRepositoryTests {
     #expect(result.data.first?.id == PlanningApplication.pendingReview.id)
   }
 
+  // MARK: - Global cache invalidation (tc-e3bu)
+
+  @Test func invalidateAllCaches_delegatesToCacheStore() async {
+    let (sut, _, cache, _) = makeSUT()
+
+    await sut.invalidateAllCaches()
+
+    #expect(cache.invalidateAllCallCount == 1)
+  }
+
+  @Test func invalidateAllCaches_thenFetch_skipsStaleCacheAndHitsRemote() async throws {
+    // Mark-all-read invalidates every zone. After the call, a refetch on
+    // an otherwise-fresh cache must still go to the network so the new
+    // `latestUnreadEvent` (nil) propagates and zeros the chip (tc-e3bu).
+    let staleEntry = CacheEntry(
+      data: [PlanningApplication.pendingReview],
+      fetchedAt: Date().addingTimeInterval(-60),
+      ttlSeconds: 900
+    )
+    let freshApps = [PlanningApplication.permitted]
+    let (sut, remote, _, _) = makeSUT(
+      remoteApplications: freshApps,
+      cachedEntry: staleEntry
+    )
+
+    await sut.invalidateAllCaches()
+    let result = try await sut.fetchApplications(for: WatchZone.cambridge)
+
+    #expect(remote.fetchApplicationsCalls.count == 1)
+    #expect(result.data.first?.id == PlanningApplication.permitted.id)
+  }
+
 }
