@@ -23,6 +23,10 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   @unchecked Sendable {
   private let config: Auth0Config
   private let credentialsManager: CredentialsManager
+  /// In-memory session cache that lets a foreground burst share a single
+  /// keychain read. See `SessionCache` for the contention rationale
+  /// (tc-3d7b).
+  private let sessionCache = SessionCache()
 
   public init(config: Auth0Config) {
     self.config = config
@@ -44,8 +48,9 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
         .start()
 
       _ = credentialsManager.store(credentials: credentials)
-
-      return mapToSession(credentials)
+      let session = Self.mapToSession(credentials)
+      await sessionCache.store(session)
+      return session
     } catch let error as WebAuthError {
       if case .userCancelled = error {
         throw DomainError.authenticationFailed("cancelled")
@@ -60,6 +65,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     do {
       try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
       _ = credentialsManager.clear()
+      await sessionCache.clear()
     } catch {
       throw DomainError.logoutFailed(error.localizedDescription)
     }
@@ -68,10 +74,13 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   public func refreshSession() async throws -> AuthSession {
     do {
       let credentials = try await credentialsManager.credentials()
-      return mapToSession(credentials)
+      let session = Self.mapToSession(credentials)
+      await sessionCache.store(session)
+      return session
     } catch let error as CredentialsManagerError {
       if Self.isUnrecoverable(error) {
         _ = credentialsManager.clear()
+        await sessionCache.clear()
       }
       throw DomainError.sessionExpired
     } catch {
@@ -83,25 +92,36 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     do {
       try await Auth0.webAuth(clientId: config.clientId, domain: config.domain).clearSession()
       _ = credentialsManager.clear()
+      await sessionCache.clear()
     } catch {
       throw DomainError.logoutFailed(error.localizedDescription)
     }
   }
 
   public func currentSession() async -> AuthSession? {
-    // `hasValid()` only checks access-token expiry. Per Auth0 SDK docs, apps
-    // using refresh tokens must also consult `canRenew()` at startup —
-    // otherwise an expired access token forces a fresh login even though
-    // the refresh token is still valid (tc-funq).
-    guard credentialsManager.canRenew() || credentialsManager.hasValid() else {
-      return nil
+    // Fast path: in-memory cache. Most foreground bursts hit this and skip
+    // securityd entirely (tc-3d7b).
+    if let cached = await sessionCache.current() {
+      return cached
     }
 
-    do {
-      let credentials = try await credentialsManager.credentials()
-      return mapToSession(credentials)
-    } catch {
-      return nil
+    // Slow path: consult the keychain. `currentOrLoad` deduplicates
+    // concurrent callers so a four-way burst with a cold cache still
+    // issues at most one `SecItemCopyMatching`.
+    return await sessionCache.currentOrLoad { [credentialsManager] in
+      // `hasValid()` only checks access-token expiry. Per Auth0 SDK docs,
+      // apps using refresh tokens must also consult `canRenew()` at
+      // startup — otherwise an expired access token forces a fresh login
+      // even though the refresh token is still valid (tc-funq).
+      guard credentialsManager.canRenew() || credentialsManager.hasValid() else {
+        return nil
+      }
+      do {
+        let credentials = try await credentialsManager.credentials()
+        return Self.mapToSession(credentials)
+      } catch {
+        return nil
+      }
     }
   }
 
@@ -123,7 +143,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     }
   }
 
-  private func mapToSession(_ credentials: Credentials) -> AuthSession {
+  private static func mapToSession(_ credentials: Credentials) -> AuthSession {
     let profile = UserProfile(
       userId: extractUserId(from: credentials) ?? credentials.idToken,
       email: extractEmail(from: credentials) ?? "",
@@ -143,17 +163,17 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     )
   }
 
-  private func extractUserId(from credentials: Credentials) -> String? {
+  private static func extractUserId(from credentials: Credentials) -> String? {
     JWTSubscriptionTierExtractor.extractSubject(from: credentials.idToken)
   }
 
-  private func extractEmail(from credentials: Credentials) -> String? {
+  private static func extractEmail(from credentials: Credentials) -> String? {
     guard let jwt = JWTSubscriptionTierExtractor.decodePayload(from: credentials.idToken)
     else { return nil }
     return jwt["email"] as? String
   }
 
-  private func extractName(from credentials: Credentials) -> String? {
+  private static func extractName(from credentials: Credentials) -> String? {
     guard let jwt = JWTSubscriptionTierExtractor.decodePayload(from: credentials.idToken)
     else { return nil }
     return jwt["name"] as? String
