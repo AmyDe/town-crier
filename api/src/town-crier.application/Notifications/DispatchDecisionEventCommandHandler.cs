@@ -89,9 +89,20 @@ public sealed class DispatchDecisionEventCommandHandler
         // PlanIt uids are only unique within a council, so a uid-only lookup
         // would falsely match users who saved a same-uid app in a different
         // authority (bd tc-th98 / GH#384).
-        var savedUserIds = await this.savedApplicationRepository
-            .GetUserIdsForApplicationCrossPartitionAsync(application.Uid, application.AreaId, ct)
-            .ConfigureAwait(false);
+        //
+        // Saved rows are keyed two ways during the canonical-uid migration window:
+        // legacy rows hold the raw PlanIt uid, while rows saved after bd tc-o88i hold
+        // the canonical {areaId}/{name} uid. We query for both and union the userIds
+        // so decision pushes keep firing for both populations. The raw-uid leg can be
+        // dropped once the one-off legacy migration (bd tc-sqr3) has run.
+        var savedUserIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidateUid in DistinctSavedRowKeys(application))
+        {
+            var matched = await this.savedApplicationRepository
+                .GetUserIdsForApplicationCrossPartitionAsync(candidateUid, application.AreaId, ct)
+                .ConfigureAwait(false);
+            savedUserIds.UnionWith(matched);
+        }
 
         foreach (var userId in savedUserIds)
         {
@@ -109,6 +120,21 @@ public sealed class DispatchDecisionEventCommandHandler
         {
             await this.DispatchForUserAsync(userId, match.Sources, match.WatchZoneId, application, now, ct)
                 .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Yields the distinct keys a saved row for this application may be stored under:
+    /// the raw PlanIt uid (legacy rows) and the canonical {areaId}/{name} uid (rows
+    /// saved after bd tc-o88i). Deduplicated so the cross-partition lookup runs once
+    /// when the two forms happen to coincide.
+    /// </summary>
+    private static IEnumerable<string> DistinctSavedRowKeys(PlanningApplication application)
+    {
+        yield return application.Uid;
+        if (!string.Equals(application.CanonicalUid, application.Uid, StringComparison.Ordinal))
+        {
+            yield return application.CanonicalUid;
         }
     }
 
