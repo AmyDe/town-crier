@@ -96,4 +96,36 @@ public sealed class SaveApplicationCommandHandlerTests
         var saved = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
         await Assert.That(saved).HasCount().EqualTo(1);
     }
+
+    [Test]
+    public async Task Should_BeIdempotent_When_ReSavedWithDifferentRawUidFormat()
+    {
+        // Arrange — the PR #398 regression: a re-save where the client sent a
+        // different raw uid format the second time (e.g. an old build still
+        // posting the bare PlanIt ref). The save must key on the canonical
+        // {areaId}/{name} uid so both saves land on the same record and the
+        // redundant write is skipped (bd tc-o88i).
+        var savedRepository = new FakeSavedApplicationRepository();
+        var planningRepository = new FakePlanningApplicationRepository();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero));
+        var handler = new SaveApplicationCommandHandler(savedRepository, planningRepository, timeProvider);
+
+        var legacyFormat = new PlanningApplicationBuilder()
+            .WithAreaId(42).WithName("CAM/24/0042/FUL").WithUid("CAM/24/0042/FUL").Build();
+        var otherFormat = new PlanningApplicationBuilder()
+            .WithAreaId(42).WithName("CAM/24/0042/FUL").WithUid("planit-internal-987654").Build();
+
+        // Act — first save (legacy uid), then a re-save carrying a different raw uid.
+        await handler.HandleAsync(new SaveApplicationCommand("auth0|user-1", legacyFormat), CancellationToken.None);
+        await handler.HandleAsync(new SaveApplicationCommand("auth0|user-1", otherFormat), CancellationToken.None);
+
+        // Assert — exactly one saved row, keyed on the canonical uid.
+        var saved = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
+        await Assert.That(saved).HasCount().EqualTo(1);
+        await Assert.That(saved[0].ApplicationUid).IsEqualTo("42/CAM/24/0042/FUL");
+
+        // Assert — the second save short-circuited on the ExistsAsync check and did
+        // not issue a redundant write. Only the first save reached SaveAsync.
+        await Assert.That(savedRepository.SaveCallCount).IsEqualTo(1);
+    }
 }
