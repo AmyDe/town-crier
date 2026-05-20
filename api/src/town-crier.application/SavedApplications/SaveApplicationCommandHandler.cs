@@ -28,7 +28,12 @@ public sealed class SaveApplicationCommandHandler
         // the single write path for ad-hoc applications. See bead tc-if12.
         await this.planningApplicationRepository.UpsertAsync(command.Application, ct).ConfigureAwait(false);
 
-        var alreadySaved = await this.repository.ExistsAsync(command.UserId, command.Application.Uid, ct).ConfigureAwait(false);
+        // Idempotency keys on the canonical {areaId}/{name} uid, NOT the raw uid the
+        // client put in the request body. The raw uid format varies between clients
+        // (PR #398 changed it), so trusting it would let a re-save with a stale-format
+        // uid miss the existing row and insert a second saved doc (bd tc-o88i).
+        var canonicalUid = command.Application.CanonicalUid;
+        var alreadySaved = await this.repository.ExistsAsync(command.UserId, canonicalUid, ct).ConfigureAwait(false);
         if (alreadySaved)
         {
             return;
