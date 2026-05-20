@@ -83,6 +83,18 @@ public sealed class PlanningApplication
     public DateTimeOffset LastDifferent { get; }
 
     /// <summary>
+    /// Gets the canonical, server-derived identity of this application: <c>{AreaId}/{Name}</c>.
+    /// PlanIt case references are only unique within a council, so the authority must be
+    /// part of the key. This mirrors the iOS <c>PlanningApplicationId.value</c> form and is
+    /// deliberately independent of the raw <see cref="Uid"/> field — a client may send a
+    /// stale-format uid string, but two saves of the same (AreaId, Name) always produce the
+    /// same canonical uid, which keeps the saved-application Cosmos doc id stable and makes
+    /// re-saves genuinely idempotent (bd tc-o88i).
+    /// </summary>
+    public string CanonicalUid =>
+        $"{this.AreaId.ToString(System.Globalization.CultureInfo.InvariantCulture)}/{this.Name}";
+
+    /// <summary>
     /// Compares business-material fields against another instance. Excludes PlanIt bookkeeping
     /// (LastDifferent) which changes on every rescrape even when content is identical.
     /// Used by the poll cycle to skip redundant upserts and zone lookups when PlanIt returns
