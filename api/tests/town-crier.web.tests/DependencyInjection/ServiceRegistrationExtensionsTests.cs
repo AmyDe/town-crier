@@ -7,6 +7,7 @@ using TownCrier.Application.Designations;
 using TownCrier.Application.DeviceRegistrations;
 using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
+using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Application.UserProfiles;
@@ -81,6 +82,29 @@ public sealed class ServiceRegistrationExtensionsTests
         await Assert.That(provider.GetService<GetSavedApplicationsQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetDemoAccountQueryHandler>()).IsNotNull();
         await Assert.That(provider.GetService<GetApplicationsByZoneQueryHandler>()).IsNotNull();
+        await Assert.That(provider.GetService<GetApplicationByAuthorityAndNameQueryHandler>()).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_NotRegisterIPlanItClient_When_AddInfrastructureServicesCalled()
+    {
+        // Arrange — IPlanItClient must NOT be resolvable from town-crier.web's DI
+        // container. Polling is its only legitimate consumer and it runs in a
+        // separate process (town-crier.worker). Registering it here would allow
+        // user-facing handlers to call PlanIt while the Retry-After budget is
+        // saturated by the poll cycle, surfacing as HTTP 500 to users. GH#395.
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(CosmosRestConfig)
+            .Build();
+
+        // Act
+        services.AddInfrastructureServices(configuration);
+        services.AddApplicationServices(configuration);
+
+        // Assert — GetService returns null (not registered), not throws
+        var provider = services.BuildServiceProvider();
+        await Assert.That(provider.GetService<IPlanItClient>()).IsNull();
     }
 
     [Test]

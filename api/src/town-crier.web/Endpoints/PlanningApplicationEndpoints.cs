@@ -18,18 +18,20 @@ internal static class PlanningApplicationEndpoints
             return Results.Ok(result);
         });
 
-        group.MapGet("/applications/{**uid}", async (
+        // Partitioned point read: authorityCode + name uniquely identifies the Cosmos
+        // document (id = name, pk = authorityCode). Replaces the old cross-partition
+        // uid scan. No PlanIt fallback — see GH#395 Invariant 1.
+        group.MapGet("/applications/{authorityCode}/{**name}", async (
             ClaimsPrincipal user,
-            string uid,
-            GetApplicationByUidQueryHandler handler,
+            string authorityCode,
+            string name,
+            GetApplicationByAuthorityAndNameQueryHandler handler,
             CancellationToken ct) =>
         {
-            // userId enables refresh-on-tap: opening a saved item silently
-            // upserts the latest snapshot back into the saved row so the
-            // saved-list self-heals over time. See bd tc-udby.
             var userId = user.FindFirstValue("sub");
             var result = await handler.HandleAsync(
-                new GetApplicationByUidQuery(uid, userId), ct).ConfigureAwait(false);
+                new GetApplicationByAuthorityAndNameQuery(authorityCode, name, userId),
+                ct).ConfigureAwait(false);
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
     }

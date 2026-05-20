@@ -29,6 +29,18 @@ public sealed class InMemoryPlanningApplicationRepository : IPlanningApplication
         return Task.FromResult(app);
     }
 
+    public Task<PlanningApplication?> GetByAuthorityAndNameAsync(string authorityCode, string name, CancellationToken ct)
+    {
+        this.store.TryGetValue(name, out var app);
+        if (app is not null
+            && app.AreaId.ToString(System.Globalization.CultureInfo.InvariantCulture) != authorityCode)
+        {
+            app = null;
+        }
+
+        return Task.FromResult(app);
+    }
+
     public Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
     {
         var apps = this.store.Values.Where(a => a.AreaId == authorityId).ToList();

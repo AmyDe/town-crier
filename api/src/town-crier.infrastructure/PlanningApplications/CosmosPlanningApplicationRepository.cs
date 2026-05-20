@@ -59,6 +59,23 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
+    public async Task<PlanningApplication?> GetByAuthorityAndNameAsync(string authorityCode, string name, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(authorityCode);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        // Point read: id = name (the PlanIt case reference), partition key = authorityCode.
+        // ~1 RU — does not fan out across partitions.
+        var document = await this.client.ReadDocumentAsync(
+            CosmosContainerNames.Applications,
+            name,
+            authorityCode,
+            CosmosJsonSerializerContext.Default.PlanningApplicationDocument,
+            ct).ConfigureAwait(false);
+
+        return document?.ToDomain();
+    }
+
     public async Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct)
     {
         var authorityCode = authorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);

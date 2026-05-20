@@ -13,6 +13,11 @@ public interface IPlanningApplicationRepository
     // partition key. See bd tc-vidz.
     Task<PlanningApplication?> GetByUidAsync(string uid, string authorityCode, CancellationToken ct);
 
+    // Point read by document id (name) + partition key (authorityCode). ~1 RU.
+    // Used by the user-facing GET /v1/applications/{authorityCode}/{**name} endpoint.
+    // The Cosmos document id IS the application name (set in PlanningApplicationDocument.FromDomain).
+    Task<PlanningApplication?> GetByAuthorityAndNameAsync(string authorityCode, string name, CancellationToken ct);
+
     Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct);
 
     Task<IReadOnlyCollection<PlanningApplication>> FindNearbyAsync(
