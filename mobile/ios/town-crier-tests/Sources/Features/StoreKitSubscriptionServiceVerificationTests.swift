@@ -9,7 +9,7 @@ struct StoreKitSubscriptionServiceVerificationTests {
 
   @Test("reportPurchase POSTs the signed transaction to the verification service")
   func reportPurchase_postsSignedTransaction() async {
-    let verifier = SpySubscriptionVerificationService()
+    let verifier = SpySubscriptionVerifier()
     let sut = StoreKitSubscriptionService(verificationService: verifier)
 
     await sut.reportPurchase(signedTransaction: "header.payload.signature")
@@ -19,7 +19,7 @@ struct StoreKitSubscriptionServiceVerificationTests {
 
   @Test("reportPurchase swallows verification failures so the purchase still succeeds")
   func reportPurchase_swallowsVerificationFailure() async {
-    let verifier = SpySubscriptionVerificationService()
+    let verifier = SpySubscriptionVerifier()
     verifier.setVerifyResult(.failure(DomainError.networkUnavailable))
     let sut = StoreKitSubscriptionService(verificationService: verifier)
 

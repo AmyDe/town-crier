@@ -3,7 +3,7 @@ import TownCrierDomain
 
 /// Records the signed transactions passed to `verify` and returns a
 /// preconfigured result (or throws a preconfigured error).
-final class SpySubscriptionVerificationService: SubscriptionVerificationService, @unchecked Sendable {
+final class SpySubscriptionVerifier: SubscriptionVerificationService, @unchecked Sendable {
   private let lock = NSLock()
   private var recorded: [String] = []
   private var result: Result<VerifiedSubscription, Error> = .success(

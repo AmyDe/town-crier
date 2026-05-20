@@ -28,7 +28,8 @@ public final class HttpSubscriptionVerificationService: SubscriptionVerification
     if let raw = dto.subscriptionExpiry {
       let formatter = ISO8601DateFormatter()
       formatter.formatOptions = [.withInternetDateTime]
-      expiry = formatter.date(from: raw)
+      expiry =
+        formatter.date(from: raw)
         ?? {
           formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
           return formatter.date(from: raw)
