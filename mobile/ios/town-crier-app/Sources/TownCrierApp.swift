@@ -27,11 +27,15 @@ struct TownCrierApp: App {
     )
 
     let authService = Auth0AuthenticationService(config: auth0Config)
-    let subscriptionService = StoreKitSubscriptionService()
     let appVersionProvider = BundleAppVersionProvider()
     let apiBaseURL = APIEnvironment.current.baseURL
     let versionConfigService = APIVersionConfigService(baseURL: apiBaseURL)
     let apiClient = URLSessionAPIClient(baseURL: apiBaseURL, authService: authService)
+    // StoreKit reports verified purchases to POST /v1/subscriptions/verify so
+    // the backend updates the Cosmos entitlement state (ADR 0010).
+    let subscriptionService = StoreKitSubscriptionService(
+      verificationService: HttpSubscriptionVerificationService(apiClient: apiClient)
+    )
     let repository = APIPlanningApplicationRepository(apiClient: apiClient)
     let onboardingRepository = UserDefaultsOnboardingRepository()
     let notificationService = CompositeNotificationService(
@@ -243,6 +247,14 @@ struct TownCrierApp: App {
     .tint(Color.tcAmber)
     .sheet(isPresented: $coordinator.isSettingsPresented) {
       settingsSheet
+    }
+    // Subscription paywall — presented when an upsell (e.g. "View Plans" in
+    // the watch-zone quota banner) sets `isSubscriptionPresented`. Hoisted to
+    // the TabView so the paywall reaches the user regardless of active tab.
+    .sheet(isPresented: $coordinator.isSubscriptionPresented) {
+      NavigationStack {
+        SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
+      }
     }
   }
 

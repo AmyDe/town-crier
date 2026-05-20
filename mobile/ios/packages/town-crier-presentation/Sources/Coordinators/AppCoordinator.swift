@@ -208,6 +208,16 @@ public final class AppCoordinator: ObservableObject {
     )
   }
 
+  /// Factory for the subscription paywall presented as a sheet when
+  /// `isSubscriptionPresented` is true (e.g. after tapping "View Plans" in a
+  /// watch-zone upsell).
+  public func makeSubscriptionViewModel() -> SubscriptionViewModel {
+    SubscriptionViewModel(
+      subscriptionService: subscriptionService,
+      authenticationService: authService
+    )
+  }
+
   public func makeForceUpdateViewModel() -> ForceUpdateViewModel {
     ForceUpdateViewModel(
       versionConfigService: versionConfigService,
