@@ -21,6 +21,13 @@ public enum UniversalLinkParser {
     guard suffix.hasPrefix("/") else { return nil }
     let uid = String(suffix.dropFirst())
     guard !uid.isEmpty else { return .applicationsList }
-    return .applicationDetail(PlanningApplicationId(uid))
+    // Universal Links only carry the uid path segment — split on first "/" to
+    // reconstruct authority + name. Legacy UIDs without a "/" are treated as
+    // name-only with empty authority. This parser is best-effort; if the URL
+    // does not carry authority, the fetch will fail gracefully.
+    let components = uid.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+    let authority = components.count > 1 ? String(components[0]) : ""
+    let name = components.count > 1 ? String(components[1]) : uid
+    return .applicationDetail(PlanningApplicationId(authority: authority, name: name))
   }
 }

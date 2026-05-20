@@ -56,10 +56,10 @@ struct MapViewModelTests {
 
     await sut.loadApplications()
 
-    let pending = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-001") }
-    let permitted = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-002") }
-    let rejected = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-003") }
-    let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplicationId("APP-004") }
+    let pending = sut.annotations.first { $0.applicationId == PlanningApplication.pendingReview.id }
+    let permitted = sut.annotations.first { $0.applicationId == PlanningApplication.permitted.id }
+    let rejected = sut.annotations.first { $0.applicationId == PlanningApplication.rejected.id }
+    let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplication.withdrawn.id }
 
     #expect(pending?.status == .undecided)
     #expect(permitted?.status == .permitted)
@@ -69,7 +69,7 @@ struct MapViewModelTests {
 
   @Test func annotations_onlyIncludeApplicationsWithLocations() async {
     let noLocation = PlanningApplication(
-      id: PlanningApplicationId("APP-NO-LOC"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-NO-LOC"),
       reference: ApplicationReference("2026/0300"),
       authority: .cambridge,
       status: .undecided,
@@ -83,7 +83,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.annotations.count == 1)
-    #expect(sut.annotations.first?.applicationId == PlanningApplicationId("APP-001"))
+    #expect(sut.annotations.first?.applicationId == PlanningApplication.pendingReview.id)
   }
 
   // MARK: - Watch zone
@@ -131,9 +131,9 @@ struct MapViewModelTests {
     let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
-    #expect(sut.selectedApplication?.id == PlanningApplicationId("APP-001"))
+    #expect(sut.selectedApplication?.id == PlanningApplication.pendingReview.id)
   }
 
   @Test func selectAnnotation_nilClearsSelection() async {
@@ -141,7 +141,7 @@ struct MapViewModelTests {
     let (sut, _, _) = makeSUT(applications: apps)
 
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
     sut.clearSelection()
 
     #expect(sut.selectedApplication == nil)

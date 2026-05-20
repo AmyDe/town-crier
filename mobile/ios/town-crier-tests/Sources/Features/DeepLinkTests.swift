@@ -27,20 +27,20 @@ struct DeepLinkTests {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
 
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-002")))
 
     await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
-    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-002")])
   }
 
   @Test func handleDeepLink_successClearsPreviousError() async {
     let (sut, spy) = makeSUT()
-    sut.deepLinkError = .applicationNotFound(PlanningApplicationId("OLD"))
+    sut.deepLinkError = .applicationNotFound(PlanningApplicationId(authority: "42", name: "OLD"))
     spy.fetchApplicationResult = .success(.permitted)
 
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-002")))
 
     await sut.waitForPendingDetailLoad()
 
@@ -50,7 +50,7 @@ struct DeepLinkTests {
 
   @Test func handleDeepLink_applicationNotFound_setsDeepLinkError() async {
     let (sut, spy) = makeSUT()
-    let missingId = PlanningApplicationId("GONE-001")
+    let missingId = PlanningApplicationId(authority: "42", name: "GONE-001")
     spy.fetchApplicationResult = .failure(DomainError.applicationNotFound(missingId))
 
     sut.handleDeepLink(.applicationDetail(missingId))
@@ -72,7 +72,7 @@ struct DeepLinkTests {
     sut.selectedTab = .saved
     spy.fetchApplicationResult = .success(.permitted)
 
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-002")))
 
     await sut.waitForPendingDetailLoad()
 
@@ -90,9 +90,9 @@ struct DeepLinkTests {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
 
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-001")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-001")))
     let firstTask = sut.pendingDetailLoad
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-002")))
 
     await sut.waitForPendingDetailLoad()
 

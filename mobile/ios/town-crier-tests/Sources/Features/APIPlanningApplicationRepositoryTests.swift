@@ -107,7 +107,8 @@ struct APIPlanningApplicationRepositoryTests {
 
     #expect(result.count == 1)
     let app = result[0]
-    #expect(app.id == PlanningApplicationId("app-001"))
+    // DTO maps areaId=123 + name="2026/0042" into the new struct (tc-dzwo.1)
+    #expect(app.id == PlanningApplicationId(authority: "123", name: "2026/0042"))
     #expect(app.reference == ApplicationReference("2026/0042"))
     #expect(app.authority.code == "123")
     #expect(app.authority.name == "Cambridge")
@@ -211,7 +212,7 @@ struct APIPlanningApplicationRepositoryTests {
 
   // MARK: - fetchApplication
 
-  @Test("fetchApplication sends GET /v1/applications/{uid}")
+  @Test("fetchApplication sends GET /v1/applications/{authority}/{name}")
   func fetchApplication_sendsCorrectRequest() async throws {
     let json = """
       {
@@ -239,12 +240,15 @@ struct APIPlanningApplicationRepositoryTests {
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    _ = try await sut.fetchApplication(by: PlanningApplicationId("app-001"))
+    _ = try await sut.fetchApplication(
+      by: PlanningApplicationId(authority: "123", name: "2026/0042")
+    )
 
     #expect(transport.requests.count == 1)
     let request = transport.requests[0]
     #expect(request.httpMethod == "GET")
-    #expect(request.url?.path().contains("/v1/applications/app-001") == true)
+    // New partitioned endpoint: /v1/applications/{authorityCode}/{**name} (tc-dzwo.1)
+    #expect(request.url?.path().contains("/v1/applications/123/2026/0042") == true)
   }
 
   @Test("fetchApplication maps single API response to domain model")
@@ -275,9 +279,12 @@ struct APIPlanningApplicationRepositoryTests {
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    let app = try await sut.fetchApplication(by: PlanningApplicationId("app-002"))
+    let app = try await sut.fetchApplication(
+      by: PlanningApplicationId(authority: "456", name: "2026/0099")
+    )
 
-    #expect(app.id == PlanningApplicationId("app-002"))
+    // DTO maps areaId=456 + name="2026/0099" into the new struct (tc-dzwo.1)
+    #expect(app.id == PlanningApplicationId(authority: "456", name: "2026/0099"))
     #expect(app.reference == ApplicationReference("2026/0099"))
     #expect(app.authority == LocalAuthority(code: "456", name: "Oxford"))
     #expect(app.status == ApplicationStatus.rejected)
@@ -292,8 +299,9 @@ struct APIPlanningApplicationRepositoryTests {
       (Data("null".utf8), httpResponse(statusCode: 404))
     ])
 
-    await #expect(throws: DomainError.applicationNotFound(PlanningApplicationId("missing"))) {
-      _ = try await sut.fetchApplication(by: PlanningApplicationId("missing"))
+    let missingId = PlanningApplicationId(authority: "42", name: "missing")
+    await #expect(throws: DomainError.applicationNotFound(missingId)) {
+      _ = try await sut.fetchApplication(by: missingId)
     }
   }
 
@@ -306,7 +314,9 @@ struct APIPlanningApplicationRepositoryTests {
     await #expect(
       throws: DomainError.serverError(statusCode: 500, message: "Internal Server Error")
     ) {
-      _ = try await sut.fetchApplication(by: PlanningApplicationId("app-001"))
+      _ = try await sut.fetchApplication(
+        by: PlanningApplicationId(authority: "1", name: "app-001")
+      )
     }
   }
 
@@ -350,7 +360,9 @@ struct APIPlanningApplicationRepositoryTests {
       (Data(json.utf8), httpResponse(statusCode: 200))
     ])
 
-    let app = try await sut.fetchApplication(by: PlanningApplicationId("id-1"))
+    let app = try await sut.fetchApplication(
+      by: PlanningApplicationId(authority: "1", name: "REF/001")
+    )
 
     #expect(app.status == expected)
   }
@@ -379,12 +391,8 @@ struct APIPlanningApplicationRepositoryTests {
           "lastDifferent": "2026-01-01T00:00:00+00:00"
       }
       """
-    let (sut, _, _) = makeSUT(responses: [
-      (Data(json.utf8), httpResponse(statusCode: 200))
-    ])
-
-    let app = try await sut.fetchApplication(by: PlanningApplicationId("id-1"))
-
+    let (sut, _, _) = makeSUT(responses: [(Data(json.utf8), httpResponse(statusCode: 200))])
+    let app = try await sut.fetchApplication(by: PlanningApplicationId(authority: "1", name: "REF/001"))
     #expect(app.status == .unknown)
   }
 }

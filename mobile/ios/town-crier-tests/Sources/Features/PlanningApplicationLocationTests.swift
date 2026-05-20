@@ -10,7 +10,7 @@ struct PlanningApplicationLocationTests {
     // pendingReview fixture should have a location set for map testing
     // but the field should be optional on the type
     let noLocation = PlanningApplication(
-      id: PlanningApplicationId("APP-NO-LOC"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-NO-LOC"),
       reference: ApplicationReference("2026/0001"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .undecided,
@@ -25,7 +25,7 @@ struct PlanningApplicationLocationTests {
   @Test func location_canBeSet() throws {
     let coordinate = try Coordinate(latitude: 52.2053, longitude: 0.1218)
     let app = PlanningApplication(
-      id: PlanningApplicationId("APP-LOC"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-LOC"),
       reference: ApplicationReference("2026/0002"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .undecided,

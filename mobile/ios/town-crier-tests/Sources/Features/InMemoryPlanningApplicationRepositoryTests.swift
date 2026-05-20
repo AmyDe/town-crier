@@ -35,16 +35,19 @@ struct InMemoryPlanningApplicationRepositoryTests {
       applications: [.pendingReview]
     )
 
-    let result = try await sut.fetchApplication(by: PlanningApplicationId("APP-001"))
+    let result = try await sut.fetchApplication(
+      by: PlanningApplicationId(authority: "CAM", name: "2026/0042")
+    )
 
     #expect(result == .pendingReview)
   }
 
   @Test func fetchApplication_throwsWhenNotFound() async {
     let sut = InMemoryPlanningApplicationRepository(applications: [])
+    let missingId = PlanningApplicationId(authority: "42", name: "MISSING/001")
 
-    await #expect(throws: DomainError.applicationNotFound(PlanningApplicationId("MISSING"))) {
-      try await sut.fetchApplication(by: PlanningApplicationId("MISSING"))
+    await #expect(throws: DomainError.applicationNotFound(missingId)) {
+      try await sut.fetchApplication(by: missingId)
     }
   }
 }

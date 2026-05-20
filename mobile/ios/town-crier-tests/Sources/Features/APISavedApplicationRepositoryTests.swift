@@ -46,8 +46,9 @@ struct APISavedApplicationRepositoryTests {
     let (sut, _, transport) = makeSUT(responses: [
       (Data(), httpResponse(statusCode: 204))
     ])
+    // id.value = "123/2026/0042" (authority/name), used in path and body uid field
     let app = PlanningApplication(
-      id: PlanningApplicationId("BK/2026/0042"),
+      id: PlanningApplicationId(authority: "123", name: "2026/0042"),
       reference: ApplicationReference("2026/0042"),
       authority: LocalAuthority(code: "123", name: "Cambridge"),
       status: .undecided,
@@ -62,12 +63,12 @@ struct APISavedApplicationRepositoryTests {
     let request = transport.requests[0]
     #expect(request.httpMethod == "PUT")
     let url = try #require(request.url)
-    #expect(url.path().contains("/v1/me/saved-applications/BK/2026/0042"))
+    #expect(url.path().contains("/v1/me/saved-applications/123/2026/0042"))
     let body = try #require(request.httpBody)
     let json = try #require(
       try JSONSerialization.jsonObject(with: body) as? [String: Any]
     )
-    #expect(json["uid"] as? String == "BK/2026/0042")
+    #expect(json["uid"] as? String == "123/2026/0042")
     #expect(json["name"] as? String == "2026/0042")
     #expect(json["areaName"] as? String == "Cambridge")
     #expect(json["areaId"] as? Int == 123)

@@ -84,9 +84,9 @@ struct ApplicationListViewModelTests {
     let (sut, _) = try makeSUT(applications: [.pendingReview])
     sut.onApplicationSelected = { selectedId = $0 }
 
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplicationId(authority: "CAM", name: "2026/0042"))
 
-    #expect(selectedId == PlanningApplicationId("APP-001"))
+    #expect(selectedId == PlanningApplicationId(authority: "CAM", name: "2026/0042"))
   }
 
   // MARK: - Status Filtering (free for all tiers — tc-acf0)

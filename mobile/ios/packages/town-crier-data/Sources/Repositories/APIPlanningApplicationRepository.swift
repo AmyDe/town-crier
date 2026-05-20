@@ -27,8 +27,13 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
   public func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {
+      // New endpoint: /v1/applications/{authorityCode}/{**name}
+      // `authorityCode` is `authority` (areaId as decimal string); `name` is the
+      // PlanIt case reference. The greedy `{**name}` segment preserves slashes in
+      // the reference (e.g. "22/1234/FUL"). This is a single-partition point read
+      // (~1 RU) replacing the old cross-partition uid scan (tc-dzwo.1).
       dto = try await apiClient.request(
-        .get("/v1/applications/\(id.value)")
+        .get("/v1/applications/\(id.authority)/\(id.name)")
       )
     } catch APIError.notFound {
       throw DomainError.applicationNotFound(id)
@@ -72,7 +77,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
     let history = synthesizeStatusHistory(status: status, receivedDate: receivedDate)
 
     return PlanningApplication(
-      id: PlanningApplicationId(uid),
+      id: PlanningApplicationId(authority: String(areaId), name: name),
       reference: ApplicationReference(name),
       authority: LocalAuthority(code: String(areaId), name: areaName),
       status: status,

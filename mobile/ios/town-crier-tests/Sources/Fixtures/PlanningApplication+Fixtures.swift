@@ -5,7 +5,7 @@ import TownCrierDomain
 
 extension PlanningApplication {
   static let pendingReview = PlanningApplication(
-    id: PlanningApplicationId("APP-001"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0042"),
     reference: ApplicationReference("2026/0042"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .undecided,
@@ -16,7 +16,7 @@ extension PlanningApplication {
   )
 
   static let permitted = PlanningApplication(
-    id: PlanningApplicationId("APP-002"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0099"),
     reference: ApplicationReference("2026/0099"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .permitted,
@@ -27,7 +27,7 @@ extension PlanningApplication {
   )
 
   static let rejected = PlanningApplication(
-    id: PlanningApplicationId("APP-003"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0150"),
     reference: ApplicationReference("2026/0150"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .rejected,
@@ -38,7 +38,7 @@ extension PlanningApplication {
   )
 
   static let withdrawn = PlanningApplication(
-    id: PlanningApplicationId("APP-004"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0200"),
     reference: ApplicationReference("2026/0200"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .withdrawn,
@@ -49,7 +49,7 @@ extension PlanningApplication {
   )
 
   static let permittedWithHistory = PlanningApplication(
-    id: PlanningApplicationId("APP-006"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0310"),
     reference: ApplicationReference("2026/0310"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .permitted,
@@ -64,7 +64,7 @@ extension PlanningApplication {
   )
 
   static let rejectedWithHistory = PlanningApplication(
-    id: PlanningApplicationId("APP-007"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0320"),
     reference: ApplicationReference("2026/0320"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .rejected,
@@ -79,7 +79,7 @@ extension PlanningApplication {
   )
 
   static let withPortalUrl = PlanningApplication(
-    id: PlanningApplicationId("APP-005"),
+    id: PlanningApplicationId(authority: "CAM", name: "2026/0042"),
     reference: ApplicationReference("2026/0042"),
     authority: LocalAuthority(code: "CAM", name: "Cambridge"),
     status: .undecided,

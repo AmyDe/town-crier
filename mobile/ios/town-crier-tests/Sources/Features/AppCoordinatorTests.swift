@@ -130,12 +130,12 @@ struct AppCoordinatorTests {
     spy.fetchApplicationResult = .success(.permitted)
     let vm = sut.makeApplicationListViewModel(zone: .cambridge)
 
-    vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
+    vm.onApplicationSelected?(PlanningApplicationId(authority: "42", name: "APP-002"))
 
     await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
-    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-002")])
   }
 
   @Test func makeApplicationListViewModel_noArg_resolvesZoneFromRepository() async {
@@ -236,12 +236,12 @@ struct AppCoordinatorTests {
     spy.fetchApplicationResult = .success(.permitted)
     let vm = sut.makeSavedApplicationListViewModel()
 
-    vm.onApplicationSelected?(PlanningApplicationId("APP-002"))
+    vm.onApplicationSelected?(PlanningApplicationId(authority: "42", name: "APP-002"))
 
     await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
-    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-002")])
   }
 
   @Test func savedApplicationListViewModel_onApplicationSelectedWithPayload_setsDetailSync() async {
@@ -367,12 +367,12 @@ struct AppCoordinatorTests {
     let (sut, spy) = makeSUT()
     spy.fetchApplicationResult = .success(.permitted)
 
-    sut.handleDeepLink(.applicationDetail(PlanningApplicationId("APP-002")))
+    sut.handleDeepLink(.applicationDetail(PlanningApplicationId(authority: "42", name: "APP-002")))
 
     await sut.waitForPendingDetailLoad()
 
     #expect(sut.detailApplication == .permitted)
-    #expect(spy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    #expect(spy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-002")])
   }
 
 }
