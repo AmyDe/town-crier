@@ -78,4 +78,25 @@ public sealed class SavedApplication
 
         return new SavedApplication(this.UserId, this.ApplicationUid, this.AuthorityId, this.SavedAt, freshApplication);
     }
+
+    /// <summary>
+    /// Returns a new <see cref="SavedApplication"/> with the supplied snapshot embedded
+    /// while preserving this record's existing <see cref="ApplicationUid"/> key.
+    /// </summary>
+    /// <remarks>
+    /// Used by the lazy-backfill path for legacy uid-only rows persisted before either the
+    /// embedded snapshot column or the canonical-uid scheme existed. Unlike
+    /// <see cref="WithFreshSnapshot"/> it does NOT require the snapshot's canonical uid to
+    /// match the record key — a legacy row's key is a raw PlanIt uid by definition.
+    /// Re-keying such rows to the canonical form is the dedicated migration's job
+    /// (bd tc-sqr3); backfill must rewrite in place so it never orphans the Cosmos doc
+    /// or leaves a duplicate (bd tc-o88i).
+    /// </remarks>
+    /// <param name="snapshot">The application snapshot to embed.</param>
+    /// <returns>A new instance with the same identity but the embedded snapshot.</returns>
+    public SavedApplication WithEmbeddedSnapshot(PlanningApplication snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return new SavedApplication(this.UserId, this.ApplicationUid, this.AuthorityId, this.SavedAt, snapshot);
+    }
 }

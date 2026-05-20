@@ -44,7 +44,11 @@ public sealed class GetSavedApplicationsQueryHandler
                     continue;
                 }
 
-                var refreshed = SavedApplication.Create(record.UserId, fetched, record.SavedAt);
+                // Rewrite in place: embed the snapshot but keep the row's existing
+                // ApplicationUid. SavedApplication.Create would re-key to the canonical
+                // uid, orphaning the legacy Cosmos doc and leaving a duplicate. Legacy
+                // re-keying is the dedicated migration's job (bd tc-sqr3 / tc-o88i).
+                var refreshed = record.WithEmbeddedSnapshot(fetched);
                 await this.savedRepository.SaveAsync(refreshed, ct).ConfigureAwait(false);
                 snapshot = fetched;
             }
