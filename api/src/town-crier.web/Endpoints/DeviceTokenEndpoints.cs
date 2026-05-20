@@ -25,7 +25,8 @@ internal static class DeviceTokenEndpoints
             RemoveInvalidDeviceTokenCommandHandler handler,
             CancellationToken ct) =>
         {
-            var command = new RemoveInvalidDeviceTokenCommand(token);
+            var userId = user.FindFirstValue("sub")!;
+            var command = new RemoveInvalidDeviceTokenCommand(userId, token);
             await handler.HandleAsync(command, ct).ConfigureAwait(false);
             return Results.NoContent();
         });

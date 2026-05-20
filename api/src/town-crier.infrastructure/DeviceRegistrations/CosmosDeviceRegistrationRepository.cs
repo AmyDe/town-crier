@@ -14,17 +14,18 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
         this.client = client;
     }
 
-    public async Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
+    public async Task<DeviceRegistration?> GetByTokenAsync(string userId, string token, CancellationToken ct)
     {
-        var documents = await this.client.QueryAsync(
+        // Point read scoped to the user's partition (userId = partition key, token = document id).
+        // This replaces the former cross-partition scan and costs ~1 RU instead of O(partitions) RUs.
+        var document = await this.client.ReadDocumentAsync(
             CosmosContainerNames.DeviceRegistrations,
-            "SELECT * FROM c WHERE c.token = @token",
-            [new QueryParameter("@token", token)],
-            partitionKey: null,
+            token,
+            userId,
             CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
             ct).ConfigureAwait(false);
 
-        return documents.Count > 0 ? documents[0].ToDomain() : null;
+        return document?.ToDomain();
     }
 
     public async Task<IReadOnlyList<DeviceRegistration>> GetByUserIdAsync(string userId, CancellationToken ct)
@@ -54,26 +55,21 @@ public sealed class CosmosDeviceRegistrationRepository : IDeviceRegistrationRepo
             ct).ConfigureAwait(false);
     }
 
-    public async Task DeleteByTokenAsync(string token, CancellationToken ct)
+    public async Task DeleteByTokenAsync(string userId, string token, CancellationToken ct)
     {
-        // Token is not the partition key, so we must find the document first
-        // to get the userId (partition key) needed for deletion.
-        var documents = await this.client.QueryAsync(
+        // Direct partitioned delete — document id is the token, partition key is the userId.
+        // No cross-partition lookup needed. Idempotent: no error if the document is absent
+        // (token already cleaned up by TTL or a prior call).
+        //
+        // Orphan-row note: if a token is reassigned from user A to user B (device shared,
+        // app reinstalled under a different account), user A's row is left in place.
+        // It will be collected by the APNs invalid-token callback or by the 180-day TTL.
+        // This is accepted per the design decision in GH#395.
+        await this.client.DeleteDocumentAsync(
             CosmosContainerNames.DeviceRegistrations,
-            "SELECT c.id, c.userId FROM c WHERE c.token = @token",
-            [new QueryParameter("@token", token)],
-            partitionKey: null,
-            CosmosJsonSerializerContext.Default.DeviceRegistrationDocument,
+            token,
+            userId,
             ct).ConfigureAwait(false);
-
-        foreach (var document in documents)
-        {
-            await this.client.DeleteDocumentAsync(
-                CosmosContainerNames.DeviceRegistrations,
-                document.Id,
-                document.UserId,
-                ct).ConfigureAwait(false);
-        }
     }
 
     public async Task DeleteAllByUserIdAsync(string userId, CancellationToken ct)

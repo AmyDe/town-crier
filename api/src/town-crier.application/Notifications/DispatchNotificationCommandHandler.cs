@@ -150,7 +150,7 @@ public sealed class DispatchNotificationCommandHandler
             foreach (var invalidToken in sendResult.InvalidTokens)
             {
                 await this.removeInvalidDeviceTokenHandler
-                    .HandleAsync(new RemoveInvalidDeviceTokenCommand(invalidToken), ct)
+                    .HandleAsync(new RemoveInvalidDeviceTokenCommand(zone.UserId, invalidToken), ct)
                     .ConfigureAwait(false);
             }
         }
