@@ -149,4 +149,32 @@ public sealed class PlanningApplicationTests
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => Task.FromResult(app.HasSameBusinessFieldsAs(null!)));
     }
+
+    [Test]
+    public async Task CanonicalUid_Should_JoinAreaIdAndName()
+    {
+        // The canonical uid is the stable server-side identity of an application:
+        // {areaId}/{name}. It mirrors the iOS PlanningApplicationId.value form and
+        // is independent of the client-supplied PlanIt uid string (bd tc-o88i).
+        var app = new PlanningApplicationBuilder()
+            .WithAreaId(42)
+            .WithName("CAM/24/0042/FUL")
+            .Build();
+
+        await Assert.That(app.CanonicalUid).IsEqualTo("42/CAM/24/0042/FUL");
+    }
+
+    [Test]
+    public async Task CanonicalUid_Should_BeIndependentOfTheRawUidField()
+    {
+        // Two applications for the same (areaId, name) must share a canonical uid
+        // even when their raw PlanIt uid strings differ — this is what makes the
+        // saved-application doc id stable across stale-format clients (bd tc-o88i).
+        var withRawUid = new PlanningApplicationBuilder()
+            .WithAreaId(7).WithName("APP/2024/001").WithUid("legacy-uid-format").Build();
+        var withCanonicalUid = new PlanningApplicationBuilder()
+            .WithAreaId(7).WithName("APP/2024/001").WithUid("7/APP/2024/001").Build();
+
+        await Assert.That(withRawUid.CanonicalUid).IsEqualTo(withCanonicalUid.CanonicalUid);
+    }
 }
