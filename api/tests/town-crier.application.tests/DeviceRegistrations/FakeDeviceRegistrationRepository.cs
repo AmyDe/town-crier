@@ -17,8 +17,23 @@ internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepo
     /// </summary>
     public IReadOnlyList<string> DeletedTokens => this.deletedTokens;
 
-    public Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
+    /// <summary>
+    /// Gets the userId argument supplied to the most recent
+    /// <see cref="GetByTokenAsync"/> call. Tests assert this is never null,
+    /// confirming the query is partitioned by userId.
+    /// </summary>
+    public string? LastGetByTokenUserId { get; private set; }
+
+    /// <summary>
+    /// Gets the userId argument supplied to the most recent
+    /// <see cref="DeleteByTokenAsync"/> call. Tests assert this is never null,
+    /// confirming the delete is partitioned by userId.
+    /// </summary>
+    public string? LastDeleteByTokenUserId { get; private set; }
+
+    public Task<DeviceRegistration?> GetByTokenAsync(string userId, string token, CancellationToken ct)
     {
+        this.LastGetByTokenUserId = userId;
         this.store.TryGetValue(token, out var registration);
         return Task.FromResult(registration);
     }
@@ -37,8 +52,9 @@ internal sealed class FakeDeviceRegistrationRepository : IDeviceRegistrationRepo
         return Task.CompletedTask;
     }
 
-    public Task DeleteByTokenAsync(string token, CancellationToken ct)
+    public Task DeleteByTokenAsync(string userId, string token, CancellationToken ct)
     {
+        this.LastDeleteByTokenUserId = userId;
         this.deletedTokens.Add(token);
         this.store.Remove(token);
         return Task.CompletedTask;
