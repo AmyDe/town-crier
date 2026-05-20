@@ -24,11 +24,14 @@ extension SavedApplication {
     savedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
     status: ApplicationStatus = .undecided
   ) -> SavedApplication {
+    // uid is used as both the applicationUid string and the `name` portion of
+    // the PlanningApplicationId struct (authority defaults to "TEST" so the id
+    // is valid and unique within the fixture set).
     SavedApplication(
       applicationUid: uid,
       savedAt: savedAt,
       application: PlanningApplication(
-        id: PlanningApplicationId(uid),
+        id: PlanningApplicationId(authority: "TEST", name: uid),
         reference: ApplicationReference("FIX/\(uid)"),
         authority: .cambridge,
         status: status,

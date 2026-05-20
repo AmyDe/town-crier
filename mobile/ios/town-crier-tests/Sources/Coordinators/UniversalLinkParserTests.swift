@@ -11,7 +11,8 @@ struct UniversalLinkParserTests {
 
     let result = UniversalLinkParser.parse(url)
 
-    #expect(result == .applicationDetail(PlanningApplicationId("19/00123/FUL")))
+    // URL path /applications/19/00123/FUL → authority "19", name "00123/FUL"
+    #expect(result == .applicationDetail(PlanningApplicationId(authority: "19", name: "00123/FUL")))
   }
 
   @Test func parse_applicationsRootURL_returnsApplicationsListDeepLink() throws {

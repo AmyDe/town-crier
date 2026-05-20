@@ -27,7 +27,7 @@ struct SavedApplicationListViewModelTests {
 
     await sut.loadAll()
 
-    #expect(sut.applications.map(\.id.value) == ["APP-B", "APP-A"])
+    #expect(sut.applications.map(\.id.name) == ["APP-B", "APP-A"])
     #expect(!sut.isEmpty)
     #expect(sut.error == nil)
     #expect(!sut.isLoading)
@@ -60,7 +60,7 @@ struct SavedApplicationListViewModelTests {
 
     await sut.loadAll()
 
-    #expect(sut.applications.map(\.id.value) == ["APP-A"])
+    #expect(sut.applications.map(\.id.name) == ["APP-A"])
   }
 
   @Test func loadAll_capturesRepositoryError() async throws {
@@ -101,7 +101,7 @@ struct SavedApplicationListViewModelTests {
 
     sut.selectedStatusFilter = .undecided
 
-    #expect(sut.filteredApplications.map(\.id.value) == ["APP-B"])
+    #expect(sut.filteredApplications.map(\.id.name) == ["APP-B"])
   }
 
   @Test func statusFilter_nilShowsAllApplications() async throws {
@@ -140,9 +140,9 @@ struct SavedApplicationListViewModelTests {
     let sut = SavedApplicationListViewModel(savedApplicationRepository: repo)
     sut.onApplicationSelected = { selectedId = $0 }
 
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplicationId(authority: "CAM", name: "2026/0042"))
 
-    #expect(selectedId == PlanningApplicationId("APP-001"))
+    #expect(selectedId == PlanningApplicationId(authority: "CAM", name: "2026/0042"))
   }
 
   // MARK: - Stale-While-Revalidate selection (tc-sslz)

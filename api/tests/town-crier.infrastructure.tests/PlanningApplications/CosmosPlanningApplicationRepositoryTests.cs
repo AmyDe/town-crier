@@ -74,6 +74,57 @@ public sealed class CosmosPlanningApplicationRepositoryTests
         await Assert.That(result).IsNull();
     }
 
+    // Point read used by the user-facing GET /v1/applications/{authorityCode}/{**name} endpoint.
+    // The Cosmos document id IS the application name; partitionKey is the authorityCode.
+    // This is a ~1 RU single-partition read that avoids cross-partition fan-out. GH#395.
+    [Test]
+    public async Task Should_ReturnApplication_When_GetByAuthorityAndNameCalledWithMatchingPartition()
+    {
+        // Arrange
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosPlanningApplicationRepository(client);
+        var app = CreateTestApplication(name: "APP/001", uid: "uid-1", areaId: 100);
+        await repo.UpsertAsync(app, CancellationToken.None);
+
+        // Act — point read: id = "APP/001", partitionKey = "100"
+        var result = await repo.GetByAuthorityAndNameAsync("100", "APP/001", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.Name).IsEqualTo("APP/001");
+        await Assert.That(result.AreaId).IsEqualTo(100);
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_GetByAuthorityAndNameCalledWithWrongPartition()
+    {
+        // Arrange — document exists under authorityCode "100", but caller asks "200"
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosPlanningApplicationRepository(client);
+        var app = CreateTestApplication(name: "APP/001", uid: "uid-1", areaId: 100);
+        await repo.UpsertAsync(app, CancellationToken.None);
+
+        // Act — wrong partition key: point read misses even though name matches
+        var result = await repo.GetByAuthorityAndNameAsync("200", "APP/001", CancellationToken.None);
+
+        // Assert — partitioned read correctly returns null (no cross-partition fallback)
+        await Assert.That(result).IsNull();
+    }
+
+    [Test]
+    public async Task Should_ReturnNull_When_GetByAuthorityAndNameCalledForMissingApplication()
+    {
+        // Arrange
+        var client = new FakeCosmosRestClient();
+        var repo = new CosmosPlanningApplicationRepository(client);
+
+        // Act
+        var result = await repo.GetByAuthorityAndNameAsync("100", "NONEXISTENT/001", CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNull();
+    }
+
     [Test]
     public async Task Should_ReturnApplications_When_GetByAuthorityIdCalled()
     {

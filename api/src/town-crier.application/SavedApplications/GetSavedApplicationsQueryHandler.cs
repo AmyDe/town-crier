@@ -34,7 +34,10 @@ public sealed class GetSavedApplicationsQueryHandler
                 // Lazy backfill: rows persisted before the snapshot column existed
                 // hold only the uid. Hydrate once and upsert so subsequent reads
                 // are zero-hydration. Self-heals on first read per legacy row.
-                var fetched = await this.applicationRepository.GetByUidAsync(record.ApplicationUid, ct).ConfigureAwait(false);
+                // Uses the partition-scoped uid overload (authorityCode as pk) to
+                // avoid a cross-partition scan. GH#395 Invariant 2.
+                var authorityCode = record.AuthorityId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var fetched = await this.applicationRepository.GetByUidAsync(record.ApplicationUid, authorityCode, ct).ConfigureAwait(false);
                 if (fetched is null)
                 {
                     // Master record gone — exclude rather than failing the whole list.

@@ -23,6 +23,10 @@ internal sealed class FailIfCalledPlanningApplicationRepository : IPlanningAppli
         throw new InvalidOperationException(
             "Planning repository must not be touched on the saved-list happy path. See bd tc-udby.");
 
+    public Task<PlanningApplication?> GetByAuthorityAndNameAsync(string authorityCode, string name, CancellationToken ct) =>
+        throw new InvalidOperationException(
+            "Planning repository must not be touched on the saved-list happy path. See bd tc-udby.");
+
     public Task<IReadOnlyCollection<PlanningApplication>> GetByAuthorityIdAsync(int authorityId, CancellationToken ct) =>
         throw new InvalidOperationException(
             "Planning repository must not be touched on the saved-list happy path. See bd tc-udby.");

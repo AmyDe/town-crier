@@ -9,7 +9,6 @@ using TownCrier.Application.Geocoding;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.NotificationState;
 using TownCrier.Application.OfferCodes;
-using TownCrier.Application.PlanIt;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
@@ -24,7 +23,6 @@ using TownCrier.Infrastructure.GovUkPlanningData;
 using TownCrier.Infrastructure.Notifications;
 using TownCrier.Infrastructure.NotificationState;
 using TownCrier.Infrastructure.OfferCodes;
-using TownCrier.Infrastructure.PlanIt;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.RateLimiting;
 using TownCrier.Infrastructure.SavedApplications;
@@ -109,21 +107,12 @@ internal static class ServiceCollectionExtensions
             return new PostcodesIoAuthorityResolver(httpClient);
         });
 
-        var planItThrottle = new PlanItThrottleOptions();
-        configuration.GetSection("PlanIt:Throttle").Bind(planItThrottle);
-        services.AddSingleton(planItThrottle);
-
-        var planItRetry = new PlanItRetryOptions();
-        configuration.GetSection("PlanIt:Retry").Bind(planItRetry);
-        services.AddSingleton(planItRetry);
-
-#pragma warning disable S1075 // Hardcoded URI is a sensible default
-        var planItBaseUrl = configuration["PlanIt:BaseUrl"] ?? "https://www.planit.org.uk/";
-#pragma warning restore S1075
-        services.AddHttpClient<IPlanItClient, PlanItClient>(client =>
-        {
-            client.BaseAddress = new Uri(planItBaseUrl);
-        });
+        // IPlanItClient is intentionally NOT registered in town-crier.web.
+        // Polling is the only legitimate consumer of IPlanItClient and it runs
+        // in town-crier.worker (separate process, separate DI container).
+        // Registering it here risks user-path handlers accidentally calling
+        // PlanIt while its Retry-After budget is saturated by the poll cycle
+        // — surfacing as HTTP 500 to users. GH#395 Invariant 1.
         services.AddSingleton<IAuthorityProvider>(new StaticAuthorityProvider());
 
 #pragma warning disable S1075 // Hardcoded URI is a sensible default
@@ -168,6 +157,7 @@ internal static class ServiceCollectionExtensions
         services.AddTransient<RemoveInvalidDeviceTokenCommandHandler>();
 
         services.AddTransient<GetApplicationByUidQueryHandler>();
+        services.AddTransient<GetApplicationByAuthorityAndNameQueryHandler>();
         services.AddTransient<GetUserApplicationAuthoritiesQueryHandler>();
 
         services.AddTransient<SaveApplicationCommandHandler>();

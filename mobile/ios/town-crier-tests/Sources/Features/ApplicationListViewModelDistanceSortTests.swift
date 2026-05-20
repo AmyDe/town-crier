@@ -85,7 +85,7 @@ struct ApplicationListViewModelDistanceSortTests {
   @Test("distance sort places apps without a location last")
   func sort_distance_appsWithoutLocationLast() async throws {
     let withoutLocation = PlanningApplication(
-      id: PlanningApplicationId("APP-NO-LOC"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-NO-LOC"),
       reference: ApplicationReference("2026/9999"),
       authority: .cambridge,
       status: .undecided,

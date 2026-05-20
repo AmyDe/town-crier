@@ -22,7 +22,7 @@ struct SavedApplicationTests {
   @Test("init stores nested application when provided")
   func init_storesNestedApplication() {
     let app = PlanningApplication(
-      id: PlanningApplicationId("APP-001"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-001"),
       reference: ApplicationReference("2026/0042"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .undecided,

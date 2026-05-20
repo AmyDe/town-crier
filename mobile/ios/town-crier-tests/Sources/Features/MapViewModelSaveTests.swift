@@ -43,20 +43,20 @@ struct MapViewModelSaveTests {
 
   @Test("isSelectedApplicationSaved is true when selected application is in saved set")
   func isSelectedApplicationSaved_savedApp_returnsTrue() async {
-    let (sut, _) = makeSUT(savedApplicationUids: ["APP-001"])
+    let (sut, _) = makeSUT(savedApplicationUids: [PlanningApplication.pendingReview.id.value])
     await sut.loadApplications()
     await sut.loadSavedStateForSelectedApplication()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     #expect(sut.isSelectedApplicationSaved)
   }
 
   @Test("isSelectedApplicationSaved is false when selected application is not in saved set")
   func isSelectedApplicationSaved_unsavedApp_returnsFalse() async {
-    let (sut, _) = makeSUT(savedApplicationUids: ["APP-002"])
+    let (sut, _) = makeSUT(savedApplicationUids: [PlanningApplication.permitted.id.value])
     await sut.loadApplications()
     await sut.loadSavedStateForSelectedApplication()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     #expect(!sut.isSelectedApplicationSaved)
   }
@@ -67,25 +67,26 @@ struct MapViewModelSaveTests {
   func toggleSave_unsavedApp_callsSave() async {
     let (sut, spy) = makeSUT()
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     await sut.toggleSaveSelectedApplication()
 
     #expect(spy.saveCalls.count == 1)
-    #expect(spy.saveCalls[0].id == PlanningApplicationId("APP-001"))
+    #expect(spy.saveCalls[0].id == PlanningApplication.pendingReview.id)
     #expect(sut.isSelectedApplicationSaved)
   }
 
   @Test("toggleSaveSelectedApplication removes saved application")
   func toggleSave_savedApp_callsRemove() async {
-    let (sut, spy) = makeSUT(savedApplicationUids: ["APP-001"])
+    let pendingId = PlanningApplication.pendingReview.id
+    let (sut, spy) = makeSUT(savedApplicationUids: [pendingId.value])
     await sut.loadApplications()
     await sut.loadSavedStateForSelectedApplication()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(pendingId)
 
     await sut.toggleSaveSelectedApplication()
 
-    #expect(spy.removeCalls == ["APP-001"])
+    #expect(spy.removeCalls == [pendingId.value])
     #expect(!sut.isSelectedApplicationSaved)
   }
 
@@ -105,7 +106,7 @@ struct MapViewModelSaveTests {
     let (sut, spy) = makeSUT()
     spy.saveResult = .failure(DomainError.networkUnavailable)
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     await sut.toggleSaveSelectedApplication()
 
@@ -114,11 +115,11 @@ struct MapViewModelSaveTests {
 
   @Test("toggleSaveSelectedApplication preserves state on remove failure")
   func toggleSave_removeFailure_preservesState() async {
-    let (sut, spy) = makeSUT(savedApplicationUids: ["APP-001"])
+    let (sut, spy) = makeSUT(savedApplicationUids: [PlanningApplication.pendingReview.id.value])
     spy.removeResult = .failure(DomainError.networkUnavailable)
     await sut.loadApplications()
     await sut.loadSavedStateForSelectedApplication()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     await sut.toggleSaveSelectedApplication()
 
@@ -131,13 +132,13 @@ struct MapViewModelSaveTests {
   func loadSavedState_populatesUids() async {
     let (sut, spy) = makeSUT()
     spy.loadAllResult = .success([
-      SavedApplication(applicationUid: "APP-001", savedAt: Date()),
+      SavedApplication(applicationUid: PlanningApplication.pendingReview.id.value, savedAt: Date()),
     ])
     await sut.loadApplications()
 
     await sut.loadSavedStateForSelectedApplication()
 
-    #expect(sut.savedApplicationUids.contains("APP-001"))
+    #expect(sut.savedApplicationUids.contains(PlanningApplication.pendingReview.id.value))
   }
 
   @Test("loadSavedStateForSelectedApplication is no-op without repository")
@@ -181,7 +182,7 @@ struct MapViewModelSaveTests {
       watchZoneRepository: zoneSpy
     )
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplicationId("APP-001"))
+    sut.selectApplication(PlanningApplication.pendingReview.id)
 
     await sut.toggleSaveSelectedApplication()
 

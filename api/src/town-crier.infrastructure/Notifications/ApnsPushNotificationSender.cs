@@ -97,6 +97,7 @@ public sealed class ApnsPushNotificationSender : IPushNotificationSender
                 Badge: totalUnreadCount),
             NotificationId: notification.Id,
             ApplicationRef: notification.ApplicationName,
+            AuthorityId: notification.AuthorityId,
             CreatedAt: notification.CreatedAt);
     }
 

@@ -46,7 +46,7 @@ struct PlanningApplicationTests {
       createdAt: Date(timeIntervalSince1970: 1_712_000_000)
     )
     let application = PlanningApplication(
-      id: PlanningApplicationId("APP-001"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-001"),
       reference: ApplicationReference("2026/0042"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .undecided,

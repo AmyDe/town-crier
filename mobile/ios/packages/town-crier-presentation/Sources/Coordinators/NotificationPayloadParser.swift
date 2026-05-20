@@ -11,14 +11,21 @@ import TownCrierDomain
 /// mapping; this parser owns the payload schema and sentence shape.
 public enum NotificationPayloadParser {
   public static func parseDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
-    // The APNs payload uses `applicationRef` per docs/specs/apns-push-sender.md
-    // and api/src/town-crier.infrastructure/Notifications/ApnsAlertPayload.cs.
+    // Both `applicationRef` (PlanIt case reference) and `authorityId` (Int) are
+    // required to build a `PlanningApplicationId` struct and perform a partitioned
+    // Cosmos point read on the server (tc-dzwo.1). A payload missing either field
+    // falls back to nil — the delegate skips the deep link rather than triggering
+    // the cross-partition scan that caused "Server Error" on push-tap.
     // Digest pushes have no applicationRef — those return nil here and the
     // delegate must still complete on MainActor (see NotificationDelegate).
-    guard let applicationRef = userInfo["applicationRef"] as? String else {
+    guard let applicationRef = userInfo["applicationRef"] as? String,
+      let authorityId = userInfo["authorityId"] as? Int
+    else {
       return nil
     }
-    return .applicationDetail(PlanningApplicationId(applicationRef))
+    return .applicationDetail(
+      PlanningApplicationId(authority: String(authorityId), name: applicationRef)
+    )
   }
 
   /// Renders the user-facing body string for a decision-update push payload.

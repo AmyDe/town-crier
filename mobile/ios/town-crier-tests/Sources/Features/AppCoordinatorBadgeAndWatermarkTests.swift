@@ -158,6 +158,7 @@ struct AppCoordinatorBadgeAndWatermarkTests {
     )
     let userInfo: [AnyHashable: Any] = [
       "applicationRef": "APP-002",
+      "authorityId": 42,
       "createdAt": "2026-05-04T08:11:57Z",
     ]
 
@@ -166,7 +167,7 @@ struct AppCoordinatorBadgeAndWatermarkTests {
     await sut.waitForPendingDetailLoad()
     await sut.waitForPendingWatermarkAdvance()
 
-    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-002")])
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-002")])
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime]
     #expect(stateRepo.advanceCalls == [formatter.date(from: "2026-05-04T08:11:57Z")])
@@ -190,14 +191,14 @@ struct AppCoordinatorBadgeAndWatermarkTests {
       versionConfigService: SpyVersionConfigService(),
       notificationStateRepository: stateRepo
     )
-    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-003"]
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-003", "authorityId": 42]
 
     sut.handlePushTap(userInfo: userInfo)
 
     await sut.waitForPendingDetailLoad()
     await sut.waitForPendingWatermarkAdvance()
 
-    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId("APP-003")])
+    #expect(planningSpy.fetchApplicationCalls == [PlanningApplicationId(authority: "42", name: "APP-003")])
     #expect(stateRepo.advanceCalls.isEmpty)
   }
 

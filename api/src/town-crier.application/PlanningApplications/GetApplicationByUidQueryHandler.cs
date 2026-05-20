@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using TownCrier.Application.PlanIt;
 using TownCrier.Application.SavedApplications;
 using TownCrier.Domain.PlanningApplications;
 using TownCrier.Domain.SavedApplications;
@@ -16,26 +15,22 @@ public sealed class GetApplicationByUidQueryHandler
             "Refresh-on-tap failed for user {UserId}, uid {Uid}.");
 
     private readonly IPlanningApplicationRepository repository;
-    private readonly IPlanItClient planItClient;
     private readonly ISavedApplicationRepository savedApplicationRepository;
     private readonly ILogger<GetApplicationByUidQueryHandler> logger;
 
     public GetApplicationByUidQueryHandler(
         IPlanningApplicationRepository repository,
-        IPlanItClient planItClient,
         ISavedApplicationRepository savedApplicationRepository)
-        : this(repository, planItClient, savedApplicationRepository, NullLogger<GetApplicationByUidQueryHandler>.Instance)
+        : this(repository, savedApplicationRepository, NullLogger<GetApplicationByUidQueryHandler>.Instance)
     {
     }
 
     public GetApplicationByUidQueryHandler(
         IPlanningApplicationRepository repository,
-        IPlanItClient planItClient,
         ISavedApplicationRepository savedApplicationRepository,
         ILogger<GetApplicationByUidQueryHandler> logger)
     {
         this.repository = repository;
-        this.planItClient = planItClient;
         this.savedApplicationRepository = savedApplicationRepository;
         this.logger = logger;
     }
@@ -44,20 +39,13 @@ public sealed class GetApplicationByUidQueryHandler
     {
         ArgumentNullException.ThrowIfNull(query);
 
+        // Cross-partition uid scan retained for background/worker paths.
+        // User-facing push-tap deep links use GetApplicationByAuthorityAndNameQueryHandler
+        // (partitioned point read, ~1 RU, no PlanIt fallback). GH#395 Invariant 1.
         var application = await this.repository.GetByUidAsync(query.Uid, ct).ConfigureAwait(false);
         if (application is null)
         {
-            // Cosmos miss: fall back to PlanIt's per-application endpoint. This
-            // closes the gap when Cosmos has not yet ingested an application that
-            // a saved-list snapshot or a deep link references.
-            var fetched = await this.planItClient.GetByUidAsync(query.Uid, ct).ConfigureAwait(false);
-            if (fetched is null)
-            {
-                return null;
-            }
-
-            await this.repository.UpsertAsync(fetched, ct).ConfigureAwait(false);
-            application = fetched;
+            return null;
         }
 
         // Refresh-on-tap: if the requesting user has this application saved,

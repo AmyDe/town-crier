@@ -6,4 +6,5 @@ internal sealed record ApnsAlertPayload(
     [property: JsonPropertyName("aps")] ApnsAlertAps Aps,
     [property: JsonPropertyName("notificationId")] string NotificationId,
     [property: JsonPropertyName("applicationRef")] string ApplicationRef,
+    [property: JsonPropertyName("authorityId")] int AuthorityId,
     [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt);

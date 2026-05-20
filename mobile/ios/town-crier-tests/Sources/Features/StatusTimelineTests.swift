@@ -16,7 +16,7 @@ struct StatusTimelineTests {
       status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000))
     let decided = StatusEvent(status: .permitted, date: Date(timeIntervalSince1970: 1_700_100_000))
     let app = PlanningApplication(
-      id: PlanningApplicationId("APP-010"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-010"),
       reference: ApplicationReference("2026/0300"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .permitted,
@@ -36,7 +36,7 @@ struct StatusTimelineTests {
       status: .undecided, date: Date(timeIntervalSince1970: 1_700_000_000))
     let decided = StatusEvent(status: .permitted, date: Date(timeIntervalSince1970: 1_700_100_000))
     let app = PlanningApplication(
-      id: PlanningApplicationId("APP-010"),
+      id: PlanningApplicationId(authority: "CAM", name: "APP-010"),
       reference: ApplicationReference("2026/0300"),
       authority: LocalAuthority(code: "CAM", name: "Cambridge"),
       status: .permitted,
