@@ -16,10 +16,21 @@ internal static class SavedApplicationEndpoints
             CancellationToken ct) =>
         {
             var userId = user.FindFirstValue("sub")!;
-            if (request is null || string.IsNullOrWhiteSpace(request.Uid) || request.Uid != applicationUid)
+
+            // The {applicationUid} path segment is no longer authoritative: the saved
+            // record's identity is the canonical {areaId}/{name} uid the server derives
+            // from the body (see SaveApplicationCommandHandler / bd tc-o88i). We no
+            // longer reject a body/path uid mismatch — a stale-format client whose path
+            // uid differs from its body uid must still be able to save idempotently.
+            // We only validate that the body carries the fields needed to build the
+            // canonical key and the master planning-application record.
+            _ = applicationUid;
+            if (request is null
+                || string.IsNullOrWhiteSpace(request.Uid)
+                || string.IsNullOrWhiteSpace(request.Name))
             {
                 return Results.Json(
-                    new ApiErrorResponse("Body uid must match path uid."),
+                    new ApiErrorResponse("Body must include a non-empty uid and name."),
                     AppJsonSerializerContext.Default.ApiErrorResponse,
                     statusCode: 400);
             }
