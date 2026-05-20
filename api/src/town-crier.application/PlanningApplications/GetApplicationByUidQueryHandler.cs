@@ -87,7 +87,12 @@ public sealed class GetApplicationByUidQueryHandler
     {
         try
         {
-            var hasSaved = await this.savedApplicationRepository.ExistsAsync(userId, application.Uid, ct).ConfigureAwait(false);
+            // Saved rows are keyed on the canonical {areaId}/{name} uid, not the
+            // master record's raw Uid field. Aligning the lookup on CanonicalUid is
+            // what makes snapshot healing actually fire for stale-format saves
+            // (otherwise ExistsAsync silently misses the row — bd tc-o88i).
+            var canonicalUid = application.CanonicalUid;
+            var hasSaved = await this.savedApplicationRepository.ExistsAsync(userId, canonicalUid, ct).ConfigureAwait(false);
             if (!hasSaved)
             {
                 return;
@@ -98,7 +103,7 @@ public sealed class GetApplicationByUidQueryHandler
             // fresh save with the current time — better stale than to bubble.
             var rows = await this.savedApplicationRepository.GetByUserIdAsync(userId, ct).ConfigureAwait(false);
             var existing = rows.FirstOrDefault(r =>
-                string.Equals(r.ApplicationUid, application.Uid, StringComparison.Ordinal));
+                string.Equals(r.ApplicationUid, canonicalUid, StringComparison.Ordinal));
             var savedAt = existing?.SavedAt ?? DateTimeOffset.UtcNow;
 
             var refreshed = SavedApplication.Create(userId, application, savedAt);
