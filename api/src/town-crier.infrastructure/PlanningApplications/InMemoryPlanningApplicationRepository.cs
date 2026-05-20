@@ -15,7 +15,7 @@ public sealed class InMemoryPlanningApplicationRepository : IPlanningApplication
         return Task.CompletedTask;
     }
 
-    public Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    public Task<PlanningApplication?> GetByUidCrossPartitionAsync(string uid, CancellationToken ct)
     {
         var app = this.store.Values.FirstOrDefault(a => a.Uid == uid);
         return Task.FromResult(app);

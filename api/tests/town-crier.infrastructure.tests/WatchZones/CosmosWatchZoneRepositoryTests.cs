@@ -86,7 +86,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         await repo.SaveAsync(zone, CancellationToken.None);
 
         // Act — fake returns all documents in collection (no SQL parsing)
-        var result = await repo.FindZonesContainingAsync(51.5, -0.1, CancellationToken.None);
+        var result = await repo.FindZonesContainingCrossPartitionAsync(51.5, -0.1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsGreaterThanOrEqualTo(1);
@@ -100,7 +100,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var repo = new CosmosWatchZoneRepository(client);
 
         // Act — empty store, verifies wiring compiles and runs
-        var result = await repo.GetDistinctAuthorityIdsAsync(CancellationToken.None);
+        var result = await repo.GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);
@@ -115,7 +115,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var repo = new CosmosWatchZoneRepository(client);
 
         // Act
-        var result = await repo.GetDistinctAuthorityIdsAsync(CancellationToken.None);
+        var result = await repo.GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken.None);
 
         // Assert — duplicates from overlapping partition ranges must be removed
         await Assert.That(result.Count).IsEqualTo(3);
@@ -132,7 +132,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var repo = new CosmosWatchZoneRepository(client);
 
         // Act — empty store, verifies wiring compiles and runs
-        var result = await repo.GetZoneCountsByAuthorityAsync(CancellationToken.None);
+        var result = await repo.GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);
@@ -156,7 +156,7 @@ public sealed class CosmosWatchZoneRepositoryTests
         var repo = new CosmosWatchZoneRepository(client);
 
         // Act
-        var result = await repo.GetZoneCountsByAuthorityAsync(CancellationToken.None);
+        var result = await repo.GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken.None);
 
         // Assert — partial aggregates for same authority must be summed
         await Assert.That(result.Count).IsEqualTo(2);

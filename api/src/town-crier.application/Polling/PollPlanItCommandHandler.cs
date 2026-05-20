@@ -211,7 +211,7 @@ public sealed partial class PollPlanItCommandHandler : IPollPlanItCommandHandler
 
                         if (application.Latitude.HasValue && application.Longitude.HasValue)
                         {
-                            var matchingZones = await this.watchZoneRepository.FindZonesContainingAsync(
+                            var matchingZones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(
                                 application.Latitude.Value, application.Longitude.Value, ct).ConfigureAwait(false);
 
                             foreach (var zone in matchingZones)

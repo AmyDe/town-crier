@@ -34,7 +34,7 @@ internal sealed class FakeOfferCodeRepository : IOfferCodeRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct)
+    public Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdCrossPartitionAsync(string userId, CancellationToken ct)
     {
         var codes = this.store.Values
             .Where(c => c.RedeemedByUserId == userId)

@@ -33,7 +33,7 @@ public sealed class InMemoryOfferCodeRepository : IOfferCodeRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct)
+    public Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdCrossPartitionAsync(string userId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 

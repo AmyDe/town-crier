@@ -24,5 +24,8 @@ public interface ISavedApplicationRepository
     /// <param name="authorityId">The PlanIt areaId for the council that issued the uid.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The userIds who have saved the given application within the specified authority.</returns>
-    Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct);
+    // Cross-partition fan-out — worker path only (polling decision-event dispatch).
+    // Saved-app docs are partitioned by userId; finding all savers of an application requires
+    // scanning all partitions. Low-frequency, cost accepted for background processing.
+    Task<IReadOnlyList<string>> GetUserIdsForApplicationCrossPartitionAsync(string applicationUid, int authorityId, CancellationToken ct);
 }

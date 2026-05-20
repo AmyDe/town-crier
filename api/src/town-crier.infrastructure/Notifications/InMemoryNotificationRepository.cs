@@ -75,7 +75,7 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         return Task.FromResult<IReadOnlyList<Notification>>(notifications);
     }
 
-    public Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsAsync(CancellationToken ct)
+    public Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken ct)
     {
         var userIds = this.store
             .Where(n => !n.EmailSent)

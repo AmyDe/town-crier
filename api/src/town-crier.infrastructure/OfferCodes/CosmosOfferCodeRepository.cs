@@ -47,7 +47,7 @@ public sealed class CosmosOfferCodeRepository : IOfferCodeRepository
     // Cross-partition query: offer codes are partitioned by the code itself, so a lookup
     // by redeemer requires scanning all partitions. Acceptable here because data export
     // is a low-frequency operation per user.
-    public async Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct)
+    public async Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdCrossPartitionAsync(string userId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
 

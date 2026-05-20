@@ -105,7 +105,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
         }
     }
 
-    public async Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
+    public async Task<IReadOnlyCollection<WatchZone>> FindZonesContainingCrossPartitionAsync(
         double latitude, double longitude, CancellationToken ct)
     {
         const string sql =
@@ -123,7 +123,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
+    public async Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken ct)
     {
         var results = await this.client.QueryAsync(
             CosmosContainerNames.WatchZones,
@@ -136,7 +136,7 @@ public sealed class CosmosWatchZoneRepository : IWatchZoneRepository
         return results.Distinct().ToList();
     }
 
-    public async Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
+    public async Task<Dictionary<int, int>> GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken ct)
     {
         var items = await this.client.QueryAsync(
             CosmosContainerNames.WatchZones,

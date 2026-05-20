@@ -15,7 +15,7 @@ public sealed class ListUsersQueryHandler
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var page = await this.repository.ListAsync(
+        var page = await this.repository.ListCrossPartitionAsync(
             query.SearchTerm,
             query.PageSize,
             query.ContinuationToken,

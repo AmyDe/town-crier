@@ -31,7 +31,7 @@ public sealed class DormantAccountCleanupCommandHandler
         ArgumentNullException.ThrowIfNull(command);
 
         var cutoff = command.Now.AddMonths(-RetentionMonths);
-        var dormant = await this.repository.GetDormantAsync(cutoff, ct).ConfigureAwait(false);
+        var dormant = await this.repository.GetDormantCrossPartitionAsync(cutoff, ct).ConfigureAwait(false);
 
         var deleted = 0;
         foreach (var profile in dormant)

@@ -11,5 +11,8 @@ public interface IOfferCodeRepository
 
     Task SaveAsync(OfferCode code, CancellationToken ct);
 
-    Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdAsync(string userId, CancellationToken ct);
+    // Cross-partition — offer codes are partitioned by code; finding by redeemer requires
+    // scanning all partitions. Used by ExportUserDataQueryHandler (GDPR export, user-initiated
+    // but explicitly accepted in GH#395 as low-frequency per-user data export).
+    Task<IReadOnlyList<OfferCode>> GetRedeemedByUserIdCrossPartitionAsync(string userId, CancellationToken ct);
 }

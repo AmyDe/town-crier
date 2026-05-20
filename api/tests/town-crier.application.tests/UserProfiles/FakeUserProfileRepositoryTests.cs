@@ -14,7 +14,7 @@ public sealed class FakeUserProfileRepositoryTests
         await repository.SaveAsync(profile, CancellationToken.None);
 
         // Act
-        var result = await repository.GetByEmailAsync("test@example.com", CancellationToken.None);
+        var result = await repository.GetByEmailCrossPartitionAsync("test@example.com", CancellationToken.None);
 
         // Assert
         await Assert.That(result).IsNotNull();
@@ -28,7 +28,7 @@ public sealed class FakeUserProfileRepositoryTests
         var repository = new FakeUserProfileRepository();
 
         // Act
-        var result = await repository.GetByEmailAsync("nobody@example.com", CancellationToken.None);
+        var result = await repository.GetByEmailCrossPartitionAsync("nobody@example.com", CancellationToken.None);
 
         // Assert
         await Assert.That(result).IsNull();

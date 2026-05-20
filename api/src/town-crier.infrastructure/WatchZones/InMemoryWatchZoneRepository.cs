@@ -57,7 +57,7 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
+    public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingCrossPartitionAsync(
         double latitude, double longitude, CancellationToken ct)
     {
         var point = new Coordinates(latitude, longitude);
@@ -67,7 +67,7 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<WatchZone>>(matching);
     }
 
-    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
+    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken ct)
     {
         var counts = this.zones.Values
             .GroupBy(z => z.AuthorityId)
@@ -75,7 +75,7 @@ public sealed class InMemoryWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult(counts);
     }
 
-    public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
+    public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken ct)
     {
         var ids = this.zones.Values
             .Select(z => z.AuthorityId)

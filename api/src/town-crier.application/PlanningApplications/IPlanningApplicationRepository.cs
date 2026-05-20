@@ -6,7 +6,9 @@ public interface IPlanningApplicationRepository
 {
     Task UpsertAsync(PlanningApplication application, CancellationToken ct);
 
-    Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct);
+    // Cross-partition fan-out — worker paths only (polling upsert, background lookup).
+    // User-facing handlers must use GetByAuthorityAndNameAsync (point read, ~1 RU).
+    Task<PlanningApplication?> GetByUidCrossPartitionAsync(string uid, CancellationToken ct);
 
     // Partition-scoped lookup used on the poll-cycle hot path where the authority is
     // already known. Avoids a cross-partition fan-out by passing authorityCode as the

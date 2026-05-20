@@ -13,6 +13,6 @@ public sealed class WatchZoneActiveAuthorityProvider : IWatchZoneActiveAuthority
 
     public async Task<IReadOnlyCollection<int>> GetActiveAuthorityIdsAsync(CancellationToken ct)
     {
-        return await this.watchZoneRepository.GetDistinctAuthorityIdsAsync(ct).ConfigureAwait(false);
+        return await this.watchZoneRepository.GetDistinctAuthorityIdsCrossPartitionAsync(ct).ConfigureAwait(false);
     }
 }

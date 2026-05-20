@@ -124,7 +124,7 @@ public sealed class CosmosNotificationRepository : INotificationRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken ct)
     {
         var userIds = await this.client.QueryAsync(
             CosmosContainerNames.Notifications,

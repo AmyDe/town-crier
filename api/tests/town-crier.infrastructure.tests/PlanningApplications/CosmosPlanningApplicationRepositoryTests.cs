@@ -18,7 +18,7 @@ public sealed class CosmosPlanningApplicationRepositoryTests
         await repo.UpsertAsync(app, CancellationToken.None);
 
         // Assert
-        var result = await repo.GetByUidAsync("uid-1", CancellationToken.None);
+        var result = await repo.GetByUidCrossPartitionAsync("uid-1", CancellationToken.None);
         await Assert.That(result).IsNotNull();
         await Assert.That(result!.Uid).IsEqualTo("uid-1");
     }
@@ -31,7 +31,7 @@ public sealed class CosmosPlanningApplicationRepositoryTests
         var repo = new CosmosPlanningApplicationRepository(client);
 
         // Act
-        var result = await repo.GetByUidAsync("nonexistent", CancellationToken.None);
+        var result = await repo.GetByUidCrossPartitionAsync("nonexistent", CancellationToken.None);
 
         // Assert
         await Assert.That(result).IsNull();

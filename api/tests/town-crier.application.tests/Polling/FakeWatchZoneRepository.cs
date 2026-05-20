@@ -56,7 +56,7 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct)
+    public Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken ct)
     {
         var authorityIds = this.zones
             .Select(z => z.AuthorityId)
@@ -66,7 +66,7 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult<IReadOnlyCollection<int>>(authorityIds);
     }
 
-    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct)
+    public Task<Dictionary<int, int>> GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken ct)
     {
         var counts = this.zones
             .GroupBy(z => z.AuthorityId)
@@ -74,7 +74,7 @@ internal sealed class FakeWatchZoneRepository : IWatchZoneRepository
         return Task.FromResult(counts);
     }
 
-    public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
+    public Task<IReadOnlyCollection<WatchZone>> FindZonesContainingCrossPartitionAsync(
         double latitude, double longitude, CancellationToken ct)
     {
         this.FindZonesContainingCallCount++;
