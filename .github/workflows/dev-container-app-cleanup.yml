@@ -1,4 +1,4 @@
-# Deactivates non-latest active Container App revisions in rg-town-crier-dev.
+# Deactivates non-newest active Container App revisions in rg-town-crier-dev.
 #
 # Background: dev's API Container App runs in Multiple revisions mode so that
 # pr-gate.yml can deploy a PR-suffixed staging revision with traffic-weight 0
@@ -10,8 +10,15 @@
 #
 # This workflow self-discovers any Container App in the dev resource group
 # that runs in Multiple mode and deactivates every active revision except
-# the one Azure considers latest. Single-mode apps are skipped — Azure
+# the most recently created active one. Single-mode apps are skipped — Azure
 # already auto-deactivates their stale revisions.
+#
+# "Keep newest active" rather than "keep latestRevisionName": Azure's
+# latestRevisionName on the container app can point to a now-inactive PR
+# staging revision (e.g. ca-town-crier-api-dev--pr5b26a9b), making the
+# latestRevisionName approach silently keep nothing useful. Anchoring on the
+# newest active revision is correct regardless of what Azure considers
+# "latest" at the app level.
 #
 # Requires secrets:
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
@@ -110,11 +117,27 @@ jobs:
             [ -z "${APP}" ] && continue
             echo "::group::${APP}"
 
-            # Revisions whose active flag is true but which are not the latest.
+            # Identify the most recently created active revision — this is the
+            # one to keep. We do NOT use az containerapp show's
+            # properties.latestRevisionName because that field lives on the
+            # container app, not on each revision, and can point to a
+            # now-inactive PR staging revision.
+            #
+            # Field note: revision list returns objects where 'name' is a
+            # TOP-LEVEL field and timestamps/flags live under 'properties'.
+            KEEP=$(az containerapp revision list \
+              --resource-group "${RESOURCE_GROUP}" \
+              --name "${APP}" \
+              --query "sort_by([?properties.active], &properties.createdTime)[-1].name" \
+              -o tsv)
+
+            echo "Keeping newest active revision: ${KEEP}"
+
+            # All other active revisions are stale.
             STALE=$(az containerapp revision list \
               --resource-group "${RESOURCE_GROUP}" \
               --name "${APP}" \
-              --query "[?properties.active && properties.name!=properties.latestRevisionName].name" \
+              --query "[?properties.active && name!='${KEEP}'].name" \
               -o tsv)
 
             count=0
