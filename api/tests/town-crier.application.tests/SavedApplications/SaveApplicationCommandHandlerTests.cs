@@ -27,10 +27,11 @@ public sealed class SaveApplicationCommandHandlerTests
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
 
-        // Assert — saved record persisted.
+        // Assert — saved record persisted. ApplicationUid is the canonical
+        // {areaId}/{name} key, not the client-supplied raw uid (bd tc-o88i).
         var saved = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
         await Assert.That(saved).HasCount().EqualTo(1);
-        await Assert.That(saved[0].ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(saved[0].ApplicationUid).IsEqualTo("42/Camden/CAM/24/0042/FUL");
         await Assert.That(saved[0].SavedAt).IsEqualTo(new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero));
 
         // Assert — application was also upserted to the planning repository.

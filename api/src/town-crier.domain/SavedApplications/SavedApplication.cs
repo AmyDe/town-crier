@@ -47,7 +47,13 @@ public sealed class SavedApplication
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(application);
-        return new SavedApplication(userId, application.Uid, application.AreaId, now, application);
+
+        // Key on the canonical {areaId}/{name} uid rather than the raw PlanIt uid
+        // string. The raw uid is client-supplied on the save path and may arrive in a
+        // stale format; the canonical uid is a deterministic server-side function of
+        // (AreaId, Name), so every re-save of the same application lands on the same
+        // {userId}:{applicationUid} Cosmos doc id and the upsert is idempotent (bd tc-o88i).
+        return new SavedApplication(userId, application.CanonicalUid, application.AreaId, now, application);
     }
 
     /// <summary>
@@ -55,16 +61,18 @@ public sealed class SavedApplication
     /// Used by the refresh-on-tap path (see bd tc-udby) so that opening an item silently
     /// updates its saved-list snapshot from the master applications container.
     /// </summary>
-    /// <param name="freshApplication">The latest application snapshot. Must share this saved record's uid.</param>
+    /// <param name="freshApplication">The latest application snapshot. Its canonical uid must match this saved record's uid.</param>
     /// <returns>A new instance with the same identity but the fresh snapshot.</returns>
     public SavedApplication WithFreshSnapshot(PlanningApplication freshApplication)
     {
         ArgumentNullException.ThrowIfNull(freshApplication);
 
-        if (!string.Equals(freshApplication.Uid, this.ApplicationUid, StringComparison.Ordinal))
+        // Compare on the canonical {areaId}/{name} uid, the same key Create stamps onto
+        // ApplicationUid. The raw Uid field is not the saved-record identity (bd tc-o88i).
+        if (!string.Equals(freshApplication.CanonicalUid, this.ApplicationUid, StringComparison.Ordinal))
         {
             throw new ArgumentException(
-                $"Snapshot uid '{freshApplication.Uid}' does not match saved record uid '{this.ApplicationUid}'.",
+                $"Snapshot canonical uid '{freshApplication.CanonicalUid}' does not match saved record uid '{this.ApplicationUid}'.",
                 nameof(freshApplication));
         }
 

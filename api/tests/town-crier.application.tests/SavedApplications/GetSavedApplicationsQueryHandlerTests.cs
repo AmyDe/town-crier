@@ -49,12 +49,13 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         // Act
         var result = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert — both items projected from the embedded snapshot
+        // Assert — both items projected from the embedded snapshot. ApplicationUid
+        // is the canonical {areaId}/{name} key, not the raw PlanIt uid (bd tc-o88i).
         await Assert.That(result).HasCount().EqualTo(2);
-        await Assert.That(result[0].ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(result[0].ApplicationUid).IsEqualTo("1/APP/2026/001");
         await Assert.That(result[0].Application.Name).IsEqualTo("APP/2026/001");
         await Assert.That(result[0].Application.AreaName).IsEqualTo("Wiltshire");
-        await Assert.That(result[1].ApplicationUid).IsEqualTo("planit-uid-def");
+        await Assert.That(result[1].ApplicationUid).IsEqualTo("1/APP/2026/002");
         await Assert.That(result[1].Application.Name).IsEqualTo("APP/2026/002");
     }
 
@@ -66,7 +67,8 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         var planningRepository = new FailIfCalledPlanningApplicationRepository();
         var savedAt = DateTimeOffset.UtcNow;
 
-        var app1 = new PlanningApplicationBuilder().WithUid("planit-uid-abc").Build();
+        var app1 = new PlanningApplicationBuilder()
+            .WithUid("planit-uid-abc").WithAreaId(7).WithName("APP/own").Build();
         var app2 = new PlanningApplicationBuilder().WithUid("planit-uid-def").Build();
 
         await savedRepository.SaveAsync(SavedApplication.Create("auth0|user-1", app1, savedAt), CancellationToken.None);
@@ -78,9 +80,9 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         // Act
         var result = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert
+        // Assert — ApplicationUid is the canonical {areaId}/{name} key (bd tc-o88i).
         await Assert.That(result).HasCount().EqualTo(1);
-        await Assert.That(result[0].ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(result[0].ApplicationUid).IsEqualTo("7/APP/own");
     }
 
     [Test]
@@ -153,8 +155,8 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         // Act
         var result = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert
+        // Assert — the present row survives; ApplicationUid is the canonical key.
         await Assert.That(result).HasCount().EqualTo(1);
-        await Assert.That(result[0].ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(result[0].ApplicationUid).IsEqualTo("1/APP/abc");
     }
 }
