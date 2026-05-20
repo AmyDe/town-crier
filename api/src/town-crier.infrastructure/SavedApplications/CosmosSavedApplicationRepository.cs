@@ -87,7 +87,7 @@ public sealed class CosmosSavedApplicationRepository : ISavedApplicationReposito
         return document is not null;
     }
 
-    public async Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> GetUserIdsForApplicationCrossPartitionAsync(string applicationUid, int authorityId, CancellationToken ct)
     {
         // Cross-partition by design — saved-app docs are partitioned by userId,
         // but a polled decision-event needs every userId who saved this

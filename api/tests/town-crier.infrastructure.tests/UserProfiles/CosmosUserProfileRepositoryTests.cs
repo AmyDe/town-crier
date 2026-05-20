@@ -99,7 +99,7 @@ public sealed class CosmosUserProfileRepositoryTests
         await repo.SaveAsync(profile2, CancellationToken.None);
 
         // Act — both default to Free tier
-        var result = await repo.GetAllByTierAsync(SubscriptionTier.Free, CancellationToken.None);
+        var result = await repo.GetAllByTierCrossPartitionAsync(SubscriptionTier.Free, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsGreaterThanOrEqualTo(2);

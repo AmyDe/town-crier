@@ -21,7 +21,7 @@ public sealed class GrantSubscriptionCommandHandler
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var profile = await this.repository.GetByEmailAsync(command.Email, ct).ConfigureAwait(false)
+        var profile = await this.repository.GetByEmailCrossPartitionAsync(command.Email, ct).ConfigureAwait(false)
             ?? throw new UserProfileNotFoundException($"No user profile found for email '{command.Email}'.");
 
         if (command.Tier == SubscriptionTier.Free)

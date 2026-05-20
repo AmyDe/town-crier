@@ -58,7 +58,8 @@ public interface INotificationRepository
 
     Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct);
 
-    Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsAsync(CancellationToken ct);
+    // Cross-partition — worker path only (GenerateHourlyDigestsCommandHandler).
+    Task<IReadOnlyList<string>> GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken ct);
 
     Task SaveAsync(Notification notification, CancellationToken ct);
 

@@ -226,16 +226,16 @@ public sealed class ServerRequestTracingTests
         public Task<UserProfile?> GetByUserIdAsync(string userId, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct) =>
+        public Task<UserProfile?> GetByEmailCrossPartitionAsync(string email, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct) =>
+        public Task<IReadOnlyList<UserProfile>> GetAllByTierCrossPartitionAsync(SubscriptionTier tier, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct) =>
+        public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayCrossPartitionAsync(DayOfWeek digestDay, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct) =>
+        public Task<UserProfile?> GetByOriginalTransactionIdCrossPartitionAsync(string originalTransactionId, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
         public Task SaveAsync(UserProfile profile, CancellationToken ct) =>
@@ -244,11 +244,11 @@ public sealed class ServerRequestTracingTests
         public Task DeleteAsync(string userId, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<UserProfilePage> ListAsync(
+        public Task<UserProfilePage> ListCrossPartitionAsync(
             string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
 
-        public Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct) =>
+        public Task<IReadOnlyList<UserProfile>> GetDormantCrossPartitionAsync(DateTimeOffset cutoff, CancellationToken ct) =>
             throw new InvalidOperationException("Simulated repository failure");
     }
 }

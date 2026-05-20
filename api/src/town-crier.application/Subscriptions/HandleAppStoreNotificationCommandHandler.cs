@@ -52,7 +52,7 @@ public sealed class HandleAppStoreNotificationCommandHandler
         var transaction = this.transactionDecoder.Decode(txnJson);
 
         // Look up user by original transaction ID
-        var profile = await this.repository.GetByOriginalTransactionIdAsync(
+        var profile = await this.repository.GetByOriginalTransactionIdCrossPartitionAsync(
             transaction.OriginalTransactionId, ct).ConfigureAwait(false);
 
         if (profile is not null)

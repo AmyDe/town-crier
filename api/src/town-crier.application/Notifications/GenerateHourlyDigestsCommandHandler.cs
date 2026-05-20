@@ -26,7 +26,7 @@ public sealed class GenerateHourlyDigestsCommandHandler
 
     public async Task HandleAsync(GenerateHourlyDigestsCommand command, CancellationToken ct)
     {
-        var userIds = await this.notificationRepository.GetUserIdsWithUnsentEmailsAsync(ct)
+        var userIds = await this.notificationRepository.GetUserIdsWithUnsentEmailsCrossPartitionAsync(ct)
             .ConfigureAwait(false);
 
         foreach (var userId in userIds)

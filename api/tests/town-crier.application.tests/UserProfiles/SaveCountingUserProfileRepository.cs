@@ -21,39 +21,39 @@ internal sealed class SaveCountingUserProfileRepository : IUserProfileRepository
         return Task.FromResult(profile);
     }
 
-    public Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct)
+    public Task<UserProfile?> GetByEmailCrossPartitionAsync(string email, CancellationToken ct)
     {
         var profile = this.store.Values
             .FirstOrDefault(p => string.Equals(p.Email, email, StringComparison.OrdinalIgnoreCase));
         return Task.FromResult(profile);
     }
 
-    public Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
+    public Task<IReadOnlyList<UserProfile>> GetAllByTierCrossPartitionAsync(SubscriptionTier tier, CancellationToken ct)
     {
         IReadOnlyList<UserProfile> profiles = this.store.Values.Where(p => p.Tier == tier).ToList();
         return Task.FromResult(profiles);
     }
 
-    public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct)
+    public Task<IReadOnlyList<UserProfile>> GetAllByDigestDayCrossPartitionAsync(DayOfWeek digestDay, CancellationToken ct)
     {
         IReadOnlyList<UserProfile> profiles =
             this.store.Values.Where(p => p.NotificationPreferences.DigestDay == digestDay).ToList();
         return Task.FromResult(profiles);
     }
 
-    public Task<UserProfile?> GetByOriginalTransactionIdAsync(string originalTransactionId, CancellationToken ct)
+    public Task<UserProfile?> GetByOriginalTransactionIdCrossPartitionAsync(string originalTransactionId, CancellationToken ct)
     {
         var profile = this.store.Values.FirstOrDefault(p => p.OriginalTransactionId == originalTransactionId);
         return Task.FromResult(profile);
     }
 
-    public Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct)
+    public Task<IReadOnlyList<UserProfile>> GetDormantCrossPartitionAsync(DateTimeOffset cutoff, CancellationToken ct)
     {
         IReadOnlyList<UserProfile> profiles = this.store.Values.Where(p => p.LastActiveAt < cutoff).ToList();
         return Task.FromResult(profiles);
     }
 
-    public Task<UserProfilePage> ListAsync(
+    public Task<UserProfilePage> ListCrossPartitionAsync(
         string? emailSearch, int pageSize, string? continuationToken, CancellationToken ct)
     {
         IReadOnlyList<UserProfile> profiles = this.store.Values.ToList();

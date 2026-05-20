@@ -89,7 +89,7 @@ public sealed class CosmosSavedApplicationRepositoryTests
         var repo = new CosmosSavedApplicationRepository(client);
 
         // Act -- empty store, verifies wiring
-        var result = await repo.GetUserIdsForApplicationAsync("nonexistent", authorityId: 1, CancellationToken.None);
+        var result = await repo.GetUserIdsForApplicationCrossPartitionAsync("nonexistent", authorityId: 1, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Count).IsEqualTo(0);

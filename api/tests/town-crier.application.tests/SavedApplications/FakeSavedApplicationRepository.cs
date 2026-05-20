@@ -50,7 +50,7 @@ internal sealed class FakeSavedApplicationRepository : ISavedApplicationReposito
         return Task.FromResult(exists);
     }
 
-    public Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct)
+    public Task<IReadOnlyList<string>> GetUserIdsForApplicationCrossPartitionAsync(string applicationUid, int authorityId, CancellationToken ct)
     {
         var userIds = this.store
             .Where(s => s.ApplicationUid == applicationUid && s.AuthorityId == authorityId)

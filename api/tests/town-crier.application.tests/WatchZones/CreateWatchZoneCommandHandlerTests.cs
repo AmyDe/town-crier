@@ -30,7 +30,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        var zones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(51.5074, -0.1278, CancellationToken.None);
         await Assert.That(zones).HasCount().EqualTo(1);
         await Assert.That(zones.First().UserId).IsEqualTo("user-1");
         await Assert.That(zones.First().AuthorityId).IsEqualTo(42);
@@ -51,7 +51,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        var zones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(51.5074, -0.1278, CancellationToken.None);
         await Assert.That(zones.First().CreatedAt).IsEqualTo(FixedNow);
     }
 
@@ -106,7 +106,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        var zones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(51.5074, -0.1278, CancellationToken.None);
         await Assert.That(zones).HasCount().EqualTo(1);
     }
 
@@ -269,7 +269,7 @@ public sealed class CreateWatchZoneCommandHandlerTests
         await handler.HandleAsync(command, CancellationToken.None);
 
         // Assert
-        var zones = await this.watchZoneRepository.FindZonesContainingAsync(51.5074, -0.1278, CancellationToken.None);
+        var zones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(51.5074, -0.1278, CancellationToken.None);
         await Assert.That(zones).HasCount().EqualTo(1);
         await Assert.That(zones.First().AuthorityId).IsEqualTo(42);
     }

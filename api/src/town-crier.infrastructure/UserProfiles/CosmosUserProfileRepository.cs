@@ -26,7 +26,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return document?.ToDomain();
     }
 
-    public async Task<UserProfile?> GetByEmailAsync(string email, CancellationToken ct)
+    public async Task<UserProfile?> GetByEmailCrossPartitionAsync(string email, CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Users,
@@ -39,7 +39,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
-    public async Task<IReadOnlyList<UserProfile>> GetAllByTierAsync(SubscriptionTier tier, CancellationToken ct)
+    public async Task<IReadOnlyList<UserProfile>> GetAllByTierCrossPartitionAsync(SubscriptionTier tier, CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Users,
@@ -52,7 +52,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<IReadOnlyList<UserProfile>> GetAllByDigestDayAsync(DayOfWeek digestDay, CancellationToken ct)
+    public async Task<IReadOnlyList<UserProfile>> GetAllByDigestDayCrossPartitionAsync(DayOfWeek digestDay, CancellationToken ct)
     {
         var documents = await this.client.QueryAsync(
             CosmosContainerNames.Users,
@@ -65,7 +65,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<UserProfile?> GetByOriginalTransactionIdAsync(
+    public async Task<UserProfile?> GetByOriginalTransactionIdCrossPartitionAsync(
         string originalTransactionId,
         CancellationToken ct)
     {
@@ -80,7 +80,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.Count > 0 ? documents[0].ToDomain() : null;
     }
 
-    public async Task<IReadOnlyList<UserProfile>> GetDormantAsync(DateTimeOffset cutoff, CancellationToken ct)
+    public async Task<IReadOnlyList<UserProfile>> GetDormantCrossPartitionAsync(DateTimeOffset cutoff, CancellationToken ct)
     {
         // Cross-partition scan — only run by the daily DormantAccountCleanup worker
         // against a small subset of inactive users. The cutoff is serialised as ISO-8601
@@ -96,7 +96,7 @@ public sealed class CosmosUserProfileRepository : IUserProfileRepository
         return documents.ConvertAll(doc => doc.ToDomain());
     }
 
-    public async Task<UserProfilePage> ListAsync(
+    public async Task<UserProfilePage> ListCrossPartitionAsync(
         string? emailSearch,
         int pageSize,
         string? continuationToken,

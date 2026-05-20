@@ -47,7 +47,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
         var today = now.DayOfWeek;
         var since = now.AddDays(-7);
 
-        var users = await this.userProfileRepository.GetAllByDigestDayAsync(today, ct)
+        var users = await this.userProfileRepository.GetAllByDigestDayCrossPartitionAsync(today, ct)
             .ConfigureAwait(false);
 
         foreach (var profile in users)

@@ -54,7 +54,7 @@ public sealed class InMemorySavedApplicationRepository : ISavedApplicationReposi
         return Task.FromResult(this.store.ContainsKey(key));
     }
 
-    public Task<IReadOnlyList<string>> GetUserIdsForApplicationAsync(string applicationUid, int authorityId, CancellationToken ct)
+    public Task<IReadOnlyList<string>> GetUserIdsForApplicationCrossPartitionAsync(string applicationUid, int authorityId, CancellationToken ct)
     {
         var userIds = this.store.Values
             .Where(s => s.ApplicationUid == applicationUid && s.AuthorityId == authorityId)

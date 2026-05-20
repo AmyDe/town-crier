@@ -28,7 +28,7 @@ public sealed class CosmosPlanningApplicationRepository : IPlanningApplicationRe
             ct).ConfigureAwait(false);
     }
 
-    public async Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    public async Task<PlanningApplication?> GetByUidCrossPartitionAsync(string uid, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uid);
 

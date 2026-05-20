@@ -30,7 +30,7 @@ internal sealed class FakePlanningApplicationRepository : IPlanningApplicationRe
         return Task.CompletedTask;
     }
 
-    public Task<PlanningApplication?> GetByUidAsync(string uid, CancellationToken ct)
+    public Task<PlanningApplication?> GetByUidCrossPartitionAsync(string uid, CancellationToken ct)
     {
         this.GetByUidWithoutAuthorityCallCount++;
         var app = this.store.Values.FirstOrDefault(a => a.Uid == uid);

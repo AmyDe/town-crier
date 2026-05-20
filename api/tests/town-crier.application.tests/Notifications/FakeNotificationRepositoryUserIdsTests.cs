@@ -46,7 +46,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
         repo.Seed(n3);
 
         // Act
-        var result = await repo.GetUserIdsWithUnsentEmailsAsync(CancellationToken.None);
+        var result = await repo.GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken.None);
 
         // Assert
         await Assert.That(result).HasCount().EqualTo(2);
@@ -87,7 +87,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
         repo.Seed(sent);
 
         // Act
-        var result = await repo.GetUserIdsWithUnsentEmailsAsync(CancellationToken.None);
+        var result = await repo.GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken.None);
 
         // Assert
         await Assert.That(result).HasCount().EqualTo(1);
@@ -115,7 +115,7 @@ public sealed class FakeNotificationRepositoryUserIdsTests
         repo.Seed(sent);
 
         // Act
-        var result = await repo.GetUserIdsWithUnsentEmailsAsync(CancellationToken.None);
+        var result = await repo.GetUserIdsWithUnsentEmailsCrossPartitionAsync(CancellationToken.None);
 
         // Assert
         await Assert.That(result).HasCount().EqualTo(0);

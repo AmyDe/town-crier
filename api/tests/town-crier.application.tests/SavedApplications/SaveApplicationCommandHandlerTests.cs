@@ -35,7 +35,7 @@ public sealed class SaveApplicationCommandHandlerTests
 
         // Assert — application was also upserted to the planning repository.
         await Assert.That(planningRepository.UpsertCallCount).IsEqualTo(1);
-        var stored = await planningRepository.GetByUidAsync("planit-uid-abc", CancellationToken.None);
+        var stored = await planningRepository.GetByUidCrossPartitionAsync("planit-uid-abc", CancellationToken.None);
         await Assert.That(stored).IsNotNull();
         await Assert.That(stored!.Name).IsEqualTo("Camden/CAM/24/0042/FUL");
     }

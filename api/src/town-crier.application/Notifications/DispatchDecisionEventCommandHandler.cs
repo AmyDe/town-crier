@@ -69,7 +69,7 @@ public sealed class DispatchDecisionEventCommandHandler
         // Zone matchers — only meaningful when the application has coordinates.
         if (application.Latitude.HasValue && application.Longitude.HasValue)
         {
-            var matchingZones = await this.watchZoneRepository.FindZonesContainingAsync(
+            var matchingZones = await this.watchZoneRepository.FindZonesContainingCrossPartitionAsync(
                 application.Latitude.Value, application.Longitude.Value, ct).ConfigureAwait(false);
 
             foreach (var zone in matchingZones)
@@ -90,7 +90,7 @@ public sealed class DispatchDecisionEventCommandHandler
         // would falsely match users who saved a same-uid app in a different
         // authority (bd tc-th98 / GH#384).
         var savedUserIds = await this.savedApplicationRepository
-            .GetUserIdsForApplicationAsync(application.Uid, application.AreaId, ct)
+            .GetUserIdsForApplicationCrossPartitionAsync(application.Uid, application.AreaId, ct)
             .ConfigureAwait(false);
 
         foreach (var userId in savedUserIds)

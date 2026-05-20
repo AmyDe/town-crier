@@ -21,7 +21,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         client.SetPageQueryResults("SELECT * FROM c", docs);
 
         // Act
-        var result = await repo.ListAsync(null, 20, null, CancellationToken.None);
+        var result = await repo.ListCrossPartitionAsync(null, 20, null, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Profiles).HasCount().EqualTo(2);
@@ -43,7 +43,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         client.SetPageQueryResults("SELECT * FROM c WHERE CONTAINS", docs);
 
         // Act
-        var result = await repo.ListAsync("gmail", 20, null, CancellationToken.None);
+        var result = await repo.ListCrossPartitionAsync("gmail", 20, null, CancellationToken.None);
 
         // Assert
         await Assert.That(result.Profiles).HasCount().EqualTo(1);
@@ -60,7 +60,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosUserProfileRepository(client);
 
-        await repo.ListAsync(null, 20, null, CancellationToken.None);
+        await repo.ListCrossPartitionAsync(null, 20, null, CancellationToken.None);
 
         await Assert.That(client.LastPageQuerySql).IsNotNull();
         await Assert.That(client.LastPageQuerySql!).DoesNotContain("ORDER BY");
@@ -72,7 +72,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         var client = new FakeCosmosRestClient();
         var repo = new CosmosUserProfileRepository(client);
 
-        await repo.ListAsync("gmail", 20, null, CancellationToken.None);
+        await repo.ListCrossPartitionAsync("gmail", 20, null, CancellationToken.None);
 
         await Assert.That(client.LastPageQuerySql).IsNotNull();
         await Assert.That(client.LastPageQuerySql!).DoesNotContain("ORDER BY");
@@ -92,7 +92,7 @@ public sealed class CosmosUserProfileRepositoryListTests
         client.SetPageQueryResults("SELECT * FROM c", docs, "next-page-token");
 
         // Act
-        var result = await repo.ListAsync(null, 1, null, CancellationToken.None);
+        var result = await repo.ListCrossPartitionAsync(null, 1, null, CancellationToken.None);
 
         // Assert
         await Assert.That(result.ContinuationToken).IsEqualTo("next-page-token");

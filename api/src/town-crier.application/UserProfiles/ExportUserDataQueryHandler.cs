@@ -46,7 +46,7 @@ public sealed class ExportUserDataQueryHandler
             query.UserId, DateTimeOffset.MinValue, ct).ConfigureAwait(false);
         var savedApplications = await this.savedApplicationRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
         var deviceRegistrations = await this.deviceRegistrationRepository.GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
-        var offerCodes = await this.offerCodeRepository.GetRedeemedByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
+        var offerCodes = await this.offerCodeRepository.GetRedeemedByUserIdCrossPartitionAsync(query.UserId, ct).ConfigureAwait(false);
 
         return new ExportUserDataResult(
             UserId: profile.UserId,

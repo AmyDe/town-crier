@@ -14,10 +14,14 @@ public interface IWatchZoneRepository
 
     Task DeleteAllByUserIdAsync(string userId, CancellationToken ct);
 
-    Task<IReadOnlyCollection<WatchZone>> FindZonesContainingAsync(
+    // Cross-partition — worker paths only (polling: dispatch decision events and
+    // find zones near a new application). Cost accepted for low-frequency background use.
+    Task<IReadOnlyCollection<WatchZone>> FindZonesContainingCrossPartitionAsync(
         double latitude, double longitude, CancellationToken ct);
 
-    Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsAsync(CancellationToken ct);
+    // Cross-partition — worker path only (WatchZoneActiveAuthorityProvider for polling).
+    Task<IReadOnlyCollection<int>> GetDistinctAuthorityIdsCrossPartitionAsync(CancellationToken ct);
 
-    Task<Dictionary<int, int>> GetZoneCountsByAuthorityAsync(CancellationToken ct);
+    // Cross-partition — unused in production paths; kept for potential admin/reporting use.
+    Task<Dictionary<int, int>> GetZoneCountsByAuthorityCrossPartitionAsync(CancellationToken ct);
 }

@@ -42,7 +42,7 @@ public sealed class GetApplicationByUidQueryHandler
         // Cross-partition uid scan retained for background/worker paths.
         // User-facing push-tap deep links use GetApplicationByAuthorityAndNameQueryHandler
         // (partitioned point read, ~1 RU, no PlanIt fallback). GH#395 Invariant 1.
-        var application = await this.repository.GetByUidAsync(query.Uid, ct).ConfigureAwait(false);
+        var application = await this.repository.GetByUidCrossPartitionAsync(query.Uid, ct).ConfigureAwait(false);
         if (application is null)
         {
             return null;
