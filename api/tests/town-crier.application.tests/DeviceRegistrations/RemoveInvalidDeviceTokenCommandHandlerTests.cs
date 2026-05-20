@@ -18,7 +18,7 @@ public sealed class RemoveInvalidDeviceTokenCommandHandlerTests
         await repository.SaveAsync(registration, CancellationToken.None);
 
         var handler = new RemoveInvalidDeviceTokenCommandHandler(repository);
-        var command = new RemoveInvalidDeviceTokenCommand("apns-token-abc123");
+        var command = new RemoveInvalidDeviceTokenCommand("auth0|user-123", "apns-token-abc123");
 
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
@@ -34,7 +34,7 @@ public sealed class RemoveInvalidDeviceTokenCommandHandlerTests
         // Arrange
         var repository = new FakeDeviceRegistrationRepository();
         var handler = new RemoveInvalidDeviceTokenCommandHandler(repository);
-        var command = new RemoveInvalidDeviceTokenCommand("nonexistent-token");
+        var command = new RemoveInvalidDeviceTokenCommand("auth0|user-123", "nonexistent-token");
 
         // Act & Assert — should not throw
         await handler.HandleAsync(command, CancellationToken.None);
@@ -56,11 +56,33 @@ public sealed class RemoveInvalidDeviceTokenCommandHandlerTests
         var handler = new RemoveInvalidDeviceTokenCommandHandler(repository);
 
         // Act — remove only device1's token
-        await handler.HandleAsync(new RemoveInvalidDeviceTokenCommand("token-device1"), CancellationToken.None);
+        await handler.HandleAsync(
+            new RemoveInvalidDeviceTokenCommand("auth0|user-123", "token-device1"),
+            CancellationToken.None);
 
         // Assert
         await Assert.That(repository.Count).IsEqualTo(1);
         var remaining = repository.GetByToken("token-device2");
         await Assert.That(remaining).IsNotNull();
+    }
+
+    [Test]
+    public async Task Should_DeleteWithinUserPartition_When_RemovingToken()
+    {
+        // Arrange — the fake records the userId passed to each DeleteByTokenAsync call.
+        // A cross-partition call would pass null; a partitioned call must pass the userId.
+        var repository = new FakeDeviceRegistrationRepository();
+        var registration = DeviceRegistration.Create(
+            "auth0|user-123", "apns-token-abc123", DevicePlatform.Ios, DateTimeOffset.UtcNow);
+        await repository.SaveAsync(registration, CancellationToken.None);
+
+        var handler = new RemoveInvalidDeviceTokenCommandHandler(repository);
+        var command = new RemoveInvalidDeviceTokenCommand("auth0|user-123", "apns-token-abc123");
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — the handler must supply userId as the partition key, never null
+        await Assert.That(repository.LastDeleteByTokenUserId).IsEqualTo("auth0|user-123");
     }
 }
