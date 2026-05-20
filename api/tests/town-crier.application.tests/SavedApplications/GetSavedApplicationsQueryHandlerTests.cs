@@ -89,15 +89,17 @@ public sealed class GetSavedApplicationsQueryHandlerTests
     public async Task Should_LazilyBackfillSnapshot_When_LegacyRowHasUidOnly()
     {
         // Arrange — rows persisted before the snapshot column existed hold only
-        // the uid. The handler hydrates them once via the planning repo and
-        // upserts the snapshot back so subsequent reads are zero-hydration.
+        // the uid. The handler hydrates them once via the planning repo, re-keys
+        // them to the canonical uid (bd tc-sqr3), and upserts so subsequent reads
+        // are zero-hydration.
         var savedRepository = new FakeSavedApplicationRepository();
         var planningRepository = new FakePlanningApplicationRepository();
         var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
 
-        // Seed: planning record exists, saved row does NOT carry the snapshot.
+        // Seed: planning record exists, saved row does NOT carry the snapshot and
+        // is keyed on the raw legacy uid.
         var app = new PlanningApplicationBuilder()
-            .WithUid("planit-uid-legacy").WithName("APP/legacy").WithAreaName("Camden").Build();
+            .WithUid("planit-uid-legacy").WithName("APP/legacy").WithAreaId(1).WithAreaName("Camden").Build();
         await planningRepository.UpsertAsync(app, CancellationToken.None);
         await savedRepository.SaveAsync(
             SavedApplication.Create("auth0|user-1", "planit-uid-legacy", authorityId: 1, savedAt), CancellationToken.None);
@@ -105,24 +107,22 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         var handler = new GetSavedApplicationsQueryHandler(savedRepository, planningRepository);
         var query = new GetSavedApplicationsQuery("auth0|user-1");
 
-        // Act — first read triggers backfill.
+        // Act — first read triggers hydration plus re-key.
         var firstResult = await handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert — first read returned the hydrated snapshot.
+        // Assert — first read returned the hydrated snapshot under the canonical uid.
         await Assert.That(firstResult).HasCount().EqualTo(1);
-        await Assert.That(firstResult[0].ApplicationUid).IsEqualTo("planit-uid-legacy");
+        await Assert.That(firstResult[0].ApplicationUid).IsEqualTo("1/APP/legacy");
         await Assert.That(firstResult[0].Application.Name).IsEqualTo("APP/legacy");
 
-        // Assert — saved row was rewritten with the embedded snapshot persisted.
-        // Crucially the backfill rewrites IN PLACE: it must keep the row's existing
-        // ApplicationUid key (the raw legacy uid), not re-key to the canonical uid,
-        // or it orphans the old Cosmos doc and leaves a duplicate. Re-keying of
-        // legacy rows is the dedicated migration's job (bd tc-sqr3 / tc-o88i).
+        // Assert — the saved row was hydrated AND re-keyed: the legacy-uid doc is
+        // gone and a single canonical doc carrying the embedded snapshot remains.
         var rows = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
         await Assert.That(rows).HasCount().EqualTo(1);
-        await Assert.That(rows[0].ApplicationUid).IsEqualTo("planit-uid-legacy");
+        await Assert.That(rows[0].ApplicationUid).IsEqualTo("1/APP/legacy");
         await Assert.That(rows[0].Application).IsNotNull();
         await Assert.That(rows[0].Application!.Name).IsEqualTo("APP/legacy");
+        await Assert.That(rows[0].SavedAt).IsEqualTo(savedAt);
 
         // Act — second read with the planning repo unavailable: still works
         // because backfill self-healed and there are no more legacy rows.
