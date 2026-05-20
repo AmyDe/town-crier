@@ -102,22 +102,57 @@ struct DeepLinkTests {
 
 @Suite("NotificationPayloadParser")
 struct NotificationPayloadParserTests {
-  // The API contract (api/src/town-crier.infrastructure/Notifications/ApnsAlertPayload.cs)
-  // sends `applicationRef` — see docs/specs/apns-push-sender.md. The parser must read
-  // the same key. Reading the wrong key returned nil for every push, taking the
-  // delegate's early-return path and triggering the actor-hop crash (tc-fcwv).
-  @Test func parseDeepLink_withApplicationRef_returnsApplicationDetailLink() {
-    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-001"]
+  // The APNs payload now carries both `applicationRef` (the PlanIt case ref) and
+  // `authorityId` (the area integer ID) — both are required to construct a
+  // `PlanningApplicationId` struct (tc-dzwo.1). The parser must read both keys.
+  @Test func parseDeepLink_withApplicationRefAndAuthorityId_returnsApplicationDetailLink() {
+    let userInfo: [AnyHashable: Any] = [
+      "applicationRef": "22/1234/FUL",
+      "authorityId": 42,
+    ]
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
 
-    #expect(result == .applicationDetail(PlanningApplicationId("APP-001")))
+    #expect(result == .applicationDetail(PlanningApplicationId(authority: "42", name: "22/1234/FUL")))
+  }
+
+  @Test func parseDeepLink_missingAuthorityId_returnsNil() {
+    // `authorityId` is required — without it we cannot do a partitioned Cosmos
+    // point read, so the deep link must be dropped rather than fall back to the
+    // cross-partition scan that triggers "Server Error".
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "22/1234/FUL"]
+
+    let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseDeepLink_missingApplicationRef_returnsNil() {
+    let userInfo: [AnyHashable: Any] = ["authorityId": 42]
+
+    let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
+
+    #expect(result == nil)
+  }
+
+  @Test func parseDeepLink_authorityIdAsString_isIgnored() {
+    // APNs encodes authorityId as a JSON number (Int). A string value must not
+    // be coerced — if the server accidentally sends "42" as a string the parser
+    // treats the payload as malformed and returns nil.
+    let userInfo: [AnyHashable: Any] = [
+      "applicationRef": "22/1234/FUL",
+      "authorityId": "42",
+    ]
+
+    let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
+
+    #expect(result == nil)
   }
 
   @Test func parseDeepLink_withLegacyApplicationIdKey_returnsNil() {
     // Guard against accidental reintroduction of the wrong key. The API never
     // sends `applicationId`; only `applicationRef` is in the contract.
-    let userInfo: [AnyHashable: Any] = ["applicationId": "APP-001"]
+    let userInfo: [AnyHashable: Any] = ["applicationId": "22/1234/FUL", "authorityId": 42]
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
 
