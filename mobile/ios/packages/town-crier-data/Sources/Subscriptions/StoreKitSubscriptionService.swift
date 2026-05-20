@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import TownCrierDomain
+import os
 
 /// StoreKit 2 adapter implementing the SubscriptionService domain protocol.
 public final class StoreKitSubscriptionService: SubscriptionService, @unchecked Sendable {
@@ -14,9 +15,18 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     "uk.co.towncrier.pro.monthly": .pro,
   ]
 
+  private static let logger = Logger(
+    subsystem: "uk.towncrierapp", category: "StoreKitSubscriptionService")
+
   private var transactionListenerTask: Task<Void, Never>?
 
-  public init() {
+  /// Reports verified StoreKit transactions to the Town Crier backend so the
+  /// server can update the user's entitlement state (ADR 0010). Optional —
+  /// when nil the service relies purely on on-device StoreKit verification.
+  private let verificationService: SubscriptionVerificationService?
+
+  public init(verificationService: SubscriptionVerificationService? = nil) {
+    self.verificationService = verificationService
     transactionListenerTask = Task.detached { [weak self] in
       await self?.listenForTransactionUpdates()
     }
@@ -68,6 +78,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     case .success(let verification):
       let transaction = try checkVerification(verification)
       await transaction.finish()
+      // Tell the backend about the purchase so tier-gated API requests see
+      // the new tier (ADR 0010). Best-effort — never fails the purchase.
+      await reportPurchase(signedTransaction: verification.jwsRepresentation)
       return entitlement(from: transaction)
 
     case .userCancelled:
@@ -113,6 +126,26 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
       if let transaction = try? checkVerification(result) {
         await transaction.finish()
       }
+    }
+  }
+
+  // MARK: - Server reporting
+
+  /// POSTs an Apple-signed StoreKit 2 JWS transaction to the Town Crier
+  /// backend via the injected ``SubscriptionVerificationService``.
+  ///
+  /// Best-effort by design: on-device StoreKit verification has already
+  /// succeeded and is the source of truth for local feature gating, while
+  /// Cosmos remains the source of truth for tier-gated API requests (ADR
+  /// 0010). A network failure here is swallowed — the App Store Server
+  /// Notifications webhook and the next server tier resolution reconcile it.
+  func reportPurchase(signedTransaction: String) async {
+    guard let verificationService else { return }
+    do {
+      _ = try await verificationService.verify(signedTransaction: signedTransaction)
+    } catch {
+      Self.logger.error(
+        "Subscription verify POST failed: \(error.localizedDescription, privacy: .public)")
     }
   }
 
