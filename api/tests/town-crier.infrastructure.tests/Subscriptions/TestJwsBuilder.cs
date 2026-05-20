@@ -39,23 +39,26 @@ internal sealed class TestJwsBuilder
     {
         var now = DateTimeOffset.UtcNow;
 
-        using var rootKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var rootKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var rootReq = new CertificateRequest(
             "CN=Test Apple Root CA", rootKey, HashAlgorithmName.SHA256);
         rootReq.CertificateExtensions.Add(
             new X509BasicConstraintsExtension(true, false, 0, true));
         var root = rootReq.CreateSelfSigned(now.AddYears(-1), now.AddYears(10));
+        var rootGenerator = X509SignatureGenerator.CreateForECDsa(rootKey);
 
-        using var intermediateKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var intermediateKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var intermediateReq = new CertificateRequest(
             "CN=Test Apple Intermediate CA", intermediateKey, HashAlgorithmName.SHA256);
         intermediateReq.CertificateExtensions.Add(
             new X509BasicConstraintsExtension(true, false, 0, true));
         var intermediate = intermediateReq.Create(
-            root,
+            root.SubjectName,
+            rootGenerator,
             now.AddYears(-1),
             now.AddYears(5),
             Guid.NewGuid().ToByteArray());
+        var intermediateGenerator = X509SignatureGenerator.CreateForECDsa(intermediateKey);
 
         var leafKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var leafReq = new CertificateRequest(
@@ -63,10 +66,14 @@ internal sealed class TestJwsBuilder
         leafReq.CertificateExtensions.Add(
             new X509BasicConstraintsExtension(false, false, 0, true));
         var leaf = leafReq.Create(
-            intermediate,
+            intermediate.SubjectName,
+            intermediateGenerator,
             leafNotBefore ?? now.AddDays(-1),
             leafNotAfter ?? now.AddYears(1),
             Guid.NewGuid().ToByteArray());
+
+        rootKey.Dispose();
+        intermediateKey.Dispose();
 
         return new TestJwsBuilder(root, intermediate, leaf, leafKey);
     }
