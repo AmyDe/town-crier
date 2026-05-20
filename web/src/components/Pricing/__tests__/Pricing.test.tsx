@@ -66,6 +66,24 @@ describe('Pricing', () => {
     expect(screen.getByText(/free trial/i)).toBeInTheDocument();
   });
 
+  it('shows 7-day free trial (not 14-day) on Personal tier', () => {
+    render(<Pricing />);
+
+    expect(screen.getByText('7-day free trial')).toBeInTheDocument();
+  });
+
+  it('shows Personal watch zone quota as 3 (matching EntitlementMap)', () => {
+    render(<Pricing />);
+
+    const cards = screen.getAllByRole('article');
+    const personalCard = cards.find((card) => within(card).queryByText('Personal'));
+    expect(personalCard).toBeDefined();
+
+    const watchZoneRow = within(personalCard!).getByText('Watch Zones').closest('li');
+    expect(watchZoneRow).toBeDefined();
+    expect(within(watchZoneRow!).getByText('3')).toBeInTheDocument();
+  });
+
   it('renders feature rows with label/value pairs', () => {
     render(<Pricing />);
 

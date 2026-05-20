@@ -19,7 +19,7 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'Is there a free tier?',
     answer:
-      'Yes. The Free plan lets you monitor one watch zone with daily email digests at no cost, forever. Upgrade any time if you need more zones, wider radii, or instant push notifications.',
+      'Yes. The Free plan lets you monitor one watch zone with weekly email digests at no cost, forever. Upgrade any time if you need more zones, wider radii, or instant push notifications.',
   },
   {
     question: 'Can communities use Town Crier?',
@@ -29,7 +29,7 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'How quickly will I be notified?',
     answer:
-      'Most applications appear within hours of being published by the local authority. Paid plans receive instant push notifications; the Free plan delivers a daily digest email each morning.',
+      'Most applications appear within hours of being published by the local authority. Paid plans receive instant push notifications; the Free plan delivers a weekly digest email.',
   },
 ];
 
