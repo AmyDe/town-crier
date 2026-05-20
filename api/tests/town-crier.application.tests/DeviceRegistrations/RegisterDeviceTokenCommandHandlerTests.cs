@@ -77,4 +77,25 @@ public sealed class RegisterDeviceTokenCommandHandlerTests
         var userTokens = await repository.GetByUserIdAsync("auth0|user-123", CancellationToken.None);
         await Assert.That(userTokens.Count).IsEqualTo(2);
     }
+
+    [Test]
+    public async Task Should_QueryWithinUserPartition_When_CheckingExistingToken()
+    {
+        // Arrange — the fake records the userId passed to each GetByTokenAsync call.
+        // A cross-partition call would pass null; a partitioned call must pass the userId.
+        var repository = new FakeDeviceRegistrationRepository();
+        var timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 3, 17, 10, 0, 0, TimeSpan.Zero));
+        var handler = new RegisterDeviceTokenCommandHandler(repository, timeProvider);
+
+        var command = new RegisterDeviceTokenCommand(
+            "auth0|user-123",
+            "apns-token-abc123",
+            DevicePlatform.Ios);
+
+        // Act
+        await handler.HandleAsync(command, CancellationToken.None);
+
+        // Assert — the handler must supply userId as the partition key, never null
+        await Assert.That(repository.LastGetByTokenUserId).IsEqualTo("auth0|user-123");
+    }
 }
