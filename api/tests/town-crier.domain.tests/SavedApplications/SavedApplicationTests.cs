@@ -102,6 +102,30 @@ public sealed class SavedApplicationTests
     }
 
     [Test]
+    public async Task Should_AttachSnapshot_PreservingExistingKey_When_BackfillingLegacyRow()
+    {
+        // Arrange — a legacy uid-only row whose ApplicationUid predates the canonical
+        // {areaId}/{name} scheme. The lazy-backfill path embeds a snapshot but must
+        // NOT re-key the row, or it orphans the old Cosmos doc. Re-keying legacy rows
+        // is the dedicated migration's job (bd tc-sqr3 / tc-o88i).
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var legacy = SavedApplication.Create("auth0|user-1", "planit-legacy-uid", authorityId: 9, savedAt);
+        var snapshot = new PlanningApplicationBuilder()
+            .WithAreaId(9).WithName("APP/legacy").WithAppState("Permitted").Build();
+
+        // Act
+        var backfilled = legacy.WithEmbeddedSnapshot(snapshot);
+
+        // Assert — identity preserved, snapshot attached.
+        await Assert.That(backfilled.ApplicationUid).IsEqualTo("planit-legacy-uid");
+        await Assert.That(backfilled.UserId).IsEqualTo("auth0|user-1");
+        await Assert.That(backfilled.AuthorityId).IsEqualTo(9);
+        await Assert.That(backfilled.SavedAt).IsEqualTo(savedAt);
+        await Assert.That(backfilled.Application).IsNotNull();
+        await Assert.That(backfilled.Application!.AppState).IsEqualTo("Permitted");
+    }
+
+    [Test]
     public async Task Should_RejectMismatchedSnapshot_When_RefreshedWithDifferentUid()
     {
         // Arrange — defensive: refusing to swap in a snapshot for the wrong uid

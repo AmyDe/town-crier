@@ -114,8 +114,13 @@ public sealed class GetSavedApplicationsQueryHandlerTests
         await Assert.That(firstResult[0].Application.Name).IsEqualTo("APP/legacy");
 
         // Assert — saved row was rewritten with the embedded snapshot persisted.
+        // Crucially the backfill rewrites IN PLACE: it must keep the row's existing
+        // ApplicationUid key (the raw legacy uid), not re-key to the canonical uid,
+        // or it orphans the old Cosmos doc and leaves a duplicate. Re-keying of
+        // legacy rows is the dedicated migration's job (bd tc-sqr3 / tc-o88i).
         var rows = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
         await Assert.That(rows).HasCount().EqualTo(1);
+        await Assert.That(rows[0].ApplicationUid).IsEqualTo("planit-uid-legacy");
         await Assert.That(rows[0].Application).IsNotNull();
         await Assert.That(rows[0].Application!.Name).IsEqualTo("APP/legacy");
 
