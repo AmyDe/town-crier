@@ -93,7 +93,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
       // Falling back to `resolveInitialZone` only when the id is missing
       // (zone deleted) preserves the previous-session restore behaviour.
       if let currentId = selectedZone?.id,
-         let updated = loadedZones.first(where: { $0.id == currentId }) {
+        let updated = loadedZones.first(where: { $0.id == currentId })
+      {
         selectedZone = updated
       } else {
         selectedZone = resolveInitialZone(from: loadedZones)
@@ -157,7 +158,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   private func resolveInitialZone(from zones: [WatchZone]) -> WatchZone? {
     if let savedId = userDefaults.string(forKey: zoneSelectionKey),
-       let savedZone = zones.first(where: { $0.id.value == savedId }) {
+      let savedZone = zones.first(where: { $0.id.value == savedId })
+    {
       return savedZone
     }
     return zones.first
@@ -176,7 +178,8 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   /// No-op if no application is selected or no repository was provided.
   public func toggleSaveSelectedApplication() async {
     guard let repository = savedApplicationRepository,
-          let selected = selectedApplication else { return }
+      let selected = selectedApplication
+    else { return }
 
     let uid = selected.id.value
 

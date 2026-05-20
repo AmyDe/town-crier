@@ -113,7 +113,8 @@ struct NotificationPayloadParserTests {
 
     let result = NotificationPayloadParser.parseDeepLink(from: userInfo)
 
-    #expect(result == .applicationDetail(PlanningApplicationId(authority: "42", name: "22/1234/FUL")))
+    #expect(
+      result == .applicationDetail(PlanningApplicationId(authority: "42", name: "22/1234/FUL")))
   }
 
   @Test func parseDeepLink_missingAuthorityId_returnsNil() {

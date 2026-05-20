@@ -282,7 +282,9 @@ struct ApplicationListViewModelTests {
     zones: [WatchZone] = [.cambridge, .london],
     applications: [PlanningApplication] = [.pendingReview],
     persistedZoneId: String? = nil
-  ) throws -> (ApplicationListViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults) {
+  ) throws -> (
+    ApplicationListViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults
+  ) {
     let appSpy = SpyPlanningApplicationRepository()
     appSpy.fetchApplicationsResult = .success(applications)
     let zoneSpy = SpyWatchZoneRepository()

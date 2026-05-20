@@ -202,7 +202,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
         // deleted — or nothing is selected yet — fall back to
         // `resolveInitialSelection`.
         if let currentId = selectedZone?.id,
-           let updated = loadedZones.first(where: { $0.id == currentId }) {
+          let updated = loadedZones.first(where: { $0.id == currentId })
+        {
           selectedZone = updated
         } else {
           resolveInitialSelection(from: loadedZones)
@@ -272,7 +273,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   private func resolveInitialSelection(from zones: [WatchZone]) {
     let savedId = userDefaults.string(forKey: zoneSelectionKey)
     if let savedId,
-       let savedZone = zones.first(where: { $0.id.value == savedId }) {
+      let savedZone = zones.first(where: { $0.id.value == savedId })
+    {
       selectedZone = savedZone
       return
     }
@@ -337,7 +339,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
     let sorted = scored.sorted { lhs, rhs in
       switch (lhs.distance, rhs.distance) {
-      case let (.some(left), .some(right)):
+      case (.some(let left), .some(let right)):
         return left < right
       case (.some, .none):
         return true
@@ -364,7 +366,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     key: String
   ) -> ApplicationsSort {
     if let raw = defaults.string(forKey: key),
-       let parsed = ApplicationsSort(rawValue: raw) {
+      let parsed = ApplicationsSort(rawValue: raw)
+    {
       return parsed
     }
     return .recentActivity

@@ -5,7 +5,8 @@ import os
 /// Persists and retrieves watch zones via the Town Crier API.
 public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
   #if DEBUG
-    private static let logger = Logger(subsystem: "uk.towncrierapp", category: "WatchZoneRepository")
+    private static let logger = Logger(
+      subsystem: "uk.towncrierapp", category: "WatchZoneRepository")
   #endif
 
   private let apiClient: URLSessionAPIClient

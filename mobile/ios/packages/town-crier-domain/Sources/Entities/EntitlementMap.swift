@@ -38,7 +38,8 @@ public enum EntitlementMap {
 
   /// Returns whether the given tier grants the specified entitlement.
   public static func hasEntitlement(_ entitlement: Entitlement, for tier: SubscriptionTier)
-    -> Bool {
+    -> Bool
+  {
     entitlements(for: tier).contains(entitlement)
   }
 

@@ -44,7 +44,8 @@ struct ApplicationListViewModelUnreadTests {
     return (sut, appSpy, stateSpy, defaults)
   }
 
-  private func event(at seconds: TimeInterval, type: String = "NewApplication") -> LatestUnreadEvent {
+  private func event(at seconds: TimeInterval, type: String = "NewApplication") -> LatestUnreadEvent
+  {
     LatestUnreadEvent(
       type: type,
       decision: nil,
@@ -199,11 +200,11 @@ struct ApplicationListViewModelUnreadTests {
     // app A: received earliest, but has a much-later unread event → top
     // app B: received in the middle, no unread event → middle
     // app C: received latest, no unread event → just below A
-    let appA = PlanningApplication.pendingReview // 1_700_000_000
+    let appA = PlanningApplication.pendingReview  // 1_700_000_000
       .withLatestUnreadEvent(event(at: 1_700_900_000))
-    let appB = PlanningApplication.permitted // 1_700_100_000
+    let appB = PlanningApplication.permitted  // 1_700_100_000
       .withLatestUnreadEvent(nil)
-    let appC = PlanningApplication.rejected // 1_700_200_000
+    let appC = PlanningApplication.rejected  // 1_700_200_000
       .withLatestUnreadEvent(nil)
     let (sut, _, _, _) = try makeSUT(applications: [appB, appA, appC])
 
@@ -215,9 +216,9 @@ struct ApplicationListViewModelUnreadTests {
 
   @Test("newest sort orders by receivedDate desc")
   func sort_newest_ordersByReceivedDateDesc() async throws {
-    let older = PlanningApplication.pendingReview // 1_700_000_000
-    let middle = PlanningApplication.permitted // 1_700_100_000
-    let newest = PlanningApplication.rejected // 1_700_200_000
+    let older = PlanningApplication.pendingReview  // 1_700_000_000
+    let middle = PlanningApplication.permitted  // 1_700_100_000
+    let newest = PlanningApplication.rejected  // 1_700_200_000
     let (sut, _, _, _) = try makeSUT(applications: [middle, older, newest])
 
     await sut.loadApplications()
@@ -241,9 +242,9 @@ struct ApplicationListViewModelUnreadTests {
 
   @Test("status sort orders by appState raw value")
   func sort_status_ordersByAppState() async throws {
-    let permitted = PlanningApplication.permitted // "Permitted"
-    let rejected = PlanningApplication.rejected // "Rejected"
-    let undecided = PlanningApplication.pendingReview // "Undecided"
+    let permitted = PlanningApplication.permitted  // "Permitted"
+    let rejected = PlanningApplication.rejected  // "Rejected"
+    let undecided = PlanningApplication.pendingReview  // "Undecided"
     let (sut, _, _, _) = try makeSUT(applications: [undecided, rejected, permitted])
 
     await sut.loadApplications()

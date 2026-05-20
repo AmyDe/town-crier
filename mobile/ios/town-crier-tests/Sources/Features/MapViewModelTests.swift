@@ -282,7 +282,8 @@ struct MapViewModelTests {
     zones: [WatchZone] = [.cambridge, .london],
     applications: [PlanningApplication] = [.pendingReview],
     persistedZoneId: String? = nil
-  ) throws -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults) {
+  ) throws -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults)
+  {
     let appSpy = SpyPlanningApplicationRepository()
     appSpy.fetchApplicationsResult = .success(applications)
     let zoneSpy = SpyWatchZoneRepository()

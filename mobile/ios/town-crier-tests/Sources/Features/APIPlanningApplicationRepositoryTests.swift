@@ -392,7 +392,8 @@ struct APIPlanningApplicationRepositoryTests {
       }
       """
     let (sut, _, _) = makeSUT(responses: [(Data(json.utf8), httpResponse(statusCode: 200))])
-    let app = try await sut.fetchApplication(by: PlanningApplicationId(authority: "1", name: "REF/001"))
+    let app = try await sut.fetchApplication(
+      by: PlanningApplicationId(authority: "1", name: "REF/001"))
     #expect(app.status == .unknown)
   }
 }

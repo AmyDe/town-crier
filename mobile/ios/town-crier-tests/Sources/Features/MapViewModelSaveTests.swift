@@ -132,7 +132,7 @@ struct MapViewModelSaveTests {
   func loadSavedState_populatesUids() async {
     let (sut, spy) = makeSUT()
     spy.loadAllResult = .success([
-      SavedApplication(applicationUid: PlanningApplication.pendingReview.id.value, savedAt: Date()),
+      SavedApplication(applicationUid: PlanningApplication.pendingReview.id.value, savedAt: Date())
     ])
     await sut.loadApplications()
 

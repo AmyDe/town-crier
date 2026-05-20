@@ -10,7 +10,8 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
   }
 
   public func fetchApplications(for zone: WatchZone) async throws
-    -> [PlanningApplication] {
+    -> [PlanningApplication]
+  {
     let dtos: [PlanningApplicationDTO]
     do {
       dtos = try await apiClient.request(

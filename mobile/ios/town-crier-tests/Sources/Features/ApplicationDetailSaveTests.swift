@@ -137,7 +137,7 @@ struct ApplicationDetailSaveTests {
         applicationUid: PlanningApplication.pendingReview.id.value,
         savedAt: Date(),
         application: .pendingReview
-      ),
+      )
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,
@@ -154,7 +154,7 @@ struct ApplicationDetailSaveTests {
   func loadSavedState_whenApplicationNotSaved_leavesIsSavedFalse() async {
     let spy = SpySavedApplicationRepository()
     spy.loadAllResult = .success([
-      SavedApplication(applicationUid: "OTHER-APP", savedAt: Date()),
+      SavedApplication(applicationUid: "OTHER-APP", savedAt: Date())
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,
@@ -200,7 +200,7 @@ struct ApplicationDetailSaveTests {
         applicationUid: "legacy/uid/format-mismatch",
         savedAt: Date(),
         application: .pendingReview
-      ),
+      )
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,
@@ -220,7 +220,7 @@ struct ApplicationDetailSaveTests {
         applicationUid: PlanningApplication.pendingReview.id.value,
         savedAt: Date(),
         application: PlanningApplication.permitted
-      ),
+      )
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,

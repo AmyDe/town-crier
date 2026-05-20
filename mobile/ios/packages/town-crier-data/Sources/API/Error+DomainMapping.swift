@@ -11,7 +11,7 @@ extension Error {
   func toDomainError() -> DomainError {
     if let apiError = self as? APIError {
       switch apiError {
-      case let .serverError(statusCode, message):
+      case .serverError(let statusCode, let message):
         return .serverError(statusCode: statusCode, message: message)
       case .decodingFailed(let detail):
         return .unexpected(detail)
