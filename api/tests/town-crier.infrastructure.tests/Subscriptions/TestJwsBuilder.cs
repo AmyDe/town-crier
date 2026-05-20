@@ -30,7 +30,7 @@ internal sealed class TestJwsBuilder
         this.leafKey = leafKey;
     }
 
-    /// <summary>The root certificate — pass to the verifier as a trusted root.</summary>
+    /// <summary>Gets the root certificate — pass to the verifier as a trusted root.</summary>
     public X509Certificate2 RootCertificate => this.root;
 
     public static TestJwsBuilder Create(
@@ -78,7 +78,7 @@ internal sealed class TestJwsBuilder
         return new TestJwsBuilder(root, intermediate, leaf, leafKey);
     }
 
-    /// <summary>Signs <paramref name="payloadJson"/> as a valid ES256 JWS with the test chain.</summary>
+    // Signs the payload as a valid ES256 JWS carrying the test certificate chain.
     public string Sign(string payloadJson)
     {
         var x5c = new[]
@@ -104,7 +104,7 @@ internal sealed class TestJwsBuilder
         return $"{signingInput}.{Base64UrlEncode(signature)}";
     }
 
-    /// <summary>Signs then flips one bit of the signature — a tampered JWS.</summary>
+    // Signs the payload then flips one bit of the signature — a tampered JWS.
     public string SignWithTamperedSignature(string payloadJson)
     {
         var jws = this.Sign(payloadJson);

@@ -14,7 +14,8 @@ public static class AppleRootCertificates
     private const string RootCertResourceName =
         "TownCrier.Infrastructure.Subscriptions.AppleRootCA-G3.cer";
 
-    /// <summary>Returns the trusted Apple root certificate(s) for JWS chain validation.</summary>
+    /// <summary>Loads the trusted Apple root certificate(s) for JWS chain validation.</summary>
+    /// <returns>The Apple root certificate collection.</returns>
     public static IReadOnlyCollection<X509Certificate2> Load()
     {
         var assembly = Assembly.GetExecutingAssembly();
