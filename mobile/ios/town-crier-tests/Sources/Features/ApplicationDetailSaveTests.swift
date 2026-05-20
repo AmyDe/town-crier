@@ -135,8 +135,9 @@ struct ApplicationDetailSaveTests {
     spy.loadAllResult = .success([
       SavedApplication(
         applicationUid: PlanningApplication.pendingReview.id.value,
-        savedAt: Date()
-      ),
+        savedAt: Date(),
+        application: .pendingReview
+      )
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,
@@ -153,7 +154,7 @@ struct ApplicationDetailSaveTests {
   func loadSavedState_whenApplicationNotSaved_leavesIsSavedFalse() async {
     let spy = SpySavedApplicationRepository()
     spy.loadAllResult = .success([
-      SavedApplication(applicationUid: "OTHER-APP", savedAt: Date()),
+      SavedApplication(applicationUid: "OTHER-APP", savedAt: Date())
     ])
     let sut = ApplicationDetailViewModel(
       application: .pendingReview,
@@ -183,6 +184,48 @@ struct ApplicationDetailSaveTests {
   @Test("loadSavedState is no-op when repository is nil")
   func loadSavedState_withoutRepository_isNoOp() async {
     let sut = ApplicationDetailViewModel(application: .pendingReview)
+
+    await sut.loadSavedState()
+
+    #expect(!sut.isSaved)
+  }
+
+  @Test("loadSavedState sets isSaved true when snapshot id matches despite a stale top-level uid")
+  func loadSavedState_whenTopLevelUidDiffersButSnapshotIdMatches_setsIsSavedTrue() async {
+    let spy = SpySavedApplicationRepository()
+    // The stored top-level uid is in a stale/different format from the
+    // reconstructed snapshot id — the compare must rely on the snapshot.
+    spy.loadAllResult = .success([
+      SavedApplication(
+        applicationUid: "legacy/uid/format-mismatch",
+        savedAt: Date(),
+        application: .pendingReview
+      )
+    ])
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      savedApplicationRepository: spy
+    )
+
+    await sut.loadSavedState()
+
+    #expect(sut.isSaved)
+  }
+
+  @Test("loadSavedState leaves isSaved false when no embedded snapshot id matches")
+  func loadSavedState_whenSnapshotIdDoesNotMatch_leavesIsSavedFalse() async {
+    let spy = SpySavedApplicationRepository()
+    spy.loadAllResult = .success([
+      SavedApplication(
+        applicationUid: PlanningApplication.pendingReview.id.value,
+        savedAt: Date(),
+        application: PlanningApplication.permitted
+      )
+    ])
+    let sut = ApplicationDetailViewModel(
+      application: .pendingReview,
+      savedApplicationRepository: spy
+    )
 
     await sut.loadSavedState()
 

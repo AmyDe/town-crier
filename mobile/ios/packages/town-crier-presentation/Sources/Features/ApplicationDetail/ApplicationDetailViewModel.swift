@@ -95,11 +95,19 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// Loads the saved state from the repository and updates `isSaved` accordingly.
   /// Call this after creating the ViewModel to reflect the server-side saved state.
   /// No-op if no repository was provided.
+  ///
+  /// The match compares the reconstructed ``PlanningApplicationId`` of each
+  /// saved item's embedded snapshot against this application's id — never the
+  /// raw top-level `applicationUid` string. The stored top-level uid can be in
+  /// a different format from the snapshot id reconstructed by
+  /// `PlanningApplicationDTO.toDomain()`, which would otherwise make a saved
+  /// item read as "unsaved" (bd tc-jjl4). The snapshot id is the source of
+  /// truth the rest of the Saved tab already uses.
   public func loadSavedState() async {
     guard let repository = savedApplicationRepository else { return }
     do {
       let saved = try await repository.loadAll()
-      isSaved = saved.contains { $0.applicationUid == applicationId.value }
+      isSaved = saved.contains { $0.application?.id == application.id }
     } catch {
       // Leave isSaved at its current value (false) on failure
     }

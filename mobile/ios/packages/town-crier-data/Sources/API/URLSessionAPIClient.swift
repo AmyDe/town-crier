@@ -1,6 +1,6 @@
 import Foundation
-import os
 import TownCrierDomain
+import os
 
 /// Foundation HTTP client that injects Auth0 bearer tokens and handles
 /// common response parsing, error mapping, and token refresh on 401.
@@ -89,7 +89,8 @@ public final class URLSessionAPIClient: Sendable {
     let urlRequest = try buildRequest(endpoint, accessToken: accessToken)
 
     #if DEBUG
-      Self.logger.debug("→ \(urlRequest.httpMethod ?? "?") \(urlRequest.url?.absoluteString ?? "?")")
+      Self.logger.debug(
+        "→ \(urlRequest.httpMethod ?? "?") \(urlRequest.url?.absoluteString ?? "?")")
     #endif
 
     let (data, response) = try await transport.data(for: urlRequest)
@@ -177,7 +178,8 @@ public final class URLSessionAPIClient: Sendable {
 
   private func mapForbidden(data: Data) throws {
     if let body = try? decoder.decode(InsufficientEntitlementBody.self, from: data),
-      body.error == "insufficient_entitlement" {
+      body.error == "insufficient_entitlement"
+    {
       throw DomainError.insufficientEntitlement(required: body.required)
     }
     let message = String(data: data, encoding: .utf8)

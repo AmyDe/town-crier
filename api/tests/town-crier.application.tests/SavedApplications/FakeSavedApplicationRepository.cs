@@ -9,8 +9,15 @@ internal sealed class FakeSavedApplicationRepository : ISavedApplicationReposito
 
     public int Count => this.store.Count;
 
+    /// <summary>
+    /// Gets the number of times <see cref="SaveAsync"/> has been invoked. Lets tests
+    /// assert that an idempotent re-save short-circuits before the redundant write.
+    /// </summary>
+    public int SaveCallCount { get; private set; }
+
     public Task SaveAsync(SavedApplication savedApplication, CancellationToken ct)
     {
+        this.SaveCallCount++;
         var existing = this.store.FindIndex(
             s => s.UserId == savedApplication.UserId && s.ApplicationUid == savedApplication.ApplicationUid);
 

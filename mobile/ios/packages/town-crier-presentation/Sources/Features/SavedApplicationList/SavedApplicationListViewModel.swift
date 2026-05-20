@@ -62,7 +62,8 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
     error = nil
     do {
       let saved = try await savedApplicationRepository.loadAll()
-      applications = saved
+      applications =
+        saved
         .sorted { $0.savedAt > $1.savedAt }
         .compactMap(\.application)
     } catch {

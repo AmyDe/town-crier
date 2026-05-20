@@ -113,7 +113,9 @@ struct DomainErrorMessageTests {
 
   @Test func invalidPostcode_hasSpecificMessage() {
     let error = DomainError.invalidPostcode("NOPE")
-    #expect(error.userMessage == "The postcode 'NOPE' doesn't look right. Please enter a valid UK postcode.")
+    #expect(
+      error.userMessage
+        == "The postcode 'NOPE' doesn't look right. Please enter a valid UK postcode.")
   }
 
   @Test func invalidPostcode_isNotRetryable() {
@@ -129,7 +131,9 @@ struct DomainErrorMessageTests {
 
   @Test func geocodingFailed_hasSpecificMessage() {
     let error = DomainError.geocodingFailed("SW1A 1AA")
-    #expect(error.userMessage == "We couldn't find the location for that postcode. Please check and try again.")
+    #expect(
+      error.userMessage
+        == "We couldn't find the location for that postcode. Please check and try again.")
   }
 
   @Test func geocodingFailed_isRetryable() {

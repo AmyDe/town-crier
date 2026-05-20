@@ -72,6 +72,36 @@ public sealed class DispatchDecisionEventCommandHandlerTests
     }
 
     [Test]
+    public async Task Should_CreateSavedDecisionNotification_When_BookmarkWasSavedWithCanonicalUidKey()
+    {
+        // Arrange — the row was saved through the canonical path (SaveApplicationCommandHandler),
+        // so its ApplicationUid is the canonical {areaId}/{name} uid, NOT the raw PlanIt
+        // uid. Decision dispatch must still find it, or every app saved after the
+        // canonical-uid change silently stops receiving decision pushes (bd tc-o88i).
+        var harness = new Harness();
+        await harness.SeedPaidUserAsync("user-1", "device-1");
+
+        var saved = new PlanningApplicationBuilder()
+            .WithUid("planit-raw-uid-xyz").WithName("app-001").WithAreaId(1).Build();
+        await harness.SavedApplicationRepo.SaveAsync(
+            SavedApplication.Create("user-1", saved, March2026), CancellationToken.None);
+
+        // Act — the polled application carries the raw PlanIt uid, as PlanIt master
+        // records always do; only its canonical {areaId}/{name} matches the saved row.
+        var application = new PlanningApplicationBuilder()
+            .WithUid("planit-raw-uid-xyz").WithName("app-001").WithAreaId(1)
+            .WithAppState("Rejected").Build();
+
+        await harness.Handler.HandleAsync(
+            new DispatchDecisionEventCommand(application), CancellationToken.None);
+
+        // Assert — the saved bookmark holder was matched and notified.
+        await Assert.That(harness.NotificationRepo.All).HasCount().EqualTo(1);
+        await Assert.That(harness.NotificationRepo.All[0].UserId).IsEqualTo("user-1");
+        await Assert.That(harness.NotificationRepo.All[0].Sources).IsEqualTo(NotificationSources.Saved);
+    }
+
+    [Test]
     public async Task Should_OrMergeIntoSingleNotification_When_UserMatchesViaBothZoneAndSaved()
     {
         // Arrange — Pro user has BOTH a covering zone AND a saved bookmark

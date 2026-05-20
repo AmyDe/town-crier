@@ -92,6 +92,42 @@ public sealed class GetApplicationByUidQueryHandlerTests
     }
 
     [Test]
+    public async Task Should_RefreshSavedSnapshot_When_MasterUidFormatDiffersFromCanonicalKey()
+    {
+        // Arrange — the regression PR #398 introduced: the master record's raw Uid
+        // field is in a stale format, but the saved row is keyed on the canonical
+        // {areaId}/{name} uid. Refresh-on-tap must align on the canonical key, not
+        // the raw Uid, or snapshot healing is a silent no-op (bd tc-o88i).
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var stale = new PlanningApplicationBuilder()
+            .WithUid("legacy-uid-format").WithName("APP/2024/001").WithAreaId(42)
+            .WithAppState("Undecided").Build();
+        var fresh = new PlanningApplicationBuilder()
+            .WithUid("legacy-uid-format").WithName("APP/2024/001").WithAreaId(42)
+            .WithAppState("Permitted").Build();
+
+        var repository = new FakePlanningApplicationRepository();
+        await repository.UpsertAsync(fresh, CancellationToken.None);
+
+        var savedRepository = new FakeSavedApplicationRepository();
+        await savedRepository.SaveAsync(
+            SavedApplication.Create("auth0|user-1", stale, savedAt), CancellationToken.None);
+
+        var handler = new GetApplicationByUidQueryHandler(repository, savedRepository);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetApplicationByUidQuery("legacy-uid-format", "auth0|user-1"), CancellationToken.None);
+
+        // Assert — the saved row's snapshot was healed despite the raw-uid mismatch.
+        await Assert.That(result).IsNotNull();
+        var rows = await savedRepository.GetByUserIdAsync("auth0|user-1", CancellationToken.None);
+        await Assert.That(rows).HasCount().EqualTo(1);
+        await Assert.That(rows[0].Application!.AppState).IsEqualTo("Permitted");
+        await Assert.That(rows[0].SavedAt).IsEqualTo(savedAt);
+    }
+
+    [Test]
     public async Task Should_NotRefreshSavedSnapshot_When_UserHasNotSavedApplication()
     {
         // Arrange — refresh-on-tap must only touch the saved row of the

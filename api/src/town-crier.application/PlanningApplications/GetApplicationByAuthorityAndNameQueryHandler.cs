@@ -67,8 +67,12 @@ public sealed class GetApplicationByAuthorityAndNameQueryHandler
     {
         try
         {
+            // Saved rows are keyed on the canonical {areaId}/{name} uid, not the
+            // master record's raw Uid field — align the lookup on CanonicalUid so
+            // snapshot healing fires for stale-format saves (bd tc-o88i).
+            var canonicalUid = application.CanonicalUid;
             var hasSaved = await this.savedApplicationRepository
-                .ExistsAsync(userId, application.Uid, ct).ConfigureAwait(false);
+                .ExistsAsync(userId, canonicalUid, ct).ConfigureAwait(false);
 
             if (!hasSaved)
             {
@@ -79,7 +83,7 @@ public sealed class GetApplicationByAuthorityAndNameQueryHandler
                 .GetByUserIdAsync(userId, ct).ConfigureAwait(false);
 
             var existing = rows.FirstOrDefault(r =>
-                string.Equals(r.ApplicationUid, application.Uid, StringComparison.Ordinal));
+                string.Equals(r.ApplicationUid, canonicalUid, StringComparison.Ordinal));
             var savedAt = existing?.SavedAt ?? DateTimeOffset.UtcNow;
 
             var refreshed = SavedApplication.Create(userId, application, savedAt);

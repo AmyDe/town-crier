@@ -21,14 +21,37 @@ public sealed class SavedApplicationTests
         // Act
         var saved = SavedApplication.Create("auth0|user-1", application, savedAt);
 
-        // Assert
+        // Assert — the saved record keys on the canonical {areaId}/{name} uid, NOT the
+        // raw PlanIt uid string. This is what keeps the Cosmos doc id stable and makes
+        // re-saves idempotent regardless of what uid format the client sent (bd tc-o88i).
         await Assert.That(saved.UserId).IsEqualTo("auth0|user-1");
-        await Assert.That(saved.ApplicationUid).IsEqualTo("planit-uid-abc");
+        await Assert.That(saved.ApplicationUid).IsEqualTo("42/Camden/CAM/24/0042/FUL");
         await Assert.That(saved.AuthorityId).IsEqualTo(42);
         await Assert.That(saved.SavedAt).IsEqualTo(savedAt);
         await Assert.That(saved.Application).IsNotNull();
         await Assert.That(saved.Application!.Uid).IsEqualTo("planit-uid-abc");
         await Assert.That(saved.Application.Name).IsEqualTo("Camden/CAM/24/0042/FUL");
+    }
+
+    [Test]
+    public async Task Should_KeyOnCanonicalUid_When_RawUidFormatDiffers()
+    {
+        // Arrange — two saves of the same application where the client supplied a
+        // different raw uid string each time (the PR #398 stale-format scenario).
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var legacyFormat = new PlanningApplicationBuilder()
+            .WithAreaId(42).WithName("CAM/24/0042/FUL").WithUid("CAM/24/0042/FUL").Build();
+        var newFormat = new PlanningApplicationBuilder()
+            .WithAreaId(42).WithName("CAM/24/0042/FUL").WithUid("42/CAM/24/0042/FUL").Build();
+
+        // Act
+        var fromLegacy = SavedApplication.Create("auth0|user-1", legacyFormat, savedAt);
+        var fromNew = SavedApplication.Create("auth0|user-1", newFormat, savedAt);
+
+        // Assert — both land on the identical canonical key, so the Cosmos
+        // {userId}:{applicationUid} doc id is identical and the upsert is idempotent.
+        await Assert.That(fromLegacy.ApplicationUid).IsEqualTo("42/CAM/24/0042/FUL");
+        await Assert.That(fromNew.ApplicationUid).IsEqualTo(fromLegacy.ApplicationUid);
     }
 
     [Test]
@@ -76,6 +99,30 @@ public sealed class SavedApplicationTests
         await Assert.That(refreshed.SavedAt).IsEqualTo(saved.SavedAt);
         await Assert.That(refreshed.Application).IsNotNull();
         await Assert.That(refreshed.Application!.AppState).IsEqualTo("Permitted");
+    }
+
+    [Test]
+    public async Task Should_AttachSnapshot_PreservingExistingKey_When_BackfillingLegacyRow()
+    {
+        // Arrange — a legacy uid-only row whose ApplicationUid predates the canonical
+        // {areaId}/{name} scheme. The lazy-backfill path embeds a snapshot but must
+        // NOT re-key the row, or it orphans the old Cosmos doc. Re-keying legacy rows
+        // is the dedicated migration's job (bd tc-sqr3 / tc-o88i).
+        var savedAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var legacy = SavedApplication.Create("auth0|user-1", "planit-legacy-uid", authorityId: 9, savedAt);
+        var snapshot = new PlanningApplicationBuilder()
+            .WithAreaId(9).WithName("APP/legacy").WithAppState("Permitted").Build();
+
+        // Act
+        var backfilled = legacy.WithEmbeddedSnapshot(snapshot);
+
+        // Assert — identity preserved, snapshot attached.
+        await Assert.That(backfilled.ApplicationUid).IsEqualTo("planit-legacy-uid");
+        await Assert.That(backfilled.UserId).IsEqualTo("auth0|user-1");
+        await Assert.That(backfilled.AuthorityId).IsEqualTo(9);
+        await Assert.That(backfilled.SavedAt).IsEqualTo(savedAt);
+        await Assert.That(backfilled.Application).IsNotNull();
+        await Assert.That(backfilled.Application!.AppState).IsEqualTo("Permitted");
     }
 
     [Test]

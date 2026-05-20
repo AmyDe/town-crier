@@ -67,8 +67,9 @@ struct AppCoordinatorTests {
     savedSpy.loadAllResult = .success([
       SavedApplication(
         applicationUid: PlanningApplication.pendingReview.id.value,
-        savedAt: Date()
-      ),
+        savedAt: Date(),
+        application: .pendingReview
+      )
     ])
     let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
     let vm = sut.makeApplicationDetailViewModel(application: .pendingReview)
@@ -219,7 +220,7 @@ struct AppCoordinatorTests {
   @Test func makeSavedApplicationListViewModel_returnsConfiguredViewModel() async {
     let savedSpy = SpySavedApplicationRepository()
     savedSpy.loadAllResult = .success([
-      SavedApplication.fixture(uid: "APP-A"),
+      SavedApplication.fixture(uid: "APP-A")
     ])
     let (sut, _) = makeSUT(savedApplicationRepository: savedSpy)
 
