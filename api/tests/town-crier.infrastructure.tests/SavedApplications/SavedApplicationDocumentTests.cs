@@ -127,6 +127,57 @@ public sealed class SavedApplicationDocumentTests
     }
 
     [Test]
+    public async Task Should_PreserveStoredLegacyUid_When_LegacyDocCarriesSnapshot()
+    {
+        // Arrange — a legacy doc persisted before PR#398: it is keyed on the raw
+        // PlanIt bare ref (e.g. 25/02755/CLC) yet carries an embedded snapshot whose
+        // canonical uid is the post-PR#398 {areaId}/{name} form. ToDomain must
+        // surface the STORED uid, not silently re-derive the canonical one — the
+        // lazy re-key migration (bd tc-sqr3) detects a legacy doc precisely by the
+        // stored uid differing from the snapshot's canonical uid.
+        var savedAt = new DateTimeOffset(2026, 4, 1, 9, 0, 0, TimeSpan.Zero);
+        var snapshot = new PlanningApplication(
+            name: "Kingston/25/02755/CLC",
+            uid: "25/02755/CLC",
+            areaName: "Kingston",
+            areaId: 314,
+            address: "10 Test Lane",
+            postcode: "KT1 1AA",
+            description: "Test application",
+            appType: "Full",
+            appState: "Undecided",
+            appSize: "Small",
+            startDate: new DateOnly(2026, 1, 15),
+            decidedDate: null,
+            consultedDate: null,
+            longitude: -0.3,
+            latitude: 51.4,
+            url: null,
+            link: null,
+            lastDifferent: new DateTimeOffset(2026, 3, 30, 12, 0, 0, TimeSpan.Zero));
+
+        var legacyDocument = new SavedApplicationDocument
+        {
+            Id = SavedApplicationDocument.MakeId("auth0|user-1", "25/02755/CLC"),
+            UserId = "auth0|user-1",
+            ApplicationUid = "25/02755/CLC",
+            AuthorityId = 314,
+            SavedAt = savedAt,
+            Application = SavedApplicationSnapshotDocument.FromDomain(snapshot),
+        };
+
+        // Act
+        var domain = legacyDocument.ToDomain();
+
+        // Assert — the stored legacy uid survives; the snapshot still hydrates.
+        await Assert.That(domain.ApplicationUid).IsEqualTo("25/02755/CLC");
+        await Assert.That(domain.Application).IsNotNull();
+        await Assert.That(domain.Application!.CanonicalUid).IsEqualTo("314/Kingston/25/02755/CLC");
+        await Assert.That(domain.SavedAt).IsEqualTo(savedAt);
+        await Assert.That(domain.AuthorityId).IsEqualTo(314);
+    }
+
+    [Test]
     public async Task Should_CreateCompositeId_When_MappedFromDomain()
     {
         // Arrange
