@@ -19,7 +19,7 @@ public sealed class RegisterDeviceTokenCommandHandler
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var existing = await this.repository.GetByTokenAsync(command.Token, ct).ConfigureAwait(false);
+        var existing = await this.repository.GetByTokenAsync(command.UserId, command.Token, ct).ConfigureAwait(false);
 
         if (existing is not null)
         {

@@ -8,7 +8,7 @@ public sealed class InMemoryDeviceRegistrationRepository : IDeviceRegistrationRe
 {
     private readonly ConcurrentDictionary<string, DeviceRegistration> store = new();
 
-    public Task<DeviceRegistration?> GetByTokenAsync(string token, CancellationToken ct)
+    public Task<DeviceRegistration?> GetByTokenAsync(string userId, string token, CancellationToken ct)
     {
         this.store.TryGetValue(token, out var registration);
         return Task.FromResult(registration);
@@ -29,7 +29,7 @@ public sealed class InMemoryDeviceRegistrationRepository : IDeviceRegistrationRe
         return Task.CompletedTask;
     }
 
-    public Task DeleteByTokenAsync(string token, CancellationToken ct)
+    public Task DeleteByTokenAsync(string userId, string token, CancellationToken ct)
     {
         this.store.TryRemove(token, out _);
         return Task.CompletedTask;

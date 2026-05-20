@@ -203,7 +203,7 @@ public sealed class DispatchDecisionEventCommandHandler
                 foreach (var invalidToken in sendResult.InvalidTokens)
                 {
                     await this.removeInvalidDeviceTokenHandler
-                        .HandleAsync(new RemoveInvalidDeviceTokenCommand(invalidToken), ct)
+                        .HandleAsync(new RemoveInvalidDeviceTokenCommand(userId, invalidToken), ct)
                         .ConfigureAwait(false);
                 }
             }

@@ -105,7 +105,7 @@ public sealed class GenerateWeeklyDigestsCommandHandler
                     foreach (var invalidToken in sendResult.InvalidTokens)
                     {
                         await this.removeInvalidDeviceTokenHandler
-                            .HandleAsync(new RemoveInvalidDeviceTokenCommand(invalidToken), ct)
+                            .HandleAsync(new RemoveInvalidDeviceTokenCommand(profile.UserId, invalidToken), ct)
                             .ConfigureAwait(false);
                     }
                 }
