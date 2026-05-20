@@ -57,9 +57,17 @@ internal sealed class SavedApplicationDocument
         // pattern as the snapshot null check below (bd tc-th98).
         var authorityId = this.AuthorityId ?? this.Application?.AreaId ?? 0;
 
+        // Always reconstruct the row on its STORED ApplicationUid. A legacy doc
+        // persisted before PR#398 is keyed on the raw PlanIt bare ref, not the
+        // canonical {areaId}/{name} uid; deriving the uid from the snapshot here
+        // would mask that and orphan the legacy Cosmos doc. The lazy re-key
+        // migration (bd tc-sqr3) detects a legacy doc precisely by the stored uid
+        // differing from the snapshot's canonical uid, so the stored uid must survive.
+        var record = SavedApplication.Create(this.UserId, this.ApplicationUid, authorityId, this.SavedAt);
+
         return this.Application is null
-            ? SavedApplication.Create(this.UserId, this.ApplicationUid, authorityId, this.SavedAt)
-            : SavedApplication.Create(this.UserId, this.Application.ToDomain(), this.SavedAt);
+            ? record
+            : record.WithEmbeddedSnapshot(this.Application.ToDomain());
     }
 
     internal static string MakeId(string userId, string applicationUid) => $"{userId}:{applicationUid}";
