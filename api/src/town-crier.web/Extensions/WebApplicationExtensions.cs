@@ -41,6 +41,7 @@ internal static class WebApplicationExtensions
         v1.MapDemoAccountEndpoints();
         v1.MapAdminEndpoints();
         v1.MapOfferCodeEndpoints();
+        v1.MapSubscriptionEndpoints();
 
         app.MapApiEndpoints();
     }

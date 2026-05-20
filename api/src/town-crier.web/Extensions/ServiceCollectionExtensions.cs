@@ -12,6 +12,7 @@ using TownCrier.Application.OfferCodes;
 using TownCrier.Application.PlanningApplications;
 using TownCrier.Application.RateLimiting;
 using TownCrier.Application.SavedApplications;
+using TownCrier.Application.Subscriptions;
 using TownCrier.Application.UserProfiles;
 using TownCrier.Application.WatchZones;
 using TownCrier.Infrastructure.Auth;
@@ -26,6 +27,7 @@ using TownCrier.Infrastructure.OfferCodes;
 using TownCrier.Infrastructure.PlanningApplications;
 using TownCrier.Infrastructure.RateLimiting;
 using TownCrier.Infrastructure.SavedApplications;
+using TownCrier.Infrastructure.Subscriptions;
 using TownCrier.Infrastructure.UserProfiles;
 using TownCrier.Infrastructure.WatchZones;
 
@@ -88,6 +90,13 @@ internal static class ServiceCollectionExtensions
         // HTTP/2 HttpClient. Validation runs eagerly here so a misconfigured
         // deployment crashes at startup, not on the first push.
         services.AddApnsPushNotifications(configuration);
+
+        // Apple App Store subscription verification (ADR 0010). The JWS
+        // verifier validates the StoreKit-signed transaction against Apple's
+        // embedded root CA — no network call to Apple at purchase time.
+        services.AddSingleton<IAppleJwsVerifier>(
+            new AppleJwsVerifier(AppleRootCertificates.Load()));
+        services.AddSingleton<ITransactionDecoder, TransactionDecoder>();
 
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
         services.Configure<RateLimitOptions>(configuration.GetSection("RateLimiting"));
@@ -175,6 +184,16 @@ internal static class ServiceCollectionExtensions
 
         services.AddTransient<GenerateOfferCodesCommandHandler>();
         services.AddTransient<RedeemOfferCodeCommandHandler>();
+
+        // Apple App Store settings (ADR 0010). Non-secret — bound from the
+        // "Apple" configuration section. BundleId guards against transactions
+        // signed for a different app; Environment distinguishes Sandbox/Production.
+        services.AddSingleton(new AppleSettings
+        {
+            BundleId = configuration["Apple:BundleId"] ?? "uk.co.towncrier.ios",
+            Environment = configuration["Apple:Environment"] ?? "Production",
+        });
+        services.AddTransient<VerifySubscriptionCommandHandler>();
 
         return services;
     }
