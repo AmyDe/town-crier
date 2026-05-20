@@ -19,9 +19,7 @@ public sealed class VerifySubscriptionEndpointTests
     private const string UserId = "auth0|test-user-123";
     private const string BundleId = "uk.co.towncrier.ios";
 
-    private static readonly Uri VerifyUri = new("/v1/subscriptions/verify", UriKind.Relative);
-
-    private static readonly string PersonalTransactionJson =
+    private const string PersonalTransactionJson =
         $$"""
         {
           "transactionId": "txn-1",
@@ -33,6 +31,8 @@ public sealed class VerifySubscriptionEndpointTests
           "environment": "Sandbox"
         }
         """;
+
+    private static readonly Uri VerifyUri = new("/v1/subscriptions/verify", UriKind.Relative);
 
     [Test]
     public async Task Should_Return200WithEntitlementState_When_TransactionIsValid()

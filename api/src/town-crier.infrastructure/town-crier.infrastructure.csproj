@@ -16,6 +16,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Authorities\authorities.json" />
     <EmbeddedResource Include="Geocoding\authority-mapping.json" />
+    <EmbeddedResource Include="Subscriptions\AppleRootCA-G3.cer" />
   </ItemGroup>
 
   <ItemGroup>
