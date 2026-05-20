@@ -68,4 +68,15 @@ describe('Faq', () => {
       expect(answerText.length).toBeGreaterThan(0);
     });
   });
+
+  it('describes Free tier digest as weekly (not daily)', () => {
+    render(<Faq />);
+
+    // The free tier FAQ answer must say weekly, not daily
+    const freeAnswer = screen.getByText(/is there a free tier/i)
+      .closest('details')!
+      .querySelector('p')!;
+    expect(freeAnswer.textContent).toMatch(/weekly/i);
+    expect(freeAnswer.textContent).not.toMatch(/daily/i);
+  });
 });
