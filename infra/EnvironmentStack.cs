@@ -178,6 +178,10 @@ public static class EnvironmentStack
 
             // OfferCodes — partitioned by code for point reads on redemption
             new("OfferCodes", "/code"),
+
+            // AppleNotifications — idempotency store for App Store Server Notifications;
+            // one document per Apple notificationUUID, used as both id and partition key
+            new("AppleNotifications", "/id"),
         };
 
         foreach (var container in containerDefinitions)
