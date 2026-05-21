@@ -57,6 +57,9 @@ struct TownCrierApp: App {
     let geocoder = APIPostcodeGeocoder(apiClient: apiClient)
     let savedApplicationRepository = APISavedApplicationRepository(apiClient: apiClient)
     let notificationStateRepository = APINotificationStateRepository(apiClient: apiClient)
+    // Offer-code redemption — POSTs to /v1/offer-codes/redeem (ADR 0022).
+    // Injecting the service unhides the "Redeem Offer Code" row in Settings.
+    let offerCodeService = HttpOfferCodeService(apiClient: apiClient)
 
     let appCoordinator = AppCoordinator(
       repository: repository,
@@ -72,6 +75,7 @@ struct TownCrierApp: App {
       appVersionProvider: appVersionProvider,
       versionConfigService: versionConfigService,
       savedApplicationRepository: savedApplicationRepository,
+      offerCodeService: offerCodeService,
       notificationStateRepository: notificationStateRepository,
       badgeSetter: UIApplicationBadgeSetter()
     )
@@ -277,7 +281,12 @@ struct TownCrierApp: App {
         },
         onTermsOfService: {
           coordinator.showTermsOfService()
-        }
+        },
+        // Surfacing the "Redeem Offer Code" row only when an OfferCodeService
+        // was injected — SettingsView hides the row when this callback is nil.
+        onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
+          ? { coordinator.showRedeemOfferCode() }
+          : nil
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
         NotificationPreferencesView(
@@ -295,6 +304,17 @@ struct TownCrierApp: App {
     .sheet(item: $coordinator.presentedLegalDocument) { documentType in
       NavigationStack {
         LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+      }
+    }
+    // Offer-code redemption — presented from the "Redeem Offer Code" row in
+    // Settings (ADR 0022). The factory returns nil if no OfferCodeService was
+    // injected, in which case the row is also hidden, so the sheet body is a
+    // no-op fallback that should never render.
+    .sheet(isPresented: $coordinator.isRedeemOfferCodePresented) {
+      NavigationStack {
+        if let viewModel = coordinator.makeRedeemOfferCodeViewModel() {
+          RedeemOfferCodeView(viewModel: viewModel)
+        }
       }
     }
     #if os(iOS)

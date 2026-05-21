@@ -18,6 +18,8 @@ targets:
     sources:
       - path: town-crier-app/Sources
       - path: town-crier-app/Resources
+      - path: town-crier-app/TownCrier.storekit
+        buildPhase: none
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: uk.towncrierapp.mobile
@@ -55,6 +57,11 @@ schemes:
     run:
       config: Debug
       simulateLocation: false
+      # StoreKit configuration file for Simulator IAP testing — defines the
+      # Personal and Pro products so purchases can be exercised without a
+      # sandbox App Store account. Emits StoreKitConfigurationFileReference
+      # into the generated .xcscheme.
+      storeKitConfiguration: town-crier-app/TownCrier.storekit
     profile:
       config: Release
     analyze:
