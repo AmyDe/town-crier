@@ -11,6 +11,15 @@ public protocol SubscriptionVerificationService: Sendable {
   /// Sends a compact JWS StoreKit 2 transaction to `POST /v1/subscriptions/verify`
   /// and returns the server-resolved entitlement state.
   func verify(signedTransaction: String) async throws -> VerifiedSubscription
+
+  /// Sends the list of compact JWS strings from `Transaction.currentEntitlements`
+  /// to `POST /v1/subscriptions/verify` for re-verification on a restore.
+  ///
+  /// The server re-verifies every JWS and resolves the user's highest active
+  /// tier, returning `Free` when only lapsed transactions are supplied (ADR
+  /// 0010 — Restore Purchases). Unlike the purchase path, a restore is an
+  /// explicit user action, so a verification rejection surfaces to the caller.
+  func verifyRestore(signedTransactions: [String]) async throws -> VerifiedSubscription
 }
 
 /// Server-resolved subscription state returned by `POST /v1/subscriptions/verify`.
