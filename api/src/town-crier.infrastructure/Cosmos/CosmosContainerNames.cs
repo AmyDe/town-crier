@@ -18,4 +18,5 @@ public static class CosmosContainerNames
     public const string PollState = "PollState";
     public const string OfferCodes = "OfferCodes";
     public const string Leases = "Leases";
+    public const string AppleNotifications = "AppleNotifications";
 }
