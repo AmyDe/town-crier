@@ -19,18 +19,16 @@ public sealed class VerifySubscriptionEndpointTests
     private const string UserId = "auth0|test-user-123";
     private const string BundleId = "uk.co.towncrier.ios";
 
-    private const string PersonalTransactionJson =
-        $$"""
-        {
-          "transactionId": "txn-1",
-          "originalTransactionId": "orig-txn-1",
-          "productId": "uk.co.towncrier.personal.monthly",
-          "bundleId": "{{BundleId}}",
-          "purchaseDate": 1744329600000,
-          "expiresDate": 1746921600000,
-          "environment": "Sandbox"
-        }
-        """;
+    // Millisecond epoch values well clear of wall-clock. A freshly purchased
+    // transaction always has a future expiry; the handler treats lapsed
+    // transactions as inactive, so the purchase fixture must stay future-dated.
+    private static readonly string FutureExpiry =
+        DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static readonly string PastExpiry =
+        DateTimeOffset.UtcNow.AddDays(-30).ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static readonly string PersonalTransactionJson = PersonalTransaction(FutureExpiry);
 
     private static readonly Uri VerifyUri = new("/v1/subscriptions/verify", UriKind.Relative);
 
@@ -103,6 +101,97 @@ public sealed class VerifySubscriptionEndpointTests
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
     }
 
+    [Test]
+    public async Task Should_RestoreProTier_When_SignedTransactionsListHasActiveProAndExpiredPersonal()
+    {
+        var personalJws = "personal.jws.token";
+        var proJws = "pro.jws.token";
+        var verifier = MappingAppleJwsVerifier.Create()
+            .WithPayload(personalJws, PersonalTransaction(PastExpiry))
+            .WithPayload(proJws, ProTransaction(FutureExpiry));
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(
+            builder => ConfigureSubscriptionHost(builder, verifier));
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            VerifyUri,
+            new VerifySubscriptionRequest(SignedTransaction: null, SignedTransactions: [personalJws, proJws]),
+            AppJsonSerializerContext.Default.VerifySubscriptionRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+
+        var body = await response.Content
+            .ReadFromJsonAsync(AppJsonSerializerContext.Default.VerifySubscriptionResponse)
+            .ConfigureAwait(false);
+        await Assert.That(body!.Tier).IsEqualTo("Pro");
+    }
+
+    [Test]
+    public async Task Should_RestoreFreeTier_When_SignedTransactionsListHasOnlyExpiredTransactions()
+    {
+        var expiredJws = "expired.jws.token";
+        var verifier = MappingAppleJwsVerifier.Create()
+            .WithPayload(expiredJws, PersonalTransaction(PastExpiry));
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(
+            builder => ConfigureSubscriptionHost(builder, verifier));
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            VerifyUri,
+            new VerifySubscriptionRequest(SignedTransaction: null, SignedTransactions: [expiredJws]),
+            AppJsonSerializerContext.Default.VerifySubscriptionRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
+
+        var body = await response.Content
+            .ReadFromJsonAsync(AppJsonSerializerContext.Default.VerifySubscriptionResponse)
+            .ConfigureAwait(false);
+        await Assert.That(body!.Tier).IsEqualTo("Free");
+    }
+
+    [Test]
+    public async Task Should_Return401_When_RestoreListContainsTamperedJws()
+    {
+        // The verifier knows the valid JWS but not the tampered one — an
+        // unknown signed payload is treated as a verification failure.
+        var validJws = "valid.jws.token";
+        var verifier = MappingAppleJwsVerifier.Create()
+            .WithPayload(validJws, PersonalTransaction(FutureExpiry));
+
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(
+            builder => ConfigureSubscriptionHost(builder, verifier));
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            VerifyUri,
+            new VerifySubscriptionRequest(
+                SignedTransaction: null, SignedTransactions: [validJws, "tampered.jws.token"]),
+            AppJsonSerializerContext.Default.VerifySubscriptionRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.Unauthorized);
+    }
+
+    [Test]
+    public async Task Should_Return400_When_NeitherSignedTransactionNorListSupplied()
+    {
+        await using var baseFactory = new TestWebApplicationFactory();
+        await using var factory = baseFactory.WithWebHostBuilder(
+            builder => ConfigureSubscriptionHost(builder, StubAppleJwsVerifier.ReturningPayload(PersonalTransactionJson)));
+        using var client = AuthenticatedClient(factory);
+
+        var response = await client.PostAsJsonAsync(
+            VerifyUri,
+            new VerifySubscriptionRequest(SignedTransaction: null, SignedTransactions: null),
+            AppJsonSerializerContext.Default.VerifySubscriptionRequest).ConfigureAwait(false);
+
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
+    }
+
     private static HttpClient AuthenticatedClient(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
@@ -127,4 +216,30 @@ public sealed class VerifySubscriptionEndpointTests
             services.AddSingleton<IUserProfileRepository>(repository);
         });
     }
+
+    private static string PersonalTransaction(string expiresDate) =>
+        $$"""
+        {
+          "transactionId": "txn-personal",
+          "originalTransactionId": "orig-personal",
+          "productId": "uk.co.towncrier.personal.monthly",
+          "bundleId": "{{BundleId}}",
+          "purchaseDate": 1744329600000,
+          "expiresDate": {{expiresDate}},
+          "environment": "Sandbox"
+        }
+        """;
+
+    private static string ProTransaction(string expiresDate) =>
+        $$"""
+        {
+          "transactionId": "txn-pro",
+          "originalTransactionId": "orig-pro",
+          "productId": "uk.co.towncrier.pro.monthly",
+          "bundleId": "{{BundleId}}",
+          "purchaseDate": 1744329600000,
+          "expiresDate": {{expiresDate}},
+          "environment": "Sandbox"
+        }
+        """;
 }
