@@ -32,7 +32,11 @@ internal static class SubscriptionEndpoints
                 return MalformedBody();
             }
 
-            if (request is null || string.IsNullOrWhiteSpace(request.SignedTransaction))
+            // A purchase supplies a single SignedTransaction; a restore supplies
+            // a SignedTransactions list. Both shapes are merged into one
+            // verification set so purchase and restore share this endpoint.
+            var signedTransactions = CollectSignedTransactions(request);
+            if (signedTransactions.Count == 0)
             {
                 return MalformedBody();
             }
@@ -42,7 +46,7 @@ internal static class SubscriptionEndpoints
             try
             {
                 var result = await handler
-                    .HandleAsync(new VerifySubscriptionCommand(userId, request.SignedTransaction), ct)
+                    .HandleAsync(new VerifySubscriptionCommand(userId, signedTransactions), ct)
                     .ConfigureAwait(false);
 
                 return Results.Json(
@@ -128,6 +132,38 @@ internal static class SubscriptionEndpoints
             }
         })
         .AllowAnonymous();
+    }
+
+    /// <summary>
+    /// Merges the single <c>signedTransaction</c> (purchase) and the
+    /// <c>signedTransactions</c> list (restore) into one set of non-blank JWS
+    /// strings. An empty result means the request supplied neither.
+    /// </summary>
+    private static List<string> CollectSignedTransactions(VerifySubscriptionRequest? request)
+    {
+        var signedTransactions = new List<string>();
+        if (request is null)
+        {
+            return signedTransactions;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SignedTransaction))
+        {
+            signedTransactions.Add(request.SignedTransaction);
+        }
+
+        if (request.SignedTransactions is not null)
+        {
+            foreach (var jws in request.SignedTransactions)
+            {
+                if (!string.IsNullOrWhiteSpace(jws))
+                {
+                    signedTransactions.Add(jws);
+                }
+            }
+        }
+
+        return signedTransactions;
     }
 
     private static IResult MalformedBody() => Results.Json(

@@ -1,11 +1,11 @@
 import Foundation
 import TownCrierDomain
 
-/// HTTP adapter for `SubscriptionVerificationService` that POSTs an Apple-signed
-/// StoreKit 2 transaction to `POST /v1/subscriptions/verify`.
+/// HTTP adapter for `SubscriptionVerificationService` that POSTs Apple-signed
+/// StoreKit 2 transactions to `POST /v1/subscriptions/verify`.
 ///
-/// The request carries the compact JWS string verbatim; the backend
-/// cryptographically verifies it against Apple's certificate chain and writes
+/// The request carries the compact JWS string(s) verbatim; the backend
+/// cryptographically verifies them against Apple's certificate chain and writes
 /// the resolved tier/expiry to the user's Cosmos `UserProfile` (ADR 0010).
 public final class HttpSubscriptionVerificationService: SubscriptionVerificationService, Sendable {
   private let apiClient: URLSessionAPIClient
@@ -21,7 +21,22 @@ public final class HttpSubscriptionVerificationService: SubscriptionVerification
         body: VerifyRequestDTO(signedTransaction: signedTransaction)
       )
     )
+    return Self.verifiedSubscription(from: dto)
+  }
 
+  public func verifyRestore(signedTransactions: [String]) async throws -> VerifiedSubscription {
+    let dto: VerifyResponseDTO = try await apiClient.request(
+      .post(
+        "/v1/subscriptions/verify",
+        body: RestoreRequestDTO(signedTransactions: signedTransactions)
+      )
+    )
+    return Self.verifiedSubscription(from: dto)
+  }
+
+  // MARK: - Response mapping
+
+  private static func verifiedSubscription(from dto: VerifyResponseDTO) -> VerifiedSubscription {
     let tier = SubscriptionTier(rawValue: dto.tier.lowercased()) ?? .free
 
     var expiry: Date?
@@ -47,8 +62,15 @@ public final class HttpSubscriptionVerificationService: SubscriptionVerification
 
 // MARK: - DTOs
 
+/// Purchase request body: `{ "signedTransaction": "<jws>" }`.
 private struct VerifyRequestDTO: Encodable, Sendable {
   let signedTransaction: String
+}
+
+/// Restore request body: `{ "signedTransactions": ["<jws1>", "<jws2>", ...] }`
+/// — the JWS strings from `Transaction.currentEntitlements`.
+private struct RestoreRequestDTO: Encodable, Sendable {
+  let signedTransactions: [String]
 }
 
 private struct VerifyResponseDTO: Decodable, Sendable {

@@ -2,10 +2,16 @@ using System.Globalization;
 using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using TownCrier.Application.RateLimiting;
+using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.UserProfiles;
 
 namespace TownCrier.Web.RateLimiting;
 
-internal sealed class RateLimitMiddleware(RequestDelegate next, IRateLimitStore store, IOptions<RateLimitOptions> options)
+internal sealed class RateLimitMiddleware(
+    RequestDelegate next,
+    IRateLimitStore store,
+    IUserProfileRepository userProfileRepository,
+    IOptions<RateLimitOptions> options)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -20,10 +26,15 @@ internal sealed class RateLimitMiddleware(RequestDelegate next, IRateLimitStore 
         }
 
         var config = options.Value;
-        var tier = context.User.FindFirst("subscription_tier")?.Value;
-        var limit = string.Equals(tier, "paid", StringComparison.OrdinalIgnoreCase)
-            ? config.PaidTierLimit
-            : config.FreeTierLimit;
+
+        // ADR 0010: Cosmos DB is the single source of truth for entitlements.
+        // The subscription_tier JWT claim is at most a non-authoritative cache, so
+        // the paid rate limit is driven by the tier stored on the Cosmos UserProfile.
+        var profile = await userProfileRepository
+            .GetByUserIdAsync(userId, context.RequestAborted)
+            .ConfigureAwait(false);
+        var isPaid = profile is not null && profile.Tier != SubscriptionTier.Free;
+        var limit = isPaid ? config.PaidTierLimit : config.FreeTierLimit;
 
         var result = await store.CheckAndIncrementAsync(userId, limit, config.Window, context.RequestAborted).ConfigureAwait(false);
 
