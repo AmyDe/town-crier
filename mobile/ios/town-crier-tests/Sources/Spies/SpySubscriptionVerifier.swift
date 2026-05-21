@@ -15,8 +15,15 @@ final class SpySubscriptionVerifier: SubscriptionVerificationService, @unchecked
     )
   )
 
+  private var recordedRestoreBatches: [[String]] = []
+
   var verifiedTransactions: [String] {
     lock.withLock { recorded }
+  }
+
+  /// The `signedTransactions` lists passed to `verifyRestore`, one entry per call.
+  var restoredTransactionBatches: [[String]] {
+    lock.withLock { recordedRestoreBatches }
   }
 
   func setVerifyResult(_ value: Result<VerifiedSubscription, Error>) {
@@ -26,6 +33,14 @@ final class SpySubscriptionVerifier: SubscriptionVerificationService, @unchecked
   func verify(signedTransaction: String) async throws -> VerifiedSubscription {
     let current: Result<VerifiedSubscription, Error> = lock.withLock {
       recorded.append(signedTransaction)
+      return result
+    }
+    return try current.get()
+  }
+
+  func verifyRestore(signedTransactions: [String]) async throws -> VerifiedSubscription {
+    let current: Result<VerifiedSubscription, Error> = lock.withLock {
+      recordedRestoreBatches.append(signedTransactions)
       return result
     }
     return try current.get()

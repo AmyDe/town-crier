@@ -96,8 +96,15 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
 
   public func restorePurchases() async throws -> SubscriptionEntitlement? {
     var latestEntitlement: SubscriptionEntitlement?
+    var signedTransactions: [String] = []
 
     for await result in Transaction.currentEntitlements {
+      // Collect the signed JWS verbatim so the backend can re-verify it
+      // (ADR 0010 — Restore Purchases). Apple signs every entitlement
+      // regardless of verification state, so include unverified ones too;
+      // the server is the authority on a restore.
+      signedTransactions.append(result.jwsRepresentation)
+
       if let transaction = try? checkVerification(result) {
         let ent = entitlement(from: transaction)
         if ent.isActive {
@@ -111,6 +118,11 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
         }
       }
     }
+
+    // Re-verify the restored entitlements server-side so Cosmos reflects the
+    // restored tier (ADR 0010). Unlike a purchase, a restore is an explicit
+    // user action, so a verification rejection propagates to the caller.
+    try await reportRestore(signedTransactions: signedTransactions)
 
     return latestEntitlement
   }
@@ -147,6 +159,22 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
       Self.logger.error(
         "Subscription verify POST failed: \(error.localizedDescription, privacy: .public)")
     }
+  }
+
+  /// POSTs the JWS list from `Transaction.currentEntitlements` to the Town
+  /// Crier backend via the injected ``SubscriptionVerificationService`` so the
+  /// server re-verifies the restore and updates Cosmos (ADR 0010 — Restore
+  /// Purchases).
+  ///
+  /// A restore is an explicit user action initiated from the "Restore
+  /// Purchases" control, so — unlike ``reportPurchase(signedTransaction:)`` —
+  /// a verification rejection (e.g. an HTTP 401 for a tampered JWS) is
+  /// rethrown so the UI can tell the user. An empty list is a no-op: there is
+  /// nothing to verify, and the backend already treats the absence of active
+  /// transactions as the `Free` tier. No-op too when no service is injected.
+  func reportRestore(signedTransactions: [String]) async throws {
+    guard let verificationService, !signedTransactions.isEmpty else { return }
+    _ = try await verificationService.verifyRestore(signedTransactions: signedTransactions)
   }
 
   // MARK: - Helpers
