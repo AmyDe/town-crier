@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using TownCrier.Application.RateLimiting;
+using TownCrier.Application.UserProfiles;
+using TownCrier.Domain.UserProfiles;
 using TownCrier.Web.Tests.Auth;
 
 namespace TownCrier.Web.Tests.RateLimiting;
@@ -70,13 +72,16 @@ public sealed class RateLimitMiddlewareTests
     }
 
     [Test]
-    public async Task Should_AllowMoreRequests_When_PaidTier()
+    [Arguments(SubscriptionTier.Personal)]
+    [Arguments(SubscriptionTier.Pro)]
+    public async Task Should_ApplyPaidLimit_When_CosmosTierIsPaid(SubscriptionTier tier)
     {
-        // Arrange
+        // Arrange — the user's authoritative tier lives in the Cosmos UserProfile,
+        // not the JWT claim (ADR 0010: Cosmos is the single source of truth).
+        const string userId = "auth0|paid-user";
         await using var factory = CreateFactoryWithRateLimiting();
-        var token = TestJwtToken.Generate(claims: [new("subscription_tier", "paid")]);
-        using var client = factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        await SeedProfileAsync(factory, userId, tier);
+        using var client = CreateClientForUser(factory, userId);
 
         // Make more requests than the free tier limit
         HttpResponseMessage? lastResponse = null;
@@ -86,9 +91,32 @@ public sealed class RateLimitMiddlewareTests
             lastResponse = await client.GetAsync(new Uri("/api/me", UriKind.Relative));
         }
 
-        // Assert — paid tier has a higher limit, so this should still be allowed
+        // Assert — a paid Cosmos tier gets the higher limit, so this is still allowed
         await Assert.That(lastResponse!.StatusCode).IsEqualTo(HttpStatusCode.OK);
         lastResponse.Dispose();
+    }
+
+    [Test]
+    public async Task Should_ApplyFreeLimit_When_CosmosTierIsFree()
+    {
+        // Arrange
+        const string userId = "auth0|free-user";
+        await using var factory = CreateFactoryWithRateLimiting();
+        await SeedProfileAsync(factory, userId, SubscriptionTier.Free);
+        using var client = CreateClientForUser(factory, userId);
+
+        // Exhaust the free tier limit
+        for (var i = 0; i < TestFreeLimit; i++)
+        {
+            var warmup = await client.GetAsync(new Uri("/api/me", UriKind.Relative));
+            warmup.Dispose();
+        }
+
+        // Act — this request should be over the free limit
+        using var response = await client.GetAsync(new Uri("/api/me", UriKind.Relative));
+
+        // Assert — a Free Cosmos tier only gets the free limit
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.TooManyRequests);
     }
 
     [Test]
@@ -122,9 +150,27 @@ public sealed class RateLimitMiddlewareTests
 
     private static HttpClient CreateAuthenticatedClient(WebApplicationFactory<Program> factory)
     {
+        return CreateClientForUser(factory, "auth0|test-user-123");
+    }
+
+    private static HttpClient CreateClientForUser(WebApplicationFactory<Program> factory, string userId)
+    {
         var client = factory.CreateClient();
-        var token = TestJwtToken.Generate();
+        var token = TestJwtToken.Generate(userId);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
+    }
+
+    private static async Task SeedProfileAsync(
+        WebApplicationFactory<Program> factory, string userId, SubscriptionTier tier)
+    {
+        var repository = factory.Services.GetRequiredService<IUserProfileRepository>();
+        var profile = UserProfile.Register(userId);
+        if (tier != SubscriptionTier.Free)
+        {
+            profile.ActivateSubscription(tier, DateTimeOffset.UtcNow.AddDays(30));
+        }
+
+        await repository.SaveAsync(profile, CancellationToken.None);
     }
 }
