@@ -72,6 +72,22 @@ struct AppCoordinatorOfferCodeTests {
     #expect(sut.isRedeemOfferCodePresented == true)
   }
 
+  // MARK: - Feature availability
+
+  @Test("isOfferCodeRedemptionAvailable is false when no OfferCodeService is wired")
+  func isOfferCodeRedemptionAvailable_withoutService_isFalse() {
+    let (sut, _, _) = makeSUT(offerCodeService: nil)
+
+    #expect(sut.isOfferCodeRedemptionAvailable == false)
+  }
+
+  @Test("isOfferCodeRedemptionAvailable is true when an OfferCodeService is wired")
+  func isOfferCodeRedemptionAvailable_withService_isTrue() {
+    let (sut, _, _) = makeSUT(offerCodeService: SpyOfferCodeService())
+
+    #expect(sut.isOfferCodeRedemptionAvailable == true)
+  }
+
   // MARK: - Factory
 
   @Test("makeRedeemOfferCodeViewModel returns nil when no OfferCodeService is wired")
