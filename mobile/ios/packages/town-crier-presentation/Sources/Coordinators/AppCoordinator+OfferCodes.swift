@@ -2,6 +2,13 @@ import Foundation
 import TownCrierDomain
 
 extension AppCoordinator {
+  /// `true` when an `OfferCodeService` was injected, meaning the offer-code
+  /// redemption flow is wired end-to-end. The composition root reads this to
+  /// decide whether to surface the "Redeem Offer Code" row in Settings.
+  public var isOfferCodeRedemptionAvailable: Bool {
+    offerCodeService != nil
+  }
+
   /// Presents the "Redeem Offer Code" sheet from Settings. Has no effect if
   /// the Coordinator was constructed without an `OfferCodeService` (i.e. the
   /// feature is not wired).
