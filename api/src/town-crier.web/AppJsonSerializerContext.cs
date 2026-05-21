@@ -25,7 +25,6 @@ namespace TownCrier.Web;
 // Per-type [JsonConverter] attributes (e.g. on SubscriptionTier) take precedence.
 [JsonSourceGenerationOptions(UseStringEnumConverter = true)]
 [JsonSerializable(typeof(ApiErrorResponse))]
-[JsonSerializable(typeof(EntitlementErrorResponse))]
 [JsonSerializable(typeof(UserIdResponse))]
 [JsonSerializable(typeof(GetAuthoritiesResult))]
 [JsonSerializable(typeof(GetAuthorityByIdResult))]
