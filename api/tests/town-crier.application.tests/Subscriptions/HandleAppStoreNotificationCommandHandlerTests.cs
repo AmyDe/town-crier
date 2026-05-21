@@ -122,9 +122,10 @@ public sealed class HandleAppStoreNotificationCommandHandlerTests
         // Act
         await handler.HandleAsync(command, CancellationToken.None);
 
-        // Assert
+        // Assert -- grace period set; tier unchanged (access retained during billing retry)
         var saved = deps.Repository.GetByUserId(UserId);
         await Assert.That(saved!.GracePeriodExpiry).IsEqualTo(gracePeriodExpiry);
+        await Assert.That(saved.Tier).IsEqualTo(SubscriptionTier.Personal);
     }
 
     [Test]

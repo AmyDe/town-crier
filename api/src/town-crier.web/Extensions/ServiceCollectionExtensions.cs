@@ -97,6 +97,8 @@ internal static class ServiceCollectionExtensions
         services.AddSingleton<IAppleJwsVerifier>(
             new AppleJwsVerifier(AppleRootCertificates.Load()));
         services.AddSingleton<ITransactionDecoder, TransactionDecoder>();
+        services.AddSingleton<INotificationDecoder, NotificationDecoder>();
+        services.AddSingleton<INotificationIdempotencyStore, CosmosNotificationIdempotencyStore>();
 
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
         services.Configure<RateLimitOptions>(configuration.GetSection("RateLimiting"));
@@ -194,6 +196,7 @@ internal static class ServiceCollectionExtensions
             Environment = configuration["Apple:Environment"] ?? "Production",
         });
         services.AddTransient<VerifySubscriptionCommandHandler>();
+        services.AddTransient<HandleAppStoreNotificationCommandHandler>();
 
         return services;
     }

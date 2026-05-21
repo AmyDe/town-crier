@@ -10,4 +10,6 @@ namespace TownCrier.Infrastructure.Subscriptions;
 [JsonSourceGenerationOptions(WriteIndented = false)]
 [JsonSerializable(typeof(JwsHeader))]
 [JsonSerializable(typeof(AppleTransactionPayload))]
+[JsonSerializable(typeof(AppleNotificationPayload))]
+[JsonSerializable(typeof(AppleNotificationData))]
 internal sealed partial class SubscriptionsJsonSerializerContext : JsonSerializerContext;
