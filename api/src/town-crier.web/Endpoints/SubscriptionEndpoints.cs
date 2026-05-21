@@ -75,6 +75,59 @@ internal static class SubscriptionEndpoints
                     statusCode: 404);
             }
         });
+
+        // App Store Server Notifications v2 (ADR 0010). Apple POSTs subscription
+        // lifecycle events here — renewal, billing-retry grace period, expiry,
+        // refund, revoke. The call is Apple -> API, not user-facing, so it is
+        // anonymous; the signed JWS is the authentication. The body is read and
+        // deserialized explicitly so a malformed payload returns a clean 400.
+        group.MapPost("/webhooks/appstore", async (
+            HttpContext context,
+            HandleAppStoreNotificationCommandHandler handler,
+            CancellationToken ct) =>
+        {
+            AppStoreNotificationRequest? request;
+            try
+            {
+                request = await context.Request
+                    .ReadFromJsonAsync(
+                        AppJsonSerializerContext.Default.AppStoreNotificationRequest, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (JsonException)
+            {
+                return MalformedBody();
+            }
+
+            if (request is null || string.IsNullOrWhiteSpace(request.SignedPayload))
+            {
+                return MalformedBody();
+            }
+
+            try
+            {
+                await handler
+                    .HandleAsync(new HandleAppStoreNotificationCommand(request.SignedPayload), ct)
+                    .ConfigureAwait(false);
+
+                return Results.Ok();
+            }
+            catch (AppleJwsVerificationException ex)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("invalid_notification", ex.Message),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 401);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.Json(
+                    new ApiErrorResponse("invalid_notification_payload", ex.Message),
+                    AppJsonSerializerContext.Default.ApiErrorResponse,
+                    statusCode: 400);
+            }
+        })
+        .AllowAnonymous();
     }
 
     private static IResult MalformedBody() => Results.Json(
