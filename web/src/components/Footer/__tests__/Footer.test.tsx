@@ -35,6 +35,16 @@ describe('Footer', () => {
     expect(screen.getByText(new RegExp(`© ${currentYear} Town Crier`))).toBeInTheDocument();
   });
 
+  it('discloses the operating company, place of registration, and company number', () => {
+    render(<Footer />);
+
+    expect(
+      screen.getByText(
+        /Ivo and the Bea Ltd · Registered in England & Wales · Company No\. 17222369/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('renders a Privacy Policy link', () => {
     render(<Footer />);
 

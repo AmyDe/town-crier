@@ -29,6 +29,10 @@ export function Footer() {
             <a href="/legal/terms" className={styles.legalLink}>Terms of Service</a>
           </nav>
         </div>
+
+        <p className={styles.companyInfo}>
+          Ivo and the Bea Ltd · Registered in England &amp; Wales · Company No. 17222369
+        </p>
       </div>
     </footer>
   );
