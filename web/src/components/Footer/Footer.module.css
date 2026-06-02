@@ -75,6 +75,14 @@
   text-decoration: underline;
 }
 
+/* ---------- Statutory company disclosure (Companies Act 2006) ---------- */
+.companyInfo {
+  margin-top: var(--tc-space-md);
+  text-align: center;
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
 /* ---------- Responsive: side-by-side on tablet+ ---------- */
 @media (min-width: 640px) {
   .bottom {
