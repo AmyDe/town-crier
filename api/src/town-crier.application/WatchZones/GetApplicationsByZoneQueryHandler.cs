@@ -2,11 +2,15 @@ using System.Globalization;
 using TownCrier.Application.Notifications;
 using TownCrier.Application.NotificationState;
 using TownCrier.Application.PlanningApplications;
+using TownCrier.Domain.Notifications;
 
 namespace TownCrier.Application.WatchZones;
 
 public sealed class GetApplicationsByZoneQueryHandler
 {
+    private static readonly IReadOnlyDictionary<string, Notification> EmptyLatestUnread =
+        new Dictionary<string, Notification>(StringComparer.Ordinal);
+
     private readonly IWatchZoneRepository watchZoneRepository;
     private readonly IPlanningApplicationRepository applicationRepository;
     private readonly INotificationRepository notificationRepository;
@@ -57,24 +61,32 @@ public sealed class GetApplicationsByZoneQueryHandler
         var state = await this.notificationStateRepository
             .GetByUserIdAsync(query.UserId, ct).ConfigureAwait(false);
 
+        // Batch the latest-unread lookup into a single Cosmos round-trip for every
+        // application in the zone, rather than one query per application. With ~237
+        // apps per zone the former N+1 loop dominated request latency (~6s); the
+        // batched query collapses it to O(1) (bd tc-1wkp). When the user has no
+        // watermark we can't classify anything as unread, so we skip the lookup.
+        IReadOnlyDictionary<string, Notification> latestUnreadByUid =
+            EmptyLatestUnread;
+        if (state is not null)
+        {
+            var uids = applications.Select(a => a.Uid).ToArray();
+            latestUnreadByUid = await this.notificationRepository
+                .GetLatestUnreadByApplicationsAsync(
+                    query.UserId, uids, state.LastReadAt, ct)
+                .ConfigureAwait(false);
+        }
+
         var results = new List<PlanningApplicationResult>(applications.Count);
         foreach (var application in applications)
         {
             LatestUnreadEvent? latestUnread = null;
-            if (state is not null)
+            if (latestUnreadByUid.TryGetValue(application.Uid, out var notification))
             {
-                var notification = await this.notificationRepository
-                    .GetLatestUnreadByApplicationAsync(
-                        query.UserId, application.Uid, state.LastReadAt, ct)
-                    .ConfigureAwait(false);
-
-                if (notification is not null)
-                {
-                    latestUnread = new LatestUnreadEvent(
-                        notification.EventType,
-                        notification.Decision,
-                        notification.CreatedAt);
-                }
+                latestUnread = new LatestUnreadEvent(
+                    notification.EventType,
+                    notification.Decision,
+                    notification.CreatedAt);
             }
 
             var row = GetApplicationByUidQueryHandler.ToResult(application) with
