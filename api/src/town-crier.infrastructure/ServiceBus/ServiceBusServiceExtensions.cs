@@ -1,9 +1,9 @@
 using System.Net;
-using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
+using TownCrier.Infrastructure.Identity;
 
 namespace TownCrier.Infrastructure.ServiceBus;
 
@@ -45,13 +45,23 @@ public static class ServiceBusServiceExtensions
         services.AddSingleton(options);
         services.AddSingleton(managementOptions);
 
+        // Pin to the cosmos-data user-assigned identity (AZURE_CLIENT_ID env var)
+        // rather than DefaultAzureCredential, which walks the credential chain and
+        // costs ~3s on the first token fetch after a deploy/restart (tc-6ig5).
+        // DefaultAzureCredential already resolved this same identity via its
+        // ManagedIdentity step (it reads AZURE_CLIENT_ID), so RBAC is unchanged —
+        // the cosmos-data identity holds the SB data-plane and ARM read roles.
+        var managedIdentityClientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+
 #pragma warning disable CA2000 // DI container owns the lifetime and will dispose on shutdown
         services.AddKeyedSingleton(
             DataPlaneScope,
-            (_, _) => new AzureAdTokenProvider(new DefaultAzureCredential(), [DataPlaneScope]));
+            (_, _) => new AzureAdTokenProvider(
+                ManagedIdentityCredentialFactory.Create(managedIdentityClientId), [DataPlaneScope]));
         services.AddKeyedSingleton(
             ManagementScope,
-            (_, _) => new AzureAdTokenProvider(new DefaultAzureCredential(), [ManagementScope]));
+            (_, _) => new AzureAdTokenProvider(
+                ManagedIdentityCredentialFactory.Create(managedIdentityClientId), [ManagementScope]));
 #pragma warning restore CA2000
 
         // Accept both bare namespace ("sb-town-crier-prod") and full FQDN
