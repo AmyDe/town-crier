@@ -6,6 +6,9 @@ namespace TownCrier.Infrastructure.Notifications;
 
 public sealed class CosmosNotificationRepository : INotificationRepository
 {
+    private static readonly IReadOnlyDictionary<string, Notification> EmptyMap =
+        new Dictionary<string, Notification>(StringComparer.Ordinal);
+
     private readonly ICosmosRestClient client;
 
     public CosmosNotificationRepository(ICosmosRestClient client)
@@ -94,6 +97,53 @@ public sealed class CosmosNotificationRepository : INotificationRepository
             ct).ConfigureAwait(false);
 
         return documents.Count > 0 ? documents[0].ToDomain() : null;
+    }
+
+    public async Task<IReadOnlyDictionary<string, Notification>> GetLatestUnreadByApplicationsAsync(
+        string userId,
+        IReadOnlyCollection<string> applicationUids,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(applicationUids);
+
+        if (applicationUids.Count == 0)
+        {
+            return EmptyMap;
+        }
+
+        // Single round-trip for every uid in the zone. ARRAY_CONTAINS binds the uid
+        // set as one parameter; partitioned by userId so this stays single-partition.
+        // We fetch all unread rows for the set, then reduce to the latest per uid in
+        // memory — collapsing the former per-application N+1 loop (bd tc-1wkp).
+        var uids = applicationUids as string[] ?? [.. applicationUids];
+
+        const string sql = "SELECT * FROM c "
+            + "WHERE c.userId = @userId AND ARRAY_CONTAINS(@uids, c.applicationUid) "
+            + "AND c.createdAt > @lastReadAt "
+            + "ORDER BY c.createdAt DESC";
+
+        var documents = await this.client.QueryAsync(
+            CosmosContainerNames.Notifications,
+            sql,
+            [
+                new QueryParameter("@userId", userId),
+                new QueryParameter("@uids", uids),
+                new QueryParameter("@lastReadAt", lastReadAt),
+            ],
+            userId,
+            CosmosJsonSerializerContext.Default.NotificationDocument,
+            ct).ConfigureAwait(false);
+
+        // Rows arrive newest-first, so the first row seen per uid is the latest.
+        var map = new Dictionary<string, Notification>(StringComparer.Ordinal);
+        foreach (var document in documents)
+        {
+            var notification = document.ToDomain();
+            map.TryAdd(notification.ApplicationUid, notification);
+        }
+
+        return map;
     }
 
     public async Task<IReadOnlyList<Notification>> GetByUserSinceAsync(

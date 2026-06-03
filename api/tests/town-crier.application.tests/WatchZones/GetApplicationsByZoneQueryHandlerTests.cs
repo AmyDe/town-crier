@@ -288,6 +288,80 @@ public sealed class GetApplicationsByZoneQueryHandlerTests
         await Assert.That(result[0].LatestUnreadEvent!.CreatedAt).IsEqualTo(laterCreated);
     }
 
+    [Test]
+    public async Task Should_IssueSingleNotificationLookup_When_ManyApplicationsInZone()
+    {
+        // Arrange — many applications in the zone. The handler must batch the
+        // latest-unread lookup into a single repository call regardless of count,
+        // rather than the former per-application N+1 loop (bd tc-1wkp).
+        var watermark = new DateTimeOffset(2026, 5, 1, 12, 0, 0, TimeSpan.Zero);
+
+        var notificationRepo = new FakeNotificationRepository();
+        var stateRepo = new FakeNotificationStateRepository();
+        stateRepo.Seed(NotificationStateAggregate.Create("user-1", watermark));
+
+        var watchZoneRepo = new FakeWatchZoneRepository();
+        watchZoneRepo.Add(BuildZone());
+
+        var appRepo = new FakePlanningApplicationRepository();
+        for (var i = 0; i < 50; i++)
+        {
+            await appRepo.UpsertAsync(
+                new PlanningApplicationBuilder()
+                    .WithName($"app-{i}")
+                    .WithUid($"uid-{i}")
+                    .WithAreaId(42)
+                    .WithCoordinates(51.5380, -0.1410)
+                    .Build(),
+                CancellationToken.None);
+        }
+
+        var handler = CreateHandler(watchZoneRepo, appRepo, notificationRepo, stateRepo);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetApplicationsByZoneQuery("user-1", "zone-1"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result!.Count).IsEqualTo(50);
+        await Assert.That(notificationRepo.GetLatestUnreadByApplicationsCallCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Should_NotLookUpNotifications_When_UserHasNoState()
+    {
+        // Arrange — first-touch user, no watermark. With no state we can't classify
+        // anything as unread, so the handler must skip the notification lookup
+        // entirely rather than issue a batched query for nothing.
+        var notificationRepo = new FakeNotificationRepository();
+        var stateRepo = new FakeNotificationStateRepository();
+
+        var watchZoneRepo = new FakeWatchZoneRepository();
+        watchZoneRepo.Add(BuildZone());
+
+        var appRepo = new FakePlanningApplicationRepository();
+        await appRepo.UpsertAsync(
+            new PlanningApplicationBuilder()
+                .WithName("nearby-app")
+                .WithUid("uid-nearby")
+                .WithAreaId(42)
+                .WithCoordinates(51.5380, -0.1410)
+                .Build(),
+            CancellationToken.None);
+
+        var handler = CreateHandler(watchZoneRepo, appRepo, notificationRepo, stateRepo);
+
+        // Act
+        var result = await handler.HandleAsync(
+            new GetApplicationsByZoneQuery("user-1", "zone-1"), CancellationToken.None);
+
+        // Assert
+        await Assert.That(result).IsNotNull();
+        await Assert.That(result![0].LatestUnreadEvent).IsNull();
+        await Assert.That(notificationRepo.GetLatestUnreadByApplicationsCallCount).IsEqualTo(0);
+    }
+
     private static (GetApplicationsByZoneQueryHandler Handler,
         FakeNotificationRepository NotificationRepo,
         FakeNotificationStateRepository StateRepo) CreateBuilt()

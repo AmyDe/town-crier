@@ -54,6 +54,24 @@ public interface INotificationRepository
         DateTimeOffset lastReadAt,
         CancellationToken ct);
 
+    /// <summary>
+    /// Batched form of <see cref="GetLatestUnreadByApplicationAsync"/>: for a set of
+    /// application uids, returns the most-recent unread notification per uid in a
+    /// single round-trip. A uid with no qualifying notification is absent from the
+    /// result map. Collapses the per-application N+1 loop on the applications-by-zone
+    /// path into O(1) Cosmos queries (bd tc-1wkp).
+    /// </summary>
+    /// <param name="userId">The Auth0 sub for the owning user (partition key).</param>
+    /// <param name="applicationUids">The PlanIt application uids to look up.</param>
+    /// <param name="lastReadAt">The user's notification-state watermark. Boundary is exclusive.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A map from application uid to its most-recent unread notification.</returns>
+    Task<IReadOnlyDictionary<string, Notification>> GetLatestUnreadByApplicationsAsync(
+        string userId,
+        IReadOnlyCollection<string> applicationUids,
+        DateTimeOffset lastReadAt,
+        CancellationToken ct);
+
     Task<IReadOnlyList<Notification>> GetByUserSinceAsync(string userId, DateTimeOffset since, CancellationToken ct);
 
     Task<IReadOnlyList<Notification>> GetUnsentEmailsByUserAsync(string userId, CancellationToken ct);
