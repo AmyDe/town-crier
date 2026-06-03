@@ -1,6 +1,6 @@
-using Azure.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TownCrier.Infrastructure.Identity;
 
 namespace TownCrier.Infrastructure.Cosmos;
 
@@ -35,8 +35,14 @@ public static class CosmosServiceExtensions
 
         services.AddSingleton(options);
 
+        // Pin to the cosmos-data user-assigned identity (AZURE_CLIENT_ID env var)
+        // rather than DefaultAzureCredential, which walks the credential chain and
+        // costs ~3s on the first token fetch after a deploy/restart (tc-6ig5).
+        var managedIdentityClientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+
 #pragma warning disable CA2000 // DI container owns the lifetime and will dispose on shutdown
-        services.AddSingleton(new CosmosAuthProvider(new DefaultAzureCredential()));
+        services.AddSingleton(new CosmosAuthProvider(
+            ManagedIdentityCredentialFactory.Create(managedIdentityClientId)));
 #pragma warning restore CA2000
 
         services.AddTransient<CosmosThrottleRetryHandler>(_ => new CosmosThrottleRetryHandler(
