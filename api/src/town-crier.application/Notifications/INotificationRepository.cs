@@ -37,20 +37,21 @@ public interface INotificationRepository
     Task<int> GetUnreadCountAsync(string userId, DateTimeOffset lastReadAt, CancellationToken ct);
 
     /// <summary>
-    /// Returns the most-recent notification for the given user and application
-    /// whose <c>CreatedAt</c> is strictly greater than <paramref name="lastReadAt"/> —
-    /// i.e. the latest unread event under the watermark model. Returns <c>null</c>
-    /// when no qualifying notification exists. Drives the <c>latestUnreadEvent</c>
-    /// field on each row of the applications-by-zone result.
+    /// For a set of application uids, returns the most-recent unread notification per
+    /// uid — i.e. the latest event under the watermark model whose <c>CreatedAt</c> is
+    /// strictly greater than <paramref name="lastReadAt"/> — in a single round-trip. A
+    /// uid with no qualifying notification is absent from the result map. Drives the
+    /// <c>latestUnreadEvent</c> field on each row of the applications-by-zone result;
+    /// collapses the per-application N+1 loop into O(1) Cosmos queries (bd tc-1wkp).
     /// </summary>
-    /// <param name="userId">The Auth0 sub for the owning user.</param>
-    /// <param name="applicationUid">The PlanIt-assigned application uid.</param>
+    /// <param name="userId">The Auth0 sub for the owning user (partition key).</param>
+    /// <param name="applicationUids">The PlanIt application uids to look up.</param>
     /// <param name="lastReadAt">The user's notification-state watermark. Boundary is exclusive.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The most-recent unread notification, or <c>null</c> if none.</returns>
-    Task<Notification?> GetLatestUnreadByApplicationAsync(
+    /// <returns>A map from application uid to its most-recent unread notification.</returns>
+    Task<IReadOnlyDictionary<string, Notification>> GetLatestUnreadByApplicationsAsync(
         string userId,
-        string applicationUid,
+        IReadOnlyCollection<string> applicationUids,
         DateTimeOffset lastReadAt,
         CancellationToken ct);
 

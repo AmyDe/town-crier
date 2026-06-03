@@ -41,20 +41,25 @@ public sealed class InMemoryNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
-    public Task<Notification?> GetLatestUnreadByApplicationAsync(
+    public Task<IReadOnlyDictionary<string, Notification>> GetLatestUnreadByApplicationsAsync(
         string userId,
-        string applicationUid,
+        IReadOnlyCollection<string> applicationUids,
         DateTimeOffset lastReadAt,
         CancellationToken ct)
     {
-        // Strictly greater than the watermark, ordered by CreatedAt desc.
-        var latest = this.store
+        var uids = applicationUids as ISet<string> ?? new HashSet<string>(applicationUids, StringComparer.Ordinal);
+
+        var map = this.store
             .Where(n => n.UserId == userId
-                && n.ApplicationUid == applicationUid
-                && n.CreatedAt > lastReadAt)
-            .OrderByDescending(n => n.CreatedAt)
-            .FirstOrDefault();
-        return Task.FromResult(latest);
+                && n.CreatedAt > lastReadAt
+                && uids.Contains(n.ApplicationUid))
+            .GroupBy(n => n.ApplicationUid, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(n => n.CreatedAt).First(),
+                StringComparer.Ordinal);
+
+        return Task.FromResult<IReadOnlyDictionary<string, Notification>>(map);
     }
 
     public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(

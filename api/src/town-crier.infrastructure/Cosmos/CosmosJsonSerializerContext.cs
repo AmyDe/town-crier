@@ -41,4 +41,5 @@ namespace TownCrier.Infrastructure.Cosmos;
 [JsonSerializable(typeof(PollingLeaseDocument))]
 [JsonSerializable(typeof(CosmosQueryBody))]
 [JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(string[]))]
 internal sealed partial class CosmosJsonSerializerContext : JsonSerializerContext;

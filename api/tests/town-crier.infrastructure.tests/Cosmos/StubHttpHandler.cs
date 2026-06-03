@@ -10,6 +10,10 @@ internal sealed class StubHttpHandler : HttpMessageHandler
 
     public List<HttpRequestMessage> SentRequests { get; } = [];
 
+    // Request content is captured at send-time because the caller disposes the
+    // request (and its StringContent) once SendAsync returns.
+    public List<string?> SentBodies { get; } = [];
+
     public void EnqueueResponse(
         HttpStatusCode statusCode,
         string? content = null,
@@ -32,14 +36,18 @@ internal sealed class StubHttpHandler : HttpMessageHandler
         this.responses.Enqueue(response);
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(
+    protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
     {
         this.SentRequests.Add(request);
-        return Task.FromResult(this.responses.Count > 0
+        this.SentBodies.Add(request.Content is null
+            ? null
+            : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+
+        return this.responses.Count > 0
             ? this.responses.Dequeue()
-            : new HttpResponseMessage(HttpStatusCode.InternalServerError));
+            : new HttpResponseMessage(HttpStatusCode.InternalServerError);
     }
 }
 #pragma warning restore CA2000

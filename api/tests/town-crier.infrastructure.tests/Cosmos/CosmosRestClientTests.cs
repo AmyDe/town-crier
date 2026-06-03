@@ -229,6 +229,29 @@ public sealed class CosmosRestClientTests
     }
 
     [Test]
+    public async Task Should_SerializeArrayParameterAsJsonArray_When_QueryUsesArrayContains()
+    {
+        // The batched latest-unread lookup (bd tc-1wkp) binds a string[] of uids as a
+        // single ARRAY_CONTAINS parameter. QueryParameter.Value is object-typed, so
+        // under Native AOT the array must round-trip through the source-gen context
+        // (string[] is registered) — guard that it lands as a JSON array, not a
+        // ToString() or a throw.
+        var (client, handler) = CreateClient();
+        handler.EnqueueResponse(HttpStatusCode.OK, """{"Documents":[],"_count":0}""");
+
+        var uids = new[] { "uid-1", "uid-2" };
+        await client.QueryAsync(
+            "Notifications",
+            "SELECT * FROM c WHERE ARRAY_CONTAINS(@uids, c.applicationUid)",
+            [new QueryParameter("@uids", uids)],
+            "pk1",
+            TestSerializerContext.Default.TestDocument,
+            CancellationToken.None);
+
+        await Assert.That(handler.SentBodies[0]).Contains("\"value\":[\"uid-1\",\"uid-2\"]");
+    }
+
+    [Test]
     public async Task Should_ReturnFirstValue_When_ScalarQuery()
     {
         var (client, handler) = CreateClient();

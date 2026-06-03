@@ -9,6 +9,13 @@ internal sealed class FakeNotificationRepository : INotificationRepository
 
     public IReadOnlyList<Notification> All => this.store;
 
+    /// <summary>
+    /// Gets number of times the batched latest-unread lookup has been invoked. The
+    /// applications-by-zone handler must call it exactly once per request regardless
+    /// of how many applications are in scope (bd tc-1wkp).
+    /// </summary>
+    public int GetLatestUnreadByApplicationsCallCount { get; private set; }
+
     public void Seed(Notification notification)
     {
         this.store.Add(notification);
@@ -47,21 +54,27 @@ internal sealed class FakeNotificationRepository : INotificationRepository
         return Task.FromResult(count);
     }
 
-    public Task<Notification?> GetLatestUnreadByApplicationAsync(
+    public Task<IReadOnlyDictionary<string, Notification>> GetLatestUnreadByApplicationsAsync(
         string userId,
-        string applicationUid,
+        IReadOnlyCollection<string> applicationUids,
         DateTimeOffset lastReadAt,
         CancellationToken ct)
     {
-        // Strictly greater than the watermark; pick the most-recent CreatedAt so
-        // the row's status pill reflects the latest event for this application.
-        var latest = this.store
+        this.GetLatestUnreadByApplicationsCallCount++;
+
+        var uids = new HashSet<string>(applicationUids, StringComparer.Ordinal);
+
+        var map = this.store
             .Where(n => n.UserId == userId
-                && n.ApplicationUid == applicationUid
-                && n.CreatedAt > lastReadAt)
-            .OrderByDescending(n => n.CreatedAt)
-            .FirstOrDefault();
-        return Task.FromResult(latest);
+                && n.CreatedAt > lastReadAt
+                && uids.Contains(n.ApplicationUid))
+            .GroupBy(n => n.ApplicationUid, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(n => n.CreatedAt).First(),
+                StringComparer.Ordinal);
+
+        return Task.FromResult<IReadOnlyDictionary<string, Notification>>(map);
     }
 
     public Task<IReadOnlyList<Notification>> GetByUserSinceAsync(
