@@ -351,7 +351,10 @@ public static class EnvironmentStack
                 },
                 Scale = new ScaleArgs
                 {
-                    MinReplicas = 0,
+                    // Prod keeps one warm instance so first requests (e.g. App Store
+                    // review) skip the ~15s ACA scale-from-zero cold start. Dev stays
+                    // scale-to-zero to avoid idle cost.
+                    MinReplicas = env == "prod" ? 1 : 0,
                     MaxReplicas = 1,
                 },
             },
