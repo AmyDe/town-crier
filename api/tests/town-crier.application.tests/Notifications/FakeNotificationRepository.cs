@@ -10,7 +10,7 @@ internal sealed class FakeNotificationRepository : INotificationRepository
     public IReadOnlyList<Notification> All => this.store;
 
     /// <summary>
-    /// Number of times the batched latest-unread lookup has been invoked. The
+    /// Gets number of times the batched latest-unread lookup has been invoked. The
     /// applications-by-zone handler must call it exactly once per request regardless
     /// of how many applications are in scope (bd tc-1wkp).
     /// </summary>
