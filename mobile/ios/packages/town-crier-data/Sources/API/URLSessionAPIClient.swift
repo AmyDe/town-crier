@@ -178,8 +178,7 @@ public final class URLSessionAPIClient: Sendable {
 
   private func mapForbidden(data: Data) throws {
     if let body = try? decoder.decode(InsufficientEntitlementBody.self, from: data),
-      body.error == "insufficient_entitlement"
-    {
+      body.error == "insufficient_entitlement" {
       throw DomainError.insufficientEntitlement(required: body.required)
     }
     let message = String(data: data, encoding: .utf8)

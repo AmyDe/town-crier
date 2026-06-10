@@ -30,8 +30,7 @@ extension EntitlementGatingViewModel {
     fallback: (String) -> DomainError = { .unexpected($0) }
   ) {
     if let domainError = error as? DomainError,
-      case .insufficientEntitlement(let required) = domainError
-    {
+      case .insufficientEntitlement(let required) = domainError {
       if let entitlement = Entitlement(rawValue: required) {
         self.entitlementGate = entitlement
         self.error = nil

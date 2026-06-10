@@ -44,8 +44,7 @@ struct ApplicationListViewModelUnreadTests {
     return (sut, appSpy, stateSpy, defaults)
   }
 
-  private func event(at seconds: TimeInterval, type: String = "NewApplication") -> LatestUnreadEvent
-  {
+  private func event(at seconds: TimeInterval, type: String = "NewApplication") -> LatestUnreadEvent {
     LatestUnreadEvent(
       type: type,
       decision: nil,

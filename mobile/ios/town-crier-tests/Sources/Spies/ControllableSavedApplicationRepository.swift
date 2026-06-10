@@ -4,8 +4,7 @@ import TownCrierDomain
 /// Test double for `SavedApplicationRepository` that suspends `loadAll()` until
 /// `resume(with:)` is called. Used to assert in-flight loading state on
 /// `ApplicationListViewModel` and `MapViewModel`.
-final class ControllableSavedApplicationRepository: SavedApplicationRepository, @unchecked Sendable
-{
+final class ControllableSavedApplicationRepository: SavedApplicationRepository, @unchecked Sendable {
   private var continuation: CheckedContinuation<[SavedApplication], Error>?
   private var pendingCallSignal: CheckedContinuation<Void, Never>?
   private var didReceiveCall = false
