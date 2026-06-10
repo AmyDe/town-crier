@@ -3,7 +3,7 @@ import TownCrierDomain
 
 extension SubscriptionProduct {
   static let personal = SubscriptionProduct(
-    id: "uk.co.towncrier.personal.monthly",
+    id: "uk.towncrier.personal.monthly",
     displayName: "Personal",
     displayPrice: "£1.99",
     tier: .personal,
@@ -12,7 +12,7 @@ extension SubscriptionProduct {
   )
 
   static let pro = SubscriptionProduct(
-    id: "uk.co.towncrier.pro.monthly",
+    id: "uk.towncrier.pro.monthly",
     displayName: "Pro",
     displayPrice: "£5.99",
     tier: .pro
