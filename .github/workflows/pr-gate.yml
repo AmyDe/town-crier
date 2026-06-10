@@ -435,12 +435,26 @@ jobs:
 
       - name: Resolve .NET dev API URL
         id: dotnet-url
+        # Deliberately NOT the app-level FQDN: dev traffic is latestRevision-based
+        # and latestRevisionName can point at a PR staging revision that
+        # api-staging-cleanup has already deactivated, making the app FQDN serve
+        # ACA's 404 page between PR runs. Anchor on the newest ACTIVE mainline
+        # (non --pr) revision and use its revision-specific FQDN instead.
         run: |
+          REVISION=$(az containerapp revision list \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "sort_by([?properties.active && !contains(name, \`--pr\`)], &properties.createdTime)[-1].name" -o tsv)
+          if [ -z "$REVISION" ]; then
+            echo "::error::No active mainline revision found on ${{ env.CONTAINER_APP_NAME }}"
+            exit 1
+          fi
           APP_FQDN=$(az containerapp show \
             --name "${{ env.CONTAINER_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "url=https://${APP_FQDN}" >> "$GITHUB_OUTPUT"
+          ENV_DOMAIN="${APP_FQDN#*.}"
+          echo "url=https://${REVISION}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Run contract tests
         env:
