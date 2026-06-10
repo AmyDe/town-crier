@@ -375,6 +375,88 @@ public static class EnvironmentStack
                 new CustomResourceOptions { DependsOn = { containerApp } });
         }
 
+        // Container App (Go API) — runs ALONGSIDE the .NET API during the Go
+        // migration (GH#418). Dev-only until cutover; Iteration 10 adds prod.
+        // No custom domain: it serves on its default ACA FQDN, and cutover is a
+        // Cloudflare DNS flip of the api domain once parity is verified.
+        // Same placeholder-image bootstrap as the .NET app: the quickstart image
+        // listens on 80 (not 8080), so the first revision stays unhealthy until
+        // CD pushes the real town-crier-api-go image.
+        if (env == "dev")
+        {
+            _ = new ContainerApp($"ca-town-crier-api-go-{env}", new ContainerAppArgs
+            {
+                ContainerAppName = $"ca-town-crier-api-go-{env}",
+                ResourceGroupName = resourceGroup.Name,
+                ManagedEnvironmentId = containerAppsEnvironmentId,
+                Configuration = new ConfigurationArgs
+                {
+                    // Multiple: pr-gate.yml stages per-PR Go revisions with
+                    // --revision-suffix and pinned traffic, same as the .NET flow.
+                    ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
+                    MaxInactiveRevisions = 5,
+                    Ingress = new IngressArgs
+                    {
+                        External = true,
+                        TargetPort = 8080,
+                        Transport = IngressTransportMethod.Http,
+                    },
+                    Registries = new[]
+                    {
+                        new RegistryCredentialsArgs
+                        {
+                            Server = acrLoginServer,
+                            Identity = acrPullIdentityId,
+                        },
+                    },
+                },
+                Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
+                {
+                    Type = ManagedServiceIdentityType.UserAssigned,
+                    UserAssignedIdentities = new InputList<string>
+                    {
+                        acrPullIdentityId,
+                        cosmosDataIdentityId,
+                    },
+                },
+                Template = new TemplateArgs
+                {
+                    Containers = new[]
+                    {
+                        new ContainerArgs
+                        {
+                            Name = "api-go",
+                            Image = "mcr.microsoft.com/k8se/quickstart:latest",
+                            Resources = new ContainerResourcesArgs
+                            {
+                                Cpu = ContainerCpu,
+                                Memory = ContainerMemory,
+                            },
+                            Env = new[]
+                            {
+                                new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-api-go" },
+                                new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint },
+                                new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabase.Name },
+                                new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+                            },
+                        },
+                    },
+                    Scale = new ScaleArgs
+                    {
+                        // Scale-to-zero: no traffic until cutover, so idle cost stays nil.
+                        MinReplicas = 0,
+                        MaxReplicas = 1,
+                    },
+                },
+                Tags = tags,
+            }, new CustomResourceOptions
+            {
+                // CD updates the image via `az containerapp update`; the PR gate
+                // manages staging-revision traffic. Pulumi must not reset either.
+                IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic" },
+            });
+        }
+
         // Service Bus — adaptive polling trigger (prod only for now; dev stays on cron).
         // The polling worker consumes one message per run and re-enqueues the next run with
         // a scheduled enqueue time calculated from Retry-After headers and natural cadence.
