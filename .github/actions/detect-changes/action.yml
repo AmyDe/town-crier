@@ -49,6 +49,9 @@ outputs:
   infra:
     description: "true if infra/ changed"
     value: ${{ steps.detect.outputs.infra }}
+  go:
+    description: "true if api-go/ changed"
+    value: ${{ steps.detect.outputs.go }}
 
 runs:
   using: composite
@@ -100,6 +103,7 @@ runs:
           [[ -z "$file" ]] && continue
           case "$file" in
             api/*) [[ -v "flags[api]" ]] && flags[api]=true ;;
+            api-go/*) [[ -v "flags[go]" ]] && flags[go]=true ;;
             cli/*) [[ -v "flags[cli]" ]] && flags[cli]=true ;;
             mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
             web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
