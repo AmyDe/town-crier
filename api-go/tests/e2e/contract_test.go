@@ -11,6 +11,7 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -32,19 +33,80 @@ func TestContract_Health(t *testing.T) {
 
 	for _, path := range []string{"/health", "/v1/health"} {
 		t.Run(path, func(t *testing.T) {
-			want := get(t, client, dotnetURL+path)
-			got := get(t, client, goURL+path)
-
-			if got.status != want.status {
-				t.Errorf("status: go=%d dotnet=%d", got.status, want.status)
-			}
-			if got.contentType != want.contentType {
-				t.Errorf("content-type: go=%q dotnet=%q", got.contentType, want.contentType)
-			}
-			if !jsonEqual(t, got.body, want.body) {
-				t.Errorf("body: go=%s dotnet=%s", got.body, want.body)
-			}
+			diffPath(t, client, dotnetURL, goURL, path)
 		})
+	}
+}
+
+// TestContract_EmbeddedResources diffs the iteration-1 embedded-resource
+// endpoints (version-config, legal, authorities) including their error paths.
+// The .NET response is always the source of truth.
+func TestContract_EmbeddedResources(t *testing.T) {
+	dotnetURL := baseURL(t, "DOTNET_BASE_URL")
+	goURL := baseURL(t, "GO_BASE_URL")
+	client := &http.Client{Timeout: requestTimeout}
+
+	paths := []string{
+		"/v1/version-config",
+
+		// Legal: documents, case-insensitive lookup, and unknown -> 404.
+		"/v1/legal/privacy",
+		"/v1/legal/PRIVACY",
+		"/v1/legal/terms",
+		"/v1/legal/unknown",
+
+		// Authorities: full list, search filter (substring, case-insensitive),
+		// no-match empty array, trailing-slash list, blank/whitespace search.
+		"/v1/authorities",
+		"/v1/authorities/",
+		"/v1/authorities?search=aberdeen",
+		"/v1/authorities?search=ABERDEEN",
+		"/v1/authorities?search=ZZZNOMATCH",
+		"/v1/authorities?search=",
+
+		// Authority by id: existing record and valid-int-but-missing -> 404.
+		"/v1/authorities/384",
+		"/v1/authorities/99999999",
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			diffPath(t, client, dotnetURL, goURL, path)
+		})
+	}
+}
+
+// TestContract_AuthorityNonIntID is deferred to iteration 2. The .NET
+// {id:int} route constraint rejects a non-integer id, which falls through to
+// the auth fallback policy and returns 401 with WWW-Authenticate: Bearer.
+// Iteration 1 ships no auth/error-backfill middleware, so this scenario is
+// pinned here as a skip and enabled once iteration 2 lands.
+func TestContract_AuthorityNonIntID(t *testing.T) {
+	t.Skip("non-int authority id -> 401 depends on iteration-2 auth fallback middleware")
+}
+
+// diffPath fetches a path from both APIs and asserts status, content type, and
+// JSON body match. Bodyless responses (e.g. iteration-1 404s) are compared as
+// raw bytes since they are not valid JSON.
+func diffPath(t *testing.T, client *http.Client, dotnetURL, goURL, path string) {
+	t.Helper()
+
+	want := get(t, client, dotnetURL+path)
+	got := get(t, client, goURL+path)
+
+	if got.status != want.status {
+		t.Errorf("status: go=%d dotnet=%d", got.status, want.status)
+	}
+	if got.contentType != want.contentType {
+		t.Errorf("content-type: go=%q dotnet=%q", got.contentType, want.contentType)
+	}
+	if len(want.body) == 0 || len(got.body) == 0 {
+		if !bytes.Equal(got.body, want.body) {
+			t.Errorf("body: go=%q dotnet=%q", got.body, want.body)
+		}
+		return
+	}
+	if !jsonEqual(t, got.body, want.body) {
+		t.Errorf("body: go=%s dotnet=%s", got.body, want.body)
 	}
 }
 
