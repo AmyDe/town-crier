@@ -23,11 +23,10 @@ api-go/
 │   └── api/
 │       └── main.go              # the only binary; manual DI wiring
 ├── internal/
-│   ├── notifications/            # feature package: handler + repo + service + tests, all in one dir
+│   ├── notifications/            # feature package: handler + store + tests, all in one dir
 │   │   ├── handler.go
-│   │   ├── service.go
-│   │   ├── cosmos_repo.go
-│   │   ├── fake_repo_test.go
+│   │   ├── store_cosmos.go
+│   │   ├── fake_store_test.go
 │   │   └── handler_test.go
 │   ├── auth/                     # Auth0 JWT validation + middleware
 │   ├── planit/                   # PlanIt client
@@ -39,14 +38,15 @@ api-go/
 │       ├── server.go             # hardened http.Server factory
 │       └── telemetry.go
 └── tests/
-    └── integration/              # docker-compose-driven end-to-end tests
+    └── e2e/                      # black-box docker-compose tests against the compiled binary ONLY
 ```
 
 **Hard rules for layout**:
 
 - **No `pkg/` directory.** This is a private API; everything goes in `internal/`. (See [Go pkg antipattern](https://sub-pop.net/post/go-pkg-antipattern/).)
 - **No `domain/`, `application/`, `infrastructure/` directories.** Layered-architecture directory names fight Go's package model. Slice by feature, not by layer.
-- **One feature = one package.** Handler, service, repository, and their tests live in the same directory. Promote shared code to a sibling package only when a *second* feature actually needs it.
+- **One feature = one package.** Handler, store, and their tests live in the same directory. Promote shared code to a sibling package only when a *second* feature actually needs it.
+- **No default service layer.** Handlers call the store directly. Introduce a separate service type only when real business logic emerges that more than one entry point (e.g. handler + background worker) needs — never as a pass-through layer scaffolded "for structure".
 - **Cross-cutting platform code in `internal/platform/`.** Logger, HTTP server factory, telemetry, config loading. Nothing business-specific.
 - **One binary in `cmd/api/`.** If a second binary (e.g. polling worker) is added later, it goes in `cmd/worker/` as a sibling.
 
@@ -94,7 +94,7 @@ func NewNotification(userID UserID, authority, reference string, now time.Time) 
 
 Interfaces in Go are defined where they are *used*, not where they are *implemented*. This is one of the highest-leverage Go idioms and the one most often violated by transplants from other languages:
 
-- **Constructors return concrete `*struct`s**, never interfaces. `func NewCosmosNotificationRepo(...) *CosmosNotificationRepo` — not `... Repository`.
+- **Constructors return concrete `*struct`s**, never interfaces. `func NewCosmosStore(...) *CosmosStore` — not `... NotificationStore` (the interface).
 - **Interfaces are declared by the consumer**, with only the methods that consumer actually uses. A handler that calls `Save` and `Get` defines:
   ```go
   type notificationStore interface {
@@ -102,9 +102,10 @@ Interfaces in Go are defined where they are *used*, not where they are *implemen
       Get(ctx context.Context, id NotificationID) (Notification, error)
   }
   ```
-  Lowercase — unexported — because no other package needs to satisfy this contract by name. Go's structural typing makes `*CosmosNotificationRepo` satisfy it implicitly.
+  Lowercase — unexported — because no other package needs to satisfy this contract by name. Go's structural typing makes `*CosmosStore` satisfy it implicitly.
 - **No `I` prefix on interface names** (`Notifier`, not `INotifier`). Idiomatic Go uses `-er` suffixes for single-method interfaces (`Reader`, `Saver`, `Validator`) or a descriptive noun.
-- **One large `Repository` interface in a shared package is an anti-pattern.** Keep interfaces small and consumer-local. Beads' fat `Storage` interface is the exception for *public extension APIs*, not internal code.
+- **Say "store", not "repository".** Repository is DDD/.NET vocabulary; Go names things by what they are. `CosmosStore`, `store_cosmos.go`, `fakeNotificationStore` — not `NotificationRepository` or `cosmos_repo.go`.
+- **One large `Store` interface in a shared package is an anti-pattern.** Keep interfaces small and consumer-local. Beads' fat `Storage` interface is the exception for *public extension APIs*, not internal code.
 
 This unlocks effortless test doubles: hand-write `type fakeNotificationStore struct { ... }` with the two methods the handler test needs, and the compiler accepts it.
 
@@ -131,7 +132,7 @@ This unlocks effortless test doubles: hand-write `type fakeNotificationStore str
 
 ### 4. Context propagation
 
-- **Every function that does I/O, blocks, or calls another function that does, takes `ctx context.Context` as its FIRST parameter.** No exceptions in handler chains, repository methods, HTTP clients, or service-bus operations.
+- **Every function that does I/O, blocks, or calls another function that does, takes `ctx context.Context` as its FIRST parameter.** No exceptions in handler chains, store methods, HTTP clients, or service-bus operations.
 - **`context.TODO()`** is permitted only in `main()` and one-off scripts; never in library code.
 - **Set timeouts at the boundary.** Every outbound call (Cosmos, Auth0, APNs, Service Bus) wraps `ctx` with `context.WithTimeout(ctx, X)` and `defer cancel()` immediately.
 - **Honour cancellation in retry/poll loops:**
@@ -201,6 +202,7 @@ This unlocks effortless test doubles: hand-write `type fakeNotificationStore str
   }
   ```
 - **HTTP integration tests** use `httptest.NewServer` with `http.HandlerFunc`. Outbound client tests assert against a captured `*http.Request`.
+- **Integration tests live in the package they exercise**, behind a build tag (`//go:build integration` at the top of `integration_test.go`), run with `go test -tags=integration ./...`. The top-level `tests/e2e/` directory is reserved for black-box docker-compose tests that drive the compiled binary over HTTP — nothing else goes there.
 - **No builder pattern.** Go has struct literals and small helper constructors. `notif := Notification{ID: "n1", ...}` or `notif := newTestNotification(t)`. Builders add ceremony Go does not need.
 - **`t.Parallel()`** on every test that doesn't share global state. Catches data races and keeps the suite fast.
 - **`t.Helper()`** in helper functions so failures point at the caller.
@@ -287,7 +289,6 @@ Every outbound client (PlanIt, Auth0, Cosmos REST fallback, APNs) MUST:
   ```go
   g, gctx := errgroup.WithContext(ctx)
   for _, id := range ids {
-      id := id
       g.Go(func() error { return process(gctx, id) })
   }
   return g.Wait()
@@ -305,8 +306,10 @@ Every outbound client (PlanIt, Auth0, Cosmos REST fallback, APNs) MUST:
   func NewSecret(v string) SecretString             { return SecretString{value: v} }
   func (s SecretString) String() string             { return "[REDACTED]" }
   func (s SecretString) MarshalJSON() ([]byte, error) { return []byte(`"[REDACTED]"`), nil }
+  func (s SecretString) LogValue() slog.Value       { return slog.StringValue("[REDACTED]") }
   func (s SecretString) Expose() string             { return s.value }
   ```
+  The `slog.LogValuer` implementation matters: without it, `logger.Info("x", "key", cfg.CosmosKey)` may bypass `String()` redaction depending on the handler.
   Use for Auth0 client secrets, APNs auth keys, Service Bus connection strings, Cosmos primary keys. Pass `SecretString` through config; call `.Expose()` only at the boundary where the credential leaves the process.
 - **`crypto/subtle.ConstantTimeCompare`** for HMAC/token equality. Never `==` on a secret.
 - **`crypto/rand`** for IDs, nonces, tokens. Never `math/rand` for anything security-sensitive.
@@ -320,9 +323,10 @@ Every outbound client (PlanIt, Auth0, Cosmos REST fallback, APNs) MUST:
 - **Service Bus**: `github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus`. The official SDK is the only supported path — do not hand-roll a REST client.
 - **Auth**: `github.com/Azure/azure-sdk-for-go/sdk/azidentity`. Use `DefaultAzureCredential` in deployed environments; `ClientSecretCredential` only where required.
 - **Communication Services (email)**: `github.com/Azure/azure-sdk-for-go/sdk/messaging/azcommunicationservices/sender` (or the `azcommunication` namespace's email package — check the current name in `go.mod` when implementing).
-- **Repository struct holds the SDK client**, exposes only the methods the consumer interface declares. Map Cosmos documents ↔ domain structs at the repo boundary; consumers never see SDK types.
+- **Store struct holds the SDK client**, exposes only the methods the consumer interface declares; consumers never see SDK types.
+- **Reuse the domain struct as the stored document when the shapes match.** Introduce a separate document struct only when the persistence shape genuinely diverges (partition-key field, `_etag`, denormalised fields) — not as default DTO-mapping ceremony.
 - **No ORM**, no `gorm`, no `sqlx`. Cosmos is not relational.
-- **Partition keys** are designed around query access patterns. Document the choice per container in a comment at the top of the repo file.
+- **Partition keys** are designed around query access patterns. Document the choice per container in a comment at the top of the store file.
 
 ### 12. Config
 
@@ -370,17 +374,23 @@ func main() {
     cosmosClient := platform.MustCosmosClient(cfg, logger)
     sbClient     := platform.MustServiceBusClient(cfg, logger)
 
-    notifRepo := notifications.NewCosmosRepo(cosmosClient, logger)
-    sbPub     := servicebus.NewPublisher(sbClient, logger)
-    apnsCli   := apns.NewClient(cfg, logger)
-    validator := auth.NewAuth0Validator(cfg, logger)
+    notifStore := notifications.NewCosmosStore(cosmosClient, logger)
+    sbPub      := servicebus.NewPublisher(sbClient, logger)
+    apnsCli    := apns.NewClient(cfg, logger)
+    validator  := auth.NewAuth0Validator(cfg, logger)
 
     mux := http.NewServeMux()
-    notifications.Routes(mux, notifRepo, sbPub, apnsCli, validator, logger)
+    notifications.Routes(mux, notifStore, sbPub, apnsCli, validator, logger)
 
     srv := platform.NewServer(":"+cfg.Port, mw.Chain(mux, validator, logger))
 
-    platform.RunWithGracefulShutdown(srv, logger)
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer stop()
+    go func() { _ = srv.ListenAndServe() }()
+    <-ctx.Done()
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    _ = srv.Shutdown(shutdownCtx)
 }
 ```
 
@@ -402,6 +412,9 @@ A statically-linked Go binary hits sub-second cold starts out of the box, but yo
 
 - `pkg/` directory.
 - `domain/`, `application/`, `infrastructure/` directories.
+- Pass-through service layers (handler → service → store where the service adds no logic).
+- `Repository` naming for data access (use `Store`).
+- `Get` prefix on accessor methods.
 - `I`-prefix on interface names.
 - Constructors that return interfaces.
 - `gomock`, `mockery`, `testify/suite`, any reflection-based mocking.
@@ -458,11 +471,14 @@ The baseline enables `errcheck`, `govet`, `staticcheck`, `gosec`, `sloglint`, `b
 ## Naming conventions
 
 - **Packages**: short, lowercase, single word where possible (`notifications`, `planit`, `apns`). No underscores, no camelCase, no plurals where a singular reads naturally.
-- **Files**: lowercase with underscores (`cosmos_repo.go`, `handler_test.go`).
+- **Files**: lowercase with underscores (`store_cosmos.go`, `handler_test.go`).
 - **Exported identifiers**: PascalCase. **Unexported**: camelCase.
 - **Interfaces**: noun or `-er` suffix (`Notifier`, `Validator`, `Store`). No `I` prefix.
 - **Receivers**: short — one or two letters matching the type (`func (n *Notification) ...`). Never `this`/`self`.
+- **Accessors**: no `Get` prefix — `n.Name()`, not `n.GetName()`.
+- **Data access**: `Store`, not `Repository` (`CosmosStore`, `store_cosmos.go`).
 - **Error variables**: `Err` prefix (`ErrNotFound`, `ErrAlreadyClaimed`).
+- **Error strings**: lowercase, no trailing punctuation — `errors.New("authority is required")`, never `"Authority is required."` (staticcheck ST1005).
 - **Test functions**: `TestSubject_Behaviour` (e.g. `TestNotification_RejectsEmptyAuthority`).
 - **Constants**: PascalCase if exported, camelCase if not. No `SHOUTY_CASE`.
 
