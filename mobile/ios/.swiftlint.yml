@@ -22,7 +22,7 @@ disabled_rules:
   - let_var_whitespace
   - contrasted_opening_brace # Project uses K&R brace style
   - attributes # Inline attributes are the project convention
-  - cases_on_newline # Switch cases on same line is the convention
+  - switch_case_on_newline # Switch cases on same line is the convention
   - number_separator # Thousand separators not used in this project
   - vertical_whitespace_between_cases
   - sorted_enum_cases
@@ -51,7 +51,6 @@ disabled_rules:
   - discouraged_optional_collection
   - direct_return
   - file_name # Multi-type files are intentional
-  - opening_brace_spacing
   - implicitly_unwrapped_optional # Used in UIKit patterns and test fixtures
   - unused_parameter # SwiftUI lifecycle methods have required signatures
   - unused_closure_parameter

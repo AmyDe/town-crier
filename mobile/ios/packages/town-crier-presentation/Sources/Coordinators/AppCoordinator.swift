@@ -118,8 +118,7 @@ public final class AppCoordinator: ObservableObject {
     // retain feature access immediately, even before the live resolution
     // completes (or when it fails on simulator).
     if let cached = self.tierCache.string(forKey: Self.tierCacheKey),
-      let tier = SubscriptionTier(rawValue: cached)
-    {
+      let tier = SubscriptionTier(rawValue: cached) {
       subscriptionTier = tier
     }
   }
