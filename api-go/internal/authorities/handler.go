@@ -71,7 +71,7 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 		if filter && !containsOrdinalIgnoreCase(a.Name, search) {
 			continue
 		}
-		items = append(items, listItem{ID: a.ID, Name: a.Name, AreaType: a.AreaType})
+		items = append(items, listItem(a))
 	}
 
 	h.writeJSON(r, w, listResult{Authorities: items, Total: len(items)})

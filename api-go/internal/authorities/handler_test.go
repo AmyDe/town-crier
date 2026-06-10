@@ -18,7 +18,15 @@ func newServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func do(t *testing.T, srv *httptest.Server, path string) (*http.Response, []byte) {
+// captured holds the parts of a response the assertions need, decoupled from
+// the live *http.Response so the body is closed inside the helper.
+type captured struct {
+	status      int
+	contentType string
+	body        []byte
+}
+
+func do(t *testing.T, srv *httptest.Server, path string) captured {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
 	if err != nil {
@@ -28,12 +36,16 @@ func do(t *testing.T, srv *httptest.Server, path string) (*http.Response, []byte
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
-	t.Cleanup(func() { _ = resp.Body.Close() })
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body %s: %v", path, err)
 	}
-	return resp, body
+	return captured{
+		status:      resp.StatusCode,
+		contentType: resp.Header.Get("Content-Type"),
+		body:        body,
+	}
 }
 
 type listResponse struct {
@@ -68,17 +80,17 @@ func TestRoutes_AuthoritiesList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			resp, body := do(t, srv, tc.path)
-			if resp.StatusCode != tc.wantStatus {
-				t.Fatalf("status: got %d, want %d", resp.StatusCode, tc.wantStatus)
+			c := do(t, srv, tc.path)
+			if c.status != tc.wantStatus {
+				t.Fatalf("status: got %d, want %d", c.status, tc.wantStatus)
 			}
-			if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
+			if got, want := c.contentType, "application/json; charset=utf-8"; got != want {
 				t.Errorf("content-type: got %q, want %q", got, want)
 			}
 
 			var list listResponse
-			if err := json.Unmarshal(body, &list); err != nil {
-				t.Fatalf("unmarshal %q: %v", body, err)
+			if err := json.Unmarshal(c.body, &list); err != nil {
+				t.Fatalf("unmarshal %q: %v", c.body, err)
 			}
 			if list.Total != tc.wantTotal {
 				t.Errorf("total: got %d, want %d", list.Total, tc.wantTotal)
@@ -97,12 +109,12 @@ func TestRoutes_AuthoritiesList_EmptySearchSerializesAsEmptyArray(t *testing.T) 
 	t.Parallel()
 
 	srv := newServer(t)
-	resp, body := do(t, srv, "/v1/authorities?search=ZZZNOMATCH")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
+	c := do(t, srv, "/v1/authorities?search=ZZZNOMATCH")
+	if c.status != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", c.status)
 	}
 	// Parity: .NET emits an empty JSON array, never null.
-	if got, want := string(body), `{"authorities":[],"total":0}`; got != want {
+	if got, want := string(c.body), `{"authorities":[],"total":0}`; got != want {
 		t.Errorf("body: got %s, want %s", got, want)
 	}
 }
@@ -114,30 +126,30 @@ func TestRoutes_AuthorityByID(t *testing.T) {
 
 	t.Run("existing id returns full record with null urls", func(t *testing.T) {
 		t.Parallel()
-		resp, body := do(t, srv, "/v1/authorities/384")
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("status: got %d, want 200", resp.StatusCode)
+		c := do(t, srv, "/v1/authorities/384")
+		if c.status != http.StatusOK {
+			t.Fatalf("status: got %d, want 200", c.status)
 		}
-		if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
+		if got, want := c.contentType, "application/json; charset=utf-8"; got != want {
 			t.Errorf("content-type: got %q, want %q", got, want)
 		}
 		// Exact wire bytes from the .NET dev API: councilUrl/planningUrl are
 		// always null (the provider never populates them), in declaration order.
-		if got, want := string(body), `{"id":384,"name":"Aberdeen","areaType":"Scottish Council","councilUrl":null,"planningUrl":null}`; got != want {
+		if got, want := string(c.body), `{"id":384,"name":"Aberdeen","areaType":"Scottish Council","councilUrl":null,"planningUrl":null}`; got != want {
 			t.Errorf("body: got %s, want %s", got, want)
 		}
 	})
 
 	t.Run("valid int but missing id returns bodyless 404", func(t *testing.T) {
 		t.Parallel()
-		resp, body := do(t, srv, "/v1/authorities/99999999")
-		if resp.StatusCode != http.StatusNotFound {
-			t.Fatalf("status: got %d, want 404", resp.StatusCode)
+		c := do(t, srv, "/v1/authorities/99999999")
+		if c.status != http.StatusNotFound {
+			t.Fatalf("status: got %d, want 404", c.status)
 		}
 		// Iteration 1: bodyless 404 (Results.NotFound). The PascalCase backfill
 		// body is added by middleware in iteration 2.
-		if len(body) != 0 {
-			t.Errorf("body: got %q, want empty", body)
+		if len(c.body) != 0 {
+			t.Errorf("body: got %q, want empty", c.body)
 		}
 	})
 }
