@@ -33,6 +33,8 @@ env:
   CONTAINER_APP_NAME: ca-town-crier-api-dev
   RESOURCE_GROUP: rg-town-crier-dev
   API_IMAGE_NAME: town-crier-api
+  GO_CONTAINER_APP_NAME: ca-town-crier-api-go-dev
+  GO_IMAGE_NAME: town-crier-api-go
 
 jobs:
   changes:
@@ -46,6 +48,7 @@ jobs:
       ios: ${{ steps.detect.outputs.ios }}
       web: ${{ steps.detect.outputs.web }}
       infra: ${{ steps.detect.outputs.infra }}
+      go: ${{ steps.detect.outputs.go }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -56,10 +59,10 @@ jobs:
         with:
           mode: pr
           base-ref: ${{ github.base_ref }}
-          categories: api,cli,ios,web,infra
+          categories: api,cli,ios,web,infra,go
           trigger-files: |
-            .github/workflows/pr-gate.yml:api,cli,ios,web,infra
-            .github/workflows/cd-dev.yml:api,web,infra
+            .github/workflows/pr-gate.yml:api,cli,ios,web,infra,go
+            .github/workflows/cd-dev.yml:api,web,infra,go
             .github/workflows/cd-prod.yml:infra
             .github/workflows/cd-ios-testflight.yml:ios
 
@@ -278,6 +281,213 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
+  # ── Go API ───────────────────────────────────────────
+
+  go-lint:
+    name: "Go API: Lint"
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: api-go/go.mod
+          # No go.sum yet (zero dependencies); enable module caching when one appears.
+          cache: false
+      - name: gofmt
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::gofmt required on: $UNFORMATTED"
+            exit 1
+          fi
+        working-directory: api-go
+      - run: go vet ./...
+        working-directory: api-go
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+          working-directory: api-go
+
+  go-test:
+    name: "Go API: Build & test"
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: api-go/go.mod
+          cache: false
+      - run: go build ./...
+        working-directory: api-go
+      - name: Run tests (race detector + coverage)
+        run: go test -race -coverprofile=coverage.out ./...
+        working-directory: api-go
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: api-go/coverage.out
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── Go API: staging deploy ──────────────────────────
+  # Mirrors the .NET api-staging flow on the parallel Go container app:
+  # build/push the image, stage a zero-traffic revision, and hand its URL
+  # to the contract tests.
+
+  go-staging:
+    name: "Go API: Deploy staging revision"
+    needs: [changes, go-lint, go-test]
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    outputs:
+      staging-url: ${{ steps.staging-url.outputs.url }}
+      new-revision: ${{ steps.deploy.outputs.revision }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Build and push image
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.GO_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+        working-directory: api-go
+
+      - name: Get current active revision
+        id: current
+        run: |
+          CURRENT=$(az containerapp ingress traffic show \
+            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
+          echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy staging revision
+        id: deploy
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          az containerapp update \
+            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --image "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.GO_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}" \
+            --revision-suffix "pr${SHORT_SHA}"
+          echo "revision=${{ env.GO_CONTAINER_APP_NAME }}--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Pin traffic to current revision
+        run: |
+          if [ -n "${{ steps.current.outputs.revision }}" ]; then
+            az containerapp ingress traffic set \
+              --name "${{ env.GO_CONTAINER_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --revision-weight "${{ steps.current.outputs.revision }}=100"
+          fi
+
+      - name: Get staging URL
+        id: staging-url
+        run: |
+          APP_FQDN=$(az containerapp show \
+            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          ENV_DOMAIN="${APP_FQDN#*.}"
+          echo "url=https://${{ steps.deploy.outputs.revision }}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+  # ── Go API: contract tests vs .NET ──────────────────
+  # Parity is observed, never assumed: every scenario runs against BOTH the
+  # deployed .NET dev API and the staged Go revision, and the responses are
+  # diffed. The .NET response is always the expected value (GH#418).
+
+  go-contract:
+    name: "Go API: Contract tests vs .NET"
+    needs: [go-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: api-go/go.mod
+          cache: false
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve .NET dev API URL
+        id: dotnet-url
+        # Deliberately NOT the app-level FQDN: dev traffic is latestRevision-based
+        # and latestRevisionName can point at a PR staging revision that
+        # api-staging-cleanup has already deactivated, making the app FQDN serve
+        # ACA's 404 page between PR runs. Anchor on the newest ACTIVE mainline
+        # (non --pr) revision and use its revision-specific FQDN instead.
+        run: |
+          REVISION=$(az containerapp revision list \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "sort_by([?properties.active && !contains(name, \`--pr\`)], &properties.createdTime)[-1].name" -o tsv)
+          if [ -z "$REVISION" ]; then
+            echo "::error::No active mainline revision found on ${{ env.CONTAINER_APP_NAME }}"
+            exit 1
+          fi
+          APP_FQDN=$(az containerapp show \
+            --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          ENV_DOMAIN="${APP_FQDN#*.}"
+          echo "url=https://${REVISION}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Run contract tests
+        env:
+          DOTNET_BASE_URL: ${{ steps.dotnet-url.outputs.url }}
+          GO_BASE_URL: ${{ needs.go-staging.outputs.staging-url }}
+        run: go test -tags e2e -v ./tests/e2e/...
+        working-directory: api-go
+
+  # ── Go API: clean up staging revision ───────────────
+
+  go-staging-cleanup:
+    name: "Go API: Deactivate staging revision"
+    needs: [go-staging, go-contract]
+    if: always() && needs.go-staging.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deactivate staging revision
+        run: |
+          az containerapp revision deactivate \
+            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --revision "${{ needs.go-staging.outputs.new-revision }}" || true
+
   # ── PR-close cleanup: deactivate preview revision on merge/close ───
   # Catches PRs closed before api-staging-cleanup ran (e.g., closed
   # without merging, or where api-staging failed mid-flight). Reuses
@@ -306,6 +516,16 @@ jobs:
           echo "Deactivating revision: $REVISION"
           az containerapp revision deactivate \
             --name "${{ env.CONTAINER_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --revision "$REVISION" || true
+
+      - name: Deactivate Go PR preview revision
+        run: |
+          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+          REVISION="${{ env.GO_CONTAINER_APP_NAME }}--pr${SHORT_SHA}"
+          echo "Deactivating revision: $REVISION"
+          az containerapp revision deactivate \
+            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --revision "$REVISION" || true
 
@@ -478,7 +698,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, go-lint, go-test, go-staging, go-contract, go-staging-cleanup, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
     if: always() && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -491,6 +711,11 @@ jobs:
             "${{ needs.api-staging.result }}"
             "${{ needs.api-integration-test.result }}"
             "${{ needs.api-staging-cleanup.result }}"
+            "${{ needs.go-lint.result }}"
+            "${{ needs.go-test.result }}"
+            "${{ needs.go-staging.result }}"
+            "${{ needs.go-contract.result }}"
+            "${{ needs.go-staging-cleanup.result }}"
             "${{ needs.cli-format.result }}"
             "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"
