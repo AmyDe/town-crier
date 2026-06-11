@@ -153,3 +153,29 @@ func TestRoutes_AuthorityByID(t *testing.T) {
 		}
 	})
 }
+
+// TestRoutes_AuthorityNonIntID pins the iteration-2 contract: a non-integer id
+// does NOT match .NET's {id:int} route, so no endpoint is selected and the
+// fallback-deny policy returns 401 with WWW-Authenticate: Bearer (bodyless; the
+// PascalCase envelope is backfilled by middleware.ErrorBody). Go's {id}
+// wildcard matches any segment, so the handler self-denies non-ints with the
+// same challenge the auth middleware emits, keeping the observable contract
+// identical.
+func TestRoutes_AuthorityNonIntID(t *testing.T) {
+	t.Parallel()
+
+	srv := newServer(t)
+
+	for _, id := range []string{"abc", "1.5", "12x", "%20"} {
+		t.Run(id, func(t *testing.T) {
+			t.Parallel()
+			c := do(t, srv, "/v1/authorities/"+id)
+			if c.status != http.StatusUnauthorized {
+				t.Fatalf("status: got %d, want 401", c.status)
+			}
+			if len(c.body) != 0 {
+				t.Errorf("body: got %q, want empty (backfilled downstream)", c.body)
+			}
+		})
+	}
+}
