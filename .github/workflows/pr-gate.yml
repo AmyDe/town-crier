@@ -460,6 +460,15 @@ jobs:
         env:
           DOTNET_BASE_URL: ${{ steps.dotnet-url.outputs.url }}
           GO_BASE_URL: ${{ needs.go-staging.outputs.staging-url }}
+          # Same Auth0 test-user creds as the .NET integration tests, so the
+          # harness can mint a real token for valid-token contract scenarios
+          # (it3+ /v1/me). Scenarios skip when these are unset locally.
+          INTEGRATION_TEST_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
+          INTEGRATION_TEST_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          INTEGRATION_TEST_AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
+          INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
         run: go test -tags e2e -v ./tests/e2e/...
         working-directory: api-go
 

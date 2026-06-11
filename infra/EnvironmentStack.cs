@@ -409,6 +409,11 @@ public static class EnvironmentStack
                             Identity = acrPullIdentityId,
                         },
                     },
+                    Secrets = new[]
+                    {
+                        new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId },
+                        new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret },
+                    },
                 },
                 Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
                 {
@@ -438,6 +443,14 @@ public static class EnvironmentStack
                                 new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint },
                                 new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabase.Name },
                                 new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
+                                // Mirrors the .NET app's Auth0__*/Cors__* env in Go naming
+                                // (GH#418 it2/it3): without these the Go validator is
+                                // deny-all and CORS falls back to the localhost dev origin.
+                                new EnvironmentVarArgs { Name = "AUTH0_DOMAIN", Value = auth0Domain },
+                                new EnvironmentVarArgs { Name = "AUTH0_AUDIENCE", Value = auth0Audience },
+                                new EnvironmentVarArgs { Name = "CORS_ALLOWED_ORIGINS", Value = $"https://{frontendDomain}" },
+                                new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_ID", SecretRef = "auth0-m2m-client-id" },
+                                new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_SECRET", SecretRef = "auth0-m2m-client-secret" },
                             },
                         },
                     },
