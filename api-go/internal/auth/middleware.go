@@ -11,11 +11,11 @@ import (
 	"strings"
 )
 
-// tokenValidator is the consumer-side view the middleware needs: validate a raw
-// token string and return its subject (the JWT `sub` claim). The concrete
-// *Auth0Validator satisfies it; unit tests substitute a hand-written fake so no
-// JWKS network call happens.
-type tokenValidator interface {
+// TokenValidator validates a raw bearer token and returns its subject (the JWT
+// `sub` claim). The concrete *Auth0Validator satisfies it; unit tests substitute
+// a hand-written fake so no JWKS network call happens. It is exported because
+// the binary's wiring (cmd/api) names it when assembling the router.
+type TokenValidator interface {
 	ValidateToken(ctx context.Context, token string) (string, error)
 }
 
@@ -37,7 +37,7 @@ type subjectKey struct{}
 // bearer token, and any unmatched request is denied with the same 401 challenge
 // — reproducing .NET's behaviour where an unselected endpoint triggers the
 // RequireAuthenticatedUser fallback policy.
-func RequireAuth(v tokenValidator, mux routeMatcher, anonymousPatterns map[string]struct{}) http.Handler {
+func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[string]struct{}) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, pattern := mux.Handler(r)
 
