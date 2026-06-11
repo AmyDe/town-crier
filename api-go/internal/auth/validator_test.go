@@ -55,7 +55,7 @@ func TestNewAuth0Validator_ConfiguredBuildsRealValidator(t *testing.T) {
 	}
 }
 
-func TestSubjectFromClaims(t *testing.T) {
+func TestClaimsFromValidated(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -92,13 +92,33 @@ func TestSubjectFromClaims(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := subjectFromClaims(tc.claims)
+			got, err := claimsFromValidated(tc.claims)
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("subjectFromClaims err = %v, wantErr = %v", err, tc.wantErr)
+				t.Fatalf("claimsFromValidated err = %v, wantErr = %v", err, tc.wantErr)
 			}
-			if got != tc.want {
-				t.Errorf("subject = %q, want %q", got, tc.want)
+			if got.Subject != tc.want {
+				t.Errorf("subject = %q, want %q", got.Subject, tc.want)
 			}
 		})
+	}
+}
+
+func TestClaimsFromValidated_MapsCustomClaims(t *testing.T) {
+	t.Parallel()
+
+	in := &validator.ValidatedClaims{
+		RegisteredClaims: validator.RegisteredClaims{Subject: "auth0|abc"},
+		CustomClaims: &profileClaims{
+			Email:            "u@example.com",
+			EmailVerified:    true,
+			SubscriptionTier: "Pro",
+		},
+	}
+	got, err := claimsFromValidated(in)
+	if err != nil {
+		t.Fatalf("claimsFromValidated: %v", err)
+	}
+	if got.Email != "u@example.com" || !got.EmailVerified || got.SubscriptionTier != "Pro" {
+		t.Errorf("custom claims not mapped: %+v", got)
 	}
 }

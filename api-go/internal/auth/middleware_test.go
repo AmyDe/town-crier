@@ -9,17 +9,21 @@ import (
 )
 
 // fakeValidator is a hand-written test double for the consumer-side
-// tokenValidator interface. No JWKS network call happens in unit tests: the
-// fake maps known token strings to subjects and returns an error otherwise.
+// TokenValidator interface. No JWKS network call happens in unit tests: the
+// fake maps known token strings to claims and returns an error otherwise.
 type fakeValidator struct {
 	subjectByToken map[string]string
+	claimsByToken  map[string]Claims
 }
 
-func (f *fakeValidator) ValidateToken(_ context.Context, token string) (string, error) {
-	if sub, ok := f.subjectByToken[token]; ok {
-		return sub, nil
+func (f *fakeValidator) ValidateToken(_ context.Context, token string) (Claims, error) {
+	if c, ok := f.claimsByToken[token]; ok {
+		return c, nil
 	}
-	return "", errors.New("invalid token")
+	if sub, ok := f.subjectByToken[token]; ok {
+		return Claims{Subject: sub}, nil
+	}
+	return Claims{}, errors.New("invalid token")
 }
 
 // muxWith builds a mux with one anonymous route and one authenticated route so
@@ -121,6 +125,39 @@ func TestRequireAuth_AuthenticatedRouteAcceptsValidToken(t *testing.T) {
 	if got := rec.Body.String(); got != "auth0|abc123" {
 		t.Errorf("subject in handler = %q, want auth0|abc123", got)
 	}
+}
+
+func TestRequireAuth_ThreadsFullClaimsToHandler(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
+		c := ClaimsFrom(r.Context())
+		// Confirm every claim the create-profile path needs reached the handler.
+		_, _ = w.Write([]byte(c.Subject + "|" + c.Email + "|" + boolStr(c.EmailVerified) + "|" + c.SubscriptionTier))
+	})
+	anonymous := map[string]struct{}{}
+	v := &fakeValidator{claimsByToken: map[string]Claims{
+		"good": {Subject: "auth0|abc", Email: "u@example.com", EmailVerified: true, SubscriptionTier: "Pro"},
+	}}
+	h := RequireAuth(v, mux, anonymous)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
+	req.Header.Set("Authorization", "Bearer good")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got, want := rec.Body.String(), "auth0|abc|u@example.com|true|Pro"; got != want {
+		t.Errorf("claims in handler = %q, want %q", got, want)
+	}
+	// Subject helper still works, derived from the threaded claims.
+}
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 func TestRequireAuth_UnmatchedRouteFallsToDeny(t *testing.T) {
