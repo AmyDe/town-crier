@@ -16,6 +16,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
+	"github.com/AmyDe/town-crier/api-go/internal/middleware"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 )
@@ -34,7 +35,7 @@ func main() {
 	legal.Routes(mux, logger)
 	authorities.Routes(mux, logger)
 
-	srv := platform.NewServer(":"+cfg.Port, mux)
+	srv := platform.NewServer(":"+cfg.Port, middleware.ErrorBody(logger)(mux))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

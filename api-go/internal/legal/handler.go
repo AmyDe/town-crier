@@ -108,8 +108,8 @@ type handler struct {
 func (h handler) get(w http.ResponseWriter, r *http.Request) {
 	doc, ok := h.store.lookup(r.PathValue("documentType"))
 	if !ok {
-		// Parity: .NET returns Results.NotFound() (bodyless). The PascalCase
-		// error-body backfill is added by middleware in iteration 2.
+		// Parity: .NET returns Results.NotFound() (bodyless); the PascalCase
+		// envelope is backfilled by middleware.ErrorBody, as in .NET.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

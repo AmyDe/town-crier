@@ -81,18 +81,18 @@ func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		// Non-integer id: the .NET {id:int} route constraint does not match, so
-		// the request falls through to the auth fallback (a 401 added by
-		// middleware in iteration 2). Iteration 1 has no such middleware, so the
-		// closest honest behaviour is a bodyless 404; the e2e harness defers the
-		// 401 scenario to iteration 2.
+		// the request falls through to the auth fallback (a 401 added by auth
+		// middleware in iteration 2). Until that lands, the closest honest
+		// behaviour is a 404 (backfilled by middleware.ErrorBody); the e2e
+		// harness defers the 401 scenario to iteration 2.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	a, ok := h.store.byID(id)
 	if !ok {
-		// Bodyless 404 (Results.NotFound). PascalCase backfill arrives in
-		// iteration 2.
+		// Parity: .NET returns Results.NotFound() (bodyless); the PascalCase
+		// envelope is backfilled by middleware.ErrorBody, as in .NET.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

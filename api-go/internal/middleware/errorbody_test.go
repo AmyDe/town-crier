@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // The expected bodies are the live .NET dev API's wire bytes (captured
@@ -129,8 +132,11 @@ func TestErrorBody_LeavesOtherResponsesUntouched(t *testing.T) {
 				_, _ = w.Write([]byte(`{"error":`))
 				_, _ = w.Write([]byte(`"bad"}`))
 			},
-			wantStatus:      http.StatusBadRequest,
-			wantContentType: "",
+			wantStatus: http.StatusBadRequest,
+			// net/http sniffs a Content-Type when none is set and a body is
+			// written — with or without this middleware — so untouched means
+			// the sniffed value, not an absent header.
+			wantContentType: "text/plain; charset=utf-8",
 			wantBody:        `{"error":"bad"}`,
 		},
 	}
@@ -153,15 +159,22 @@ func TestErrorBody_LeavesOtherResponsesUntouched(t *testing.T) {
 	}
 }
 
-// serve runs one request through ErrorBody(next) on a real server so header
-// flushing behaves as it does in production, returning the observed response.
+// serve runs one request through ErrorBody on a real server so header flushing
+// behaves as it does in production, returning the observed response.
 func serve(t *testing.T, next http.HandlerFunc) (status int, contentType string, header http.Header, body string) {
 	t.Helper()
 
-	srv := httptest.NewServer(ErrorBody(next))
+	logger := slog.New(slog.DiscardHandler)
+	srv := httptest.NewServer(ErrorBody(logger)(next))
 	t.Cleanup(srv.Close)
 
-	resp, err := srv.Client().Get(srv.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}

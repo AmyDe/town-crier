@@ -49,7 +49,8 @@ func TestContract_EmbeddedResources(t *testing.T) {
 	paths := []string{
 		"/v1/version-config",
 
-		// Legal: documents, case-insensitive lookup, and unknown -> 404.
+		// Legal: documents, case-insensitive lookup, and unknown -> 404 with
+		// the middleware-backfilled PascalCase error envelope.
 		"/v1/legal/privacy",
 		"/v1/legal/PRIVACY",
 		"/v1/legal/terms",
@@ -78,15 +79,15 @@ func TestContract_EmbeddedResources(t *testing.T) {
 // TestContract_AuthorityNonIntID is deferred to iteration 2. The .NET
 // {id:int} route constraint rejects a non-integer id, which falls through to
 // the auth fallback policy and returns 401 with WWW-Authenticate: Bearer.
-// Iteration 1 ships no auth/error-backfill middleware, so this scenario is
-// pinned here as a skip and enabled once iteration 2 lands.
+// Iteration 1 ships the error-backfill middleware but no auth middleware, so
+// this scenario is pinned here as a skip and enabled once iteration 2 lands.
 func TestContract_AuthorityNonIntID(t *testing.T) {
 	t.Skip("non-int authority id -> 401 depends on iteration-2 auth fallback middleware")
 }
 
 // diffPath fetches a path from both APIs and asserts status, content type, and
-// JSON body match. Bodyless responses (e.g. iteration-1 404s) are compared as
-// raw bytes since they are not valid JSON.
+// JSON body match. Bodyless responses are compared as raw bytes since they are
+// not valid JSON.
 func diffPath(t *testing.T, client *http.Client, dotnetURL, goURL, path string) {
 	t.Helper()
 
