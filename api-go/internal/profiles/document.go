@@ -50,12 +50,7 @@ type zonePreferencesDocument struct {
 func newProfileDocument(p *UserProfile) profileDocument {
 	zones := make(map[string]zonePreferencesDocument, len(p.ZonePreferences))
 	for id, z := range p.ZonePreferences {
-		zones[id] = zonePreferencesDocument{
-			NewApplicationPush:  z.NewApplicationPush,
-			NewApplicationEmail: z.NewApplicationEmail,
-			DecisionPush:        z.DecisionPush,
-			DecisionEmail:       z.DecisionEmail,
-		}
+		zones[id] = zonePreferencesDocument(z)
 	}
 	emailDigest := p.Preferences.EmailDigestEnabled
 	savedPush := p.Preferences.SavedDecisionPush
@@ -87,12 +82,7 @@ func (d profileDocument) toDomain() (*UserProfile, error) {
 	}
 	zones := make(map[string]ZonePreferences, len(d.ZonePreferences))
 	for id, z := range d.ZonePreferences {
-		zones[id] = ZonePreferences{
-			NewApplicationPush:  z.NewApplicationPush,
-			NewApplicationEmail: z.NewApplicationEmail,
-			DecisionPush:        z.DecisionPush,
-			DecisionEmail:       z.DecisionEmail,
-		}
+		zones[id] = ZonePreferences(z)
 	}
 	return &UserProfile{
 		UserID: d.UserID,
