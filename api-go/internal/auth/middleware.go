@@ -65,9 +65,15 @@ func RequireAuth(v tokenValidator, mux routeMatcher, anonymousPatterns map[strin
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), subjectKey{}, subject)
-		mux.ServeHTTP(w, r.WithContext(ctx))
+		mux.ServeHTTP(w, r.WithContext(WithSubject(r.Context(), subject)))
 	})
+}
+
+// WithSubject returns a copy of ctx carrying the authenticated user's subject.
+// RequireAuth calls it after a successful validation; tests use it to inject a
+// subject when exercising a handler in isolation.
+func WithSubject(ctx context.Context, subject string) context.Context {
+	return context.WithValue(ctx, subjectKey{}, subject)
 }
 
 // Challenge writes the bodyless 401 that .NET's JwtBearer handler emits on an
