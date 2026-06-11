@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
 // authorityStore is the consumer-side view the handler needs. The concrete
@@ -81,11 +83,11 @@ func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		// Non-integer id: the .NET {id:int} route constraint does not match, so
-		// the request falls through to the auth fallback (a 401 added by auth
-		// middleware in iteration 2). Until that lands, the closest honest
-		// behaviour is a 404 (backfilled by middleware.ErrorBody); the e2e
-		// harness defers the 401 scenario to iteration 2.
-		w.WriteHeader(http.StatusNotFound)
+		// no endpoint is selected and the fallback-deny policy returns 401 with
+		// WWW-Authenticate: Bearer. Go's {id} wildcard matches any segment, so we
+		// emit the same challenge the auth middleware would — the PascalCase
+		// envelope is backfilled downstream by middleware.ErrorBody.
+		auth.Challenge(w)
 		return
 	}
 
