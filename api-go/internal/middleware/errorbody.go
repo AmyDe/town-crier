@@ -4,6 +4,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -11,13 +12,33 @@ import (
 )
 
 // errorResponse mirrors the .NET ErrorResponse record: PascalCase keys in
-// declaration order, Detail serialized as an explicit null. Detail is always
-// nil in this iteration — .NET only populates it from the unhandled-exception
-// path, whose Go equivalent (panic recovery) ships in iteration 2.
+// declaration order, Detail serialized as an explicit null when unset. Detail
+// is populated only from the unhandled-exception (panic recovery) path, exactly
+// as .NET reads context.Items["ErrorDetail"] before backfilling.
 type errorResponse struct {
 	Status int     `json:"Status"`
 	Title  string  `json:"Title"`
 	Detail *string `json:"Detail"`
+}
+
+// detailHolder is a per-request mailbox for the error Detail. .NET uses the
+// mutable context.Items bag; Go contexts are immutable, so a pointer installed
+// once by ErrorBody and mutated by Recover (which runs further down the chain)
+// is the equivalent shared-write channel. ErrorBody reads it after next returns.
+type detailHolder struct {
+	detail *string
+}
+
+type detailKey struct{}
+
+// SetDetail records the error detail for the current request so ErrorBody emits
+// it as the envelope's Detail field. It is a no-op when the request did not
+// pass through ErrorBody (no holder installed), keeping callers decoupled from
+// the middleware ordering.
+func SetDetail(ctx context.Context, detail string) {
+	if h, ok := ctx.Value(detailKey{}).(*detailHolder); ok {
+		h.detail = &detail
+	}
 }
 
 // ErrorBody replicates the backfill half of the .NET ErrorResponseMiddleware
@@ -31,10 +52,12 @@ type errorResponse struct {
 func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			bw := &backfillWriter{ResponseWriter: w}
-			next.ServeHTTP(bw, r)
+			ctx := r.Context()
+			holder := &detailHolder{}
+			bw := &backfillWriter{ResponseWriter: w, holder: holder}
+			next.ServeHTTP(bw, r.WithContext(context.WithValue(ctx, detailKey{}, holder)))
 			if err := bw.backfill(); err != nil {
-				logger.ErrorContext(r.Context(), "write error body", "status", bw.status, "error", err)
+				logger.ErrorContext(ctx, "write error body", "status", bw.status, "error", err)
 			}
 		})
 	}
@@ -47,8 +70,9 @@ func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 // late Content-Type overwrite) possible.
 type backfillWriter struct {
 	http.ResponseWriter
-	status    int  // deferred status; 0 = WriteHeader not called yet
-	flushed   bool // header forwarded to the underlying writer
+	holder    *detailHolder // shared mailbox carrying the panic Detail, if any
+	status    int           // deferred status; 0 = WriteHeader not called yet
+	flushed   bool          // header forwarded to the underlying writer
 	wroteBody bool
 }
 
@@ -85,7 +109,11 @@ func (b *backfillWriter) backfill() error {
 	if b.flushed || b.status < 400 || b.wroteBody {
 		return nil
 	}
-	body, err := json.Marshal(errorResponse{Status: b.status, Title: reasonPhrase(b.status)})
+	var detail *string
+	if b.holder != nil {
+		detail = b.holder.detail
+	}
+	body, err := json.Marshal(errorResponse{Status: b.status, Title: reasonPhrase(b.status), Detail: detail})
 	if err != nil {
 		b.flushed = true
 		b.ResponseWriter.WriteHeader(b.status)
