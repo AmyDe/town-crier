@@ -76,14 +76,17 @@ func (c *Auth0Client) UpdateSubscriptionTier(ctx context.Context, userID, tier s
 
 	reqCtx, cancel := context.WithTimeout(ctx, auth0RequestTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPatch, c.userURL(userID), bytes.NewReader(body))
+	// gosec G704: the host comes from the trusted AUTH0_DOMAIN config and userID
+	// is the authenticated caller's own escaped subject — no attacker-controlled
+	// host can be reached, so this is not an SSRF vector.
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPatch, c.userURL(userID), bytes.NewReader(body)) //nolint:gosec // trusted host + escaped own subject
 	if err != nil {
 		return fmt.Errorf("build patch request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // host from trusted config, not user input
 	if err != nil {
 		return fmt.Errorf("patch user %q: %w", userID, err)
 	}
@@ -105,13 +108,13 @@ func (c *Auth0Client) DeleteUser(ctx context.Context, userID string) error {
 
 	reqCtx, cancel := context.WithTimeout(ctx, auth0RequestTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, c.userURL(userID), nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, c.userURL(userID), nil) //nolint:gosec // trusted host + escaped own subject
 	if err != nil {
 		return fmt.Errorf("build delete request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // host from trusted config, not user input
 	if err != nil {
 		return fmt.Errorf("delete user %q: %w", userID, err)
 	}
@@ -148,13 +151,13 @@ func (c *Auth0Client) token(ctx context.Context) (string, error) {
 
 	reqCtx, cancel := context.WithTimeout(ctx, auth0RequestTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL+"/oauth/token", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL+"/oauth/token", bytes.NewReader(body)) //nolint:gosec // host from trusted AUTH0_DOMAIN config
 	if err != nil {
 		return "", fmt.Errorf("build token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // host from trusted config, not user input
 	if err != nil {
 		return "", fmt.Errorf("request token: %w", err)
 	}
