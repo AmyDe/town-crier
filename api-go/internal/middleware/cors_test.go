@@ -30,7 +30,7 @@ func TestCORS_AllowedOriginEchoed(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 			req.Header.Set("Origin", tc.origin)
 			rec := httptest.NewRecorder()
 
@@ -53,7 +53,7 @@ func TestCORS_DisallowedOriginNotEchoed(t *testing.T) {
 
 	h := CORS([]string{"https://towncrierapp.uk"})(okHandler())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 	req.Header.Set("Origin", "https://evil.example.com")
 	rec := httptest.NewRecorder()
 
@@ -72,7 +72,7 @@ func TestCORS_NoOriginHeaderUntouched(t *testing.T) {
 
 	h := CORS([]string{"https://towncrierapp.uk"})(okHandler())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, req)
@@ -95,7 +95,7 @@ func TestCORS_PreflightShortCircuits(t *testing.T) {
 	})
 	h := CORS([]string{"https://towncrierapp.uk"})(next)
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/api/me", nil)
 	req.Header.Set("Origin", "https://towncrierapp.uk")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	rec := httptest.NewRecorder()
@@ -122,7 +122,7 @@ func TestCORS_PreflightEchoesRequestedHeaders(t *testing.T) {
 
 	h := CORS([]string{"https://towncrierapp.uk"})(okHandler())
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/api/me", nil)
 	req.Header.Set("Origin", "https://towncrierapp.uk")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")

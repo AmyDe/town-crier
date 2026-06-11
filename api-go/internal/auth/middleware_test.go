@@ -46,7 +46,7 @@ func TestRequireAuth_AnonymousRouteServedWithoutToken(t *testing.T) {
 	v := &fakeValidator{}
 	h := RequireAuth(v, mux, anonymous)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -68,7 +68,7 @@ func TestRequireAuth_AuthenticatedRouteRejectsMissingToken(t *testing.T) {
 	v := &fakeValidator{}
 	h := RequireAuth(v, mux, anonymous)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -94,7 +94,7 @@ func TestRequireAuth_AuthenticatedRouteRejectsInvalidToken(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 			req.Header.Set("Authorization", tc.header)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -110,7 +110,7 @@ func TestRequireAuth_AuthenticatedRouteAcceptsValidToken(t *testing.T) {
 	v := &fakeValidator{subjectByToken: map[string]string{"good": "auth0|abc123"}}
 	h := RequireAuth(v, mux, anonymous)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/me", nil)
 	req.Header.Set("Authorization", "Bearer good")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -145,7 +145,7 @@ func TestRequireAuth_UnmatchedRouteFallsToDeny(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil)
 			req.Header.Set("Authorization", "Bearer good")
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)

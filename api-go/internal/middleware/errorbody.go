@@ -52,12 +52,12 @@ func SetDetail(ctx context.Context, detail string) {
 func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
 			holder := &detailHolder{}
-			r = r.WithContext(context.WithValue(r.Context(), detailKey{}, holder))
 			bw := &backfillWriter{ResponseWriter: w, holder: holder}
-			next.ServeHTTP(bw, r)
+			next.ServeHTTP(bw, r.WithContext(context.WithValue(ctx, detailKey{}, holder)))
 			if err := bw.backfill(); err != nil {
-				logger.ErrorContext(r.Context(), "write error body", "status", bw.status, "error", err)
+				logger.ErrorContext(ctx, "write error body", "status", bw.status, "error", err)
 			}
 		})
 	}

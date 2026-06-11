@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -22,8 +21,8 @@ func TestMe_ReturnsSubjectAsUserId(t *testing.T) {
 
 	// The auth middleware would normally inject the subject; here we inject it
 	// directly so the handler is tested in isolation.
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
-	req = req.WithContext(auth.WithSubject(context.Background(), "auth0|abc123"))
+	ctx := auth.WithSubject(t.Context(), "auth0|abc123")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -48,8 +47,8 @@ func TestMe_EchoesInjectedSubject(t *testing.T) {
 	mux := http.NewServeMux()
 	Routes(mux, slog.New(slog.DiscardHandler))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
-	req = req.WithContext(auth.WithSubject(context.Background(), "google-oauth2|999"))
+	ctx := auth.WithSubject(t.Context(), "google-oauth2|999")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/me", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

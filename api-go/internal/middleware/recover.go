@@ -23,6 +23,7 @@ import (
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
 			rw := &recoverWriter{ResponseWriter: w}
 			defer func() {
 				rec := recover()
@@ -30,14 +31,14 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 					return
 				}
 				err := panicError(rec)
-				logger.ErrorContext(r.Context(), "recovered from panic",
+				logger.ErrorContext(ctx, "recovered from panic",
 					"method", r.Method, "path", r.URL.Path, "error", err)
 				if rw.started {
 					// Response already on the wire; cannot replace it. .NET's
 					// HasStarted guard skips the envelope in exactly this case.
 					return
 				}
-				SetDetail(r.Context(), err.Error())
+				SetDetail(ctx, err.Error())
 				rw.WriteHeader(http.StatusInternalServerError)
 			}()
 			next.ServeHTTP(rw, r)

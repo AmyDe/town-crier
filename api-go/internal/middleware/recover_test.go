@@ -19,7 +19,7 @@ import (
 func TestRecover_PanicBecomes500WithDetail(t *testing.T) {
 	t.Parallel()
 
-	status, contentType, _, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
+	status, contentType, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
 		panic("boom: handler exploded")
 	})
 
@@ -40,7 +40,7 @@ func TestRecover_PanicBecomes500WithDetail(t *testing.T) {
 func TestRecover_PanicWithErrorValuePropagatesMessage(t *testing.T) {
 	t.Parallel()
 
-	status, _, _, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
+	status, _, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
 		panic(context.DeadlineExceeded)
 	})
 
@@ -57,7 +57,7 @@ func TestRecover_PanicWithErrorValuePropagatesMessage(t *testing.T) {
 func TestRecover_NoPanicPassesThrough(t *testing.T) {
 	t.Parallel()
 
-	status, contentType, _, body := serveChain(t, func(w http.ResponseWriter, _ *http.Request) {
+	status, contentType, body := serveChain(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write([]byte(`{"userId":"auth0|abc"}`))
 	})
@@ -81,7 +81,7 @@ func TestRecover_NoPanicPassesThrough(t *testing.T) {
 func TestRecover_PanicAfterPartialWriteDoesNotDoubleWrite(t *testing.T) {
 	t.Parallel()
 
-	status, _, _, body := serveChain(t, func(w http.ResponseWriter, _ *http.Request) {
+	status, _, body := serveChain(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`partial`))
 		panic("too late")
@@ -97,7 +97,7 @@ func TestRecover_PanicAfterPartialWriteDoesNotDoubleWrite(t *testing.T) {
 
 // serveChain runs a request through ErrorBody wrapping Recover wrapping the
 // handler — the production ordering for the panic-to-500 path.
-func serveChain(t *testing.T, next http.HandlerFunc) (status int, contentType string, header http.Header, body string) {
+func serveChain(t *testing.T, next http.HandlerFunc) (status int, contentType string, body string) {
 	t.Helper()
 
 	logger := slog.New(slog.DiscardHandler)
@@ -121,5 +121,5 @@ func serveChain(t *testing.T, next http.HandlerFunc) (status int, contentType st
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	return resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header, string(raw)
+	return resp.StatusCode, resp.Header.Get("Content-Type"), string(raw)
 }
