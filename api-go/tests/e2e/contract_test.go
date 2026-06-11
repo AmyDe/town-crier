@@ -76,13 +76,71 @@ func TestContract_EmbeddedResources(t *testing.T) {
 	}
 }
 
-// TestContract_AuthorityNonIntID is deferred to iteration 2. The .NET
-// {id:int} route constraint rejects a non-integer id, which falls through to
-// the auth fallback policy and returns 401 with WWW-Authenticate: Bearer.
-// Iteration 1 ships the error-backfill middleware but no auth middleware, so
-// this scenario is pinned here as a skip and enabled once iteration 2 lands.
+// TestContract_AuthFallbackDeny pins the iteration-2 auth surface against the
+// live .NET API: every protected or unmatched route returns 401 with the
+// PascalCase envelope and WWW-Authenticate: Bearer. None of these scenarios
+// needs a valid token — they all exercise the no-token challenge — so the
+// contract job needs no Auth0 credentials to run them.
+//
+// Covered:
+//   - /api/me           authenticated endpoint, no token
+//   - /                 unmatched root -> fallback-deny (the .NET default)
+//   - /v1/does-not-exist unmatched path
+//   - /v1/authorities/abc non-int id: .NET {id:int} rejects, falls to fallback
+func TestContract_AuthFallbackDeny(t *testing.T) {
+	dotnetURL := baseURL(t, "DOTNET_BASE_URL")
+	goURL := baseURL(t, "GO_BASE_URL")
+	client := &http.Client{Timeout: requestTimeout}
+
+	paths := []string{
+		"/api/me",
+		"/",
+		"/v1/does-not-exist",
+		"/v1/authorities/abc",
+		"/v1/authorities/1.5",
+	}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			diffChallenge(t, client, dotnetURL, goURL, path)
+		})
+	}
+}
+
+// TestContract_AuthorityNonIntID is the specific iteration-1 scenario that was
+// deferred: a non-integer authority id returns the fallback-deny 401, not a
+// 404. Now that iteration 2 owns the auth surface it is enabled.
 func TestContract_AuthorityNonIntID(t *testing.T) {
-	t.Skip("non-int authority id -> 401 depends on iteration-2 auth fallback middleware")
+	dotnetURL := baseURL(t, "DOTNET_BASE_URL")
+	goURL := baseURL(t, "GO_BASE_URL")
+	client := &http.Client{Timeout: requestTimeout}
+
+	diffChallenge(t, client, dotnetURL, goURL, "/v1/authorities/not-an-int")
+}
+
+// diffChallenge diffs a fallback-deny response between the two APIs: status,
+// content type, body, AND the WWW-Authenticate header, which the status/body
+// diff alone would miss.
+func diffChallenge(t *testing.T, client *http.Client, dotnetURL, goURL, path string) {
+	t.Helper()
+
+	want := get(t, client, dotnetURL+path)
+	got := get(t, client, goURL+path)
+
+	if got.status != http.StatusUnauthorized {
+		t.Errorf("go status: got %d, want 401", got.status)
+	}
+	if got.status != want.status {
+		t.Errorf("status: go=%d dotnet=%d", got.status, want.status)
+	}
+	if got.contentType != want.contentType {
+		t.Errorf("content-type: go=%q dotnet=%q", got.contentType, want.contentType)
+	}
+	if got.wwwAuthenticate != want.wwwAuthenticate {
+		t.Errorf("www-authenticate: go=%q dotnet=%q", got.wwwAuthenticate, want.wwwAuthenticate)
+	}
+	if !jsonEqual(t, got.body, want.body) {
+		t.Errorf("body: go=%s dotnet=%s", got.body, want.body)
+	}
 }
 
 // diffPath fetches a path from both APIs and asserts status, content type, and
@@ -112,9 +170,10 @@ func diffPath(t *testing.T, client *http.Client, dotnetURL, goURL, path string) 
 }
 
 type response struct {
-	status      int
-	contentType string
-	body        []byte
+	status          int
+	contentType     string
+	wwwAuthenticate string
+	body            []byte
 }
 
 func get(t *testing.T, client *http.Client, url string) response {
@@ -140,9 +199,10 @@ func get(t *testing.T, client *http.Client, url string) response {
 	}
 
 	return response{
-		status:      resp.StatusCode,
-		contentType: resp.Header.Get("Content-Type"),
-		body:        body,
+		status:          resp.StatusCode,
+		contentType:     resp.Header.Get("Content-Type"),
+		wwwAuthenticate: resp.Header.Get("WWW-Authenticate"),
+		body:            body,
 	}
 }
 
