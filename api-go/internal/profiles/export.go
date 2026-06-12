@@ -2,6 +2,27 @@ package profiles
 
 import "time"
 
+// dotnetTime marshals like System.Text.Json's DateTimeOffset: ISO 8601 with a
+// numeric UTC offset ("2099-12-31T00:00:00+00:00"), never Go's RFC 3339 "Z"
+// suffix; fractional seconds appear only when non-zero, trailing zeros
+// trimmed — the same trimming STJ applies. Every .NET Exported* timestamp is a
+// DateTimeOffset, so every export wire timestamp must use this type.
+type dotnetTime time.Time
+
+func (t dotnetTime) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + time.Time(t).Format("2006-01-02T15:04:05.9999999-07:00") + `"`), nil
+}
+
+// dotnetTimePtr converts an optional time for the export shapes, preserving
+// nil so absent values serialise as null.
+func dotnetTimePtr(t *time.Time) *dotnetTime {
+	if t == nil {
+		return nil
+	}
+	dt := dotnetTime(*t)
+	return &dt
+}
+
 // exportUserData is the GDPR data-export contract returned by GET /v1/me/data.
 // It mirrors .NET's ExportUserDataResult, including the nested
 // notificationPreferences (with the per-zone array) and subscription blocks.
@@ -40,10 +61,10 @@ type exportedZonePreference struct {
 }
 
 type exportedSubscription struct {
-	Tier                  string     `json:"tier"`
-	ExpiresAt             *time.Time `json:"expiresAt"`
-	OriginalTransactionID *string    `json:"originalTransactionId"`
-	GracePeriodExpiresAt  *time.Time `json:"gracePeriodExpiresAt"`
+	Tier                  string      `json:"tier"`
+	ExpiresAt             *dotnetTime `json:"expiresAt"`
+	OriginalTransactionID *string     `json:"originalTransactionId"`
+	GracePeriodExpiresAt  *dotnetTime `json:"gracePeriodExpiresAt"`
 }
 
 // The following child-record shapes match .NET's Exported* records. They have no
@@ -51,45 +72,45 @@ type exportedSubscription struct {
 // renders them as empty arrays; the structs pin the contract for when the
 // sources arrive.
 type exportedWatchZone struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Latitude     float64   `json:"latitude"`
-	Longitude    float64   `json:"longitude"`
-	RadiusMetres float64   `json:"radiusMetres"`
-	AuthorityID  int       `json:"authorityId"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Latitude     float64    `json:"latitude"`
+	Longitude    float64    `json:"longitude"`
+	RadiusMetres float64    `json:"radiusMetres"`
+	AuthorityID  int        `json:"authorityId"`
+	CreatedAt    dotnetTime `json:"createdAt"`
 }
 
 type exportedNotification struct {
-	ID                     string    `json:"id"`
-	ApplicationName        string    `json:"applicationName"`
-	WatchZoneID            *string   `json:"watchZoneId"`
-	ApplicationAddress     string    `json:"applicationAddress"`
-	ApplicationDescription string    `json:"applicationDescription"`
-	ApplicationType        *string   `json:"applicationType"`
-	AuthorityID            int       `json:"authorityId"`
-	Decision               *string   `json:"decision"`
-	PushSent               bool      `json:"pushSent"`
-	EmailSent              bool      `json:"emailSent"`
-	CreatedAt              time.Time `json:"createdAt"`
+	ID                     string     `json:"id"`
+	ApplicationName        string     `json:"applicationName"`
+	WatchZoneID            *string    `json:"watchZoneId"`
+	ApplicationAddress     string     `json:"applicationAddress"`
+	ApplicationDescription string     `json:"applicationDescription"`
+	ApplicationType        *string    `json:"applicationType"`
+	AuthorityID            int        `json:"authorityId"`
+	Decision               *string    `json:"decision"`
+	PushSent               bool       `json:"pushSent"`
+	EmailSent              bool       `json:"emailSent"`
+	CreatedAt              dotnetTime `json:"createdAt"`
 }
 
 type exportedSavedApplication struct {
-	ApplicationUID string    `json:"applicationUid"`
-	SavedAt        time.Time `json:"savedAt"`
+	ApplicationUID string     `json:"applicationUid"`
+	SavedAt        dotnetTime `json:"savedAt"`
 }
 
 type exportedDeviceRegistration struct {
-	Token        string    `json:"token"`
-	Platform     string    `json:"platform"`
-	RegisteredAt time.Time `json:"registeredAt"`
+	Token        string     `json:"token"`
+	Platform     string     `json:"platform"`
+	RegisteredAt dotnetTime `json:"registeredAt"`
 }
 
 type exportedOfferCodeRedemption struct {
-	Code         string    `json:"code"`
-	Tier         string    `json:"tier"`
-	DurationDays int       `json:"durationDays"`
-	RedeemedAt   time.Time `json:"redeemedAt"`
+	Code         string     `json:"code"`
+	Tier         string     `json:"tier"`
+	DurationDays int        `json:"durationDays"`
+	RedeemedAt   dotnetTime `json:"redeemedAt"`
 }
 
 // newExportUserData builds the export contract for a profile, with child
@@ -118,9 +139,9 @@ func newExportUserData(p *UserProfile) exportUserData {
 		},
 		Subscription: exportedSubscription{
 			Tier:                  p.Tier.String(),
-			ExpiresAt:             p.SubscriptionExpiry,
+			ExpiresAt:             dotnetTimePtr(p.SubscriptionExpiry),
 			OriginalTransactionID: p.OriginalTransactionID,
-			GracePeriodExpiresAt:  p.GracePeriodExpiry,
+			GracePeriodExpiresAt:  dotnetTimePtr(p.GracePeriodExpiry),
 		},
 		WatchZones:           []exportedWatchZone{},
 		Notifications:        []exportedNotification{},

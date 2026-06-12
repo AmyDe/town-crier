@@ -410,6 +410,14 @@ func TestHandler_ExportData_NestedContract(t *testing.T) {
 	if !ok || sub["tier"] != "Pro" {
 		t.Errorf("subscription wrong: %v", got["subscription"])
 	}
+	// .NET serialises DateTimeOffset with a numeric offset — "+00:00", never
+	// Go's RFC 3339 "Z" (caught live by the contract gate on PR #424).
+	if sub["expiresAt"] != "2099-12-31T00:00:00+00:00" {
+		t.Errorf("expiresAt wire format: got %v, want 2099-12-31T00:00:00+00:00", sub["expiresAt"])
+	}
+	if sub["gracePeriodExpiresAt"] != nil {
+		t.Errorf("gracePeriodExpiresAt: got %v, want null", sub["gracePeriodExpiresAt"])
+	}
 	// Child collections not yet sourced in this iteration: present as empty arrays.
 	for _, k := range []string{"watchZones", "notifications", "savedApplications", "deviceRegistrations", "offerCodeRedemptions"} {
 		arr, ok := got[k].([]any)
