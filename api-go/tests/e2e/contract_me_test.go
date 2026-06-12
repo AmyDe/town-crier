@@ -127,6 +127,15 @@ func TestContract_AuthenticatedProfileSurface(t *testing.T) {
 		t.Fatalf("setup POST /v1/me on .NET failed: %d %s", setup.status, setup.body)
 	}
 
+	// Warm-up, not a diff: the first authenticated request on a cold app pays
+	// the lazy Cosmos connect + AAD token fetch, which can blow the bounded
+	// 1.5s retry budget and make the rate-limit tier lookup fail open to the
+	// free limit (observed on PR #424: go=60 vs dotnet=600 on the first diffed
+	// call only). Both implementations share that fail-open design, so a cold
+	// first call is an environmental artifact, not a contract difference.
+	_ = authedRequest(t, client, dotnetURL, http.MethodGet, "/v1/me", token)
+	_ = authedRequest(t, client, goURL, http.MethodGet, "/v1/me", token)
+
 	scenarios := []struct {
 		method string
 		path   string
