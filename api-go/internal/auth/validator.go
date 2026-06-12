@@ -76,6 +76,7 @@ func NewAuth0Validator(domain, audience string, logger *slog.Logger) (*Auth0Vali
 		validator.WithIssuer(issuerURL.String()),
 		validator.WithAudience(audience),
 		validator.WithAllowedClockSkew(allowedClockSkew),
+		validator.WithCustomClaims(func() validator.CustomClaims { return &profileClaims{} }),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build jwt validator: %w", err)
@@ -84,29 +85,46 @@ func NewAuth0Validator(domain, audience string, logger *slog.Logger) (*Auth0Vali
 	return &Auth0Validator{inner: inner, logger: logger}, nil
 }
 
-// ValidateToken validates the raw token and returns its subject. A deny-all
+// ValidateToken validates the raw token and returns its claims. A deny-all
 // validator (no Auth0 config) returns ErrUnconfigured for any token.
-func (a *Auth0Validator) ValidateToken(ctx context.Context, token string) (string, error) {
+func (a *Auth0Validator) ValidateToken(ctx context.Context, token string) (Claims, error) {
 	if a.inner == nil {
-		return "", ErrUnconfigured
+		return Claims{}, ErrUnconfigured
 	}
-	claims, err := a.inner.ValidateToken(ctx, token)
+	validated, err := a.inner.ValidateToken(ctx, token)
 	if err != nil {
-		return "", fmt.Errorf("validate token: %w", err)
+		return Claims{}, fmt.Errorf("validate token: %w", err)
 	}
-	return subjectFromClaims(claims)
+	return claimsFromValidated(validated)
 }
 
-// subjectFromClaims extracts the `sub` claim from the validator's result. The
-// library returns *validator.ValidatedClaims; an unexpected type or an empty
-// subject is an error, since every Auth0 access token carries a non-empty sub.
-func subjectFromClaims(claims any) (string, error) {
-	validated, ok := claims.(*validator.ValidatedClaims)
+// profileClaims captures the non-registered claims the create-profile path
+// reads: email, email_verified, and the (non-authoritative) subscription_tier.
+// Validate is a no-op — these are informational, not security-critical.
+type profileClaims struct {
+	Email            string `json:"email"`
+	EmailVerified    bool   `json:"email_verified"`
+	SubscriptionTier string `json:"subscription_tier"`
+}
+
+func (*profileClaims) Validate(context.Context) error { return nil }
+
+// claimsFromValidated maps the library's ValidatedClaims to our Claims. An
+// unexpected type or an empty subject is an error, since every Auth0 access
+// token carries a non-empty sub.
+func claimsFromValidated(v any) (Claims, error) {
+	validated, ok := v.(*validator.ValidatedClaims)
 	if !ok {
-		return "", fmt.Errorf("unexpected claims type %T", claims)
+		return Claims{}, fmt.Errorf("unexpected claims type %T", v)
 	}
 	if validated.RegisteredClaims.Subject == "" {
-		return "", errors.New("token has no subject claim")
+		return Claims{}, errors.New("token has no subject claim")
 	}
-	return validated.RegisteredClaims.Subject, nil
+	c := Claims{Subject: validated.RegisteredClaims.Subject}
+	if pc, ok := validated.CustomClaims.(*profileClaims); ok && pc != nil {
+		c.Email = pc.Email
+		c.EmailVerified = pc.EmailVerified
+		c.SubscriptionTier = pc.SubscriptionTier
+	}
+	return c, nil
 }

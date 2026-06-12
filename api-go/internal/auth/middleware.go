@@ -11,12 +11,24 @@ import (
 	"strings"
 )
 
-// TokenValidator validates a raw bearer token and returns its subject (the JWT
-// `sub` claim). The concrete *Auth0Validator satisfies it; unit tests substitute
-// a hand-written fake so no JWKS network call happens. It is exported because
-// the binary's wiring (cmd/api) names it when assembling the router.
+// Claims carries the JWT claims the handlers need after a token is validated:
+// the subject plus the email, email-verified flag, and subscription_tier the
+// create-profile path reads (mirroring .NET's ClaimsPrincipal lookups in
+// UserProfileEndpoints). Email-derived claims are empty when the token omits
+// them.
+type Claims struct {
+	Subject          string
+	Email            string
+	EmailVerified    bool
+	SubscriptionTier string
+}
+
+// TokenValidator validates a raw bearer token and returns its claims. The
+// concrete *Auth0Validator satisfies it; unit tests substitute a hand-written
+// fake so no JWKS network call happens. It is exported because the binary's
+// wiring (cmd/api) names it when assembling the router.
 type TokenValidator interface {
-	ValidateToken(ctx context.Context, token string) (string, error)
+	ValidateToken(ctx context.Context, token string) (Claims, error)
 }
 
 // routeMatcher is the subset of *http.ServeMux the middleware uses: it both
@@ -28,7 +40,7 @@ type routeMatcher interface {
 	Handler(r *http.Request) (h http.Handler, pattern string)
 }
 
-type subjectKey struct{}
+type claimsKey struct{}
 
 // RequireAuth wraps mux with Auth0 bearer authentication and fallback-deny
 // authorization. anonymousPatterns is the set of mux patterns (e.g.
@@ -59,21 +71,36 @@ func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[strin
 			Challenge(w)
 			return
 		}
-		subject, err := v.ValidateToken(r.Context(), token)
+		claims, err := v.ValidateToken(r.Context(), token)
 		if err != nil {
 			Challenge(w)
 			return
 		}
 
-		mux.ServeHTTP(w, r.WithContext(WithSubject(r.Context(), subject)))
+		mux.ServeHTTP(w, r.WithContext(WithClaims(r.Context(), claims)))
 	})
 }
 
-// WithSubject returns a copy of ctx carrying the authenticated user's subject.
-// RequireAuth calls it after a successful validation; tests use it to inject a
-// subject when exercising a handler in isolation.
+// WithClaims returns a copy of ctx carrying the authenticated user's claims.
+// RequireAuth calls it after a successful validation; tests use it to inject
+// claims when exercising a handler in isolation.
+func WithClaims(ctx context.Context, claims Claims) context.Context {
+	return context.WithValue(ctx, claimsKey{}, claims)
+}
+
+// WithSubject is a convenience that threads only the subject, used by handler
+// tests that do not exercise the email/tier claims.
 func WithSubject(ctx context.Context, subject string) context.Context {
-	return context.WithValue(ctx, subjectKey{}, subject)
+	return WithClaims(ctx, Claims{Subject: subject})
+}
+
+// ClaimsFrom returns the authenticated user's claims, or the zero Claims if the
+// request was not authenticated (e.g. an anonymous route).
+func ClaimsFrom(ctx context.Context) Claims {
+	if c, ok := ctx.Value(claimsKey{}).(Claims); ok {
+		return c
+	}
+	return Claims{}
 }
 
 // Challenge writes the bodyless 401 that .NET's JwtBearer handler emits on an
@@ -88,10 +115,7 @@ func Challenge(w http.ResponseWriter) {
 // Subject returns the authenticated user's `sub` claim, or the empty string if
 // the request was not authenticated (e.g. an anonymous route).
 func Subject(ctx context.Context) string {
-	if sub, ok := ctx.Value(subjectKey{}).(string); ok {
-		return sub
-	}
-	return ""
+	return ClaimsFrom(ctx).Subject
 }
 
 // bearerToken extracts the token from an "Authorization: Bearer <token>"

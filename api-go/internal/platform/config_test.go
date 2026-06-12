@@ -76,6 +76,89 @@ func TestLoadConfig_Auth0DefaultsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_Cosmos(t *testing.T) {
+	t.Setenv("COSMOS_ENDPOINT", "https://town-crier.documents.azure.com:443/")
+	t.Setenv("COSMOS_DATABASE", "town-crier")
+	t.Setenv("AZURE_CLIENT_ID", "11111111-2222-3333-4444-555555555555")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.CosmosEndpoint != "https://town-crier.documents.azure.com:443/" {
+		t.Errorf("CosmosEndpoint: got %q", cfg.CosmosEndpoint)
+	}
+	if cfg.CosmosDatabase != "town-crier" {
+		t.Errorf("CosmosDatabase: got %q", cfg.CosmosDatabase)
+	}
+	if cfg.AzureClientID != "11111111-2222-3333-4444-555555555555" {
+		t.Errorf("AzureClientID: got %q", cfg.AzureClientID)
+	}
+}
+
+func TestLoadConfig_Auth0M2M(t *testing.T) {
+	t.Setenv("AUTH0_M2M_CLIENT_ID", "m2m-client")
+	t.Setenv("AUTH0_M2M_CLIENT_SECRET", "m2m-secret")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Auth0M2MClientID != "m2m-client" {
+		t.Errorf("Auth0M2MClientID: got %q, want m2m-client", cfg.Auth0M2MClientID)
+	}
+	if cfg.Auth0M2MClientSecret.Expose() != "m2m-secret" {
+		t.Errorf("Auth0M2MClientSecret: got %q, want m2m-secret", cfg.Auth0M2MClientSecret.Expose())
+	}
+	// The secret must redact in any stringified form.
+	if got := cfg.Auth0M2MClientSecret.String(); got != "[REDACTED]" {
+		t.Errorf("Auth0M2MClientSecret.String(): got %q, want [REDACTED]", got)
+	}
+}
+
+func TestLoadConfig_M2MConfiguredOnlyWhenAllPresent(t *testing.T) {
+	tests := []struct {
+		name         string
+		domain       string
+		clientID     string
+		clientSecret string
+		want         bool
+	}{
+		{"all present", "town-crier.eu.auth0.com", "m2m-client", "m2m-secret", true},
+		{"missing domain", "", "m2m-client", "m2m-secret", false},
+		{"missing client id", "town-crier.eu.auth0.com", "", "m2m-secret", false},
+		{"missing secret", "town-crier.eu.auth0.com", "m2m-client", "", false},
+		{"all absent", "", "", "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AUTH0_DOMAIN", tc.domain)
+			t.Setenv("AUTH0_M2M_CLIENT_ID", tc.clientID)
+			t.Setenv("AUTH0_M2M_CLIENT_SECRET", tc.clientSecret)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if got := cfg.Auth0M2MConfigured(); got != tc.want {
+				t.Errorf("Auth0M2MConfigured(): got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_ProDomains(t *testing.T) {
+	t.Setenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS", "towncrier.test, example.org")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.ProDomains != "towncrier.test, example.org" {
+		t.Errorf("ProDomains: got %q", cfg.ProDomains)
+	}
+}
+
 func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 	tests := []struct {
 		name string
