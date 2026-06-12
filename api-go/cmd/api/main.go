@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -40,6 +42,28 @@ func main() {
 		store = profiles.NewCosmosStore(cosmos)
 	}
 
+	devices, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var deviceStore *devicetokens.CosmosStore
+	if devices != nil {
+		deviceStore = devicetokens.NewCosmosStore(devices)
+	}
+
+	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	notifications, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var stateStore *notificationstate.CosmosStore
+	if stateContainer != nil && notifications != nil {
+		stateStore = notificationstate.NewCosmosStore(stateContainer, notifications)
+	}
+
 	// Real M2M client only when fully configured; otherwise the no-op fallback,
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
@@ -52,7 +76,7 @@ func main() {
 		)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

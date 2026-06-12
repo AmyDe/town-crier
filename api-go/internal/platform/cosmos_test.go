@@ -42,3 +42,36 @@ func TestNewCosmosContainer_RequiresConfig(t *testing.T) {
 		t.Errorf("NewCosmosContainer with no endpoint: got %v, want nil container", container)
 	}
 }
+
+func TestNewCosmosContainerNamed_RequiresConfig(t *testing.T) {
+	t.Parallel()
+
+	// The named-container factory shares the no-endpoint short-circuit so the
+	// it4 device-token / notification-state containers are simply unwired when
+	// Cosmos env is absent, exactly like the Users container.
+	cfg := Config{CosmosEndpoint: "", CosmosDatabase: "town-crier", AzureClientID: "id"}
+	container, err := NewCosmosContainerNamed(cfg, "DeviceRegistrations", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("NewCosmosContainerNamed with no endpoint: got err %v, want nil", err)
+	}
+	if container != nil {
+		t.Errorf("NewCosmosContainerNamed with no endpoint: got %v, want nil container", container)
+	}
+}
+
+func TestCosmosContainerNames_MirrorDotNet(t *testing.T) {
+	t.Parallel()
+
+	// These constants mirror .NET CosmosContainerNames; the device-token and
+	// notification-state stores read them so a typo here would silently target
+	// the wrong container.
+	if CosmosDeviceRegistrationsContainer != "DeviceRegistrations" {
+		t.Errorf("DeviceRegistrations container = %q", CosmosDeviceRegistrationsContainer)
+	}
+	if CosmosNotificationStateContainer != "NotificationState" {
+		t.Errorf("NotificationState container = %q", CosmosNotificationStateContainer)
+	}
+	if CosmosNotificationsContainer != "Notifications" {
+		t.Errorf("Notifications container = %q", CosmosNotificationsContainer)
+	}
+}
