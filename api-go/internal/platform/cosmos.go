@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -48,8 +49,17 @@ type CosmosContainer struct {
 // routes are then simply unwired). The SDK opens connections lazily on first
 // call, preserving cold-start latency.
 func NewCosmosContainer(cfg Config, logger *slog.Logger) (*CosmosContainer, error) {
+	return NewCosmosContainerNamed(cfg, cosmosUsersContainer, logger)
+}
+
+// NewCosmosContainerNamed is NewCosmosContainer for an arbitrary container in
+// the same database — the it4 DeviceRegistrations / NotificationState /
+// Notifications stores reuse the same pinned-identity client wiring as Users.
+// An empty endpoint short-circuits to a nil container so the routes that depend
+// on it stay unwired until infra provisions Cosmos.
+func NewCosmosContainerNamed(cfg Config, name string, logger *slog.Logger) (*CosmosContainer, error) {
 	if cfg.CosmosEndpoint == "" {
-		logger.Warn("cosmos endpoint unset; profile routes unavailable")
+		logger.Warn("cosmos endpoint unset; container routes unavailable", "container", name)
 		return nil, nil //nolint:nilnil // absent config is a valid "no container" state, not an error
 	}
 
@@ -69,16 +79,28 @@ func NewCosmosContainer(cfg Config, logger *slog.Logger) (*CosmosContainer, erro
 		return nil, fmt.Errorf("build cosmos client: %w", err)
 	}
 
-	container, err := client.NewContainer(cfg.CosmosDatabase, cosmosUsersContainer)
+	container, err := client.NewContainer(cfg.CosmosDatabase, name)
 	if err != nil {
-		return nil, fmt.Errorf("open container %q: %w", cosmosUsersContainer, err)
+		return nil, fmt.Errorf("open container %q: %w", name, err)
 	}
 	return &CosmosContainer{container: container}, nil
 }
 
-// cosmosUsersContainer is the Users container name, matching the .NET
-// CosmosContainerNames.Users.
-const cosmosUsersContainer = "Users"
+// Cosmos container names mirror the .NET CosmosContainerNames constants so the
+// Go stores target the exact same physical containers the .NET API reads and
+// writes.
+const (
+	cosmosUsersContainer = "Users"
+	// CosmosDeviceRegistrationsContainer holds one document per (user, token);
+	// partition key /userId, document id == token.
+	CosmosDeviceRegistrationsContainer = "DeviceRegistrations"
+	// CosmosNotificationStateContainer holds one watermark document per user;
+	// partition key /userId, document id == userId.
+	CosmosNotificationStateContainer = "NotificationState"
+	// CosmosNotificationsContainer holds dispatched notifications; partition key
+	// /userId. Read-only here for the unread COUNT query.
+	CosmosNotificationsContainer = "Notifications"
+)
 
 // ReadItem point-reads the document with the given id from its partition.
 func (c *CosmosContainer) ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error) {
@@ -99,4 +121,53 @@ func (c *CosmosContainer) UpsertItem(ctx context.Context, partitionKey string, i
 func (c *CosmosContainer) DeleteItem(ctx context.Context, partitionKey, id string) error {
 	_, err := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
 	return err
+}
+
+// QueryItems runs a single-partition parametrised query and returns the raw
+// document bodies. The query must already be scoped to partitionKey (the SDK
+// targets that logical partition), so it never fans out cross-partition. params
+// binds @name placeholders.
+func (c *CosmosContainer) QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
+	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKeyString(partitionKey), opts)
+	var items [][]byte
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, page.Items...)
+	}
+	return items, nil
+}
+
+// CountItems runs a SELECT VALUE COUNT(1) scalar query in a single partition and
+// returns the integer result, mirroring .NET's ScalarQueryAsync<int>. An empty
+// result set (no rows match) yields 0.
+func (c *CosmosContainer) CountItems(ctx context.Context, partitionKey, query string, params map[string]any) (int, error) {
+	items, err := c.QueryItems(ctx, partitionKey, query, params)
+	if err != nil {
+		return 0, err
+	}
+	if len(items) == 0 {
+		return 0, nil
+	}
+	var count int
+	if err := json.Unmarshal(items[0], &count); err != nil {
+		return 0, fmt.Errorf("decode scalar count: %w", err)
+	}
+	return count, nil
+}
+
+// queryParams converts a name/value map into the SDK's parameter slice. The
+// map's iteration order is irrelevant — Cosmos binds by @name, not position.
+func queryParams(params map[string]any) []azcosmos.QueryParameter {
+	if len(params) == 0 {
+		return nil
+	}
+	out := make([]azcosmos.QueryParameter, 0, len(params))
+	for name, value := range params {
+		out = append(out, azcosmos.QueryParameter{Name: name, Value: value})
+	}
+	return out
 }

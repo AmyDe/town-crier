@@ -8,9 +8,11 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/api"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
+	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 )
@@ -60,8 +62,10 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 //
 // store is nil when Cosmos is not configured (local boot without env): the
 // /v1/me routes are then unwired — requests fall to the 401 fallback — and the
-// profile-backed rate-limit/activity middlewares are skipped entirely.
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, logger *slog.Logger) http.Handler {
+// profile-backed rate-limit/activity middlewares are skipped entirely. The
+// device-token and notification-state stores follow the same nil-means-unwired
+// convention.
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -75,6 +79,12 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		dispatch = middleware.RateLimit(middleware.NewRateLimitStore(), profiles.NewTierLookup(store), logger)(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
+	}
+	if deviceStore != nil {
+		devicetokens.Routes(mux, deviceStore, time.Now, logger)
+	}
+	if stateStore != nil {
+		notificationstate.Routes(mux, stateStore, time.Now, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)

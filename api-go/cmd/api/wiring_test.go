@@ -88,7 +88,7 @@ func idFromDoc(raw []byte) string {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -185,7 +185,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	store := profiles.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
