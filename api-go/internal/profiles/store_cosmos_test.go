@@ -30,7 +30,7 @@ func newFakeItems() *fakeItems {
 	return &fakeItems{stored: map[string][]byte{}}
 }
 
-func (f *fakeItems) readItem(_ context.Context, partitionKey, id string) ([]byte, error) {
+func (f *fakeItems) ReadItem(_ context.Context, partitionKey, id string) ([]byte, error) {
 	f.lastReadPK = partitionKey
 	f.lastReadID = id
 	if f.readErr != nil {
@@ -43,12 +43,12 @@ func (f *fakeItems) readItem(_ context.Context, partitionKey, id string) ([]byte
 	return b, nil
 }
 
-func (f *fakeItems) upsertItem(_ context.Context, partitionKey string, item []byte) error {
+func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []byte) error {
 	f.lastUpsert = item
 	return f.upsertErr
 }
 
-func (f *fakeItems) deleteItem(_ context.Context, partitionKey, id string) error {
+func (f *fakeItems) DeleteItem(_ context.Context, partitionKey, id string) error {
 	f.lastDeleted = id
 	return f.deleteErr
 }

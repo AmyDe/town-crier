@@ -15,15 +15,16 @@ import (
 // UserProfileNotFoundException paths.
 var ErrNotFound = errors.New("user profile not found")
 
-// cosmosItems is the consumer-side slice of the Cosmos container the store uses:
+// CosmosItems is the consumer-side slice of the Cosmos container the store uses:
 // single-partition point read/upsert/delete keyed on the user id. Defining it
 // here (not in the SDK adapter) keeps azcosmos types out of the store's unit
 // tests, which substitute a hand-written fake. The azcosmos-backed
-// implementation lives in internal/platform.
-type cosmosItems interface {
-	readItem(ctx context.Context, partitionKey, id string) ([]byte, error)
-	upsertItem(ctx context.Context, partitionKey string, item []byte) error
-	deleteItem(ctx context.Context, partitionKey, id string) error
+// implementation (platform.CosmosContainer) satisfies it structurally — the
+// methods are exported so a type in another package can implement them.
+type CosmosItems interface {
+	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
+	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
+	DeleteItem(ctx context.Context, partitionKey, id string) error
 }
 
 // CosmosStore reads and writes user profiles in the Users container. It holds
@@ -33,18 +34,18 @@ type cosmosItems interface {
 // user id, so every operation is a single-partition point operation. No
 // cross-partition query is needed for the /v1/me lifecycle.
 type CosmosStore struct {
-	items cosmosItems
+	items CosmosItems
 }
 
 // NewCosmosStore returns a store backed by the given Cosmos item accessor.
-func NewCosmosStore(items cosmosItems) *CosmosStore {
+func NewCosmosStore(items CosmosItems) *CosmosStore {
 	return &CosmosStore{items: items}
 }
 
 // Get point-reads the profile for userID. A 404 from Cosmos surfaces as
 // ErrNotFound; any other failure is wrapped and returned.
 func (s *CosmosStore) Get(ctx context.Context, userID string) (*UserProfile, error) {
-	raw, err := s.items.readItem(ctx, userID, userID)
+	raw, err := s.items.ReadItem(ctx, userID, userID)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, ErrNotFound
@@ -68,7 +69,7 @@ func (s *CosmosStore) Save(ctx context.Context, p *UserProfile) error {
 	if err != nil {
 		return fmt.Errorf("encode profile %q: %w", p.UserID, err)
 	}
-	if err := s.items.upsertItem(ctx, p.UserID, body); err != nil {
+	if err := s.items.UpsertItem(ctx, p.UserID, body); err != nil {
 		return fmt.Errorf("upsert profile %q: %w", p.UserID, err)
 	}
 	return nil
@@ -78,7 +79,7 @@ func (s *CosmosStore) Save(ctx context.Context, p *UserProfile) error {
 // caller can decide whether that is an error (it is for DELETE /v1/me, which
 // reads first) or tolerable.
 func (s *CosmosStore) Delete(ctx context.Context, userID string) error {
-	if err := s.items.deleteItem(ctx, userID, userID); err != nil {
+	if err := s.items.DeleteItem(ctx, userID, userID); err != nil {
 		if isNotFound(err) {
 			return ErrNotFound
 		}
