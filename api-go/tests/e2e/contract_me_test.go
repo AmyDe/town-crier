@@ -106,8 +106,28 @@ func integrationToken(t *testing.T) string {
 	if cachedToken == "" {
 		t.Fatal("mint integration token: empty access_token")
 	}
+
+	// Warm-up, not a diff, once per run and BEFORE whichever authed scenario
+	// happens to execute first: the first authenticated request on a cold app
+	// pays the lazy Cosmos connect + AAD token fetch, which can blow the
+	// bounded 1.5s retry budget and make the rate-limit tier lookup fail open
+	// to the free limit (PR #424 round 1 and PR #426 round 1: go=60 vs
+	// dotnet=600 on the first diffed call only). Both implementations share
+	// that fail-open design, so a cold first call is an environmental
+	// artifact, not a contract difference.
+	warmOnce.Do(func() {
+		client := &http.Client{Timeout: requestTimeout}
+		for _, base := range []string{os.Getenv("DOTNET_BASE_URL"), os.Getenv("GO_BASE_URL")} {
+			if base != "" {
+				_ = authedRequest(t, client, base, http.MethodGet, "/v1/me", cachedToken)
+			}
+		}
+	})
+
 	return cachedToken
 }
+
+var warmOnce sync.Once
 
 // TestContract_AuthenticatedProfileSurface diffs the /api/me + /v1/me read and
 // idempotent-write surface with a real token. The profile is first ensured to
@@ -126,15 +146,6 @@ func TestContract_AuthenticatedProfileSurface(t *testing.T) {
 	if setup.status >= 500 {
 		t.Fatalf("setup POST /v1/me on .NET failed: %d %s", setup.status, setup.body)
 	}
-
-	// Warm-up, not a diff: the first authenticated request on a cold app pays
-	// the lazy Cosmos connect + AAD token fetch, which can blow the bounded
-	// 1.5s retry budget and make the rate-limit tier lookup fail open to the
-	// free limit (observed on PR #424: go=60 vs dotnet=600 on the first diffed
-	// call only). Both implementations share that fail-open design, so a cold
-	// first call is an environmental artifact, not a contract difference.
-	_ = authedRequest(t, client, dotnetURL, http.MethodGet, "/v1/me", token)
-	_ = authedRequest(t, client, goURL, http.MethodGet, "/v1/me", token)
 
 	scenarios := []struct {
 		method string
