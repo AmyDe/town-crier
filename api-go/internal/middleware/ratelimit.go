@@ -107,6 +107,12 @@ func newRateLimitStore(now func() time.Time) *rateLimitStore {
 	return &rateLimitStore{now: now, requests: map[string][]time.Time{}}
 }
 
+// NewRateLimitStore builds the production store on the real clock. It returns
+// the unexported concrete type so callers can only pass it back to RateLimit.
+func NewRateLimitStore() *rateLimitStore {
+	return newRateLimitStore(time.Now)
+}
+
 // checkAndIncrement evicts expired timestamps, then either records the request
 // (returning the remaining budget) or denies it (returning the retry-after until
 // the oldest in-window timestamp ages out).
