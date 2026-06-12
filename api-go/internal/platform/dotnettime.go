@@ -14,9 +14,16 @@ import (
 // use this type so the contract-diff harness sees byte-identical timestamps.
 type DotNetTime time.Time
 
+// String renders the instant in the .NET DateTimeOffset wire format. Exposed
+// for Cosmos query parameters, where the comparison against stored
+// "+00:00"-formatted strings is lexicographic and must use the same layout.
+func (t DotNetTime) String() string {
+	return time.Time(t).Format("2006-01-02T15:04:05.9999999-07:00")
+}
+
 // MarshalJSON renders the instant in the .NET DateTimeOffset wire format.
 func (t DotNetTime) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + time.Time(t).Format("2006-01-02T15:04:05.9999999-07:00") + `"`), nil
+	return []byte(`"` + t.String() + `"`), nil
 }
 
 // UnmarshalJSON parses a stored timestamp, accepting both the .NET "+00:00"
