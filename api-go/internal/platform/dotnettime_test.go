@@ -48,6 +48,36 @@ func TestDotNetTime_WireFormat(t *testing.T) {
 	}
 }
 
+// TestDotNetTime_RoundTrip confirms a value survives marshal then unmarshal, so
+// stored Cosmos documents carrying a DotNetTime hydrate back to the same
+// instant. The unmarshal side accepts both the "+00:00" .NET form and Go's "Z"
+// form so legacy documents parse too.
+func TestDotNetTime_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, in := range []string{
+		`"2026-06-12T09:30:00+00:00"`,
+		`"2026-06-12T09:30:00Z"`,
+		`"2026-06-12T09:30:00.1234+00:00"`,
+	} {
+		var dt DotNetTime
+		if err := json.Unmarshal([]byte(in), &dt); err != nil {
+			t.Fatalf("unmarshal %s: %v", in, err)
+		}
+		out, err := json.Marshal(dt)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if !time.Time(dt).Equal(time.Date(2026, 6, 12, 9, 30, 0, time.Time(dt).Nanosecond(), time.UTC)) {
+			t.Errorf("unmarshal %s parsed to %v", in, time.Time(dt))
+		}
+		// Marshalling always normalises to the +00:00 .NET form.
+		if got := string(out); got[len(got)-7:len(got)-1] != "+00:00" {
+			t.Errorf("re-marshal of %s = %s, want +00:00 offset", in, out)
+		}
+	}
+}
+
 // TestDotNetTimePtr preserves nil so an absent timestamp serialises as null,
 // not a zero instant.
 func TestDotNetTimePtr(t *testing.T) {
