@@ -1,9 +1,7 @@
 package applications
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 )
@@ -37,36 +35,12 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), authorityCode, name)
 	if err != nil {
-		h.serverError(w, r, "read application", err)
+		serverError(w, r, h.logger, "read application", err)
 		return
 	}
 	if !found {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	h.writeJSON(w, r, resultFrom(app))
-}
-
-// writeJSON encodes v as a 200 application/json; charset=utf-8 response with HTML
-// escaping off and no trailing newline, matching ASP.NET's Results.Ok byte output.
-func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		h.serverError(w, r, "encode response", err)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
-		h.logger.ErrorContext(r.Context(), "write response", "error", err)
-	}
-}
-
-// serverError logs and emits a bodyless 500; the error envelope is backfilled by
-// middleware.ErrorBody.
-func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
-	h.logger.ErrorContext(r.Context(), "application request failed", "op", op, "error", err)
-	w.WriteHeader(http.StatusInternalServerError)
+	writeJSON(w, r, h.logger, resultFrom(app))
 }
