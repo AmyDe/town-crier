@@ -39,8 +39,12 @@ public struct WatchZoneEditorView: View {
         ToolbarItem(placement: .confirmationAction) {
           Button("Save") {
             Task {
-              await viewModel.save()
-              dismiss()
+              // Dismiss only on success. On a quota breach the coordinator
+              // closes the sheet and opens the paywall (tc-gpjk); on any other
+              // failure the editor stays open and shows the inline error.
+              if await viewModel.save() {
+                dismiss()
+              }
             }
           }
           .disabled(

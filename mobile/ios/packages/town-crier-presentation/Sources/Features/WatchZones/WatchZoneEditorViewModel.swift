@@ -16,6 +16,11 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
 
   var onSave: ((WatchZone) -> Void)?
 
+  /// Invoked when a save fails because the user has hit their tier's watch-zone
+  /// quota (tc-gpjk). The coordinator dismisses the editor and presents the
+  /// subscription paywall — no inline error is shown for this case.
+  public var onUpgradeRequired: (() -> Void)?
+
   public let isEditing: Bool
 
   private let geocoder: PostcodeGeocoder
@@ -98,8 +103,16 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     isLoading = false
   }
 
-  public func save() async {
-    guard let coordinate = geocodedCoordinate else { return }
+  /// Persists the zone. Returns `true` on success so the View dismisses only
+  /// when the save actually succeeded.
+  ///
+  /// On a quota breach (`DomainError.insufficientEntitlement`) the editor routes
+  /// to the subscription paywall via `onUpgradeRequired` and leaves `error`
+  /// unset — the coordinator closes the sheet. All other failures set `error`
+  /// so the inline error section is shown and the editor stays open.
+  @discardableResult
+  public func save() async -> Bool {
+    guard let coordinate = geocodedCoordinate else { return false }
     error = nil
 
     let clampedRadius = limits.clampRadius(selectedRadiusMetres)
@@ -119,8 +132,13 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
         try await repository.save(zone)
       }
       onSave?(zone)
+      return true
+    } catch DomainError.insufficientEntitlement {
+      onUpgradeRequired?()
+      return false
     } catch {
       handleError(error)
+      return false
     }
   }
 }
