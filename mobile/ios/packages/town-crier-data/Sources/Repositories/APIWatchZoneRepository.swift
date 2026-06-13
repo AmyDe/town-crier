@@ -28,9 +28,25 @@ public final class APIWatchZoneRepository: WatchZoneRepository, Sendable {
     do {
       let _: EmptyResponse = try await apiClient.request(.post("/v1/me/watch-zones", body: body))
     } catch let domainError as DomainError {
-      throw domainError
+      throw Self.normalisingCreateQuota(domainError)
     } catch {
-      throw error.toDomainError()
+      throw Self.normalisingCreateQuota(error.toDomainError())
+    }
+  }
+
+  /// The create endpoint's only 403 is "quota exceeded", so a 403 on save means
+  /// the user has hit their tier's watch-zone limit (tc-gpjk). Normalise it to
+  /// `.insufficientEntitlement` — which carries the "Upgrade Required" UX — so
+  /// the UI routes to the paywall rather than showing a generic "Server Error".
+  /// An already-mapped `.insufficientEntitlement` (entitlement-shaped body) is
+  /// passed through unchanged. The API does not return the required tier here,
+  /// so we surface the next tier up.
+  private static func normalisingCreateQuota(_ error: DomainError) -> DomainError {
+    switch error {
+    case .serverError(statusCode: 403, _):
+      return .insufficientEntitlement(required: "personal")
+    default:
+      return error
     }
   }
 
