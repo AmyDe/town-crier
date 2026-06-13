@@ -9,7 +9,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
@@ -70,13 +72,18 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
 	legal.Routes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
+	// Geocode and designations are authed (absent from anonymousPatterns) and
+	// have no Cosmos dependency — they call outbound UK services — so they are
+	// always wired, even on a Cosmos-less local boot.
+	geocoding.Routes(mux, geocodeClient, logger)
+	designations.Routes(mux, designationClient, logger)
 
 	var dispatch http.Handler = mux
 	if store != nil {

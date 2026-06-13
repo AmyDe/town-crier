@@ -15,6 +15,8 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/designations"
+	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -95,9 +97,20 @@ func idFromDoc(raw []byte) string {
 	return doc.ID
 }
 
+// testGeocodeClient and testDesignationClient point at an unroutable address; the
+// deny-all wiring tests never reach the handlers, so the upstream is never
+// called.
+func testGeocodeClient() *geocoding.Client {
+	return geocoding.NewClient("http://127.0.0.1:0", http.DefaultClient)
+}
+
+func testDesignationClient() *designations.Client {
+	return designations.NewClient("http://127.0.0.1:0", http.DefaultClient)
+}
+
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -147,6 +160,9 @@ func TestRouter_FallbackDeny(t *testing.T) {
 		{"unknown path", http.MethodGet, "/v1/nope"},
 		{"non-int authority id", http.MethodGet, "/v1/authorities/abc"},
 		{"wrong method on me", http.MethodPut, "/api/me"},
+		// Geocode and designations are authed, not anonymous: no token -> 401.
+		{"geocode without token", http.MethodGet, "/v1/geocode/SW1A1AA"},
+		{"designations without token", http.MethodGet, "/v1/designations?latitude=55&longitude=2"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -197,7 +213,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := applications.NewCosmosStore(newFakeItems())
 	savedStore := savedapplications.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -254,6 +270,48 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	}
 	if got := rec.Header().Get("X-RateLimit-Limit"); got != "" {
 		t.Errorf("anonymous route got rate-limit header %q", got)
+	}
+}
+
+// TestRouter_GeocodeAndDesignationsDispatch proves an authenticated request
+// reaches the geocode and designation handlers (not just the auth fallback). A
+// single stub upstream backs both outbound clients, routing by path.
+func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/postcodes/"):
+			_, _ = w.Write([]byte(`{"status":200,"result":{"latitude":51.5,"longitude":-0.14}}`))
+		case r.URL.Path == "/api/v1/entity.json":
+			// No intersecting entity -> the none context.
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	logger := slog.New(slog.DiscardHandler)
+	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
+	geocodeClient := geocoding.NewClient(upstream.URL, upstream.Client())
+	designationClient := designations.NewClient(upstream.URL, upstream.Client())
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, geocodeClient, designationClient, logger)
+
+	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/geocode status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"coordinates":{"latitude":51.5,"longitude":-0.14}}` {
+		t.Errorf("geocode body = %s", got)
+	}
+
+	rec = serveReq(t, h, http.MethodGet, "/v1/designations?latitude=55&longitude=2", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/designations status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"isWithinConservationArea":false,"conservationAreaName":null,"isWithinListedBuildingCurtilage":false,"listedBuildingGrade":null,"isWithinArticle4Area":false}` {
+		t.Errorf("designations body = %s", got)
 	}
 }
 
