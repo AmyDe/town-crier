@@ -20,6 +20,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -42,6 +43,10 @@ var anonymousPatterns = map[string]struct{}{
 	"PUT /v1/admin/subscriptions": {},
 	"GET /v1/admin/users":         {},
 	"POST /v1/admin/offer-codes":  {},
+	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
+	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
+	// sibling POST /v1/subscriptions/verify is authed and absent here.)
+	"POST /v1/webhooks/appstore": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -80,7 +85,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -130,6 +135,12 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		// cross-partition admin store backs grant/list; the offer-code store backs
 		// generate.
 		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+	}
+	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
+		// Subscriptions: verify (authed, by user id via the profile store) and the
+		// App Store webhook (anonymous, by original transaction id via the admin
+		// store, deduped through the AppleNotifications idempotency store).
+		subscriptions.Routes(mux, jwsVerifier, store, adminStore, auth0, appleNotifStore, appleBundleID, time.Now, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)

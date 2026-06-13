@@ -72,7 +72,19 @@ type Config struct {
 	// mirroring .NET's Admin:ApiKey. Empty means the admin endpoints reject every
 	// request, so an unconfigured deployment exposes no admin surface.
 	AdminAPIKey string
+
+	// AppleBundleID is the App Store bundle id a verified StoreKit transaction
+	// must carry (the /v1/subscriptions/verify bundle check). It defaults to the
+	// canonical uk.towncrierapp.mobile — the value the iOS app is built under and
+	// App Store Connect issues transactions for. NOTE: the retired .NET API
+	// defaulted to the wrong uk.co.towncrier.ios; that bug is not carried over
+	// (tc-7g3i.12).
+	AppleBundleID string
 }
+
+// defaultAppleBundleID is the canonical App Store bundle id (uk.towncrierapp.mobile),
+// matching the iOS app and the uk.towncrierapp.* product ids.
+const defaultAppleBundleID = "uk.towncrierapp.mobile"
 
 // Auth0M2MConfigured reports whether the Auth0 Management (M2M) client can be
 // constructed: the domain, client id, and client secret must all be present.
@@ -107,6 +119,8 @@ func LoadConfig() (Config, error) {
 		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),
 
 		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
+
+		AppleBundleID: getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {

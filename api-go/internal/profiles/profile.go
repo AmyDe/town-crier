@@ -44,6 +44,36 @@ func (t SubscriptionTier) String() string {
 // IsPaid reports whether the tier grants paid entitlements (anything but Free).
 func (t SubscriptionTier) IsPaid() bool { return t != TierFree }
 
+// unlimitedWatchZones is the Pro-tier watch-zone limit: .NET's int.MaxValue,
+// the sentinel the iOS app reads as "no limit". Preserved exactly so the
+// /v1/subscriptions/verify response is byte-identical to .NET's.
+const unlimitedWatchZones = 2147483647
+
+// Entitlements returns the entitlement strings granted by the tier, mirroring
+// the .NET EntitlementMap: the paid tiers grant the same three, Free grants
+// none. The order matches the .NET Entitlement enum declaration so the
+// /v1/subscriptions/verify response is stable.
+func (t SubscriptionTier) Entitlements() []string {
+	if t.IsPaid() {
+		return []string{"StatusChangeAlerts", "DecisionUpdateAlerts", "HourlyDigestEmails"}
+	}
+	return []string{}
+}
+
+// WatchZoneLimit returns the maximum number of watch zones the tier permits,
+// mirroring .NET EntitlementMap.LimitFor(tier, Quota.WatchZones): Free=1,
+// Personal=3, Pro=unlimited.
+func (t SubscriptionTier) WatchZoneLimit() int {
+	switch t {
+	case TierPersonal:
+		return 3
+	case TierPro:
+		return unlimitedWatchZones
+	default:
+		return 1
+	}
+}
+
 // ErrUnknownTier is returned by ParseSubscriptionTier for an unrecognised value.
 var ErrUnknownTier = errors.New("unknown subscription tier")
 
@@ -167,6 +197,33 @@ func (p *UserProfile) ExpireSubscription() {
 	p.Tier = TierFree
 	p.SubscriptionExpiry = nil
 	p.GracePeriodExpiry = nil
+}
+
+// RenewSubscription extends the subscription to a new expiry and clears any
+// grace period, without changing the tier — mirroring .NET RenewSubscription.
+// Applied on the App Store DID_RENEW notification.
+func (p *UserProfile) RenewSubscription(newExpiry time.Time) {
+	exp := newExpiry
+	p.SubscriptionExpiry = &exp
+	p.GracePeriodExpiry = nil
+}
+
+// EnterGracePeriod records the grace-period end while leaving the tier and
+// expiry intact, so the entitlement persists through a billing retry — mirroring
+// .NET EnterGracePeriod. Applied on DID_FAIL_TO_RENEW with the GRACE_PERIOD
+// subtype.
+func (p *UserProfile) EnterGracePeriod(graceEnd time.Time) {
+	end := graceEnd
+	p.GracePeriodExpiry = &end
+}
+
+// LinkOriginalTransactionID records the Apple original transaction ID so App
+// Store Server Notifications can later locate this profile cross-partition,
+// mirroring .NET LinkOriginalTransactionId. The caller supplies a non-blank ID
+// (the transaction decoder requires originalTransactionId).
+func (p *UserProfile) LinkOriginalTransactionID(originalTransactionID string) {
+	id := originalTransactionID
+	p.OriginalTransactionID = &id
 }
 
 func normaliseEmail(email string) *string {

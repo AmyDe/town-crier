@@ -80,6 +80,34 @@ func TestAdminStore_GetByEmail_NotFound(t *testing.T) {
 	}
 }
 
+func TestAdminStore_GetByOriginalTransactionID(t *testing.T) {
+	t.Parallel()
+
+	items := newFakeAdminItems()
+	items.queryResult = [][]byte{profileDoc(t, "auth0|u9", "u@example.com", TierPersonal)}
+	store := NewAdminStore(items)
+
+	got, err := store.GetByOriginalTransactionID(context.Background(), "orig-99")
+	if err != nil {
+		t.Fatalf("GetByOriginalTransactionID: %v", err)
+	}
+	if got.UserID != "auth0|u9" || got.Tier != TierPersonal {
+		t.Errorf("got %+v", got)
+	}
+	if items.gotQuery != "SELECT * FROM c WHERE c.originalTransactionId = @txnId" {
+		t.Errorf("query = %q", items.gotQuery)
+	}
+}
+
+func TestAdminStore_GetByOriginalTransactionID_NotFound(t *testing.T) {
+	t.Parallel()
+
+	store := NewAdminStore(newFakeAdminItems()) // empty result set
+	if _, err := store.GetByOriginalTransactionID(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestAdminStore_Save(t *testing.T) {
 	t.Parallel()
 

@@ -1,0 +1,479 @@
+package subscriptions
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+)
+
+const (
+	testBundleID = "uk.towncrierapp.mobile"
+	testUserID   = "auth0|u1"
+)
+
+var testNow = time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+
+func futureExpiryMs() int64 { return testNow.AddDate(0, 1, 0).UnixMilli() }
+func pastExpiryMs() int64   { return testNow.AddDate(0, -1, 0).UnixMilli() }
+
+// --- fakes ---
+
+type fakeVerifier struct {
+	results map[string]string
+	errs    map[string]error
+}
+
+func (f *fakeVerifier) VerifyAndDecode(signed string) (string, error) {
+	if e, ok := f.errs[signed]; ok {
+		return "", e
+	}
+	if j, ok := f.results[signed]; ok {
+		return j, nil
+	}
+	return "", &JWSVerificationError{Message: "unmapped test jws"}
+}
+
+type fakeProfileByUser struct {
+	profile *profiles.UserProfile
+	getErr  error
+	saved   *profiles.UserProfile
+}
+
+func (f *fakeProfileByUser) Get(context.Context, string) (*profiles.UserProfile, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.profile, nil
+}
+
+func (f *fakeProfileByUser) Save(_ context.Context, p *profiles.UserProfile) error {
+	f.saved = p
+	return nil
+}
+
+type fakeProfileByTxn struct {
+	profile *profiles.UserProfile
+	saved   *profiles.UserProfile
+}
+
+func (f *fakeProfileByTxn) GetByOriginalTransactionID(context.Context, string) (*profiles.UserProfile, error) {
+	if f.profile == nil {
+		return nil, profiles.ErrNotFound
+	}
+	return f.profile, nil
+}
+
+func (f *fakeProfileByTxn) Save(_ context.Context, p *profiles.UserProfile) error {
+	f.saved = p
+	return nil
+}
+
+type fakeAuth0 struct{ tiers []string }
+
+func (f *fakeAuth0) UpdateSubscriptionTier(_ context.Context, _, tier string) error {
+	f.tiers = append(f.tiers, tier)
+	return nil
+}
+
+type fakeIdempotency struct {
+	processed map[string]bool
+	marked    []string
+}
+
+func newFakeIdempotency() *fakeIdempotency {
+	return &fakeIdempotency{processed: map[string]bool{}}
+}
+
+func (f *fakeIdempotency) IsProcessed(_ context.Context, uuid string) (bool, error) {
+	return f.processed[uuid], nil
+}
+
+func (f *fakeIdempotency) MarkProcessed(_ context.Context, uuid string) error {
+	f.marked = append(f.marked, uuid)
+	return nil
+}
+
+// --- harness ---
+
+type testDeps struct {
+	verifier    *fakeVerifier
+	byUser      *fakeProfileByUser
+	byTxn       *fakeProfileByTxn
+	auth0       *fakeAuth0
+	idempotency *fakeIdempotency
+	mux         *http.ServeMux
+}
+
+func newTestDeps() *testDeps {
+	d := &testDeps{
+		verifier:    &fakeVerifier{results: map[string]string{}, errs: map[string]error{}},
+		byUser:      &fakeProfileByUser{},
+		byTxn:       &fakeProfileByTxn{},
+		auth0:       &fakeAuth0{},
+		idempotency: newFakeIdempotency(),
+		mux:         http.NewServeMux(),
+	}
+	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID,
+		func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
+	return d
+}
+
+func (d *testDeps) serve(t *testing.T, path, body string, authed bool) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx := context.Background()
+	if authed {
+		ctx = auth.WithSubject(ctx, testUserID)
+	}
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	d.mux.ServeHTTP(rec, req)
+	return rec
+}
+
+func freshProfile(t *testing.T) *profiles.UserProfile {
+	t.Helper()
+	p, err := profiles.NewProfile(testUserID, "u@example.com", testNow)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	return p
+}
+
+func txnJSON(productID, bundleID, origTxn string, expiresMs int64) string {
+	return fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"environment":"Production"}`,
+		origTxn, productID, bundleID, expiresMs)
+}
+
+func decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiErrorResponse {
+	t.Helper()
+	var e apiErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+		t.Fatalf("decode error body %q: %v", rec.Body.String(), err)
+	}
+	return e
+}
+
+// --- verify tests ---
+
+func TestVerify_PurchaseActivatesPro(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["JWS_PRO"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var resp verifyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Tier != "Pro" {
+		t.Errorf("tier = %q, want Pro", resp.Tier)
+	}
+	if resp.WatchZoneLimit != 2147483647 {
+		t.Errorf("watchZoneLimit = %d, want 2147483647", resp.WatchZoneLimit)
+	}
+	if len(resp.Entitlements) != 3 {
+		t.Errorf("entitlements = %v", resp.Entitlements)
+	}
+	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved as Pro")
+	}
+	if d.byUser.saved.OriginalTransactionID == nil || *d.byUser.saved.OriginalTransactionID != "orig-1" {
+		t.Error("original transaction id not linked")
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v, want [Pro]", d.auth0.tiers)
+	}
+}
+
+func TestVerify_RestoreAllLapsedExpires(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	p := freshProfile(t)
+	p.ActivateSubscription(profiles.TierPro, testNow.AddDate(1, 0, 0))
+	d.byUser.profile = p
+	// Both restored transactions are already expired — the user is Free.
+	d.verifier.results["A"] = txnJSON(ProductProMonthly, testBundleID, "o1", pastExpiryMs())
+	d.verifier.results["B"] = txnJSON(ProductPersonalMonthly, testBundleID, "o2", pastExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["A","B"]}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var resp verifyResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Tier != "Free" || resp.WatchZoneLimit != 1 {
+		t.Errorf("tier=%q limit=%d, want Free/1", resp.Tier, resp.WatchZoneLimit)
+	}
+	if resp.SubscriptionExpiry != nil {
+		t.Errorf("subscriptionExpiry = %v, want null", resp.SubscriptionExpiry)
+	}
+}
+
+func TestVerify_ErrorContract(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		body       string
+		setup      func(d *testDeps)
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "malformed body",
+			body:       "{not json",
+			setup:      func(d *testDeps) { d.byUser.profile = nil },
+			wantStatus: http.StatusBadRequest,
+			wantError:  "malformed_request",
+		},
+		{
+			name:       "no signed transactions",
+			body:       "{}",
+			wantStatus: http.StatusBadRequest,
+			wantError:  "malformed_request",
+		},
+		{
+			name: "jws failure",
+			body: `{"signedTransaction":"BAD"}`,
+			setup: func(d *testDeps) {
+				d.byUser.profile = freshProfile(t)
+				d.verifier.errs["BAD"] = &JWSVerificationError{Message: "tampered"}
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantError:  "invalid_transaction",
+		},
+		{
+			name: "bundle mismatch",
+			body: `{"signedTransaction":"WRONGBUNDLE"}`,
+			setup: func(d *testDeps) {
+				d.byUser.profile = freshProfile(t)
+				d.verifier.results["WRONGBUNDLE"] = txnJSON(ProductProMonthly, "com.someone.else", "o", futureExpiryMs())
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_transaction_payload",
+		},
+		{
+			name: "unknown product",
+			body: `{"signedTransaction":"UNKNOWN"}`,
+			setup: func(d *testDeps) {
+				d.byUser.profile = freshProfile(t)
+				d.verifier.results["UNKNOWN"] = txnJSON("com.example.bogus", testBundleID, "o", futureExpiryMs())
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_transaction_payload",
+		},
+		{
+			name: "user not found",
+			body: `{"signedTransaction":"JWS"}`,
+			setup: func(d *testDeps) {
+				d.byUser.getErr = profiles.ErrNotFound
+				d.verifier.results["JWS"] = txnJSON(ProductProMonthly, testBundleID, "o", futureExpiryMs())
+			},
+			wantStatus: http.StatusNotFound,
+			wantError:  "user_not_found",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDeps()
+			if tc.setup != nil {
+				tc.setup(d)
+			}
+			rec := d.serve(t, "/v1/subscriptions/verify", tc.body, true)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body=%s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if got := decodeError(t, rec).Error; got != tc.wantError {
+				t.Errorf("error = %q, want %q", got, tc.wantError)
+			}
+		})
+	}
+}
+
+// --- webhook tests ---
+
+func notificationJSON(notifType, subtype, uuid, signedTxn string) string {
+	sub := ""
+	if subtype != "" {
+		sub = fmt.Sprintf(`"subtype":%q,`, subtype)
+	}
+	return fmt.Sprintf(`{"notificationType":%q,%s"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
+		notifType, sub, uuid, signedTxn)
+}
+
+func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byTxn.saved == nil || d.byTxn.saved.Tier != profiles.TierPro {
+		t.Error("profile not activated to Pro")
+	}
+	if len(d.auth0.tiers) != 1 || d.auth0.tiers[0] != "Pro" {
+		t.Errorf("auth0 sync = %v", d.auth0.tiers)
+	}
+	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-1" {
+		t.Errorf("marked = %v, want [uuid-1]", d.idempotency.marked)
+	}
+}
+
+func TestWebhook_DuplicateIsNoOp(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.idempotency.processed["uuid-1"] = true
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if d.byTxn.saved != nil {
+		t.Error("duplicate should not save the profile")
+	}
+	if len(d.idempotency.marked) != 0 {
+		t.Errorf("duplicate should not re-mark, got %v", d.idempotency.marked)
+	}
+}
+
+func TestWebhook_UnknownSubscriberStillMarksProcessed(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byTxn.profile = nil // no matching subscriber
+	d.verifier.results["OUTER"] = notificationJSON("DID_RENEW", "", "uuid-2", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-x", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if d.byTxn.saved != nil {
+		t.Error("no subscriber should mean no save")
+	}
+	if len(d.idempotency.marked) != 1 {
+		t.Errorf("should still mark processed, got %v", d.idempotency.marked)
+	}
+}
+
+func TestWebhook_ErrorContract(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		body       string
+		setup      func(d *testDeps)
+		wantStatus int
+		wantError  string
+	}{
+		{"malformed body", "{nope", nil, http.StatusBadRequest, "malformed_request"},
+		{"empty payload", `{"signedPayload":""}`, nil, http.StatusBadRequest, "malformed_request"},
+		{
+			name: "jws failure",
+			body: `{"signedPayload":"BAD"}`,
+			setup: func(d *testDeps) {
+				d.verifier.errs["BAD"] = &JWSVerificationError{Message: "bad chain"}
+			},
+			wantStatus: http.StatusUnauthorized,
+			wantError:  "invalid_notification",
+		},
+		{
+			name: "malformed notification payload",
+			body: `{"signedPayload":"OUTER"}`,
+			setup: func(d *testDeps) {
+				d.verifier.results["OUTER"] = `{"notificationType":"SUBSCRIBED","notificationUUID":"u","data":{}}`
+			},
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid_notification_payload",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDeps()
+			if tc.setup != nil {
+				tc.setup(d)
+			}
+			rec := d.serve(t, "/v1/webhooks/appstore", tc.body, false)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body=%s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if got := decodeError(t, rec).Error; got != tc.wantError {
+				t.Errorf("error = %q, want %q", got, tc.wantError)
+			}
+		})
+	}
+}
+
+// --- applyNotification (pure) tests ---
+
+func TestApplyNotification(t *testing.T) {
+	t.Parallel()
+	future := testNow.AddDate(0, 1, 0).UTC()
+	tests := []struct {
+		name        string
+		notifType   string
+		subtype     string
+		startTier   profiles.SubscriptionTier
+		wantChanged bool
+		wantTier    profiles.SubscriptionTier
+		wantGrace   bool
+	}{
+		{"subscribed", "SUBSCRIBED", "", profiles.TierFree, true, profiles.TierPro, false},
+		{"offer redeemed", "OFFER_REDEEMED", "", profiles.TierFree, true, profiles.TierPro, false},
+		{"did renew keeps tier", "DID_RENEW", "", profiles.TierPro, true, profiles.TierPro, false},
+		{"upgrade", "DID_CHANGE_RENEWAL_PREF", "UPGRADE", profiles.TierPersonal, true, profiles.TierPro, false},
+		{"downgrade no change", "DID_CHANGE_RENEWAL_PREF", "DOWNGRADE", profiles.TierPro, false, profiles.TierPro, false},
+		{"grace period", "DID_FAIL_TO_RENEW", "GRACE_PERIOD", profiles.TierPro, true, profiles.TierPro, true},
+		{"fail to renew expires", "DID_FAIL_TO_RENEW", "", profiles.TierPro, true, profiles.TierFree, false},
+		{"expired", "EXPIRED", "", profiles.TierPro, true, profiles.TierFree, false},
+		{"revoke", "REVOKE", "", profiles.TierPro, true, profiles.TierFree, false},
+		{"unknown type ignored", "PRICE_INCREASE", "", profiles.TierPro, false, profiles.TierPro, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := freshProfile(t)
+			p.Tier = tc.startTier
+			notif := DecodedNotification{NotificationType: tc.notifType, Subtype: tc.subtype}
+			txn := DecodedTransaction{ProductID: ProductProMonthly, ExpiresDate: future}
+
+			changed, err := applyNotification(p, notif, txn)
+			if err != nil {
+				t.Fatalf("applyNotification: %v", err)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+			if p.Tier != tc.wantTier {
+				t.Errorf("tier = %v, want %v", p.Tier, tc.wantTier)
+			}
+			if (p.GracePeriodExpiry != nil) != tc.wantGrace {
+				t.Errorf("grace set = %v, want %v", p.GracePeriodExpiry != nil, tc.wantGrace)
+			}
+		})
+	}
+}
