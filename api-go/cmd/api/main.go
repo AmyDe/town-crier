@@ -18,6 +18,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 func main() {
@@ -64,6 +65,15 @@ func main() {
 		stateStore = notificationstate.NewCosmosStore(stateContainer, notifications)
 	}
 
+	watchZones, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var watchZoneStore *watchzones.CosmosStore
+	if watchZones != nil {
+		watchZoneStore = watchzones.NewCosmosStore(watchZones)
+	}
+
 	// Real M2M client only when fully configured; otherwise the no-op fallback,
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
@@ -76,7 +86,7 @@ func main() {
 		)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -61,6 +61,11 @@ func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomai
 	mux.HandleFunc("PATCH /v1/me", h.patch)
 	mux.HandleFunc("DELETE /v1/me", h.delete)
 	mux.HandleFunc("GET /v1/me/data", h.exportData)
+	// Per-zone notification preferences read/write the profile document, so they
+	// are served here (over the profile store) even though their route sits under
+	// /me/watch-zones — mirroring .NET's UserProfiles-slice handlers.
+	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/preferences", h.getZonePreferences)
+	mux.HandleFunc("PUT /v1/me/watch-zones/{zoneId}/preferences", h.putZonePreferences)
 }
 
 // createResult mirrors .NET CreateUserProfileResult: { userId, pushEnabled, tier }.

@@ -15,6 +15,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 // anonymousPatterns lists the mux patterns registered with AllowAnonymous in
@@ -63,9 +64,11 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // store is nil when Cosmos is not configured (local boot without env): the
 // /v1/me routes are then unwired — requests fall to the 401 fallback — and the
 // profile-backed rate-limit/activity middlewares are skipped entirely. The
-// device-token and notification-state stores follow the same nil-means-unwired
-// convention.
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, logger *slog.Logger) http.Handler {
+// device-token, notification-state and watch-zone stores follow the same
+// nil-means-unwired convention. (The watch-zone preferences endpoints are
+// served by profiles.Routes off the profile store, so they come up with the
+// /v1/me routes, not the watch-zone store.)
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -85,6 +88,9 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	}
 	if stateStore != nil {
 		notificationstate.Routes(mux, stateStore, time.Now, logger)
+	}
+	if watchZoneStore != nil {
+		watchzones.Routes(mux, watchZoneStore, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)
