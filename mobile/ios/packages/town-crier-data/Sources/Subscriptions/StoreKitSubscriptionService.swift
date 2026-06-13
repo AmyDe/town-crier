@@ -6,13 +6,13 @@ import os
 /// StoreKit 2 adapter implementing the SubscriptionService domain protocol.
 public final class StoreKitSubscriptionService: SubscriptionService, @unchecked Sendable {
   private static let productIds = [
-    "uk.towncrier.personal.monthly",
-    "uk.towncrier.pro.monthly",
+    "uk.towncrierapp.personal.monthly",
+    "uk.towncrierapp.pro.monthly",
   ]
 
   private static let tierMapping: [String: SubscriptionTier] = [
-    "uk.towncrier.personal.monthly": .personal,
-    "uk.towncrier.pro.monthly": .pro,
+    "uk.towncrierapp.personal.monthly": .personal,
+    "uk.towncrierapp.pro.monthly": .pro,
   ]
 
   private static let logger = Logger(

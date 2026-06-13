@@ -92,7 +92,7 @@
               "locale" : "en_GB"
             }
           ],
-          "productID" : "uk.towncrier.personal.monthly",
+          "productID" : "uk.towncrierapp.personal.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Personal Monthly",
           "subscriptionGroupID" : "21001",
@@ -117,7 +117,7 @@
               "locale" : "en_GB"
             }
           ],
-          "productID" : "uk.towncrier.pro.monthly",
+          "productID" : "uk.towncrierapp.pro.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Pro Monthly",
           "subscriptionGroupID" : "21001",
