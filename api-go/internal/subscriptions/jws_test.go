@@ -221,7 +221,7 @@ func (b *testJWSBuilder) signTampered(t *testing.T, payloadJSON string) string {
 func splitDots(s string) []string {
 	out := make([]string, 0, 3)
 	start := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == '.' {
 			out = append(out, s[start:i])
 			start = i + 1

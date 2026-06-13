@@ -20,6 +20,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -121,7 +122,7 @@ func testDesignationClient() *designations.Client {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, nil, "", slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, nil, "", nil, nil, "", slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -226,7 +227,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := applications.NewCosmosStore(newFakeItems())
 	savedStore := savedapplications.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), nil, nil, "", logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), nil, nil, "", nil, nil, "", logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -309,7 +310,7 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
 	geocodeClient := geocoding.NewClient(upstream.URL, upstream.Client())
 	designationClient := designations.NewClient(upstream.URL, upstream.Client())
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", nil, nil, "", logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
 	if rec.Code != http.StatusOK {
@@ -328,6 +329,45 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	}
 }
 
+// TestRouter_SubscriptionsWired confirms the verify endpoint is authed and the
+// App Store webhook is anonymous to Auth0 (the signed JWS is its auth). A
+// deny-all validator is used: the webhook still reaches its handler (a malformed
+// body returns 400 malformed_request), while verify falls to the 401 fallback.
+func TestRouter_SubscriptionsWired(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	store := profiles.NewCosmosStore(newFakeItems())
+	adminStore := profiles.NewAdminStore(newFakeItems())
+	notifStore := subscriptions.NewCosmosNotificationStore(newFakeItems(), time.Now)
+	roots, err := subscriptions.LoadAppleRootCertificates()
+	if err != nil {
+		t.Fatalf("LoadAppleRootCertificates: %v", err)
+	}
+	verifier, err := subscriptions.NewJWSVerifier(roots, time.Now)
+	if err != nil {
+		t.Fatalf("NewJWSVerifier: %v", err)
+	}
+
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, adminStore, "", verifier, notifStore, "uk.towncrierapp.mobile", logger)
+
+	// Webhook is anonymous: a malformed body reaches the handler -> 400 with the
+	// malformed_request envelope, not the WWW-Authenticate 401 fallback.
+	rec := serveReq(t, h, http.MethodPost, "/v1/webhooks/appstore", "{not json", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("webhook status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "malformed_request") {
+		t.Errorf("webhook body = %s, want malformed_request", rec.Body.String())
+	}
+
+	// Verify is authed: with no token the deny-all fallback returns 401.
+	rec = serveReq(t, h, http.MethodPost, "/v1/subscriptions/verify", `{"signedTransaction":"x"}`, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("verify status = %d, want 401", rec.Code)
+	}
+}
+
 // TestRouter_AdminGate confirms the admin routes are wired, anonymous to Auth0,
 // and gated solely by the X-Admin-Key. A deny-all validator is used: if the
 // routes were behind the Auth0 fallback they would 401 with WWW-Authenticate:
@@ -339,7 +379,7 @@ func TestRouter_AdminGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := offercodes.NewCosmosStore(newFakeItems())
 	adminStore := profiles.NewAdminStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), offerStore, adminStore, "s3cret", logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), offerStore, adminStore, "s3cret", nil, nil, "", logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).

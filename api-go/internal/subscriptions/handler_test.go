@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -124,17 +123,17 @@ func newTestDeps() *testDeps {
 		mux:         http.NewServeMux(),
 	}
 	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID,
-		func() time.Time { return testNow }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
 	return d
 }
 
-func (d *testDeps) serve(t *testing.T, method, path, body string, authed bool) *httptest.ResponseRecorder {
+func (d *testDeps) serve(t *testing.T, path, body string, authed bool) *httptest.ResponseRecorder {
 	t.Helper()
 	ctx := context.Background()
 	if authed {
 		ctx = auth.WithSubject(ctx, testUserID)
 	}
-	req := httptest.NewRequestWithContext(ctx, method, path, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	d.mux.ServeHTTP(rec, req)
 	return rec
@@ -171,7 +170,7 @@ func TestVerify_PurchaseActivatesPro(t *testing.T) {
 	d.byUser.profile = freshProfile(t)
 	d.verifier.results["JWS_PRO"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
-	rec := d.serve(t, http.MethodPost, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PRO"}`, true)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -210,7 +209,7 @@ func TestVerify_RestoreAllLapsedExpires(t *testing.T) {
 	d.verifier.results["A"] = txnJSON(ProductProMonthly, testBundleID, "o1", pastExpiryMs())
 	d.verifier.results["B"] = txnJSON(ProductPersonalMonthly, testBundleID, "o2", pastExpiryMs())
 
-	rec := d.serve(t, http.MethodPost, "/v1/subscriptions/verify", `{"signedTransactions":["A","B"]}`, true)
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransactions":["A","B"]}`, true)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -295,7 +294,7 @@ func TestVerify_ErrorContract(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(d)
 			}
-			rec := d.serve(t, http.MethodPost, "/v1/subscriptions/verify", tc.body, true)
+			rec := d.serve(t, "/v1/subscriptions/verify", tc.body, true)
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body=%s)", rec.Code, tc.wantStatus, rec.Body.String())
 			}
@@ -324,7 +323,7 @@ func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
-	rec := d.serve(t, http.MethodPost, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -348,7 +347,7 @@ func TestWebhook_DuplicateIsNoOp(t *testing.T) {
 	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
-	rec := d.serve(t, http.MethodPost, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -368,7 +367,7 @@ func TestWebhook_UnknownSubscriberStillMarksProcessed(t *testing.T) {
 	d.verifier.results["OUTER"] = notificationJSON("DID_RENEW", "", "uuid-2", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-x", futureExpiryMs())
 
-	rec := d.serve(t, http.MethodPost, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -418,7 +417,7 @@ func TestWebhook_ErrorContract(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(d)
 			}
-			rec := d.serve(t, http.MethodPost, "/v1/webhooks/appstore", tc.body, false)
+			rec := d.serve(t, "/v1/webhooks/appstore", tc.body, false)
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d (body=%s)", rec.Code, tc.wantStatus, rec.Body.String())
 			}

@@ -112,6 +112,10 @@ const (
 	// CosmosOfferCodesContainer holds one document per offer code; partition key
 	// /id == the canonical code, document id == the canonical code.
 	CosmosOfferCodesContainer = "OfferCodes"
+	// CosmosAppleNotificationsContainer holds one document per processed App Store
+	// Server Notification; partition key /id == the notificationUUID, document id
+	// == the notificationUUID. Backs webhook idempotency.
+	CosmosAppleNotificationsContainer = "AppleNotifications"
 )
 
 // ReadItem point-reads the document with the given id from its partition.

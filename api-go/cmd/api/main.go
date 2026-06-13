@@ -23,6 +23,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -114,6 +115,27 @@ func main() {
 		adminStore = profiles.NewAdminStore(cosmos)
 	}
 
+	appleNotificationsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosAppleNotificationsContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var appleNotifStore *subscriptions.CosmosNotificationStore
+	if appleNotificationsContainer != nil {
+		appleNotifStore = subscriptions.NewCosmosNotificationStore(appleNotificationsContainer, time.Now)
+	}
+
+	// The JWS verifier embeds the Apple Root CA - G3 and needs no Cosmos, so it is
+	// always available; the subscription routes only wire when the backing stores
+	// are present.
+	appleRoots, err := subscriptions.LoadAppleRootCertificates()
+	if err != nil {
+		log.Fatal(err)
+	}
+	jwsVerifier, err := subscriptions.NewJWSVerifier(appleRoots, time.Now)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Real M2M client only when fully configured; otherwise the no-op fallback,
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
@@ -131,7 +153,7 @@ func main() {
 	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
