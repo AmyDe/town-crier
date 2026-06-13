@@ -95,8 +95,15 @@ jobs:
           restore-keys: |
             spm-test-
 
-      - name: Install swiftlint
-        run: brew install swiftlint
+      - name: Install SwiftLint 0.63.2 (pinned — avoids latest-ruleset drift, tc-6kdu)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/swiftlint.zip" \
+            https://github.com/realm/SwiftLint/releases/download/0.63.2/portable_swiftlint.zip
+          unzip -o "$RUNNER_TEMP/swiftlint.zip" -d "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+
+      - name: Verify SwiftLint version
+        run: swiftlint version
 
       - name: SwiftLint (strict)
         working-directory: mobile/ios
