@@ -53,6 +53,27 @@ func (s *AdminStore) GetByEmail(ctx context.Context, email string) (*UserProfile
 	return doc.toDomain()
 }
 
+// GetByOriginalTransactionID returns the profile whose stored Apple original
+// transaction id matches, or ErrNotFound. App Store Server Notifications carry
+// no user id, so the webhook locates the subscriber by this cross-partition
+// lookup. Mirrors the .NET GetByOriginalTransactionIdCrossPartitionAsync.
+func (s *AdminStore) GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*UserProfile, error) {
+	rows, err := s.items.QueryItemsCrossPartition(ctx,
+		"SELECT * FROM c WHERE c.originalTransactionId = @txnId",
+		map[string]any{"@txnId": originalTransactionID})
+	if err != nil {
+		return nil, fmt.Errorf("query profile by original transaction id: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	var doc profileDocument
+	if err := json.Unmarshal(rows[0], &doc); err != nil {
+		return nil, fmt.Errorf("decode profile: %w", err)
+	}
+	return doc.toDomain()
+}
+
 // Save upserts the profile (id == user id == partition key).
 func (s *AdminStore) Save(ctx context.Context, p *UserProfile) error {
 	body, err := json.Marshal(newProfileDocument(p))
