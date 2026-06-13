@@ -159,6 +159,40 @@ func TestLoadConfig_ProDomains(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_OutboundBaseURLs(t *testing.T) {
+	t.Run("defaults to live UK services", func(t *testing.T) {
+		t.Setenv("POSTCODES_IO_BASE_URL", "")
+		t.Setenv("GOVUK_PLANNING_DATA_BASE_URL", "")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.PostcodesIoBaseURL != "https://api.postcodes.io/" {
+			t.Errorf("PostcodesIoBaseURL: got %q", cfg.PostcodesIoBaseURL)
+		}
+		if cfg.GovUkBaseURL != "https://www.planning.data.gov.uk/" {
+			t.Errorf("GovUkBaseURL: got %q", cfg.GovUkBaseURL)
+		}
+	})
+
+	t.Run("overrides honoured", func(t *testing.T) {
+		t.Setenv("POSTCODES_IO_BASE_URL", "http://localhost:9001/")
+		t.Setenv("GOVUK_PLANNING_DATA_BASE_URL", "http://localhost:9002/")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.PostcodesIoBaseURL != "http://localhost:9001/" {
+			t.Errorf("PostcodesIoBaseURL: got %q", cfg.PostcodesIoBaseURL)
+		}
+		if cfg.GovUkBaseURL != "http://localhost:9002/" {
+			t.Errorf("GovUkBaseURL: got %q", cfg.GovUkBaseURL)
+		}
+	})
+}
+
 func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 	tests := []struct {
 		name string
