@@ -302,6 +302,32 @@ struct AppCoordinatorWatchZoneTests {
     #expect(listVM.zones == [renamed])
   }
 
+  // MARK: - Watch Zone Editor Quota Upsell (tc-gpjk)
+
+  @Test func makeWatchZoneEditorViewModel_onUpgradeRequired_dismissesEditorAndPresentsPaywall() {
+    let sut = makeSUT()
+    sut.isAddingWatchZone = true
+    let vm = sut.makeWatchZoneEditorViewModel()
+
+    vm.onUpgradeRequired?()
+
+    #expect(!sut.isAddingWatchZone)
+    #expect(sut.editingWatchZone == nil)
+    #expect(sut.isSubscriptionPresented)
+  }
+
+  @Test func makeWatchZoneEditorViewModel_forEdit_onUpgradeRequired_dismissesAndPresentsPaywall() {
+    let sut = makeSUT()
+    sut.editingWatchZone = .cambridge
+    let vm = sut.makeWatchZoneEditorViewModel(editing: .cambridge)
+
+    vm.onUpgradeRequired?()
+
+    #expect(sut.editingWatchZone == nil)
+    #expect(!sut.isAddingWatchZone)
+    #expect(sut.isSubscriptionPresented)
+  }
+
   // MARK: - Watch Zone Upsell
 
   @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
