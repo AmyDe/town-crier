@@ -290,6 +290,13 @@ public final class AppCoordinator: ObservableObject {
       editing: zone
     )
     let isEditing = zone != nil
+    viewModel.onUpgradeRequired = { [weak self] in
+      // Quota breach on save (tc-gpjk): close the editor sheet and present the
+      // subscription paywall instead of showing an inline error.
+      self?.isAddingWatchZone = false
+      self?.editingWatchZone = nil
+      self?.isSubscriptionPresented = true
+    }
     viewModel.onSave = { [weak self] saved in
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
