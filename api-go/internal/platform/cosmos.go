@@ -100,6 +100,9 @@ const (
 	// CosmosNotificationsContainer holds dispatched notifications; partition key
 	// /userId. Read-only here for the unread COUNT query.
 	CosmosNotificationsContainer = "Notifications"
+	// CosmosWatchZonesContainer holds one document per watch zone; partition key
+	// /userId, document id == zoneId.
+	CosmosWatchZonesContainer = "WatchZones"
 )
 
 // ReadItem point-reads the document with the given id from its partition.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 // denyAllValidator is the validator the API runs with when Auth0 config is
@@ -71,6 +72,12 @@ func (f *fakeItems) DeleteItem(_ context.Context, _, id string) error {
 	return nil
 }
 
+// QueryItems lets fakeItems also back a watchzones store; the wiring tests only
+// need the empty-list path, so it returns no documents.
+func (f *fakeItems) QueryItems(_ context.Context, _, _ string, _ map[string]any) ([][]byte, error) {
+	return nil, nil
+}
+
 // notFoundErr mimics the azcore 404 the store's isNotFound detects.
 func notFoundErr() error {
 	return &azcore.ResponseError{StatusCode: http.StatusNotFound}
@@ -88,7 +95,7 @@ func idFromDoc(raw []byte) string {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -184,8 +191,9 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 
 	logger := slog.New(slog.DiscardHandler)
 	store := profiles.NewCosmosStore(newFakeItems())
+	watchZoneStore := watchzones.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -205,6 +213,16 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	}
 	if rec.Header().Get("X-RateLimit-Remaining") == "" {
 		t.Error("X-RateLimit-Remaining missing — rate limiter not in the dispatch path")
+	}
+
+	// Watch-zone routes are wired behind the same auth + dispatch chain: a
+	// valid token reaches the list handler and gets the empty-array body.
+	rec = serveReq(t, h, http.MethodGet, "/v1/me/watch-zones", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/me/watch-zones status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"zones":[]}` {
+		t.Errorf("GET /v1/me/watch-zones body = %s, want {\"zones\":[]}", got)
 	}
 
 	// Anonymous routes stay unmetered even on the store-wired router.
