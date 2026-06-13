@@ -100,7 +100,7 @@ struct SubscriptionViewModelTests {
     let (sut, spy, _) = makeSUT()
     spy.purchaseResult = .success(.personalActive)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(sut.currentEntitlement == .personalActive)
     #expect(!sut.isPurchasing)
@@ -111,16 +111,16 @@ struct SubscriptionViewModelTests {
     let (sut, spy, _) = makeSUT()
     spy.purchaseResult = .success(.personalActive)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
-    #expect(spy.purchaseCalls == ["uk.towncrier.personal.monthly"])
+    #expect(spy.purchaseCalls == ["uk.towncrierapp.personal.monthly"])
   }
 
   @Test func purchase_setsError_onFailure() async {
     let (sut, spy, _) = makeSUT()
     spy.purchaseResult = .failure(DomainError.purchaseFailed("payment declined"))
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(sut.currentEntitlement == nil)
     #expect(sut.error == .purchaseFailed("payment declined"))
@@ -130,7 +130,7 @@ struct SubscriptionViewModelTests {
     let (sut, spy, _) = makeSUT()
     spy.purchaseResult = .failure(DomainError.purchaseCancelled)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(sut.error == nil)
     #expect(!sut.isPurchasing)
@@ -237,7 +237,7 @@ struct SubscriptionViewModelTests {
     subscriptionSpy.purchaseResult = .success(.personalActive)
     authSpy.refreshSessionResult = .success(.personal)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(authSpy.refreshSessionCallCount == 1)
   }
@@ -246,7 +246,7 @@ struct SubscriptionViewModelTests {
     let (sut, subscriptionSpy, authSpy) = makeSUT()
     subscriptionSpy.purchaseResult = .failure(DomainError.purchaseFailed("declined"))
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(authSpy.refreshSessionCallCount == 0)
   }
@@ -255,7 +255,7 @@ struct SubscriptionViewModelTests {
     let (sut, subscriptionSpy, authSpy) = makeSUT()
     subscriptionSpy.purchaseResult = .failure(DomainError.purchaseCancelled)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(authSpy.refreshSessionCallCount == 0)
   }
@@ -265,7 +265,7 @@ struct SubscriptionViewModelTests {
     subscriptionSpy.purchaseResult = .success(.personalActive)
     authSpy.refreshSessionResult = .failure(DomainError.sessionExpired)
 
-    await sut.purchase(productId: "uk.towncrier.personal.monthly")
+    await sut.purchase(productId: "uk.towncrierapp.personal.monthly")
 
     #expect(sut.currentEntitlement == .personalActive)
     #expect(sut.error == nil)
