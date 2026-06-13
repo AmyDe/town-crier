@@ -109,6 +109,9 @@ const (
 	// CosmosSavedApplicationsContainer holds one document per saved application;
 	// partition key /userId, document id == "{userId}:{applicationUid}".
 	CosmosSavedApplicationsContainer = "SavedApplications"
+	// CosmosOfferCodesContainer holds one document per offer code; partition key
+	// /id == the canonical code, document id == the canonical code.
+	CosmosOfferCodesContainer = "OfferCodes"
 )
 
 // ReadItem point-reads the document with the given id from its partition.
@@ -166,6 +169,64 @@ func (c *CosmosContainer) CountItems(ctx context.Context, partitionKey, query st
 		return 0, fmt.Errorf("decode scalar count: %w", err)
 	}
 	return count, nil
+}
+
+// QueryItemsCrossPartition runs a parametrised query across ALL partitions and
+// returns every matching document body, draining all gateway pages. The Gateway
+// API supports only simple projections/filters cross-partition, which is all the
+// admin find-by-email lookup needs. An empty partition key plus the SDK's
+// default cross-partition flag triggers the cross-partition path.
+func (c *CosmosContainer) QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error) {
+	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
+	var items [][]byte
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, page.Items...)
+	}
+	return items, nil
+}
+
+// QueryPageCrossPartition runs a cross-partition query and returns a single
+// gateway page of up to pageSize documents plus the continuation token for the
+// next page (empty when the query is exhausted). A non-empty continuationToken
+// resumes a prior page. Mirrors the .NET CosmosRestClient.QueryPageAsync used by
+// the admin user list. The Gateway may return inconsistently sized or empty
+// pages with a non-nil token — an inherent property of cross-partition queries
+// shared by both APIs.
+func (c *CosmosContainer) QueryPageCrossPartition(ctx context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error) {
+	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+	if pageSize > 0 {
+		opts.PageSizeHint = clampPageSize(pageSize)
+	}
+	if continuationToken != "" {
+		opts.ContinuationToken = &continuationToken
+	}
+	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
+	if !pager.More() {
+		return nil, "", nil
+	}
+	page, err := pager.NextPage(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if page.ContinuationToken != nil {
+		next = *page.ContinuationToken
+	}
+	return page.Items, next, nil
+}
+
+// clampPageSize bounds the page size to a safe int32 range for the SDK hint.
+func clampPageSize(pageSize int) int32 {
+	const maxPageSize = 1000
+	if pageSize > maxPageSize {
+		return maxPageSize
+	}
+	return int32(pageSize)
 }
 
 // queryParams converts a name/value map into the SDK's parameter slice. The

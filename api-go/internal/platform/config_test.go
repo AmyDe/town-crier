@@ -159,6 +159,30 @@ func TestLoadConfig_ProDomains(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_AdminAPIKey(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("ADMIN_API_KEY", "s3cret-admin-key")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.AdminAPIKey != "s3cret-admin-key" {
+			t.Errorf("AdminAPIKey: got %q", cfg.AdminAPIKey)
+		}
+	})
+
+	t.Run("absent defaults empty (admin surface disabled)", func(t *testing.T) {
+		t.Setenv("ADMIN_API_KEY", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.AdminAPIKey != "" {
+			t.Errorf("AdminAPIKey: got %q, want empty", cfg.AdminAPIKey)
+		}
+	})
+}
+
 func TestLoadConfig_OutboundBaseURLs(t *testing.T) {
 	t.Run("defaults to live UK services", func(t *testing.T) {
 		t.Setenv("POSTCODES_IO_BASE_URL", "")

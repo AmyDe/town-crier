@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/admin"
 	"github.com/AmyDe/town-crier/api-go/internal/api"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
@@ -16,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
+	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
@@ -34,6 +36,12 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/authorities":          {},
 	"GET /v1/authorities/{$}":      {},
 	"GET /v1/authorities/{id}":     {},
+	// Admin routes are anonymous to Auth0 (no bearer token); they are
+	// authenticated solely by the X-Admin-Key gate inside the handlers, matching
+	// .NET's AllowAnonymous + AdminApiKeyFilter.
+	"PUT /v1/admin/subscriptions": {},
+	"GET /v1/admin/users":         {},
+	"POST /v1/admin/offer-codes":  {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -72,7 +80,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -111,6 +119,17 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		// The save path dual-writes: the master application record (appStore) then
 		// the saved row, so both stores are required to wire the endpoints.
 		savedapplications.Routes(mux, savedStore, appStore, time.Now, logger)
+	}
+	if store != nil && offerStore != nil {
+		// Offer-code redeem is authed: it loads the caller's profile, grants the
+		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
+		offercodes.Routes(mux, offerStore, store, auth0, time.Now, logger)
+	}
+	if adminStore != nil && offerStore != nil {
+		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
+		// cross-partition admin store backs grant/list; the offer-code store backs
+		// generate.
+		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)
