@@ -103,6 +103,12 @@ const (
 	// CosmosWatchZonesContainer holds one document per watch zone; partition key
 	// /userId, document id == zoneId.
 	CosmosWatchZonesContainer = "WatchZones"
+	// CosmosApplicationsContainer holds the master planning-application records;
+	// partition key /authorityCode (the areaId as a string), document id == name.
+	CosmosApplicationsContainer = "Applications"
+	// CosmosSavedApplicationsContainer holds one document per saved application;
+	// partition key /userId, document id == "{userId}:{applicationUid}".
+	CosmosSavedApplicationsContainer = "SavedApplications"
 )
 
 // ReadItem point-reads the document with the given id from its partition.
