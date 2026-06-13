@@ -12,11 +12,13 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the Applications container the store
-// uses: a single-partition point read and an upsert. platform.CosmosContainer
-// satisfies it structurally.
+// uses: a single-partition point read, an upsert, and a single-partition
+// spatial query for the nearby lookup. platform.CosmosContainer satisfies it
+// structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
+	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 }
 
 // CosmosStore reads and writes planning applications in the Applications
@@ -63,6 +65,36 @@ func (s *CosmosStore) GetByAuthorityAndName(ctx context.Context, authorityCode, 
 		return PlanningApplication{}, false, fmt.Errorf("decode application %q/%q: %w", authorityCode, name, err)
 	}
 	return doc.toDomain(), true, nil
+}
+
+// FindNearby returns every application within radiusMetres of (latitude,
+// longitude) inside the authorityCode partition, via a single-partition
+// ST_DISTANCE spatial query against the GeoJSON location. It mirrors .NET
+// CosmosPlanningApplicationRepository.FindNearbyAsync: the GeoJSON point and
+// radius are formatted into the query with InvariantCulture-equivalent
+// (strconv) decimals — they are float64 values, never user-supplied strings, so
+// there is no injection surface. The query is scoped to the authorityCode
+// logical partition, so it never fans out cross-partition.
+func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, latitude, longitude, radiusMetres float64) ([]PlanningApplication, error) {
+	lng := strconv.FormatFloat(longitude, 'g', -1, 64)
+	lat := strconv.FormatFloat(latitude, 'g', -1, 64)
+	rad := strconv.FormatFloat(radiusMetres, 'g', -1, 64)
+	query := `SELECT * FROM c WHERE ST_DISTANCE(c.location, ` +
+		`{"type": "Point", "coordinates": [` + lng + `, ` + lat + `]}) <= ` + rad
+
+	raws, err := s.items.QueryItems(ctx, authorityCode, query, nil)
+	if err != nil {
+		return nil, fmt.Errorf("find applications near %q: %w", authorityCode, err)
+	}
+	apps := make([]PlanningApplication, 0, len(raws))
+	for _, raw := range raws {
+		var doc applicationDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode nearby application in %q: %w", authorityCode, err)
+		}
+		apps = append(apps, doc.toDomain())
+	}
+	return apps, nil
 }
 
 // isNotFound reports whether err is a Cosmos 404 response.
