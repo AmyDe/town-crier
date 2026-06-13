@@ -87,7 +87,7 @@ func TestHandler_Geocode_BadRequestOnInvalidPostcode(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
-	if got := rec.Body.String(); got != `{"error":"'NOTAPOSTCODE' is not a valid UK postcode.","message":null}` {
+	if got := rec.Body.String(); got != `{"error":"'NOTAPOSTCODE' is not a valid UK postcode. (Parameter 'raw')","message":null}` {
 		t.Errorf("body = %s", got)
 	}
 	if fake.gotPostcode != "" {

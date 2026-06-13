@@ -49,7 +49,10 @@ func (h handler) geocode(w http.ResponseWriter, r *http.Request) {
 
 	normalised, ok := normalisePostcode(raw)
 	if !ok {
-		h.writeError(r, w, http.StatusBadRequest, "'"+raw+"' is not a valid UK postcode.")
+		// .NET throws ArgumentException(msg, nameof(raw)); its Message — which the
+		// endpoint serializes — carries the " (Parameter 'raw')" suffix the
+		// runtime appends when a paramName is supplied. Reproduce it byte-for-byte.
+		h.writeError(r, w, http.StatusBadRequest, "'"+raw+"' is not a valid UK postcode. (Parameter 'raw')")
 		return
 	}
 
