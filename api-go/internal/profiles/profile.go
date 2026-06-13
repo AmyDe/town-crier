@@ -160,6 +160,15 @@ func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Ti
 	p.GracePeriodExpiry = nil
 }
 
+// ExpireSubscription drops the profile back to the Free tier and clears the
+// subscription expiry and grace period, mirroring .NET ExpireSubscription. Used
+// by the admin grant endpoint when granting the Free tier (a downgrade).
+func (p *UserProfile) ExpireSubscription() {
+	p.Tier = TierFree
+	p.SubscriptionExpiry = nil
+	p.GracePeriodExpiry = nil
+}
+
 func normaliseEmail(email string) *string {
 	if strings.TrimSpace(email) == "" {
 		return nil
