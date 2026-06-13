@@ -11,6 +11,16 @@ import (
 // (Program.cs: ?? ["http://localhost:5173"]).
 const defaultCorsOrigin = "http://localhost:5173"
 
+// defaultPostcodesIoBaseURL and defaultGovUkBaseURL are the live UK services the
+// geocode and designation clients call, matching the .NET fallbacks for
+// PostcodesIo:BaseUrl and GovUkPlanningData:BaseUrl. The defaults are the real
+// endpoints, so the Go app geocodes against the same upstreams as .NET without
+// any infra wiring.
+const (
+	defaultPostcodesIoBaseURL = "https://api.postcodes.io/"
+	defaultGovUkBaseURL       = "https://www.planning.data.gov.uk/"
+)
+
 // Config holds process configuration loaded from environment variables.
 // Container Apps provides env vars; load them, validate them, fail fast at
 // startup.
@@ -50,6 +60,13 @@ type Config struct {
 	// auto-grant the Pro tier on a verified-email registration. Mirrors .NET's
 	// Subscription:AutoGrant:ProDomains. Empty disables auto-grant.
 	ProDomains string
+
+	// PostcodesIoBaseURL and GovUkBaseURL address the outbound geocode and
+	// designation upstreams. They default to the live UK services (matching
+	// .NET's PostcodesIo:BaseUrl / GovUkPlanningData:BaseUrl), so the clients work
+	// without any env wiring; an override points them at a stub.
+	PostcodesIoBaseURL string
+	GovUkBaseURL       string
 }
 
 // Auth0M2MConfigured reports whether the Auth0 Management (M2M) client can be
@@ -80,6 +97,9 @@ func LoadConfig() (Config, error) {
 		Auth0M2MClientSecret: NewSecret(os.Getenv("AUTH0_M2M_CLIENT_SECRET")),
 
 		ProDomains: os.Getenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS"),
+
+		PostcodesIoBaseURL: getenv("POSTCODES_IO_BASE_URL", defaultPostcodesIoBaseURL),
+		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
