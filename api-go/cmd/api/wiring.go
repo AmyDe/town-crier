@@ -10,6 +10,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/demoaccount"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
@@ -37,6 +38,10 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/authorities":          {},
 	"GET /v1/authorities/{$}":      {},
 	"GET /v1/authorities/{id}":     {},
+	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
+	// reach a fully-provisioned Pro account without a token, matching .NET's
+	// AllowAnonymous.
+	"GET /v1/demo-account": {},
 	// Admin routes are anonymous to Auth0 (no bearer token); they are
 	// authenticated solely by the X-Admin-Key gate inside the handlers, matching
 	// .NET's AllowAnonymous + AdminApiKeyFilter.
@@ -119,6 +124,13 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	}
 	if appStore != nil {
 		applications.Routes(mux, appStore, logger)
+	}
+	if store != nil && watchZoneStore != nil && appStore != nil {
+		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,
+		// and five fixed applications on first call, then returns the zone plus
+		// its nearby applications. Needs the profile, watch-zone and application
+		// stores; the spatial lookup hits the applications store's FindNearby.
+		demoaccount.Routes(mux, store, watchZoneStore, appStore, time.Now, logger)
 	}
 	if savedStore != nil && appStore != nil {
 		// The save path dual-writes: the master application record (appStore) then
