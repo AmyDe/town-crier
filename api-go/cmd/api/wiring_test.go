@@ -17,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
+	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -82,6 +83,16 @@ func (f *fakeItems) QueryItems(_ context.Context, _, _ string, _ map[string]any)
 	return nil, nil
 }
 
+// QueryItemsCrossPartition / QueryPageCrossPartition let fakeItems back a
+// profiles.AdminStore; the wiring tests only need the empty result path.
+func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, _ string, _ map[string]any) ([][]byte, error) {
+	return nil, nil
+}
+
+func (f *fakeItems) QueryPageCrossPartition(_ context.Context, _ string, _ map[string]any, _ int, _ string) ([][]byte, string, error) {
+	return nil, "", nil
+}
+
 // notFoundErr mimics the azcore 404 the store's isNotFound detects.
 func notFoundErr() error {
 	return &azcore.ResponseError{StatusCode: http.StatusNotFound}
@@ -110,7 +121,7 @@ func testDesignationClient() *designations.Client {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, nil, "", slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -163,6 +174,8 @@ func TestRouter_FallbackDeny(t *testing.T) {
 		// Geocode and designations are authed, not anonymous: no token -> 401.
 		{"geocode without token", http.MethodGet, "/v1/geocode/SW1A1AA"},
 		{"designations without token", http.MethodGet, "/v1/designations?latitude=55&longitude=2"},
+		// Offer-code redeem is authed: no token -> 401.
+		{"redeem without token", http.MethodPost, "/v1/offer-codes/redeem"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -213,7 +226,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := applications.NewCosmosStore(newFakeItems())
 	savedStore := savedapplications.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), nil, nil, "", logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -296,7 +309,7 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
 	geocodeClient := geocoding.NewClient(upstream.URL, upstream.Client())
 	designationClient := designations.NewClient(upstream.URL, upstream.Client())
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, geocodeClient, designationClient, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
 	if rec.Code != http.StatusOK {
@@ -313,6 +326,52 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	if got := rec.Body.String(); got != `{"isWithinConservationArea":false,"conservationAreaName":null,"isWithinListedBuildingCurtilage":false,"listedBuildingGrade":null,"isWithinArticle4Area":false}` {
 		t.Errorf("designations body = %s", got)
 	}
+}
+
+// TestRouter_AdminGate confirms the admin routes are wired, anonymous to Auth0,
+// and gated solely by the X-Admin-Key. A deny-all validator is used: if the
+// routes were behind the Auth0 fallback they would 401 with WWW-Authenticate:
+// Bearer; the admin gate's 401 carries no such header, and a correct key reaches
+// the handler.
+func TestRouter_AdminGate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	offerStore := offercodes.NewCosmosStore(newFakeItems())
+	adminStore := profiles.NewAdminStore(newFakeItems())
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), offerStore, adminStore, "s3cret", logger)
+
+	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
+	// (distinguishing it from the Auth0 fallback-deny).
+	noKey := adminRequest(t, h, "")
+	if noKey.Code != http.StatusUnauthorized {
+		t.Fatalf("no key: status = %d, want 401", noKey.Code)
+	}
+	if got := noKey.Header().Get("WWW-Authenticate"); got != "" {
+		t.Errorf("no key: WWW-Authenticate = %q, want empty (admin gate, not Auth0)", got)
+	}
+
+	// Correct key: the request reaches the list handler and returns the empty page.
+	withKey := adminRequest(t, h, "s3cret")
+	if withKey.Code != http.StatusOK {
+		t.Fatalf("with key: status = %d body = %s", withKey.Code, withKey.Body.String())
+	}
+	if got := withKey.Body.String(); got != `{"items":[],"continuationToken":null}` {
+		t.Errorf("with key: body = %s", got)
+	}
+}
+
+func adminRequest(t *testing.T, h http.Handler, key string) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/admin/users", nil)
+	if key != "" {
+		req.Header.Set("X-Admin-Key", key)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
 }
 
 func serveReq(t *testing.T, h http.Handler, method, path, origin, authz string) *httptest.ResponseRecorder {

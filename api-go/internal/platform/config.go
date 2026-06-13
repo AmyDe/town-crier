@@ -67,6 +67,11 @@ type Config struct {
 	// without any env wiring; an override points them at a stub.
 	PostcodesIoBaseURL string
 	GovUkBaseURL       string
+
+	// AdminAPIKey gates the /v1/admin/* endpoints (the X-Admin-Key header),
+	// mirroring .NET's Admin:ApiKey. Empty means the admin endpoints reject every
+	// request, so an unconfigured deployment exposes no admin surface.
+	AdminAPIKey string
 }
 
 // Auth0M2MConfigured reports whether the Auth0 Management (M2M) client can be
@@ -100,6 +105,8 @@ func LoadConfig() (Config, error) {
 
 		PostcodesIoBaseURL: getenv("POSTCODES_IO_BASE_URL", defaultPostcodesIoBaseURL),
 		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),
+
+		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {

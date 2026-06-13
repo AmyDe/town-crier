@@ -19,6 +19,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
+	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
@@ -96,6 +97,23 @@ func main() {
 		savedStore = savedapplications.NewCosmosStore(savedContainer)
 	}
 
+	offerCodesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosOfferCodesContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var offerStore *offercodes.CosmosStore
+	if offerCodesContainer != nil {
+		offerStore = offercodes.NewCosmosStore(offerCodesContainer)
+	}
+
+	// The admin grant/list operations query the Users container cross-partition
+	// (by email, and the full list), so the admin store reuses the same container
+	// as the profile store.
+	var adminStore *profiles.AdminStore
+	if cosmos != nil {
+		adminStore = profiles.NewAdminStore(cosmos)
+	}
+
 	// Real M2M client only when fully configured; otherwise the no-op fallback,
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
@@ -113,7 +131,7 @@ func main() {
 	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
