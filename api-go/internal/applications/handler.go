@@ -42,5 +42,5 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	writeJSON(w, r, h.logger, resultFrom(app))
+	writeJSON(w, r, h.logger, ResultOf(app))
 }

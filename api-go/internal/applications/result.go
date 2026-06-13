@@ -6,12 +6,12 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// applicationResult mirrors .NET PlanningApplicationResult — the wire shape of a
+// Result mirrors .NET PlanningApplicationResult — the wire shape of a
 // planning application. Coordinates are flat (the GeoJSON projection is a Cosmos
 // storage concern only). latestUnreadEvent is always null on these endpoints
 // (the .NET ToResult never populates it); a nil json.RawMessage marshals to the
 // explicit null .NET emits.
-type applicationResult struct {
+type Result struct {
 	Name              string              `json:"name"`
 	UID               string              `json:"uid"`
 	AreaName          string              `json:"areaName"`
@@ -33,10 +33,10 @@ type applicationResult struct {
 	LatestUnreadEvent json.RawMessage     `json:"latestUnreadEvent"`
 }
 
-// resultFrom maps a domain snapshot to its wire shape, mirroring .NET
+// ResultOf maps a domain snapshot to its wire shape, mirroring .NET
 // GetApplicationByUidQueryHandler.ToResult.
-func resultFrom(a PlanningApplication) applicationResult {
-	return applicationResult{
+func ResultOf(a PlanningApplication) Result {
+	return Result{
 		Name:          a.Name,
 		UID:           a.UID,
 		AreaName:      a.AreaName,
