@@ -14,7 +14,7 @@ extension SubscriptionProduct {
   static let pro = SubscriptionProduct(
     id: "uk.towncrierapp.pro.monthly",
     displayName: "Pro",
-    displayPrice: "£5.99",
+    displayPrice: "£4.99",
     tier: .pro
   )
 }
