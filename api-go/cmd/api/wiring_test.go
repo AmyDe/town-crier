@@ -13,8 +13,10 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -95,7 +97,7 @@ func idFromDoc(raw []byte) string {
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", nil, nil, nil, nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -192,8 +194,10 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	store := profiles.NewCosmosStore(newFakeItems())
 	watchZoneStore := watchzones.NewCosmosStore(newFakeItems())
+	appStore := applications.NewCosmosStore(newFakeItems())
+	savedStore := savedapplications.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", nil, nil, watchZoneStore, appStore, savedStore, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -223,6 +227,24 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	}
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"zones":[]}` {
 		t.Errorf("GET /v1/me/watch-zones body = %s, want {\"zones\":[]}", got)
+	}
+
+	// Saved-application routes are wired behind the same chain (empty list array).
+	rec = serveReq(t, h, http.MethodGet, "/v1/me/saved-applications", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/me/saved-applications status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `[]` {
+		t.Errorf("GET /v1/me/saved-applications body = %s, want []", got)
+	}
+
+	// application-authorities is wired off the watch-zone store (empty set).
+	rec = serveReq(t, h, http.MethodGet, "/v1/me/application-authorities", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/me/application-authorities status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"authorities":[],"count":0}` {
+		t.Errorf("GET /v1/me/application-authorities body = %s", got)
 	}
 
 	// Anonymous routes stay unmetered even on the store-wired router.

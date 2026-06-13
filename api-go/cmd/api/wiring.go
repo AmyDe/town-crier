@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/api"
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
@@ -14,6 +15,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -68,7 +70,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -91,6 +93,17 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	}
 	if watchZoneStore != nil {
 		watchzones.Routes(mux, watchZoneStore, logger)
+		// application-authorities derives from the user's watch zones plus the
+		// static authority data; it needs no Cosmos applications store.
+		applications.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
+	}
+	if appStore != nil {
+		applications.Routes(mux, appStore, logger)
+	}
+	if savedStore != nil && appStore != nil {
+		// The save path dual-writes: the master application record (appStore) then
+		// the saved row, so both stores are required to wire the endpoints.
+		savedapplications.Routes(mux, savedStore, appStore, time.Now, logger)
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)

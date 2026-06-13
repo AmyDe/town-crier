@@ -13,11 +13,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
@@ -74,6 +76,24 @@ func main() {
 		watchZoneStore = watchzones.NewCosmosStore(watchZones)
 	}
 
+	appsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosApplicationsContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var appStore *applications.CosmosStore
+	if appsContainer != nil {
+		appStore = applications.NewCosmosStore(appsContainer)
+	}
+
+	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var savedStore *savedapplications.CosmosStore
+	if savedContainer != nil {
+		savedStore = savedapplications.NewCosmosStore(savedContainer)
+	}
+
 	// Real M2M client only when fully configured; otherwise the no-op fallback,
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
@@ -86,7 +106,7 @@ func main() {
 		)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
