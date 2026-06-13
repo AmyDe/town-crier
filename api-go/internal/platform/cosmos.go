@@ -109,6 +109,9 @@ const (
 	// CosmosSavedApplicationsContainer holds one document per saved application;
 	// partition key /userId, document id == "{userId}:{applicationUid}".
 	CosmosSavedApplicationsContainer = "SavedApplications"
+	// CosmosOfferCodesContainer holds one document per offer code; partition key
+	// /id == the canonical code, document id == the canonical code.
+	CosmosOfferCodesContainer = "OfferCodes"
 )
 
 // ReadItem point-reads the document with the given id from its partition.
