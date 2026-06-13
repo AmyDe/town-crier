@@ -8,30 +8,38 @@ import (
 	"time"
 )
 
-func withZonePath(method, target, sub, zoneID, body string) *http.Request {
-	r := withSubject(method, target, sub, body)
-	r.SetPathValue("zoneId", zoneID)
+// prefsUser is the subject under test for the zone-preferences handlers; the
+// route's actual URL is irrelevant since the handlers read the path value and
+// the context subject, not r.URL.Path.
+const (
+	prefsUser = "auth0|u"
+	prefsZone = "z1"
+)
+
+func withZonePath(method, sub, body string) *http.Request {
+	r := withSubject(method, "/v1/me/watch-zones/"+prefsZone+"/preferences", sub, body)
+	r.SetPathValue("zoneId", prefsZone)
 	return r
 }
 
-func seededProfile(t *testing.T, store *fakeStore, userID string) *UserProfile {
+func seededProfile(t *testing.T, store *fakeStore) *UserProfile {
 	t.Helper()
-	p, err := NewProfile(userID, "", time.Now())
+	p, err := NewProfile(prefsUser, "", time.Now())
 	if err != nil {
 		t.Fatalf("NewProfile: %v", err)
 	}
-	store.byID[userID] = p
+	store.byID[prefsUser] = p
 	return p
 }
 
 func TestHandler_GetZonePreferences_DefaultsForNewZone(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
-	seededProfile(t, store, "auth0|u")
+	seededProfile(t, store)
 	h := newTestHandler(store, newFakeAuth0(), "")
 
 	rec := httptest.NewRecorder()
-	h.getZonePreferences(rec, withZonePath(http.MethodGet, "/v1/me/watch-zones/z1/preferences", "auth0|u", "z1", ""))
+	h.getZonePreferences(rec, withZonePath(http.MethodGet, prefsUser, ""))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
@@ -56,12 +64,12 @@ func TestHandler_GetZonePreferences_DefaultsForNewZone(t *testing.T) {
 func TestHandler_GetZonePreferences_ReflectsStored(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
-	p := seededProfile(t, store, "auth0|u")
+	p := seededProfile(t, store)
 	p.SetZonePreferences("z1", ZonePreferences{NewApplicationPush: false, NewApplicationEmail: true, DecisionPush: false, DecisionEmail: true})
 	h := newTestHandler(store, newFakeAuth0(), "")
 
 	rec := httptest.NewRecorder()
-	h.getZonePreferences(rec, withZonePath(http.MethodGet, "/v1/me/watch-zones/z1/preferences", "auth0|u", "z1", ""))
+	h.getZonePreferences(rec, withZonePath(http.MethodGet, prefsUser, ""))
 
 	var got map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -79,7 +87,7 @@ func TestHandler_GetZonePreferences_ProfileNotFound(t *testing.T) {
 	t.Parallel()
 	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
 	rec := httptest.NewRecorder()
-	h.getZonePreferences(rec, withZonePath(http.MethodGet, "/v1/me/watch-zones/z1/preferences", "auth0|missing", "z1", ""))
+	h.getZonePreferences(rec, withZonePath(http.MethodGet, "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404", rec.Code)
 	}
@@ -91,12 +99,12 @@ func TestHandler_GetZonePreferences_ProfileNotFound(t *testing.T) {
 func TestHandler_PutZonePreferences_PersistsAndReturns(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
-	seededProfile(t, store, "auth0|u")
+	seededProfile(t, store)
 	h := newTestHandler(store, newFakeAuth0(), "")
 
 	body := `{"newApplicationPush":false,"newApplicationEmail":true,"decisionPush":false,"decisionEmail":true}`
 	rec := httptest.NewRecorder()
-	h.putZonePreferences(rec, withZonePath(http.MethodPut, "/v1/me/watch-zones/z1/preferences", "auth0|u", "z1", body))
+	h.putZonePreferences(rec, withZonePath(http.MethodPut, prefsUser, body))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
@@ -109,7 +117,7 @@ func TestHandler_PutZonePreferences_PersistsAndReturns(t *testing.T) {
 		t.Errorf("response mismatch: %+v", got)
 	}
 	// Persisted onto the profile.
-	stored := store.byID["auth0|u"].GetZonePreferences("z1")
+	stored := store.byID[prefsUser].GetZonePreferences("z1")
 	if stored.NewApplicationPush != false || stored.DecisionEmail != true {
 		t.Errorf("prefs not persisted: %+v", stored)
 	}
@@ -121,13 +129,13 @@ func TestHandler_PutZonePreferences_PersistsAndReturns(t *testing.T) {
 func TestHandler_PutZonePreferences_MissingFieldsDefaultFalse(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
-	seededProfile(t, store, "auth0|u")
+	seededProfile(t, store)
 	h := newTestHandler(store, newFakeAuth0(), "")
 
 	// Only one field present; the rest default to false (matching STJ on the
 	// .NET command record's non-nullable bools).
 	rec := httptest.NewRecorder()
-	h.putZonePreferences(rec, withZonePath(http.MethodPut, "/v1/me/watch-zones/z1/preferences", "auth0|u", "z1", `{"newApplicationPush":true}`))
+	h.putZonePreferences(rec, withZonePath(http.MethodPut, prefsUser, `{"newApplicationPush":true}`))
 
 	var got map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -147,7 +155,7 @@ func TestHandler_PutZonePreferences_ProfileNotFound(t *testing.T) {
 	t.Parallel()
 	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
 	rec := httptest.NewRecorder()
-	h.putZonePreferences(rec, withZonePath(http.MethodPut, "/v1/me/watch-zones/z1/preferences", "auth0|missing", "z1", `{"decisionPush":true}`))
+	h.putZonePreferences(rec, withZonePath(http.MethodPut, "auth0|missing", `{"decisionPush":true}`))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404", rec.Code)
 	}

@@ -88,12 +88,9 @@ func (h *handler) putZonePreferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	prefs := ZonePreferences{
-		NewApplicationPush:  req.NewApplicationPush,
-		NewApplicationEmail: req.NewApplicationEmail,
-		DecisionPush:        req.DecisionPush,
-		DecisionEmail:       req.DecisionEmail,
-	}
+	// zonePreferencesRequest and ZonePreferences are field-identical; the request
+	// type exists only to carry the JSON tags, so a direct conversion is exact.
+	prefs := ZonePreferences(req)
 	profile.SetZonePreferences(zoneID, prefs)
 	if err := h.store.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)

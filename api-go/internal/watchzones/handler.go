@@ -129,15 +129,9 @@ func (req patchRequest) rangeValid() bool {
 }
 
 func (req patchRequest) toUpdate() ZoneUpdate {
-	return ZoneUpdate{
-		Name:                req.Name,
-		Latitude:            req.Latitude,
-		Longitude:           req.Longitude,
-		RadiusMetres:        req.RadiusMetres,
-		AuthorityID:         req.AuthorityID,
-		PushEnabled:         req.PushEnabled,
-		EmailInstantEnabled: req.EmailInstantEnabled,
-	}
+	// patchRequest and ZoneUpdate are field-identical; the request type exists
+	// only to carry the JSON tags, so a direct conversion is exact.
+	return ZoneUpdate(req)
 }
 
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
