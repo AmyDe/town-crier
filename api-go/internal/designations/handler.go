@@ -59,13 +59,10 @@ func (h handler) designations(w http.ResponseWriter, r *http.Request) {
 		designation = Context{}
 	}
 
-	h.writeJSON(r, w, designationsResult{
-		IsWithinConservationArea:        designation.IsWithinConservationArea,
-		ConservationAreaName:            designation.ConservationAreaName,
-		IsWithinListedBuildingCurtilage: designation.IsWithinListedBuildingCurtilage,
-		ListedBuildingGrade:             designation.ListedBuildingGrade,
-		IsWithinArticle4Area:            designation.IsWithinArticle4Area,
-	})
+	// designationsResult mirrors Context field-for-field, differing only in JSON
+	// tags (ignored in a struct conversion), so the result is just the context in
+	// wire dress.
+	h.writeJSON(r, w, designationsResult(designation))
 }
 
 func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {

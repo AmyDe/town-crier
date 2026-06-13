@@ -3,7 +3,6 @@ package geocoding
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -27,11 +26,11 @@ func (f *fakeGeocoder) Geocode(_ context.Context, postcode string) (Coordinates,
 func newGeocodeRequest(t *testing.T, g geocoder, rawPostcode string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, g, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	Routes(mux, g, slog.New(slog.DiscardHandler))
 	rec := httptest.NewRecorder()
 	// The path segment is pre-escaped so the mux decodes it back to rawPostcode,
 	// matching how a real request arrives.
-	req := httptest.NewRequest(http.MethodGet, "/v1/geocode/"+escapeSegment(rawPostcode), nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/geocode/"+escapeSegment(rawPostcode), nil)
 	mux.ServeHTTP(rec, req)
 	return rec
 }

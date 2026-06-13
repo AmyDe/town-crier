@@ -69,12 +69,15 @@ func (c *Client) Get(ctx context.Context, latitude, longitude float64) (Context,
 	point := "POINT(" + strconv.FormatFloat(longitude, 'g', -1, 64) + " " + strconv.FormatFloat(latitude, 'g', -1, 64) + ")"
 	endpoint := c.baseURL + "/api/v1/entity.json?geometry_intersects=" + escapeDataString(point) + "&dataset=" + datasets
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	// gosec G704: the host is the trusted GovUkBaseURL config value; the query is
+	// built from parsed float coordinates and a fixed dataset list, so no
+	// attacker-controlled host can be reached — not an SSRF vector.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil) //nolint:gosec // trusted config host + numeric coordinates
 	if err != nil {
 		return Context{}, fmt.Errorf("build designations request: %w", err)
 	}
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // trusted config host, not user input
 	if err != nil {
 		return Context{}, fmt.Errorf("designations request: %w", err)
 	}
@@ -142,7 +145,7 @@ const upperHex = "0123456789ABCDEF"
 // wire — in particular a space becomes %20 (not "+", as url.QueryEscape would).
 func escapeDataString(s string) string {
 	var b strings.Builder
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if isUnreserved(c) {
 			b.WriteByte(c)

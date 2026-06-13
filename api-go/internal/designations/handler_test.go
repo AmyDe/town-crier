@@ -3,7 +3,6 @@ package designations
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -28,9 +27,9 @@ func (f *fakeProvider) Get(_ context.Context, latitude, longitude float64) (Cont
 func newDesignationsRequest(t *testing.T, p provider, query string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, p, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	Routes(mux, p, slog.New(slog.DiscardHandler))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/designations"+query, nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/designations"+query, nil)
 	mux.ServeHTTP(rec, req)
 	return rec
 }

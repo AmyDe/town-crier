@@ -52,12 +52,15 @@ type postcodesIoResult struct {
 // caller), mirroring .NET's propagated HttpRequestException.
 func (c *Client) Geocode(ctx context.Context, postcode string) (Coordinates, bool, error) {
 	endpoint := c.baseURL + "/postcodes/" + url.PathEscape(postcode)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	// gosec G704: the host is the trusted PostcodesIoBaseURL config value; the
+	// postcode is regex-validated by normalisePostcode and path-escaped, so no
+	// attacker-controlled host can be reached — not an SSRF vector.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil) //nolint:gosec // trusted config host + validated, escaped postcode
 	if err != nil {
 		return Coordinates{}, false, fmt.Errorf("build geocode request: %w", err)
 	}
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // trusted config host, not user input
 	if err != nil {
 		return Coordinates{}, false, fmt.Errorf("geocode request: %w", err)
 	}
