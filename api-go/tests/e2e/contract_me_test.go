@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"testing"
 )
@@ -221,10 +222,18 @@ func TestContract_GDPRExportProfileFields(t *testing.T) {
 		t.Fatalf("decode go export: %v", err)
 	}
 
-	for _, key := range []string{"userId", "email", "notificationPreferences", "subscription"} {
+	for _, key := range []string{"userId", "email", "subscription"} {
 		if !jsonEqual(t, gotDoc[key], wantDoc[key]) {
 			t.Errorf("%s: go=%s dotnet=%s", key, gotDoc[key], wantDoc[key])
 		}
+	}
+	// notificationPreferences carries the zonePreferences array, whose order is
+	// not a contract guarantee — neither API issues an ORDER BY, so the shared
+	// Cosmos returns the zones in an order that varies between requests. Sort by
+	// zoneId before diffing so the comparison is about content, not order
+	// (tc-zgnt).
+	if !jsonEqual(t, sortZonePreferences(t, gotDoc["notificationPreferences"]), sortZonePreferences(t, wantDoc["notificationPreferences"])) {
+		t.Errorf("notificationPreferences: go=%s dotnet=%s", gotDoc["notificationPreferences"], wantDoc["notificationPreferences"])
 	}
 	for _, key := range []string{"watchZones", "notifications", "savedApplications", "deviceRegistrations", "offerCodeRedemptions"} {
 		if raw, ok := gotDoc[key]; !ok || len(raw) == 0 || raw[0] != '[' {
@@ -234,6 +243,42 @@ func TestContract_GDPRExportProfileFields(t *testing.T) {
 			t.Errorf("dotnet export %q: missing or not an array (%s)", key, raw)
 		}
 	}
+}
+
+// sortZonePreferences returns the notificationPreferences object with its
+// zonePreferences array sorted by zoneId, so an order-undefined array can be
+// diffed for content. A payload without a zonePreferences array is returned
+// unchanged.
+func sortZonePreferences(t *testing.T, raw json.RawMessage) []byte {
+	t.Helper()
+	if len(raw) == 0 {
+		return raw
+	}
+	var prefs map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &prefs); err != nil {
+		t.Fatalf("decode notificationPreferences: %v", err)
+	}
+	zonesRaw, ok := prefs["zonePreferences"]
+	if !ok {
+		return raw
+	}
+	var zones []map[string]json.RawMessage
+	if err := json.Unmarshal(zonesRaw, &zones); err != nil {
+		t.Fatalf("decode zonePreferences: %v", err)
+	}
+	sort.Slice(zones, func(i, j int) bool {
+		return string(zones[i]["zoneId"]) < string(zones[j]["zoneId"])
+	})
+	sorted, err := json.Marshal(zones)
+	if err != nil {
+		t.Fatalf("marshal zonePreferences: %v", err)
+	}
+	prefs["zonePreferences"] = sorted
+	out, err := json.Marshal(prefs)
+	if err != nil {
+		t.Fatalf("marshal notificationPreferences: %v", err)
+	}
+	return out
 }
 
 // authedResponse is one authenticated exchange, including the rate-limit
