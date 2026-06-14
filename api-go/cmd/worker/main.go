@@ -54,16 +54,25 @@ func run() int {
 		return 1
 	}
 
-	logger := platform.NewLogger(os.Stdout, cfg.LogLevel)
+	// NewOTelLogger fans every record out to stdout JSON (ContainerAppConsoleLogs)
+	// AND the otelslog bridge -> the global OTel LoggerProvider -> App Insights
+	// AppTraces. The bridge targets the GLOBAL LoggerProvider, which is the no-op
+	// provider until SetupTelemetry (called next) installs an SDK one; the global
+	// provider's delegation upgrades this logger in place, so building it before
+	// SetupTelemetry is correct (tc-1x8j / tc-8x8g / ADR 0027). Without it the
+	// worker's slog records (e.g. digest "send failed") never reach telemetry —
+	// worker spans arrive but logs do not, leaving ACS send failures invisible.
+	logger := platform.NewOTelLogger(os.Stdout, cfg.LogLevel)
 
 	mode := os.Getenv("WORKER_MODE")
 
 	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
-	// local/dev boots leave the no-op TracerProvider in place. OTEL_SERVICE_NAME
-	// (set to town-crier-worker-go by infra) drives the service name on exported
-	// spans. The deferred shutdown force-flushes the final batch before this
-	// short-lived process exits — without it the worker can terminate before its
-	// spans reach the collector (mirrors the .NET worker's ForceFlush).
+	// local/dev boots leave the no-op Tracer and Logger providers in place.
+	// OTEL_SERVICE_NAME (set to town-crier-worker-go by infra) drives the service
+	// name on exported spans and logs. The deferred shutdown force-flushes the
+	// final batch before this short-lived process exits — without it the worker
+	// can terminate before its spans and logs reach the collector (mirrors the
+	// .NET worker's ForceFlush).
 	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
 	if err != nil {
 		log.Print(err)
