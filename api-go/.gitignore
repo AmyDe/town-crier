@@ -1,0 +1,4 @@
+# Compiled command binaries produced by `go build ./cmd/...` at the module root.
+# The deployable artifacts are built inside the Docker images, never committed.
+/api
+/worker

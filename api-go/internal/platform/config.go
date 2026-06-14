@@ -56,6 +56,19 @@ type Config struct {
 	Auth0M2MClientID     string
 	Auth0M2MClientSecret SecretString
 
+	// ServiceBusNamespace and ServiceBusQueueName address the Azure Service Bus
+	// poll-trigger queue the worker probes and seeds (WORKER_MODE=poll-bootstrap
+	// and poll-sb). ServiceBusNamespace is the fully-qualified namespace
+	// (e.g. sb-town-crier-prod.servicebus.windows.net); ServiceBusQueueName is the
+	// trigger queue name. Authentication is the pinned user-assigned managed
+	// identity (AzureClientID) — no SAS / connection string, mirroring the Cosmos
+	// identity model. Both are empty on jobs that don't touch Service Bus (digest,
+	// hourly-digest, dormant-cleanup), in which case the Service Bus client is not
+	// constructed and the poll modes refuse to run rather than crash. The infra
+	// bead tc-uzm1 wires these env vars additively onto the prod poll jobs.
+	ServiceBusNamespace string
+	ServiceBusQueueName string
+
 	// ProDomains is the comma-separated allow-list of email domains that
 	// auto-grant the Pro tier on a verified-email registration. Mirrors .NET's
 	// Subscription:AutoGrant:ProDomains. Empty disables auto-grant.
@@ -109,6 +122,9 @@ func LoadConfig() (Config, error) {
 		CosmosEndpoint: os.Getenv("COSMOS_ENDPOINT"),
 		CosmosDatabase: os.Getenv("COSMOS_DATABASE"),
 		AzureClientID:  os.Getenv("AZURE_CLIENT_ID"),
+
+		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
+		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),
 
 		Auth0M2MClientID:     os.Getenv("AUTH0_M2M_CLIENT_ID"),
 		Auth0M2MClientSecret: NewSecret(os.Getenv("AUTH0_M2M_CLIENT_SECRET")),
