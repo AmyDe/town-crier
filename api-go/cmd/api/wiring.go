@@ -17,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
+	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
@@ -24,6 +25,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"github.com/google/uuid"
 )
 
 // anonymousPatterns lists the mux patterns registered with AllowAnonymous in
@@ -90,7 +92,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -120,10 +122,18 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		watchzones.Routes(mux, watchZoneStore, logger)
 		// application-authorities derives from the user's watch zones plus the
 		// static authority data; it needs no Cosmos applications store.
-		applications.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
+		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
 	}
 	if appStore != nil {
 		applications.Routes(mux, appStore, logger)
+	}
+	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
+		// Watch-zone create (returns nearby applications) + the per-zone
+		// applications list. Create enforces the tier's zone quota from the
+		// profile store and resolves the authority from coordinates via the
+		// geocode client when the request omits one; the applications list
+		// augments each row with its latest unread notification.
+		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil {
 		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,
