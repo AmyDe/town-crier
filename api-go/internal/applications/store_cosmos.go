@@ -67,6 +67,27 @@ func (s *CosmosStore) GetByAuthorityAndName(ctx context.Context, authorityCode, 
 	return doc.toDomain(), true, nil
 }
 
+// GetByUID looks up an application by its raw PlanIt uid within the authorityCode
+// partition, via a single-partition query on the uid field. It mirrors .NET
+// GetByUidAsync(uid, authorityCode): used by the saved-application lazy snapshot
+// backfill, where a legacy row holds the bare uid and the authority is known.
+// The boolean reports presence; a miss is normal (the master record may be gone).
+func (s *CosmosStore) GetByUID(ctx context.Context, uid, authorityCode string) (PlanningApplication, bool, error) {
+	const query = "SELECT * FROM c WHERE c.uid = @uid"
+	raws, err := s.items.QueryItems(ctx, authorityCode, query, map[string]any{"@uid": uid})
+	if err != nil {
+		return PlanningApplication{}, false, fmt.Errorf("query application uid %q in %q: %w", uid, authorityCode, err)
+	}
+	if len(raws) == 0 {
+		return PlanningApplication{}, false, nil
+	}
+	var doc applicationDocument
+	if err := json.Unmarshal(raws[0], &doc); err != nil {
+		return PlanningApplication{}, false, fmt.Errorf("decode application uid %q: %w", uid, err)
+	}
+	return doc.toDomain(), true, nil
+}
+
 // FindNearby returns every application within radiusMetres of (latitude,
 // longitude) inside the authorityCode partition, via a single-partition
 // ST_DISTANCE spatial query against the GeoJSON location. It mirrors .NET
