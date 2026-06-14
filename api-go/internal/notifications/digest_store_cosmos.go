@@ -11,7 +11,8 @@ import (
 
 // DigestItems is the consumer-side slice of the Notifications container the
 // digest store uses: a single-partition query (a user's recent / unsent rows), a
-// cross-partition DISTINCT projection (the users with unsent emails), and an
+// cross-partition projection with client-side dedup (the users with unsent
+// emails — azcosmos cannot serve a cross-partition DISTINCT, tc-b7cm), and an
 // upsert (writing back the emailSent flag). platform.CosmosContainer satisfies
 // it structurally.
 type DigestItems interface {
@@ -69,24 +70,36 @@ func (s *DigestStore) UnsentEmailsByUser(ctx context.Context, userID string) ([]
 	return decodeDigests(raws, userID)
 }
 
-// userIDsWithUnsentEmailsQuery projects the distinct user ids that have at least
-// one unsent-email notification, across all partitions. Mirrors .NET
+// userIDsWithUnsentEmailsQuery projects the user ids that have at least one
+// unsent-email notification, across all partitions. It is a cross-partition
+// projection with client-side dedup (azcosmos cannot serve a cross-partition
+// DISTINCT — the gateway returns 400 "can not be directly served by the
+// gateway"; tc-b7cm). The same row's userId repeats once per unsent
+// notification, so UserIDsWithUnsentEmails collapses them in Go. Mirrors .NET
 // GetUserIdsWithUnsentEmailsCrossPartitionAsync.
-const userIDsWithUnsentEmailsQuery = "SELECT DISTINCT VALUE c.userId FROM c WHERE c.emailSent = false OR NOT IS_DEFINED(c.emailSent)"
+const userIDsWithUnsentEmailsQuery = "SELECT VALUE c.userId FROM c WHERE c.emailSent = false OR NOT IS_DEFINED(c.emailSent)"
 
 // UserIDsWithUnsentEmails returns every user id with at least one unsent-email
 // notification — the hourly cycle's candidate set before per-user tier gating.
+// The cross-partition projection returns one row per unsent notification, so the
+// ids are de-duplicated here (a cross-partition DISTINCT 400s at the gateway,
+// tc-b7cm). First-seen order is preserved.
 func (s *DigestStore) UserIDsWithUnsentEmails(ctx context.Context) ([]string, error) {
 	raws, err := s.items.QueryItemsCrossPartition(ctx, userIDsWithUnsentEmailsQuery, nil)
 	if err != nil {
 		return nil, fmt.Errorf("query users with unsent emails: %w", err)
 	}
 	userIDs := make([]string, 0, len(raws))
+	seen := make(map[string]struct{}, len(raws))
 	for _, raw := range raws {
 		var id string
 		if err := json.Unmarshal(raw, &id); err != nil {
 			return nil, fmt.Errorf("decode user id: %w", err)
 		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
 		userIDs = append(userIDs, id)
 	}
 	return userIDs, nil
