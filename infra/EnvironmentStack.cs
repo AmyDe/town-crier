@@ -376,13 +376,14 @@ public static class EnvironmentStack
         }
 
         // Container App (Go API) — runs ALONGSIDE the .NET API during the Go
-        // migration (GH#418). Dev-only until cutover; Iteration 10 adds prod.
-        // No custom domain: it serves on its default ACA FQDN, and cutover is a
-        // Cloudflare DNS flip of the api domain once parity is verified.
+        // migration (GH#418). Created for BOTH dev and prod (Iteration 10 added
+        // prod). No custom domain: it serves on its default ACA FQDN, and cutover
+        // is a Cloudflare DNS flip of the api domain to that FQDN once parity is
+        // verified — the owner triggers the DNS flip, this stack never does.
         // Same placeholder-image bootstrap as the .NET app: the quickstart image
         // listens on 80 (not 8080), so the first revision stays unhealthy until
         // CD pushes the real town-crier-api-go image.
-        if (env == "dev")
+        if (env == "dev" || env == "prod")
         {
             _ = new ContainerApp($"ca-town-crier-api-go-{env}", new ContainerAppArgs
             {
@@ -391,10 +392,16 @@ public static class EnvironmentStack
                 ManagedEnvironmentId = containerAppsEnvironmentId,
                 Configuration = new ConfigurationArgs
                 {
-                    // Multiple: pr-gate.yml stages per-PR Go revisions with
-                    // --revision-suffix and pinned traffic, same as the .NET flow.
-                    ActiveRevisionsMode = ActiveRevisionsMode.Multiple,
-                    MaxInactiveRevisions = 5,
+                    // Single in prod: cd-prod deploys one revision and the platform
+                    // deactivates the prior one, matching the .NET prod app.
+                    // Multiple in dev: pr-gate.yml stages per-PR Go revisions with
+                    // --revision-suffix and pinned traffic, which Single mode rejects.
+                    ActiveRevisionsMode = env == "prod"
+                        ? ActiveRevisionsMode.Single
+                        : ActiveRevisionsMode.Multiple,
+                    // MaxInactiveRevisions only applies to Multiple mode (caps ACR
+                    // storage growth from staged PR revisions); omit it under Single.
+                    MaxInactiveRevisions = env == "prod" ? (Input<int>?)null : 5,
                     Ingress = new IngressArgs
                     {
                         External = true,
@@ -463,7 +470,11 @@ public static class EnvironmentStack
                     },
                     Scale = new ScaleArgs
                     {
-                        // Scale-to-zero: no traffic until cutover, so idle cost stays nil.
+                        // Scale-to-zero for BOTH dev and prod: the prod Go app stays
+                        // idle until the post-cutover DNS flip sends traffic its way, so
+                        // there is no idle cost while it waits. A later bead bumps prod
+                        // MinReplicas to 1 after cutover (to skip cold starts), mirroring
+                        // the .NET prod app.
                         MinReplicas = 0,
                         MaxReplicas = 1,
                     },

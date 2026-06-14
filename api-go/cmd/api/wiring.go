@@ -26,6 +26,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // anonymousPatterns lists the mux patterns registered with AllowAnonymous in
@@ -174,9 +175,15 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	}
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)
-	return middleware.CORS(corsOrigins)(
+	chain := middleware.CORS(corsOrigins)(
 		middleware.ErrorBody(logger)(
 			middleware.Recover(logger)(authed),
 		),
 	)
+	// otelhttp is the outermost wrapper so its span covers the whole request,
+	// including the CORS, error-envelope and panic-recovery middleware. When
+	// telemetry is disabled (no OTLP endpoint) the global no-op TracerProvider
+	// makes this produce no-op spans at negligible cost, so the wiring stays
+	// unconditional and every existing httptest assertion is unaffected.
+	return otelhttp.NewHandler(chain, "town-crier-api-go")
 }

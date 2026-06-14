@@ -36,6 +36,21 @@ func main() {
 
 	logger := platform.NewLogger(os.Stdout, cfg.LogLevel)
 
+	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
+	// local/dev boots leave the no-op TracerProvider in place. When the ACA OTel
+	// agent injects the endpoint, traces export to it over OTLP/gRPC.
+	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(shutdownCtx); err != nil {
+			logger.Error("telemetry shutdown", "error", err)
+		}
+	}()
+
 	validator, err := auth.NewAuth0Validator(cfg.Auth0Domain, cfg.Auth0Audience, logger)
 	if err != nil {
 		log.Fatal(err)
