@@ -5,12 +5,69 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// cosmosTracerName is the instrumentation scope for the Cosmos client spans. The
+// tracer is fetched per call from the global TracerProvider (otel.Tracer), so it
+// self-disables to no-op spans when telemetry is off (OTEL_EXPORTER_OTLP_ENDPOINT
+// unset) — see telemetry.go. tc-8x8g / ADR 0027: without these client spans the
+// Go API emits zero AppDependencies, leaving Cosmos latency and throttling
+// invisible in App Insights.
+const cosmosTracerName = "github.com/AmyDe/town-crier/api-go/internal/platform"
+
+// traceCosmosOp wraps a single outbound azcosmos call in an OpenTelemetry client
+// span so it surfaces as an App Insights dependency. The span is a child of
+// whatever span rides on ctx (the incoming request span), and the ctx carrying
+// the span is passed to op so the SDK call links into the same trace. Attributes
+// follow the OTel DB semantic conventions so App Insights populates the
+// dependency Type/Target; on error the span records the error and is marked
+// Error. The span ends regardless of outcome.
+func traceCosmosOp(ctx context.Context, c *CosmosContainer, op string, fn func(context.Context) error) error {
+	tracer := otel.Tracer(cosmosTracerName)
+	ctx, span := tracer.Start(ctx, "Cosmos "+op+" "+c.name,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system", "cosmosdb"),
+			attribute.String("db.operation", op),
+			attribute.String("db.operation.name", op),
+			attribute.String("db.cosmosdb.container", c.name),
+			attribute.String("server.address", c.accountHost),
+		),
+	)
+	defer span.End()
+
+	if err := fn(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+	return nil
+}
+
+// parseAccountHost extracts the bare host (no port) from a Cosmos account
+// endpoint URL so it can populate the dependency Target (server.address). An
+// empty or unparseable endpoint yields an empty host rather than an error — the
+// span is still useful without a Target.
+func parseAccountHost(endpoint string) string {
+	if endpoint == "" {
+		return ""
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
 
 // cosmosMaxRetries is the number of retries (not attempts) the SDK performs on a
 // throttled/transient response. Two retries plus the initial try gives the
@@ -40,6 +97,11 @@ func cosmosRetryOptions() policy.RetryOptions {
 // Users container, keyed on the user id. SDK types never leak past its methods.
 type CosmosContainer struct {
 	container *azcosmos.ContainerClient
+	// name and accountHost label the OTel dependency spans (tc-8x8g): the
+	// container name becomes db.cosmosdb.container and the account host becomes
+	// server.address (the dependency Target in App Insights).
+	name        string
+	accountHost string
 }
 
 // NewCosmosContainer builds a Cosmos client authenticated by the pinned
@@ -83,7 +145,11 @@ func NewCosmosContainerNamed(cfg Config, name string, logger *slog.Logger) (*Cos
 	if err != nil {
 		return nil, fmt.Errorf("open container %q: %w", name, err)
 	}
-	return &CosmosContainer{container: container}, nil
+	return &CosmosContainer{
+		container:   container,
+		name:        name,
+		accountHost: parseAccountHost(cfg.CosmosEndpoint),
+	}, nil
 }
 
 // Cosmos container names mirror the .NET CosmosContainerNames constants so the
@@ -120,23 +186,35 @@ const (
 
 // ReadItem point-reads the document with the given id from its partition.
 func (c *CosmosContainer) ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error) {
-	resp, err := c.container.ReadItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
+	var value []byte
+	err := traceCosmosOp(ctx, c, "ReadItem", func(ctx context.Context) error {
+		resp, err := c.container.ReadItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
+		if err != nil {
+			return err
+		}
+		value = resp.Value
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return resp.Value, nil
+	return value, nil
 }
 
 // UpsertItem upserts the document into the given partition.
 func (c *CosmosContainer) UpsertItem(ctx context.Context, partitionKey string, item []byte) error {
-	_, err := c.container.UpsertItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), item, nil)
-	return err
+	return traceCosmosOp(ctx, c, "UpsertItem", func(ctx context.Context) error {
+		_, err := c.container.UpsertItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), item, nil)
+		return err
+	})
 }
 
 // DeleteItem deletes the document with the given id from its partition.
 func (c *CosmosContainer) DeleteItem(ctx context.Context, partitionKey, id string) error {
-	_, err := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
-	return err
+	return traceCosmosOp(ctx, c, "DeleteItem", func(ctx context.Context) error {
+		_, err := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
+		return err
+	})
 }
 
 // QueryItems runs a single-partition parametrised query and returns the raw
@@ -144,15 +222,21 @@ func (c *CosmosContainer) DeleteItem(ctx context.Context, partitionKey, id strin
 // targets that logical partition), so it never fans out cross-partition. params
 // binds @name placeholders.
 func (c *CosmosContainer) QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
-	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
-	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKeyString(partitionKey), opts)
 	var items [][]byte
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, err
+	err := traceCosmosOp(ctx, c, "QueryItems", func(ctx context.Context) error {
+		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKeyString(partitionKey), opts)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return err
+			}
+			items = append(items, page.Items...)
 		}
-		items = append(items, page.Items...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return items, nil
 }
@@ -181,15 +265,21 @@ func (c *CosmosContainer) CountItems(ctx context.Context, partitionKey, query st
 // admin find-by-email lookup needs. An empty partition key plus the SDK's
 // default cross-partition flag triggers the cross-partition path.
 func (c *CosmosContainer) QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error) {
-	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
-	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
 	var items [][]byte
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, err
+	err := traceCosmosOp(ctx, c, "QueryItemsCrossPartition", func(ctx context.Context) error {
+		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
+		for pager.More() {
+			page, err := pager.NextPage(ctx)
+			if err != nil {
+				return err
+			}
+			items = append(items, page.Items...)
 		}
-		items = append(items, page.Items...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return items, nil
 }
@@ -202,26 +292,36 @@ func (c *CosmosContainer) QueryItemsCrossPartition(ctx context.Context, query st
 // pages with a non-nil token — an inherent property of cross-partition queries
 // shared by both APIs.
 func (c *CosmosContainer) QueryPageCrossPartition(ctx context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error) {
-	opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
-	if pageSize > 0 {
-		opts.PageSizeHint = clampPageSize(pageSize)
-	}
-	if continuationToken != "" {
-		opts.ContinuationToken = &continuationToken
-	}
-	pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
-	if !pager.More() {
-		return nil, "", nil
-	}
-	page, err := pager.NextPage(ctx)
+	var (
+		items [][]byte
+		next  string
+	)
+	err := traceCosmosOp(ctx, c, "QueryPageCrossPartition", func(ctx context.Context) error {
+		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
+		if pageSize > 0 {
+			opts.PageSizeHint = clampPageSize(pageSize)
+		}
+		if continuationToken != "" {
+			opts.ContinuationToken = &continuationToken
+		}
+		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
+		if !pager.More() {
+			return nil
+		}
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		items = page.Items
+		if page.ContinuationToken != nil {
+			next = *page.ContinuationToken
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, "", err
 	}
-	next := ""
-	if page.ContinuationToken != nil {
-		next = *page.ContinuationToken
-	}
-	return page.Items, next, nil
+	return items, next, nil
 }
 
 // clampPageSize bounds the page size to a safe int32 range for the SDK hint.
