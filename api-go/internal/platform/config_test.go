@@ -147,6 +147,38 @@ func TestLoadConfig_M2MConfiguredOnlyWhenAllPresent(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_ServiceBus(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("SERVICE_BUS_NAMESPACE", "sb-town-crier-prod.servicebus.windows.net")
+		t.Setenv("SERVICE_BUS_QUEUE_NAME", "poll-triggers")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.ServiceBusNamespace != "sb-town-crier-prod.servicebus.windows.net" {
+			t.Errorf("ServiceBusNamespace: got %q", cfg.ServiceBusNamespace)
+		}
+		if cfg.ServiceBusQueueName != "poll-triggers" {
+			t.Errorf("ServiceBusQueueName: got %q", cfg.ServiceBusQueueName)
+		}
+	})
+
+	t.Run("absent defaults empty (Service Bus modes unwired)", func(t *testing.T) {
+		t.Setenv("SERVICE_BUS_NAMESPACE", "")
+		t.Setenv("SERVICE_BUS_QUEUE_NAME", "")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.ServiceBusNamespace != "" || cfg.ServiceBusQueueName != "" {
+			t.Errorf("ServiceBus config: got namespace=%q queue=%q, want both empty",
+				cfg.ServiceBusNamespace, cfg.ServiceBusQueueName)
+		}
+	})
+}
+
 func TestLoadConfig_ProDomains(t *testing.T) {
 	t.Setenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS", "towncrier.test, example.org")
 

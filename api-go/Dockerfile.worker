@@ -1,0 +1,19 @@
+# Town Crier worker (Go) — short-lived Container Apps Job binary.
+# Mirrors the cmd/api Dockerfile: pure-Go static binary on distroless for
+# sub-second cold starts. WORKER_MODE (set per job by infra) selects the mode.
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+
+# go.* matches go.mod / go.sum so the dependency layer caches across rebuilds.
+COPY go.* ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /app/worker ./cmd/worker
+
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+WORKDIR /app
+
+COPY --from=build /app/worker .
+
+ENTRYPOINT ["./worker"]
