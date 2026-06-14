@@ -143,6 +143,53 @@ func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, 
 	return nil
 }
 
+// receiveWaitTimeout bounds a single receive-and-delete attempt so an empty
+// queue returns promptly rather than blocking until a message arrives. It
+// mirrors .NET ServiceBusPollTriggerQueue's 5s receive timeout.
+const receiveWaitTimeout = 5 * time.Second
+
+// ReceiveTrigger destructively receives one poll-trigger message in
+// receive-and-delete mode (ADR 0024 amendment): the message is removed from the
+// queue the instant it is received — there is no lock, no Complete, no Abandon.
+// It reports whether a message was consumed (false when the queue is empty
+// within the receive window). The body is discarded: the trigger is a "run once"
+// tick, so its presence is all the orchestrator needs.
+//
+// A receiver is opened per call and closed after; the orchestrator runs once per
+// process so there is no hot-path receiver to pool. The wait is bounded by
+// receiveWaitTimeout so an empty queue does not block the cycle.
+func (c *Client) ReceiveTrigger(ctx context.Context) (received bool, err error) {
+	receiver, err := c.sbClient.NewReceiverForQueue(c.queueName, &azservicebus.ReceiverOptions{
+		ReceiveMode: azservicebus.ReceiveModeReceiveAndDelete,
+	})
+	if err != nil {
+		return false, fmt.Errorf("build receiver: %w", err)
+	}
+	defer func() {
+		if closeErr := receiver.Close(ctx); closeErr != nil && err == nil {
+			err = fmt.Errorf("close receiver: %w", closeErr)
+		}
+	}()
+
+	waitCtx, cancel := context.WithTimeout(ctx, receiveWaitTimeout)
+	defer cancel()
+
+	msgs, err := receiver.ReceiveMessages(waitCtx, 1, nil)
+	if err != nil {
+		// A timeout waiting for a message means an empty queue, not a failure: the
+		// deadline-exceeded is scoped to waitCtx. A caller-cancelled parent ctx is
+		// a genuine error — distinguish the two via the parent ctx.
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return false, nil
+		}
+		return false, fmt.Errorf("receive poll trigger: %w", err)
+	}
+	return len(msgs) > 0, nil
+}
+
 // Close releases the underlying SDK clients.
 func (c *Client) Close(ctx context.Context) error {
 	if c.sbClient == nil {
