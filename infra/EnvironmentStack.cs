@@ -553,7 +553,8 @@ public static class EnvironmentStack
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
                 appInsightsConnectionString, acsConnectionString,
-                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags,
+                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox,
+                auth0Domain, auth0M2mClientId, auth0M2mClientSecret, tags,
                 pollingBus);
 
             _ = CreateWorkerJob("poll-bootstrap", cronExpression: "*/30 * * * *", replicaTimeout: 120, workerMode: "poll-bootstrap",
@@ -561,7 +562,8 @@ public static class EnvironmentStack
                 acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
                 cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
                 appInsightsConnectionString, acsConnectionString,
-                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags,
+                apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox,
+                auth0Domain, auth0M2mClientId, auth0M2mClientSecret, tags,
                 pollingBus);
         }
 
@@ -570,14 +572,16 @@ public static class EnvironmentStack
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
             appInsightsConnectionString, acsConnectionString,
-            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox,
+            auth0Domain, auth0M2mClientId, auth0M2mClientSecret, tags);
 
         CreateWorkerJob("digest-hourly", "0 * * * *", replicaTimeout: 300, workerMode: "hourly-digest",
             env, resourceGroup.Name, containerAppsEnvironmentId,
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
             appInsightsConnectionString, acsConnectionString,
-            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox,
+            auth0Domain, auth0M2mClientId, auth0M2mClientSecret, tags);
 
         // Dormant account cleanup — daily at 03:30 UTC (off-peak, avoids top-of-hour
         // digest-hourly run). Cascades UK GDPR Art.5(1)(e) erasure for UserProfiles
@@ -587,7 +591,8 @@ public static class EnvironmentStack
             acrLoginServer, acrPullIdentityId, cosmosDataIdentityId,
             cosmosAccountEndpoint, cosmosDatabase.Name, cosmosDataIdentityClientId,
             appInsightsConnectionString, acsConnectionString,
-            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox, tags);
+            apnsAuthKey, apnsKeyId, apnsTeamId, apnsBundleId, apnsUseSandbox,
+            auth0Domain, auth0M2mClientId, auth0M2mClientSecret, tags);
 
         // Static Web App (Landing Page)
         var staticWebApp = new StaticSite($"swa-town-crier-{env}", new StaticSiteArgs
@@ -682,6 +687,9 @@ public static class EnvironmentStack
         string apnsTeamId,
         string apnsBundleId,
         string apnsUseSandbox,
+        string auth0Domain,
+        Output<string> auth0M2mClientId,
+        Output<string> auth0M2mClientSecret,
         InputMap<string> tags,
         ServiceBusPollingInfra? pollingBus = null)
     {
@@ -691,7 +699,11 @@ public static class EnvironmentStack
         // feature flag the API/worker DI both read.
         var envVars = new List<EnvironmentVarArgs>
         {
-            new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
+            // Single OTEL_SERVICE_NAME for the job: the Go worker reads it (→ AppRoleName
+            // town-crier-worker-go); the legacy .NET worker ignores it (it hardcodes
+            // AddService("town-crier-worker") in Program.cs), so flipping it here ahead of the
+            // image swap is safe and avoids a duplicate-named env var. See tc-fsn6.
+            new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker-go" },
             new() { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
             new() { Name = "Cosmos__DatabaseName", Value = cosmosDatabaseName },
             new() { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
@@ -718,12 +730,42 @@ public static class EnvironmentStack
             envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__ResourceGroup", Value = pollingBus.ResourceGroup });
         }
 
+        // Go worker env (epic tc-wad3 Phase 2, infra-before-image step tc-uzm1).
+        // Added ADDITIVELY in Go's SINGLE-underscore naming so the currently-deployed
+        // .NET worker image — which only binds the double-underscore keys above via
+        // IConfiguration — ignores every var here. The CI image-swap (tc-hm20) then
+        // flips the job image to town-crier-worker-go, which reads exactly these keys
+        // (see api-go/internal/platform/config.go LoadConfig). Each value is sourced
+        // from the SAME Pulumi config/secret/output as its .NET counterpart, and the
+        // per-mode split mirrors the .NET env composition above.
+        AddGoWorkerEnv(envVars, workerMode, cosmosAccountEndpoint, cosmosDatabaseName,
+            auth0Domain, apnsUseSandbox, pollingBus);
+
         var useEventTrigger = cronExpression is null;
         if (useEventTrigger && pollingBus is null)
         {
             throw new ArgumentException(
                 "Event-triggered jobs require a ServiceBusPollingInfra (queue + namespace).",
                 nameof(pollingBus));
+        }
+
+        // The dormant-cleanup worker deletes the Auth0 user during delete-cascade, so it
+        // needs the Auth0 Management (M2M) credentials. The Go worker reads them from
+        // AUTH0_M2M_CLIENT_ID / AUTH0_M2M_CLIENT_SECRET (added by AddGoWorkerEnv via
+        // SecretRef), so declare the backing secrets on this job only. The values come
+        // from the same Pulumi secrets the API container app uses (auth0M2mClientId /
+        // auth0M2mClientSecret). The legacy .NET worker reads them via Auth0:M2M:* but
+        // never had them wired, so this also fixes its dormant-cleanup Auth0 deletes.
+        var secrets = new List<SecretArgs>
+        {
+            new() { Name = "acs-connection-string", Value = acsConnectionString },
+            new() { Name = "apns-auth-key", Value = apnsAuthKey },
+        };
+
+        if (workerMode == "dormant-cleanup")
+        {
+            secrets.Add(new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId });
+            secrets.Add(new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret });
         }
 
         var configuration = new JobConfigurationArgs
@@ -737,11 +779,7 @@ public static class EnvironmentStack
                     Identity = acrPullIdentityId,
                 },
             },
-            Secrets = new[]
-            {
-                new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
-                new SecretArgs { Name = "apns-auth-key", Value = apnsAuthKey },
-            },
+            Secrets = secrets.ToArray(),
         };
 
         if (useEventTrigger)
@@ -827,6 +865,81 @@ public static class EnvironmentStack
             // CD pipeline updates the container image via `az containerapp job update`.
             IgnoreChanges = { "template.containers[0].image" },
         });
+    }
+
+    /// <summary>
+    /// Appends the Go worker's env vars (SINGLE-underscore names) to <paramref name="envVars"/>
+    /// additively, mirroring the .NET (double-underscore) env composed by the caller. The Go
+    /// names are inert for the .NET image (IConfiguration only binds the "__" keys), so this is
+    /// safe to deploy ahead of the image swap (epic tc-wad3 / tc-uzm1). Values are taken from the
+    /// SAME Pulumi config/secret/output as the matching .NET var; per-mode conditionality mirrors
+    /// the .NET intent (SB only on poll jobs, push only on digest jobs, Auth0 only on dormant,
+    /// PlanIt/polling only on the SB-triggered poll job). The consumer is
+    /// api-go/internal/platform/config.go LoadConfig.
+    /// </summary>
+    private static void AddGoWorkerEnv(
+        List<EnvironmentVarArgs> envVars,
+        string? workerMode,
+        Output<string> cosmosAccountEndpoint,
+        Output<string> cosmosDatabaseName,
+        string auth0Domain,
+        string apnsUseSandbox,
+        ServiceBusPollingInfra? pollingBus)
+    {
+        // All modes: Go-named Cosmos endpoint/database. OTEL_SERVICE_NAME and AZURE_CLIENT_ID
+        // are already on the shared base env block (single entries) — re-adding them here would
+        // create duplicate-named env vars on the job. The Go worker resolves a Cosmos client and
+        // DefaultAzureCredential in every mode from those base vars. See tc-fsn6.
+        envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint });
+        envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabaseName });
+
+        // poll / poll-bootstrap: Service Bus (mirrors .NET ServiceBus__Namespace/QueueName).
+        if (pollingBus is not null)
+        {
+            envVars.Add(new EnvironmentVarArgs { Name = "SERVICE_BUS_NAMESPACE", Value = pollingBus.NamespaceFqdn });
+            envVars.Add(new EnvironmentVarArgs { Name = "SERVICE_BUS_QUEUE_NAME", Value = pollingBus.QueueName });
+        }
+
+        // poll only: PlanIt client + polling-cycle budgets. Mirrors the .NET PlanIt:* and
+        // Polling:* defaults (PlanItRetryOptions / PollingOptions / worker Program.cs); the
+        // literals here are those same defaults made explicit so the Go poll cycle is sized
+        // identically. poll-bootstrap never polls PlanIt, so it doesn't need these.
+        if (workerMode == "poll-sb")
+        {
+            envVars.Add(new EnvironmentVarArgs { Name = "PLANIT_BASE_URL", Value = "https://www.planit.org.uk/" });
+            envVars.Add(new EnvironmentVarArgs { Name = "PLANIT_THROTTLE_DELAY_SECONDS", Value = "2" });
+            envVars.Add(new EnvironmentVarArgs { Name = "PLANIT_RETRY_MAX_RETRIES", Value = "3" });
+            envVars.Add(new EnvironmentVarArgs { Name = "PLANIT_RETRY_INITIAL_BACKOFF_SECONDS", Value = "1" });
+            envVars.Add(new EnvironmentVarArgs { Name = "PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS", Value = "5" });
+            envVars.Add(new EnvironmentVarArgs { Name = "POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", Value = "3" });
+            envVars.Add(new EnvironmentVarArgs { Name = "POLLING_HANDLER_BUDGET_SECONDS", Value = "240" });
+            envVars.Add(new EnvironmentVarArgs { Name = "POLL_REPLICA_TIMEOUT_SECONDS", Value = "600" });
+            envVars.Add(new EnvironmentVarArgs { Name = "POLL_SHUTDOWN_GRACE_SECONDS", Value = "30" });
+        }
+
+        // digest / hourly-digest: APNs push + ACS email (mirrors .NET Apns:* and
+        // AzureCommunicationServices:ConnectionString). The apns-auth-key and
+        // acs-connection-string secrets already exist on every job (declared above).
+        if (workerMode is "digest" or "hourly-digest")
+        {
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_ENABLED", Value = "true" });
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_AUTH_KEY", SecretRef = "apns-auth-key" });
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_KEY_ID", Value = "L2J5PQASN5" });
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_TEAM_ID", Value = "4574VQ7N2X" });
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_BUNDLE_ID", Value = "uk.towncrierapp.mobile" });
+            envVars.Add(new EnvironmentVarArgs { Name = "APNS_USE_SANDBOX", Value = apnsUseSandbox });
+            envVars.Add(new EnvironmentVarArgs { Name = "ACS_CONNECTION_STRING", SecretRef = "acs-connection-string" });
+        }
+
+        // dormant-cleanup: Auth0 Management (M2M) for the Auth0 user delete in the
+        // cascade (mirrors .NET Auth0:Domain / Auth0:M2M:ClientId / Auth0:M2M:ClientSecret).
+        // The auth0-m2m-* secrets are declared on this job only (see CreateWorkerJob).
+        if (workerMode == "dormant-cleanup")
+        {
+            envVars.Add(new EnvironmentVarArgs { Name = "AUTH0_DOMAIN", Value = auth0Domain });
+            envVars.Add(new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_ID", SecretRef = "auth0-m2m-client-id" });
+            envVars.Add(new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_SECRET", SecretRef = "auth0-m2m-client-secret" });
+        }
     }
 
     /// <summary>
