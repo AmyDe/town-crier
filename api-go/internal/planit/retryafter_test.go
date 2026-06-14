@@ -1,4 +1,4 @@
-package polling
+package planit
 
 import (
 	"testing"

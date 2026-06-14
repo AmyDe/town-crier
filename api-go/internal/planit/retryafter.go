@@ -1,16 +1,4 @@
-// Package polling is the Go port of the .NET TownCrier.Application.Polling and
-// TownCrier.Infrastructure.Polling slices: the Service-Bus-triggered adaptive
-// PlanIt poll (WORKER_MODE=poll-sb). It owns the trigger orchestrator, the
-// PlanIt ingestion handler, the next-run scheduler, the Cosmos etag-CAS lease
-// and poll-state stores, and the cycle-alternating authority providers.
-//
-// The crash-safety model is receive-and-delete + publish-after-consume per
-// ADR 0024 (2026-04-22 amendment): the orchestrator acquires a Cosmos lease,
-// destructively receives one trigger, runs the handler, publishes the next
-// scheduled trigger, then releases the lease. There is no Service Bus
-// Complete/Abandon — the safety-net bootstrap (internal/worker) is the sole
-// recovery path when anything fails between receive and publish.
-package polling
+package planit
 
 import (
 	"strconv"

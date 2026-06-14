@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
-	"github.com/AmyDe/town-crier/api-go/internal/polling"
 )
 
 // defaultPageSize is PlanIt's page size; a full page (>= this many records) is
@@ -264,7 +263,7 @@ func classify(resp *http.Response) error {
 	}
 	if resp.StatusCode == http.StatusTooManyRequests {
 		var retryAfter *time.Duration
-		if d, ok := polling.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+		if d, ok := ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
 			retryAfter = &d
 		}
 		return &RateLimitError{RetryAfter: retryAfter}
