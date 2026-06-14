@@ -41,7 +41,7 @@ func noopShutdown(context.Context) error { return nil }
 func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Context) error, error) {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
-		logger.Info("telemetry disabled", "reason", "OTEL_EXPORTER_OTLP_ENDPOINT unset")
+		logger.InfoContext(ctx, "telemetry disabled", "reason", "OTEL_EXPORTER_OTLP_ENDPOINT unset")
 		return noopShutdown, nil
 	}
 
@@ -68,6 +68,6 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	logger.Info("telemetry enabled", "endpoint", endpoint, "service", serviceName)
+	logger.InfoContext(ctx, "telemetry enabled", "endpoint", endpoint, "service", serviceName)
 	return tp.Shutdown, nil
 }
