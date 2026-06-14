@@ -43,7 +43,8 @@ type planItRecord struct {
 // toDomain maps a PlanIt record to the applications.PlanningApplication snapshot,
 // mirroring .NET PlanItClient.MapToDomain: location_x is longitude, location_y
 // latitude; app_type / app_state are carried as non-empty pointers; date-only
-// fields parse to *time.Time; last_different parses as an RFC3339 instant.
+// fields parse to *time.Time; last_different parses as a UTC instant, tolerating
+// the no-timezone fractional-second form PlanIt actually emits.
 func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	startDate, err := parseDateOnly(r.StartDate)
 	if err != nil {
@@ -57,7 +58,7 @@ func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	if err != nil {
 		return applications.PlanningApplication{}, fmt.Errorf("consulted_date: %w", err)
 	}
-	lastDifferent, err := time.Parse(time.RFC3339, r.LastDifferent)
+	lastDifferent, err := parsePlanItInstant(r.LastDifferent)
 	if err != nil {
 		return applications.PlanningApplication{}, fmt.Errorf("last_different %q: %w", r.LastDifferent, err)
 	}
@@ -83,8 +84,28 @@ func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 		Latitude:      r.LocationY,
 		URL:           r.URL,
 		Link:          r.Link,
-		LastDifferent: lastDifferent.UTC(),
+		LastDifferent: lastDifferent,
 	}, nil
+}
+
+// planItInstantLayouts are tried in order when parsing PlanIt's last_different.
+// PlanIt emits a naive UTC timestamp with variable fractional seconds and NO
+// timezone (e.g. "2026-06-13T00:06:34.112581"); RFC3339Nano is kept first so a
+// TZ-bearing value (should PlanIt ever send one) still parses. tc-8l96.
+var planItInstantLayouts = []string{
+	time.RFC3339Nano,             // TZ present, optional fractional seconds
+	"2006-01-02T15:04:05.999999", // no TZ, optional fractional seconds -> UTC
+}
+
+// parsePlanItInstant parses a PlanIt last_different timestamp as UTC, tolerating
+// the no-timezone fractional-second form PlanIt actually returns.
+func parsePlanItInstant(value string) (time.Time, error) {
+	for _, layout := range planItInstantLayouts {
+		if t, err := time.Parse(layout, value); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognised timestamp %q", value)
 }
 
 // parseDateOnly parses an optional "yyyy-MM-dd" PlanIt date into a *time.Time,
