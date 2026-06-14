@@ -146,70 +146,13 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 	// Instant push is a paid-tier entitlement. Free-tier users still get the
 	// notification record (picked up by the weekly digest) but no push.
 	if profile.Tier.IsPaid() && profile.Preferences.PushEnabled {
-		n.PushSent = e.sendInstantPush(ctx, zone.UserID, n)
+		n.PushSent = sendInstantPush(ctx, instantPushDeps{
+			devices: e.devices,
+			state:   e.state,
+			push:    e.push,
+			logger:  e.logger,
+		}, zone.UserID, n)
 	}
 
 	return e.notifications.Create(ctx, n)
-}
-
-// sendInstantPush loads the user's devices, sends the alert payload, prunes any
-// tokens APNs reports invalid, and reports whether a push was actually sent. A
-// user with no devices is a no-op (returns false). Every failure is logged and
-// swallowed — a push failure must not abort the record write, mirroring .NET.
-func (e *Enqueuer) sendInstantPush(ctx context.Context, userID string, n notifications.DigestNotification) bool {
-	devices, err := e.devices.ListByUser(ctx, userID)
-	if err != nil {
-		e.logger.ErrorContext(ctx, "instant push: load devices failed", "user", userID, "error", err)
-		return false
-	}
-	if len(devices) == 0 {
-		return false
-	}
-
-	badge := e.unreadBadge(ctx, userID)
-	payload, err := buildAlertPayload(n, badge)
-	if err != nil {
-		e.logger.ErrorContext(ctx, "instant push: build payload failed", "user", userID, "error", err)
-		return false
-	}
-
-	tokens := make([]string, 0, len(devices))
-	for _, d := range devices {
-		tokens = append(tokens, d.Token)
-	}
-
-	invalid, err := e.push.Send(ctx, tokens, payload)
-	if err != nil {
-		e.logger.ErrorContext(ctx, "instant push: send failed", "user", userID, "error", err)
-		return false
-	}
-	for _, token := range invalid {
-		if err := e.devices.Delete(ctx, userID, token); err != nil {
-			e.logger.WarnContext(ctx, "instant push: prune invalid token failed", "user", userID, "error", err)
-		}
-	}
-	return true
-}
-
-// unreadBadge computes the app-icon badge: the count of notifications created
-// strictly after the read watermark, plus 1 for the just-created notification
-// (not yet persisted but unread by construction). A first-touch user (no
-// watermark) starts at the Unix epoch so every notification counts, matching
-// .NET's DateTimeOffset.MinValue fallback + 1.
-func (e *Enqueuer) unreadBadge(ctx context.Context, userID string) int {
-	lastReadAt := time.Unix(0, 0).UTC()
-	st, err := e.state.Get(ctx, userID)
-	if err != nil {
-		e.logger.ErrorContext(ctx, "instant push: load notification state failed", "user", userID, "error", err)
-		return 1
-	}
-	if st != nil {
-		lastReadAt = st.LastReadAt
-	}
-	count, err := e.state.UnreadCount(ctx, userID, lastReadAt)
-	if err != nil {
-		e.logger.ErrorContext(ctx, "instant push: unread count failed", "user", userID, "error", err)
-		return 1
-	}
-	return count + 1
 }
