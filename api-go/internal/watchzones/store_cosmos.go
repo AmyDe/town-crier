@@ -165,6 +165,45 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 	return ids, nil
 }
 
+// findZonesContainingQuery selects every watch zone whose circle (centre +
+// radius) contains the candidate point, across all partitions. The candidate
+// point is bound as parameters; the zone centre is read from each document's
+// latitude/longitude columns. Mirrors .NET
+// CosmosWatchZoneRepository.FindZonesContainingCrossPartitionAsync.
+const findZonesContainingQuery = "SELECT * FROM c WHERE ST_DISTANCE(" +
+	"{'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
+	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
+
+// FindZonesContaining returns every watch zone (across all users) whose circle
+// contains the point (latitude, longitude), via a cross-partition ST_DISTANCE
+// query against each zone's centre and radius. It backs the poll-path
+// notification fan-out and decision-event dispatch (epic tc-wad3, bead tc-uc2p),
+// mirroring .NET FindZonesContainingCrossPartitionAsync. This is a deliberate
+// cross-partition scan — a polled application's coordinates must be matched
+// against every user's zones.
+func (s *CosmosStore) FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error) {
+	raws, err := s.items.QueryItemsCrossPartition(ctx, findZonesContainingQuery, map[string]any{
+		"@latitude":  latitude,
+		"@longitude": longitude,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("find zones containing point: %w", err)
+	}
+	zones := make([]WatchZone, 0, len(raws))
+	for _, raw := range raws {
+		var doc watchZoneDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode matched watch zone: %w", err)
+		}
+		zone, err := doc.toDomain()
+		if err != nil {
+			return nil, fmt.Errorf("hydrate matched watch zone: %w", err)
+		}
+		zones = append(zones, zone)
+	}
+	return zones, nil
+}
+
 // isNotFound reports whether err is a Cosmos 404 response.
 func isNotFound(err error) bool {
 	var respErr *azcore.ResponseError
