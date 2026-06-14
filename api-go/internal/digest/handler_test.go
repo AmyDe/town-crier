@@ -17,11 +17,16 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
+const (
+	testUser  = "user-1"
+	testEmail = "u1@example.com"
+)
+
 // ---- hand-written fakes ----
 
 type fakeProfiles struct {
-	byDay   map[time.Weekday][]*profiles.UserProfile
-	byID    map[string]*profiles.UserProfile
+	byDay    map[time.Weekday][]*profiles.UserProfile
+	byID     map[string]*profiles.UserProfile
 	byDayErr error
 }
 
@@ -41,10 +46,10 @@ func (f *fakeProfiles) Get(_ context.Context, userID string) (*profiles.UserProf
 }
 
 type fakeNotifications struct {
-	sinceByUser  map[string][]notifications.DigestNotification
-	unsentByUser map[string][]notifications.DigestNotification
+	sinceByUser   map[string][]notifications.DigestNotification
+	unsentByUser  map[string][]notifications.DigestNotification
 	unsentUserIDs []string
-	marked       []string // notification IDs marked email-sent
+	marked        []string // notification IDs marked email-sent
 }
 
 func (f *fakeNotifications) ByUserSince(_ context.Context, userID string, _ time.Time) ([]notifications.DigestNotification, error) {
@@ -128,9 +133,9 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))
 }
 
-func mkProfile(t *testing.T, userID, email string, tier profiles.SubscriptionTier, prefs profiles.NotificationPreferences) *profiles.UserProfile {
+func mkProfile(t *testing.T, tier profiles.SubscriptionTier, prefs profiles.NotificationPreferences) *profiles.UserProfile {
 	t.Helper()
-	p, err := profiles.NewProfile(userID, email, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	p, err := profiles.NewProfile(testUser, testEmail, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("NewProfile: %v", err)
 	}
@@ -139,20 +144,20 @@ func mkProfile(t *testing.T, userID, email string, tier profiles.SubscriptionTie
 	return p
 }
 
-func mkZone(t *testing.T, id, userID, name string, emailInstant bool) watchzones.WatchZone {
+func mkZone(t *testing.T, id, name string, emailInstant bool) watchzones.WatchZone {
 	t.Helper()
-	z, err := watchzones.NewWatchZone(id, userID, name, 51.5, -0.1, 500, 1, time.Now(), true, emailInstant)
+	z, err := watchzones.NewWatchZone(id, testUser, name, 51.5, -0.1, 500, 1, time.Now(), true, emailInstant)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}
 	return z
 }
 
-func zoneNotif(userID, uid, zoneID string) notifications.DigestNotification {
+func zoneNotif(uid, zoneID string) notifications.DigestNotification {
 	z := zoneID
 	return notifications.DigestNotification{
 		ID:                     "n-" + uid,
-		UserID:                 userID,
+		UserID:                 testUser,
 		ApplicationUID:         uid,
 		ApplicationName:        uid,
 		WatchZoneID:            &z,
@@ -180,10 +185,10 @@ func TestRunWeekly_EmailGroupsByZoneAndSavedSection(t *testing.T) {
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
 	prefs.PushEnabled = false
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierFree, prefs)
+	p := mkProfile(t, profiles.TierFree, prefs)
 
-	zoneN := zoneNotif("user-1", "uid-A", "zone-1")
-	savedN := zoneNotif("user-1", "uid-B", "")
+	zoneN := zoneNotif("uid-A", "zone-1")
+	savedN := zoneNotif("uid-B", "")
 	savedN.WatchZoneID = nil // saved-only (no zone)
 
 	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
@@ -191,7 +196,7 @@ func TestRunWeekly_EmailGroupsByZoneAndSavedSection(t *testing.T) {
 		"user-1": {zoneN, savedN},
 	}}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-1", "user-1", "Home", true)},
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
 	}}
 	email := &spyEmail{}
 	push := &spyPush{}
@@ -226,14 +231,14 @@ func TestRunWeekly_FreeTierGetsEmailButNoPush(t *testing.T) {
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
 	prefs.PushEnabled = true // push is on, but tier is Free -> no push
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierFree, prefs)
+	p := mkProfile(t, profiles.TierFree, prefs)
 
 	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
 	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
-		"user-1": {zoneNotif("user-1", "uid-A", "zone-1")},
+		"user-1": {zoneNotif("uid-A", "zone-1")},
 	}}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-1", "user-1", "Home", true)},
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
 	}}
 	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
 		"user-1": {{UserID: "user-1", Token: "tok-1", Platform: devicetokens.PlatformIos}},
@@ -258,11 +263,11 @@ func TestRunWeekly_ProTierGetsPushWithBadgeAndPrunesInvalidTokens(t *testing.T) 
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = false
 	prefs.PushEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
 	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
 	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
-		"user-1": {zoneNotif("user-1", "uid-A", "zone-1"), zoneNotif("user-1", "uid-B", "zone-1")},
+		"user-1": {zoneNotif("uid-A", "zone-1"), zoneNotif("uid-B", "zone-1")},
 	}}
 	state := &fakeState{
 		byUser: map[string]*notificationstate.State{
@@ -316,7 +321,7 @@ func TestRunWeekly_ProTierGetsPushWithBadgeAndPrunesInvalidTokens(t *testing.T) 
 func TestRunWeekly_SkipsUsersWithNoNotifications(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
 	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
 	fn := &fakeNotifications{} // no notifications for anyone
@@ -338,10 +343,10 @@ func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
-	n1 := zoneNotif("user-1", "uid-A", "zone-1")
-	n2 := zoneNotif("user-1", "uid-B", "") // saved-only bypasses per-zone gate
+	n1 := zoneNotif("uid-A", "zone-1")
+	n2 := zoneNotif("uid-B", "") // saved-only bypasses per-zone gate
 	n2.WatchZoneID = nil
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
@@ -350,7 +355,7 @@ func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {n1, n2}},
 	}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-1", "user-1", "Home", true)}, // instant enabled
+		"user-1": {mkZone(t, "zone-1", "Home", true)}, // instant enabled
 	}}
 	email := &spyEmail{}
 	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
@@ -372,15 +377,15 @@ func TestRunHourly_FreeTierSkipped(t *testing.T) {
 	// Free tier has no HourlyDigestEmails entitlement; hourly is paid-only.
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierFree, prefs)
+	p := mkProfile(t, profiles.TierFree, prefs)
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
 	fn := &fakeNotifications{
 		unsentUserIDs: []string{"user-1"},
-		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("user-1", "uid-A", "zone-1")}},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-A", "zone-1")}},
 	}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-1", "user-1", "Home", true)},
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
 	}}
 	email := &spyEmail{}
 	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
@@ -400,10 +405,10 @@ func TestRunHourly_PerZoneInstantGatingExcludesDisabledZone(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
-	inZone := zoneNotif("user-1", "uid-IN", "zone-on")
-	offZone := zoneNotif("user-1", "uid-OFF", "zone-off")
+	inZone := zoneNotif("uid-IN", "zone-on")
+	offZone := zoneNotif("uid-OFF", "zone-off")
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
 	fn := &fakeNotifications{
@@ -412,8 +417,8 @@ func TestRunHourly_PerZoneInstantGatingExcludesDisabledZone(t *testing.T) {
 	}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
 		"user-1": {
-			mkZone(t, "zone-on", "user-1", "On", true),
-			mkZone(t, "zone-off", "user-1", "Off", false), // instant disabled
+			mkZone(t, "zone-on", "On", true),
+			mkZone(t, "zone-off", "Off", false), // instant disabled
 		},
 	}}
 	email := &spyEmail{}
@@ -443,15 +448,15 @@ func TestRunHourly_AllZonesDisabledSendsNothing(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
 	fn := &fakeNotifications{
 		unsentUserIDs: []string{"user-1"},
-		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("user-1", "uid-OFF", "zone-off")}},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-OFF", "zone-off")}},
 	}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-off", "user-1", "Off", false)},
+		"user-1": {mkZone(t, "zone-off", "Off", false)},
 	}}
 	email := &spyEmail{}
 	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
@@ -470,15 +475,15 @@ func TestRunHourly_NoOpSenderDropsEmailButStillMarksSent(t *testing.T) {
 	// marks notifications sent — the NoOp returns nil, so dedup proceeds.
 	prefs := profiles.DefaultPreferences()
 	prefs.EmailDigestEnabled = true
-	p := mkProfile(t, "user-1", "u1@example.com", profiles.TierPro, prefs)
+	p := mkProfile(t, profiles.TierPro, prefs)
 
 	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
 	fn := &fakeNotifications{
 		unsentUserIDs: []string{"user-1"},
-		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("user-1", "uid-A", "zone-1")}},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-A", "zone-1")}},
 	}
 	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
-		"user-1": {mkZone(t, "zone-1", "user-1", "Home", true)},
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
 	}}
 	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, acsemail.NewNoOpSender(), &spyPush{})
 

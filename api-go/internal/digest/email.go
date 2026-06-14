@@ -38,11 +38,11 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		for _, n := range section.notifications {
 			cards.WriteString(buildNotificationCard(n))
 		}
-		zoneBlocks.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&zoneBlocks,
 			`<tr><td style="padding:16px 0 8px 0;font-size:14px;color:#666;text-transform:uppercase;letter-spacing:0.5px;">
   📍 %s
 </td></tr>
-%s`, htmlEncode(section.name), cards.String()))
+%s`, htmlEncode(section.name), cards.String())
 	}
 
 	if len(savedApplications) > 0 {
@@ -50,11 +50,11 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 		for _, n := range savedApplications {
 			savedCards.WriteString(buildNotificationCard(n))
 		}
-		zoneBlocks.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&zoneBlocks,
 			`<tr><td style="padding:16px 0 8px 0;font-size:14px;color:#666;text-transform:uppercase;letter-spacing:0.5px;">
   ★ Saved Applications
 </td></tr>
-%s`, savedCards.String()))
+%s`, savedCards.String())
 	}
 
 	plural := "s"

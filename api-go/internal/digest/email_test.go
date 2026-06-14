@@ -55,13 +55,13 @@ func TestBuildDigestHTML_RendersZoneAndSavedSections(t *testing.T) {
 
 	for _, want := range []string{
 		"Town Crier",
-		"Home",                  // zone section header
-		"Saved Applications",    // saved section header
-		"10 High St",            // zone card address
-		"5 Mill Ln",             // saved card address
-		"Householder",           // zone card type
-		"Rear extension",        // zone card description
-		"2 new applications",    // footer count (plural)
+		"Home",               // zone section header
+		"Saved Applications", // saved section header
+		"10 High St",         // zone card address
+		"5 Mill Ln",          // saved card address
+		"Householder",        // zone card type
+		"Rear extension",     // zone card description
+		"2 new applications", // footer count (plural)
 		"towncrierapp.uk/applications/19/00123/FUL", // slash-preserving detail URL
 	} {
 		if !strings.Contains(html, want) {
