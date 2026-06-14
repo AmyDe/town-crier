@@ -22,8 +22,20 @@ import (
 // class of end-to-end bug as the .NET product-ID typo (tc-7g3i.12). Go binds the
 // camelCase body (encoding/json is case-insensitive) and is the first correct
 // implementation, so its JWS-failure path (401) diverges from .NET's bugged 400
-// by design. That path is unit-tested in internal/subscriptions; the happy path
-// (a real Apple-signed payload) is deferred to tc-dpfn (blocks the it10 cutover).
+// by design. That path is unit-tested in internal/subscriptions.
+//
+// The verify/webhook HAPPY paths are not diffed live either (tc-dpfn, resolved):
+//   1. There is no diff target — .NET 400s on every camelCase body, so it never
+//      reaches the activation logic to compare against.
+//   2. A captured sandbox transaction's expiresDate is in the past by the time a
+//      stored CI artifact runs, and verify skips lapsed transactions
+//      (handler.go: "if !txn.ExpiresDate.After(now) { continue }"), so a replayed
+//      artifact returns Free — it cannot demonstrate paid activation.
+// The only way to get a live happy-path check would be a dev-only test-root seam
+// on both deployed apps; the activation + webhook lifecycle + JWS chain/signature
+// are instead covered by unit tests (TestVerify_PurchaseActivatesPro,
+// TestWebhook_SubscribedActivatesProfile, TestWebhook_DuplicateIsNoOp,
+// TestJWSVerifier_ValidChainAndSignature, ...).
 //
 // The two APIs share one Cosmos account, so the error scenarios below return the
 // same result whatever the shared user's profile state.
