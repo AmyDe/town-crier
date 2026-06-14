@@ -328,6 +328,45 @@ struct AppCoordinatorWatchZoneTests {
     #expect(sut.isSubscriptionPresented)
   }
 
+  // MARK: - Watch Zone List Gate Tracks Tier Changes (tc-ujct)
+
+  /// Regression for tc-ujct: the list VM is cached and its ``FeatureGate``
+  /// froze ``AppCoordinator/subscriptionTier`` at first build. At launch the
+  /// tier defaults to `.free` (1-zone limit) until `resolveSubscriptionTier()`
+  /// runs asynchronously; the list view is keyed `.id(subscriptionTier)` so it
+  /// rebuilds on tier change, but the factory returned the stale cached VM —
+  /// wrongly showing the upgrade badge for paid users below their limit. The
+  /// gate must reflect the live tier.
+  @Test func makeWatchZoneListViewModel_rebuildsGate_whenTierChanges() async throws {
+    let resolver = FakeSubscriptionTierResolver()
+    resolver.resolveResult = (.pro, false)
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    let sut = AppCoordinator(
+      repository: SpyPlanningApplicationRepository(),
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: SpyUserProfileRepository(),
+      tierResolver: resolver,
+      watchZoneRepository: SpyWatchZoneRepository(),
+      geocoder: SpyPostcodeGeocoder(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      appVersionProvider: SpyAppVersionProvider(),
+      versionConfigService: SpyVersionConfigService(),
+      tierCache: defaults
+    )
+
+    // First build happens before the live tier resolves: defaults to `.free`.
+    let freeVM = sut.makeWatchZoneListViewModel()
+    #expect(freeVM.featureGate.tier == .free)
+
+    // Tier resolves to a paid tier after the VM was first built.
+    await sut.resolveSubscriptionTier()
+
+    let paidVM = sut.makeWatchZoneListViewModel()
+    #expect(paidVM.featureGate.tier == .pro)
+  }
+
   // MARK: - Watch Zone Upsell
 
   @Test func makeWatchZoneListViewModel_onViewPlans_setsIsSubscriptionPresented() {
