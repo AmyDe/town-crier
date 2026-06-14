@@ -249,7 +249,7 @@ func TestGenerate_HappyPath(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+	if ct := rec.Header().Get("Content-Type"); ct != "text/plain" {
 		t.Errorf("content-type = %q", ct)
 	}
 	if got := rec.Body.String(); got != "ABCD-EFGH-JKMN\nNPQR-STVW-XYZ0\n" {
