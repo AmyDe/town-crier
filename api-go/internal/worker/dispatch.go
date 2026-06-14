@@ -51,6 +51,30 @@ type DormantRunner interface {
 	Run(ctx context.Context) (int, error)
 }
 
+// PollRunResult is the dispatcher-facing summary of one poll-sb cycle. It mirrors
+// the orchestrator's run result plus the ingestion counts the dispatch span tags
+// and the exit-code logic need, decoupling the worker package from the polling
+// package's concrete result types. The cmd/worker adapter flattens
+// polling.OrchestratorRunResult into this shape.
+type PollRunResult struct {
+	MessageReceived   bool
+	PublishedNext     bool
+	LeaseUnavailable  bool
+	ApplicationCount  int
+	AuthoritiesPolled int
+	AuthorityErrors   int
+	Termination       string
+}
+
+// PollOrchestrator is the consumer-side slice of the poll-sb orchestrator the
+// dispatcher invokes. The cmd/worker adapter over *polling.Orchestrator satisfies
+// it. It is exported so main() can hold a genuinely nil interface value when the
+// job has no Service Bus / Cosmos config — poll-sb then refuses to run rather
+// than nil-panicking.
+type PollOrchestrator interface {
+	RunOnce(ctx context.Context) (PollRunResult, error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go — main() only loads config, wires the
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
@@ -66,7 +90,7 @@ type DormantRunner interface {
 // then refuses to run rather than nil-panicking. Likewise digester / dormant may
 // be nil when the job has no Cosmos config; those modes then refuse to run rather
 // than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, logger *slog.Logger) int {
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -87,15 +111,64 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 		return runDormant(ctx, dormant, logger)
 
 	case "poll-sb":
-		// Loud, safe stub: the image is not deployed until the final cutover, so
-		// this exit-1 can never strand a real job. poll-sb lands in bead tc-yng2.
-		logger.ErrorContext(ctx, "WORKER_MODE not yet implemented in Go worker", "mode", mode)
-		return 1
+		return runPollSB(ctx, poller, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
 		return 1
 	}
+}
+
+// runPollSB executes one Service-Bus-triggered adaptive poll cycle inside a
+// telemetry span named "Polling Cycle (SB)" (mirroring the .NET worker so
+// existing App Insights queries keep working). It tags the span with the same
+// keys .NET emits (polling.sb.message_received / published_next /
+// authorities_polled / applications_ingested / termination / authority_errors)
+// and applies the .NET exit-code rule: exit 1 only when the run did NO useful
+// work AND hit authority errors. A nil orchestrator (job missing Service Bus /
+// Cosmos config) is an exit-1 condition; an orchestrator error is recorded on the
+// span and also exits 1.
+func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Polling Cycle (SB)")
+	defer span.End()
+
+	if poller == nil {
+		logger.ErrorContext(ctx, "poll-sb requires Service Bus + Cosmos config (SERVICE_BUS_* / COSMOS_*); refusing to run")
+		return 1
+	}
+
+	res, err := poller.RunOnce(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "poll-sb cycle failed", "error", err)
+		return 1
+	}
+
+	span.SetAttributes(
+		attribute.Bool("polling.sb.message_received", res.MessageReceived),
+		attribute.Bool("polling.sb.published_next", res.PublishedNext),
+		attribute.Int("polling.authorities_polled", res.AuthoritiesPolled),
+		attribute.Int("polling.applications_ingested", res.ApplicationCount),
+		attribute.Int("polling.authority_errors", res.AuthorityErrors),
+		attribute.String("polling.termination", res.Termination),
+	)
+
+	logger.InfoContext(ctx, "poll-sb cycle completed",
+		"applications_ingested", res.ApplicationCount,
+		"authorities_polled", res.AuthoritiesPolled,
+		"authority_errors", res.AuthorityErrors,
+		"lease_unavailable", res.LeaseUnavailable)
+
+	// Same exit-code semantics as the .NET poll-sb branch: only exit 1 when the
+	// run did no useful work AND hit authority errors. A quiet cycle (0 apps, 0
+	// errors), a lease-unavailable exit, and any cycle that ingested apps all
+	// exit 0.
+	if res.ApplicationCount == 0 && res.AuthorityErrors > 0 {
+		return 1
+	}
+	return 0
 }
 
 // runDigest executes one digest cycle (weekly or hourly) under a soft self-cancel
