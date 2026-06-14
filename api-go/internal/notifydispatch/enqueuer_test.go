@@ -3,7 +3,6 @@ package notifydispatch
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"strconv"
 	"testing"
@@ -19,7 +18,7 @@ import (
 
 func testLogger(t *testing.T) *slog.Logger {
 	t.Helper()
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // fakeNotifications records created notifications and serves dedup lookups from
@@ -121,15 +120,15 @@ func profileWithTier(t *testing.T, userID string, tier profiles.SubscriptionTier
 	return p
 }
 
-func testApplication(t *testing.T, areaID int, name string, lat, lng float64, lastDifferent time.Time) applications.PlanningApplication {
+func testApplication(t *testing.T, lastDifferent time.Time) applications.PlanningApplication {
 	t.Helper()
-	la, lo := lat, lng
+	la, lo := 51.5, -0.1
 	state := "Pending"
 	return applications.PlanningApplication{
-		Name:          name,
-		UID:           name,
+		Name:          "24/0001",
+		UID:           "24/0001",
 		AreaName:      "Kingston",
-		AreaID:        areaID,
+		AreaID:        99,
 		Address:       "10 High St",
 		Description:   "Loft conversion",
 		AppState:      &state,
@@ -192,7 +191,7 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
 	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
@@ -213,7 +212,7 @@ func TestEnqueuer_EnqueueForApplication_OneUserTwoZonesDedupsToOneRecord(t *test
 	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{z1, z2}}
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
 	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
@@ -231,7 +230,7 @@ func TestEnqueuer_EnqueueForApplication_SkipsZonesCreatedAfterLastDifferent(t *t
 	after := testZoneAt(t, "zone-new", "auth0|alice", time.Date(2026, 6, 12, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{before, after}}
 	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, lastDifferent)
+	app := testApplication(t, lastDifferent)
 
 	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
@@ -269,7 +268,7 @@ func TestEnqueuer_EnqueueForApplication_NoCoordsSkipsLookup(t *testing.T) {
 func TestEnqueuer_PaidTier_CreatesRecordAndPushes(t *testing.T) {
 	t.Parallel()
 	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
@@ -299,7 +298,7 @@ func TestEnqueuer_PaidTier_CreatesRecordAndPushes(t *testing.T) {
 func TestEnqueuer_FreeTier_CreatesRecordNoPush(t *testing.T) {
 	t.Parallel()
 	enq, notifs, push := newEnqueuerHarness(t, profiles.TierFree)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
@@ -316,7 +315,7 @@ func TestEnqueuer_FreeTier_CreatesRecordNoPush(t *testing.T) {
 func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 	t.Parallel()
 	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
@@ -336,7 +335,7 @@ func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 	t.Parallel()
 	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|stranger", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
@@ -362,7 +361,7 @@ func TestEnqueuer_PaidTier_NoDevicesStillWritesRecord(t *testing.T) {
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
@@ -390,7 +389,7 @@ func TestEnqueuer_PrunesInvalidTokens(t *testing.T) {
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
 	if err := enq.Enqueue(context.Background(), app, zone); err != nil {

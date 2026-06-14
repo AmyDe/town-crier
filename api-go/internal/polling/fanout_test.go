@@ -48,13 +48,13 @@ func (f *fakeEnqueuer) count() int {
 	return len(f.enqueued)
 }
 
-func decisionApp(name string, areaID int, appState string, lastDifferent time.Time) applications.PlanningApplication {
+func decisionApp(appState string, lastDifferent time.Time) applications.PlanningApplication {
 	s := appState
 	return applications.PlanningApplication{
-		Name:          name,
-		UID:           name + "/FUL",
+		Name:          "24/0001",
+		UID:           "24/0001/FUL",
 		AreaName:      "Area",
-		AreaID:        areaID,
+		AreaID:        99,
 		Address:       "1 St",
 		Description:   "d",
 		AppState:      &s,
@@ -66,12 +66,12 @@ func TestHandler_FanOut_EnqueuesEveryUpsertedApplication(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("24/0001", 99, "Undecided", ld))
+	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Undecided", ld))
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
 	enq := &fakeEnqueuer{}
-	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts(), disp, enq)
+	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, defaultHandlerOpts(), disp, enq)
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -86,15 +86,15 @@ func TestHandler_FanOut_DispatchesDecisionOnTransitionExactlyOnce(t *testing.T) 
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// Incoming app is in a decision state (Permitted).
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("24/0001", 99, "Permitted", ld))
+	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Permitted", ld))
 	apps := newFakeApps()
 	// Existing record is NOT in a decision state — so this is a new-decision transition.
-	existing := decisionApp("24/0001", 99, "Undecided", ld.Add(-time.Hour))
+	existing := decisionApp("Undecided", ld.Add(-time.Hour))
 	apps.existing["24/0001/FUL"] = existing
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
 	enq := &fakeEnqueuer{}
-	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts(), disp, enq)
+	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, defaultHandlerOpts(), disp, enq)
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -110,13 +110,13 @@ func TestHandler_FanOut_NoDecisionDispatchWhenAlreadyDecided(t *testing.T) {
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// Incoming app is Conditions (a decision state) but the existing record was
 	// ALREADY in a decision state (Permitted) — no transition, so no dispatch.
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("24/0001", 99, "Conditions", ld))
+	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Conditions", ld))
 	apps := newFakeApps()
-	apps.existing["24/0001/FUL"] = decisionApp("24/0001", 99, "Permitted", ld.Add(-time.Hour))
+	apps.existing["24/0001/FUL"] = decisionApp("Permitted", ld.Add(-time.Hour))
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
 	enq := &fakeEnqueuer{}
-	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts(), disp, enq)
+	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, defaultHandlerOpts(), disp, enq)
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -136,12 +136,12 @@ func TestHandler_FanOut_FirstSeenDecidedAppCountsAsTransition(t *testing.T) {
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// First-time insert that arrives already decided (no existing record) counts
 	// as a transition, mirroring .NET (existing == null).
-	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("24/0001", 99, "Rejected", ld))
+	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Rejected", ld))
 	apps := newFakeApps()
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
 	enq := &fakeEnqueuer{}
-	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts(), disp, enq)
+	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, defaultHandlerOpts(), disp, enq)
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -155,7 +155,7 @@ func TestHandler_FanOut_SkipsUnchangedReindex(t *testing.T) {
 	t.Parallel()
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
-	app := decisionApp("24/0001", 99, "Permitted", ld)
+	app := decisionApp("Permitted", ld)
 	pi.pages[pageKey{99, 1}] = planitPage(app)
 	apps := newFakeApps()
 	// Identical business fields already stored (only LastDifferent differs) —
@@ -166,7 +166,7 @@ func TestHandler_FanOut_SkipsUnchangedReindex(t *testing.T) {
 	state := newFakeStateStore()
 	disp := &fakeDecisionDispatcher{}
 	enq := &fakeEnqueuer{}
-	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts(), disp, enq)
+	h := newHandlerWithFanOut(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, defaultHandlerOpts(), disp, enq)
 
 	if _, err := h.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle: %v", err)

@@ -61,7 +61,7 @@ func TestEnqueuer_CreatedRecordIsDigestReadable(t *testing.T) {
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
 
-	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 
 	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)

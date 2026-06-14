@@ -62,10 +62,10 @@ func decisionApp(t *testing.T, decision string, lat, lng *float64) applications.
 
 func coord(v float64) *float64 { return &v }
 
-func proWithZonePrefs(t *testing.T, userID, zoneID string, decisionPush bool) *profiles.UserProfile {
+func proWithZonePrefs(t *testing.T, decisionPush bool) *profiles.UserProfile {
 	t.Helper()
-	p := profileWithTier(t, userID, profiles.TierPro)
-	p.ZonePreferences[zoneID] = profiles.ZonePreferences{
+	p := profileWithTier(t, "auth0|alice", profiles.TierPro)
+	p.ZonePreferences["zone-1"] = profiles.ZonePreferences{
 		NewApplicationPush: true,
 		DecisionPush:       decisionPush,
 	}
@@ -77,7 +77,7 @@ func newDecisionHarness(
 	zones *fakeZones,
 	saved *fakeSaved,
 	profs *fakeProfiles,
-) (*DecisionDispatcher, *fakeNotifications, *fakePush, *fakeDevices) {
+) (*DecisionDispatcher, *fakeNotifications, *fakePush) {
 	t.Helper()
 	notifs := newFakeNotifications()
 	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
@@ -90,7 +90,7 @@ func newDecisionHarness(
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	return d, notifs, push, devs
+	return d, notifs, push
 }
 
 func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.T) {
@@ -99,9 +99,9 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	saved := &fakeSaved{}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
-		"auth0|alice": proWithZonePrefs(t, "auth0|alice", "zone-1", true),
+		"auth0|alice": proWithZonePrefs(t, true),
 	}}
-	d, notifs, push, _ := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -133,9 +133,9 @@ func TestDecisionDispatcher_ZoneMatch_DecisionPushOptedOut_RecordButNoPush(t *te
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
-		"auth0|alice": proWithZonePrefs(t, "auth0|alice", "zone-1", false),
+		"auth0|alice": proWithZonePrefs(t, false),
 	}}
-	d, notifs, push, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Rejected", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -156,7 +156,7 @@ func TestDecisionDispatcher_FreeTier_RecordNoPush(t *testing.T) {
 	free := profileWithTier(t, "auth0|alice", profiles.TierFree)
 	free.ZonePreferences["zone-1"] = profiles.ZonePreferences{DecisionPush: true}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": free}}
-	d, notifs, push, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -177,7 +177,7 @@ func TestDecisionDispatcher_SavedOnly_NilZoneSourcesSaved(t *testing.T) {
 	bob := profileWithTier(t, "auth0|bob", profiles.TierPro)
 	bob.Preferences.SavedDecisionPush = true
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|bob": bob}}
-	d, notifs, push, _ := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -203,9 +203,9 @@ func TestDecisionDispatcher_ZoneAndSaved_MergesSources(t *testing.T) {
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	saved := &fakeSaved{userIDs: []string{"auth0|alice"}}
-	alice := proWithZonePrefs(t, "auth0|alice", "zone-1", true)
+	alice := proWithZonePrefs(t, true)
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": alice}}
-	d, notifs, _, _ := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, _ := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -228,9 +228,9 @@ func TestDecisionDispatcher_Idempotent_SkipsExisting(t *testing.T) {
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
-		"auth0|alice": proWithZonePrefs(t, "auth0|alice", "zone-1", true),
+		"auth0|alice": proWithZonePrefs(t, true),
 	}}
-	d, notifs, push, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -256,7 +256,7 @@ func TestDecisionDispatcher_NoCoords_OnlySavedFanOut(t *testing.T) {
 	bob := profileWithTier(t, "auth0|bob", profiles.TierPro)
 	bob.Preferences.SavedDecisionPush = true
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|bob": bob}}
-	d, notifs, _, _ := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, _ := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", nil, nil)
 
 	if err := d.Dispatch(context.Background(), app); err != nil {

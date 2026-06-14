@@ -153,9 +153,9 @@ func newHandler(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *fakeStateSt
 
 // newHandlerWithFanOut builds a handler wired with the per-app decision
 // dispatcher and zone enqueuer, used by the fan-out tests.
-func newHandlerWithFanOut(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *fakeStateStore, auth fakeAuthorities, cycle CycleType, opts HandlerOptions, disp DecisionDispatcher, enq NotificationEnqueuer) *PollPlanItHandler {
+func newHandlerWithFanOut(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *fakeStateStore, auth fakeAuthorities, opts HandlerOptions, disp DecisionDispatcher, enq NotificationEnqueuer) *PollPlanItHandler {
 	t.Helper()
-	h := newHandler(t, pi, apps, state, auth, cycle, opts)
+	h := newHandler(t, pi, apps, state, auth, CycleSeed, opts)
 	h.WithFanOut(disp, enq)
 	return h
 }
