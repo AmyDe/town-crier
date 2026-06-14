@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/azcosmos"
@@ -92,6 +93,30 @@ func cosmosRetryOptions() policy.RetryOptions {
 	}
 }
 
+// cosmosTokenAcquireTimeout bounds a managed-identity token fetch independently
+// of cosmosTryTimeout. The 1.5s per-Cosmos-try timeout (cosmosTryTimeout) wraps
+// the bearer-token auth policy, so it would otherwise cancel a COLD token fetch
+// on a short-lived Container Apps Job replica before azidentity can cache a
+// token — failing every retry (tc-u7mp). 30s comfortably covers a cold identity-
+// endpoint round trip; once cached the bearer policy reuses the token, so this
+// only affects the very first fetch.
+const cosmosTokenAcquireTimeout = 30 * time.Second
+
+// detachedTokenCredential decouples token acquisition from the caller's
+// (per-Cosmos-try) deadline. context.WithoutCancel keeps the trace/values but
+// drops the parent's cancellation + deadline; a fresh cosmosTokenAcquireTimeout
+// then bounds the fetch so it can't hang forever.
+type detachedTokenCredential struct {
+	inner   azcore.TokenCredential
+	timeout time.Duration
+}
+
+func (c detachedTokenCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	tokenCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.timeout)
+	defer cancel()
+	return c.inner.GetToken(tokenCtx, opts)
+}
+
 // CosmosContainer is the azcosmos-backed implementation of the profile store's
 // item accessor. It performs single-partition point read/upsert/delete on the
 // Users container, keyed on the user id. SDK types never leak past its methods.
@@ -134,9 +159,14 @@ func NewCosmosContainerNamed(cfg Config, name string, logger *slog.Logger) (*Cos
 		return nil, fmt.Errorf("build managed-identity credential: %w", err)
 	}
 
+	// Wrap the MI credential so its token fetch runs under cosmosTokenAcquireTimeout
+	// detached from the per-Cosmos-try deadline, otherwise a cold token fetch on a
+	// short-lived job replica is strangled by cosmosTryTimeout (tc-u7mp).
+	detachedCred := detachedTokenCredential{inner: cred, timeout: cosmosTokenAcquireTimeout}
+
 	clientOpts := &azcosmos.ClientOptions{}
 	clientOpts.Retry = cosmosRetryOptions()
-	client, err := azcosmos.NewClient(cfg.CosmosEndpoint, cred, clientOpts)
+	client, err := azcosmos.NewClient(cfg.CosmosEndpoint, detachedCred, clientOpts)
 	if err != nil {
 		return nil, fmt.Errorf("build cosmos client: %w", err)
 	}
