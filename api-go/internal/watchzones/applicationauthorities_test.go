@@ -1,4 +1,4 @@
-package applications
+package watchzones
 
 import (
 	"context"
@@ -11,15 +11,14 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
-	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 type fakeZoneLister struct {
-	zones []watchzones.WatchZone
+	zones []WatchZone
 	err   error
 }
 
-func (f *fakeZoneLister) GetByUserID(_ context.Context, _ string) ([]watchzones.WatchZone, error) {
+func (f *fakeZoneLister) GetByUserID(_ context.Context, _ string) ([]WatchZone, error) {
 	return f.zones, f.err
 }
 
@@ -31,9 +30,9 @@ func (f fakeLookup) ByID(id int) (authorities.Authority, bool) {
 	return a, ok
 }
 
-func zone(t *testing.T, authorityID int) watchzones.WatchZone {
+func authorityZone(t *testing.T, authorityID int) WatchZone {
 	t.Helper()
-	z, err := watchzones.NewWatchZone("z"+time.Now().Format("150405.000000000"), "u", "Z", 51, -0.1, 100, authorityID, time.Now(), true, true)
+	z, err := NewWatchZone("z"+time.Now().Format("150405.000000000"), "u", "Z", 51, -0.1, 100, authorityID, time.Now(), true, true)
 	if err != nil {
 		t.Fatalf("NewWatchZone: %v", err)
 	}
@@ -52,8 +51,8 @@ func serveAuthorities(t *testing.T, zones zoneAuthorityLister, lookup authorityL
 
 func TestApplicationAuthorities_DistinctSortedWithCount(t *testing.T) {
 	t.Parallel()
-	lister := &fakeZoneLister{zones: []watchzones.WatchZone{
-		zone(t, 471), zone(t, 9), zone(t, 471), // 471 duplicated
+	lister := &fakeZoneLister{zones: []WatchZone{
+		authorityZone(t, 471), authorityZone(t, 9), authorityZone(t, 471), // 471 duplicated
 	}}
 	lookup := fakeLookup{
 		471: {ID: 471, Name: "City of London", AreaType: "city"},
@@ -93,7 +92,7 @@ func TestApplicationAuthorities_EmptyArrayWhenNoZones(t *testing.T) {
 
 func TestApplicationAuthorities_SkipsUnknownAuthority(t *testing.T) {
 	t.Parallel()
-	lister := &fakeZoneLister{zones: []watchzones.WatchZone{zone(t, 471), zone(t, 99999)}}
+	lister := &fakeZoneLister{zones: []WatchZone{authorityZone(t, 471), authorityZone(t, 99999)}}
 	lookup := fakeLookup{471: {ID: 471, Name: "City of London", AreaType: "city"}}
 
 	rec := serveAuthorities(t, lister, lookup)

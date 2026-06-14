@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
@@ -28,15 +29,26 @@ type zoneStore interface {
 	Delete(ctx context.Context, userID, zoneID string) error
 }
 
-// handler serves the /v1/me/watch-zones list/update/delete surface. The auth
-// middleware guarantees a subject in context before these handlers run.
+// handler serves the /v1/me/watch-zones surface. The auth middleware guarantees
+// a subject in context before these handlers run. The list/update/delete methods
+// use only store + logger; the create and applications methods (nearby.go) use
+// the remaining dependencies, which Routes leaves nil and NearbyRoutes populates.
 type handler struct {
-	store  zoneStore
-	logger *slog.Logger
+	store    zoneStore
+	profiles profileReader
+	resolver authorityResolver
+	apps     appFinder
+	state    watermarkReader
+	unread   unreadReader
+	newID    func() string
+	now      func() time.Time
+	logger   *slog.Logger
 }
 
-// Routes registers the in-scope watch-zone endpoints on mux. POST create and
-// GET /{zoneId}/applications are intentionally absent (deferred to tc-5847).
+// Routes registers the watch-zone list/update/delete endpoints on mux. POST
+// create and GET /{zoneId}/applications are registered separately by NearbyRoutes
+// (they need the profile, application, geocode, notification-state and
+// notification stores).
 func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger) {
 	h := &handler{store: store, logger: logger}
 	mux.HandleFunc("GET /v1/me/watch-zones", h.list)

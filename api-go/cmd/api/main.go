@@ -18,6 +18,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
+	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -62,13 +63,19 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	notifications, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
+	notificationsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	var stateStore *notificationstate.CosmosStore
-	if stateContainer != nil && notifications != nil {
-		stateStore = notificationstate.NewCosmosStore(stateContainer, notifications)
+	if stateContainer != nil && notificationsContainer != nil {
+		stateStore = notificationstate.NewCosmosStore(stateContainer, notificationsContainer)
+	}
+	// The Notifications container also backs the per-application latest-unread
+	// lookup used by GET /v1/me/watch-zones/{zoneId}/applications.
+	var notifStore *notifications.CosmosStore
+	if notificationsContainer != nil {
+		notifStore = notifications.NewCosmosStore(notificationsContainer)
 	}
 
 	watchZones, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
@@ -153,7 +160,7 @@ func main() {
 	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

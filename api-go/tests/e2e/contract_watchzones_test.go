@@ -138,6 +138,41 @@ func TestContract_WatchZones(t *testing.T) {
 		diffWatchZone(t, client, dotnetURL, goURL, http.MethodGet, "/v1/me/watch-zones", token, "")
 	})
 
+	// POST create: create the same-geometry zone on the Go API (a distinct name
+	// satisfies the per-user unique-name key) and diff the create RESPONSE
+	// against the .NET setup create above (the source of truth). Both query the
+	// same Applications partition for identical geometry, so the
+	// nearbyApplications arrays — the raw-domain wire shape — match.
+	t.Run("POST create response", func(t *testing.T) {
+		goBody := fmt.Sprintf(
+			`{"name":"Contract Zone %s Go","latitude":51.5074,"longitude":-0.1278,"radiusMetres":1000,"authorityId":471}`,
+			suffix)
+		goCreated := watchZoneRequest(t, client, goURL, http.MethodPost, "/v1/me/watch-zones", token, goBody)
+		if goCreated.status == http.StatusForbidden {
+			t.Skipf("watch-zone quota exhausted on the shared test user — skipping (%s)", goCreated.body)
+		}
+		if goCreated.status != http.StatusCreated {
+			t.Fatalf("go create: status %d body %s", goCreated.status, goCreated.body)
+		}
+		goZoneID := goCreated.location[strings.LastIndex(goCreated.location, "/")+1:]
+		t.Cleanup(func() {
+			_ = watchZoneRequest(t, client, goURL, http.MethodDelete, "/v1/me/watch-zones/"+goZoneID, token, "")
+		})
+		if goCreated.contentType != created.contentType {
+			t.Errorf("create content-type: go=%q dotnet=%q", goCreated.contentType, created.contentType)
+		}
+		if !jsonEqual(t, goCreated.body, created.body) {
+			t.Errorf("create body: go=%s dotnet=%s", goCreated.body, created.body)
+		}
+	})
+
+	// GET applications: both read the shared zone and its nearby applications, so
+	// the list — including the null latestUnreadEvent on each row for a user with
+	// no notifications — is identical.
+	t.Run("GET applications", func(t *testing.T) {
+		diffWatchZone(t, client, dotnetURL, goURL, http.MethodGet, zonePath+"/applications", token, "")
+	})
+
 	// Update: a full PATCH body is fully deterministic, so applying it to both
 	// APIs (each over the same document) yields identical updated summaries.
 	t.Run("PATCH update", func(t *testing.T) {

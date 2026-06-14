@@ -1,4 +1,4 @@
-package applications
+package watchzones
 
 import (
 	"context"
@@ -8,13 +8,12 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
-	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 // zoneAuthorityLister yields the user's watch zones; the application-authorities
 // endpoint derives its authority set from their distinct authority ids.
 type zoneAuthorityLister interface {
-	GetByUserID(ctx context.Context, userID string) ([]watchzones.WatchZone, error)
+	GetByUserID(ctx context.Context, userID string) ([]WatchZone, error)
 }
 
 // authorityLookup resolves an authority id to its display metadata.
@@ -31,7 +30,9 @@ type authoritiesHandler struct {
 
 // AuthoritiesRoutes registers GET /v1/me/application-authorities, the distinct
 // set of authorities across the user's watch zones, resolved to display
-// metadata and sorted by name.
+// metadata and sorted by name. It lives in the watchzones package because the
+// result is derived purely from the caller's watch zones — it never reads a
+// planning application.
 func AuthoritiesRoutes(mux *http.ServeMux, zones zoneAuthorityLister, lookup authorityLookup, logger *slog.Logger) {
 	h := &authoritiesHandler{zones: zones, lookup: lookup, logger: logger}
 	mux.HandleFunc("GET /v1/me/application-authorities", h.list)
@@ -60,7 +61,8 @@ func (h *authoritiesHandler) list(w http.ResponseWriter, r *http.Request) {
 
 	zones, err := h.zones.GetByUserID(r.Context(), userID)
 	if err != nil {
-		serverError(w, r, h.logger, "list watch zones", err)
+		h.logger.ErrorContext(r.Context(), "watch-zone request failed", "op", "list watch zones", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -80,5 +82,15 @@ func (h *authoritiesHandler) list(w http.ResponseWriter, r *http.Request) {
 		return authorities.CompareOrdinalIgnoreCase(a.Name, b.Name)
 	})
 
-	writeJSON(w, r, h.logger, applicationAuthoritiesResult{Authorities: items, Count: len(items)})
+	body, err := encodeJSON(applicationAuthoritiesResult{Authorities: items, Count: len(items)})
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "watch-zone request failed", "op", "encode authorities", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(body); err != nil {
+		h.logger.ErrorContext(r.Context(), "write response", "error", err)
+	}
 }
