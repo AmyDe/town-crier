@@ -150,6 +150,12 @@ func testZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones
 
 func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer, *fakeNotifications, *fakePush) {
 	t.Helper()
+	enq, notifs, push, _ := newEnqueuerHarnessWithZones(t, tier, nil)
+	return enq, notifs, push
+}
+
+func newEnqueuerHarnessWithZones(t *testing.T, tier profiles.SubscriptionTier, zones *fakeZones) (*Enqueuer, *fakeNotifications, *fakePush, *fakeZones) {
+	t.Helper()
 	notifs := newFakeNotifications()
 	profile := profileWithTier(t, "auth0|alice", tier)
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
@@ -158,11 +164,106 @@ func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer
 	}}
 	st := &fakeState{unread: 2}
 	push := &fakePush{}
-	enq := NewEnqueuer(notifs, profs, devs, st, push,
+	if zones == nil {
+		zones = &fakeZones{}
+	}
+	enq := NewEnqueuer(notifs, zones, profs, devs, st, push,
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	return enq, notifs, push
+	return enq, notifs, push, zones
+}
+
+func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
+	t.Parallel()
+	// Two zones (different owners) contain the point; the enqueuer must fan out
+	// to both users.
+	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testZoneAt(t, "zone-2", "auth0|bob", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{z1, z2}}
+	notifs := newFakeNotifications()
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": profileWithTier(t, "auth0|alice", profiles.TierPro),
+		"auth0|bob":   profileWithTier(t, "auth0|bob", profiles.TierPro),
+	}}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
+	fz := zones
+	enq := NewEnqueuer(notifs, zones, profs, devs, &fakeState{}, &fakePush{},
+		func() string { return "n-fixed" },
+		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
+		testLogger(t))
+	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if fz.lastLat != 51.5 || fz.lastLng != -0.1 {
+		t.Errorf("zone lookup point: got lat=%v lng=%v", fz.lastLat, fz.lastLng)
+	}
+	if len(notifs.created) != 2 {
+		t.Errorf("expected one record per containing zone owner, got %d", len(notifs.created))
+	}
+}
+
+func TestEnqueuer_EnqueueForApplication_OneUserTwoZonesDedupsToOneRecord(t *testing.T) {
+	t.Parallel()
+	// A single user with two containing zones must still get ONE NewApplication
+	// notification — dedup is per (user, application, authority), not per zone.
+	z1 := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	z2 := testZoneAt(t, "zone-2", "auth0|alice", time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{z1, z2}}
+	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+	app := testApplication(t, 99, "24/0001", 51.5, -0.1, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("one user with two zones must dedup to one record, got %d", len(notifs.created))
+	}
+}
+
+func TestEnqueuer_EnqueueForApplication_SkipsZonesCreatedAfterLastDifferent(t *testing.T) {
+	t.Parallel()
+	lastDifferent := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
+	// One zone created before the change (eligible), one created after (skip).
+	before := testZoneAt(t, "zone-old", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	after := testZoneAt(t, "zone-new", "auth0|alice", time.Date(2026, 6, 12, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{before, after}}
+	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+	app := testApplication(t, 99, "24/0001", 51.5, -0.1, lastDifferent)
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("only zones created on/before LastDifferent should fan out, got %d", len(notifs.created))
+	}
+	if notifs.created[0].WatchZoneID == nil || *notifs.created[0].WatchZoneID != "zone-old" {
+		t.Errorf("wrong zone fanned out: %+v", notifs.created[0].WatchZoneID)
+	}
+}
+
+func TestEnqueuer_EnqueueForApplication_NoCoordsSkipsLookup(t *testing.T) {
+	t.Parallel()
+	zones := &fakeZones{zones: []watchzones.WatchZone{
+		testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+	}}
+	enq, notifs, _, fz := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+	app := applications.PlanningApplication{
+		Name: "24/0001", UID: "24/0001", AreaID: 99,
+		LastDifferent: time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC),
+	}
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if fz.lastLat != 0 || fz.lastLng != 0 {
+		t.Errorf("zone lookup must be skipped when the application has no coordinates")
+	}
+	if len(notifs.created) != 0 {
+		t.Errorf("no coordinates means no fan-out, got %d", len(notifs.created))
+	}
 }
 
 func TestEnqueuer_PaidTier_CreatesRecordAndPushes(t *testing.T) {
@@ -257,7 +358,7 @@ func TestEnqueuer_PaidTier_NoDevicesStillWritesRecord(t *testing.T) {
 	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
 	st := &fakeState{}
 	push := &fakePush{}
-	enq := NewEnqueuer(notifs, profs, devs, st, push,
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, st, push,
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -285,7 +386,7 @@ func TestEnqueuer_PrunesInvalidTokens(t *testing.T) {
 	}}
 	st := &fakeState{}
 	push := &fakePush{invalid: []string{"stale"}}
-	enq := NewEnqueuer(notifs, profs, devs, st, push,
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, st, push,
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))

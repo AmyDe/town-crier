@@ -71,9 +71,11 @@ type pushSender interface {
 // Enqueuer ports .NET DispatchNotificationCommandHandler: for a new application
 // that matched a watch zone, it dedups, creates the notification record (which
 // feeds the digest pipeline), and — for paid tiers with devices — sends an
-// instant push, pruning any device tokens APNs reports invalid.
+// instant push, pruning any device tokens APNs reports invalid. The higher-level
+// EnqueueForApplication runs the per-app zone fan-out the poll handler calls.
 type Enqueuer struct {
 	notifications notificationWriter
+	zones         zoneMatcher
 	profiles      profileReader
 	devices       deviceReader
 	state         stateReader
@@ -88,6 +90,7 @@ type Enqueuer struct {
 // can pin them.
 func NewEnqueuer(
 	notifs notificationWriter,
+	zones zoneMatcher,
 	profs profileReader,
 	devices deviceReader,
 	state stateReader,
@@ -98,6 +101,7 @@ func NewEnqueuer(
 ) *Enqueuer {
 	return &Enqueuer{
 		notifications: notifs,
+		zones:         zones,
 		profiles:      profs,
 		devices:       devices,
 		state:         state,
@@ -106,6 +110,33 @@ func NewEnqueuer(
 		now:           now,
 		logger:        logger,
 	}
+}
+
+// EnqueueForApplication runs the new-application zone fan-out for one polled
+// application: it finds every watch zone whose circle contains the application's
+// coordinates (cross-partition) and enqueues a NewApplication notification for
+// each zone created on or before the application's LastDifferent timestamp. A
+// zone created after the application last changed is skipped — its owner only
+// subscribes to changes from creation onward, so a back-dated application is not
+// "new" to them. An application without coordinates fans out to nothing.
+// Mirrors the .NET PollPlanItCommandHandler zone-fan-out loop (L212-226).
+func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error {
+	if app.Latitude == nil || app.Longitude == nil {
+		return nil
+	}
+	zones, err := e.zones.FindZonesContaining(ctx, *app.Latitude, *app.Longitude)
+	if err != nil {
+		return err
+	}
+	for _, zone := range zones {
+		if zone.CreatedAt.After(app.LastDifferent) {
+			continue
+		}
+		if err := e.Enqueue(ctx, app, zone); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Enqueue runs the per-(zone, application) fan-out for a NewApplication event.
