@@ -126,9 +126,9 @@ Business logic lives in domain entities and value objects, not in handlers. Hand
 
 ## Legal Documents
 
-Privacy Policy and Terms of Service text live as JSON at `api/src/town-crier.application/Legal/Resources/{privacy,terms}.json`. The API embeds them as resources and serves via `/v1/legal/{type}`. The iOS app bundles a byte-equal mirror at `mobile/ios/packages/town-crier-presentation/Sources/Resources/legal/`.
+Privacy Policy and Terms of Service text live as JSON at `api-go/internal/legal/resources/{privacy,terms}.json`. The Go API embeds them (`go:embed`) and serves via `/v1/legal/{type}`. The iOS app bundles a byte-equal mirror at `mobile/ios/packages/town-crier-presentation/Sources/Resources/legal/`.
 
-To update legal copy: edit the API JSON, then run `scripts/sync-legal.sh` to refresh the iOS mirror, then commit both. CI runs `scripts/check-legal-drift.sh` on every PR and fails if the two copies diverge.
+To update legal copy: edit the Go API JSON, then run `scripts/sync-legal.sh` to refresh the iOS mirror, then commit both. CI runs `scripts/check-legal-drift.sh` on every PR and fails if the two copies diverge.
 
 ## Specs and Beads
 

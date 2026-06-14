@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'api/src/town-crier.application/Legal/Resources/**'
+      - 'api-go/internal/legal/resources/**'
       - 'mobile/ios/packages/town-crier-presentation/Sources/Resources/legal/**'
       - 'scripts/check-legal-drift.sh'
       - 'scripts/sync-legal.sh'

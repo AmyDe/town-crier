@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Copy canonical legal JSON files from the API project into the iOS bundle resources.
+# Copy canonical legal JSON files from the Go API into the iOS bundle resources.
 #
-# The API copy is the source of truth. The iOS copy is a byte-equal mirror, enforced
-# by scripts/check-legal-drift.sh in CI. Edit the API copy, then run this script to
+# The Go API copy is the source of truth. The iOS copy is a byte-equal mirror, enforced
+# by scripts/check-legal-drift.sh in CI. Edit the Go API copy, then run this script to
 # refresh the iOS copy, then commit both.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-API_DIR="$REPO_ROOT/api/src/town-crier.application/Legal/Resources"
+API_DIR="$REPO_ROOT/api-go/internal/legal/resources"
 IOS_DIR="$REPO_ROOT/mobile/ios/packages/town-crier-presentation/Sources/Resources/legal"
 
 if [[ ! -d "$API_DIR" ]]; then
