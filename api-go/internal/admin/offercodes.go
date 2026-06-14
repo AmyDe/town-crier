@@ -80,7 +80,10 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := strings.Join(formatted, "\n") + "\n"
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// Bare "text/plain" (no charset) to match .NET Results.Text(body,
+	// contentType: "text/plain") byte-for-byte — verified by the contract diff
+	// (tc-52t6); Go's default would append "; charset=utf-8".
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(body)); err != nil {
 		h.logger.ErrorContext(r.Context(), "write offer codes", "error", err)
