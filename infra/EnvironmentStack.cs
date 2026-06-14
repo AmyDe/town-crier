@@ -49,6 +49,11 @@ public static class EnvironmentStack
         var auth0Domain = config.Require("auth0Domain");
         var auth0Audience = config.Require("auth0Audience");
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
+        // Which app owns the api custom domain in this environment: "dotnet" (default)
+        // or "go". A hostname binds to exactly one Container App per managed environment,
+        // so this selects whether the .NET app or the Go app carries api{,-dev}.towncrierapp.uk.
+        // Prod was cut over to Go (tc-t56q); dev stays on .NET until its own cutover.
+        var apiBackend = config.Get("apiBackend") ?? "dotnet";
         var adminApiKey = config.RequireSecret("adminApiKey");
         var autoGrantProDomains = config.RequireSecret("autoGrantProDomains");
         var auth0M2mClientId = config.RequireSecret("auth0M2mClientId");
@@ -238,6 +243,47 @@ public static class EnvironmentStack
             apiManagedCert = CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain);
         }
 
+        // The api custom domain binds to exactly one app per environment. The .NET app
+        // carries it while it is the active backend; once apiBackend=="go" the hostname
+        // moves to the Go app (below) and the .NET app must NOT claim it, or the bind
+        // collides. The phase>=2 SniEnabled binding reuses apiManagedCert; phase 1 uses a
+        // Disabled placeholder so Azure can validate the hostname before the cert exists.
+        CustomDomainArgs[]? dotnetApiCustomDomains =
+            apiBackend == "go"
+                ? null
+                : customDomainPhase >= 2
+                    ? new[]
+                    {
+                        new CustomDomainArgs
+                        {
+                            Name = apiDomain,
+                            CertificateId = apiManagedCert!.Id,
+                            BindingType = BindingType.SniEnabled,
+                        },
+                    }
+                    : new[]
+                    {
+                        new CustomDomainArgs
+                        {
+                            Name = apiDomain,
+                            BindingType = BindingType.Disabled,
+                        },
+                    };
+
+        // Mirror binding for the Go app: it owns the api domain when apiBackend=="go".
+        CustomDomainArgs[]? goApiCustomDomains =
+            apiBackend == "go" && customDomainPhase >= 2
+                ? new[]
+                {
+                    new CustomDomainArgs
+                    {
+                        Name = apiDomain,
+                        CertificateId = apiManagedCert!.Id,
+                        BindingType = BindingType.SniEnabled,
+                    },
+                }
+                : null;
+
         // Container App (API) — placeholder image until CI/CD pushes real builds
         var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
         {
@@ -275,24 +321,7 @@ public static class EnvironmentStack
                     External = true,
                     TargetPort = 8080,
                     Transport = IngressTransportMethod.Http,
-                    CustomDomains = customDomainPhase >= 2
-                        ? new[]
-                        {
-                            new CustomDomainArgs
-                            {
-                                Name = apiDomain,
-                                CertificateId = apiManagedCert!.Id,
-                                BindingType = BindingType.SniEnabled,
-                            },
-                        }
-                        : new[]
-                        {
-                            new CustomDomainArgs
-                            {
-                                Name = apiDomain,
-                                BindingType = BindingType.Disabled,
-                            },
-                        },
+                    CustomDomains = dotnetApiCustomDomains,
                 },
                 Registries = new[]
                 {
@@ -377,9 +406,10 @@ public static class EnvironmentStack
 
         // Container App (Go API) — runs ALONGSIDE the .NET API during the Go
         // migration (GH#418). Created for BOTH dev and prod (Iteration 10 added
-        // prod). No custom domain: it serves on its default ACA FQDN, and cutover
-        // is a Cloudflare DNS flip of the api domain to that FQDN once parity is
-        // verified — the owner triggers the DNS flip, this stack never does.
+        // prod). It owns the api custom domain when apiBackend=="go" (prod, after the
+        // tc-t56q cutover): goApiCustomDomains binds api.towncrierapp.uk with the same
+        // env-level managed cert the .NET app used. The owner still triggers the
+        // Cloudflare DNS flip; this stack only owns the hostname-to-app binding.
         // Same placeholder-image bootstrap as the .NET app: the quickstart image
         // listens on 80 (not 8080), so the first revision stays unhealthy until
         // CD pushes the real town-crier-api-go image.
@@ -407,6 +437,7 @@ public static class EnvironmentStack
                         External = true,
                         TargetPort = 8080,
                         Transport = IngressTransportMethod.Http,
+                        CustomDomains = goApiCustomDomains,
                     },
                     Registries = new[]
                     {
@@ -470,12 +501,12 @@ public static class EnvironmentStack
                     },
                     Scale = new ScaleArgs
                     {
-                        // Scale-to-zero for BOTH dev and prod: the prod Go app stays
-                        // idle until the post-cutover DNS flip sends traffic its way, so
-                        // there is no idle cost while it waits. A later bead bumps prod
-                        // MinReplicas to 1 after cutover (to skip cold starts), mirroring
-                        // the .NET prod app.
-                        MinReplicas = 0,
+                        // Keep one warm replica when the Go app is the active backend
+                        // (apiBackend=="go", i.e. prod post-cutover) so live api traffic
+                        // skips the ~15s ACA scale-from-zero cold start, mirroring the
+                        // .NET prod app. Otherwise (dev, or before cutover) stay
+                        // scale-to-zero to avoid idle cost.
+                        MinReplicas = apiBackend == "go" ? 1 : 0,
                         MaxReplicas = 1,
                     },
                 },
