@@ -157,7 +157,13 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (OrchestratorRunResult, erro
 	}
 
 	nextRun := o.scheduler.ComputeNextRun(result.TerminationReason, result.RetryAfter, o.now().UTC())
-	body, _ := json.Marshal(triggerPayload{PublishedAtUTC: o.now().UTC().Format(time.RFC3339Nano)})
+	body, err := json.Marshal(triggerPayload{PublishedAtUTC: o.now().UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		// json.Marshal of a fixed struct cannot realistically fail; surface it as
+		// a run error so the worker exit-codes on it rather than publishing a
+		// malformed trigger.
+		return OrchestratorRunResult{MessageReceived: true, PollResult: &result}, err
+	}
 	if err := o.publisher.PublishAt(ctx, nextRun, body); err != nil {
 		return OrchestratorRunResult{MessageReceived: true, PollResult: &result}, err
 	}
@@ -173,16 +179,22 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (OrchestratorRunResult, erro
 // pause to absorb the common case where the bootstrap briefly holds it. Mirrors
 // .NET's single-retry path.
 func (o *Orchestrator) acquireWithRetry(ctx context.Context) (LeaseAcquireResult, error) {
-	res, _ := o.lease.TryAcquire(ctx, o.opts.LeaseTTL)
+	res, err := o.lease.TryAcquire(ctx, o.opts.LeaseTTL)
+	if err != nil {
+		return LeaseAcquireResult{}, err
+	}
 	if res.Acquired {
 		return res, nil
 	}
 	if o.opts.LeaseAcquireRetryDelay > 0 {
-		if err := o.sleep(ctx, o.opts.LeaseAcquireRetryDelay); err != nil {
-			return LeaseAcquireResult{}, err
+		if serr := o.sleep(ctx, o.opts.LeaseAcquireRetryDelay); serr != nil {
+			return LeaseAcquireResult{}, serr
 		}
 	}
-	res, _ = o.lease.TryAcquire(ctx, o.opts.LeaseTTL)
+	res, err = o.lease.TryAcquire(ctx, o.opts.LeaseTTL)
+	if err != nil {
+		return LeaseAcquireResult{}, err
+	}
 	return res, nil
 }
 

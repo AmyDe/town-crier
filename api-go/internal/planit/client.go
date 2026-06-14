@@ -205,7 +205,7 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 // nil) has an un-read body the caller must classify and close.
 func (c *Client) sendWithThrottle(ctx context.Context, target string) (*http.Response, error) {
 	maxAttempts := 1 + c.retry.MaxRetries
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if c.throttle.DelayBetweenRequests > 0 {
 			if err := c.sleep(ctx, c.throttle.DelayBetweenRequests); err != nil {
 				return nil, err

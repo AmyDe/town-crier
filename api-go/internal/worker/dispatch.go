@@ -156,10 +156,10 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 	)
 
 	logger.InfoContext(ctx, "poll-sb cycle completed",
-		"applications_ingested", res.ApplicationCount,
-		"authorities_polled", res.AuthoritiesPolled,
-		"authority_errors", res.AuthorityErrors,
-		"lease_unavailable", res.LeaseUnavailable)
+		"applicationsIngested", res.ApplicationCount,
+		"authoritiesPolled", res.AuthoritiesPolled,
+		"authorityErrors", res.AuthorityErrors,
+		"leaseUnavailable", res.LeaseUnavailable)
 
 	// Same exit-code semantics as the .NET poll-sb branch: only exit 1 when the
 	// run did no useful work AND hit authority errors. A quiet cycle (0 apps, 0

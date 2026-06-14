@@ -180,7 +180,7 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 		switch {
 		case outcome.err != nil:
 			authorityErrors++
-			h.logger.ErrorContext(ctx, "error polling authority, skipping to next", "polling.authority_code", authorityID, "error", outcome.err)
+			h.logger.ErrorContext(ctx, "error polling authority, skipping to next", "authorityCode", authorityID, "error", outcome.err)
 		case outcome.completed || outcome.appCount > 0:
 			authoritiesPoll++
 		}
