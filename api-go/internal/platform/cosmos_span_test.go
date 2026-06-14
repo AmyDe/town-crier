@@ -138,7 +138,7 @@ func TestTraceCosmosOp_RecordsError(t *testing.T) {
 // incoming request span: started from the request ctx and propagated through to
 // the SDK call so the trace is linked.
 func TestTraceCosmosOp_LinksChildSpan(t *testing.T) {
-	rec := installSpanRecorder(t)
+	installSpanRecorder(t)
 
 	c := &CosmosContainer{name: "Users", accountHost: "acct.documents.azure.com"}
 
