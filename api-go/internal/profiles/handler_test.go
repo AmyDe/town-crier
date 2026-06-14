@@ -3,10 +3,12 @@ package profiles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -81,9 +83,42 @@ func (f *fakeAuth0) DeleteUser(_ context.Context, userID string) error {
 	return nil
 }
 
+// fakeChildDeleter is a hand-written per-container cascade deleter. When calls is
+// non-nil it appends "<label>:<userID>" on each invocation, so a test can assert
+// both coverage (which containers were erased) and order across a shared log.
+type fakeChildDeleter struct {
+	label string
+	calls *[]string
+	err   error
+}
+
+func (f fakeChildDeleter) DeleteAllByUserID(_ context.Context, userID string) error {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, f.label+":"+userID)
+	}
+	return f.err
+}
+
+// recordingCascade builds a CascadeDeleters whose five deleters all append to the
+// shared calls log (pass nil for a no-op cascade). Individual deleters can be
+// overwritten by a test to inject a failure in one container.
+func recordingCascade(calls *[]string) CascadeDeleters {
+	return CascadeDeleters{
+		Notifications:       fakeChildDeleter{label: "notifications", calls: calls},
+		WatchZones:          fakeChildDeleter{label: "watchZones", calls: calls},
+		SavedApplications:   fakeChildDeleter{label: "savedApplications", calls: calls},
+		DeviceRegistrations: fakeChildDeleter{label: "deviceRegistrations", calls: calls},
+		NotificationState:   fakeChildDeleter{label: "notificationState", calls: calls},
+	}
+}
+
 func newTestHandler(store profileStore, a0 Auth0Manager, proDomains string) *handler {
+	return newTestHandlerCascade(store, a0, proDomains, recordingCascade(nil))
+}
+
+func newTestHandlerCascade(store profileStore, a0 Auth0Manager, proDomains string, cascade CascadeDeleters) *handler {
 	now := func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) }
-	return newHandler(store, a0, proDomains, now, slog.New(slog.DiscardHandler))
+	return newHandler(store, a0, proDomains, cascade, now, slog.New(slog.DiscardHandler))
 }
 
 // withSubject builds a request carrying an authenticated subject in context, as
@@ -317,14 +352,15 @@ func TestHandler_PatchProfile_NotFound(t *testing.T) {
 	}
 }
 
-func TestHandler_DeleteProfile_NoContentAndCascades(t *testing.T) {
+func TestHandler_DeleteProfile_CascadesEveryContainerThenProfileThenAuth0(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
 	existing, _ := NewProfile("auth0|abc", "", time.Now())
 	store.byID["auth0|abc"] = existing
 	a0 := newFakeAuth0()
-	h := newTestHandler(store, a0, "")
+	var calls []string
+	h := newTestHandlerCascade(store, a0, "", recordingCascade(&calls))
 
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
@@ -335,6 +371,18 @@ func TestHandler_DeleteProfile_NoContentAndCascades(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("204 should be bodyless, got %q", rec.Body.String())
 	}
+	// Complete UK GDPR Art. 17 erasure: every per-user container is cleared, in a
+	// fixed order, before the profile document is removed.
+	want := []string{
+		"notifications:auth0|abc",
+		"watchZones:auth0|abc",
+		"savedApplications:auth0|abc",
+		"deviceRegistrations:auth0|abc",
+		"notificationState:auth0|abc",
+	}
+	if !slices.Equal(calls, want) {
+		t.Errorf("cascade coverage/order: got %v, want %v", calls, want)
+	}
 	if len(store.deleted) != 1 || store.deleted[0] != "auth0|abc" {
 		t.Errorf("profile not deleted from store: %v", store.deleted)
 	}
@@ -343,17 +391,77 @@ func TestHandler_DeleteProfile_NoContentAndCascades(t *testing.T) {
 	}
 }
 
+// A child-container erasure failure must abort the cascade before the profile and
+// the Auth0 user are touched, so the account stays intact and a repeat DELETE can
+// retry the erasure (no partial, irrecoverable deletion).
+func TestHandler_DeleteProfile_ChildCascadeFailureLeavesProfileAndAuth0Intact(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	a0 := newFakeAuth0()
+	cascade := recordingCascade(nil)
+	cascade.WatchZones = fakeChildDeleter{label: "watchZones", err: errors.New("cosmos down")}
+	h := newTestHandlerCascade(store, a0, "", cascade)
+
+	rec := httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete status: got %d, want 500", rec.Code)
+	}
+	if len(store.deleted) != 0 {
+		t.Errorf("profile must survive a child-cascade failure, got deleted %v", store.deleted)
+	}
+	if len(a0.deletedUsers) != 0 {
+		t.Errorf("auth0 user must survive a child-cascade failure, got deleted %v", a0.deletedUsers)
+	}
+}
+
+// Auth0 is deleted last: an Auth0 Management-API failure must not strand
+// un-erased Cosmos data, so by the time it runs every container and the profile
+// document are already gone.
+func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	a0 := newFakeAuth0()
+	a0.deleteErr = errors.New("auth0 m2m down")
+	var calls []string
+	h := newTestHandlerCascade(store, a0, "", recordingCascade(&calls))
+
+	rec := httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete status: got %d, want 500", rec.Code)
+	}
+	if len(calls) != 5 {
+		t.Errorf("all child containers must be erased before the auth0 step, got %v", calls)
+	}
+	if len(store.deleted) != 1 {
+		t.Errorf("profile must be erased before the auth0 step, got %v", store.deleted)
+	}
+}
+
 func TestHandler_DeleteProfile_NotFound(t *testing.T) {
 	t.Parallel()
 
 	a0 := newFakeAuth0()
-	h := newTestHandler(newFakeStore(), a0, "")
+	var calls []string
+	h := newTestHandlerCascade(newFakeStore(), a0, "", recordingCascade(&calls))
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("delete missing: got %d, want 404", rec.Code)
 	}
-	// No Auth0 deletion when the profile did not exist.
+	// No cascade and no Auth0 deletion when the profile did not exist.
+	if len(calls) != 0 {
+		t.Errorf("cascade should not run for a missing profile: %v", calls)
+	}
 	if len(a0.deletedUsers) != 0 {
 		t.Errorf("auth0 delete should not run for a missing profile: %v", a0.deletedUsers)
 	}
