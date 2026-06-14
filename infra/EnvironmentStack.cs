@@ -414,6 +414,10 @@ public static class EnvironmentStack
                         new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId },
                         new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret },
                         new SecretArgs { Name = "auto-grant-pro-domains", Value = autoGrantProDomains },
+                        // Same admin key as the .NET app so the Go X-Admin-Key gate
+                        // accepts identical requests — required by the offer-code/admin
+                        // contract diffs (tc-52t6).
+                        new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
                     },
                 },
                 Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
@@ -453,6 +457,7 @@ public static class EnvironmentStack
                                 new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_ID", SecretRef = "auth0-m2m-client-id" },
                                 new EnvironmentVarArgs { Name = "AUTH0_M2M_CLIENT_SECRET", SecretRef = "auth0-m2m-client-secret" },
                                 new EnvironmentVarArgs { Name = "SUBSCRIPTION_AUTOGRANT_PRODOMAINS", SecretRef = "auto-grant-pro-domains" },
+                                new EnvironmentVarArgs { Name = "ADMIN_API_KEY", SecretRef = "admin-api-key" },
                             },
                         },
                     },
