@@ -255,7 +255,7 @@ jobs:
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
     name: "Worker: Deploy to dev"
-    needs: [worker-image, infra-dev]
+    needs: [worker-go-image, infra-dev]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
