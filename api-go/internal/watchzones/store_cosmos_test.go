@@ -26,6 +26,7 @@ type fakeItems struct {
 	lastUpsert   []byte
 	lastDeletePK string
 	lastDeleteID string
+	deletedIDs   []string // every (pk,id) deleted, in call order, for cascade assertions
 	lastQueryPK  string
 	lastQuery    string
 	lastParams   map[string]any
@@ -57,7 +58,12 @@ func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []by
 func (f *fakeItems) DeleteItem(_ context.Context, partitionKey, id string) error {
 	f.lastDeletePK = partitionKey
 	f.lastDeleteID = id
-	return f.deleteErr
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.deletedIDs = append(f.deletedIDs, id)
+	delete(f.stored, id)
+	return nil
 }
 
 func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
@@ -185,5 +191,43 @@ func TestCosmosStore_Delete_NotFound(t *testing.T) {
 	err := store.Delete(context.Background(), "auth0|user", "missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestCosmosStore_DeleteAllByUserID_QueriesPartitionThenDeletesEachID(t *testing.T) {
+	t.Parallel()
+	const userID = "auth0|user"
+	items := newFakeItems()
+	items.queryResult = [][]byte{
+		[]byte(`{"id":"zone-a"}`),
+		[]byte(`{"id":"zone-b"}`),
+	}
+	store := NewCosmosStore(items)
+
+	if err := store.DeleteAllByUserID(context.Background(), userID); err != nil {
+		t.Fatalf("DeleteAllByUserID: %v", err)
+	}
+
+	if items.lastQueryPK != userID {
+		t.Errorf("cascade query partition key: got %q, want %q", items.lastQueryPK, userID)
+	}
+	if len(items.deletedIDs) != 2 || items.deletedIDs[0] != "zone-a" || items.deletedIDs[1] != "zone-b" {
+		t.Errorf("deleted ids: got %v, want [zone-a zone-b]", items.deletedIDs)
+	}
+	if items.lastDeletePK != userID {
+		t.Errorf("cascade delete partition key: got %q, want %q", items.lastDeletePK, userID)
+	}
+}
+
+func TestCosmosStore_DeleteAllByUserID_NoZonesIsNoOp(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if err := store.DeleteAllByUserID(context.Background(), "auth0|nobody"); err != nil {
+		t.Fatalf("DeleteAllByUserID: %v", err)
+	}
+	if len(items.deletedIDs) != 0 {
+		t.Errorf("expected no deletes, got %v", items.deletedIDs)
 	}
 }

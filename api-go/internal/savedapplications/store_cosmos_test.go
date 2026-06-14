@@ -16,7 +16,10 @@ type fakeItems struct {
 	queryResult  [][]byte
 	lastUpsertPK string
 	lastDeleteID string
+	lastDeletePK string
+	deletedIDs   []string
 	lastQueryPK  string
+	lastQuery    string
 	lastParams   map[string]any
 }
 
@@ -40,17 +43,20 @@ func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []by
 	return nil
 }
 
-func (f *fakeItems) DeleteItem(_ context.Context, _, id string) error {
+func (f *fakeItems) DeleteItem(_ context.Context, partitionKey, id string) error {
 	f.lastDeleteID = id
+	f.lastDeletePK = partitionKey
 	if f.deleteErr != nil {
 		return f.deleteErr
 	}
+	f.deletedIDs = append(f.deletedIDs, id)
 	delete(f.stored, id)
 	return nil
 }
 
-func (f *fakeItems) QueryItems(_ context.Context, partitionKey, _ string, params map[string]any) ([][]byte, error) {
+func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
 	f.lastQueryPK = partitionKey
+	f.lastQuery = query
 	f.lastParams = params
 	return f.queryResult, nil
 }
@@ -125,6 +131,30 @@ func TestCosmosStore_GetByUserID(t *testing.T) {
 	}
 	if items.lastQueryPK != "auth0|u" || items.lastParams["@userId"] != "auth0|u" {
 		t.Errorf("query routing: pk=%q params=%v", items.lastQueryPK, items.lastParams)
+	}
+}
+
+func TestCosmosStore_DeleteAllByUserID_QueriesPartitionThenDeletesEachID(t *testing.T) {
+	t.Parallel()
+	const userID = "auth0|u"
+	items := newFakeItems()
+	items.queryResult = [][]byte{
+		[]byte(`{"id":"auth0|u:app-a"}`),
+		[]byte(`{"id":"auth0|u:app-b"}`),
+	}
+	store := NewCosmosStore(items)
+
+	if err := store.DeleteAllByUserID(context.Background(), userID); err != nil {
+		t.Fatalf("DeleteAllByUserID: %v", err)
+	}
+	if items.lastQueryPK != userID {
+		t.Errorf("cascade query pk: got %q, want %q", items.lastQueryPK, userID)
+	}
+	if len(items.deletedIDs) != 2 || items.deletedIDs[0] != "auth0|u:app-a" || items.deletedIDs[1] != "auth0|u:app-b" {
+		t.Errorf("deleted ids: got %v", items.deletedIDs)
+	}
+	if items.lastDeletePK != userID {
+		t.Errorf("cascade delete pk: got %q, want %q", items.lastDeletePK, userID)
 	}
 }
 

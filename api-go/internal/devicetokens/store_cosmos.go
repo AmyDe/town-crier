@@ -111,6 +111,35 @@ func (s *CosmosStore) ListByUser(ctx context.Context, userID string) ([]DeviceRe
 	return regs, nil
 }
 
+// idOnlyDocument captures just the id projected by the cascade-delete query
+// (SELECT c.id FROM c ...), so the cascade need not hydrate full documents.
+type idOnlyDocument struct {
+	ID string `json:"id"`
+}
+
+// DeleteAllByUserID removes every device registration in the user's partition: it
+// queries the partition for the document ids, then point-deletes each. Used by
+// the account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring
+// .NET CosmosDeviceRegistrationRepository.DeleteAllByUserIdAsync. All operations
+// are single-partition; a 404 on an individual delete is tolerated (idempotent).
+func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
+	const query = "SELECT c.id FROM c WHERE c.userId = @userId"
+	raws, err := s.items.QueryItems(ctx, userID, query, map[string]any{"@userId": userID})
+	if err != nil {
+		return fmt.Errorf("query device token ids for %q: %w", userID, err)
+	}
+	for _, raw := range raws {
+		var doc idOnlyDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("decode device token id for %q: %w", userID, err)
+		}
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+			return fmt.Errorf("delete device token %q for %q: %w", doc.ID, userID, err)
+		}
+	}
+	return nil
+}
+
 // isNotFound reports whether err is a Cosmos 404 response.
 func isNotFound(err error) bool {
 	var respErr *azcore.ResponseError

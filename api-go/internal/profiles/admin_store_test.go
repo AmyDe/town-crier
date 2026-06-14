@@ -220,3 +220,66 @@ func TestAdminStore_ByDigestDayWrapsError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// profileDocAt builds a stored profile document with a specific LastActiveAt so
+// the dormant scan's Go-side cutoff comparison can be exercised.
+func profileDocAt(t *testing.T, userID string, lastActive time.Time) []byte {
+	t.Helper()
+	p, err := NewProfile(userID, "", lastActive)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.LastActiveAt = lastActive
+	raw, err := json.Marshal(newProfileDocument(p))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return raw
+}
+
+func TestAdminStore_Dormant_KeepsAccountsActiveAtOrAfterCutoff(t *testing.T) {
+	t.Parallel()
+	cutoff := time.Date(2025, 6, 14, 0, 0, 0, 0, time.UTC)
+
+	items := newFakeAdminItems()
+	items.queryResult = [][]byte{
+		profileDocAt(t, "dormant-13mo", cutoff.AddDate(0, -1, 0)), // before cutoff -> dormant
+		profileDocAt(t, "active-11mo", cutoff.AddDate(0, 1, 0)),   // after cutoff -> kept
+		profileDocAt(t, "exactly-12mo", cutoff),                   // == cutoff -> kept (not strictly before)
+		profileDocAt(t, "dormant-old", cutoff.AddDate(-1, 0, 0)),  // well before -> dormant
+	}
+	store := NewAdminStore(items)
+
+	got, err := store.Dormant(context.Background(), cutoff)
+	if err != nil {
+		t.Fatalf("Dormant: %v", err)
+	}
+
+	ids := map[string]bool{}
+	for _, p := range got {
+		ids[p.UserID] = true
+	}
+	if !ids["dormant-13mo"] || !ids["dormant-old"] {
+		t.Errorf("dormant accounts missing from result: %v", ids)
+	}
+	if ids["active-11mo"] {
+		t.Error("an account active after the cutoff must not be dormant")
+	}
+	if ids["exactly-12mo"] {
+		t.Error("an account active exactly at the cutoff must be kept (strictly-before semantics)")
+	}
+	if len(got) != 2 {
+		t.Errorf("dormant count: got %d, want 2", len(got))
+	}
+}
+
+func TestAdminStore_Dormant_WrapsQueryError(t *testing.T) {
+	t.Parallel()
+	items := newFakeAdminItems()
+	items.queryErr = errors.New("cosmos down")
+	store := NewAdminStore(items)
+
+	if _, err := store.Dormant(context.Background(), time.Now()); err == nil {
+		t.Fatal("expected error when the dormant scan fails")
+	}
+}
