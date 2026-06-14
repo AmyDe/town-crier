@@ -131,7 +131,12 @@ public static class SharedStack
             // (it ignores the OTLP endpoint the agent injects). Enabling the agent makes
             // ACA auto-inject OTEL_EXPORTER_OTLP_ENDPOINT into every container in this
             // environment — so containers must NOT set that env var themselves.
-            // Traces only: the Go app emits traces (no logs/metrics OTLP destinations).
+            // Traces AND logs: the Go app emits both over OTLP (tc-8x8g). The logs
+            // destination forwards the Go app's slog-bridged OTel logs to App Insights
+            // AppTraces (and exception records to AppExceptions); without it the agent
+            // would drop them. Metrics OTLP is still not configured. The .NET app emits
+            // no OTLP logs (it logs in-process via Azure Monitor and ignores the OTLP
+            // endpoint), so enabling the logs destination adds no .NET double-count.
             AppInsightsConfiguration = new AppInsightsConfigurationArgs
             {
                 ConnectionString = appInsights.ConnectionString,
@@ -139,6 +144,10 @@ public static class SharedStack
             OpenTelemetryConfiguration = new OpenTelemetryConfigurationArgs
             {
                 TracesConfiguration = new TracesConfigurationArgs
+                {
+                    Destinations = { "appInsights" },
+                },
+                LogsConfiguration = new LogsConfigurationArgs
                 {
                     Destinations = { "appInsights" },
                 },
