@@ -118,7 +118,37 @@ type Config struct {
 	// wires a NoOp email sender. The infra bead tc-uzm1 wires the
 	// acs-connection-string secret to this env var.
 	ACSConnectionString SecretString
+
+	// PlanIt* configure the rate-limited PlanIt HTTP client the poll-sb worker
+	// mode uses to fetch planning applications (epic tc-wad3, bead tc-yng2).
+	// PlanItBaseURL defaults to the live PlanIt service (matching .NET's
+	// PlanIt:BaseUrl fallback). The throttle/retry knobs mirror .NET's
+	// PlanItThrottleOptions / PlanItRetryOptions defaults. The infra bead tc-uzm1
+	// wires these env vars additively onto the prod poll job.
+	PlanItBaseURL                 string
+	PlanItThrottleDelaySeconds    float64
+	PlanItMaxRetries              int
+	PlanItInitialBackoffSeconds   float64
+	PlanItRateLimitBackoffSeconds float64
+
+	// Polling* configure the poll-sb ingestion cycle (bead tc-yng2).
+	// PollingMaxPagesPerAuthorityPerCycle caps PlanIt pagination per authority
+	// (default 3, matching .NET Polling:MaxPagesPerAuthorityPerCycle).
+	// PollingHandlerBudgetSeconds is the soft per-cycle wall-clock budget (default
+	// 240); under ADR 0024's receive-and-delete model it is a safety cap, not a
+	// Service-Bus-lock bound — the Cosmos lease TTL (> handler budget) prevents
+	// concurrent runs. PollReplicaTimeoutSeconds and PollShutdownGraceSeconds size
+	// the hard cycle budget (replicaTimeout − grace), matching the .NET worker's
+	// POLL_REPLICA_TIMEOUT_SECONDS / POLL_SHUTDOWN_GRACE_SECONDS.
+	PollingMaxPagesPerAuthorityPerCycle int
+	PollingHandlerBudgetSeconds         int
+	PollReplicaTimeoutSeconds           int
+	PollShutdownGraceSeconds            int
 }
+
+// defaultPlanItBaseURL is the live PlanIt applications API, matching .NET's
+// PlanIt:BaseUrl fallback.
+const defaultPlanItBaseURL = "https://www.planit.org.uk/"
 
 // defaultAPNsKeyID and defaultAPNsTeamID are the identifiers Apple issued for
 // the Town Crier app's .p8 auth key (epic tc-wad3 notes). Defaulting them keeps
@@ -179,6 +209,17 @@ func LoadConfig() (Config, error) {
 		APNsUseSandbox: getenvBool("APNS_USE_SANDBOX"),
 
 		ACSConnectionString: NewSecret(os.Getenv("ACS_CONNECTION_STRING")),
+
+		PlanItBaseURL:                 getenv("PLANIT_BASE_URL", defaultPlanItBaseURL),
+		PlanItThrottleDelaySeconds:    getenvFloat("PLANIT_THROTTLE_DELAY_SECONDS", 2),
+		PlanItMaxRetries:              getenvInt("PLANIT_RETRY_MAX_RETRIES", 3),
+		PlanItInitialBackoffSeconds:   getenvFloat("PLANIT_RETRY_INITIAL_BACKOFF_SECONDS", 1),
+		PlanItRateLimitBackoffSeconds: getenvFloat("PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS", 5),
+
+		PollingMaxPagesPerAuthorityPerCycle: getenvInt("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", 3),
+		PollingHandlerBudgetSeconds:         getenvInt("POLLING_HANDLER_BUDGET_SECONDS", 240),
+		PollReplicaTimeoutSeconds:           getenvInt("POLL_REPLICA_TIMEOUT_SECONDS", 600),
+		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
@@ -222,6 +263,26 @@ func getenvBool(key string) bool {
 	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
 	if err != nil {
 		return false
+	}
+	return v
+}
+
+// getenvInt returns the named env var parsed as an int, or fallback when unset,
+// empty, or unparseable — so a misconfigured value fails safe to the default.
+func getenvInt(key string, fallback int) int {
+	v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(key)))
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+// getenvFloat returns the named env var parsed as a float64, or fallback when
+// unset, empty, or unparseable.
+func getenvFloat(key string, fallback float64) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(key)), 64)
+	if err != nil {
+		return fallback
 	}
 	return v
 }

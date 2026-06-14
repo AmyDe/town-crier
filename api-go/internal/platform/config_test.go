@@ -366,3 +366,64 @@ func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_PollingDefaults(t *testing.T) {
+	// Clear any inherited overrides so the defaults are exercised.
+	for _, k := range []string{
+		"PLANIT_BASE_URL", "PLANIT_THROTTLE_DELAY_SECONDS",
+		"PLANIT_RETRY_MAX_RETRIES", "PLANIT_RETRY_INITIAL_BACKOFF_SECONDS",
+		"PLANIT_RETRY_RATE_LIMIT_BACKOFF_SECONDS",
+		"POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "POLLING_HANDLER_BUDGET_SECONDS",
+		"POLL_REPLICA_TIMEOUT_SECONDS", "POLL_SHUTDOWN_GRACE_SECONDS",
+	} {
+		t.Setenv(k, "")
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.PlanItBaseURL != "https://www.planit.org.uk/" {
+		t.Errorf("PlanItBaseURL default: got %q", cfg.PlanItBaseURL)
+	}
+	if cfg.PlanItThrottleDelaySeconds != 2 {
+		t.Errorf("throttle default: got %v, want 2", cfg.PlanItThrottleDelaySeconds)
+	}
+	if cfg.PlanItMaxRetries != 3 || cfg.PlanItInitialBackoffSeconds != 1 || cfg.PlanItRateLimitBackoffSeconds != 5 {
+		t.Errorf("retry defaults: %d/%v/%v", cfg.PlanItMaxRetries, cfg.PlanItInitialBackoffSeconds, cfg.PlanItRateLimitBackoffSeconds)
+	}
+	if cfg.PollingMaxPagesPerAuthorityPerCycle != 3 {
+		t.Errorf("max pages default: got %d, want 3", cfg.PollingMaxPagesPerAuthorityPerCycle)
+	}
+	if cfg.PollingHandlerBudgetSeconds != 240 {
+		t.Errorf("handler budget default: got %d, want 240", cfg.PollingHandlerBudgetSeconds)
+	}
+	if cfg.PollReplicaTimeoutSeconds != 600 || cfg.PollShutdownGraceSeconds != 30 {
+		t.Errorf("cycle budget defaults: %d/%d", cfg.PollReplicaTimeoutSeconds, cfg.PollShutdownGraceSeconds)
+	}
+}
+
+func TestLoadConfig_PollingOverrides(t *testing.T) {
+	t.Setenv("PLANIT_BASE_URL", "https://stub.planit.test/")
+	t.Setenv("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "5")
+	t.Setenv("POLLING_HANDLER_BUDGET_SECONDS", "120")
+	t.Setenv("POLL_REPLICA_TIMEOUT_SECONDS", "300")
+	t.Setenv("POLL_SHUTDOWN_GRACE_SECONDS", "15")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.PlanItBaseURL != "https://stub.planit.test/" {
+		t.Errorf("PlanItBaseURL override: got %q", cfg.PlanItBaseURL)
+	}
+	if cfg.PollingMaxPagesPerAuthorityPerCycle != 5 {
+		t.Errorf("max pages override: got %d, want 5", cfg.PollingMaxPagesPerAuthorityPerCycle)
+	}
+	if cfg.PollingHandlerBudgetSeconds != 120 {
+		t.Errorf("handler budget override: got %d, want 120", cfg.PollingHandlerBudgetSeconds)
+	}
+	if cfg.PollReplicaTimeoutSeconds != 300 || cfg.PollShutdownGraceSeconds != 15 {
+		t.Errorf("cycle budget override: %d/%d", cfg.PollReplicaTimeoutSeconds, cfg.PollShutdownGraceSeconds)
+	}
+}

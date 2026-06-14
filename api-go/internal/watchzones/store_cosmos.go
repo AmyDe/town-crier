@@ -25,6 +25,9 @@ type CosmosItems interface {
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	DeleteItem(ctx context.Context, partitionKey, id string) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
+	// QueryItemsCrossPartition backs the polling authority provider's distinct
+	// authority-id scan; it is the only cross-partition read on this container.
+	QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error)
 }
 
 // listByUserQuery lists a user's zones. It is scoped to the userId partition, so
@@ -139,6 +142,27 @@ func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 		}
 	}
 	return nil
+}
+
+// DistinctAuthorityIDs returns the distinct authority ids across every user's
+// watch zones, via a cross-partition DISTINCT VALUE scan. It backs the polling
+// watch-zone active-authority provider (poll-sb cycle), mirroring .NET
+// CosmosWatchZoneRepository.GetDistinctAuthorityIdsCrossPartitionAsync. The
+// VALUE projection returns bare JSON integers, one per result row.
+func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
+	raws, err := s.items.QueryItemsCrossPartition(ctx, "SELECT DISTINCT VALUE c.authorityId FROM c", nil)
+	if err != nil {
+		return nil, fmt.Errorf("query distinct authority ids: %w", err)
+	}
+	ids := make([]int, 0, len(raws))
+	for _, raw := range raws {
+		var id int
+		if err := json.Unmarshal(raw, &id); err != nil {
+			return nil, fmt.Errorf("decode authority id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // isNotFound reports whether err is a Cosmos 404 response.
