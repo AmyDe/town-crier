@@ -11,12 +11,15 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the SavedApplications container the
-// store uses: point read/upsert/delete plus a single-partition list query.
+// store uses: point read/upsert/delete, a single-partition list query, and a
+// cross-partition scan for the poll-path decision fan-out (who saved a given
+// application). platform.CosmosContainer satisfies it structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	DeleteItem(ctx context.Context, partitionKey, id string) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
+	QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error)
 }
 
 // listByUserQuery lists a user's saved applications. Scoped to the userId
@@ -88,6 +91,40 @@ func (s *CosmosStore) GetByUserID(ctx context.Context, userID string) ([]SavedAp
 		saved = append(saved, doc.toDomain())
 	}
 	return saved, nil
+}
+
+// userIDsForApplicationQuery projects the distinct user ids that have saved the
+// (applicationUid, authorityId), across all partitions. The authority predicate
+// is load-bearing: PlanIt uids collide across councils (tc-th98 / GH#384), so a
+// uid-only match would falsely fan out a decision to bookmark holders in another
+// authority. Mirrors .NET GetUserIdsForApplicationCrossPartitionAsync. Legacy
+// rows persisted before the authorityId column was added fall through the filter
+// naturally — they won't match until backfilled.
+const userIDsForApplicationQuery = "SELECT VALUE c.userId FROM c " +
+	"WHERE c.applicationUid = @applicationUid AND c.authorityId = @authorityId"
+
+// UserIDsForApplication returns every user id that has saved the given
+// (applicationUid, authorityId), via a cross-partition scan. It backs the
+// poll-path decision-event fan-out to bookmark holders (epic tc-wad3, bead
+// tc-uc2p). This is a deliberate cross-partition scan — saved-app docs are
+// partitioned by userId, but a polled decision needs every user who saved it.
+func (s *CosmosStore) UserIDsForApplication(ctx context.Context, applicationUID string, authorityID int) ([]string, error) {
+	raws, err := s.items.QueryItemsCrossPartition(ctx, userIDsForApplicationQuery, map[string]any{
+		"@applicationUid": applicationUID,
+		"@authorityId":    authorityID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query user ids for saved application %q: %w", applicationUID, err)
+	}
+	userIDs := make([]string, 0, len(raws))
+	for _, raw := range raws {
+		var id string
+		if err := json.Unmarshal(raw, &id); err != nil {
+			return nil, fmt.Errorf("decode saved-application user id: %w", err)
+		}
+		userIDs = append(userIDs, id)
+	}
+	return userIDs, nil
 }
 
 // idOnlyDocument captures just the id projected by the cascade-delete query
