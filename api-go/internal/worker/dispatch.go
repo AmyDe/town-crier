@@ -25,10 +25,12 @@ const bootstrapBudget = 60 * time.Second
 // replicaTimeout so the process exits cleanly and flushes telemetry.
 const digestBudget = 10 * time.Minute
 
-// digestRunner is the consumer-side slice of the digest handler the dispatcher
+// DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
-// methods so it need not know the handler's internals.
-type digestRunner interface {
+// methods so it need not know the handler's internals. It is exported so main()
+// can hold a genuinely nil interface value when the job has no digest config —
+// passing a typed-nil *digest.Handler would defeat the nil guard below.
+type DigestRunner interface {
 	RunWeekly(ctx context.Context) error
 	RunHourly(ctx context.Context) error
 }
@@ -48,7 +50,7 @@ type digestRunner interface {
 // then refuses to run rather than nil-panicking. Likewise digester may be nil
 // when the job has no Cosmos / ACS / APNs config; the digest modes then refuse
 // to run rather than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester digestRunner, logger *slog.Logger) int {
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -60,10 +62,10 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 		return runPollBootstrap(ctx, bootstrapper, logger)
 
 	case "digest":
-		return runDigest(ctx, "Digest Cycle", digester, digestRunner.RunWeekly, logger)
+		return runDigest(ctx, "Digest Cycle", digester, DigestRunner.RunWeekly, logger)
 
 	case "hourly-digest":
-		return runDigest(ctx, "Hourly Digest Cycle", digester, digestRunner.RunHourly, logger)
+		return runDigest(ctx, "Hourly Digest Cycle", digester, DigestRunner.RunHourly, logger)
 
 	case "poll-sb", "dormant-cleanup":
 		// Loud, safe stub: the image is not deployed until the final cutover, so
@@ -82,7 +84,7 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 // Cycle" / "Hourly Digest Cycle") so existing App Insights queries keep working.
 // A nil digester (job missing Cosmos/ACS config) is an exit-1 condition; a cycle
 // error is recorded on the span and also exits 1 so the job surfaces the failure.
-func runDigest(ctx context.Context, spanName string, digester digestRunner, run func(digestRunner, context.Context) error, logger *slog.Logger) int {
+func runDigest(ctx context.Context, spanName string, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, spanName)
 	defer span.End()
