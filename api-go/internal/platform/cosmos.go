@@ -182,6 +182,13 @@ const (
 	// Server Notification; partition key /id == the notificationUUID, document id
 	// == the notificationUUID. Backs webhook idempotency.
 	CosmosAppleNotificationsContainer = "AppleNotifications"
+	// CosmosPollStateContainer holds one document per authority's poll state;
+	// partition key /id == "poll-state-{authorityId}", document id == same. The
+	// poll-sb cycle reads/writes per-authority high-water marks and cursors here.
+	CosmosPollStateContainer = "PollState"
+	// CosmosLeasesContainer holds the single "polling" lease document gating
+	// concurrent poll cycles; partition key /id == the lease id. CAS via etag.
+	CosmosLeasesContainer = "Leases"
 )
 
 // ReadItem point-reads the document with the given id from its partition.
