@@ -113,6 +113,34 @@ func (s *CosmosStore) Delete(ctx context.Context, userID, zoneID string) error {
 	return nil
 }
 
+// idOnlyDocument captures just the id projected by the cascade-delete query
+// (SELECT c.id FROM c ...), so the cascade need not hydrate full documents.
+type idOnlyDocument struct {
+	ID string `json:"id"`
+}
+
+// DeleteAllByUserID removes every watch zone in the user's partition: it queries
+// the partition for the document ids, then point-deletes each. Used by the
+// account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring .NET
+// CosmosWatchZoneRepository.DeleteAllByUserIdAsync. The scan and the deletes are
+// all single-partition, so they never fan out cross-partition.
+func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
+	raws, err := s.items.QueryItems(ctx, userID, "SELECT c.id FROM c WHERE c.userId = @userId", map[string]any{"@userId": userID})
+	if err != nil {
+		return fmt.Errorf("query watch zone ids for %q: %w", userID, err)
+	}
+	for _, raw := range raws {
+		var doc idOnlyDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("decode watch zone id for %q: %w", userID, err)
+		}
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+			return fmt.Errorf("delete watch zone %q for %q: %w", doc.ID, userID, err)
+		}
+	}
+	return nil
+}
+
 // isNotFound reports whether err is a Cosmos 404 response.
 func isNotFound(err error) bool {
 	var respErr *azcore.ResponseError
