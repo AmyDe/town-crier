@@ -215,12 +215,12 @@ jobs:
           SHA="${{ steps.resolve.outputs.sha }}"
           if az acr manifest show \
             --registry "$ACR_NAME" \
-            --name "town-crier-worker:$SHA" 2>/dev/null; then
+            --name "town-crier-worker-go:$SHA" 2>/dev/null; then
             echo "Using exact image for SHA $SHA"
             echo "tag=$SHA" >> "$GITHUB_OUTPUT"
           elif az acr manifest show \
             --registry "$ACR_NAME" \
-            --name "town-crier-worker:latest" 2>/dev/null; then
+            --name "town-crier-worker-go:latest" 2>/dev/null; then
             echo "No image for SHA $SHA — falling back to latest"
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           else
@@ -233,7 +233,7 @@ jobs:
           jobs: poll poll-bootstrap digest digest-hourly dormant-cleanup
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ steps.check-image.outputs.tag }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker-go:${{ steps.check-image.outputs.tag }}
 
   # ── Web ───────────────────────────────────────────────
   web:
