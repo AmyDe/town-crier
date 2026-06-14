@@ -14,11 +14,12 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the NotificationState container the
-// store uses: point read/upsert keyed on the user id (one document per user,
-// id == partition key). platform.CosmosContainer satisfies it structurally.
+// store uses: point read/upsert/delete keyed on the user id (one document per
+// user, id == partition key). platform.CosmosContainer satisfies it structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
+	DeleteItem(ctx context.Context, partitionKey, id string) error
 }
 
 // CosmosCounter is the consumer-side slice of the Notifications container the
@@ -84,6 +85,22 @@ func (s *CosmosStore) UnreadCount(ctx context.Context, userID string, lastReadAt
 		return 0, fmt.Errorf("count unread for %q: %w", userID, err)
 	}
 	return count, nil
+}
+
+// DeleteByUserID removes the user's watermark document for the account-erasure
+// cascade (dormant cleanup and DELETE /v1/me). The container holds one document
+// per user (id == userId == partition key), so this is a single point delete; a
+// 404 is tolerated so an account with no watermark yet is not a cascade failure.
+//
+// Note: the retired .NET DeleteUserProfileCommandHandler did not erase the
+// notification-state watermark, leaving an orphaned document after account
+// deletion. The Go cascade deletes it (epic tc-wad3, bead tc-dwcq) for complete
+// GDPR erasure.
+func (s *CosmosStore) DeleteByUserID(ctx context.Context, userID string) error {
+	if err := s.state.DeleteItem(ctx, userID, userID); err != nil && !isNotFound(err) {
+		return fmt.Errorf("delete notification state %q: %w", userID, err)
+	}
+	return nil
 }
 
 // isNotFound reports whether err is a Cosmos 404 response.

@@ -90,6 +90,34 @@ func (s *CosmosStore) GetByUserID(ctx context.Context, userID string) ([]SavedAp
 	return saved, nil
 }
 
+// idOnlyDocument captures just the id projected by the cascade-delete query
+// (SELECT c.id FROM c ...), so the cascade need not hydrate full documents.
+type idOnlyDocument struct {
+	ID string `json:"id"`
+}
+
+// DeleteAllByUserID removes every saved application in the user's partition: it
+// queries the partition for the document ids, then point-deletes each. Used by
+// the account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring
+// .NET CosmosSavedApplicationRepository.DeleteAllByUserIdAsync. All operations
+// are single-partition.
+func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
+	raws, err := s.items.QueryItems(ctx, userID, "SELECT c.id FROM c WHERE c.userId = @userId", map[string]any{"@userId": userID})
+	if err != nil {
+		return fmt.Errorf("query saved application ids for %q: %w", userID, err)
+	}
+	for _, raw := range raws {
+		var doc idOnlyDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return fmt.Errorf("decode saved application id for %q: %w", userID, err)
+		}
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+			return fmt.Errorf("delete saved application %q for %q: %w", doc.ID, userID, err)
+		}
+	}
+	return nil
+}
+
 // isNotFound reports whether err is a Cosmos 404 response.
 func isNotFound(err error) bool {
 	var respErr *azcore.ResponseError

@@ -102,6 +102,37 @@ func (s *AdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*User
 	return profiles, nil
 }
 
+// Dormant returns every profile last active strictly before cutoff — the
+// dormant-account set the cleanup worker erases (UK GDPR Art. 5(1)(e), ADR 0023).
+// Mirrors .NET GetDormantCrossPartitionAsync, with one deliberate hardening: the
+// cutoff comparison is done in Go on the parsed LastActiveAt rather than as a
+// Cosmos string comparison. Production documents carry lastActiveAt in two wire
+// formats — .NET's DateTimeOffset "+00:00" form and the Go store's RFC 3339 "Z"
+// form — and "Z" sorts after "+", so a lexicographic SQL "<" would silently miss
+// "Z"-stored dormant accounts. The scan is a once-a-day batch over a small user
+// base, so hydrating all profiles and filtering in Go is both correct and cheap.
+func (s *AdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*UserProfile, error) {
+	rows, err := s.items.QueryItemsCrossPartition(ctx, "SELECT * FROM c", nil)
+	if err != nil {
+		return nil, fmt.Errorf("query dormant profiles: %w", err)
+	}
+	dormant := make([]*UserProfile, 0)
+	for _, raw := range rows {
+		var doc profileDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode profile: %w", err)
+		}
+		p, err := doc.toDomain()
+		if err != nil {
+			return nil, fmt.Errorf("hydrate profile: %w", err)
+		}
+		if p.LastActiveAt.Before(cutoff) {
+			dormant = append(dormant, p)
+		}
+	}
+	return dormant, nil
+}
+
 // Save upserts the profile (id == user id == partition key).
 func (s *AdminStore) Save(ctx context.Context, p *UserProfile) error {
 	body, err := json.Marshal(newProfileDocument(p))

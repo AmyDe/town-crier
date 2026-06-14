@@ -14,13 +14,17 @@ import (
 // fakeItems is an in-memory CosmosItems keyed by (partitionKey, id). It records
 // the last upsert partition key so tests can assert single-partition scoping.
 type fakeItems struct {
-	docs        map[string][]byte // key: partitionKey + "\x00" + id
-	upsertPart  string
-	upsertErr   error
-	deleteErr   error
-	readErr     error
-	queryErr    error
-	deleteCalls int
+	docs         map[string][]byte // key: partitionKey + "\x00" + id
+	upsertPart   string
+	upsertErr    error
+	deleteErr    error
+	readErr      error
+	queryErr     error
+	queryResult  [][]byte // when set, returned verbatim by QueryItems
+	deleteCalls  int
+	lastQueryPK  string
+	lastDeletePK string
+	deletedIDs   []string
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{docs: map[string][]byte{}} }
@@ -53,16 +57,22 @@ func (f *fakeItems) UpsertItem(_ context.Context, pk string, item []byte) error 
 
 func (f *fakeItems) DeleteItem(_ context.Context, pk, id string) error {
 	f.deleteCalls++
+	f.lastDeletePK = pk
 	if f.deleteErr != nil {
 		return f.deleteErr
 	}
+	f.deletedIDs = append(f.deletedIDs, id)
 	delete(f.docs, key(pk, id))
 	return nil
 }
 
 func (f *fakeItems) QueryItems(_ context.Context, pk, _ string, _ map[string]any) ([][]byte, error) {
+	f.lastQueryPK = pk
 	if f.queryErr != nil {
 		return nil, f.queryErr
+	}
+	if f.queryResult != nil {
+		return f.queryResult, nil
 	}
 	var out [][]byte
 	prefix := pk + "\x00"
@@ -175,5 +185,29 @@ func TestCosmosStore_ListByUser(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Errorf("ListByUser returned %d registrations, want 2", len(got))
+	}
+}
+
+func TestCosmosStore_DeleteAllByUserID_QueriesPartitionThenDeletesEachID(t *testing.T) {
+	t.Parallel()
+	const userID = "auth0|u"
+	items := newFakeItems()
+	items.queryResult = [][]byte{
+		[]byte(`{"id":"token-a"}`),
+		[]byte(`{"id":"token-b"}`),
+	}
+	store := NewCosmosStore(items)
+
+	if err := store.DeleteAllByUserID(context.Background(), userID); err != nil {
+		t.Fatalf("DeleteAllByUserID: %v", err)
+	}
+	if items.lastQueryPK != userID {
+		t.Errorf("cascade query pk: got %q, want %q", items.lastQueryPK, userID)
+	}
+	if len(items.deletedIDs) != 2 || items.deletedIDs[0] != "token-a" || items.deletedIDs[1] != "token-b" {
+		t.Errorf("deleted ids: got %v", items.deletedIDs)
+	}
+	if items.lastDeletePK != userID {
+		t.Errorf("cascade delete pk: got %q, want %q", items.lastDeletePK, userID)
 	}
 }
