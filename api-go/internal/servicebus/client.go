@@ -118,12 +118,18 @@ func (c *Client) QueueDepth(ctx context.Context) (QueueDepth, error) {
 // scheduledEnqueueTime. The body carries only a diagnostic timestamp — the
 // message is a "run once now" tick, matching .NET's PollTriggerPayload. A
 // scheduled enqueue (server-side) defers delivery without holding a goroutine.
-func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, body []byte) error {
+func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, body []byte) (err error) {
 	sender, err := c.sbClient.NewSender(c.queueName, nil)
 	if err != nil {
 		return fmt.Errorf("build sender: %w", err)
 	}
-	defer func() { _ = sender.Close(ctx) }()
+	// Surface a close failure only when the publish itself succeeded, so a
+	// genuine send error is never masked by a teardown error.
+	defer func() {
+		if closeErr := sender.Close(ctx); closeErr != nil && err == nil {
+			err = fmt.Errorf("close sender: %w", closeErr)
+		}
+	}()
 
 	enqueue := scheduledEnqueueTime.UTC()
 	msg := &azservicebus.Message{

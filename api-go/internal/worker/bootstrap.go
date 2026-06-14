@@ -103,7 +103,7 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 		return BootstrapResult{ProbeFailed: true}, nil
 	}
 
-	b.logger.InfoContext(ctx, "poll-bootstrap published seed trigger", "scheduled_at", scheduledAt.UTC())
+	b.logger.InfoContext(ctx, "poll-bootstrap published seed trigger", "scheduledAt", scheduledAt.UTC())
 	return BootstrapResult{Published: true}, nil
 }
 
@@ -113,7 +113,9 @@ func (b *Bootstrapper) TryBootstrap(ctx context.Context) (BootstrapResult, error
 func nextSeedDelay() time.Duration {
 	// Int64N(2*jitterBound+1) yields [0, 2*jitterBound]; subtracting jitterBound
 	// centres it on zero. The result is always strictly positive because
-	// naturalCadence (5m) far exceeds jitterBound (10s).
-	offset := time.Duration(mathrand.Int64N(int64(2*jitterBound)+1)) - jitterBound
+	// naturalCadence (5m) far exceeds jitterBound (10s). math/rand/v2 is correct
+	// here: the jitter de-synchronises reseeds, it is not security-sensitive, so
+	// crypto/rand would be needless ceremony (gosec G404 is a false positive).
+	offset := time.Duration(mathrand.Int64N(int64(2*jitterBound)+1)) - jitterBound //nolint:gosec // non-security operational jitter
 	return naturalCadence + offset
 }

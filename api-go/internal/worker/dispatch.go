@@ -45,7 +45,7 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, logger *s
 	case "poll-sb", "digest", "hourly-digest", "dormant-cleanup":
 		// Loud, safe stub: the image is not deployed until the final cutover, so
 		// this exit-1 can never strand a real job. Each mode lands in its own bead.
-		logger.ErrorContext(ctx, "WORKER_MODE "+mode+" not yet implemented in Go worker", "mode", mode)
+		logger.ErrorContext(ctx, "WORKER_MODE not yet implemented in Go worker", "mode", mode)
 		return 1
 
 	default:
