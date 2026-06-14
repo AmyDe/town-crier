@@ -13,6 +13,7 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -20,10 +21,12 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
+	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"github.com/AmyDe/town-crier/api-go/internal/worker"
@@ -106,7 +109,22 @@ func run() int {
 		digester = handler
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, logger)
+	// The dormant-cleanup handler is built only when the job carries Cosmos config.
+	// Like digester, it is declared as the interface so the "no Cosmos" case leaves
+	// it a genuinely nil interface value (a typed-nil *dormant.Handler would defeat
+	// worker.Run's nil guard). The Auth0 deleter falls back to a no-op when the M2M
+	// credentials are absent, so a Cosmos-only job still boots cleanly.
+	var dormantRunner worker.DormantRunner
+	dormantHandler, err := buildDormant(cfg, logger)
+	if err != nil {
+		logger.Error("build dormant cleanup handler", "error", err)
+		return 1
+	}
+	if dormantHandler != nil {
+		dormantRunner = dormantHandler
+	}
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, logger)
 }
 
 // buildDigester constructs the digest handler when Cosmos is configured, wiring
@@ -182,6 +200,116 @@ func (p digestProfiles) ByDigestDay(ctx context.Context, day time.Weekday) ([]*p
 
 func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserProfile, error) {
 	return p.point.Get(ctx, userID)
+}
+
+// buildDormant constructs the dormant-cleanup handler when Cosmos is configured,
+// wiring the dormant-account finder, the per-container erasure stores, and the
+// Auth0 M2M deleter (real when its credentials are present, NoOp otherwise so a
+// job without Auth0 M2M config still erases Cosmos data). It returns (nil, nil)
+// when Cosmos is unconfigured — the dormant-cleanup mode then refuses to run
+// rather than nil-panicking. Returning the concrete *dormant.Handler lets
+// worker.Run accept it via its exported DormantRunner interface.
+func buildDormant(cfg platform.Config, logger *slog.Logger) (*dormant.Handler, error) {
+	if cfg.CosmosEndpoint == "" {
+		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no dormant handler" state, not an error
+	}
+
+	users, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
+	if err != nil {
+		return nil, err
+	}
+	notifs, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	zonesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	devicesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	stores := dormant.Stores{
+		Notifications:       notificationDeleter{notifications.NewDeleteStore(notifs)},
+		WatchZones:          watchZoneDeleter{watchzones.NewCosmosStore(zonesContainer)},
+		SavedApplications:   savedApplicationDeleter{savedapplications.NewCosmosStore(savedContainer)},
+		DeviceRegistrations: deviceDeleter{devicetokens.NewCosmosStore(devicesContainer)},
+		NotificationState:   stateDeleter{notificationstate.NewCosmosStore(stateContainer, notifs)},
+		Profiles:            profileDeleter{profiles.NewCosmosStore(users)},
+		Auth0:               buildAuth0Deleter(cfg, logger),
+	}
+
+	return dormant.New(profiles.NewAdminStore(users), stores, logger, time.Now), nil
+}
+
+// buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
+// credentials are configured, else a no-op so a job without Auth0 M2M config
+// still erases Cosmos data, mirroring .NET's NoOpAuth0ManagementClient fallback.
+func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) dormant.Auth0Deleter {
+	if !cfg.Auth0M2MConfigured() {
+		logger.Info("auth0 m2m unconfigured; dormant cleanup will skip Auth0 user deletion (NoOp)")
+		return profiles.NoOpAuth0Client{}
+	}
+	return profiles.NewAuth0Client(
+		&http.Client{Timeout: 30 * time.Second},
+		"https://"+cfg.Auth0Domain,
+		cfg.Auth0M2MClientID,
+		cfg.Auth0M2MClientSecret,
+	)
+}
+
+// The adapters below bridge each store's own method name (DeleteAllByUserID /
+// Delete / DeleteByUserID) to the dormant package's consumer-side interface
+// method names. They keep the dormant handler's contracts explicit without
+// renaming the stores' established API.
+
+type notificationDeleter struct{ s *notifications.DeleteStore }
+
+func (d notificationDeleter) DeleteAllNotifications(ctx context.Context, userID string) error {
+	return d.s.DeleteAllByUserID(ctx, userID)
+}
+
+type watchZoneDeleter struct{ s *watchzones.CosmosStore }
+
+func (d watchZoneDeleter) DeleteAllWatchZones(ctx context.Context, userID string) error {
+	return d.s.DeleteAllByUserID(ctx, userID)
+}
+
+type savedApplicationDeleter struct{ s *savedapplications.CosmosStore }
+
+func (d savedApplicationDeleter) DeleteAllSavedApplications(ctx context.Context, userID string) error {
+	return d.s.DeleteAllByUserID(ctx, userID)
+}
+
+type deviceDeleter struct{ s *devicetokens.CosmosStore }
+
+func (d deviceDeleter) DeleteAllDeviceRegistrations(ctx context.Context, userID string) error {
+	return d.s.DeleteAllByUserID(ctx, userID)
+}
+
+type stateDeleter struct{ s *notificationstate.CosmosStore }
+
+func (d stateDeleter) DeleteNotificationState(ctx context.Context, userID string) error {
+	return d.s.DeleteByUserID(ctx, userID)
+}
+
+type profileDeleter struct{ s *profiles.CosmosStore }
+
+// DeleteProfile maps to the profile store's Delete, translating its ErrNotFound
+// (a 404 from Cosmos) so the dormant handler can tolerate a concurrently-deleted
+// profile via errors.Is(err, profiles.ErrNotFound).
+func (d profileDeleter) DeleteProfile(ctx context.Context, userID string) error {
+	return d.s.Delete(ctx, userID)
 }
 
 // buildEmailSender returns the real ACS email sender when a connection string is
