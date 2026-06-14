@@ -1,9 +1,9 @@
 package dormant
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -106,7 +106,7 @@ func newHandler(finder Finder, cascade *cascadeRecorder, auth0 Auth0Deleter, now
 		Profiles:            cascade,
 		Auth0:               auth0,
 	}
-	return New(finder, stores, slog.New(slog.NewTextHandler(io.Discard, nil)), func() time.Time { return now })
+	return New(finder, stores, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
 }
 
 // --- tests ------------------------------------------------------------------

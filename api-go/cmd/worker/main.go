@@ -3,10 +3,10 @@
 // Phase 2, epic tc-wad3). One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
-// This skeleton implements only poll-bootstrap (the Service-Bus-only tracer
-// bullet); the other four modes are loud stubs that exit 1 until their own beads
-// land. The Go image is not deployed to any job until the final cutover, so a
-// stub can never strand a real job.
+// poll-bootstrap, digest, hourly-digest, and dormant-cleanup are implemented;
+// poll-sb remains a loud stub that exits 1 until its own bead (tc-yng2) lands.
+// The Go image is not deployed to any job until the final cutover, so a stub can
+// never strand a real job.
 package main
 
 import (
@@ -285,7 +285,9 @@ func (d watchZoneDeleter) DeleteAllWatchZones(ctx context.Context, userID string
 	return d.s.DeleteAllByUserID(ctx, userID)
 }
 
-type savedApplicationDeleter struct{ s *savedapplications.CosmosStore }
+type savedApplicationDeleter struct {
+	s *savedapplications.CosmosStore
+}
 
 func (d savedApplicationDeleter) DeleteAllSavedApplications(ctx context.Context, userID string) error {
 	return d.s.DeleteAllByUserID(ctx, userID)
@@ -297,7 +299,9 @@ func (d deviceDeleter) DeleteAllDeviceRegistrations(ctx context.Context, userID 
 	return d.s.DeleteAllByUserID(ctx, userID)
 }
 
-type stateDeleter struct{ s *notificationstate.CosmosStore }
+type stateDeleter struct {
+	s *notificationstate.CosmosStore
+}
 
 func (d stateDeleter) DeleteNotificationState(ctx context.Context, userID string) error {
 	return d.s.DeleteByUserID(ctx, userID)

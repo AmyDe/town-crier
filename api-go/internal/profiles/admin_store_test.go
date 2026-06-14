@@ -243,10 +243,10 @@ func TestAdminStore_Dormant_KeepsAccountsActiveAtOrAfterCutoff(t *testing.T) {
 
 	items := newFakeAdminItems()
 	items.queryResult = [][]byte{
-		profileDocAt(t, "dormant-13mo", cutoff.AddDate(0, -1, 0)),  // before cutoff -> dormant
-		profileDocAt(t, "active-11mo", cutoff.AddDate(0, 1, 0)),    // after cutoff -> kept
-		profileDocAt(t, "exactly-12mo", cutoff),                    // == cutoff -> kept (not strictly before)
-		profileDocAt(t, "dormant-old", cutoff.AddDate(-1, 0, 0)),   // well before -> dormant
+		profileDocAt(t, "dormant-13mo", cutoff.AddDate(0, -1, 0)), // before cutoff -> dormant
+		profileDocAt(t, "active-11mo", cutoff.AddDate(0, 1, 0)),   // after cutoff -> kept
+		profileDocAt(t, "exactly-12mo", cutoff),                   // == cutoff -> kept (not strictly before)
+		profileDocAt(t, "dormant-old", cutoff.AddDate(-1, 0, 0)),  // well before -> dormant
 	}
 	store := NewAdminStore(items)
 
