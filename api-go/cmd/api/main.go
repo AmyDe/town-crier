@@ -34,11 +34,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	logger := platform.NewLogger(os.Stdout, cfg.LogLevel)
+	// NewOTelLogger fans every record out to stdout JSON (ContainerAppConsoleLogs)
+	// AND the otelslog bridge. The bridge targets the GLOBAL LoggerProvider, which
+	// is the no-op provider until SetupTelemetry (called next) installs an SDK one;
+	// the global provider's delegation upgrades this logger in place, so building
+	// it before SetupTelemetry is correct (tc-8x8g / ADR 0027).
+	logger := platform.NewOTelLogger(os.Stdout, cfg.LogLevel)
 
 	// SetupTelemetry self-disables when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so
-	// local/dev boots leave the no-op TracerProvider in place. When the ACA OTel
-	// agent injects the endpoint, traces export to it over OTLP/gRPC.
+	// local/dev boots leave the no-op Tracer and Logger providers in place. When
+	// the ACA OTel agent injects the endpoint, traces and logs export to it over
+	// OTLP/gRPC.
 	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
 	if err != nil {
 		log.Fatal(err)
