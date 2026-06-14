@@ -110,6 +110,46 @@ func TestCosmosStore_GetByAuthorityAndName_NotFound(t *testing.T) {
 	}
 }
 
+func TestCosmosStore_GetByUID_PartitionScopedQuery(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	body, _ := json.Marshal(newApplicationDocument(a))
+	items := newFakeItems()
+	items.queryResult = [][]byte{body}
+	store := NewCosmosStore(items)
+
+	got, found, err := store.GetByUID(context.Background(), a.UID, strconv.Itoa(a.AreaID))
+	if err != nil {
+		t.Fatalf("GetByUID: %v", err)
+	}
+	if !found {
+		t.Fatal("expected found")
+	}
+	if got.UID != a.UID || got.Name != a.Name {
+		t.Errorf("got %+v", got)
+	}
+	if items.lastQueryPK != strconv.Itoa(a.AreaID) {
+		t.Errorf("query partition key: got %q, want %q", items.lastQueryPK, strconv.Itoa(a.AreaID))
+	}
+	want := "SELECT * FROM c WHERE c.uid = @uid"
+	if items.lastQuery != want {
+		t.Errorf("uid query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+}
+
+func TestCosmosStore_GetByUID_NotFound(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	_, found, err := store.GetByUID(context.Background(), "missing-uid", "471")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Error("expected not found")
+	}
+}
+
 func TestCosmosStore_FindNearby_ScopesToAuthorityPartitionWithSpatialQuery(t *testing.T) {
 	t.Parallel()
 	a := testApplication(t)

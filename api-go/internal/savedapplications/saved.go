@@ -43,3 +43,13 @@ func NewSavedApplication(userID string, app applications.PlanningApplication, no
 		Application:    &snapshot,
 	}
 }
+
+// withEmbeddedSnapshot returns a copy of the saved record with app embedded as
+// its snapshot, keeping the existing ApplicationUID and SavedAt. Re-keying to the
+// canonical uid is a separate step, so the lazy backfill and the re-key stay
+// independently testable. Mirrors .NET SavedApplication.WithEmbeddedSnapshot.
+func (s SavedApplication) withEmbeddedSnapshot(app applications.PlanningApplication) SavedApplication {
+	snapshot := app
+	s.Application = &snapshot
+	return s
+}

@@ -125,7 +125,15 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
 	}
 	if appStore != nil {
-		applications.Routes(mux, appStore, logger)
+		// Refresh-on-tap heals a saved row's snapshot when the user views an app
+		// they've saved; it needs the saved store. Pass a genuine nil interface
+		// (not a typed-nil pointer) when saving isn't wired, so the handler's
+		// nil-check disables the side effect cleanly.
+		if savedStore != nil {
+			applications.Routes(mux, appStore, savedapplications.NewSnapshotRefresher(savedStore, time.Now), logger)
+		} else {
+			applications.Routes(mux, appStore, nil, logger)
+		}
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone

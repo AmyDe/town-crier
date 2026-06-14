@@ -26,11 +26,37 @@ func (f *fakeAppStore) GetByAuthorityAndName(_ context.Context, authorityCode, n
 	return f.app, f.found, f.err
 }
 
+type refreshCall struct {
+	userID string
+	app    PlanningApplication
+}
+
+type fakeRefresher struct {
+	calls []refreshCall
+	err   error
+}
+
+func (f *fakeRefresher) RefreshSnapshot(_ context.Context, userID string, app PlanningApplication) error {
+	f.calls = append(f.calls, refreshCall{userID: userID, app: app})
+	return f.err
+}
+
+// serveGet drives the read endpoint with a refresher absent (the nil-safe path)
+// and an authenticated subject.
 func serveGet(t *testing.T, store appStore, path string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveGetWith(t, store, nil, "auth0|u", path)
+}
+
+func serveGetWith(t *testing.T, store appStore, refresher snapshotRefresher, subject, path string) *httptest.ResponseRecorder {
+	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, store, slog.New(slog.DiscardHandler))
-	req := httptest.NewRequestWithContext(auth.WithSubject(context.Background(), "auth0|u"), http.MethodGet, path, nil)
+	Routes(mux, store, refresher, slog.New(slog.DiscardHandler))
+	ctx := context.Background()
+	if subject != "" {
+		ctx = auth.WithSubject(ctx, subject)
+	}
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return rec
@@ -85,5 +111,63 @@ func TestHandler_GetByAuthorityAndName_StoreError(t *testing.T) {
 	rec := serveGet(t, &fakeAppStore{err: context.DeadlineExceeded}, "/v1/applications/471/x")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
+}
+
+func TestHandler_GetByAuthorityAndName_RefreshesOnTap(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	refresher := &fakeRefresher{}
+	rec := serveGetWith(t, &fakeAppStore{app: a, found: true}, refresher, "auth0|u", "/v1/applications/471/24/0123/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if len(refresher.calls) != 1 {
+		t.Fatalf("expected one refresh call, got %d", len(refresher.calls))
+	}
+	if refresher.calls[0].userID != "auth0|u" || refresher.calls[0].app.UID != a.UID {
+		t.Errorf("refresh call: %+v", refresher.calls[0])
+	}
+}
+
+func TestHandler_GetByAuthorityAndName_RefreshFailureDoesNotFailRead(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	refresher := &fakeRefresher{err: context.DeadlineExceeded}
+	rec := serveGetWith(t, &fakeAppStore{app: a, found: true}, refresher, "auth0|u", "/v1/applications/471/24/0123/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refresh error must not fail the read: got %d, want 200", rec.Code)
+	}
+	if rec.Body.Len() == 0 {
+		t.Error("body must still be written on refresh failure")
+	}
+}
+
+func TestHandler_GetByAuthorityAndName_NoRefreshWhenNotFound(t *testing.T) {
+	t.Parallel()
+	refresher := &fakeRefresher{}
+	rec := serveGetWith(t, &fakeAppStore{found: false}, refresher, "auth0|u", "/v1/applications/471/missing")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rec.Code)
+	}
+	if len(refresher.calls) != 0 {
+		t.Errorf("must not refresh a missing application: %+v", refresher.calls)
+	}
+}
+
+func TestHandler_GetByAuthorityAndName_NoRefreshWhenAnonymous(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	refresher := &fakeRefresher{}
+	rec := serveGetWith(t, &fakeAppStore{app: a, found: true}, refresher, "", "/v1/applications/471/24/0123/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if len(refresher.calls) != 0 {
+		t.Errorf("must not refresh without an authenticated subject: %+v", refresher.calls)
 	}
 }
