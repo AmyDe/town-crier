@@ -469,6 +469,10 @@ jobs:
           INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
           INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
           INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
+          # Same shared admin key the .NET app is deployed with, so the
+          # offer-code/admin contract diffs can exercise the X-Admin-Key surface.
+          # Scenarios skip when this is unset locally.
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: go test -tags e2e -v ./tests/e2e/...
         working-directory: api-go
 
