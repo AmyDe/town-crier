@@ -126,9 +126,16 @@ func TestDigestStore_UnsentEmailsByUser(t *testing.T) {
 
 func TestDigestStore_UserIDsWithUnsentEmails(t *testing.T) {
 	t.Parallel()
+	// azcosmos cannot serve a cross-partition DISTINCT (the gateway 400s), so the
+	// query is a plain cross-partition projection and the store dedupes the rows
+	// client-side (tc-b7cm). The fake returns duplicate user ids out of order; the
+	// store must collapse them to one each in first-seen order.
 	items := &fakeDigestItems{crossResult: [][]byte{
-		[]byte(`"user-1"`),
-		[]byte(`"user-2"`),
+		[]byte(`"u1"`),
+		[]byte(`"u2"`),
+		[]byte(`"u1"`),
+		[]byte(`"u3"`),
+		[]byte(`"u2"`),
 	}}
 	store := NewDigestStore(items)
 
@@ -136,11 +143,19 @@ func TestDigestStore_UserIDsWithUnsentEmails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UserIDsWithUnsentEmails: %v", err)
 	}
-	if len(got) != 2 || got[0] != "user-1" || got[1] != "user-2" {
-		t.Fatalf("got %v", got)
+	want := []string{"u1", "u2", "u3"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
-	if !strings.Contains(items.crossText, "DISTINCT VALUE c.userId") {
-		t.Errorf("query missing distinct user id projection: %q", items.crossText)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("dedup order mismatch: got %v, want %v", got, want)
+		}
+	}
+	// Guard the regression: a cross-partition DISTINCT 400s at the gateway, so the
+	// query the store sends must NOT contain DISTINCT.
+	if strings.Contains(items.crossText, "DISTINCT") {
+		t.Errorf("cross-partition query must not use DISTINCT (gateway 400): %q", items.crossText)
 	}
 }
 
