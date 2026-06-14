@@ -247,25 +247,31 @@ func TestCosmosStore_DeleteAllByUserID_NoZonesIsNoOp(t *testing.T) {
 func TestCosmosStore_DistinctAuthorityIDs_CrossPartition(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
-	// SELECT DISTINCT VALUE c.authorityId FROM c yields bare JSON numbers.
-	items.crossPartitionResult = [][]byte{[]byte("99"), []byte("123"), []byte("7")}
+	// azcosmos cannot serve a cross-partition DISTINCT (the gateway 400s), so the
+	// query is a plain projection (SELECT VALUE c.authorityId FROM c, bare JSON
+	// numbers) and the store dedupes client-side (tc-b7cm). The fake returns the
+	// same authority id more than once, out of order; the store must collapse it
+	// to one each in first-seen order.
+	items.crossPartitionResult = [][]byte{[]byte("10"), []byte("20"), []byte("10"), []byte("30")}
 	store := NewCosmosStore(items)
 
 	ids, err := store.DistinctAuthorityIDs(context.Background())
 	if err != nil {
 		t.Fatalf("DistinctAuthorityIDs: %v", err)
 	}
-	if len(ids) != 3 {
-		t.Fatalf("ids: got %v, want 3 entries", ids)
+	want := []int{10, 20, 30}
+	if len(ids) != len(want) {
+		t.Fatalf("ids: got %v, want %v", ids, want)
 	}
-	got := map[int]bool{}
-	for _, id := range ids {
-		got[id] = true
-	}
-	for _, want := range []int{99, 123, 7} {
-		if !got[want] {
-			t.Errorf("missing authority id %d in %v", want, ids)
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("dedup order mismatch: got %v, want %v", ids, want)
 		}
+	}
+	// Guard the regression: a cross-partition DISTINCT 400s at the gateway, so the
+	// query the store sends must NOT contain DISTINCT.
+	if strings.Contains(items.lastQuery, "DISTINCT") {
+		t.Errorf("cross-partition query must not use DISTINCT (gateway 400): %q", items.lastQuery)
 	}
 }
 
