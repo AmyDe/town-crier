@@ -176,6 +176,109 @@ func TestDigestStore_MarkEmailSentUpsertsDocument(t *testing.T) {
 	}
 }
 
+func TestDigestStore_Create_UpsertsDigestReadableDocument(t *testing.T) {
+	t.Parallel()
+	items := &fakeDigestItems{}
+	store := NewDigestStore(items)
+	zoneID := "zone-1"
+	n := DigestNotification{
+		ID:                     "n-1",
+		UserID:                 "user-1",
+		ApplicationUID:         "24/0001",
+		ApplicationName:        "24/0001",
+		WatchZoneID:            &zoneID,
+		ApplicationAddress:     "10 High St",
+		ApplicationDescription: "Loft conversion",
+		AuthorityID:            99,
+		EventType:              EventNewApplication,
+		Sources:                "Zone",
+		CreatedAt:              time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC),
+	}
+
+	if err := store.Create(context.Background(), n); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if items.upsertPK != "user-1" {
+		t.Errorf("upsert partition key: got %q, want user-1", items.upsertPK)
+	}
+	// The written document must be byte-compatible with what the digest reader
+	// hydrates (digestDocument): camelCase keys, the 90-day TTL, emailSent=false.
+	var back digestDocument
+	if err := json.Unmarshal(items.upsertBody, &back); err != nil {
+		t.Fatalf("unmarshal upserted body: %v", err)
+	}
+	if back.ID != "n-1" || back.UserID != "user-1" || back.AuthorityID != 99 {
+		t.Errorf("round-trip mismatch: %+v", back)
+	}
+	if back.EmailSent {
+		t.Error("a freshly created notification must be unsent (emailSent=false)")
+	}
+	if back.TTL != ninetyDaysSeconds {
+		t.Errorf("ttl: got %d, want %d", back.TTL, ninetyDaysSeconds)
+	}
+	// And it must hydrate cleanly through the digest read path.
+	got := back.toDigest()
+	if got.ApplicationUID != "24/0001" || got.WatchZoneID == nil || *got.WatchZoneID != "zone-1" {
+		t.Errorf("digest hydration mismatch: %+v", got)
+	}
+}
+
+func TestDigestStore_GetByUserAndApplication_DedupQuery(t *testing.T) {
+	t.Parallel()
+	decision := "Permitted"
+	doc := map[string]any{
+		"id":                     "n-1",
+		"userId":                 "user-1",
+		"applicationUid":         "24/0001",
+		"applicationName":        "24/0001",
+		"applicationAddress":     "addr",
+		"applicationDescription": "desc",
+		"authorityId":            99,
+		"eventType":              "DecisionUpdate",
+		"decision":               decision,
+		"createdAt":              "2026-06-13T08:00:00+00:00",
+	}
+	body, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	items := &fakeDigestItems{queryResult: [][]byte{body}}
+	store := NewDigestStore(items)
+
+	got, err := store.GetByUserAndApplication(context.Background(), "user-1", "24/0001", 99, EventDecisionUpdate)
+	if err != nil {
+		t.Fatalf("GetByUserAndApplication: %v", err)
+	}
+	if got == nil || got.ID != "n-1" {
+		t.Fatalf("expected the existing notification, got %+v", got)
+	}
+	if items.queryPK != "user-1" {
+		t.Errorf("partition key: got %q, want user-1", items.queryPK)
+	}
+	// Dedup key is (userId, applicationUid, authorityId, eventType) — authority
+	// is part of the key because PlanIt uids collide across councils (tc-th98).
+	for _, want := range []string{"c.userId", "c.applicationUid", "c.authorityId", "c.eventType"} {
+		if !strings.Contains(items.queryText, want) {
+			t.Errorf("dedup query missing %q: %s", want, items.queryText)
+		}
+	}
+	if items.queryParams["@applicationUid"] != "24/0001" || items.queryParams["@authorityId"] != 99 || items.queryParams["@eventType"] != "DecisionUpdate" {
+		t.Errorf("params: %v", items.queryParams)
+	}
+}
+
+func TestDigestStore_GetByUserAndApplication_NoMatchReturnsNil(t *testing.T) {
+	t.Parallel()
+	store := NewDigestStore(&fakeDigestItems{})
+	got, err := store.GetByUserAndApplication(context.Background(), "user-1", "24/0001", 99, EventNewApplication)
+	if err != nil {
+		t.Fatalf("GetByUserAndApplication: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for no match, got %+v", got)
+	}
+}
+
 func TestDigestStore_ByUserSinceWrapsError(t *testing.T) {
 	t.Parallel()
 	items := &fakeDigestItems{queryErr: errors.New("boom")}

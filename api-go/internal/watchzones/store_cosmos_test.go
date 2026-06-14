@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -265,6 +266,46 @@ func TestCosmosStore_DistinctAuthorityIDs_CrossPartition(t *testing.T) {
 		if !got[want] {
 			t.Errorf("missing authority id %d in %v", want, ids)
 		}
+	}
+}
+
+func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T) {
+	t.Parallel()
+	z := testZone(t)
+	items := newFakeItems()
+	items.crossPartitionResult = [][]byte{mustDocBytes(t, z)}
+	store := NewCosmosStore(items)
+
+	zones, err := store.FindZonesContaining(context.Background(), 51.5155, -0.0931)
+	if err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	if len(zones) != 1 || zones[0].ID != z.ID {
+		t.Fatalf("zones: got %+v", zones)
+	}
+	// The point-in-circle predicate is an ST_DISTANCE against the zone radius,
+	// run cross-partition (every user's zones), mirroring .NET
+	// FindZonesContainingCrossPartitionAsync.
+	if !strings.Contains(items.lastQuery, "ST_DISTANCE") {
+		t.Errorf("query missing ST_DISTANCE: %q", items.lastQuery)
+	}
+	if !strings.Contains(items.lastQuery, "c.radiusMetres") {
+		t.Errorf("query must compare against c.radiusMetres: %q", items.lastQuery)
+	}
+	if items.lastParams["@latitude"] != 51.5155 || items.lastParams["@longitude"] != -0.0931 {
+		t.Errorf("spatial params: got lat=%v lng=%v", items.lastParams["@latitude"], items.lastParams["@longitude"])
+	}
+}
+
+func TestCosmosStore_FindZonesContaining_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+	zones, err := store.FindZonesContaining(context.Background(), 51.5, -0.1)
+	if err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	if len(zones) != 0 {
+		t.Errorf("expected empty, got %+v", zones)
 	}
 }
 

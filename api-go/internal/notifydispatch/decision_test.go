@@ -1,0 +1,273 @@
+package notifydispatch
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/notifications"
+	"github.com/AmyDe/town-crier/api-go/internal/profiles"
+	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+)
+
+// fakeZones serves the cross-partition zone-containment lookup.
+type fakeZones struct {
+	zones    []watchzones.WatchZone
+	queryErr error
+	lastLat  float64
+	lastLng  float64
+}
+
+func (f *fakeZones) FindZonesContaining(_ context.Context, lat, lng float64) ([]watchzones.WatchZone, error) {
+	f.lastLat = lat
+	f.lastLng = lng
+	if f.queryErr != nil {
+		return nil, f.queryErr
+	}
+	return f.zones, nil
+}
+
+// fakeSaved serves the cross-partition saved-bookmark lookup.
+type fakeSaved struct {
+	userIDs  []string
+	queryErr error
+}
+
+func (f *fakeSaved) UserIDsForApplication(_ context.Context, _ string, _ int) ([]string, error) {
+	if f.queryErr != nil {
+		return nil, f.queryErr
+	}
+	return f.userIDs, nil
+}
+
+func decisionApp(t *testing.T, decision string, lat, lng *float64) applications.PlanningApplication {
+	t.Helper()
+	d := decision
+	app := applications.PlanningApplication{
+		Name:          "24/0001",
+		UID:           "24/0001",
+		AreaName:      "Kingston",
+		AreaID:        99,
+		Address:       "10 High St",
+		Description:   "Loft conversion",
+		AppState:      &d,
+		Latitude:      lat,
+		Longitude:     lng,
+		LastDifferent: time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC),
+	}
+	return app
+}
+
+func coord(v float64) *float64 { return &v }
+
+func proWithZonePrefs(t *testing.T, decisionPush bool) *profiles.UserProfile {
+	t.Helper()
+	p := profileWithTier(t, "auth0|alice", profiles.TierPro)
+	p.ZonePreferences["zone-1"] = profiles.ZonePreferences{
+		NewApplicationPush: true,
+		DecisionPush:       decisionPush,
+	}
+	return p
+}
+
+func newDecisionHarness(
+	t *testing.T,
+	zones *fakeZones,
+	saved *fakeSaved,
+	profs *fakeProfiles,
+) (*DecisionDispatcher, *fakeNotifications, *fakePush) {
+	t.Helper()
+	notifs := newFakeNotifications()
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"auth0|alice": {{Token: "tok-1"}},
+		"auth0|bob":   {{Token: "tok-2"}},
+	}}
+	st := &fakeState{}
+	push := &fakePush{}
+	d := NewDecisionDispatcher(notifs, zones, saved, profs, devs, st, push,
+		func() string { return "n-fixed" },
+		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
+		testLogger(t))
+	return d, notifs, push
+}
+
+func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	saved := &fakeSaved{}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, true),
+	}}
+	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("expected 1 decision record, got %d", len(notifs.created))
+	}
+	rec := notifs.created[0]
+	if rec.EventType != notifications.EventDecisionUpdate {
+		t.Errorf("event type: got %q, want DecisionUpdate", rec.EventType)
+	}
+	if rec.Decision == nil || *rec.Decision != "Permitted" {
+		t.Errorf("decision: got %v", rec.Decision)
+	}
+	if rec.WatchZoneID == nil || *rec.WatchZoneID != "zone-1" {
+		t.Errorf("zone id: got %v", rec.WatchZoneID)
+	}
+	if rec.Sources != sourceZone {
+		t.Errorf("sources: got %q, want Zone", rec.Sources)
+	}
+	if push.calls != 1 {
+		t.Errorf("paid tier with decision push opted in should push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_ZoneMatch_DecisionPushOptedOut_RecordButNoPush(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, false),
+	}}
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Rejected", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("record must be written even when decision push is opted out, got %d", len(notifs.created))
+	}
+	if push.calls != 0 {
+		t.Errorf("decision-push opt-out must suppress the push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_FreeTier_RecordNoPush(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	free := profileWithTier(t, "auth0|alice", profiles.TierFree)
+	free.ZonePreferences["zone-1"] = profiles.ZonePreferences{DecisionPush: true}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": free}}
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("free tier must still get the decision record, got %d", len(notifs.created))
+	}
+	if push.calls != 0 {
+		t.Errorf("free tier must NOT push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_SavedOnly_NilZoneSourcesSaved(t *testing.T) {
+	t.Parallel()
+	zones := &fakeZones{}
+	saved := &fakeSaved{userIDs: []string{"auth0|bob"}}
+	bob := profileWithTier(t, "auth0|bob", profiles.TierPro)
+	bob.Preferences.SavedDecisionPush = true
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|bob": bob}}
+	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("expected 1 saved-decision record, got %d", len(notifs.created))
+	}
+	rec := notifs.created[0]
+	if rec.WatchZoneID != nil {
+		t.Errorf("saved-only record must have nil zone id, got %v", *rec.WatchZoneID)
+	}
+	if rec.Sources != sourceSaved {
+		t.Errorf("sources: got %q, want Saved", rec.Sources)
+	}
+	if push.calls != 1 {
+		t.Errorf("saved-decision push opted in should push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_ZoneAndSaved_MergesSources(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	saved := &fakeSaved{userIDs: []string{"auth0|alice"}}
+	alice := proWithZonePrefs(t, true)
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": alice}}
+	d, notifs, _ := newDecisionHarness(t, zones, saved, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("a user matched by both zone and saved must get ONE merged record, got %d", len(notifs.created))
+	}
+	rec := notifs.created[0]
+	if rec.Sources != sourceZone+","+sourceSaved {
+		t.Errorf("merged sources: got %q, want %q", rec.Sources, sourceZone+","+sourceSaved)
+	}
+	if rec.WatchZoneID == nil || *rec.WatchZoneID != "zone-1" {
+		t.Errorf("merged record should attribute the zone id: %v", rec.WatchZoneID)
+	}
+}
+
+func TestDecisionDispatcher_Idempotent_SkipsExisting(t *testing.T) {
+	t.Parallel()
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, true),
+	}}
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("first Dispatch: %v", err)
+	}
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("second Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("re-dispatch must not double-create, got %d records", len(notifs.created))
+	}
+	if push.calls != 1 {
+		t.Errorf("re-dispatch must not double-push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_NoCoords_OnlySavedFanOut(t *testing.T) {
+	t.Parallel()
+	zones := &fakeZones{zones: []watchzones.WatchZone{
+		testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+	}}
+	saved := &fakeSaved{userIDs: []string{"auth0|bob"}}
+	bob := profileWithTier(t, "auth0|bob", profiles.TierPro)
+	bob.Preferences.SavedDecisionPush = true
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|bob": bob}}
+	d, notifs, _ := newDecisionHarness(t, zones, saved, profs)
+	app := decisionApp(t, "Permitted", nil, nil)
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	// No coordinates means the zone lookup must be skipped entirely; only the
+	// saved bookmark holder is notified.
+	if zones.lastLat != 0 || zones.lastLng != 0 {
+		t.Errorf("zone lookup should not run without coordinates")
+	}
+	if len(notifs.created) != 1 || notifs.created[0].UserID != "auth0|bob" {
+		t.Errorf("expected only the saved holder notified, got %+v", notifs.created)
+	}
+}

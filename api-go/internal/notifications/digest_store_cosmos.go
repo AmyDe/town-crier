@@ -92,6 +92,57 @@ func (s *DigestStore) UserIDsWithUnsentEmails(ctx context.Context) ([]string, er
 	return userIDs, nil
 }
 
+// Create writes a freshly dispatched notification into the user's partition. It
+// is the poll-path enqueuer's write primitive (epic tc-wad3, bead tc-uc2p): the
+// document it writes is the full digestDocument shape — camelCase keys, the
+// 90-day TTL, emailSent=false — so the digest worker's ByUserSince /
+// UnsentEmailsByUser reads hydrate it unchanged. Mirrors .NET
+// CosmosNotificationRepository.SaveAsync for a new notification.
+func (s *DigestStore) Create(ctx context.Context, n DigestNotification) error {
+	body, err := json.Marshal(newDigestDocument(n))
+	if err != nil {
+		return fmt.Errorf("encode notification %q: %w", n.ID, err)
+	}
+	if err := s.items.UpsertItem(ctx, n.UserID, body); err != nil {
+		return fmt.Errorf("upsert notification %q: %w", n.ID, err)
+	}
+	return nil
+}
+
+// getByUserAndApplicationQuery is the dedup lookup: the user's notification (if
+// any) for a given (applicationUid, authorityId, eventType). Authority is part
+// of the key because PlanIt uids collide across councils (tc-th98 / GH#384), so
+// a uid-only match would suppress a legitimate notification for a same-uid
+// application in a different authority. Mirrors .NET GetByUserAndApplicationAsync.
+const getByUserAndApplicationQuery = "SELECT * FROM c WHERE c.userId = @userId " +
+	"AND c.applicationUid = @applicationUid AND c.authorityId = @authorityId " +
+	"AND c.eventType = @eventType"
+
+// GetByUserAndApplication returns the user's existing notification for the
+// (applicationUid, authorityId, eventType) tuple, or nil when none exists — the
+// "not yet notified" signal the enqueuer and decision dispatcher branch on for
+// idempotency. The read is single-partition (scoped to userId), mirroring .NET.
+func (s *DigestStore) GetByUserAndApplication(ctx context.Context, userID, applicationUID string, authorityID int, eventType EventType) (*DigestNotification, error) {
+	raws, err := s.items.QueryItems(ctx, userID, getByUserAndApplicationQuery, map[string]any{
+		"@userId":         userID,
+		"@applicationUid": applicationUID,
+		"@authorityId":    authorityID,
+		"@eventType":      string(eventType),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query existing notification for %q: %w", userID, err)
+	}
+	if len(raws) == 0 {
+		return nil, nil //nolint:nilnil // absent notification is the "not yet notified" signal, not an error
+	}
+	var doc digestDocument
+	if err := json.Unmarshal(raws[0], &doc); err != nil {
+		return nil, fmt.Errorf("decode existing notification for %q: %w", userID, err)
+	}
+	n := doc.toDigest()
+	return &n, nil
+}
+
 // MarkEmailSent upserts the notification document (with EmailSent already set by
 // the caller) so it is excluded from the next hourly cycle, mirroring .NET's
 // MarkEmailSent + SaveAsync.

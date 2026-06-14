@@ -151,6 +151,24 @@ func newHandler(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *fakeStateSt
 	return NewPollPlanItHandler(pi, apps, state, auth, fakeCycle{cycle}, opts, clock, logger)
 }
 
+// newHandlerWithFanOut builds a handler wired with the per-app decision
+// dispatcher and zone enqueuer, used by the fan-out tests.
+func newHandlerWithFanOut(t *testing.T, pi *fakePlanIt, apps *fakeApps, state *fakeStateStore, auth fakeAuthorities, opts HandlerOptions, disp DecisionDispatcher, enq NotificationEnqueuer) *PollPlanItHandler {
+	t.Helper()
+	h := newHandler(t, pi, apps, state, auth, CycleSeed, opts)
+	h.WithFanOut(disp, enq)
+	return h
+}
+
+// planitPage wraps a single application into a one-page, no-more-pages result.
+func planitPage(app applications.PlanningApplication) planit.FetchPageResult {
+	return planit.FetchPageResult{
+		Page:         1,
+		Applications: []applications.PlanningApplication{app},
+		HasMorePages: false,
+	}
+}
+
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
