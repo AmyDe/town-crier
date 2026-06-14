@@ -125,6 +125,24 @@ public static class SharedStack
             {
                 Destination = "azure-monitor",
             },
+            // Managed OpenTelemetry agent (GH#418 it10). The Go API exports OTLP to the
+            // agent, which forwards traces to this shared App Insights component. The .NET
+            // app keeps its in-process Azure Monitor exporter, so there is no double-count
+            // (it ignores the OTLP endpoint the agent injects). Enabling the agent makes
+            // ACA auto-inject OTEL_EXPORTER_OTLP_ENDPOINT into every container in this
+            // environment — so containers must NOT set that env var themselves.
+            // Traces only: the Go app emits traces (no logs/metrics OTLP destinations).
+            AppInsightsConfiguration = new AppInsightsConfigurationArgs
+            {
+                ConnectionString = appInsights.ConnectionString,
+            },
+            OpenTelemetryConfiguration = new OpenTelemetryConfigurationArgs
+            {
+                TracesConfiguration = new TracesConfigurationArgs
+                {
+                    Destinations = { "appInsights" },
+                },
+            },
             Tags = tags,
         });
 
