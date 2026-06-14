@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // errorResponse mirrors the .NET ErrorResponse record: PascalCase keys in
@@ -58,6 +61,20 @@ func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(bw, r.WithContext(context.WithValue(ctx, detailKey{}, holder)))
 			if err := bw.backfill(); err != nil {
 				logger.ErrorContext(ctx, "write error body", "status", bw.status, "error", err)
+			}
+			// Flag the request span as failed for any server error (>= 500) so it
+			// shows as failed in App Insights AppRequests and is queryable
+			// (tc-8x8g task D). This is the single central hook — handlers don't
+			// touch the span. 4xx are client errors and are deliberately left
+			// unflagged. When telemetry is disabled SpanFromContext returns a
+			// no-op span and this is a no-op.
+			//
+			// The panic path (Recover, which runs inside this middleware) already
+			// set Error status with the richer panic message and recorded the
+			// exception; a non-nil holder.detail is that signal, so we skip the
+			// generic re-set to avoid clobbering the panic message.
+			if bw.status >= http.StatusInternalServerError && holder.detail == nil {
+				trace.SpanFromContext(ctx).SetStatus(codes.Error, http.StatusText(bw.status))
 			}
 		})
 	}
