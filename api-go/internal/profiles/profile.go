@@ -44,6 +44,16 @@ func (t SubscriptionTier) String() string {
 // IsPaid reports whether the tier grants paid entitlements (anything but Free).
 func (t SubscriptionTier) IsPaid() bool { return t != TierFree }
 
+// IsPaidPro reports whether the tier is specifically Pro. The weekly digest PUSH
+// is Pro-only (.NET gates on Tier == SubscriptionTier.Pro), distinct from the
+// hourly-digest entitlement which Personal also holds.
+func (t SubscriptionTier) IsPaidPro() bool { return t == TierPro }
+
+// HasHourlyDigestEntitlement reports whether the tier grants the
+// HourlyDigestEmails entitlement (Personal and Pro, never Free), mirroring .NET
+// EntitlementMap — hourly digest emails are a paid, server-enforced entitlement.
+func (t SubscriptionTier) HasHourlyDigestEntitlement() bool { return t.IsPaid() }
+
 // unlimitedWatchZones is the Pro-tier watch-zone limit: .NET's int.MaxValue,
 // the sentinel the iOS app reads as "no limit". Preserved exactly so the
 // /v1/subscriptions/verify response is byte-identical to .NET's.
