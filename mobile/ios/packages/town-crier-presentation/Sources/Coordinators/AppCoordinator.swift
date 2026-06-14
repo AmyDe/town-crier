@@ -257,7 +257,16 @@ public final class AppCoordinator: ObservableObject {
   // MARK: - Watch Zone Factories
 
   public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
-    if let cached = watchZoneListViewModel {
+    // Reuse the cached VM only while its gate still reflects the current tier.
+    // The tier resolves from the default `.free` to a paid tier *after* the VM
+    // is first built (resolveSubscriptionTier runs asynchronously at launch),
+    // and the list is keyed `.id(subscriptionTier)` so the view rebuilds on the
+    // change. Returning a stale `.free` gate kept the upgrade badge on the +
+    // button once the 1-zone free limit was hit, blocking paid users below
+    // their actual limit (tc-ujct). Rebuild with a fresh gate when the tier
+    // differs; same-tier calls still return a stable instance so the editor's
+    // post-save reload path converges on the retained VM.
+    if let cached = watchZoneListViewModel, cached.featureGate.tier == subscriptionTier {
       return cached
     }
     let viewModel = WatchZoneListViewModel(
