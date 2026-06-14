@@ -49,11 +49,6 @@ public static class EnvironmentStack
         var auth0Domain = config.Require("auth0Domain");
         var auth0Audience = config.Require("auth0Audience");
         var customDomainPhase = config.GetInt32("customDomainPhase") ?? 2;
-        // Which app owns the api custom domain in this environment: "dotnet" (default)
-        // or "go". A hostname binds to exactly one Container App per managed environment,
-        // so this selects whether the .NET app or the Go app carries api{,-dev}.towncrierapp.uk.
-        // Prod was cut over to Go (tc-t56q); dev stays on .NET until its own cutover.
-        var apiBackend = config.Get("apiBackend") ?? "dotnet";
         var adminApiKey = config.RequireSecret("adminApiKey");
         var autoGrantProDomains = config.RequireSecret("autoGrantProDomains");
         var auth0M2mClientId = config.RequireSecret("auth0M2mClientId");
@@ -243,39 +238,14 @@ public static class EnvironmentStack
             apiManagedCert = CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain);
         }
 
-        // The api custom domain binds to exactly one app per environment. The .NET app
-        // carries it while it is the active backend; once apiBackend=="go" the hostname
-        // moves to the Go app (below) and the .NET app must NOT claim it, or the bind
-        // collides. The phase>=2 SniEnabled binding reuses apiManagedCert; phase 1 uses a
-        // Disabled placeholder so Azure can validate the hostname before the cert exists.
-        // Empty (not null) for the non-owning app: Pulumi's InputList<CustomDomainArgs>
-        // implicit operator runs .Select over the array and throws ArgumentNullException
-        // on null, so an empty list is the correct "no custom domains" value.
-        CustomDomainArgs[] dotnetApiCustomDomains =
-            apiBackend == "go"
-                ? Array.Empty<CustomDomainArgs>()
-                : customDomainPhase >= 2
-                    ? new[]
-                    {
-                        new CustomDomainArgs
-                        {
-                            Name = apiDomain,
-                            CertificateId = apiManagedCert!.Id,
-                            BindingType = BindingType.SniEnabled,
-                        },
-                    }
-                    : new[]
-                    {
-                        new CustomDomainArgs
-                        {
-                            Name = apiDomain,
-                            BindingType = BindingType.Disabled,
-                        },
-                    };
-
-        // Mirror binding for the Go app: it owns the api domain when apiBackend=="go".
+        // The Go app owns the api custom domain unconditionally (the .NET app has been
+        // decommissioned — tc-tbyp). The phase>=2 SniEnabled binding reuses apiManagedCert;
+        // phase 1 uses an empty list so Azure can validate the hostname before the cert
+        // exists. Empty (not null): Pulumi's InputList<CustomDomainArgs> implicit operator
+        // runs .Select over the array and throws ArgumentNullException on null, so an empty
+        // list is the correct "no custom domains" value.
         CustomDomainArgs[] goApiCustomDomains =
-            apiBackend == "go" && customDomainPhase >= 2
+            customDomainPhase >= 2
                 ? new[]
                 {
                     new CustomDomainArgs
@@ -287,136 +257,12 @@ public static class EnvironmentStack
                 }
                 : Array.Empty<CustomDomainArgs>();
 
-        // Container App (API) — placeholder image until CI/CD pushes real builds
-        var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
-        {
-            ContainerAppName = $"ca-town-crier-api-{env}",
-            ResourceGroupName = resourceGroup.Name,
-            ManagedEnvironmentId = containerAppsEnvironmentId,
-            Configuration = new ConfigurationArgs
-            {
-                // Single in prod: the platform deactivates old revisions automatically
-                // on each deploy, keeping the active list at 1 (was 73 in prod / 156 in
-                // dev under Multiple mode — see bead tc-xwlc).
-                //
-                // Multiple in dev: pr-gate.yml stages per-PR revisions with
-                // --revision-suffix and --traffic-weight, which Single mode rejects.
-                // The dev backlog is cleaned via a one-time
-                // `az containerapp revision deactivate` loop after this change merges.
-                ActiveRevisionsMode = env == "prod"
-                    ? ActiveRevisionsMode.Single
-                    : ActiveRevisionsMode.Multiple,
-                // Cap inactive revisions to prevent ACR storage growth. Azure's default
-                // is 100; each revision holds image layers in ACR, which pushes the
-                // shared Basic-tier registry over its 10 GB quota (see bead tc-vjrn).
-                MaxInactiveRevisions = 5,
-                Secrets = new[]
-                {
-                    new SecretArgs { Name = "admin-api-key", Value = adminApiKey },
-                    new SecretArgs { Name = "auto-grant-pro-domains", Value = autoGrantProDomains },
-                    new SecretArgs { Name = "acs-connection-string", Value = acsConnectionString },
-                    new SecretArgs { Name = "auth0-m2m-client-id", Value = auth0M2mClientId },
-                    new SecretArgs { Name = "auth0-m2m-client-secret", Value = auth0M2mClientSecret },
-                    new SecretArgs { Name = "apns-auth-key", Value = apnsAuthKey },
-                },
-                Ingress = new IngressArgs
-                {
-                    External = true,
-                    TargetPort = 8080,
-                    Transport = IngressTransportMethod.Http,
-                    CustomDomains = dotnetApiCustomDomains,
-                },
-                Registries = new[]
-                {
-                    new RegistryCredentialsArgs
-                    {
-                        Server = acrLoginServer,
-                        Identity = acrPullIdentityId,
-                    },
-                },
-            },
-            Identity = new Pulumi.AzureNative.App.Inputs.ManagedServiceIdentityArgs
-            {
-                Type = ManagedServiceIdentityType.UserAssigned,
-                UserAssignedIdentities = new InputList<string>
-                {
-                    acrPullIdentityId,
-                    cosmosDataIdentityId,
-                },
-            },
-            Template = new TemplateArgs
-            {
-                Containers = new[]
-                {
-                    new ContainerArgs
-                    {
-                        Name = "api",
-                        Image = "mcr.microsoft.com/k8se/quickstart:latest",
-                        Resources = new ContainerResourcesArgs
-                        {
-                            Cpu = ContainerCpu,
-                            Memory = ContainerMemory,
-                        },
-                        Env = new[]
-                        {
-                            new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-api" },
-                            new EnvironmentVarArgs { Name = "Auth0__Domain", Value = auth0Domain },
-                            new EnvironmentVarArgs { Name = "Auth0__Audience", Value = auth0Audience },
-                            new EnvironmentVarArgs { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
-                            new EnvironmentVarArgs { Name = "Cosmos__DatabaseName", Value = cosmosDatabase.Name },
-                            new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
-                            new EnvironmentVarArgs { Name = "Cors__AllowedOrigins__0", Value = $"https://{frontendDomain}" },
-                            new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
-                            new EnvironmentVarArgs { Name = "Admin__ApiKey", SecretRef = "admin-api-key" },
-                            new EnvironmentVarArgs { Name = "Subscription__AutoGrant__ProDomains", SecretRef = "auto-grant-pro-domains" },
-                            new EnvironmentVarArgs { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
-                            new EnvironmentVarArgs { Name = "Auth0__M2M__ClientId", SecretRef = "auth0-m2m-client-id" },
-                            new EnvironmentVarArgs { Name = "Auth0__M2M__ClientSecret", SecretRef = "auth0-m2m-client-secret" },
-                            new EnvironmentVarArgs { Name = "Apns__Enabled", Value = "true" },
-                            new EnvironmentVarArgs { Name = "Apns__AuthKey", SecretRef = "apns-auth-key" },
-                            new EnvironmentVarArgs { Name = "Apns__KeyId", Value = apnsKeyId },
-                            new EnvironmentVarArgs { Name = "Apns__TeamId", Value = apnsTeamId },
-                            new EnvironmentVarArgs { Name = "Apns__BundleId", Value = apnsBundleId },
-                            new EnvironmentVarArgs { Name = "Apns__UseSandbox", Value = apnsUseSandbox },
-                        },
-                    },
-                },
-                Scale = new ScaleArgs
-                {
-                    // The .NET app is a cold standby in all environments after the Go
-                    // cutover (tc-fdml): prod api traffic moved to the Go app (tc-t56q),
-                    // dev follows here. Keep it scale-to-zero everywhere to avoid idle
-                    // cost; the Go app carries the warm-replica budget where needed.
-                    MinReplicas = 0,
-                    MaxReplicas = 1,
-                },
-            },
-            Tags = tags,
-        }, new CustomResourceOptions
-        {
-            // CD pipeline updates the container image via `az containerapp update`.
-            // Without this, every `pulumi up` resets the image to the placeholder,
-            // causing activation failure (quickstart listens on port 80, not 8080).
-            // Traffic weights are managed by CI (staging revisions with 0% traffic),
-            // so Pulumi must not reset them on the next `pulumi up`.
-            IgnoreChanges = { "template.containers[0].image", "configuration.ingress.traffic" },
-        });
-
-        if (customDomainPhase == 1)
-        {
-            CreateApiManagedCertificate(env, containerAppsEnvironmentName, sharedResourceGroupName, apiDomain,
-                new CustomResourceOptions { DependsOn = { containerApp } });
-        }
-
-        // Container App (Go API) — runs ALONGSIDE the .NET API during the Go
-        // migration (GH#418). Created for BOTH dev and prod (Iteration 10 added
-        // prod). It owns the api custom domain when apiBackend=="go" (prod, after the
-        // tc-t56q cutover): goApiCustomDomains binds api.towncrierapp.uk with the same
-        // env-level managed cert the .NET app used. The owner still triggers the
-        // Cloudflare DNS flip; this stack only owns the hostname-to-app binding.
-        // Same placeholder-image bootstrap as the .NET app: the quickstart image
-        // listens on 80 (not 8080), so the first revision stays unhealthy until
-        // CD pushes the real town-crier-api-go image.
+        // Container App (Go API) — the sole API app after the .NET decommission
+        // (tc-tbyp). Created for BOTH dev and prod. It owns the api custom domain
+        // unconditionally: goApiCustomDomains binds api{,-dev}.towncrierapp.uk with the
+        // env-level managed cert. The placeholder quickstart image listens on 80 (not
+        // 8080), so the first revision stays unhealthy until CD pushes the real
+        // town-crier-api-go image.
         if (env == "dev" || env == "prod")
         {
             _ = new ContainerApp($"ca-town-crier-api-go-{env}", new ContainerAppArgs
@@ -505,11 +351,10 @@ public static class EnvironmentStack
                     },
                     Scale = new ScaleArgs
                     {
-                        // Keep one warm replica only for the PROD Go app once it is the
-                        // active backend (apiBackend=="go") so live api traffic skips the
-                        // ~15s ACA scale-from-zero cold start. Dev — even though it is now
-                        // go-backed after tc-fdml — stays scale-to-zero to avoid idle cost.
-                        MinReplicas = (env == "prod" && apiBackend == "go") ? 1 : 0,
+                        // Keep one warm replica only for the PROD Go app so live api
+                        // traffic skips the ~15s ACA scale-from-zero cold start. Dev stays
+                        // scale-to-zero to avoid idle cost.
+                        MinReplicas = (env == "prod") ? 1 : 0,
                         MaxReplicas = 1,
                     },
                 },
