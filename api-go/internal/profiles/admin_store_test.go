@@ -18,6 +18,7 @@ type fakeAdminItems struct {
 	pageNext     string
 	pageErr      error
 	gotQuery     string
+	gotParams    map[string]any
 	gotPageSize  int
 	gotPageToken string
 }
@@ -29,8 +30,9 @@ func (f *fakeAdminItems) UpsertItem(_ context.Context, partitionKey string, item
 	return nil
 }
 
-func (f *fakeAdminItems) QueryItemsCrossPartition(_ context.Context, query string, _ map[string]any) ([][]byte, error) {
+func (f *fakeAdminItems) QueryItemsCrossPartition(_ context.Context, query string, params map[string]any) ([][]byte, error) {
 	f.gotQuery = query
+	f.gotParams = params
 	return f.queryResult, f.queryErr
 }
 
@@ -177,5 +179,44 @@ func TestUserProfile_ExpireSubscription(t *testing.T) {
 
 	if p.Tier != TierFree || p.SubscriptionExpiry != nil || p.GracePeriodExpiry != nil {
 		t.Errorf("after expire: tier=%v expiry=%v grace=%v", p.Tier, p.SubscriptionExpiry, p.GracePeriodExpiry)
+	}
+}
+
+func TestAdminStore_ByDigestDay(t *testing.T) {
+	t.Parallel()
+
+	items := newFakeAdminItems()
+	items.queryResult = [][]byte{
+		profileDoc(t, "auth0|u1", "u1@example.com", TierPro),
+		profileDoc(t, "auth0|u2", "u2@example.com", TierFree),
+	}
+	store := NewAdminStore(items)
+
+	got, err := store.ByDigestDay(context.Background(), time.Wednesday)
+	if err != nil {
+		t.Fatalf("ByDigestDay: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("count: got %d, want 2", len(got))
+	}
+	if items.gotQuery != "SELECT * FROM c WHERE c.digestDay = @digestDay" {
+		t.Errorf("query = %q", items.gotQuery)
+	}
+	// .NET binds the digest day as the int DayOfWeek value; Go's time.Weekday
+	// numbering matches (Sunday=0 … Saturday=6), so Wednesday must bind as 3.
+	if day, ok := items.gotParams["@digestDay"].(int); !ok || day != int(time.Wednesday) {
+		t.Errorf("@digestDay = %v, want int %d", items.gotParams["@digestDay"], int(time.Wednesday))
+	}
+}
+
+func TestAdminStore_ByDigestDayWrapsError(t *testing.T) {
+	t.Parallel()
+
+	items := newFakeAdminItems()
+	items.queryErr = errors.New("boom")
+	store := NewAdminStore(items)
+
+	if _, err := store.ByDigestDay(context.Background(), time.Monday); err == nil {
+		t.Fatal("expected error")
 	}
 }
