@@ -30,6 +30,8 @@ type fakeItems struct {
 	lastQueryPK  string
 	lastQuery    string
 	lastParams   map[string]any
+
+	crossPartitionResult [][]byte // QueryItemsCrossPartition source
 }
 
 func newFakeItems() *fakeItems {
@@ -74,6 +76,15 @@ func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, pa
 		return nil, f.queryErr
 	}
 	return f.queryResult, nil
+}
+
+func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, query string, params map[string]any) ([][]byte, error) {
+	f.lastQuery = query
+	f.lastParams = params
+	if f.queryErr != nil {
+		return nil, f.queryErr
+	}
+	return f.crossPartitionResult, nil
 }
 
 func mustDocBytes(t *testing.T, z WatchZone) []byte {
@@ -229,5 +240,43 @@ func TestCosmosStore_DeleteAllByUserID_NoZonesIsNoOp(t *testing.T) {
 	}
 	if len(items.deletedIDs) != 0 {
 		t.Errorf("expected no deletes, got %v", items.deletedIDs)
+	}
+}
+
+func TestCosmosStore_DistinctAuthorityIDs_CrossPartition(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// SELECT DISTINCT VALUE c.authorityId FROM c yields bare JSON numbers.
+	items.crossPartitionResult = [][]byte{[]byte("99"), []byte("123"), []byte("7")}
+	store := NewCosmosStore(items)
+
+	ids, err := store.DistinctAuthorityIDs(context.Background())
+	if err != nil {
+		t.Fatalf("DistinctAuthorityIDs: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("ids: got %v, want 3 entries", ids)
+	}
+	got := map[int]bool{}
+	for _, id := range ids {
+		got[id] = true
+	}
+	for _, want := range []int{99, 123, 7} {
+		if !got[want] {
+			t.Errorf("missing authority id %d in %v", want, ids)
+		}
+	}
+}
+
+func TestCosmosStore_DistinctAuthorityIDs_EmptyQueryYieldsEmpty(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+	ids, err := store.DistinctAuthorityIDs(context.Background())
+	if err != nil {
+		t.Fatalf("DistinctAuthorityIDs: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected empty, got %v", ids)
 	}
 }
