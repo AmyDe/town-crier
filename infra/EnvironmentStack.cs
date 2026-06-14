@@ -248,9 +248,12 @@ public static class EnvironmentStack
         // moves to the Go app (below) and the .NET app must NOT claim it, or the bind
         // collides. The phase>=2 SniEnabled binding reuses apiManagedCert; phase 1 uses a
         // Disabled placeholder so Azure can validate the hostname before the cert exists.
-        CustomDomainArgs[]? dotnetApiCustomDomains =
+        // Empty (not null) for the non-owning app: Pulumi's InputList<CustomDomainArgs>
+        // implicit operator runs .Select over the array and throws ArgumentNullException
+        // on null, so an empty list is the correct "no custom domains" value.
+        CustomDomainArgs[] dotnetApiCustomDomains =
             apiBackend == "go"
-                ? null
+                ? Array.Empty<CustomDomainArgs>()
                 : customDomainPhase >= 2
                     ? new[]
                     {
@@ -271,7 +274,7 @@ public static class EnvironmentStack
                     };
 
         // Mirror binding for the Go app: it owns the api domain when apiBackend=="go".
-        CustomDomainArgs[]? goApiCustomDomains =
+        CustomDomainArgs[] goApiCustomDomains =
             apiBackend == "go" && customDomainPhase >= 2
                 ? new[]
                 {
@@ -282,7 +285,7 @@ public static class EnvironmentStack
                         BindingType = BindingType.SniEnabled,
                     },
                 }
-                : null;
+                : Array.Empty<CustomDomainArgs>();
 
         // Container App (API) — placeholder image until CI/CD pushes real builds
         var containerApp = new ContainerApp($"ca-town-crier-api-{env}", new ContainerAppArgs
