@@ -49,3 +49,54 @@ type PlanningApplication struct {
 func (a PlanningApplication) CanonicalUID() string {
 	return strconv.Itoa(a.AreaID) + "/" + a.Name
 }
+
+// HasSameBusinessFieldsAs reports whether every business-material field matches
+// other, ignoring LastDifferent. The poll cycle uses it to skip a redundant
+// upsert when PlanIt re-emits an application with only a bumped LastDifferent
+// timestamp — the load-bearing reindex-flood guard. Mirrors .NET
+// PlanningApplication.HasSameBusinessFieldsAs.
+func (a PlanningApplication) HasSameBusinessFieldsAs(other PlanningApplication) bool {
+	return a.Name == other.Name &&
+		a.UID == other.UID &&
+		a.AreaName == other.AreaName &&
+		a.AreaID == other.AreaID &&
+		a.Address == other.Address &&
+		eqStrPtr(a.Postcode, other.Postcode) &&
+		a.Description == other.Description &&
+		eqStrPtr(a.AppType, other.AppType) &&
+		eqStrPtr(a.AppState, other.AppState) &&
+		eqStrPtr(a.AppSize, other.AppSize) &&
+		eqTimePtr(a.StartDate, other.StartDate) &&
+		eqTimePtr(a.DecidedDate, other.DecidedDate) &&
+		eqTimePtr(a.ConsultedDate, other.ConsultedDate) &&
+		eqFloatPtr(a.Longitude, other.Longitude) &&
+		eqFloatPtr(a.Latitude, other.Latitude) &&
+		eqStrPtr(a.URL, other.URL) &&
+		eqStrPtr(a.Link, other.Link)
+}
+
+// eqStrPtr reports whether two optional strings are equal (both nil, or both
+// set to the same value).
+func eqStrPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// eqFloatPtr reports whether two optional floats are equal, mirroring .NET
+// Nullable.Equals.
+func eqFloatPtr(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+// eqTimePtr reports whether two optional date values are equal.
+func eqTimePtr(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
+}

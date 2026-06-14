@@ -57,3 +57,39 @@ func TestPlanningApplication_CanonicalUID_PreservesNameWithSlashes(t *testing.T)
 		t.Errorf("CanonicalUID: got %q", got)
 	}
 }
+
+func TestPlanningApplication_HasSameBusinessFieldsAs(t *testing.T) {
+	t.Parallel()
+	base := testApplication(t)
+
+	// Same business fields, only LastDifferent bumped -> still equal (the
+	// reindex-flood skip case the poll handler depends on).
+	bumped := base
+	bumped.LastDifferent = base.LastDifferent.Add(48 * time.Hour)
+	if !base.HasSameBusinessFieldsAs(bumped) {
+		t.Error("a bumped LastDifferent alone must compare equal")
+	}
+
+	// A changed business field (AppState) -> not equal.
+	other := "Rejected"
+	changed := base
+	changed.AppState = &other
+	if base.HasSameBusinessFieldsAs(changed) {
+		t.Error("a changed AppState must compare not-equal")
+	}
+
+	// A changed coordinate -> not equal.
+	newLon := *base.Longitude + 1
+	movedLon := base
+	movedLon.Longitude = &newLon
+	if base.HasSameBusinessFieldsAs(movedLon) {
+		t.Error("a changed longitude must compare not-equal")
+	}
+
+	// nil vs set pointer -> not equal.
+	nilState := base
+	nilState.AppState = nil
+	if base.HasSameBusinessFieldsAs(nilState) {
+		t.Error("nil vs set AppState must compare not-equal")
+	}
+}
