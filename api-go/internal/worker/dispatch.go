@@ -25,6 +25,13 @@ const bootstrapBudget = 60 * time.Second
 // replicaTimeout so the process exits cleanly and flushes telemetry.
 const digestBudget = 10 * time.Minute
 
+// dormantBudget is the soft self-cancel for a single dormant-cleanup run. The
+// cycle scans all profiles cross-partition then runs a per-account erasure
+// cascade for the (small) dormant set; 10 minutes is generous while still bounded
+// well under the Container Apps replicaTimeout so the process exits cleanly and
+// flushes telemetry.
+const dormantBudget = 10 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -35,22 +42,31 @@ type DigestRunner interface {
 	RunHourly(ctx context.Context) error
 }
 
+// DormantRunner is the consumer-side slice of the dormant-cleanup handler the
+// dispatcher invokes. *dormant.Handler satisfies it; Run returns the number of
+// accounts erased so the dispatcher can record it as a telemetry tag. It is
+// exported so main() can hold a genuinely nil interface value when the job has no
+// Cosmos config — passing a typed-nil *dormant.Handler would defeat the nil guard.
+type DormantRunner interface {
+	Run(ctx context.Context) (int, error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go — main() only loads config, wires the
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
 // code.
 //
-// poll-bootstrap, digest, and hourly-digest are implemented; the remaining modes
-// (poll-sb, dormant-cleanup) are loud stubs that exit 1 until their own beads
-// land. The Go worker image is not deployed to any job until the final cutover
-// bead, so a stub can never run in production. An unset or unknown mode is a
-// deployment accident and also fails fast.
+// poll-bootstrap, digest, hourly-digest, and dormant-cleanup are implemented;
+// poll-sb remains a loud stub that exits 1 until its own bead (tc-yng2) lands.
+// The Go worker image is not deployed to any job until the final cutover bead, so
+// a stub can never run in production. An unset or unknown mode is a deployment
+// accident and also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
-// then refuses to run rather than nil-panicking. Likewise digester may be nil
-// when the job has no Cosmos / ACS / APNs config; the digest modes then refuse
-// to run rather than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, logger *slog.Logger) int {
+// then refuses to run rather than nil-panicking. Likewise digester / dormant may
+// be nil when the job has no Cosmos config; those modes then refuse to run rather
+// than nil-panicking.
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -67,9 +83,12 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 	case "hourly-digest":
 		return runDigest(ctx, "Hourly Digest Cycle", digester, DigestRunner.RunHourly, logger)
 
-	case "poll-sb", "dormant-cleanup":
+	case "dormant-cleanup":
+		return runDormant(ctx, dormant, logger)
+
+	case "poll-sb":
 		// Loud, safe stub: the image is not deployed until the final cutover, so
-		// this exit-1 can never strand a real job. Each mode lands in its own bead.
+		// this exit-1 can never strand a real job. poll-sb lands in bead tc-yng2.
 		logger.ErrorContext(ctx, "WORKER_MODE not yet implemented in Go worker", "mode", mode)
 		return 1
 
@@ -103,6 +122,36 @@ func runDigest(ctx context.Context, spanName string, digester DigestRunner, run 
 		logger.ErrorContext(ctx, "digest cycle failed", "span", spanName, "error", err)
 		return 1
 	}
+	return 0
+}
+
+// runDormant executes one dormant-cleanup cycle under a soft self-cancel budget,
+// inside a telemetry span named "Dormant Cleanup Cycle" (mirroring the .NET
+// worker so existing App Insights queries keep working). It records the number of
+// erased accounts as the dormant_cleanup.deleted_count tag. A nil runner (job
+// missing Cosmos config) is an exit-1 condition; a cycle error is recorded on the
+// span and also exits 1 so the job surfaces the failure.
+func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Dormant Cleanup Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "dormant-cleanup requires Cosmos config (COSMOS_ENDPOINT et al.); refusing to run")
+		return 1
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, dormantBudget)
+	defer cancel()
+
+	deleted, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "dormant cleanup cycle failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(attribute.Int("dormant_cleanup.deleted_count", deleted))
 	return 0
 }
 
