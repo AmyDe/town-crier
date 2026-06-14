@@ -699,7 +699,11 @@ public static class EnvironmentStack
         // feature flag the API/worker DI both read.
         var envVars = new List<EnvironmentVarArgs>
         {
-            new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker" },
+            // Single OTEL_SERVICE_NAME for the job: the Go worker reads it (→ AppRoleName
+            // town-crier-worker-go); the legacy .NET worker ignores it (it hardcodes
+            // AddService("town-crier-worker") in Program.cs), so flipping it here ahead of the
+            // image swap is safe and avoids a duplicate-named env var. See tc-fsn6.
+            new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker-go" },
             new() { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
             new() { Name = "Cosmos__DatabaseName", Value = cosmosDatabaseName },
             new() { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
@@ -735,7 +739,7 @@ public static class EnvironmentStack
         // from the SAME Pulumi config/secret/output as its .NET counterpart, and the
         // per-mode split mirrors the .NET env composition above.
         AddGoWorkerEnv(envVars, workerMode, cosmosAccountEndpoint, cosmosDatabaseName,
-            cosmosDataIdentityClientId, auth0Domain, apnsUseSandbox, pollingBus);
+            auth0Domain, apnsUseSandbox, pollingBus);
 
         var useEventTrigger = cronExpression is null;
         if (useEventTrigger && pollingBus is null)
@@ -878,17 +882,16 @@ public static class EnvironmentStack
         string? workerMode,
         Output<string> cosmosAccountEndpoint,
         Output<string> cosmosDatabaseName,
-        Output<string> cosmosDataIdentityClientId,
         string auth0Domain,
         string apnsUseSandbox,
         ServiceBusPollingInfra? pollingBus)
     {
-        // All modes: telemetry service name + Cosmos + managed identity. The Go worker
-        // resolves a Cosmos client and DefaultAzureCredential in every mode.
-        envVars.Add(new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker-go" });
+        // All modes: Go-named Cosmos endpoint/database. OTEL_SERVICE_NAME and AZURE_CLIENT_ID
+        // are already on the shared base env block (single entries) — re-adding them here would
+        // create duplicate-named env vars on the job. The Go worker resolves a Cosmos client and
+        // DefaultAzureCredential in every mode from those base vars. See tc-fsn6.
         envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint });
         envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabaseName });
-        envVars.Add(new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId });
 
         // poll / poll-bootstrap: Service Bus (mirrors .NET ServiceBus__Namespace/QueueName).
         if (pollingBus is not null)
