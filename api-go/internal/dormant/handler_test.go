@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -24,53 +25,42 @@ func (f *fakeFinder) Dormant(_ context.Context, cutoff time.Time) ([]*profiles.U
 	return f.dormant, f.err
 }
 
-// cascadeRecorder records, per user id, which cascade steps ran and in what
-// order, so the test can assert the full erasure cascade fired for each account.
+// cascadeRecorder satisfies every erasure interface a child + profile delete
+// needs: erasure.ChildDeleter (DeleteAllByUserID) is wired to all five child
+// slots, erasure.ProfileDeleter (Delete) handles the profile step, and it counts
+// how many cascade steps ran per user. Since all five children share
+// DeleteAllByUserID, the test asserts the count of child invocations per account
+// rather than distinct labels — the per-container ORDER assertion now lives in
+// erasure's own test.
 type cascadeRecorder struct {
-	steps      map[string][]string
-	notifErr   error
-	zoneErr    error
-	savedErr   error
-	deviceErr  error
-	stateErr   error
-	profileErr map[string]error // keyed by user id
+	childCalls map[string]int   // child DeleteAllByUserID calls per user id
+	profile    map[string]bool  // profile Delete called per user id
+	notifErr   error            // injected on the first (notifications) child call
+	profileErr map[string]error // keyed by user id, returned from Delete
 }
 
 func newCascadeRecorder() *cascadeRecorder {
-	return &cascadeRecorder{steps: map[string][]string{}, profileErr: map[string]error{}}
+	return &cascadeRecorder{
+		childCalls: map[string]int{},
+		profile:    map[string]bool{},
+		profileErr: map[string]error{},
+	}
 }
 
-func (c *cascadeRecorder) record(userID, step string) {
-	c.steps[userID] = append(c.steps[userID], step)
+func (c *cascadeRecorder) DeleteAllByUserID(_ context.Context, userID string) error {
+	// The first child call per user is the notifications step; injecting notifErr
+	// here models a child-container failure aborting the cascade before later
+	// children, the profile, and Auth0 run.
+	first := c.childCalls[userID] == 0
+	c.childCalls[userID]++
+	if first && c.notifErr != nil {
+		return c.notifErr
+	}
+	return nil
 }
 
-func (c *cascadeRecorder) DeleteAllNotifications(_ context.Context, userID string) error {
-	c.record(userID, "notifications")
-	return c.notifErr
-}
-
-func (c *cascadeRecorder) DeleteAllWatchZones(_ context.Context, userID string) error {
-	c.record(userID, "watchzones")
-	return c.zoneErr
-}
-
-func (c *cascadeRecorder) DeleteAllSavedApplications(_ context.Context, userID string) error {
-	c.record(userID, "saved")
-	return c.savedErr
-}
-
-func (c *cascadeRecorder) DeleteAllDeviceRegistrations(_ context.Context, userID string) error {
-	c.record(userID, "devices")
-	return c.deviceErr
-}
-
-func (c *cascadeRecorder) DeleteNotificationState(_ context.Context, userID string) error {
-	c.record(userID, "state")
-	return c.stateErr
-}
-
-func (c *cascadeRecorder) DeleteProfile(_ context.Context, userID string) error {
-	c.record(userID, "profile")
+func (c *cascadeRecorder) Delete(_ context.Context, userID string) error {
+	c.profile[userID] = true
 	return c.profileErr[userID]
 }
 
@@ -96,17 +86,18 @@ func profile(t *testing.T, userID string) *profiles.UserProfile {
 	return p
 }
 
-func newHandler(finder Finder, cascade *cascadeRecorder, auth0 Auth0Deleter, now time.Time) *Handler {
-	stores := Stores{
+func newHandler(finder Finder, cascade *cascadeRecorder, auth0 erasure.Auth0Deleter, now time.Time) *Handler {
+	deleters := erasure.Deleters{
 		Notifications:       cascade,
 		WatchZones:          cascade,
 		SavedApplications:   cascade,
 		DeviceRegistrations: cascade,
 		NotificationState:   cascade,
-		Profiles:            cascade,
+		Profile:             cascade,
 		Auth0:               auth0,
+		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
-	return New(finder, stores, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
+	return New(finder, deleters, slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil)), func() time.Time { return now })
 }
 
 // --- tests ------------------------------------------------------------------
@@ -142,18 +133,16 @@ func TestHandler_Run_DeletesEachDormantAccountWithFullCascade(t *testing.T) {
 		t.Errorf("deleted count: got %d, want 2", deleted)
 	}
 
-	wantSteps := []string{"notifications", "watchzones", "saved", "devices", "state", "profile"}
+	// Each account runs all five child-container erasures plus the profile delete.
 	for _, id := range []string{"auth0|a", "auth0|b"} {
-		got := cascade.steps[id]
-		if len(got) != len(wantSteps) {
-			t.Fatalf("%s cascade steps: got %v, want %v", id, got, wantSteps)
+		if cascade.childCalls[id] != 5 {
+			t.Errorf("%s child erasures: got %d, want 5", id, cascade.childCalls[id])
 		}
-		for i := range wantSteps {
-			if got[i] != wantSteps[i] {
-				t.Errorf("%s cascade order at %d: got %q, want %q", id, i, got[i], wantSteps[i])
-			}
+		if !cascade.profile[id] {
+			t.Errorf("%s profile not deleted", id)
 		}
 	}
+	// Auth0 runs last per account, after every Cosmos erasure.
 	if len(auth0.deleted) != 2 || auth0.deleted[0] != "auth0|a" || auth0.deleted[1] != "auth0|b" {
 		t.Errorf("auth0 deletes: got %v, want [auth0|a auth0|b]", auth0.deleted)
 	}
@@ -191,13 +180,14 @@ func TestHandler_Run_FinderErrorPropagates(t *testing.T) {
 func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	t.Parallel()
 	// A concurrent delete between the scan and the cascade leaves the profile
-	// gone; the cascade must tolerate ErrNotFound on the profile delete and still
-	// count the account as removed (its end state is achieved), mirroring .NET's
-	// UserProfileNotFoundException catch.
+	// gone; the cascade must tolerate ErrNotFound on the profile delete (via the
+	// ProfileAbsent predicate) and still count the account as removed (its end
+	// state is achieved), mirroring .NET's UserProfileNotFoundException catch.
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|gone")}}
 	cascade := newCascadeRecorder()
 	cascade.profileErr["auth0|gone"] = profiles.ErrNotFound
-	h := newHandler(finder, cascade, &fakeAuth0{}, time.Now())
+	auth0 := &fakeAuth0{}
+	h := newHandler(finder, cascade, auth0, time.Now())
 
 	deleted, err := h.Run(context.Background())
 	if err != nil {
@@ -205,6 +195,10 @@ func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	}
 	if deleted != 1 {
 		t.Errorf("deleted count: got %d, want 1 (not-found is tolerated)", deleted)
+	}
+	// A tolerated profile-absent still proceeds to delete the Auth0 user.
+	if len(auth0.deleted) != 1 || auth0.deleted[0] != "auth0|gone" {
+		t.Errorf("auth0 deletes: got %v, want [auth0|gone]", auth0.deleted)
 	}
 }
 
@@ -215,7 +209,8 @@ func TestHandler_Run_ChildCascadeErrorAbortsThatAccountButContinues(t *testing.T
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|fails"), profile(t, "auth0|ok")}}
 	cascade := newCascadeRecorder()
 	cascade.notifErr = errors.New("notifications delete failed")
-	h := newHandler(finder, cascade, &fakeAuth0{}, time.Now())
+	auth0 := &fakeAuth0{}
+	h := newHandler(finder, cascade, auth0, time.Now())
 
 	deleted, err := h.Run(context.Background())
 	if err != nil {
@@ -225,5 +220,12 @@ func TestHandler_Run_ChildCascadeErrorAbortsThatAccountButContinues(t *testing.T
 	// counted, but the run completes without erroring out.
 	if deleted != 0 {
 		t.Errorf("deleted count: got %d, want 0 (child failure aborts that account)", deleted)
+	}
+	// The profile and Auth0 must be untouched when a child step aborts the cascade.
+	if cascade.profile["auth0|fails"] || cascade.profile["auth0|ok"] {
+		t.Errorf("profile must survive a child-cascade failure")
+	}
+	if len(auth0.deleted) != 0 {
+		t.Errorf("auth0 must not run after a child-cascade failure, got %v", auth0.deleted)
 	}
 }

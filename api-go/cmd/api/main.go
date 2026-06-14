@@ -17,6 +17,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
@@ -131,7 +132,8 @@ func main() {
 	// the same condition under which profiles.Routes is wired — so the handler's
 	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
 	// stores satisfy profiles.ChildDeleter directly; notification-state is bridged by
-	// the notificationStateDeleter adapter (its store method is DeleteByUserID).
+	// erasure.NotificationStateChild (its store method is DeleteByUserID), shared with
+	// the dormant-cleanup worker (bead tc-gf0g).
 	var cascade profiles.CascadeDeleters
 	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil {
 		cascade = profiles.CascadeDeleters{
@@ -139,7 +141,7 @@ func main() {
 			WatchZones:          watchZoneStore,
 			SavedApplications:   savedStore,
 			DeviceRegistrations: deviceStore,
-			NotificationState:   notificationStateDeleter{stateStore},
+			NotificationState:   erasure.NotificationStateChild(stateStore),
 		}
 	}
 

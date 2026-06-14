@@ -27,6 +27,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
@@ -520,23 +521,28 @@ func buildDormant(cfg platform.Config, logger *slog.Logger) (*dormant.Handler, e
 		return nil, err
 	}
 
-	stores := dormant.Stores{
-		Notifications:       notificationDeleter{notifications.NewDeleteStore(notifs)},
-		WatchZones:          watchZoneDeleter{watchzones.NewCosmosStore(zonesContainer)},
-		SavedApplications:   savedApplicationDeleter{savedapplications.NewCosmosStore(savedContainer)},
-		DeviceRegistrations: deviceDeleter{devicetokens.NewCosmosStore(devicesContainer)},
-		NotificationState:   stateDeleter{notificationstate.NewCosmosStore(stateContainer, notifs)},
-		Profiles:            profileDeleter{profiles.NewCosmosStore(users)},
+	// The four DeleteAllByUserID stores satisfy erasure.ChildDeleter directly, the
+	// profile store's Delete satisfies erasure.ProfileDeleter directly, and the
+	// notification-state store (whose method is DeleteByUserID) is bridged by
+	// erasure.NotificationStateChild — so no per-step adapter types are needed.
+	deleters := erasure.Deleters{
+		Notifications:       notifications.NewDeleteStore(notifs),
+		WatchZones:          watchzones.NewCosmosStore(zonesContainer),
+		SavedApplications:   savedapplications.NewCosmosStore(savedContainer),
+		DeviceRegistrations: devicetokens.NewCosmosStore(devicesContainer),
+		NotificationState:   erasure.NotificationStateChild(notificationstate.NewCosmosStore(stateContainer, notifs)),
+		Profile:             profiles.NewCosmosStore(users),
 		Auth0:               buildAuth0Deleter(cfg, logger),
+		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
 
-	return dormant.New(profiles.NewAdminStore(users), stores, logger, time.Now), nil
+	return dormant.New(profiles.NewAdminStore(users), deleters, logger, time.Now), nil
 }
 
 // buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
 // credentials are configured, else a no-op so a job without Auth0 M2M config
 // still erases Cosmos data, mirroring .NET's NoOpAuth0ManagementClient fallback.
-func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) dormant.Auth0Deleter {
+func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0Deleter {
 	if !cfg.Auth0M2MConfigured() {
 		logger.Info("auth0 m2m unconfigured; dormant cleanup will skip Auth0 user deletion (NoOp)")
 		return profiles.NoOpAuth0Client{}
@@ -547,54 +553,6 @@ func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) dormant.Auth0De
 		cfg.Auth0M2MClientID,
 		cfg.Auth0M2MClientSecret,
 	)
-}
-
-// The adapters below bridge each store's own method name (DeleteAllByUserID /
-// Delete / DeleteByUserID) to the dormant package's consumer-side interface
-// method names. They keep the dormant handler's contracts explicit without
-// renaming the stores' established API.
-
-type notificationDeleter struct{ s *notifications.DeleteStore }
-
-func (d notificationDeleter) DeleteAllNotifications(ctx context.Context, userID string) error {
-	return d.s.DeleteAllByUserID(ctx, userID)
-}
-
-type watchZoneDeleter struct{ s *watchzones.CosmosStore }
-
-func (d watchZoneDeleter) DeleteAllWatchZones(ctx context.Context, userID string) error {
-	return d.s.DeleteAllByUserID(ctx, userID)
-}
-
-type savedApplicationDeleter struct {
-	s *savedapplications.CosmosStore
-}
-
-func (d savedApplicationDeleter) DeleteAllSavedApplications(ctx context.Context, userID string) error {
-	return d.s.DeleteAllByUserID(ctx, userID)
-}
-
-type deviceDeleter struct{ s *devicetokens.CosmosStore }
-
-func (d deviceDeleter) DeleteAllDeviceRegistrations(ctx context.Context, userID string) error {
-	return d.s.DeleteAllByUserID(ctx, userID)
-}
-
-type stateDeleter struct {
-	s *notificationstate.CosmosStore
-}
-
-func (d stateDeleter) DeleteNotificationState(ctx context.Context, userID string) error {
-	return d.s.DeleteByUserID(ctx, userID)
-}
-
-type profileDeleter struct{ s *profiles.CosmosStore }
-
-// DeleteProfile maps to the profile store's Delete, translating its ErrNotFound
-// (a 404 from Cosmos) so the dormant handler can tolerate a concurrently-deleted
-// profile via errors.Is(err, profiles.ErrNotFound).
-func (d profileDeleter) DeleteProfile(ctx context.Context, userID string) error {
-	return d.s.Delete(ctx, userID)
 }
 
 // buildEmailSender returns the real ACS email sender when a connection string is

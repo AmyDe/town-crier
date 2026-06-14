@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -70,18 +69,6 @@ type dispatchMux struct {
 
 func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.dispatch.ServeHTTP(w, r)
-}
-
-// notificationStateDeleter bridges the notification-state store's DeleteByUserID
-// (one watermark document per user) to the profiles cascade's ChildDeleter
-// contract (DeleteAllByUserID). The other four cascade stores already expose
-// DeleteAllByUserID and satisfy the interface directly.
-type notificationStateDeleter struct {
-	s *notificationstate.CosmosStore
-}
-
-func (d notificationStateDeleter) DeleteAllByUserID(ctx context.Context, userID string) error {
-	return d.s.DeleteByUserID(ctx, userID)
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production

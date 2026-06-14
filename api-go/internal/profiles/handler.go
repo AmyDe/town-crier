@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 )
 
 // maxBodyBytes caps the request body the /v1/me write handlers read.
@@ -202,9 +203,9 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 }
 
 // delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. It reads
-// first so a missing profile is a 404 before any cascade, then erases the user's
-// data from every per-user container, then the profile document, then — last —
-// the Auth0 user.
+// first so a missing profile is a 404 before any cascade, then runs the shared
+// erasure.Cascade: it erases the user's data from every per-user container, then
+// the profile document, then — last — the Auth0 user.
 //
 // Ordering is the safety contract: child records are removed before the profile,
 // so a mid-cascade failure leaves the profile present (GET still 200s) and the
@@ -212,10 +213,15 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 // deleted last so an Auth0 Management-API failure can never strand un-erased
 // Cosmos data. Each cascade store tolerates a 404 on an individual document
 // internally, and the Auth0 delete tolerates a 404, so the whole flow is
-// idempotent. This mirrors the dormant-cleanup worker's cascade (bead tc-qkf2):
-// the earlier Go handler deleted only the profile and the Auth0 user, orphaning
-// watch zones, saved applications, notifications, device registrations and the
-// notification-state watermark.
+// idempotent.
+//
+// The cascade execution is now shared with the dormant-cleanup worker via
+// internal/erasure (single source of truth, bead tc-gf0g) so the ordered
+// container list lives in exactly one place; the earlier drift (the Go handler
+// once deleted only the profile and the Auth0 user, orphaning watch zones, saved
+// applications, notifications, device registrations and the notification-state
+// watermark — bead tc-qkf2) cannot silently recur. The Get-first 404 check and
+// the ordering contract above are unchanged.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 
@@ -228,33 +234,18 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.cascade.Notifications.DeleteAllByUserID(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete notifications", err)
-		return
+	deleters := erasure.Deleters{
+		Notifications:       h.cascade.Notifications,
+		WatchZones:          h.cascade.WatchZones,
+		SavedApplications:   h.cascade.SavedApplications,
+		DeviceRegistrations: h.cascade.DeviceRegistrations,
+		NotificationState:   h.cascade.NotificationState,
+		Profile:             h.store,
+		Auth0:               h.auth0,
+		ProfileAbsent:       func(e error) bool { return errors.Is(e, ErrNotFound) },
 	}
-	if err := h.cascade.WatchZones.DeleteAllByUserID(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete watch zones", err)
-		return
-	}
-	if err := h.cascade.SavedApplications.DeleteAllByUserID(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete saved applications", err)
-		return
-	}
-	if err := h.cascade.DeviceRegistrations.DeleteAllByUserID(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete device registrations", err)
-		return
-	}
-	if err := h.cascade.NotificationState.DeleteAllByUserID(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete notification state", err)
-		return
-	}
-
-	if err := h.store.Delete(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete profile", err)
-		return
-	}
-	if err := h.auth0.DeleteUser(r.Context(), subject); err != nil {
-		h.serverError(w, r, "delete auth0 user", err)
+	if err := erasure.Cascade(r.Context(), subject, deleters); err != nil {
+		h.serverError(w, r, "erase account", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
