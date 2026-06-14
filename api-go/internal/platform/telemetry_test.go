@@ -8,19 +8,23 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// restoreOTelGlobals captures the process-global TracerProvider and propagator
-// and reinstates them when the test ends, so a test that installs a real SDK
-// provider doesn't bleed into the rest of the suite.
+// restoreOTelGlobals captures the process-global TracerProvider, propagator and
+// LoggerProvider and reinstates them when the test ends, so a test that installs
+// a real SDK provider doesn't bleed into the rest of the suite.
 func restoreOTelGlobals(t *testing.T) {
 	t.Helper()
 	tp := otel.GetTracerProvider()
 	prop := otel.GetTextMapPropagator()
+	lp := global.GetLoggerProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(prop)
+		global.SetLoggerProvider(lp)
 	})
 }
 
@@ -48,6 +52,11 @@ func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {
 	}
 	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		t.Error("an SDK TracerProvider was installed while telemetry is disabled")
+	}
+	// The global LoggerProvider must likewise stay the no-op default, so bridged
+	// slog records are dropped (only stdout JSON appears).
+	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+		t.Error("an SDK LoggerProvider was installed while telemetry is disabled")
 	}
 
 	if err := shutdown(context.Background()); err != nil {
@@ -94,6 +103,11 @@ func TestSetupTelemetry_EnabledWhenEndpointSet(t *testing.T) {
 
 	if _, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); !ok {
 		t.Errorf("expected an SDK TracerProvider installed as global, got %T", otel.GetTracerProvider())
+	}
+	// SetupTelemetry must also install an SDK LoggerProvider so slog records
+	// bridge to OTel logs (-> AppTraces) — tc-8x8g.
+	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); !ok {
+		t.Errorf("expected an SDK LoggerProvider installed as global, got %T", global.GetLoggerProvider())
 	}
 
 	// Shutdown must be callable without hanging even though no collector exists.
