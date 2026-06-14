@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -93,7 +94,39 @@ type Config struct {
 	// defaulted to the wrong uk.co.towncrier.ios; that bug is not carried over
 	// (tc-7g3i.12).
 	AppleBundleID string
+
+	// APNs* configure the direct APNs HTTP/2 push client the digest worker modes
+	// use to deliver instant and digest alerts (epic tc-wad3, enabler tc-qlqn).
+	// APNsEnabled gates whether the real sender is constructed; when false the
+	// worker wires a NoOp sender so a job without a .p8 auth key boots cleanly.
+	// APNsAuthKey is the PEM contents of the .p8 auth key (the apns-auth-key
+	// secret, ADR 0026); APNsKeyID and APNsTeamID default to Apple's issued
+	// identifiers; APNsBundleID is sent as the apns-topic header; APNsUseSandbox
+	// routes to the APNs sandbox for TestFlight/dev builds. The infra bead tc-uzm1
+	// wires these env vars additively onto the digest jobs.
+	APNsEnabled    bool
+	APNsAuthKey    SecretString
+	APNsKeyID      string
+	APNsTeamID     string
+	APNsBundleID   string
+	APNsUseSandbox bool
+
+	// ACSConnectionString is the Azure Communication Services connection string
+	// (endpoint=...;accesskey=...) the digest worker modes use to send email via
+	// the ACS Email REST client (epic tc-wad3, enabler tc-qyf5). It carries the
+	// HMAC-SHA256 access key, so it is a SecretString. Empty means the worker
+	// wires a NoOp email sender. The infra bead tc-uzm1 wires the
+	// acs-connection-string secret to this env var.
+	ACSConnectionString SecretString
 }
+
+// defaultAPNsKeyID and defaultAPNsTeamID are the identifiers Apple issued for
+// the Town Crier app's .p8 auth key (epic tc-wad3 notes). Defaulting them keeps
+// the digest jobs working with only the auth-key secret wired.
+const (
+	defaultAPNsKeyID  = "L2J5PQASN5"
+	defaultAPNsTeamID = "4574VQ7N2X"
+)
 
 // defaultAppleBundleID is the canonical App Store bundle id (uk.towncrierapp.mobile),
 // matching the iOS app and the uk.towncrierapp.* product ids.
@@ -137,6 +170,15 @@ func LoadConfig() (Config, error) {
 		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
 
 		AppleBundleID: getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
+
+		APNsEnabled:    getenvBool("APNS_ENABLED"),
+		APNsAuthKey:    NewSecret(os.Getenv("APNS_AUTH_KEY")),
+		APNsKeyID:      getenv("APNS_KEY_ID", defaultAPNsKeyID),
+		APNsTeamID:     getenv("APNS_TEAM_ID", defaultAPNsTeamID),
+		APNsBundleID:   getenv("APNS_BUNDLE_ID", defaultAppleBundleID),
+		APNsUseSandbox: getenvBool("APNS_USE_SANDBOX"),
+
+		ACSConnectionString: NewSecret(os.Getenv("ACS_CONNECTION_STRING")),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {
@@ -171,4 +213,15 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getenvBool reports whether the named env var holds a truthy value. An unset,
+// empty, or unparseable value is false, so a misconfigured flag fails safe
+// (e.g. APNS_ENABLED defaults to off).
+func getenvBool(key string) bool {
+	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
+	if err != nil {
+		return false
+	}
+	return v
 }
