@@ -184,9 +184,9 @@ jobs:
           working-directory: api
 
   # ── Go Worker: build & push image ───────────────────────
-  # Builds the new Go worker image so it exists in ACR ahead of the
-  # image-swap (tc-hm20). Nothing deploys it yet — the worker jobs still
-  # run the .NET town-crier-worker image until the swap lands.
+  # Builds the Go worker image and pushes it to ACR. The worker jobs now
+  # deploy this image (worker-deploy below, image-swap tc-hm20). The .NET
+  # worker-image build above stays until Phase 3 (tc-tbyp) decommissions it.
   worker-go-image:
     name: "Go Worker: Build & push image"
     runs-on: ubuntu-latest
@@ -255,7 +255,7 @@ jobs:
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
     name: "Worker: Deploy to dev"
-    needs: [worker-image, infra-dev]
+    needs: [worker-go-image, infra-dev]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -274,7 +274,7 @@ jobs:
           jobs: digest digest-hourly dormant-cleanup
           env-suffix: dev
           resource-group: rg-town-crier-dev
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker:${{ github.sha }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker-go:${{ github.sha }}
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
