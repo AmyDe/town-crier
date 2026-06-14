@@ -14,7 +14,7 @@ import (
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // newTestClient builds a Client signing against the httptest server's host but
@@ -99,8 +99,8 @@ func TestClient_PollsOperationUntilSucceeded(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mu         sync.Mutex
-		pollsSeen  int
+		mu        sync.Mutex
+		pollsSeen int
 	)
 	mux := http.NewServeMux()
 	var srvURL string

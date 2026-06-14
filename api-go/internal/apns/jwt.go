@@ -37,10 +37,10 @@ type jwtClaims struct {
 // token is held in memory and re-signed under a mutex; the provider is intended
 // to be shared by a single Client across all device requests.
 type jwtProvider struct {
-	key   *ecdsa.PrivateKey
-	keyID string
+	key    *ecdsa.PrivateKey
+	keyID  string
 	teamID string
-	now   func() time.Time
+	now    func() time.Time
 
 	mu       sync.Mutex
 	cached   string

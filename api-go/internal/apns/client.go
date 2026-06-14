@@ -3,6 +3,7 @@ package apns
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -54,7 +55,12 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 		return nil, err
 	}
 
-	transport := &http2.Transport{}
+	// APNs requires HTTP/2; an explicit h2 transport guarantees the protocol
+	// rather than relying on net/http's opportunistic h2 upgrade. TLS 1.2 is the
+	// floor.
+	transport := &http2.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+	}
 	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   requestTimeout,
@@ -90,16 +96,19 @@ func (c *Client) Send(ctx context.Context, tokens []string, payload json.RawMess
 		return nil, nil
 	}
 
-	var invalid []string
+	invalid := make([]string, 0, len(tokens))
 	for _, token := range tokens {
 		rejected, err := c.sendOne(ctx, token, payload)
 		if err != nil {
-			c.logger.Error("apns send failed", "token", redactToken(token), "error", err)
+			c.logger.ErrorContext(ctx, "apns send failed", "token", redactToken(token), "error", err)
 			continue
 		}
 		if rejected {
 			invalid = append(invalid, token)
 		}
+	}
+	if len(invalid) == 0 {
+		return nil, nil
 	}
 	return invalid, nil
 }
@@ -132,28 +141,28 @@ func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMess
 		case status >= 200 && status < 300:
 			return false, nil
 		case status == http.StatusGone:
-			c.logger.Info("apns token unregistered", "token", redactToken(token))
+			c.logger.InfoContext(ctx, "apns token unregistered", "token", redactToken(token))
 			return true, nil
 		case status == http.StatusBadRequest && reason == "BadDeviceToken":
-			c.logger.Warn("apns bad device token", "token", redactToken(token))
+			c.logger.WarnContext(ctx, "apns bad device token", "token", redactToken(token))
 			return true, nil
 		case status == http.StatusForbidden && reason == "ExpiredProviderToken" && !jwtRefreshed:
-			c.logger.Info("apns expired provider token; refreshing jwt")
+			c.logger.InfoContext(ctx, "apns expired provider token; refreshing jwt")
 			c.jwt.invalidate()
 			jwtRefreshed = true
 			continue
 		case status == http.StatusTooManyRequests && reason == "TooManyProviderTokenUpdates":
-			c.logger.Warn("apns too many provider token updates; deferring")
+			c.logger.WarnContext(ctx, "apns too many provider token updates; deferring")
 			return false, nil
 		case status >= 500 && status < 600 && attempt < maxAttempts:
-			c.logger.Warn("apns transient error", "status", status, "reason", reason, "attempt", attempt)
+			c.logger.WarnContext(ctx, "apns transient error", "status", status, "reason", reason, "attempt", attempt)
 			if waitErr := sleep(ctx, backoff); waitErr != nil {
 				return false, waitErr
 			}
 			backoff *= 2
 			continue
 		default:
-			c.logger.Warn("apns unhandled status", "status", status, "reason", reason, "token", redactToken(token))
+			c.logger.WarnContext(ctx, "apns unhandled status", "status", status, "reason", reason, "token", redactToken(token))
 			return false, nil
 		}
 	}

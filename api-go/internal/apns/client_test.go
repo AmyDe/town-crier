@@ -4,18 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"log/slog"
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // newTestClient builds a Client whose transport targets the given httptest
@@ -45,12 +44,12 @@ func TestClient_SendsCorrectRequestShape(t *testing.T) {
 	t.Parallel()
 
 	var (
-		gotPath   string
-		gotAuth   string
-		gotTopic  string
-		gotType   string
-		gotBody   []byte
-		mu        sync.Mutex
+		gotPath  string
+		gotAuth  string
+		gotTopic string
+		gotType  string
+		gotBody  []byte
+		mu       sync.Mutex
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -138,12 +137,10 @@ func TestClient_RefreshesJWTOnExpiredProviderToken(t *testing.T) {
 
 	var (
 		mu    sync.Mutex
-		auths []string
 		calls int
 	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		auths = append(auths, r.Header.Get("authorization"))
 		calls++
 		n := calls
 		mu.Unlock()

@@ -174,7 +174,7 @@ func (c *Client) pollOperation(ctx context.Context, opLocation string) error {
 		return nil
 	}
 
-	for poll := 0; poll < c.maxPolls; poll++ {
+	for range c.maxPolls {
 		status, err := c.getOperationStatus(ctx, opLocation)
 		if err != nil {
 			return err
@@ -182,6 +182,7 @@ func (c *Client) pollOperation(ctx context.Context, opLocation string) error {
 
 		switch {
 		case isSuccess(status.Status):
+			c.logger.DebugContext(ctx, "acs email sent", "operation", status.ID)
 			return nil
 		case isTerminalFailure(status.Status):
 			msg := ""
