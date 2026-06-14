@@ -31,21 +31,24 @@ type profileStore interface {
 }
 
 // handler serves the /v1/me lifecycle. It depends on the profile store, the
-// Auth0 management client (real or no-op), the auto-grant pro-domain list, a
-// clock, and a logger — all injected, no globals.
+// Auth0 management client (real or no-op), the per-container cascade deleters
+// account erasure runs, the auto-grant pro-domain list, a clock, and a logger —
+// all injected, no globals.
 type handler struct {
 	store      profileStore
 	auth0      Auth0Manager
+	cascade    CascadeDeleters
 	proDomains proDomainSet
 	now        func() time.Time
 	logger     *slog.Logger
 }
 
 // newHandler builds the /v1/me handler.
-func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, now func() time.Time, logger *slog.Logger) *handler {
+func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, now func() time.Time, logger *slog.Logger) *handler {
 	return &handler{
 		store:      store,
 		auth0:      auth0,
+		cascade:    cascade,
 		proDomains: newProDomainSet(proDomains),
 		now:        now,
 		logger:     logger,
@@ -54,8 +57,8 @@ func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, now f
 
 // Routes registers the /v1/me endpoints on mux. All are authenticated: the auth
 // middleware guarantees a subject in context before these handlers run.
-func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomains string, now func() time.Time, logger *slog.Logger) {
-	h := newHandler(store, auth0, proDomains, now, logger)
+func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, now func() time.Time, logger *slog.Logger) {
+	h := newHandler(store, auth0, proDomains, cascade, now, logger)
 	mux.HandleFunc("POST /v1/me", h.create)
 	mux.HandleFunc("GET /v1/me", h.get)
 	mux.HandleFunc("PATCH /v1/me", h.patch)
@@ -198,10 +201,21 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, profileResultFrom(profile))
 }
 
-// delete implements DELETE /v1/me. It reads first so a missing profile is a 404
-// before any cascade, then removes the profile from Cosmos and the user from
-// Auth0 (the Auth0 delete tolerates 404 internally). Child-record cascades land
-// with their stores in later iterations.
+// delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. It reads
+// first so a missing profile is a 404 before any cascade, then erases the user's
+// data from every per-user container, then the profile document, then — last —
+// the Auth0 user.
+//
+// Ordering is the safety contract: child records are removed before the profile,
+// so a mid-cascade failure leaves the profile present (GET still 200s) and the
+// account retryable by a repeat DELETE rather than half-erased; the Auth0 user is
+// deleted last so an Auth0 Management-API failure can never strand un-erased
+// Cosmos data. Each cascade store tolerates a 404 on an individual document
+// internally, and the Auth0 delete tolerates a 404, so the whole flow is
+// idempotent. This mirrors the dormant-cleanup worker's cascade (bead tc-qkf2):
+// the earlier Go handler deleted only the profile and the Auth0 user, orphaning
+// watch zones, saved applications, notifications, device registrations and the
+// notification-state watermark.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 
@@ -211,6 +225,27 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.serverError(w, r, "load profile", err)
+		return
+	}
+
+	if err := h.cascade.Notifications.DeleteAllByUserID(r.Context(), subject); err != nil {
+		h.serverError(w, r, "delete notifications", err)
+		return
+	}
+	if err := h.cascade.WatchZones.DeleteAllByUserID(r.Context(), subject); err != nil {
+		h.serverError(w, r, "delete watch zones", err)
+		return
+	}
+	if err := h.cascade.SavedApplications.DeleteAllByUserID(r.Context(), subject); err != nil {
+		h.serverError(w, r, "delete saved applications", err)
+		return
+	}
+	if err := h.cascade.DeviceRegistrations.DeleteAllByUserID(r.Context(), subject); err != nil {
+		h.serverError(w, r, "delete device registrations", err)
+		return
+	}
+	if err := h.cascade.NotificationState.DeleteAllByUserID(r.Context(), subject); err != nil {
+		h.serverError(w, r, "delete notification state", err)
 		return
 	}
 

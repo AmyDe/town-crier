@@ -126,6 +126,23 @@ func main() {
 		savedStore = savedapplications.NewCosmosStore(savedContainer)
 	}
 
+	// cascade bundles the per-container deleters DELETE /v1/me runs for a complete
+	// GDPR erasure (bead tc-qkf2). It is populated only when Cosmos is configured —
+	// the same condition under which profiles.Routes is wired — so the handler's
+	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
+	// stores satisfy profiles.ChildDeleter directly; notification-state is bridged by
+	// the notificationStateDeleter adapter (its store method is DeleteByUserID).
+	var cascade profiles.CascadeDeleters
+	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil {
+		cascade = profiles.CascadeDeleters{
+			Notifications:       notifications.NewDeleteStore(notificationsContainer),
+			WatchZones:          watchZoneStore,
+			SavedApplications:   savedStore,
+			DeviceRegistrations: deviceStore,
+			NotificationState:   notificationStateDeleter{stateStore},
+		}
+	}
+
 	offerCodesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosOfferCodesContainer, logger)
 	if err != nil {
 		log.Fatal(err)
@@ -181,7 +198,7 @@ func main() {
 	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
