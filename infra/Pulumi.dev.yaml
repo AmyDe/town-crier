@@ -5,6 +5,11 @@ config:
   town-crier:apiDomain: api-dev.towncrierapp.uk
   town-crier:auth0Domain: towncrierapp.uk.auth0.com
   town-crier:auth0Audience: https://api-dev.towncrierapp.uk
+  # api-dev.towncrierapp.uk is served by the Go app (ca-town-crier-api-go-dev) after the
+  # tc-fdml cutover (mirrors prod tc-t56q). This moves the hostname-to-app binding from
+  # the .NET app to the Go app and binds the existing env-level cert-api-dev. Unlike prod,
+  # Go dev stays scale-to-zero (MinReplicas=0) to avoid idle cost — only Go prod is warm.
+  town-crier:apiBackend: "go"
   town-crier:apnsKeyId: L2J5PQASN5
   town-crier:apnsTeamId: 4574VQ7N2X
   town-crier:apnsAuthKey:

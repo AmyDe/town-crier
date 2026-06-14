@@ -383,10 +383,11 @@ public static class EnvironmentStack
                 },
                 Scale = new ScaleArgs
                 {
-                    // Prod keeps one warm instance so first requests (e.g. App Store
-                    // review) skip the ~15s ACA scale-from-zero cold start. Dev stays
-                    // scale-to-zero to avoid idle cost.
-                    MinReplicas = env == "prod" ? 1 : 0,
+                    // The .NET app is a cold standby in all environments after the Go
+                    // cutover (tc-fdml): prod api traffic moved to the Go app (tc-t56q),
+                    // dev follows here. Keep it scale-to-zero everywhere to avoid idle
+                    // cost; the Go app carries the warm-replica budget where needed.
+                    MinReplicas = 0,
                     MaxReplicas = 1,
                 },
             },
@@ -504,12 +505,11 @@ public static class EnvironmentStack
                     },
                     Scale = new ScaleArgs
                     {
-                        // Keep one warm replica when the Go app is the active backend
-                        // (apiBackend=="go", i.e. prod post-cutover) so live api traffic
-                        // skips the ~15s ACA scale-from-zero cold start, mirroring the
-                        // .NET prod app. Otherwise (dev, or before cutover) stay
-                        // scale-to-zero to avoid idle cost.
-                        MinReplicas = apiBackend == "go" ? 1 : 0,
+                        // Keep one warm replica only for the PROD Go app once it is the
+                        // active backend (apiBackend=="go") so live api traffic skips the
+                        // ~15s ACA scale-from-zero cold start. Dev — even though it is now
+                        // go-backed after tc-fdml — stays scale-to-zero to avoid idle cost.
+                        MinReplicas = (env == "prod" && apiBackend == "go") ? 1 : 0,
                         MaxReplicas = 1,
                     },
                 },
