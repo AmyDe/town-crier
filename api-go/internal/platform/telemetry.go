@@ -82,7 +82,9 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	logExporter, err := otlploggrpc.New(ctx)
 	if err != nil {
 		// Tear the tracer provider down so a half-built pipeline doesn't leak.
-		_ = tp.Shutdown(ctx)
+		if shutdownErr := tp.Shutdown(ctx); shutdownErr != nil {
+			logger.ErrorContext(ctx, "tracer shutdown after log-exporter failure", "error", shutdownErr)
+		}
 		return nil, err
 	}
 	lp := sdklog.NewLoggerProvider(
