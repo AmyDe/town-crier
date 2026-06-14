@@ -11,6 +11,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -19,12 +20,16 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
+	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
@@ -69,13 +74,17 @@ func run() int {
 		}
 	}()
 
-	// The Service Bus client (and thus the bootstrapper) is built only when the
-	// job carries Service Bus config. Jobs that don't touch Service Bus (digest,
-	// hourly-digest, dormant-cleanup) leave the bootstrapper nil; poll-bootstrap
-	// then refuses to run rather than crashing.
-	var bootstrapper *worker.Bootstrapper
+	// The Service Bus client (and thus the bootstrapper and the poll-sb
+	// orchestrator) is built only when the job carries Service Bus config. Jobs
+	// that don't touch Service Bus (digest, hourly-digest, dormant-cleanup) leave
+	// the bootstrapper nil; poll-bootstrap then refuses to run rather than
+	// crashing.
+	var (
+		bootstrapper *worker.Bootstrapper
+		sbClient     *servicebus.Client
+	)
 	if cfg.ServiceBusNamespace != "" && cfg.ServiceBusQueueName != "" {
-		sbClient, err := servicebus.NewClient(cfg.ServiceBusNamespace, cfg.ServiceBusQueueName, cfg.AzureClientID)
+		sbClient, err = servicebus.NewClient(cfg.ServiceBusNamespace, cfg.ServiceBusQueueName, cfg.AzureClientID)
 		if err != nil {
 			logger.Error("build service bus client", "error", err)
 			return 1
@@ -124,7 +133,206 @@ func run() int {
 		dormantRunner = dormantHandler
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, logger)
+	// The poll-sb orchestrator is built only when the job carries BOTH Service Bus
+	// (trigger queue) and Cosmos (lease + poll state + applications) config. A job
+	// missing either leaves it a genuinely nil interface; poll-sb then refuses to
+	// run rather than crashing. Declared as the interface so the "unconfigured"
+	// case stays a nil interface value (a typed-nil adapter would defeat the guard).
+	var poller worker.PollOrchestrator
+	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, logger)
+	if err != nil {
+		logger.Error("build poll-sb orchestrator", "error", err)
+		return 1
+	}
+	if pollAdapter != nil {
+		poller = pollAdapter
+	}
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, logger)
+}
+
+// buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
+// Cosmos poll-state and etag-CAS lease stores, the cycle-alternating authority
+// provider, the ingestion handler, and the next-run scheduler — bridged to the
+// receive/publish operations of the shared Service Bus client. It returns
+// (nil, nil) when Service Bus or Cosmos config is absent, so poll-sb refuses to
+// run rather than nil-panicking. The cycle budget (replicaTimeout − grace) and
+// the handler/lease budgets all come from config.
+func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
+	if sbClient == nil || cfg.CosmosEndpoint == "" {
+		return nil, nil //nolint:nilnil // absent SB/Cosmos config is a valid "no poller" state, not an error
+	}
+
+	planItClient, err := planit.NewClient(planit.Options{
+		BaseURL: cfg.PlanItBaseURL,
+		Throttle: planit.ThrottleOptions{
+			DelayBetweenRequests: secondsToDuration(cfg.PlanItThrottleDelaySeconds),
+		},
+		Retry: planit.RetryOptions{
+			MaxRetries:       cfg.PlanItMaxRetries,
+			InitialBackoff:   secondsToDuration(cfg.PlanItInitialBackoffSeconds),
+			RateLimitBackoff: secondsToDuration(cfg.PlanItRateLimitBackoffSeconds),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	appsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosApplicationsContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosPollStateContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	leasesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosLeasesContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	zonesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	stateStore := polling.NewPollStateStore(stateContainer)
+	leaseStore := polling.NewLeaseStore(leaseItemsAdapter{leasesContainer}, time.Now)
+	appStore := applications.NewCosmosStore(appsContainer)
+	zoneStore := watchzones.NewCosmosStore(zonesContainer)
+
+	cycleSelector := polling.NewMinuteCycleSelector(time.Now)
+	authorityProvider := polling.NewCycleAlternatingProvider(
+		polling.NewWatchZoneAuthorityProvider(zoneStore),
+		polling.NewAllAuthorityProvider(authorities.NewLookup()),
+		cycleSelector,
+	)
+
+	maxPages := cfg.PollingMaxPagesPerAuthorityPerCycle
+	handler := polling.NewPollPlanItHandler(
+		planItClient,
+		appStore,
+		stateStore,
+		authorityProvider,
+		cycleSelector,
+		polling.HandlerOptions{
+			MaxPagesPerAuthorityPerCycle: &maxPages,
+			HandlerBudget:                secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)),
+		},
+		time.Now,
+		logger,
+	)
+
+	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
+
+	// Lease TTL must exceed the handler's worst-case runtime so the lease cannot
+	// expire mid-handler (which would let a peer start a duplicate cycle). Size it
+	// at the handler budget plus a 30s margin, matching .NET's 4.5m-vs-4m gap.
+	leaseTTL := secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)) + 30*time.Second
+
+	orchestrator := polling.NewOrchestrator(
+		handler,
+		sbClient,
+		sbClient,
+		leaseStore,
+		scheduler,
+		polling.OrchestratorOptions{
+			LeaseTTL:               leaseTTL,
+			LeaseAcquireRetryDelay: 1 * time.Second,
+		},
+		time.Now,
+		logger,
+	)
+
+	// The hard cycle budget is replicaTimeout − grace (mirrors the .NET worker);
+	// it bounds the whole RunOnce so the process exits cleanly before Container
+	// Apps SIGTERMs the replica.
+	cycleBudget := time.Duration(maxInt(1, cfg.PollReplicaTimeoutSeconds-cfg.PollShutdownGraceSeconds)) * time.Second
+
+	return &pollOrchestratorAdapter{orchestrator: orchestrator, cycleBudget: cycleBudget}, nil
+}
+
+// pollOrchestratorAdapter flattens polling.OrchestratorRunResult into the
+// worker.PollRunResult the dispatcher tags and exit-codes on, and applies the
+// hard cycle-budget timeout around the orchestrator's single run. It satisfies
+// worker.PollOrchestrator.
+type pollOrchestratorAdapter struct {
+	orchestrator *polling.Orchestrator
+	cycleBudget  time.Duration
+}
+
+func (a *pollOrchestratorAdapter) RunOnce(ctx context.Context) (worker.PollRunResult, error) {
+	cycleCtx, cancel := context.WithTimeout(ctx, a.cycleBudget)
+	defer cancel()
+
+	res, err := a.orchestrator.RunOnce(cycleCtx)
+	if err != nil {
+		return worker.PollRunResult{MessageReceived: res.MessageReceived}, err
+	}
+
+	out := worker.PollRunResult{
+		MessageReceived:  res.MessageReceived,
+		PublishedNext:    res.PublishedNext,
+		LeaseUnavailable: res.LeaseUnavailable,
+	}
+	if res.PollResult != nil {
+		out.ApplicationCount = res.PollResult.ApplicationCount
+		out.AuthoritiesPolled = res.PollResult.AuthoritiesPolled
+		out.AuthorityErrors = res.PollResult.AuthorityErrors
+		out.Termination = res.PollResult.TerminationReason.TelemetryValue()
+	}
+	return out, nil
+}
+
+// leaseItemsAdapter bridges *platform.CosmosContainer's etag-CAS methods to the
+// polling lease store's consumer interface, translating the platform CAS
+// sentinel errors into the polling sentinels the store branches on.
+type leaseItemsAdapter struct {
+	c *platform.CosmosContainer
+}
+
+func (a leaseItemsAdapter) ReadLeaseWithETag(ctx context.Context, id string) ([]byte, string, bool, error) {
+	return a.c.ReadItemWithETag(ctx, id, id)
+}
+
+func (a leaseItemsAdapter) CreateLease(ctx context.Context, id string, item []byte) (string, error) {
+	etag, err := a.c.CreateItemReturningETag(ctx, id, item)
+	if errors.Is(err, platform.ErrCASConflict) {
+		return "", polling.ErrLeaseConflict
+	}
+	return etag, err
+}
+
+func (a leaseItemsAdapter) ReplaceLeaseWithETag(ctx context.Context, id string, item []byte, etag string) (string, error) {
+	newETag, err := a.c.ReplaceItemWithETag(ctx, id, id, item, etag)
+	if errors.Is(err, platform.ErrCASPreconditionFailed) {
+		return "", polling.ErrLeasePreconditionFailed
+	}
+	return newETag, err
+}
+
+func (a leaseItemsAdapter) DeleteLeaseWithETag(ctx context.Context, id, etag string) error {
+	err := a.c.DeleteItemWithETag(ctx, id, id, etag)
+	switch {
+	case errors.Is(err, platform.ErrCASNotFound):
+		return polling.ErrLeaseNotFound
+	case errors.Is(err, platform.ErrCASPreconditionFailed):
+		return polling.ErrLeasePreconditionFailed
+	default:
+		return err
+	}
+}
+
+// secondsToDuration converts a fractional-seconds config value to a Duration.
+func secondsToDuration(s float64) time.Duration {
+	return time.Duration(s * float64(time.Second))
+}
+
+// maxInt returns the larger of a and b.
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // buildDigester constructs the digest handler when Cosmos is configured, wiring
