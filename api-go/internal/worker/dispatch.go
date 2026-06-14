@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // tracerName labels the worker's OpenTelemetry spans.
@@ -18,20 +19,38 @@ const tracerName = "github.com/AmyDe/town-crier/api-go/internal/worker"
 // the soft ceiling that lets the process exit cleanly and flush telemetry.
 const bootstrapBudget = 60 * time.Second
 
+// digestBudget is the soft self-cancel for a single digest / hourly-digest run.
+// A digest cycle fans out across many users' Cosmos reads and email/push sends;
+// 10 minutes is generous while still bounded well under the Container Apps
+// replicaTimeout so the process exits cleanly and flushes telemetry.
+const digestBudget = 10 * time.Minute
+
+// DigestRunner is the consumer-side slice of the digest handler the dispatcher
+// invokes. *digest.Handler satisfies it; the worker depends only on these two
+// methods so it need not know the handler's internals. It is exported so main()
+// can hold a genuinely nil interface value when the job has no digest config —
+// passing a typed-nil *digest.Handler would defeat the nil guard below.
+type DigestRunner interface {
+	RunWeekly(ctx context.Context) error
+	RunHourly(ctx context.Context) error
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go — main() only loads config, wires the
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
 // code.
 //
-// Only poll-bootstrap is implemented in this skeleton. The other four modes
-// (poll-sb, digest, hourly-digest, dormant-cleanup) are loud stubs that exit 1;
-// the Go worker image is not deployed to any job until the final cutover bead,
-// so a stub can never run in production. An unset or unknown mode is a
+// poll-bootstrap, digest, and hourly-digest are implemented; the remaining modes
+// (poll-sb, dormant-cleanup) are loud stubs that exit 1 until their own beads
+// land. The Go worker image is not deployed to any job until the final cutover
+// bead, so a stub can never run in production. An unset or unknown mode is a
 // deployment accident and also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
-// then refuses to run rather than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, logger *slog.Logger) int {
+// then refuses to run rather than nil-panicking. Likewise digester may be nil
+// when the job has no Cosmos / ACS / APNs config; the digest modes then refuse
+// to run rather than nil-panicking.
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -42,7 +61,13 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, logger *s
 	case "poll-bootstrap":
 		return runPollBootstrap(ctx, bootstrapper, logger)
 
-	case "poll-sb", "digest", "hourly-digest", "dormant-cleanup":
+	case "digest":
+		return runDigest(ctx, "Digest Cycle", digester, DigestRunner.RunWeekly, logger)
+
+	case "hourly-digest":
+		return runDigest(ctx, "Hourly Digest Cycle", digester, DigestRunner.RunHourly, logger)
+
+	case "poll-sb", "dormant-cleanup":
 		// Loud, safe stub: the image is not deployed until the final cutover, so
 		// this exit-1 can never strand a real job. Each mode lands in its own bead.
 		logger.ErrorContext(ctx, "WORKER_MODE not yet implemented in Go worker", "mode", mode)
@@ -52,6 +77,33 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, logger *s
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
 		return 1
 	}
+}
+
+// runDigest executes one digest cycle (weekly or hourly) under a soft self-cancel
+// budget, inside a telemetry span whose name mirrors the .NET worker ("Digest
+// Cycle" / "Hourly Digest Cycle") so existing App Insights queries keep working.
+// A nil digester (job missing Cosmos/ACS config) is an exit-1 condition; a cycle
+// error is recorded on the span and also exits 1 so the job surfaces the failure.
+func runDigest(ctx context.Context, spanName string, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, spanName)
+	defer span.End()
+
+	if digester == nil {
+		logger.ErrorContext(ctx, "digest mode requires Cosmos + ACS/APNs config (COSMOS_ENDPOINT et al.); refusing to run", "span", spanName)
+		return 1
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, digestBudget)
+	defer cancel()
+
+	if err := run(digester, cycleCtx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "digest cycle failed", "span", spanName, "error", err)
+		return 1
+	}
+	return 0
 }
 
 // runPollBootstrap executes one bootstrap cycle under a soft self-cancel budget,

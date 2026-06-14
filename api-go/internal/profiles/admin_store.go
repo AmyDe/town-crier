@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // adminItems is the consumer-side slice of the Cosmos container the admin store
@@ -72,6 +73,33 @@ func (s *AdminStore) GetByOriginalTransactionID(ctx context.Context, originalTra
 		return nil, fmt.Errorf("decode profile: %w", err)
 	}
 	return doc.toDomain()
+}
+
+// ByDigestDay returns every profile whose configured digest day matches day —
+// the weekly-digest candidate set, before per-user tier and preference gating.
+// The digest day is bound as the int DayOfWeek value (Sunday=0 … Saturday=6),
+// matching .NET's GetAllByDigestDayCrossPartitionAsync (which casts the enum to
+// int) and the int stored by the profile document's digestDay field.
+func (s *AdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*UserProfile, error) {
+	rows, err := s.items.QueryItemsCrossPartition(ctx,
+		"SELECT * FROM c WHERE c.digestDay = @digestDay",
+		map[string]any{"@digestDay": int(day)})
+	if err != nil {
+		return nil, fmt.Errorf("query profiles by digest day: %w", err)
+	}
+	profiles := make([]*UserProfile, 0, len(rows))
+	for _, raw := range rows {
+		var doc profileDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode profile: %w", err)
+		}
+		p, err := doc.toDomain()
+		if err != nil {
+			return nil, fmt.Errorf("hydrate profile: %w", err)
+		}
+		profiles = append(profiles, p)
+	}
+	return profiles, nil
 }
 
 // Save upserts the profile (id == user id == partition key).
