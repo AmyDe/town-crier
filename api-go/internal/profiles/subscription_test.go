@@ -74,6 +74,48 @@ func TestSubscriptionTier_Entitlements(t *testing.T) {
 	}
 }
 
+func TestSubscriptionTier_IsPaidPro(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		tier SubscriptionTier
+		want bool
+	}{
+		{TierFree, false},
+		{TierPersonal, false},
+		{TierPro, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.tier.String(), func(t *testing.T) {
+			t.Parallel()
+			if got := tc.tier.IsPaidPro(); got != tc.want {
+				t.Errorf("IsPaidPro() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSubscriptionTier_HasHourlyDigestEntitlement(t *testing.T) {
+	t.Parallel()
+	// Hourly digest emails are a paid entitlement granted to Personal and Pro,
+	// never Free — mirroring .NET EntitlementMap (HourlyDigestEmails in PaidEntitlements).
+	tests := []struct {
+		tier SubscriptionTier
+		want bool
+	}{
+		{TierFree, false},
+		{TierPersonal, true},
+		{TierPro, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.tier.String(), func(t *testing.T) {
+			t.Parallel()
+			if got := tc.tier.HasHourlyDigestEntitlement(); got != tc.want {
+				t.Errorf("HasHourlyDigestEntitlement() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSubscriptionTier_WatchZoneLimit(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
