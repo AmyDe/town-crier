@@ -30,11 +30,6 @@ permissions:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  CONTAINER_APP_NAME: ca-town-crier-api-dev
-  RESOURCE_GROUP: rg-town-crier-dev
-  API_IMAGE_NAME: town-crier-api
-  GO_CONTAINER_APP_NAME: ca-town-crier-api-go-dev
-  GO_IMAGE_NAME: town-crier-api-go
 
 jobs:
   changes:
@@ -43,7 +38,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      api: ${{ steps.detect.outputs.api }}
       cli: ${{ steps.detect.outputs.cli }}
       ios: ${{ steps.detect.outputs.ios }}
       web: ${{ steps.detect.outputs.web }}
@@ -59,227 +53,12 @@ jobs:
         with:
           mode: pr
           base-ref: ${{ github.base_ref }}
-          categories: api,cli,ios,web,infra,go
+          categories: cli,ios,web,infra,go
           trigger-files: |
-            .github/workflows/pr-gate.yml:api,cli,ios,web,infra,go
-            .github/workflows/cd-dev.yml:api,web,infra,go
+            .github/workflows/pr-gate.yml:cli,ios,web,infra,go
+            .github/workflows/cd-dev.yml:web,infra,go
             .github/workflows/cd-prod.yml:infra
             .github/workflows/cd-ios-testflight.yml:ios
-
-  # ── API ──────────────────────────────────────────────
-
-  api-format:
-    name: "API: Format"
-    needs: changes
-    if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: api/global.json
-      - run: dotnet format --verify-no-changes
-        working-directory: api
-
-  api-build-test:
-    name: "API: Build & test"
-    needs: changes
-    if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: api/global.json
-      - uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('api/**/*.csproj', 'api/**/Directory.Build.props') }}
-          restore-keys: nuget-${{ runner.os }}-
-      - run: dotnet restore
-        working-directory: api
-      - run: dotnet build --no-restore --configuration Release
-        working-directory: api
-      - name: Run unit tests
-        run: |
-          dotnet test tests/town-crier.application.tests --no-build --configuration Release
-          dotnet test tests/town-crier.infrastructure.tests --no-build --configuration Release
-        working-directory: api
-
-      - name: Run web tests (timeout-guarded)
-        # web.tests: Azure Monitor exporter can hang on shutdown when configured
-        # with a fake connection string (tests OTel code paths). All tests pass
-        # within seconds; only process cleanup blocks. We use timeout to kill the
-        # hung process, but ONLY accept a timeout exit if the .trx results file
-        # proves every test executed and none failed.
-        run: |
-          set +e
-          timeout 120 dotnet test tests/town-crier.web.tests \
-            --no-build --configuration Release \
-            --logger "trx;LogFileName=web-tests.trx"
-          web_status=$?
-          set -e
-
-          if [ "$web_status" -eq 124 ]; then
-            echo "::warning::dotnet test timed out (exit 124) — checking .trx for proof of success"
-            trx_file=$(find tests/town-crier.web.tests/TestResults -name '*.trx' -print 2>/dev/null | head -n1)
-            if [ -z "$trx_file" ]; then
-              echo "::error::Timeout with no .trx file produced — tests may not have run"
-              exit 1
-            fi
-            if ! grep -q 'failed="0"' "$trx_file"; then
-              echo "::error::Timeout and .trx shows test failures"
-              exit 1
-            fi
-            if ! grep -Eq 'executed="[1-9][0-9]*"' "$trx_file"; then
-              echo "::error::Timeout and .trx shows zero tests executed"
-              exit 1
-            fi
-            echo "Tests completed successfully before timeout killed the hung process"
-          elif [ "$web_status" -ne 0 ]; then
-            echo "::error::dotnet test failed with exit code $web_status"
-            exit "$web_status"
-          fi
-        working-directory: api
-
-      - name: Upload web test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: web-test-results
-          path: api/tests/town-crier.web.tests/TestResults/*.trx
-          if-no-files-found: ignore
-          retention-days: 7
-
-  # ── API: staging deploy ─────────────────────────────
-
-  api-staging:
-    name: "API: Deploy staging revision"
-    needs: [changes, api-build-test]
-    if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: development
-    outputs:
-      staging-url: ${{ steps.staging-url.outputs.url }}
-      new-revision: ${{ steps.deploy.outputs.revision }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
-
-      - name: Build and push image
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-        working-directory: api
-
-      - name: Get current active revision
-        id: current
-        run: |
-          CURRENT=$(az containerapp ingress traffic show \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-          echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy staging revision
-        id: deploy
-        run: |
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          az containerapp update \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}" \
-            --revision-suffix "pr${SHORT_SHA}"
-          echo "revision=${{ env.CONTAINER_APP_NAME }}--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Pin traffic to current revision
-        run: |
-          if [ -n "${{ steps.current.outputs.revision }}" ]; then
-            az containerapp ingress traffic set \
-              --name "${{ env.CONTAINER_APP_NAME }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --revision-weight "${{ steps.current.outputs.revision }}=100"
-          fi
-
-      - name: Get staging URL
-        id: staging-url
-        run: |
-          APP_FQDN=$(az containerapp show \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          ENV_DOMAIN="${APP_FQDN#*.}"
-          echo "url=https://${{ steps.deploy.outputs.revision }}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-  # ── API: integration tests ──────────────────────────
-
-  api-integration-test:
-    name: "API: Integration tests"
-    needs: [api-staging]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: api/global.json
-
-      - name: Build integration tests
-        run: dotnet build tests/town-crier.integration-tests --configuration Release
-        working-directory: api
-
-      - name: Run integration tests
-        working-directory: api
-        env:
-          INTEGRATION_TEST_API_BASE_URL: ${{ needs.api-staging.outputs.staging-url }}
-          INTEGRATION_TEST_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
-          INTEGRATION_TEST_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
-          INTEGRATION_TEST_AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
-          INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
-          INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
-          INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
-        run: |
-          printenv | grep ^INTEGRATION_TEST_ > tests/town-crier.integration-tests/bin/Release/net10.0/.env
-          dotnet exec tests/town-crier.integration-tests/bin/Release/net10.0/town-crier.integration-tests.dll
-
-  # ── API: clean up staging revision ───────────────────
-
-  api-staging-cleanup:
-    name: "API: Deactivate staging revision"
-    needs: [api-staging, api-integration-test]
-    if: always() && needs.api-staging.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deactivate staging revision
-        run: |
-          az containerapp revision deactivate \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --revision "${{ needs.api-staging.outputs.new-revision }}" || true
 
   # ── Go API ───────────────────────────────────────────
 
@@ -334,213 +113,6 @@ jobs:
           path: api-go/coverage.out
           if-no-files-found: ignore
           retention-days: 7
-
-  # ── Go API: staging deploy ──────────────────────────
-  # Mirrors the .NET api-staging flow on the parallel Go container app:
-  # build/push the image, stage a zero-traffic revision, and hand its URL
-  # to the contract tests.
-
-  go-staging:
-    name: "Go API: Deploy staging revision"
-    needs: [changes, go-lint, go-test]
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: development
-    outputs:
-      staging-url: ${{ steps.staging-url.outputs.url }}
-      new-revision: ${{ steps.deploy.outputs.revision }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
-
-      - name: Build and push image
-        run: |
-          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/${{ env.GO_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-        working-directory: api-go
-
-      - name: Get current active revision
-        id: current
-        run: |
-          CURRENT=$(az containerapp ingress traffic show \
-            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "[?weight==\`100\`].revisionName | [0]" -o tsv)
-          echo "revision=$CURRENT" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy staging revision
-        id: deploy
-        run: |
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          az containerapp update \
-            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --image "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.GO_IMAGE_NAME }}:${{ github.event.pull_request.head.sha }}" \
-            --revision-suffix "pr${SHORT_SHA}"
-          echo "revision=${{ env.GO_CONTAINER_APP_NAME }}--pr${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Pin traffic to current revision
-        run: |
-          if [ -n "${{ steps.current.outputs.revision }}" ]; then
-            az containerapp ingress traffic set \
-              --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --revision-weight "${{ steps.current.outputs.revision }}=100"
-          fi
-
-      - name: Get staging URL
-        id: staging-url
-        run: |
-          APP_FQDN=$(az containerapp show \
-            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          ENV_DOMAIN="${APP_FQDN#*.}"
-          echo "url=https://${{ steps.deploy.outputs.revision }}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-  # ── Go API: contract tests vs .NET ──────────────────
-  # Parity is observed, never assumed: every scenario runs against BOTH the
-  # deployed .NET dev API and the staged Go revision, and the responses are
-  # diffed. The .NET response is always the expected value (GH#418).
-
-  go-contract:
-    name: "Go API: Contract tests vs .NET"
-    needs: [go-staging]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: api-go/go.mod
-          cache: false
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Resolve .NET dev API URL
-        id: dotnet-url
-        # Deliberately NOT the app-level FQDN: dev traffic is latestRevision-based
-        # and latestRevisionName can point at a PR staging revision that
-        # api-staging-cleanup has already deactivated, making the app FQDN serve
-        # ACA's 404 page between PR runs. Anchor on the newest ACTIVE mainline
-        # (non --pr) revision and use its revision-specific FQDN instead.
-        run: |
-          REVISION=$(az containerapp revision list \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "sort_by([?properties.active && !contains(name, \`--pr\`)], &properties.createdTime)[-1].name" -o tsv)
-          if [ -z "$REVISION" ]; then
-            echo "::error::No active mainline revision found on ${{ env.CONTAINER_APP_NAME }}"
-            exit 1
-          fi
-          APP_FQDN=$(az containerapp show \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          ENV_DOMAIN="${APP_FQDN#*.}"
-          echo "url=https://${REVISION}.${ENV_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Run contract tests
-        env:
-          DOTNET_BASE_URL: ${{ steps.dotnet-url.outputs.url }}
-          GO_BASE_URL: ${{ needs.go-staging.outputs.staging-url }}
-          # Same Auth0 test-user creds as the .NET integration tests, so the
-          # harness can mint a real token for valid-token contract scenarios
-          # (it3+ /v1/me). Scenarios skip when these are unset locally.
-          INTEGRATION_TEST_AUTH0_DOMAIN: ${{ vars.VITE_AUTH0_DOMAIN }}
-          INTEGRATION_TEST_AUTH0_CLIENT_ID: ${{ vars.VITE_AUTH0_CLIENT_ID }}
-          INTEGRATION_TEST_AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
-          INTEGRATION_TEST_AUTH0_AUDIENCE: ${{ vars.VITE_AUTH0_AUDIENCE }}
-          INTEGRATION_TEST_USERNAME: ${{ secrets.INTEGRATION_TEST_USERNAME }}
-          INTEGRATION_TEST_PASSWORD: ${{ secrets.INTEGRATION_TEST_PASSWORD }}
-          # Same shared admin key the .NET app is deployed with, so the
-          # offer-code/admin contract diffs can exercise the X-Admin-Key surface.
-          # Scenarios skip when this is unset locally.
-          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
-        run: go test -tags e2e -v ./tests/e2e/...
-        working-directory: api-go
-
-  # ── Go API: clean up staging revision ───────────────
-
-  go-staging-cleanup:
-    name: "Go API: Deactivate staging revision"
-    needs: [go-staging, go-contract]
-    if: always() && needs.go-staging.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deactivate staging revision
-        run: |
-          az containerapp revision deactivate \
-            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --revision "${{ needs.go-staging.outputs.new-revision }}" || true
-
-  # ── PR-close cleanup: deactivate preview revision on merge/close ───
-  # Catches PRs closed before api-staging-cleanup ran (e.g., closed
-  # without merging, or where api-staging failed mid-flight). Reuses
-  # the same `pr<short-sha>` suffix scheme that api-staging applies via
-  # `--revision-suffix`, so the revision name matches deterministically.
-
-  pr-preview-cleanup:
-    name: "API: Deactivate preview revision (PR closed)"
-    if: github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deactivate PR preview revision
-        run: |
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          REVISION="${{ env.CONTAINER_APP_NAME }}--pr${SHORT_SHA}"
-          echo "Deactivating revision: $REVISION"
-          az containerapp revision deactivate \
-            --name "${{ env.CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --revision "$REVISION" || true
-
-      - name: Deactivate Go PR preview revision
-        run: |
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          REVISION="${{ env.GO_CONTAINER_APP_NAME }}--pr${SHORT_SHA}"
-          echo "Deactivating revision: $REVISION"
-          az containerapp revision deactivate \
-            --name "${{ env.GO_CONTAINER_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --revision "$REVISION" || true
 
   # ── CLI ──────────────────────────────────────────────
 
@@ -717,7 +289,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [api-format, api-build-test, api-staging, api-integration-test, api-staging-cleanup, go-lint, go-test, go-staging, go-contract, go-staging-cleanup, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [go-lint, go-test, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
     if: always() && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -725,16 +297,8 @@ jobs:
       - name: Evaluate results
         run: |
           results=(
-            "${{ needs.api-format.result }}"
-            "${{ needs.api-build-test.result }}"
-            "${{ needs.api-staging.result }}"
-            "${{ needs.api-integration-test.result }}"
-            "${{ needs.api-staging-cleanup.result }}"
             "${{ needs.go-lint.result }}"
             "${{ needs.go-test.result }}"
-            "${{ needs.go-staging.result }}"
-            "${{ needs.go-contract.result }}"
-            "${{ needs.go-staging-cleanup.result }}"
             "${{ needs.cli-format.result }}"
             "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"

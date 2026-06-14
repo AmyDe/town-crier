@@ -119,27 +119,6 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: pulumi up --yes --non-interactive
 
-  # ── API: build & push image ─────────────────────────
-  api-image:
-    name: "API: Build & push image"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - uses: ./.github/actions/acr-build-push
-        with:
-          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          image-name: town-crier-api
-          working-directory: api
-
   # ── Go API: build & push image ──────────────────────
   api-go-image:
     name: "Go API: Build & push image"
@@ -161,32 +140,9 @@ jobs:
           image-name: town-crier-api-go
           working-directory: api-go
 
-  # ── Worker: build & push image ──────────────────────────
-  worker-image:
-    name: "Worker: Build & push image"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - uses: ./.github/actions/acr-build-push
-        with:
-          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          image-name: town-crier-worker
-          dockerfile: Dockerfile.worker
-          working-directory: api
-
   # ── Go Worker: build & push image ───────────────────────
-  # Builds the Go worker image and pushes it to ACR. The worker jobs now
-  # deploy this image (worker-deploy below, image-swap tc-hm20). The .NET
-  # worker-image build above stays until Phase 3 (tc-tbyp) decommissions it.
+  # Builds the Go worker image and pushes it to ACR. The worker jobs deploy
+  # this image (worker-deploy below, image-swap tc-hm20).
   worker-go-image:
     name: "Go Worker: Build & push image"
     runs-on: ubuntu-latest
@@ -207,28 +163,6 @@ jobs:
           image-name: town-crier-worker-go
           dockerfile: Dockerfile.worker
           working-directory: api-go
-
-  # ── API: deploy to dev ──────────────────────────────
-  api-deploy:
-    name: "API: Deploy to dev"
-    needs: [api-image, infra-dev]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: development
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - uses: ./.github/actions/deploy-container-app
-        with:
-          app-name: ca-town-crier-api-dev
-          resource-group: rg-town-crier-dev
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api:${{ github.sha }}
 
   # ── Go API: deploy to dev ───────────────────────────
   api-go-deploy:
