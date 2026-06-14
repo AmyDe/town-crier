@@ -85,6 +85,36 @@ Concretely:
   shared environment, it serves both the dev and prod Go apps without per-app
   exporter wiring.
 
+### Update 2026-06-14 (tc-8x8g) — dependencies, logs, and exceptions
+
+Live verification after the api/api-dev DNS cutover showed the Go app emitting
+**only** request spans (`AppRequests`): `AppDependencies`, `AppTraces`, and
+`AppExceptions` were all empty, so outbound Cosmos calls were uninstrumented,
+500s carried no error detail, and slog logs never reached App Insights. This
+amendment closes that gap by extending — not replacing — the pipeline above:
+
+- **Cosmos dependency spans (`api-go/internal/platform/cosmos.go`).** Every
+  outbound `azcosmos` call is wrapped in an OTel **client** span
+  (`db.system=cosmosdb`, `db.operation`, `db.cosmosdb.container`,
+  `server.address`), recording the error and `Error` status on failure. These
+  become `AppDependencies`, so Cosmos latency/throttling is visible and a failed
+  read shows as a failed dependency on the request's trace.
+- **slog → OTel logs (`telemetry.go`, `logger.go`).** `SetupTelemetry` now also
+  builds an OTLP/gRPC **logs** exporter and SDK `LoggerProvider` (shared
+  resource), and the production logger fans out to both stdout JSON
+  (`ContainerAppConsoleLogs`, unchanged) and the `otelslog` bridge. slog records
+  now land as trace-correlated `AppTraces`. The logs pipeline self-disables on an
+  unset `OTEL_EXPORTER_OTLP_ENDPOINT` exactly like traces.
+- **Exceptions / failed requests.** The panic-recovery middleware records the
+  panic on the request span (`AppExceptions`), and `ErrorBody` marks the request
+  span `Error` on any `>= 500` so failed requests are queryable in `AppRequests`.
+- **Infra (`infra/SharedStack.cs`).** `OpenTelemetryConfiguration` gains
+  `LogsConfiguration { Destinations = ["appInsights"] }` alongside the existing
+  traces destination, so the agent forwards the Go app's OTLP logs to App
+  Insights. The .NET app emits no OTLP logs (it logs in-process via Azure
+  Monitor and ignores the injected OTLP endpoint), so there is still no
+  double-count. Metrics OTLP remains unconfigured.
+
 ### No double-count, verified
 
 The agent injects `OTEL_EXPORTER_OTLP_ENDPOINT` into the .NET container too, but
@@ -113,10 +143,11 @@ is counted twice.
   contrib instrumentation. The `go-coding-standards` skill favours minimal
   dependencies; this issue mandates OpenTelemetry, and the justification is
   recorded in the header of `telemetry.go`.
-- **Deferred:** OTLP metrics and OTLP logs from the Go app are not configured
-  (App Insights destination is traces-only here; logs already flow via console
-  capture). Add them later if the Go app needs first-class custom metrics at
-  parity with the .NET `customMetrics`.
+- **Deferred:** OTLP **metrics** from the Go app are still not configured. Add
+  them later if the Go app needs first-class custom metrics at parity with the
+  .NET `customMetrics`. (OTLP **logs** were initially deferred here too, but the
+  tc-8x8g amendment above enabled them once it became clear `AppTraces` /
+  `AppExceptions` were needed to diagnose production 500s.)
 - **Post-cutover follow-up:** when the api domain DNS flips to the Go app, the
   Go traces become the primary request telemetry, and a follow-up bead bumps the
   prod Go app's `MinReplicas` from 0 to 1 (matching the warm-instance policy the

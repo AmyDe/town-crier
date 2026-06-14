@@ -183,6 +183,31 @@ jobs:
           dockerfile: Dockerfile.worker
           working-directory: api
 
+  # ── Go Worker: build & push image ───────────────────────
+  # Builds the new Go worker image so it exists in ACR ahead of the
+  # image-swap (tc-hm20). Nothing deploys it yet — the worker jobs still
+  # run the .NET town-crier-worker image until the swap lands.
+  worker-go-image:
+    name: "Go Worker: Build & push image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: ./.github/actions/acr-build-push
+        with:
+          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          image-name: town-crier-worker-go
+          dockerfile: Dockerfile.worker
+          working-directory: api-go
+
   # ── API: deploy to dev ──────────────────────────────
   api-deploy:
     name: "API: Deploy to dev"
