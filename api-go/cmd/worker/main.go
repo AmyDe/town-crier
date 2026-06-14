@@ -18,6 +18,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/apns"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -27,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
+	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
@@ -222,6 +225,15 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 		logger,
 	)
 
+	// Wire the poll-path notification fan-out: each upserted application drives a
+	// decision-event dispatch (on a non-decision -> decision transition) and a
+	// watch-zone notification fan-out, matching .NET PollPlanItCommandHandler.
+	// This is the CUTOVER-BLOCKER fan-out (bead tc-uc2p) — without it the
+	// Notifications container stays empty and every alert/digest breaks.
+	if err := wirePollFanOut(cfg, handler, zoneStore, logger); err != nil {
+		return nil, err
+	}
+
 	scheduler := polling.NewNextRunScheduler(polling.DefaultSchedulerOptions(), polling.NewRandomJitter())
 
 	// Lease TTL must exceed the handler's worst-case runtime so the lease cannot
@@ -249,6 +261,58 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 	cycleBudget := time.Duration(maxInt(1, cfg.PollReplicaTimeoutSeconds-cfg.PollShutdownGraceSeconds)) * time.Second
 
 	return &pollOrchestratorAdapter{orchestrator: orchestrator, cycleBudget: cycleBudget}, nil
+}
+
+// wirePollFanOut builds the poll-path notification fan-out collaborators — the
+// decision-event dispatcher and the watch-zone enqueuer — and attaches them to
+// the ingestion handler. They share the WatchZones store with the poll's
+// authority provider (the same *watchzones.CosmosStore satisfies the
+// zone-containment lookup) and open their own Notifications / Users /
+// NotificationState / DeviceRegistrations / SavedApplications containers. The
+// APNs push sender is real when its credentials are present, NoOp otherwise so
+// the poll job boots even without APNs config (the record is still written, so
+// the digest pipeline keeps working). Mirrors .NET's per-app
+// decisionEventDispatcher + notificationEnqueuer wiring.
+func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore *watchzones.CosmosStore, logger *slog.Logger) error {
+	notifsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
+	if err != nil {
+		return err
+	}
+	usersContainer, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
+	if err != nil {
+		return err
+	}
+	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
+	if err != nil {
+		return err
+	}
+	devicesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
+	if err != nil {
+		return err
+	}
+	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
+	if err != nil {
+		return err
+	}
+
+	notifStore := notifications.NewDigestStore(notifsContainer)
+	profileStore := profiles.NewCosmosStore(usersContainer)
+	deviceStore := devicetokens.NewCosmosStore(devicesContainer)
+	statePushStore := notificationstate.NewCosmosStore(stateContainer, notifsContainer)
+	savedStore := savedapplications.NewCosmosStore(savedContainer)
+	pushSender := buildPushSender(cfg, logger)
+
+	enqueuer := notifydispatch.NewEnqueuer(
+		notifStore, zoneStore, profileStore, deviceStore, statePushStore, pushSender,
+		uuid.NewString, time.Now, logger,
+	)
+	dispatcher := notifydispatch.NewDecisionDispatcher(
+		notifStore, zoneStore, savedStore, profileStore, deviceStore, statePushStore, pushSender,
+		uuid.NewString, time.Now, logger,
+	)
+
+	handler.WithFanOut(dispatcher, enqueuer)
+	return nil
 }
 
 // pollOrchestratorAdapter flattens polling.OrchestratorRunResult into the
