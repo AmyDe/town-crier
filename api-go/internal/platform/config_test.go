@@ -179,6 +179,93 @@ func TestLoadConfig_ServiceBus(t *testing.T) {
 	})
 }
 
+func TestLoadConfig_APNs(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("APNS_ENABLED", "true")
+		t.Setenv("APNS_AUTH_KEY", "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----")
+		t.Setenv("APNS_KEY_ID", "L2J5PQASN5")
+		t.Setenv("APNS_TEAM_ID", "4574VQ7N2X")
+		t.Setenv("APNS_BUNDLE_ID", "uk.towncrierapp.mobile")
+		t.Setenv("APNS_USE_SANDBOX", "true")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if !cfg.APNsEnabled {
+			t.Error("APNsEnabled: got false, want true")
+		}
+		if cfg.APNsAuthKey.Expose() == "" {
+			t.Error("APNsAuthKey: got empty")
+		}
+		if cfg.APNsKeyID != "L2J5PQASN5" {
+			t.Errorf("APNsKeyID: got %q", cfg.APNsKeyID)
+		}
+		if cfg.APNsTeamID != "4574VQ7N2X" {
+			t.Errorf("APNsTeamID: got %q", cfg.APNsTeamID)
+		}
+		if cfg.APNsBundleID != "uk.towncrierapp.mobile" {
+			t.Errorf("APNsBundleID: got %q", cfg.APNsBundleID)
+		}
+		if !cfg.APNsUseSandbox {
+			t.Error("APNsUseSandbox: got false, want true")
+		}
+	})
+
+	t.Run("absent defaults disabled with canonical key/team/bundle", func(t *testing.T) {
+		t.Setenv("APNS_ENABLED", "")
+		t.Setenv("APNS_AUTH_KEY", "")
+		t.Setenv("APNS_KEY_ID", "")
+		t.Setenv("APNS_TEAM_ID", "")
+		t.Setenv("APNS_BUNDLE_ID", "")
+		t.Setenv("APNS_USE_SANDBOX", "")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.APNsEnabled {
+			t.Error("APNsEnabled: got true, want false by default")
+		}
+		if cfg.APNsKeyID != "L2J5PQASN5" {
+			t.Errorf("APNsKeyID default: got %q, want L2J5PQASN5", cfg.APNsKeyID)
+		}
+		if cfg.APNsTeamID != "4574VQ7N2X" {
+			t.Errorf("APNsTeamID default: got %q, want 4574VQ7N2X", cfg.APNsTeamID)
+		}
+		if cfg.APNsBundleID != "uk.towncrierapp.mobile" {
+			t.Errorf("APNsBundleID default: got %q, want uk.towncrierapp.mobile", cfg.APNsBundleID)
+		}
+		if cfg.APNsUseSandbox {
+			t.Error("APNsUseSandbox: got true, want false by default")
+		}
+	})
+}
+
+func TestLoadConfig_ACSConnectionString(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("ACS_CONNECTION_STRING", "endpoint=https://acs.example.com/;accesskey=YWJjZA==")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.ACSConnectionString.Expose() != "endpoint=https://acs.example.com/;accesskey=YWJjZA==" {
+			t.Errorf("ACSConnectionString: got %q", cfg.ACSConnectionString.Expose())
+		}
+	})
+
+	t.Run("absent defaults empty (email NoOp)", func(t *testing.T) {
+		t.Setenv("ACS_CONNECTION_STRING", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.ACSConnectionString.Expose() != "" {
+			t.Errorf("ACSConnectionString: got %q, want empty", cfg.ACSConnectionString.Expose())
+		}
+	})
+}
+
 func TestLoadConfig_ProDomains(t *testing.T) {
 	t.Setenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS", "towncrier.test, example.org")
 
