@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Verify the downstream legal JSON mirrors are byte-identical to the canonical
-# API copies. Run by .github/workflows/legal-drift-check.yml on every PR.
+# Go API copies. Run by .github/workflows/legal-drift-check.yml on every PR.
+#
+# Canonical source:
+#   - Go API embedded copy (api-go/internal/legal/resources) — served via
+#     /v1/legal/{type}; the Go module go:embeds it from its own tree.
 #
 # Mirrors guarded:
 #   - iOS bundle (mobile/ios .../Resources/legal)
-#   - Go API embedded copy (api-go/internal/legal/resources) — the Go module
-#     cannot go:embed files outside its own tree, so it carries its own copy.
 #
 # If this fails, run `scripts/sync-legal.sh` and commit the result.
 set -euo pipefail
@@ -13,14 +15,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-API_DIR="$REPO_ROOT/api/src/town-crier.application/Legal/Resources"
+API_DIR="$REPO_ROOT/api-go/internal/legal/resources"
 IOS_DIR="$REPO_ROOT/mobile/ios/packages/town-crier-presentation/Sources/Resources/legal"
-GO_DIR="$REPO_ROOT/api-go/internal/legal/resources"
 
 # Each mirror is "label:path"; the canonical API_DIR is checked against every one.
 MIRRORS=(
     "iOS:$IOS_DIR"
-    "Go:$GO_DIR"
 )
 
 failed=0
