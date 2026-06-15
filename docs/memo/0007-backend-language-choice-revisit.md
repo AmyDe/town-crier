@@ -4,7 +4,9 @@ Date: 2026-05-17
 
 ## Status
 
-Open
+Superseded by ADR [0028](../adr/0028-migrate-backend-from-dotnet-to-go.md)
+
+> Resolved 2026-06-15. The exploration below recommended Option C — pilot Go on the polling worker, then consider the API. That played out in full: the worker pilot succeeded (Phase 2), the API was migrated (Phase 1), and the .NET runtime was decommissioned (Phase 3, epic tc-tbyp). The decision and outcome are recorded in [ADR 0028](../adr/0028-migrate-backend-from-dotnet-to-go.md); the observability slice is in [ADR 0027](../adr/0027-go-api-observability-via-aca-otel-agent.md). This memo is retained as the rationale trail (the .NET-AOT-vs-Go-vs-Rust analysis ADR 0028 deliberately does not repeat). Rust was considered and rejected here, as 0028 reflects.
 
 ## Question
 
