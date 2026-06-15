@@ -9,7 +9,8 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 ## Monorepo Structure
 
 ```
-/api          # .NET 10 backend (Hexagonal / Ports & Adapters)
+/api-go       # Go backend (HTTP API + background worker)
+/cli          # .NET CLI (self-contained)
 /mobile/ios   # Native iOS app (Clean Architecture / MVVM-C)
 /web          # React/TypeScript frontend
 /infra        # Pulumi IaC (.NET 10 / C#)
@@ -20,12 +21,12 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 | Component | Technology |
 |-----------|-----------|
-| Backend API | .NET 10 (ASP.NET Core), Native AOT, Azure Container Apps |
+| Backend API | Go (net/http, log/slog), Azure Container Apps |
 | Database | Azure Cosmos DB (Serverless) via Cosmos DB SDK (no ORM) |
 | iOS App | Swift, SwiftUI, SwiftData, SPM |
 | Infrastructure | Pulumi (C#/.NET 10) |
 | CI/CD | GitHub Actions |
-| Testing | TUnit (.NET), XCTest (iOS) |
+| Testing | go test (Go), XCTest/Swift Testing (iOS), Vitest (web), TUnit (.NET CLI/infra) |
 
 ## Data Sources
 
@@ -52,14 +53,14 @@ When fixing CI failures, always check for ALL root causes before declaring the f
 
 ## Development Commands
 
-### .NET API (`/api`)
+### Go API (`/api-go`)
 
 ```bash
-dotnet build                        # Build
-dotnet test                         # Run all tests
-dotnet test --filter "TestName"     # Run a single test
-dotnet format --verify-no-changes   # Check formatting
-dotnet format                       # Auto-fix formatting
+# Run from api-go/
+go build ./...                      # Build
+go test ./...                       # Run all tests
+go vet ./...                        # Static analysis
+gofmt -l .                          # List files needing formatting (empty = clean)
 ```
 
 ### iOS (`/mobile/ios`)
@@ -86,7 +87,7 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 
 | Tech stack          | Path             | Skill                     | Worker agent           |
 |---------------------|------------------|---------------------------|------------------------|
-| .NET / C#           | `/api`           | `dotnet-coding-standards` | `dotnet-tdd-worker`    |
+| .NET / C#           | `/cli`           | `dotnet-coding-standards` | `dotnet-tdd-worker`    |
 | Go                  | `/api-go`        | `go-coding-standards`     | `go-tdd-worker`        |
 | iOS / Swift         | `/mobile/ios`    | `ios-coding-standards`    | `ios-tdd-worker`       |
 | Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |

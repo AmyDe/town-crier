@@ -61,16 +61,16 @@ Notes on data flow:
 
 ## Service Identity
 
-`AppRoleName` is set by `ResourceBuilder.AddService(...)` in each project's `Program.cs`, which **overrides** any `OTEL_SERVICE_NAME` env var. Trust the values in `AppRoleName`, not env vars or container app names.
+`AppRoleName` comes from the `OTEL_SERVICE_NAME` env var set on each Container App in `infra/EnvironmentStack.cs`. The Go API/worker read it at startup (`api-go/internal/platform/telemetry.go` → `semconv.ServiceName`); there is no hardcoded `AddService(...)` override anymore. Trust the values in `AppRoleName`, not container app names.
 
-Town Crier's roles as of 2026-04-25:
+Town Crier's roles (Go backend, Phase 3 onward):
 
 | AppRoleName | What it is |
 |---|---|
-| `town-crier-api` | The API (project lives at `api/src/town-crier.web/`, hardcoded `AddService("town-crier-api")` in `Program.cs:27`, container is `ca-town-crier-api-prod`) |
-| `town-crier-worker` | Background polling/digest jobs (Container App Jobs, event- or schedule-driven) |
+| `town-crier-api-go` | The Go HTTP API (`api-go/cmd/api/`, container is `ca-town-crier-api-go-prod`; `OTEL_SERVICE_NAME=town-crier-api-go` set in `infra/EnvironmentStack.cs`) |
+| `town-crier-worker-go` | The Go background worker — polling/digest/dormant-cleanup (Container App Job, schedule-driven; `OTEL_SERVICE_NAME=town-crier-worker-go`) |
 
-There is no role called `town-crier-api` — the env var on the API container says that, but the code overrides it. If you see `unknown_service:` as a prefix on any role, that IS a finding (means `AddService` was not called).
+If you see `unknown_service:` as a prefix on any role, that IS a finding (means `OTEL_SERVICE_NAME` was unset and the binary fell back to its default service name).
 
 If you suspect a service is silent, run a controlled probe before filing:
 
@@ -332,7 +332,7 @@ union AppRequests, AppMetrics, AppPerformanceCounters, AppDependencies, AppExcep
 | order by count_ desc
 ```
 
-Expected roles: `town-crier-api` (API), `town-crier-worker` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `ResourceBuilder.AddService(...)` is missing from the corresponding project's `Program.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
+Expected roles: `town-crier-api-go` (API), `town-crier-worker-go` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `OTEL_SERVICE_NAME` is unset on the corresponding Container App in `infra/EnvironmentStack.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
 
 ### Phase 5: User Frustration Signals
 
@@ -450,7 +450,7 @@ Now that you have the full picture and have reconciled prior findings, decide wh
 | Dependency failure rate > 5% | P1-P2 | Cosmos 429s, PlanIt timeouts |
 | New exception type not seen in baseline | P2 | New HttpRequestException pattern |
 | CLR exception counter > 0 with empty AppExceptions table AND failed dependencies exist | P2 | OTel exception pipeline not wired (verify failed deps/non-200s exist that should produce exception records — CLR counter alone is not sufficient, as it includes first-chance runtime exceptions) |
-| Service reports as `unknown_service:` prefix | P2 | `ResourceBuilder.AddService(...)` missing from Program.cs |
+| Service reports as `unknown_service:` prefix | P2 | `OTEL_SERVICE_NAME` missing from the Container App in `infra/EnvironmentStack.cs` |
 | Polling skip ratio > 50% | P2 | Most authorities skipped due to rate limiting |
 | Cosmos RU consumption spiking or throttling (429) | P2 | 60k RU consumed in 3 minutes |
 | Warning/error log pattern with > 10 occurrences | P2-P3 | Repeated auth token refresh failures |

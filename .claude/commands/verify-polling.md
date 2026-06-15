@@ -12,7 +12,7 @@ Verify the Town Crier prod polling pipeline is healthy. Report concisely (green/
   - **⚠️ Do NOT use `az monitor app-insights query` for windows > ~1h.** This workspace only surfaces a partial/recent slice of data through the classic API. Longer windows will look like a telemetry gap that does not exist. This is a known false-positive source that has triggered incorrect "9-hour gap" findings in multiple past sessions.
 - **Service Bus**: namespace `sb-town-crier-prod` in `rg-town-crier-prod`, queue `poll`. Use `az servicebus queue show ... --query countDetails` — `az monitor metrics list` does NOT work for `Microsoft.ServiceBus/namespaces/queues`.
 - **Jobs**: `job-tc-poll-prod` (orchestrator, KEDA ~30s cadence), `job-tc-poll-bootstrap-prod` (cron `*/30 * * * *`). Both in `rg-town-crier-prod`.
-- **Worker role name** in telemetry: `town-crier-worker`.
+- **Worker role name** in telemetry: `town-crier-worker-go` (the Go worker; set via `OTEL_SERVICE_NAME` in `infra/EnvironmentStack.cs`).
 - **Lease counter names** (from PR #291 T17): `towncrier.polling.lease.acquired`, `towncrier.polling.lease.held_by_peer`, `towncrier.polling.lease.released_412`.
 
 ## Checks to run (in parallel where possible)
@@ -27,7 +27,7 @@ Confirm latest `CD Production` run is `completed / success` and newer than the m
 ### 2. Poll job not aborting
 ```bash
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "traces | where timestamp > ago(1h) | where cloud_RoleName == 'town-crier-worker' | where message contains 'HandlerBudget' or message contains 'Aborting' | summarize count() by bin(timestamp, 5m) | order by timestamp asc"
+  --analytics-query "traces | where timestamp > ago(1h) | where cloud_RoleName == 'town-crier-worker-go' | where message contains 'HandlerBudget' or message contains 'Aborting' | summarize count() by bin(timestamp, 5m) | order by timestamp asc"
 az containerapp job execution list --name job-tc-poll-prod -g rg-town-crier-prod \
   --query "[].{start:properties.startTime, status:properties.status, name:name}" -o table | head -20
 ```
@@ -50,10 +50,10 @@ Expect non-zero `applications_ingested`, `authorities_polled`, `cycles_completed
 
 ```bash
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "dependencies | where timestamp > ago(1h) | where target contains 'planit' and cloud_RoleName == 'town-crier-worker' | summarize arg_min(timestamp, resultCode) by cloud_RoleInstance | extend first_response_429 = (resultCode == '429') | summarize total_cycles = count(), cycles_with_first_429 = countif(first_response_429)"
+  --analytics-query "dependencies | where timestamp > ago(1h) | where target contains 'planit' and cloud_RoleName == 'town-crier-worker-go' | summarize arg_min(timestamp, resultCode) by cloud_RoleInstance | extend first_response_429 = (resultCode == '429') | summarize total_cycles = count(), cycles_with_first_429 = countif(first_response_429)"
 ```
 
-`cycles_with_first_429` **MUST be 0**. If non-zero, that's the symptom — point at `PlanItClient.cs` / the retry-after handling in the orchestrator's next-message scheduler.
+`cycles_with_first_429` **MUST be 0**. If non-zero, that's the symptom — point at `api-go/internal/planit/client.go` / the retry-after handling in the next-run scheduler (`api-go/internal/polling/scheduler.go`).
 
 For context only (not a pass/fail signal), you can also report the 429 distribution, but state it as expected cadence not a concern:
 
@@ -64,7 +64,7 @@ az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shar
 
 `failures` (excluding 429) must be near 0. `rate429` being non-zero is fine — that's the cycle termination marker.
 
-**Retry-After value distribution** — what is PlanIt actually asking us to wait? The worker emits `towncrier.polling.retry_after_seconds` (histogram) on every 429 with the parsed `Retry-After` header value, tagged `header_present=true|false`. Use this to confirm whether the configured `RetryAfterCap` (currently 3h, [PollNextRunSchedulerOptions.cs:14](api/src/town-crier.application/Polling/PollNextRunSchedulerOptions.cs)) is large enough for the values PlanIt is sending:
+**Retry-After value distribution** — what is PlanIt actually asking us to wait? The worker emits `towncrier.polling.retry_after_seconds` (histogram) on every 429 with the parsed `Retry-After` header value, tagged `header_present=true|false`. Use this to confirm whether the configured `RetryAfterCap` (currently 3h, default in [scheduler.go](api-go/internal/polling/scheduler.go) → `SchedulerOptions.RetryAfterCap`) is large enough for the values PlanIt is sending:
 
 ```bash
 az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
@@ -78,7 +78,7 @@ az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 
   --analytics-query "AppMetrics | where TimeGenerated > ago(6h) | where Name == 'towncrier.polling.retry_after_seconds' | extend header_present = tostring(Properties['header_present']), authority = tostring(Properties['polling.authority_code']) | summarize samples=count() by header_present, authority | order by samples desc | take 10"
 ```
 
-A high `header_present='false'` count means PlanIt isn't sending `Retry-After` at all, and we're falling back to the configured default — point at `PollNextRunScheduler.cs` retry-after parsing if `cycles_with_first_429` is also non-zero.
+A high `header_present='false'` count means PlanIt isn't sending `Retry-After` at all, and we're falling back to the configured default — point at the retry-after parsing in `api-go/internal/planit/retryafter.go` / the next-run scheduler (`api-go/internal/polling/scheduler.go`) if `cycles_with_first_429` is also non-zero.
 
 **3c. Only 1 thread at a time (lease CAS)**
 ```bash
@@ -101,7 +101,7 @@ Steady state: `active + scheduled ∈ {0, 1}`. `{a:0, s:1}` is healthy (next pol
 
 **3e. Keeping up with the authority backlog (oldest LastPollTime age)**
 
-> **Naming note:** the metric is `towncrier.polling.oldest_hwm_age_seconds` for legacy reasons (PR #298 / tc-m6fx split LastPollTime from HighWaterMark but kept the metric name). The value is the **LastPollTime age**, not the HighWaterMark age — see the description in [PollingMetrics.cs](api/src/town-crier.application/Observability/PollingMetrics.cs).
+> **Naming note:** the metric is `towncrier.polling.oldest_hwm_age_seconds` for legacy reasons (PR #298 / tc-m6fx split LastPollTime from HighWaterMark but kept the metric name). The value is the **LastPollTime age**, not the HighWaterMark age — the metric is emitted from the polling worker (`api-go/internal/polling`).
 
 This check focuses on **polled** authorities (`never_polled='false'`). The never-polled cohort is covered by 3g — they always report `(now − UnixEpoch)` which is huge by design and would otherwise dominate this signal.
 
@@ -136,7 +136,7 @@ Pass conditions:
 - Latest `count_` equals the count of authorities added in the most recent CD deploy and the deploy was within the last 6h (fresh-deploy transient).
 
 Fail conditions:
-- Latest `count_` is non-zero AND has been flat or rising for ≥6h after a deploy that's been live ≥6h. Point at `CycleAlternatingAuthorityProvider`, `CosmosPollStateStore.GetLeastRecentlyPolledAsync`, and `PollPlanItCommandHandler`'s natural-end branch (lines 296-308) — that's the drain path.
+- Latest `count_` is non-zero AND has been flat or rising for ≥6h after a deploy that's been live ≥6h. Point at `CycleAlternatingProvider` (`api-go/internal/polling/authorities.go`), `PollStateStore.GetLeastRecentlyPolled` (`api-go/internal/polling/statestore.go`), and the natural-end branch of the poll handler (`api-go/internal/polling/handler.go`) — that's the drain path.
 - Metric is missing from telemetry. Confirm the worker image is post-tc-ifdl deploy.
 
 The Watched cycle reports its own `never_polled_count` (count of watch-zone authorities with no state — usually 0). Filter on `cycle.type == 'seed'` for the canonical drain signal; report Watched separately only if non-zero.
@@ -144,7 +144,7 @@ The Watched cycle reports its own `never_polled_count` (count of watch-zone auth
 ### 4. Exceptions sanity check
 ```bash
 az monitor app-insights query --app appi-town-crier-shared -g rg-town-crier-shared \
-  --analytics-query "exceptions | where timestamp > ago(1h) | where cloud_RoleName == 'town-crier-worker' | summarize count() by type, outerMessage | top 10 by count_"
+  --analytics-query "exceptions | where timestamp > ago(1h) | where cloud_RoleName == 'town-crier-worker-go' | summarize count() by type, outerMessage | top 10 by count_"
 ```
 Should be empty or known-benign. `PlanItRateLimitException` is expected (see 3b) and is not a concern in any volume — do not flag it.
 
@@ -165,7 +165,7 @@ az containerapp job execution list --name job-tc-poll-bootstrap-prod -g rg-town-
 
 # Per-instance counters since deploy — each AppRoleInstance is one job execution
 az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "AppMetrics | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker' | where Name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(Sum) by AppRoleInstance, Name | order by AppRoleInstance asc, Name asc"
+  --analytics-query "AppMetrics | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker-go' | where Name in ('towncrier.polling.applications_ingested','towncrier.polling.authorities_polled','towncrier.polling.authorities_skipped','towncrier.polling.cycles_completed','towncrier.polling.cursor_advanced','towncrier.polling.rate_limited','towncrier.polling.lease.acquired','towncrier.polling.lease.held_by_peer','towncrier.polling.lease.released_412') | summarize total=sum(Sum) by AppRoleInstance, Name | order by AppRoleInstance asc, Name asc"
 
 # Oldest-LastPollTime age per cycle since deploy — one emission per cycle at cycle start
 az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
@@ -177,7 +177,7 @@ az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 
 
 # Map AppRoleInstance -> execution by first-seen timestamp (matches execution startTime within a few seconds)
 az monitor log-analytics query --workspace 842645cf-1439-4a2b-80e8-54bd02e326f9 \
-  --analytics-query "union AppMetrics, AppTraces | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker' | summarize firstSeen=min(TimeGenerated), lastSeen=max(TimeGenerated) by AppRoleInstance | order by firstSeen asc"
+  --analytics-query "union AppMetrics, AppTraces | where TimeGenerated > datetime('$DEPLOY_TS') | where AppRoleName == 'town-crier-worker-go' | summarize firstSeen=min(TimeGenerated), lastSeen=max(TimeGenerated) by AppRoleInstance | order by firstSeen asc"
 ```
 
 Match each `cloud_RoleInstance` to an execution by taking the execution whose `startTime` is within ~30s before `firstSeen`. Short-lived instances (~6s lifetime, `lease.acquired=1` only) are bootstrap ticks — label them as such.
