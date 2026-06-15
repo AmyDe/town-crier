@@ -549,17 +549,8 @@ public static class EnvironmentStack
             // AddService("town-crier-worker") in Program.cs), so flipping it here ahead of the
             // image swap is safe and avoids a duplicate-named env var. See tc-fsn6.
             new() { Name = "OTEL_SERVICE_NAME", Value = "town-crier-worker-go" },
-            new() { Name = "Cosmos__AccountEndpoint", Value = cosmosAccountEndpoint },
-            new() { Name = "Cosmos__DatabaseName", Value = cosmosDatabaseName },
             new() { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },
             new() { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
-            new() { Name = "AzureCommunicationServices__ConnectionString", SecretRef = "acs-connection-string" },
-            new() { Name = "Apns__Enabled", Value = "true" },
-            new() { Name = "Apns__AuthKey", SecretRef = "apns-auth-key" },
-            new() { Name = "Apns__KeyId", Value = apnsKeyId },
-            new() { Name = "Apns__TeamId", Value = apnsTeamId },
-            new() { Name = "Apns__BundleId", Value = apnsBundleId },
-            new() { Name = "Apns__UseSandbox", Value = apnsUseSandbox },
         };
 
         if (workerMode is not null)
@@ -567,22 +558,14 @@ public static class EnvironmentStack
             envVars.Insert(1, new EnvironmentVarArgs { Name = "WORKER_MODE", Value = workerMode });
         }
 
-        if (pollingBus is not null)
-        {
-            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__Namespace", Value = pollingBus.NamespaceFqdn });
-            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__QueueName", Value = pollingBus.QueueName });
-            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__SubscriptionId", Value = pollingBus.SubscriptionId });
-            envVars.Add(new EnvironmentVarArgs { Name = "ServiceBus__ResourceGroup", Value = pollingBus.ResourceGroup });
-        }
-
-        // Go worker env (epic tc-wad3 Phase 2, infra-before-image step tc-uzm1).
-        // Added ADDITIVELY in Go's SINGLE-underscore naming so the currently-deployed
-        // .NET worker image — which only binds the double-underscore keys above via
-        // IConfiguration — ignores every var here. The CI image-swap (tc-hm20) then
-        // flips the job image to town-crier-worker-go, which reads exactly these keys
-        // (see api-go/internal/platform/config.go LoadConfig). Each value is sourced
-        // from the SAME Pulumi config/secret/output as its .NET counterpart, and the
-        // per-mode split mirrors the .NET env composition above.
+        // Go worker env. The job runs the town-crier-worker-go image, which reads
+        // SINGLE-underscore keys (see api-go/internal/platform/config.go LoadConfig).
+        // AddGoWorkerEnv composes Cosmos/ACS/APNs/Service Bus/Auth0 vars from the SAME
+        // Pulumi config/secret/output sources, applying the per-mode split (SB only on
+        // poll jobs, push/email only on digest jobs, Auth0 only on dormant-cleanup).
+        // The base block above keeps only the keys the Go worker reads directly
+        // (OTEL_SERVICE_NAME, AZURE_CLIENT_ID, APPLICATIONINSIGHTS_CONNECTION_STRING,
+        // plus the WORKER_MODE insert).
         AddGoWorkerEnv(envVars, workerMode, cosmosAccountEndpoint, cosmosDatabaseName,
             auth0Domain, apnsUseSandbox, pollingBus);
 
@@ -738,7 +721,9 @@ public static class EnvironmentStack
         envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint });
         envVars.Add(new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabaseName });
 
-        // poll / poll-bootstrap: Service Bus (mirrors .NET ServiceBus__Namespace/QueueName).
+        // poll / poll-bootstrap: Service Bus namespace + queue. The Go SB receiver uses
+        // DefaultAzureCredential, so it needs only the namespace FQDN and queue name (no
+        // subscription id / resource group).
         if (pollingBus is not null)
         {
             envVars.Add(new EnvironmentVarArgs { Name = "SERVICE_BUS_NAMESPACE", Value = pollingBus.NamespaceFqdn });
