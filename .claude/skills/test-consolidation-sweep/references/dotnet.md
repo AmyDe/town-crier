@@ -1,14 +1,12 @@
 # .NET test consolidation (TUnit + Stryker.NET)
 
+> **Scope note (Phase 3 onward):** the .NET API and worker were migrated to Go and deleted. The Go tests live in `api-go/` and are covered by Go tooling (`go test`), not this reference. The **only** remaining .NET test suite is the CLI's, so that is the sole .NET consolidation target now.
+
 ## Where tests live
 
-- `api/tests/town-crier.domain.tests/` — domain entity / value-object tests
-- `api/tests/town-crier.application.tests/` — command/query handler tests (the main consolidation target)
-- `api/tests/town-crier.infrastructure.tests/` — adapter tests
-- `api/tests/town-crier.web.tests/` — minimal API / web layer tests
-- `api/tests/town-crier.integration-tests/` — flow tests (silver-bullet layer)
+- `cli/tests/tc.tests/` — the self-contained .NET CLI's tests (the only remaining .NET test project; TUnit)
 
-Handler tests are where most coverage lives and where the greatest consolidation wins are.
+The CLI is small, so consolidation wins are modest — but the TUnit idioms, mutation-testing gate, and naming conventions below still apply to any .NET test work.
 
 ## Test framework idioms
 
@@ -25,7 +23,7 @@ Handler tests are where most coverage lives and where the greatest consolidation
 
 3. **Tiny single-assertion tests.** Tests whose Act is the same as the neighbouring test but assert only one field of the result. Signal: classes with >3 tests averaging <2 asserts each. Target: one verbose test with all the asserts for that Act.
 
-4. **Flow tests asserting handler-level detail.** Tests under `integration-tests/` asserting repository contents for a single entity — that's handler-level coverage that has leaked upward. Signal: `integration-tests` referencing specific repository state that no happy-path user would observe. Target: trim the assertion from the flow test, confirm an equivalent exists at handler level, add it at handler level if missing.
+4. **Over-asserted command tests.** A command test asserting many incidental side effects that a single observable outcome already covers. Signal: tests pinning internal state no caller of the CLI command would observe. Target: trim the redundant assertion, confirm the behaviour is still covered by a focused test, add one if missing.
 
 ## Mutation testing — Stryker.NET
 
@@ -35,7 +33,7 @@ If not installed:
 dotnet tool install -g dotnet-stryker
 ```
 
-Baseline run for a consolidation candidate (run from `api/`):
+Baseline run for a consolidation candidate (run from `cli/`):
 
 ```bash
 dotnet stryker \
@@ -50,6 +48,8 @@ Workflow in the bead:
 3. Re-run. The new score must be **≥** baseline. **A drop is a failure, not a negotiation** — revert and report.
 
 ## Naming target
+
+> The example below is illustrative of the consolidation *pattern* — the `SaveApplication*` types it names belonged to the now-deleted .NET API and no longer exist. Apply the same shape to the CLI's TUnit tests.
 
 Bad (over-granular):
 

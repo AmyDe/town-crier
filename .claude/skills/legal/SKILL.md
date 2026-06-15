@@ -1,6 +1,6 @@
 ---
 name: legal
-description: "Autonomous UK GDPR auditor for Town Crier — scans the codebase to inventory personal data collected, third-party processors, cross-border data flows, and cookies, then compares against the live Terms of Service and Privacy Policy (served from `GetLegalDocumentQueryHandler.cs`). Produces a gap report, files a bead, updates the copy, and files separate beads for any code-level compliance gaps found. MUST use this skill whenever the user says 'legal audit', 'privacy audit', 'privacy review', 'GDPR check', 'compliance check', 'update terms', 'update privacy policy', 'data audit', 'check data processors', 'privacy policy is stale', 'terms are stale', '/legal', or any variation of wanting to ensure the Terms of Service and Privacy Policy accurately reflect the codebase and meet UK GDPR transparency requirements. Also trigger proactively whenever a new third-party integration, new personal data field, or new data flow is added to the codebase."
+description: "Autonomous UK GDPR auditor for Town Crier — scans the codebase to inventory personal data collected, third-party processors, cross-border data flows, and cookies, then compares against the live Terms of Service and Privacy Policy (served from `api-go/internal/legal/handler.go`). Produces a gap report, files a bead, updates the copy, and files separate beads for any code-level compliance gaps found. MUST use this skill whenever the user says 'legal audit', 'privacy audit', 'privacy review', 'GDPR check', 'compliance check', 'update terms', 'update privacy policy', 'data audit', 'check data processors', 'privacy policy is stale', 'terms are stale', '/legal', or any variation of wanting to ensure the Terms of Service and Privacy Policy accurately reflect the codebase and meet UK GDPR transparency requirements. Also trigger proactively whenever a new third-party integration, new personal data field, or new data flow is added to the codebase."
 ---
 
 # Legal Audit
@@ -17,22 +17,23 @@ App Store and Play Store policy compliance is in scope only where it directly af
 
 This skill produces **three things**:
 1. A gap report in the conversation (what drifts, what's missing)
-2. Updates to `api/src/town-crier.application/Legal/GetLegalDocumentQueryHandler.cs` and the associated tests, committed via PR through a single bead that is created and closed in one pass
+2. Updates to `api-go/internal/legal/handler.go` and the associated tests, committed via PR through a single bead that is created and closed in one pass
 3. **Separate** beads for any finding that requires a code change beyond the legal copy (e.g., "add a cookie banner", "implement account deletion endpoint", "add data export endpoint"). Leave these beads open for later work.
 
 If no drift is found, report `Legal audit: no drift detected` and exit. Do nothing.
 
 ## Where the Legal Copy Lives
 
-The Terms of Service and Privacy Policy are **not** static files. They are served from a .NET handler:
+The Terms of Service and Privacy Policy are **not** static files. They are served from the Go API:
 
-- **File:** `api/src/town-crier.application/Legal/GetLegalDocumentQueryHandler.cs`
-- **Served by:** `api/src/town-crier.web/Endpoints/LegalEndpoints.cs` at `GET /legal/{documentType}` where documentType is `privacy` or `terms`
+- **File:** `api-go/internal/legal/handler.go` (loads and serves the embedded copy)
+- **Served by:** the same file — `legal.Routes` registers `GET /v1/legal/{documentType}` (wired in `api-go/cmd/api/wiring.go`) where documentType is `privacy` or `terms`
+- **Canonical copy:** the JSON source lives at `api-go/internal/legal/resources/{privacy,terms}.json` (embedded at build time)
 - **Rendered by:** iOS (`mobile/ios/packages/town-crier-presentation/Sources/Features/Legal/`) and web (`web/src/features/legal/`)
-- **Tests:** `api/tests/town-crier.application.tests/Legal/GetLegalDocumentQueryHandlerTests.cs`
+- **Tests:** `api-go/internal/legal/handler_test.go`
 
-All edits go in the handler file. Remember to:
-- Update the `LastUpdated` date to today (the current session date, not hardcoded).
+The legal copy itself lives in the `resources/{privacy,terms}.json` files; the handler embeds and serves them. Edit the JSON, then update tests that assert on section content — don't leave them stale. Remember to:
+- Update the `lastUpdated` date to today (the current session date, not hardcoded).
 - Update tests that assert on section content — don't leave them stale.
 
 ## Execution Flow
@@ -43,7 +44,7 @@ Read legal docs → Parallel scan (data, processors, flows, cookies) → Gap ana
 
 ## Phase 1: Read Existing Legal Copy
 
-Read `api/src/town-crier.application/Legal/GetLegalDocumentQueryHandler.cs` and extract:
+Read `api-go/internal/legal/resources/{privacy,terms}.json` (served by `api-go/internal/legal/handler.go`) and extract:
 - Every section heading and the verbatim body text for both Privacy Policy and Terms of Service
 - The `LastUpdated` date (staleness signal)
 - Which named third parties are already disclosed (e.g., "Microsoft Azure", "PlanIt", "Apple Push Notification Service")
@@ -54,13 +55,13 @@ Build a mental inventory: "The policy currently names X, Y, Z as processors; cla
 
 Run these scans in parallel using subagents. Each subagent reports facts, not opinions.
 
-### 2a. Personal Data Inventory — `/api`
+### 2a. Personal Data Inventory — `/api-go`
 
-What personal data does the system collect, store, or process? Look at:
+The Go API is feature-sliced under `api-go/internal/<feature>/`. Each feature typically holds its domain type (`<name>.go`), HTTP request/response models + handler (`handler.go`), Cosmos document shape (`document.go`), and persistence (`store_cosmos.go`). What personal data does the system collect, store, or process? Look at:
 
-- **Domain entities** (`api/src/town-crier.domain/`) — user profiles, saved locations, notification preferences, devices. Record every field that could identify a person (name, email, device ID, IP, coordinates, postcode, phone).
-- **DTOs and request models** in `api/src/town-crier.web/` — what do the API endpoints accept from clients?
-- **Cosmos documents** in `api/src/town-crier.infrastructure/` — what shape is the data actually persisted in?
+- **Domain entities & user data** (`api-go/internal/profiles/`, `api-go/internal/watchzones/`, `api-go/internal/devicetokens/`, `api-go/internal/savedapplications/`) — user profiles, saved locations, notification preferences, devices. Record every field that could identify a person (name, email, device ID, IP, coordinates, postcode, phone).
+- **DTOs and request models** in each feature's `handler.go` (e.g. `api-go/internal/profiles/handler.go`) — what do the API endpoints accept from clients?
+- **Cosmos documents** in each feature's `document.go` / `store_cosmos.go` — what shape is the data actually persisted in?
 - **Observability** — are request bodies, user IDs, IP addresses, or user-agents logged? (App Insights, OpenTelemetry spans). If PII is in logs, that's a processing activity.
 - **Auth0 claims** — what does the identity token carry? (email, sub, name, maybe more)
 
@@ -88,10 +89,10 @@ For each data category, record:
 
 A processor is any third party that handles personal data on our behalf. Scan for:
 
-- **`package.json` / `Package.swift` / `.csproj`** — identify SDKs that integrate with remote services (auth, email, push, analytics, payments, maps, storage)
+- **`package.json` / `Package.swift` / `go.mod` / `.csproj`** — identify SDKs that integrate with remote services (auth, email, push, analytics, payments, maps, storage)
 - **Environment variables and Pulumi config** (`infra/`) — API keys, connection strings, endpoints reveal which services are actually wired up in prod
 - **Infra stack** (`infra/EnvironmentStack.cs` and siblings) — what Azure resources are provisioned? What region?
-- **`Program.cs`** in `api/src/town-crier.web/` and `api/src/town-crier.worker/` — what external clients are registered with DI?
+- **DI/main wiring** in `api-go/cmd/api/wiring.go` (+ `api-go/cmd/api/main.go`) and `api-go/cmd/worker/main.go` — what external clients are constructed and injected at startup?
 
 For each processor, record:
 - **Name** (e.g., "Auth0", "Azure Communication Services")
@@ -151,7 +152,7 @@ Show the user a concise report before making any changes:
 1. [Gap] — [what UK GDPR requires] — [will file bead]
 2. ...
 
-## Proposed edits to GetLegalDocumentQueryHandler.cs
+## Proposed edits to resources/{privacy,terms}.json
 [diff-style before/after for each affected section]
 
 Proceed? [y/n]
@@ -176,17 +177,18 @@ On approval:
    EnterWorktree with a name like "legal-audit-<date>"
    ```
 
-3. **Apply the edits** to `GetLegalDocumentQueryHandler.cs`:
+3. **Apply the edits** to `api-go/internal/legal/resources/{privacy,terms}.json`:
    - Update affected sections
-   - Update `LastUpdated` to today
+   - Update `lastUpdated` to today
    - Preserve the existing plain-English style — no legalese. Shorter is better.
    - Match the voice of the current copy (first person plural, "we")
+   - Run `scripts/sync-legal.sh` afterwards if the iOS mirror needs refreshing (CI's `check-legal-drift.sh` enforces parity)
 
-4. **Update tests** in `GetLegalDocumentQueryHandlerTests.cs` that assert on specific section content. Don't add tests for every sentence — the existing tests are structural (count of sections, headings, non-empty body). Update them to match new structure, not to pin down every word.
+4. **Update tests** in `api-go/internal/legal/handler_test.go` that assert on specific section content. Don't add tests for every sentence — the existing tests are structural (count of sections, headings, non-empty body). Update them to match new structure, not to pin down every word.
 
 5. **Run the tests**:
    ```bash
-   cd api && dotnet test --filter "FullyQualifiedName~Legal"
+   cd api-go && go test ./internal/legal/...
    ```
    If they fail, fix the assertions. Don't ship broken tests.
 

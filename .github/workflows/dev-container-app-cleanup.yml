@@ -15,7 +15,7 @@
 #
 # "Keep newest active" rather than "keep latestRevisionName": Azure's
 # latestRevisionName on the container app can point to a now-inactive PR
-# staging revision (e.g. ca-town-crier-api-dev--pr5b26a9b), making the
+# staging revision (e.g. ca-town-crier-api-go-dev--pr5b26a9b), making the
 # latestRevisionName approach silently keep nothing useful. Anchoring on the
 # newest active revision is correct regardless of what Azure considers
 # "latest" at the app level.
