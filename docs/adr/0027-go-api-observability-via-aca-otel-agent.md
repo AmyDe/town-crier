@@ -152,3 +152,25 @@ is counted twice.
   Go traces become the primary request telemetry, and a follow-up bead bumps the
   prod Go app's `MinReplicas` from 0 to 1 (matching the warm-instance policy the
   .NET prod app uses to avoid scale-from-zero cold starts).
+
+## Amendments
+
+### 2026-06-15 — parallel-run window closed; .NET decommissioned
+
+The DNS cutover (api + api-dev, 2026-06-14) and Phase 3 decommission (epic
+tc-tbyp, 2026-06-15) are complete — see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md).
+Consequences for this ADR:
+
+- **The .NET API and worker are gone.** The "no double-count" reasoning above —
+  the .NET app ignoring the injected `OTEL_EXPORTER_OTLP_ENDPOINT` and exporting
+  in-process — is now historical. Only the Go app remains in the shared managed
+  environment, so the Go OTLP→agent stream is the **sole** request telemetry
+  source. `AppRoleName` is uniformly `town-crier-api-go`; there is no longer a
+  `town-crier-api` role to compare against.
+- **The MinReplicas follow-up is done.** The prod Go app runs the warm-instance
+  `MinReplicas` policy (active via v0.14.1), so it no longer scales from zero.
+- **Retained:** the agent configuration on `cae-town-crier-shared`
+  (`AppInsightsConfiguration` + `OpenTelemetryConfiguration` with traces and logs
+  destinations) and the Go-side `SetupTelemetry` pipeline are unchanged and remain
+  the production observability path. OTLP **metrics** from the Go app are still
+  not configured.
