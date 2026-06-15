@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-05-17",
+  "lastUpdated": "2026-06-15",
   "sections": [
     {
       "heading": "Who We Are",
@@ -29,7 +29,7 @@
     },
     {
       "heading": "How Long We Keep It",
-      "body": "Your notifications and decision alerts are automatically deleted after 90 days. We remove iOS push tokens when Apple tells us they're no longer valid. Everything else (your account, watch zones, saved applications, preferences, and subscription status) is kept for as long as your account exists. You can delete your account at any time from the app settings, which removes your profile, preferences, watch zones, notifications, saved applications, and device registrations from our systems."
+      "body": "Your notifications and decision alerts are automatically deleted after 90 days. We remove iOS push tokens when Apple tells us they're no longer valid. Everything else (your account, watch zones, saved applications, preferences, and subscription status) is kept for as long as your account stays active. If you don't use Town Crier for 12 months, we automatically delete your whole account and everything in it, including your sign-in record, so we don't hold your data for longer than we need to (UK GDPR Article 5(1)(e)). You can also delete your account at any time from the app settings, which removes your profile, preferences, watch zones, notifications, saved applications, and device registrations from our systems."
     },
     {
       "heading": "Your Rights Under UK GDPR",
