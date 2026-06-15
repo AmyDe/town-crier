@@ -67,3 +67,7 @@ Located in `/infra`, utilizing **.NET 10 (C#)**:
 
 ### 2026-03-28
 - Added: **`/web`** directory for the React + TypeScript web frontend (see [ADR 0011](0011-web-frontend-stack.md) for technology choices). Internal structure follows a feature-sliced layout with `src/` containing domain ports, API adapters, features, components, and hooks. Tests are colocated in `__tests__/` directories within each feature. Build tooling (Vite, ESLint, TypeScript) configured at the `/web` root.
+
+### 2026-06-15
+- Replaced: the **`/api` (.NET 10) hexagonal `src/town-crier.{domain,application,infrastructure,web}` structure was removed.** The backend was migrated to Go and `/api` deleted (see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)). The Go backend lives in **`/api-go`** with a flat, feature-sliced layout: `cmd/api` and `cmd/worker` entry points, and one package per feature under `internal/<feature>` (`auth`, `polling`, `servicebus`, `digest`, `dormant`, `erasure`, `subscriptions`, `offercodes`, `apns`, `acsemail`, `legal`, …) plus `internal/platform` for cross-cutting wiring. The Hexagonal/Ports-&-Adapters layering described for the .NET API no longer applies; Go uses consumer-side interfaces and manual `main()` wiring (see the `go-coding-standards` skill).
+- Unchanged: the **`/infra` (Pulumi, C#/.NET 10)** structure stands. After `/api` was deleted, infra gained its own `infra/global.json` (the SDK pin previously lived at `api/global.json`). The **`/cli` (.NET)** tool also remains.

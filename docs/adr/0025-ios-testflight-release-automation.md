@@ -39,7 +39,7 @@ Marketing version stays manually managed in `mobile/ios/project.yml`. Git tags d
 
 ### Harder
 - **Match cert rotation needs human action.** CI runs `match` in `readonly: true`. When certs expire (Apple distribution certs last 1 year), a human must run `fastlane match appstore` locally to refresh the repo. There is no autorenewal.
-- **First-time setup has six manual steps.** App Store Connect API key, cert repo, deploy key, initial match run, six GH secrets, project.yml team ID. Documented in `docs/specs/ios-testflight-automation.md`. One-time only.
+- **First-time setup has six manual steps.** App Store Connect API key, cert repo, deploy key, initial match run, six GH secrets, project.yml team ID. The authoritative reference is the workflow itself (`.github/workflows/cd-ios-testflight.yml`) and its `fastlane/` config. One-time only.
 - **macOS runner concurrency.** Standard runners are limited to 5 concurrent macOS jobs across the account. Not a problem today; flag if it ever is.
 - **Backend-only releases trigger a `guard` job that always exits "skip".** Costs ~10s of free Ubuntu time per release. Acceptable.
 - **iOS-only changes still require a `v*` tag** to ship to TestFlight. There is no "iOS-only" release path. If iOS needs to ship without backend, just cut a release — backend will redeploy harmlessly (idempotent Pulumi up).
@@ -50,3 +50,8 @@ Marketing version stays manually managed in `mobile/ios/project.yml`. Git tags d
 - **Per-platform release tags (`ios-v*` and `api-v*`).** Cleaner conceptually but adds a release ritual, breaks the "single command ships everything" goal, and complicates the `/release` skill.
 - **Auto-bump build number from `github.run_number`.** Doesn't survive workflow renames or repo migrations, and collides with the existing manual TestFlight upload (build 1). The App Store Connect query approach is robust to all of those.
 - **Build on every push to main, not on tags.** Would push a TestFlight build for every merged PR — testers would drown in noise, and most merges don't represent a coherent release.
+
+## Amendments
+
+### 2026-06-15
+- Corrected: the "Harder" section pointed first-time setup at `docs/specs/ios-testflight-automation.md`. That file no longer exists — committed spec files were retired in favour of GitHub-issue-resident design context (see CLAUDE.md "Specs and Beads"). The dead pointer is replaced with the workflow + `fastlane/` config, which are the live source of truth.

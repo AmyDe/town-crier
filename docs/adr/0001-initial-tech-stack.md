@@ -3,7 +3,7 @@
 Date: 2026-03-16
 
 ## Status
-Accepted
+Accepted — backend technology choice (item 2) reversed by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md); all other choices stand.
 
 ## Context
 The project "town-crier" requires a mobile application and a supporting backend API. The primary mobile platform is iOS, and the backend needs to be hosted in a cloud environment with strong enterprise support and scalability.
@@ -43,3 +43,7 @@ We will use the following technology stack for the initial prototype and develop
 
 ### 2026-03-31
 - Updated: Data access changed from the **Microsoft.Azure.Cosmos SDK** to a **custom Cosmos DB REST client** (`CosmosRestClient`). The custom client talks directly to the Cosmos DB REST API (version `2018-12-31`) using `Azure.Identity` (`DefaultAzureCredential`) for authentication and `System.Text.Json` source-generated serialization. The `Microsoft.Azure.Cosmos` NuGet package is no longer referenced — the only Azure package is `Azure.Identity 1.19.0`. HTTP resilience (retry with exponential backoff for 429/408/503/449) is handled via `Microsoft.Extensions.Http.Resilience`. This gives full Native AOT compatibility without depending on the SDK's internal serialization or reflection paths, and keeps the dependency tree minimal.
+
+### 2026-06-15
+- Reversed (item 2, backend): the backend API and worker were **migrated from .NET 10 / Native AOT to Go** and the .NET source was deleted. See [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md). The Native AOT rationale (System.Text.Json source generators, reflection avoidance, the custom `CosmosRestClient` from the 2026-03-31 amendment) no longer applies to the backend — Go uses stdlib `net/http`/`encoding/json`/`log/slog` and the official `azcosmos`/`azservicebus` SDKs.
+- Unchanged: every other item in this ADR still holds. iOS (Swift), Azure hosting, Cosmos DB (Serverless), GitHub Actions, and **Pulumi in .NET 10 (C#)** for IaC are all retained. The migration was backend-language-only; `/infra` (Pulumi) and `/cli` remain on .NET.
