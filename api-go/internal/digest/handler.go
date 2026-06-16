@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -150,7 +151,10 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 			h.sendWeeklyPush(ctx, profile, len(notifs))
 		}
 		if wantsEmail {
-			h.sendDigestEmail(ctx, profile.UserID, *profile.Email, notifs)
+			// The weekly cycle does not track emailSent (it re-derives the digest from
+			// the look-back window each run), so a failed send is logged inside
+			// sendDigestEmail and we simply move on to the next user.
+			_ = h.sendDigestEmail(ctx, profile.UserID, *profile.Email, notifs)
 		}
 	}
 	return nil
@@ -260,7 +264,13 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 			continue
 		}
 
-		h.sendDigestEmail(ctx, userID, *profile.Email, included)
+		// Only flip emailSent when the ACS send actually succeeded — one email
+		// batches every included notification for this user, so a failed send must
+		// leave the whole batch unmarked for the next cycle to retry. Marking on a
+		// swallowed send error is silent data loss (tc-qvds).
+		if err := h.sendDigestEmail(ctx, userID, *profile.Email, included); err != nil {
+			continue
+		}
 
 		for _, n := range included {
 			if err := h.notifications.MarkEmailSent(ctx, markSent(n)); err != nil {
@@ -303,14 +313,17 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 
 // sendDigestEmail groups the notifications by watch zone (with a saved-only
 // section for zone-less notifications), renders the email body, and hands it to
-// the transport-only email sender. A send failure is logged, not propagated — one
-// failed email must not abort the rest of the cycle, mirroring .NET's
-// catch-and-continue in AcsEmailSender.
-func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, notifs []notifications.DigestNotification) {
+// the transport-only email sender. It logs and returns any failure so the caller
+// can decide whether to proceed: the hourly cycle must NOT flip emailSent when the
+// send fails (otherwise the email is silently lost and never retried — tc-qvds),
+// while the weekly cycle simply moves on to the next user. A failed email never
+// aborts the rest of the cycle either way, mirroring .NET's catch-and-continue in
+// AcsEmailSender.
+func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, notifs []notifications.DigestNotification) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "digest email: load zones failed", "user", userID, "error", err)
-		return
+		return fmt.Errorf("load zones for %s: %w", userID, err)
 	}
 	zoneName := make(map[string]string, len(zones))
 	for _, z := range zones {
@@ -327,7 +340,9 @@ func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, not
 	}
 	if err := h.email.Send(ctx, msg); err != nil {
 		h.logger.ErrorContext(ctx, "digest email: send failed", "user", userID, "error", err)
+		return fmt.Errorf("send digest email to %s: %w", userID, err)
 	}
+	return nil
 }
 
 // groupByZone partitions notifications into per-zone sections (preserving zone
