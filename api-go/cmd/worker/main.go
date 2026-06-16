@@ -32,6 +32,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
+	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
@@ -555,17 +556,25 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, logger *slog.
 		return nil, err
 	}
 	stateContainer.WithMetrics(registry)
+	offerCodesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosOfferCodesContainer, logger)
+	if err != nil {
+		return nil, err
+	}
+	offerCodesContainer.WithMetrics(registry)
 
 	// The four DeleteAllByUserID stores satisfy erasure.ChildDeleter directly, the
 	// profile store's Delete satisfies erasure.ProfileDeleter directly, and the
 	// notification-state store (whose method is DeleteByUserID) is bridged by
-	// erasure.NotificationStateChild — so no per-step adapter types are needed.
+	// erasure.NotificationStateChild — so no per-step adapter types are needed. The
+	// offer-code store anonymises the redeemer back-reference (redeemedByUserId +
+	// redeemedAt) without deleting the admin-issued code (bead tc-5jyh).
 	deleters := erasure.Deleters{
 		Notifications:       notifications.NewDeleteStore(notifs),
 		WatchZones:          watchzones.NewCosmosStore(zonesContainer),
 		SavedApplications:   savedapplications.NewCosmosStore(savedContainer),
 		DeviceRegistrations: devicetokens.NewCosmosStore(devicesContainer),
 		NotificationState:   erasure.NotificationStateChild(notificationstate.NewCosmosStore(stateContainer, notifs)),
+		OfferCodes:          offercodes.NewCosmosStore(offerCodesContainer),
 		Profile:             profiles.NewCosmosStore(users),
 		Auth0:               buildAuth0Deleter(cfg, logger),
 		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },

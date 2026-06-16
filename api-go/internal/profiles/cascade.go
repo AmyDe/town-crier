@@ -13,6 +13,15 @@ type ChildDeleter interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
+// RedemptionAnonymiser scrubs the offer-code redemption back-reference
+// (redeemedByUserId + redeemedAt) for the account being deleted, without
+// deleting the code document — the code is an admin campaign artifact whose
+// consumed state must survive so it can't be re-redeemed (bead tc-5jyh). The
+// offercodes.CosmosStore satisfies it directly.
+type RedemptionAnonymiser interface {
+	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
+}
+
 // CascadeDeleters bundles the per-container erasure steps DELETE /v1/me runs — in
 // the fixed order the handler invokes them — before deleting the profile document
 // and, last, the Auth0 user. It mirrors the dormant-cleanup worker's cascade so
@@ -27,4 +36,5 @@ type CascadeDeleters struct {
 	SavedApplications   ChildDeleter
 	DeviceRegistrations ChildDeleter
 	NotificationState   ChildDeleter
+	OfferCodes          RedemptionAnonymiser
 }
