@@ -4,7 +4,7 @@ import TownCrierDomain
 
 /// Drives create/edit of a single watch zone with postcode geocoding and tier-based radius limits.
 @MainActor
-public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingViewModel {
+public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGatingViewModel {
   @Published public var nameInput: String = ""
   @Published public var postcodeInput: String = ""
   @Published public var selectedRadiusMetres: Double = 1000
@@ -13,6 +13,10 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
   @Published public private(set) var geocodedCoordinate: Coordinate?
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
+
+  /// Drives the in-editor subscription upsell sheet. Non-nil while the gate is
+  /// presented for the given entitlement; cleared when the sheet dismisses.
+  @Published public var entitlementGate: Entitlement?
 
   var onSave: ((WatchZone) -> Void)?
 
@@ -63,12 +67,40 @@ public final class WatchZoneEditorViewModel: ObservableObject, ErrorHandlingView
     limits.maxRadiusMetres
   }
 
-  /// Per-zone notification toggles are gated to Personal/Pro tiers only (tc-kh1s).
+  /// Proactive UI gate exposing the session's tier to entitlement-aware controls
+  /// (e.g. ``GatedToggle``) without a network round-trip.
+  public var featureGate: FeatureGate {
+    FeatureGate(tier: tier)
+  }
+
+  /// The entitlement that the per-zone instant push/email toggles are gated behind.
   ///
-  /// Free users do not see these controls — the polling fan-out skips push and
-  /// instant email for them regardless of any flag values.
+  /// Instant alerts (push and instant email) are paid-only; free accounts receive
+  /// the weekly digest only and the server never delivers instant alerts to them
+  /// (tc-bd6i). All paid entitlements travel together in ``EntitlementMap``, so any
+  /// paid-only entitlement correctly distinguishes free (locked) from paid (open).
+  public var instantAlertEntitlement: Entitlement {
+    .statusChangeAlerts
+  }
+
+  /// The notifications section is always shown. For free accounts the instant
+  /// push/email toggles render locked with an upgrade prompt via ``GatedToggle``;
+  /// for Personal/Pro they are fully interactive (tc-bd6i).
   public var areNotificationTogglesVisible: Bool {
-    tier != .free
+    true
+  }
+
+  /// Surfaces the in-editor subscription upsell when a free-tier user taps a locked
+  /// instant-alert toggle. Routes through the entitlement gate so the editor stays
+  /// open and the user can dismiss without losing their work.
+  public func requestInstantAlertUpgrade() {
+    entitlementGate = instantAlertEntitlement
+  }
+
+  /// Invoked when the user taps "View Plans" in the upsell sheet — hands off to the
+  /// coordinator (via ``onUpgradeRequired``) to present the subscription screen.
+  public func viewPlans() {
+    onUpgradeRequired?()
   }
 
   /// Whether to surface the "this zone may produce lots of notifications" callout

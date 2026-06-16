@@ -205,13 +205,15 @@ struct WatchZoneEditorCreateTests {
     #expect(sut.emailInstantEnabled)
   }
 
-  @Test func areNotificationTogglesVisible_freeTier_isFalse() {
+  @Test func areNotificationTogglesVisible_freeTier_isTrue() {
+    // The notifications section is now always shown; for free tier the instant
+    // toggles render locked with an upsell rather than being hidden (tc-bd6i).
     let freeSut = WatchZoneEditorViewModel(
       geocoder: spyGeocoder,
       repository: spyRepository,
       tier: .free
     )
-    #expect(!freeSut.areNotificationTogglesVisible)
+    #expect(freeSut.areNotificationTogglesVisible)
   }
 
   @Test func areNotificationTogglesVisible_personalTier_isTrue() {
