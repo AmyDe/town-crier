@@ -26,6 +26,14 @@ import (
 // invisible in App Insights.
 const cosmosTracerName = "github.com/AmyDe/town-crier/api-go/internal/platform"
 
+// cosmosMetricsRecorder is the consumer-side slice of the metrics registry the
+// Cosmos container records towncrier.cosmos.request_charge_ru on, once per
+// successful operation. *metrics.Registry satisfies it; nil leaves the histogram
+// dark (the default for tests and Cosmos-less boots).
+type cosmosMetricsRecorder interface {
+	CosmosRequestCharge(ctx context.Context, ru float64, operation, container string)
+}
+
 // traceCosmosOp wraps a single outbound azcosmos call in an OpenTelemetry client
 // span so it surfaces as an App Insights dependency. The span is a child of
 // whatever span rides on ctx (the incoming request span), and the ctx carrying
@@ -33,7 +41,13 @@ const cosmosTracerName = "github.com/AmyDe/town-crier/api-go/internal/platform"
 // follow the OTel DB semantic conventions so App Insights populates the
 // dependency Type/Target; on error the span records the error and is marked
 // Error. The span ends regardless of outcome.
-func traceCosmosOp(ctx context.Context, c *CosmosContainer, op string, fn func(context.Context) error) error {
+//
+// fn returns the operation's RU charge (read from the SDK ItemResponse /
+// QueryResponse); on success the charge is recorded as the
+// db.cosmosdb.request_charge span attribute and on the
+// towncrier.cosmos.request_charge_ru histogram (tc-21np), restoring the RU /
+// cost telemetry that went dark at the .NET->Go cutover.
+func traceCosmosOp(ctx context.Context, c *CosmosContainer, op string, fn func(context.Context) (float64, error)) error {
 	tracer := otel.Tracer(cosmosTracerName)
 	ctx, span := tracer.Start(ctx, "Cosmos "+op+" "+c.name,
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -47,10 +61,15 @@ func traceCosmosOp(ctx context.Context, c *CosmosContainer, op string, fn func(c
 	)
 	defer span.End()
 
-	if err := fn(ctx); err != nil {
+	ru, err := fn(ctx)
+	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return err
+	}
+	span.SetAttributes(attribute.Float64("db.cosmosdb.request_charge", ru))
+	if c.metrics != nil {
+		c.metrics.CosmosRequestCharge(ctx, ru, op, c.name)
 	}
 	return nil
 }
@@ -127,6 +146,23 @@ type CosmosContainer struct {
 	// server.address (the dependency Target in App Insights).
 	name        string
 	accountHost string
+	// metrics records towncrier.cosmos.request_charge_ru per op, wired via
+	// WithMetrics. nil until wired, so the histogram stays dark in tests and
+	// Cosmos-less boots.
+	metrics cosmosMetricsRecorder
+}
+
+// WithMetrics wires the recorder the container records the per-op RU charge on.
+// A post-construction setter so the many NewCosmosContainerNamed call sites are
+// unaffected; cmd/api and cmd/worker call it once per container after building
+// it. Returns the container for chaining. A nil container (Cosmos unconfigured)
+// is a safe no-op so call sites can chain unconditionally.
+func (c *CosmosContainer) WithMetrics(rec cosmosMetricsRecorder) *CosmosContainer {
+	if c == nil {
+		return nil
+	}
+	c.metrics = rec
+	return c
 }
 
 // NewCosmosContainer builds a Cosmos client authenticated by the pinned
@@ -224,13 +260,13 @@ const (
 // ReadItem point-reads the document with the given id from its partition.
 func (c *CosmosContainer) ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error) {
 	var value []byte
-	err := traceCosmosOp(ctx, c, "ReadItem", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "ReadItem", func(ctx context.Context) (float64, error) {
 		resp, err := c.container.ReadItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		value = resp.Value
-		return nil
+		return float64(resp.RequestCharge), nil
 	})
 	if err != nil {
 		return nil, err
@@ -240,17 +276,23 @@ func (c *CosmosContainer) ReadItem(ctx context.Context, partitionKey, id string)
 
 // UpsertItem upserts the document into the given partition.
 func (c *CosmosContainer) UpsertItem(ctx context.Context, partitionKey string, item []byte) error {
-	return traceCosmosOp(ctx, c, "UpsertItem", func(ctx context.Context) error {
-		_, err := c.container.UpsertItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), item, nil)
-		return err
+	return traceCosmosOp(ctx, c, "UpsertItem", func(ctx context.Context) (float64, error) {
+		resp, err := c.container.UpsertItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), item, nil)
+		if err != nil {
+			return 0, err
+		}
+		return float64(resp.RequestCharge), nil
 	})
 }
 
 // DeleteItem deletes the document with the given id from its partition.
 func (c *CosmosContainer) DeleteItem(ctx context.Context, partitionKey, id string) error {
-	return traceCosmosOp(ctx, c, "DeleteItem", func(ctx context.Context) error {
-		_, err := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
-		return err
+	return traceCosmosOp(ctx, c, "DeleteItem", func(ctx context.Context) (float64, error) {
+		resp, err := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
+		if err != nil {
+			return 0, err
+		}
+		return float64(resp.RequestCharge), nil
 	})
 }
 
@@ -260,17 +302,19 @@ func (c *CosmosContainer) DeleteItem(ctx context.Context, partitionKey, id strin
 // binds @name placeholders.
 func (c *CosmosContainer) QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
 	var items [][]byte
-	err := traceCosmosOp(ctx, c, "QueryItems", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "QueryItems", func(ctx context.Context) (float64, error) {
 		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
 		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKeyString(partitionKey), opts)
+		var ru float64
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
-				return err
+				return 0, err
 			}
+			ru += float64(page.RequestCharge)
 			items = append(items, page.Items...)
 		}
-		return nil
+		return ru, nil
 	})
 	if err != nil {
 		return nil, err
@@ -303,17 +347,19 @@ func (c *CosmosContainer) CountItems(ctx context.Context, partitionKey, query st
 // default cross-partition flag triggers the cross-partition path.
 func (c *CosmosContainer) QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error) {
 	var items [][]byte
-	err := traceCosmosOp(ctx, c, "QueryItemsCrossPartition", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "QueryItemsCrossPartition", func(ctx context.Context) (float64, error) {
 		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
 		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
+		var ru float64
 		for pager.More() {
 			page, err := pager.NextPage(ctx)
 			if err != nil {
-				return err
+				return 0, err
 			}
+			ru += float64(page.RequestCharge)
 			items = append(items, page.Items...)
 		}
-		return nil
+		return ru, nil
 	})
 	if err != nil {
 		return nil, err
@@ -333,7 +379,7 @@ func (c *CosmosContainer) QueryPageCrossPartition(ctx context.Context, query str
 		items [][]byte
 		next  string
 	)
-	err := traceCosmosOp(ctx, c, "QueryPageCrossPartition", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "QueryPageCrossPartition", func(ctx context.Context) (float64, error) {
 		opts := &azcosmos.QueryOptions{QueryParameters: queryParams(params)}
 		if pageSize > 0 {
 			opts.PageSizeHint = clampPageSize(pageSize)
@@ -343,17 +389,17 @@ func (c *CosmosContainer) QueryPageCrossPartition(ctx context.Context, query str
 		}
 		pager := c.container.NewQueryItemsPager(query, azcosmos.NewPartitionKey(), opts)
 		if !pager.More() {
-			return nil
+			return 0, nil
 		}
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		items = page.Items
 		if page.ContinuationToken != nil {
 			next = *page.ContinuationToken
 		}
-		return nil
+		return float64(page.RequestCharge), nil
 	})
 	if err != nil {
 		return nil, "", err

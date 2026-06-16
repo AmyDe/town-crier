@@ -16,6 +16,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
 	"github.com/AmyDe/town-crier/api-go/internal/health"
 	"github.com/AmyDe/town-crier/api-go/internal/legal"
+	"github.com/AmyDe/town-crier/api-go/internal/metrics"
 	"github.com/AmyDe/town-crier/api-go/internal/middleware"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
@@ -93,7 +94,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -120,7 +121,7 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		notificationstate.Routes(mux, stateStore, time.Now, logger)
 	}
 	if watchZoneStore != nil {
-		watchzones.Routes(mux, watchZoneStore, logger)
+		watchzones.Routes(mux, watchZoneStore, logger, watchzones.WithMetricsRecorder(registry))
 		// application-authorities derives from the user's watch zones plus the
 		// static authority data; it needs no Cosmos applications store.
 		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
@@ -142,7 +143,7 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		// profile store and resolves the authority from coordinates via the
 		// geocode client when the request omits one; the applications list
 		// augments each row with its latest unread notification.
-		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger)
+		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry))
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil {
 		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,
@@ -180,6 +181,13 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 			middleware.Recover(logger)(authed),
 		),
 	)
+	// RouteSpan names the request span after the matched route and records the
+	// HTTP status code on it (tc-r8eo). It must run inside the otelhttp span — so
+	// the span it decorates is the request span — yet outermost among our own
+	// middleware so it observes the final status. It resolves the pattern from the
+	// mux directly (the same lookup RequireAuth uses), which is why it takes mux
+	// rather than relying on r.Pattern (lost across the chain's context copies).
+	chain = middleware.RouteSpan(mux)(chain)
 	// otelhttp is the outermost wrapper so its span covers the whole request,
 	// including the CORS, error-envelope and panic-recovery middleware. When
 	// telemetry is disabled (no OTLP endpoint) the global no-op TracerProvider

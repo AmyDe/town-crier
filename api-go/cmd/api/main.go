@@ -19,6 +19,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/geocoding"
+	"github.com/AmyDe/town-crier/api-go/internal/metrics"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
@@ -27,6 +28,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
+	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -58,6 +60,13 @@ func main() {
 		}
 	}()
 
+	// The business-metric registry is built from the global MeterProvider that
+	// SetupTelemetry just installed (a no-op provider when telemetry is disabled,
+	// so the instruments record nothing locally). Every Cosmos container is wired
+	// to it below so towncrier.cosmos.request_charge_ru flows, and it is passed to
+	// newRouter for the watch-zone lifecycle counters (tc-21np).
+	registry := metrics.New(otel.Meter(metrics.MeterName))
+
 	validator, err := auth.NewAuth0Validator(cfg.Auth0Domain, cfg.Auth0Audience, logger)
 	if err != nil {
 		log.Fatal(err)
@@ -67,6 +76,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	cosmos.WithMetrics(registry)
 	var store *profiles.CosmosStore
 	if cosmos != nil {
 		store = profiles.NewCosmosStore(cosmos)
@@ -76,6 +86,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	devices.WithMetrics(registry)
 	var deviceStore *devicetokens.CosmosStore
 	if devices != nil {
 		deviceStore = devicetokens.NewCosmosStore(devices)
@@ -85,10 +96,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	stateContainer.WithMetrics(registry)
 	notificationsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
+	notificationsContainer.WithMetrics(registry)
 	var stateStore *notificationstate.CosmosStore
 	if stateContainer != nil && notificationsContainer != nil {
 		stateStore = notificationstate.NewCosmosStore(stateContainer, notificationsContainer)
@@ -104,6 +117,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	watchZones.WithMetrics(registry)
 	var watchZoneStore *watchzones.CosmosStore
 	if watchZones != nil {
 		watchZoneStore = watchzones.NewCosmosStore(watchZones)
@@ -113,6 +127,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	appsContainer.WithMetrics(registry)
 	var appStore *applications.CosmosStore
 	if appsContainer != nil {
 		appStore = applications.NewCosmosStore(appsContainer)
@@ -122,6 +137,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	savedContainer.WithMetrics(registry)
 	var savedStore *savedapplications.CosmosStore
 	if savedContainer != nil {
 		savedStore = savedapplications.NewCosmosStore(savedContainer)
@@ -149,6 +165,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	offerCodesContainer.WithMetrics(registry)
 	var offerStore *offercodes.CosmosStore
 	if offerCodesContainer != nil {
 		offerStore = offercodes.NewCosmosStore(offerCodesContainer)
@@ -166,6 +183,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	appleNotificationsContainer.WithMetrics(registry)
 	var appleNotifStore *subscriptions.CosmosNotificationStore
 	if appleNotificationsContainer != nil {
 		appleNotifStore = subscriptions.NewCosmosNotificationStore(appleNotificationsContainer, time.Now)
@@ -187,8 +205,15 @@ func main() {
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
 	if cfg.Auth0M2MConfigured() {
-		manager = profiles.NewAuth0Client(
+		// Wrap the transport so Auth0 token/PATCH/DELETE calls emit OTel client
+		// spans (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands
+		// in server.address.
+		auth0HTTP := platform.WrapHTTPClient(
 			&http.Client{Timeout: 30 * time.Second},
+			func(string, *http.Request) string { return "Auth0 token" },
+		)
+		manager = profiles.NewAuth0Client(
+			auth0HTTP,
 			"https://"+cfg.Auth0Domain,
 			cfg.Auth0M2MClientID,
 			cfg.Auth0M2MClientSecret,
@@ -200,7 +225,7 @@ func main() {
 	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
 	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, registry, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

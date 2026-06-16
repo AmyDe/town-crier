@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 const (
@@ -99,6 +101,11 @@ func NewClient(connectionString string, logger *slog.Logger, now func() time.Tim
 		return nil, err
 	}
 	httpClient := &http.Client{Timeout: requestTimeout}
+	// Wrap the transport so every ACS send/poll emits an OTel client span
+	// (Type=HTTP in AppDependencies) named "ACS email send". The ACS host lands
+	// in server.address; the static span name keeps cardinality low (no recipient
+	// or operation ID in the name).
+	httpClient = platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "ACS email send" })
 	return newClientWithCreds(creds, httpClient, logger, now), nil
 }
 

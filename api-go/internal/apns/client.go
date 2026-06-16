@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 const (
@@ -65,6 +67,11 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 		Transport: transport,
 		Timeout:   requestTimeout,
 	}
+	// Wrap the transport so every APNs push emits an OTel client span
+	// (Type=HTTP in AppDependencies) named "APNs push". api.push.apple.com lands
+	// in server.address; the static span name keeps cardinality low (no per-device
+	// token in the name).
+	httpClient = platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "APNs push" })
 	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
 }
 

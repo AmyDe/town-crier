@@ -72,6 +72,7 @@ func NearbyRoutes(
 	newID func() string,
 	now func() time.Time,
 	logger *slog.Logger,
+	opts ...Option,
 ) {
 	h := &handler{
 		store:    store,
@@ -83,6 +84,9 @@ func NearbyRoutes(
 		newID:    newID,
 		now:      now,
 		logger:   logger,
+	}
+	for _, opt := range opts {
+		opt(h)
 	}
 	mux.HandleFunc("POST /v1/me/watch-zones", h.create)
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications", h.applications)
@@ -191,6 +195,9 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	if err := h.store.Save(r.Context(), zone); err != nil {
 		h.serverError(w, r, "save watch zone", err)
 		return
+	}
+	if h.metrics != nil {
+		h.metrics.WatchZoneCreated(r.Context())
 	}
 
 	nearby, err := h.apps.FindNearby(

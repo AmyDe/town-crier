@@ -47,9 +47,9 @@ func TestTraceCosmosOp_RecordsClientSpan(t *testing.T) {
 	c := &CosmosContainer{name: "Users", accountHost: "acct.documents.azure.com"}
 
 	called := false
-	err := traceCosmosOp(context.Background(), c, "ReadItem", func(context.Context) error {
+	err := traceCosmosOp(context.Background(), c, "ReadItem", func(context.Context) (float64, error) {
 		called = true
-		return nil
+		return 0, nil
 	})
 	if err != nil {
 		t.Fatalf("traceCosmosOp returned error: %v", err)
@@ -103,8 +103,8 @@ func TestTraceCosmosOp_RecordsError(t *testing.T) {
 	c := &CosmosContainer{name: "NotificationState", accountHost: "acct.documents.azure.com"}
 	sentinel := errors.New("cosmos timeout")
 
-	err := traceCosmosOp(context.Background(), c, "QueryItems", func(context.Context) error {
-		return sentinel
+	err := traceCosmosOp(context.Background(), c, "QueryItems", func(context.Context) (float64, error) {
+		return 0, sentinel
 	})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("traceCosmosOp must propagate the operation error: got %v", err)
@@ -146,9 +146,9 @@ func TestTraceCosmosOp_LinksChildSpan(t *testing.T) {
 	parentCtx, parent := tracer.Start(context.Background(), "request")
 
 	var childTraceID oteltrace.TraceID
-	err := traceCosmosOp(parentCtx, c, "UpsertItem", func(ctx context.Context) error {
+	err := traceCosmosOp(parentCtx, c, "UpsertItem", func(ctx context.Context) (float64, error) {
 		childTraceID = oteltrace.SpanContextFromContext(ctx).TraceID()
-		return nil
+		return 0, nil
 	})
 	if err != nil {
 		t.Fatalf("traceCosmosOp: %v", err)
