@@ -582,8 +582,15 @@ func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0De
 		logger.Info("auth0 m2m unconfigured; dormant cleanup will skip Auth0 user deletion (NoOp)")
 		return profiles.NoOpAuth0Client{}
 	}
-	return profiles.NewAuth0Client(
+	// Wrap the transport so Auth0 token/DELETE calls emit OTel client spans
+	// (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands in
+	// server.address.
+	auth0HTTP := platform.WrapHTTPClient(
 		&http.Client{Timeout: 30 * time.Second},
+		func(string, *http.Request) string { return "Auth0 token" },
+	)
+	return profiles.NewAuth0Client(
+		auth0HTTP,
 		"https://"+cfg.Auth0Domain,
 		cfg.Auth0M2MClientID,
 		cfg.Auth0M2MClientSecret,

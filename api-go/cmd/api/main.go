@@ -205,8 +205,15 @@ func main() {
 	// matching .NET's conditional IAuth0ManagementClient registration.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
 	if cfg.Auth0M2MConfigured() {
-		manager = profiles.NewAuth0Client(
+		// Wrap the transport so Auth0 token/PATCH/DELETE calls emit OTel client
+		// spans (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands
+		// in server.address.
+		auth0HTTP := platform.WrapHTTPClient(
 			&http.Client{Timeout: 30 * time.Second},
+			func(string, *http.Request) string { return "Auth0 token" },
+		)
+		manager = profiles.NewAuth0Client(
+			auth0HTTP,
 			"https://"+cfg.Auth0Domain,
 			cfg.Auth0M2MClientID,
 			cfg.Auth0M2MClientSecret,

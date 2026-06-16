@@ -20,7 +20,10 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // defaultPageSize is PlanIt's page size; a full page (>= this many records) is
@@ -113,6 +116,10 @@ type Options struct {
 	// Metrics records towncrier.planit.http_errors. nil leaves the counter dark
 	// (the default for the many client tests that don't assert on metrics).
 	Metrics httpErrorRecorder
+	// TraceOptions are extra otelhttp options threaded into the wrapped transport
+	// (e.g. WithTracerProvider in hermetic tests). Production leaves this nil and
+	// relies on the global provider installed by SetupTelemetry.
+	TraceOptions []otelhttp.Option
 }
 
 // FetchPageResult is one page of a PlanIt fetch: the parsed applications, the
@@ -154,6 +161,10 @@ func NewClient(opts Options) (*Client, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
+	// Wrap the transport so every PlanIt GET emits an OTel client span
+	// (Type=HTTP in AppDependencies) named "PlanIt search". The host lands in
+	// server.address; the static span name keeps cardinality low.
+	hc = platform.WrapHTTPClient(hc, func(string, *http.Request) string { return "PlanIt search" }, opts.TraceOptions...)
 	sleep := opts.Sleep
 	if sleep == nil {
 		sleep = contextSleep
