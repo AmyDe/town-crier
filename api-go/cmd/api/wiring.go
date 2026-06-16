@@ -181,6 +181,13 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 			middleware.Recover(logger)(authed),
 		),
 	)
+	// RouteSpan names the request span after the matched route and records the
+	// HTTP status code on it (tc-r8eo). It must run inside the otelhttp span — so
+	// the span it decorates is the request span — yet outermost among our own
+	// middleware so it observes the final status. It resolves the pattern from the
+	// mux directly (the same lookup RequireAuth uses), which is why it takes mux
+	// rather than relying on r.Pattern (lost across the chain's context copies).
+	chain = middleware.RouteSpan(mux)(chain)
 	// otelhttp is the outermost wrapper so its span covers the whole request,
 	// including the CORS, error-envelope and panic-recovery middleware. When
 	// telemetry is disabled (no OTLP endpoint) the global no-op TracerProvider
