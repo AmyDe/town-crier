@@ -1,6 +1,10 @@
 package profiles
 
-import "time"
+import (
+	"cmp"
+	"slices"
+	"time"
+)
 
 // dotnetTime marshals like System.Text.Json's DateTimeOffset: ISO 8601 with a
 // numeric UTC offset ("2099-12-31T00:00:00+00:00"), never Go's RFC 3339 "Z"
@@ -126,6 +130,13 @@ func newExportUserData(p *UserProfile) exportUserData {
 			DecisionEmail:       z.DecisionEmail,
 		})
 	}
+	// Sort by zoneId so the export is deterministic: ZonePreferences is a Go map,
+	// whose iteration order is randomised, which made the array order flake
+	// request-to-request (tc-zgnt). A stable order keeps successive exports
+	// byte-identical.
+	slices.SortFunc(zones, func(a, b exportedZonePreference) int {
+		return cmp.Compare(a.ZoneID, b.ZoneID)
+	})
 	return exportUserData{
 		UserID: p.UserID,
 		Email:  p.Email,

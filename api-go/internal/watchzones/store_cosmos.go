@@ -32,8 +32,11 @@ type CosmosItems interface {
 }
 
 // listByUserQuery lists a user's zones. It is scoped to the userId partition, so
-// it never fans out cross-partition — matching .NET's CosmosWatchZoneRepository.
-const listByUserQuery = "SELECT * FROM c WHERE c.userId = @userId"
+// it never fans out cross-partition. The ORDER BY c.id makes the result
+// deterministic: without it Cosmos returns the zones in an arbitrary order per
+// request, which flaked the GDPR export's zonePreferences array order (tc-zgnt).
+// The document id equals the zone id, so this orders by zone id.
+const listByUserQuery = "SELECT * FROM c WHERE c.userId = @userId ORDER BY c.id"
 
 // CosmosStore reads and writes watch zones in the WatchZones container. It holds
 // only the consumer-side item interface, so no SDK type leaks past it.
