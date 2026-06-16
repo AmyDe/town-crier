@@ -484,8 +484,8 @@ func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("delete status: got %d, want 500", rec.Code)
 	}
-	if len(calls) != 5 {
-		t.Errorf("all child containers must be erased before the auth0 step, got %v", calls)
+	if len(calls) != 6 {
+		t.Errorf("all child containers and the offer-code anonymise must run before the auth0 step, got %v", calls)
 	}
 	if len(store.deleted) != 1 {
 		t.Errorf("profile must be erased before the auth0 step, got %v", store.deleted)
