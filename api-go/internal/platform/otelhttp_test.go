@@ -125,7 +125,7 @@ func TestWrapHTTPClient_NilTransportUsesDefault(t *testing.T) {
 func splitHostPortTest(rawURL string) (host, port string, ok bool) {
 	const prefix = "http://"
 	hp := rawURL[len(prefix):]
-	for i := 0; i < len(hp); i++ {
+	for i := range len(hp) {
 		if hp[i] == ':' {
 			return hp[:i], hp[i+1:], true
 		}
