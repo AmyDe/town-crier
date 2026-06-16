@@ -8,11 +8,37 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
+
+func TestDeploymentEnvironment(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		cosmosDB string
+		want     string
+	}{
+		{"prod database", "town-crier-prod", "prod"},
+		{"dev database", "town-crier-dev", "dev"},
+		{"empty database", "", ""},
+		{"unprefixed name omits environment", "somethingelse", ""},
+		{"prefix only yields empty env", "town-crier-", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := deploymentEnvironment(tc.cosmosDB); got != tc.want {
+				t.Errorf("deploymentEnvironment(%q) = %q, want %q", tc.cosmosDB, got, tc.want)
+			}
+		})
+	}
+}
 
 // restoreOTelGlobals captures the process-global TracerProvider, propagator,
 // LoggerProvider and MeterProvider and reinstates them when the test ends, so a
@@ -30,6 +56,56 @@ func restoreOTelGlobals(t *testing.T) {
 		global.SetLoggerProvider(lp)
 		otel.SetMeterProvider(mp)
 	})
+}
+
+// resourceHasAttr reports whether the resource carries an attribute with the
+// given key, and returns its string value.
+func resourceHasAttr(res *resource.Resource, key attribute.Key) (string, bool) {
+	for _, kv := range res.Attributes() {
+		if kv.Key == key {
+			return kv.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+func TestNewTelemetryResource_TagsDeploymentEnvironment(t *testing.T) {
+	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "town-crier-prod")
+	if err != nil {
+		t.Fatalf("newTelemetryResource: %v", err)
+	}
+
+	const envKey = attribute.Key("deployment.environment")
+	got, ok := resourceHasAttr(res, envKey)
+	if !ok {
+		t.Fatalf("resource missing %q attribute; attributes: %v", envKey, res.Attributes())
+	}
+	if got != "prod" {
+		t.Errorf("deployment.environment = %q, want %q", got, "prod")
+	}
+
+	// service.name must remain explicitly set and unchanged.
+	svc, ok := resourceHasAttr(res, semconv.ServiceNameKey)
+	if !ok || svc != "town-crier-api-go" {
+		t.Errorf("service.name = %q (present=%v), want %q", svc, ok, "town-crier-api-go")
+	}
+}
+
+func TestNewTelemetryResource_OmitsEnvironmentWhenCosmosDBUnset(t *testing.T) {
+	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "")
+	if err != nil {
+		t.Fatalf("newTelemetryResource: %v", err)
+	}
+
+	const envKey = attribute.Key("deployment.environment")
+	if got, ok := resourceHasAttr(res, envKey); ok {
+		t.Errorf("expected no deployment.environment attribute when COSMOS_DATABASE unset, got %q", got)
+	}
+
+	// service.name must still be present.
+	if svc, ok := resourceHasAttr(res, semconv.ServiceNameKey); !ok || svc != "town-crier-api-go" {
+		t.Errorf("service.name = %q (present=%v), want %q", svc, ok, "town-crier-api-go")
+	}
 }
 
 func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {

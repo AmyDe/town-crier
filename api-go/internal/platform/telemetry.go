@@ -26,9 +26,11 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -43,6 +45,47 @@ import (
 
 // defaultServiceName labels traces when OTEL_SERVICE_NAME is unset.
 const defaultServiceName = "town-crier-api-go"
+
+// cosmosDatabasePrefix is the shared prefix on the Cosmos database names
+// (town-crier-prod / town-crier-dev); the suffix is the deployment environment.
+const cosmosDatabasePrefix = "town-crier-"
+
+// deploymentEnvironment derives the deployment.environment resource attribute
+// value from the COSMOS_DATABASE name. "town-crier-prod" -> "prod",
+// "town-crier-dev" -> "dev". An empty database (local dev, tests) or any name
+// without the expected "town-crier-" prefix returns "" so the caller omits the
+// attribute rather than emitting deployment.environment="".
+func deploymentEnvironment(cosmosDB string) string {
+	if cosmosDB == "" {
+		return ""
+	}
+	env, ok := strings.CutPrefix(cosmosDB, cosmosDatabasePrefix)
+	if !ok {
+		return ""
+	}
+	return env
+}
+
+// newTelemetryResource builds the OTel resource shared by the trace, log and
+// metric providers. service.name is set explicitly (Azure Monitor maps it to
+// AppRoleName); it deliberately keeps the current town-crier-{api,worker}-go
+// role names so existing Go-role dashboards keep matching. deployment.environment
+// is added from the COSMOS_DATABASE name so prod and dev signal separate as a
+// dimension instead of commingling under one role (tc-yqyh); it is omitted
+// entirely when the environment can't be derived (local dev, tests). WithFromEnv
+// is applied last so an infra-injected OTEL_RESOURCE_ATTRIBUTES (e.g.
+// deployment.environment=prod) can override these explicit values without a code
+// change.
+func newTelemetryResource(ctx context.Context, serviceName, cosmosDB string) (*resource.Resource, error) {
+	attrs := []attribute.KeyValue{semconv.ServiceName(serviceName)}
+	if env := deploymentEnvironment(cosmosDB); env != "" {
+		attrs = append(attrs, semconv.DeploymentEnvironment(env))
+	}
+	return resource.New(ctx,
+		resource.WithAttributes(attrs...),
+		resource.WithFromEnv(),
+	)
+}
 
 // noopShutdown is returned when telemetry is disabled — there is nothing to flush.
 func noopShutdown(context.Context) error { return nil }
@@ -75,9 +118,7 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	if serviceName == "" {
 		serviceName = defaultServiceName
 	}
-	res, err := resource.New(ctx,
-		resource.WithAttributes(semconv.ServiceName(serviceName)),
-	)
+	res, err := newTelemetryResource(ctx, serviceName, os.Getenv("COSMOS_DATABASE"))
 	if err != nil {
 		return nil, err
 	}
