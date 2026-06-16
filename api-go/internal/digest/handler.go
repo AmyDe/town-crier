@@ -152,9 +152,11 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 		}
 		if wantsEmail {
 			// The weekly cycle does not track emailSent (it re-derives the digest from
-			// the look-back window each run), so a failed send is logged inside
-			// sendDigestEmail and we simply move on to the next user.
-			_ = h.sendDigestEmail(ctx, profile.UserID, *profile.Email, notifs)
+			// the look-back window each run), so a failed send is already logged inside
+			// sendDigestEmail; we just move on to the next user.
+			if err := h.sendDigestEmail(ctx, profile.UserID, *profile.Email, notifs); err != nil {
+				continue
+			}
 		}
 	}
 	return nil
