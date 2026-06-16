@@ -98,8 +98,11 @@ func TestRouteSpan_NamesSpanAfterMatchedRoute(t *testing.T) {
 }
 
 // TestRouteSpan_RecordsStatusCode confirms the real HTTP status is recorded onto
-// the span as http.response.status_code for both a 2xx and an error path, so
-// Azure Monitor's ResultCode reflects the HTTP status rather than the span code.
+// the span as both the stable http.response.status_code and the legacy
+// http.status_code, for both a 2xx and an error path. Azure Monitor maps
+// AppRequests.ResultCode from the LEGACY http.status_code (pre-1.21 semconv), not
+// the stable key, so the legacy attribute must carry the same numeric status for
+// status-keyed ResultCode dashboards and 4xx/5xx alerts to fire.
 func TestRouteSpan_RecordsStatusCode(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -118,6 +121,13 @@ func TestRouteSpan_RecordsStatusCode(t *testing.T) {
 			}
 			if int(got) != tc.status {
 				t.Errorf("http.response.status_code = %d, want %d", got, tc.status)
+			}
+			legacy, ok := attrInt(span, "http.status_code")
+			if !ok {
+				t.Fatalf("legacy http.status_code attribute missing")
+			}
+			if int(legacy) != tc.status {
+				t.Errorf("http.status_code = %d, want %d", legacy, tc.status)
 			}
 		})
 	}
@@ -139,5 +149,8 @@ func TestRouteSpan_UnmatchedRequestFallsBackGracefully(t *testing.T) {
 	}
 	if got, ok := attrInt(span, "http.response.status_code"); !ok || int(got) != http.StatusNotFound {
 		t.Errorf("http.response.status_code = %d (ok=%v), want 404", got, ok)
+	}
+	if got, ok := attrInt(span, "http.status_code"); !ok || int(got) != http.StatusNotFound {
+		t.Errorf("legacy http.status_code = %d (ok=%v), want 404", got, ok)
 	}
 }
