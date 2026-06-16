@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
@@ -73,7 +74,16 @@ func RouteSpan(matcher routeMatcher) func(http.Handler) http.Handler {
 			sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(sw, r)
 
-			span.SetAttributes(semconv.HTTPResponseStatusCode(sw.status))
+			// Set both the stable semconv key and the legacy http.status_code (pre-1.21
+		// semconv). Azure Monitor maps AppRequests.ResultCode from the LEGACY
+		// http.status_code, NOT the stable http.response.status_code, so without the
+		// legacy attribute ResultCode shows only the bare span StatusCode (0/2) and
+		// 4xx/5xx alerts keyed on ResultCode never fire (tc-oml9). Do not "clean up"
+		// this apparent duplication — both keys are load-bearing.
+		span.SetAttributes(
+			semconv.HTTPResponseStatusCode(sw.status),
+			attribute.Int("http.status_code", sw.status),
+		)
 			// Mirror semconv server semantics: a 5xx is a request error. ErrorBody
 			// also flags 5xx, but it does not run for the unmatched-route 404/anonymous
 			// paths that bypass it, so set it here too. SetStatus is idempotent and the
