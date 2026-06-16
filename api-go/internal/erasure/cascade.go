@@ -29,6 +29,16 @@ type ChildDeleter interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
+// RedemptionAnonymiser scrubs the redeemer back-reference from every offer code
+// the user redeemed (UK GDPR Art. 17), without deleting the code document — the
+// code belongs to the admin campaign and its consumed state must survive so it
+// can't be re-redeemed. The offercodes.CosmosStore satisfies it directly. Unlike
+// the per-user child containers, the OfferCodes container is keyed by code, not
+// by user, so this step is a cross-partition scrub rather than a delete.
+type RedemptionAnonymiser interface {
+	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
+}
+
 // ProfileDeleter erases the user profile document itself. The profile store's
 // Delete satisfies it.
 type ProfileDeleter interface {
@@ -52,6 +62,7 @@ type Deleters struct {
 	SavedApplications   ChildDeleter
 	DeviceRegistrations ChildDeleter
 	NotificationState   ChildDeleter
+	OfferCodes          RedemptionAnonymiser
 	Profile             ProfileDeleter
 	Auth0               Auth0Deleter
 	ProfileAbsent       func(error) bool
@@ -67,14 +78,20 @@ func (d Deleters) profileAbsent(err error) bool {
 // Cascade runs the full GDPR Art. 17 erasure for one user in the fixed safety
 // order: every per-user child container first (notifications, watch zones, saved
 // applications, device registrations, notification-state watermark), then the
-// profile document, then — last — the Auth0 user.
+// offer-code redemption back-reference is anonymised, then the profile document,
+// then — last — the Auth0 user.
 //
-// Ordering is the safety contract: child records are removed before the profile,
-// so a mid-cascade failure leaves the profile present (the account stays
-// retryable rather than half-erased); Auth0 is deleted last so an Auth0
+// Ordering is the safety contract: every personal-data scrub runs before the
+// profile, so a mid-cascade failure leaves the profile present (the account
+// stays retryable rather than half-erased); Auth0 is deleted last so an Auth0
 // Management-API failure can never strand un-erased Cosmos data. A profile delete
 // that reports the profile is already gone (per Deleters.ProfileAbsent) is
 // tolerated and the cascade proceeds to Auth0.
+//
+// The offer-code step anonymises rather than deletes: the OfferCodes container
+// holds admin-issued campaign artifacts keyed by code, so on erasure the
+// redeemer back-reference (redeemedByUserId + redeemedAt) is scrubbed while the
+// code's consumed state is kept (bead tc-5jyh).
 func Cascade(ctx context.Context, userID string, d Deleters) error {
 	if err := d.Notifications.DeleteAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("delete notifications: %w", err)
@@ -90,6 +107,9 @@ func Cascade(ctx context.Context, userID string, d Deleters) error {
 	}
 	if err := d.NotificationState.DeleteAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("delete notification state: %w", err)
+	}
+	if err := d.OfferCodes.AnonymiseRedemptionsByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("anonymise offer-code redemptions: %w", err)
 	}
 	if err := d.Profile.Delete(ctx, userID); err != nil && !d.profileAbsent(err) {
 		return fmt.Errorf("delete profile: %w", err)
