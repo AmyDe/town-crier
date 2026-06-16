@@ -36,7 +36,7 @@ The JSON output from `az monitor log-analytics query` is a flat JSON array (one 
 
 | App* table | What it contains | Key columns |
 |---|---|---|
-| `AppRequests` | Inbound HTTP requests served by the app | `TimeGenerated`, `Name` (route), `ResultCode`, `DurationMs`, `Url`, `OperationId`, `AppRoleName`, `AppRoleInstance`, `Success`, `Properties` |
+| `AppRequests` | Inbound HTTP requests served by the app. **⚠️ For Go, `ResultCode` is span-status (0/2), not the HTTP code, and `Success` misses 4xx — use `Properties['http.status_code']`; see the status-field callout below.** | `TimeGenerated`, `Name` (route), `ResultCode`, `DurationMs`, `Url`, `OperationId`, `AppRoleName`, `AppRoleInstance`, `Success`, `Properties` |
 | `AppDependencies` | Outbound calls (HTTP, Cosmos, ServiceBus, InProc spans) | `TimeGenerated`, `Type`, `Target`, `Name`, `DurationMs`, `Success`, `ResultCode`, `Data`, `OperationId`, `AppRoleName` |
 | `AppExceptions` | Captured exceptions | `TimeGenerated`, `ExceptionType`, `OuterMessage`, `OperationId`, `AppRoleName` |
 | `AppTraces` | ILogger output | `TimeGenerated`, `Message`, `SeverityLevel` (0=Verbose..4=Critical), `OperationId`, `AppRoleName`, `Properties`. **Basic Logs tier in this workspace** — see note below |
@@ -60,6 +60,16 @@ The JSON output from `az monitor log-analytics query` is a flat JSON array (one 
 >
 > **Do NOT file a bead about empty `AppMetrics`/`AppPerformanceCounters`, missing `towncrier.*` business metrics, or missing `http.client.request.duration` metrics for the Go roles.** That is the deferred-by-design state recorded in **tc-0rt1**; "fixing" it needs an OTel Collector sidecar (ongoing cost, +1 container per app/job) or an archived SDK — neither justified pre-revenue. Business KPIs (polling, RU, throttles) are observable via `AppTraces`/logs and `AppDependencies`, not `AppMetrics`. Re-open tc-0rt1 only if a GA in-process Go Azure Monitor metrics exporter ships or the cost trade-off changes. The metric-oriented phases below (4b–4e) are retained as templates for that future; **today they return empty for the Go roles and that is expected.**
 
+> **⚠️ HTTP status for Go lives in `Properties`, NOT in `ResultCode`/`Success` — using the wrong field silently reports zero errors.**
+>
+> The ACA managed OTel agent derives `AppRequests.ResultCode` from the OTel **span Status**, not the HTTP status: `ResultCode = "0"` for every 2xx/3xx/**4xx** (span Unset) and `"2"` for 5xx (span Error). `Success` follows the same span Status, so a **4xx shows `Success = true`**. Proven on prod probe rows (2026-06-16, tc-oml9/tc-3ovj): a 401 had `ResultCode="0"`, `Success=true`, while `Properties['http.status_code']="401"`.
+>
+> **Consequences — do NOT key Go error detection on `ResultCode`/`Success`:**
+> - `countif(ResultCode startswith "4" or "5")` matches **nothing** for Go → a false "all healthy".
+> - `Success == false` catches only 5xx, never 4xx.
+> - **Use the real HTTP status from `Properties` instead:** `extend httpStatus = toint(Properties['http.status_code'])` then filter on `httpStatus` (e.g. `httpStatus >= 500`, `httpStatus between (400 .. 499)`). `http.response.status_code` is also present (same value). The numeric HTTP status is also visible in the route `Name` context but only `Properties` carries it as a value.
+> - The Phase 1/5 query templates below already apply this pattern. This is the same ACA-agent translation limitation as tc-0rt1 (metrics) — not fixable in-app without the deferred sidecar; tc-oml9 confirmed adding the `http.status_code` attribute does not change `ResultCode`.
+
 Notes on data flow:
 
 - Outbound calls land in `AppDependencies` (Cosmos, ServiceBus, PlanIt, Auth0, InProc). Note: the legacy cross-reference against an `AppMetrics` `http.client.request.duration` row **no longer applies** — `AppMetrics` is empty for the Go roles (see the availability callout above). Use `AppDependencies` alone for dependency health.
@@ -81,10 +91,12 @@ Notes on data flow:
 
 Town Crier's roles (Go backend, Phase 3 onward):
 
-| AppRoleName | What it is |
+| AppRoleName (actual value) | What it is |
 |---|---|
-| `town-crier-api-go` | The Go HTTP API (`api-go/cmd/api/`, container is `ca-town-crier-api-go-prod`; `OTEL_SERVICE_NAME=town-crier-api-go` set in `infra/EnvironmentStack.cs`) |
-| `town-crier-worker-go` | The Go background worker — polling/digest/dormant-cleanup (Container App Job, schedule-driven; `OTEL_SERVICE_NAME=town-crier-worker-go`) |
+| `cae-town-crier-shared.town-crier-api-go` | The Go HTTP API (`api-go/cmd/api/`, container `ca-town-crier-api-go-prod`; `OTEL_SERVICE_NAME=town-crier-api-go` in `infra/EnvironmentStack.cs`) |
+| `cae-town-crier-shared.town-crier-worker-go` | The Go background worker — polling/digest/dormant-cleanup (Container App Job, schedule-driven; `OTEL_SERVICE_NAME=town-crier-worker-go`) |
+
+> **⚠️ The ACA agent prefixes `AppRoleName` with the Container Apps Environment name** (`cae-town-crier-shared.`), so the stored value is `cae-town-crier-shared.town-crier-api-go`, NOT the bare `OTEL_SERVICE_NAME`. **Filter with `AppRoleName has 'town-crier-api-go'` (or `contains`), never `== 'town-crier-api-go'`** — exact-match returns zero rows. Verified 2026-06-16 (tc-3ovj).
 
 If you see `unknown_service:` as a prefix on any role, that IS a finding (means `OTEL_SERVICE_NAME` was unset and the binary fell back to its default service name).
 
@@ -134,10 +146,11 @@ Get a high-level picture before diving in. This tells you whether the system is 
 ```kql
 AppRequests
 | where TimeGenerated > ago(24h)
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP — use Properties
 | summarize
     totalRequests = count(),
-    failedRequests = countif(ResultCode startswith "5"),
-    clientErrors = countif(ResultCode startswith "4"),
+    failedRequests = countif(httpStatus >= 500),
+    clientErrors = countif(httpStatus between (400 .. 499)),
     avgDuration = avg(DurationMs),
     p99Duration = percentile(DurationMs, 99)
 | extend errorRate = round(100.0 * failedRequests / totalRequests, 2)
@@ -149,10 +162,11 @@ let analysisWindow = ago(24h);
 let baselineStart = ago(8d);
 AppRequests
 | where TimeGenerated > baselineStart
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: use Properties, not ResultCode
 | extend period = iff(TimeGenerated > analysisWindow, "current", "baseline")
 | summarize
     count_ = count(),
-    errors = countif(ResultCode startswith "5"),
+    errors = countif(httpStatus >= 500),
     avgDuration = avg(DurationMs),
     p99Duration = percentile(DurationMs, 99)
     by period
@@ -222,7 +236,8 @@ A meaningful regression: p99 increased by more than 50% AND the endpoint handles
 ```kql
 AppRequests
 | where TimeGenerated > ago(24h) and DurationMs > 5000
-| project TimeGenerated, Name, DurationMs, ResultCode, OperationId
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP
+| project TimeGenerated, Name, DurationMs, httpStatus, OperationId
 | order by DurationMs desc
 | take 20
 ```
@@ -354,7 +369,7 @@ union AppRequests, AppMetrics, AppPerformanceCounters, AppDependencies, AppExcep
 | order by count_ desc
 ```
 
-Expected roles: `town-crier-api-go` (API), `town-crier-worker-go` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `OTEL_SERVICE_NAME` is unset on the corresponding Container App in `infra/EnvironmentStack.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
+Expected roles: `cae-town-crier-shared.town-crier-api-go` (API), `cae-town-crier-shared.town-crier-worker-go` (jobs) — env-name-prefixed (see Service Identity). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `OTEL_SERVICE_NAME` is unset on the corresponding Container App in `infra/EnvironmentStack.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
 
 ### Phase 5: User Frustration Signals
 
@@ -363,8 +378,10 @@ These patterns indicate users are having a bad time, even if the system technica
 **5a. Repeated Client Errors (retry storms / confused users)**
 ```kql
 AppRequests
-| where TimeGenerated > ago(24h) and ResultCode startswith "4"
-| summarize errorCount = count() by Name, ResultCode
+| where TimeGenerated > ago(24h)
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP
+| where httpStatus between (400 .. 499)
+| summarize errorCount = count() by Name, httpStatus
 | where errorCount > 3
 | order by errorCount desc
 ```
@@ -387,8 +404,8 @@ Then for each slow operation, trace the full journey:
 
 ```kql
 union
-  (AppRequests    | where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "request",    Name, DurationMs, ResultCode, Success = (ResultCode startswith "2")),
-  (AppDependencies| where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "dependency", Name, DurationMs, ResultCode, Success)
+  (AppRequests    | where OperationId == "OPERATION_ID" | extend httpStatus = toint(Properties['http.status_code']) | project TimeGenerated, kind = "request",    Name, DurationMs, httpStatus, ok = (httpStatus < 400)),
+  (AppDependencies| where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "dependency", Name, DurationMs, httpStatus = toint(ResultCode), ok = Success)
 | order by TimeGenerated asc
 ```
 
