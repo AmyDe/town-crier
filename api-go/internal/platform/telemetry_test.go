@@ -10,21 +10,25 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// restoreOTelGlobals captures the process-global TracerProvider, propagator and
-// LoggerProvider and reinstates them when the test ends, so a test that installs
-// a real SDK provider doesn't bleed into the rest of the suite.
+// restoreOTelGlobals captures the process-global TracerProvider, propagator,
+// LoggerProvider and MeterProvider and reinstates them when the test ends, so a
+// test that installs a real SDK provider doesn't bleed into the rest of the
+// suite.
 func restoreOTelGlobals(t *testing.T) {
 	t.Helper()
 	tp := otel.GetTracerProvider()
 	prop := otel.GetTextMapPropagator()
 	lp := global.GetLoggerProvider()
+	mp := otel.GetMeterProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(prop)
 		global.SetLoggerProvider(lp)
+		otel.SetMeterProvider(mp)
 	})
 }
 
@@ -57,6 +61,11 @@ func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {
 	// slog records are dropped (only stdout JSON appears).
 	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		t.Error("an SDK LoggerProvider was installed while telemetry is disabled")
+	}
+	// The global MeterProvider must stay the no-op default so towncrier.*
+	// instruments record nothing locally (tc-21np).
+	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); ok {
+		t.Error("an SDK MeterProvider was installed while telemetry is disabled")
 	}
 
 	if err := shutdown(context.Background()); err != nil {
@@ -108,6 +117,12 @@ func TestSetupTelemetry_EnabledWhenEndpointSet(t *testing.T) {
 	// bridge to OTel logs (-> AppTraces) — tc-8x8g.
 	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); !ok {
 		t.Errorf("expected an SDK LoggerProvider installed as global, got %T", global.GetLoggerProvider())
+	}
+	// SetupTelemetry must also install an SDK MeterProvider so towncrier.*
+	// instruments (and Go runtime + http.client metrics) flow to AppMetrics —
+	// tc-21np.
+	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); !ok {
+		t.Errorf("expected an SDK MeterProvider installed as global, got %T", otel.GetMeterProvider())
 	}
 
 	// Shutdown must be callable without hanging even though no collector exists.

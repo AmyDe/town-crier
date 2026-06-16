@@ -28,6 +28,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
+	"github.com/AmyDe/town-crier/api-go/internal/metrics"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
@@ -39,6 +40,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"github.com/AmyDe/town-crier/api-go/internal/worker"
+	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -87,6 +89,13 @@ func run() int {
 		}
 	}()
 
+	// The business-metric registry is built from the global MeterProvider
+	// SetupTelemetry just installed (a no-op provider when telemetry is disabled).
+	// It is threaded through the builders below so the poll handler / orchestrator,
+	// the PlanIt client, the notification dispatchers and every Cosmos container
+	// emit their towncrier.* metrics (tc-21np).
+	registry := metrics.New(otel.Meter(metrics.MeterName))
+
 	// The Service Bus client (and thus the bootstrapper and the poll-sb
 	// orchestrator) is built only when the job carries Service Bus config. Jobs
 	// that don't touch Service Bus (digest, hourly-digest, dormant-cleanup) leave
@@ -122,7 +131,7 @@ func run() int {
 	// the "no Cosmos" case leaves it nil — assigning a typed-nil *digest.Handler
 	// would make the interface non-nil and defeat worker.Run's nil guard.
 	var digester worker.DigestRunner
-	handler, err := buildDigester(cfg, logger)
+	handler, err := buildDigester(cfg, registry, logger)
 	if err != nil {
 		logger.Error("build digest handler", "error", err)
 		return 1
@@ -137,7 +146,7 @@ func run() int {
 	// worker.Run's nil guard). The Auth0 deleter falls back to a no-op when the M2M
 	// credentials are absent, so a Cosmos-only job still boots cleanly.
 	var dormantRunner worker.DormantRunner
-	dormantHandler, err := buildDormant(cfg, logger)
+	dormantHandler, err := buildDormant(cfg, registry, logger)
 	if err != nil {
 		logger.Error("build dormant cleanup handler", "error", err)
 		return 1
@@ -152,7 +161,7 @@ func run() int {
 	// run rather than crashing. Declared as the interface so the "unconfigured"
 	// case stays a nil interface value (a typed-nil adapter would defeat the guard).
 	var poller worker.PollOrchestrator
-	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, logger)
+	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, logger)
 	if err != nil {
 		logger.Error("build poll-sb orchestrator", "error", err)
 		return 1
@@ -171,7 +180,7 @@ func run() int {
 // (nil, nil) when Service Bus or Cosmos config is absent, so poll-sb refuses to
 // run rather than nil-panicking. The cycle budget (replicaTimeout − grace) and
 // the handler/lease budgets all come from config.
-func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
+func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
 	if sbClient == nil || cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent SB/Cosmos config is a valid "no poller" state, not an error
 	}
@@ -186,6 +195,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 			InitialBackoff:   secondsToDuration(cfg.PlanItInitialBackoffSeconds),
 			RateLimitBackoff: secondsToDuration(cfg.PlanItRateLimitBackoffSeconds),
 		},
+		Metrics: registry,
 	})
 	if err != nil {
 		return nil, err
@@ -195,18 +205,22 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 	if err != nil {
 		return nil, err
 	}
+	appsContainer.WithMetrics(registry)
 	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosPollStateContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	stateContainer.WithMetrics(registry)
 	leasesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosLeasesContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	leasesContainer.WithMetrics(registry)
 	zonesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	zonesContainer.WithMetrics(registry)
 
 	stateStore := polling.NewPollStateStore(stateContainer)
 	leaseStore := polling.NewLeaseStore(leaseItemsAdapter{leasesContainer}, time.Now)
@@ -234,13 +248,15 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 		time.Now,
 		logger,
 	)
+	// Record the towncrier.polling.* per-cycle / per-authority KPIs (tc-21np).
+	handler.WithMetrics(registry)
 
 	// Wire the poll-path notification fan-out: each upserted application drives a
 	// decision-event dispatch (on a non-decision -> decision transition) and a
 	// watch-zone notification fan-out, matching .NET PollPlanItCommandHandler.
 	// This is the CUTOVER-BLOCKER fan-out (bead tc-uc2p) — without it the
 	// Notifications container stays empty and every alert/digest breaks.
-	if err := wirePollFanOut(cfg, handler, zoneStore, logger); err != nil {
+	if err := wirePollFanOut(cfg, handler, zoneStore, registry, logger); err != nil {
 		return nil, err
 	}
 
@@ -264,6 +280,8 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 		time.Now,
 		logger,
 	)
+	// Record towncrier.polling.lease.acquired with caller "orchestrator" (tc-21np).
+	orchestrator.WithLeaseMetrics(registry)
 
 	// The hard cycle budget is replicaTimeout − grace (mirrors the .NET worker);
 	// it bounds the whole RunOnce so the process exits cleanly before Container
@@ -283,27 +301,32 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, log
 // the poll job boots even without APNs config (the record is still written, so
 // the digest pipeline keeps working). Mirrors .NET's per-app
 // decisionEventDispatcher + notificationEnqueuer wiring.
-func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore *watchzones.CosmosStore, logger *slog.Logger) error {
+func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore *watchzones.CosmosStore, registry *metrics.Registry, logger *slog.Logger) error {
 	notifsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		return err
 	}
+	notifsContainer.WithMetrics(registry)
 	usersContainer, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
 	if err != nil {
 		return err
 	}
+	usersContainer.WithMetrics(registry)
 	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
 	if err != nil {
 		return err
 	}
+	stateContainer.WithMetrics(registry)
 	devicesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
 	if err != nil {
 		return err
 	}
+	devicesContainer.WithMetrics(registry)
 	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
 	if err != nil {
 		return err
 	}
+	savedContainer.WithMetrics(registry)
 
 	notifStore := notifications.NewDigestStore(notifsContainer)
 	profileStore := profiles.NewCosmosStore(usersContainer)
@@ -312,14 +335,15 @@ func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zon
 	savedStore := savedapplications.NewCosmosStore(savedContainer)
 	pushSender := buildPushSender(cfg, logger)
 
+	// Record towncrier.notifications.created on each dispatcher (tc-21np).
 	enqueuer := notifydispatch.NewEnqueuer(
 		notifStore, zoneStore, profileStore, deviceStore, statePushStore, pushSender,
 		uuid.NewString, time.Now, logger,
-	)
+	).WithMetrics(registry)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
 		notifStore, zoneStore, savedStore, profileStore, deviceStore, statePushStore, pushSender,
 		uuid.NewString, time.Now, logger,
-	)
+	).WithMetrics(registry)
 
 	handler.WithFanOut(dispatcher, enqueuer)
 	return nil
@@ -416,7 +440,7 @@ func maxInt(a, b int) int {
 // then refuse to run rather than nil-panicking. Returning the concrete
 // *digest.Handler lets worker.Run accept it via its unexported digestRunner
 // interface (structural satisfaction).
-func buildDigester(cfg platform.Config, logger *slog.Logger) (*digest.Handler, error) {
+func buildDigester(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*digest.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no digester" state, not an error
 	}
@@ -425,22 +449,27 @@ func buildDigester(cfg platform.Config, logger *slog.Logger) (*digest.Handler, e
 	if err != nil {
 		return nil, err
 	}
+	users.WithMetrics(registry)
 	notifs, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	notifs.WithMetrics(registry)
 	zonesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	zonesContainer.WithMetrics(registry)
 	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	stateContainer.WithMetrics(registry)
 	devicesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	devicesContainer.WithMetrics(registry)
 
 	profileStore := digestProfiles{
 		admin: profiles.NewAdminStore(users),
@@ -491,7 +520,7 @@ func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserP
 // when Cosmos is unconfigured — the dormant-cleanup mode then refuses to run
 // rather than nil-panicking. Returning the concrete *dormant.Handler lets
 // worker.Run accept it via its exported DormantRunner interface.
-func buildDormant(cfg platform.Config, logger *slog.Logger) (*dormant.Handler, error) {
+func buildDormant(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*dormant.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no dormant handler" state, not an error
 	}
@@ -500,26 +529,32 @@ func buildDormant(cfg platform.Config, logger *slog.Logger) (*dormant.Handler, e
 	if err != nil {
 		return nil, err
 	}
+	users.WithMetrics(registry)
 	notifs, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	notifs.WithMetrics(registry)
 	zonesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	zonesContainer.WithMetrics(registry)
 	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	savedContainer.WithMetrics(registry)
 	devicesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	devicesContainer.WithMetrics(registry)
 	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
 	if err != nil {
 		return nil, err
 	}
+	stateContainer.WithMetrics(registry)
 
 	// The four DeleteAllByUserID stores satisfy erasure.ChildDeleter directly, the
 	// profile store's Delete satisfies erasure.ProfileDeleter directly, and the

@@ -92,6 +92,14 @@ func DefaultRetryOptions() RetryOptions {
 	}
 }
 
+// httpErrorRecorder is the consumer-side slice of the metrics registry the
+// client records towncrier.planit.http_errors on. *metrics.Registry satisfies
+// it; nil leaves the counter dark. The tag keys are owned by the recorder
+// (http.response.status_code, planit.authority_code) so they match .NET.
+type httpErrorRecorder interface {
+	PlanItHTTPError(ctx context.Context, statusCode, authorityID int)
+}
+
 // Options configures a Client. HTTPClient and Sleep default to a hardened
 // shared client and a context-aware time.Sleep when nil.
 type Options struct {
@@ -102,6 +110,9 @@ type Options struct {
 	// Sleep is injected so tests can pace deterministically without real waits.
 	// It must honour ctx cancellation. Defaults to a context-aware sleep.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Metrics records towncrier.planit.http_errors. nil leaves the counter dark
+	// (the default for the many client tests that don't assert on metrics).
+	Metrics httpErrorRecorder
 }
 
 // FetchPageResult is one page of a PlanIt fetch: the parsed applications, the
@@ -121,6 +132,7 @@ type Client struct {
 	throttle   ThrottleOptions
 	retry      RetryOptions
 	sleep      func(ctx context.Context, d time.Duration) error
+	metrics    httpErrorRecorder
 }
 
 // NewClient validates the base URL and wires the client. A non-HTTPS base URL is
@@ -153,6 +165,7 @@ func NewClient(opts Options) (*Client, error) {
 		throttle:   opts.Throttle,
 		retry:      opts.Retry,
 		sleep:      sleep,
+		metrics:    opts.Metrics,
 	}, nil
 }
 
@@ -162,7 +175,7 @@ func NewClient(opts Options) (*Client, error) {
 func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, differentStart *time.Time, page int) (FetchPageResult, error) {
 	target := c.baseURL + buildPath(authorityID, differentStart, page)
 
-	resp, err := c.sendWithThrottle(ctx, target)
+	resp, err := c.sendWithThrottle(ctx, target, authorityID)
 	if err != nil {
 		return FetchPageResult{}, err
 	}
@@ -203,7 +216,7 @@ func (c *Client) FetchApplicationsPage(ctx context.Context, authorityID int, dif
 // transient (5xx/408) failures with exponential backoff. 429 and permanent 4xx
 // are returned to the caller without retry. The returned response (when err is
 // nil) has an un-read body the caller must classify and close.
-func (c *Client) sendWithThrottle(ctx context.Context, target string) (*http.Response, error) {
+func (c *Client) sendWithThrottle(ctx context.Context, target string, authorityID int) (*http.Response, error) {
 	maxAttempts := 1 + c.retry.MaxRetries
 	for attempt := range maxAttempts {
 		if c.throttle.DelayBetweenRequests > 0 {
@@ -232,6 +245,13 @@ func (c *Client) sendWithThrottle(ctx context.Context, target string) (*http.Res
 
 		if resp.StatusCode == http.StatusOK {
 			return resp, nil
+		}
+
+		// Every non-2xx response is an http error — count it on each attempt
+		// (including 429 and retried 5xx), tagged with status + authority, matching
+		// .NET PlanItClient's per-response HttpErrors.Add.
+		if c.metrics != nil {
+			c.metrics.PlanItHTTPError(ctx, resp.StatusCode, authorityID)
 		}
 
 		// 429 and permanent (non-retryable) statuses go straight back to the

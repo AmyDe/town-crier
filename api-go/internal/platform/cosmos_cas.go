@@ -29,15 +29,15 @@ var (
 // lease store's "no lease yet" path. The etag is the opaque CAS token for a
 // subsequent conditional replace/delete.
 func (c *CosmosContainer) ReadItemWithETag(ctx context.Context, partitionKey, id string) (body []byte, etag string, found bool, err error) {
-	err = traceCosmosOp(ctx, c, "ReadItem", func(ctx context.Context) error {
+	err = traceCosmosOp(ctx, c, "ReadItem", func(ctx context.Context) (float64, error) {
 		resp, rerr := c.container.ReadItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, nil)
 		if rerr != nil {
-			return rerr
+			return 0, rerr
 		}
 		body = resp.Value
 		etag = string(resp.ETag)
 		found = true
-		return nil
+		return float64(resp.RequestCharge), nil
 	})
 	if err != nil {
 		if isCASNotFound(err) {
@@ -54,13 +54,13 @@ func (c *CosmosContainer) ReadItemWithETag(ctx context.Context, partitionKey, id
 // race" rather than a failure.
 func (c *CosmosContainer) CreateItemReturningETag(ctx context.Context, partitionKey string, item []byte) (string, error) {
 	var etag string
-	err := traceCosmosOp(ctx, c, "CreateItem", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "CreateItem", func(ctx context.Context) (float64, error) {
 		resp, cerr := c.container.CreateItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), item, nil)
 		if cerr != nil {
-			return cerr
+			return 0, cerr
 		}
 		etag = string(resp.ETag)
-		return nil
+		return float64(resp.RequestCharge), nil
 	})
 	if err != nil {
 		if isCASStatus(err, http.StatusConflict) {
@@ -76,14 +76,14 @@ func (c *CosmosContainer) CreateItemReturningETag(ctx context.Context, partition
 // ErrCASPreconditionFailed so the caller can treat it as "lost the replace race".
 func (c *CosmosContainer) ReplaceItemWithETag(ctx context.Context, partitionKey, id string, item []byte, etag string) (string, error) {
 	var newETag string
-	err := traceCosmosOp(ctx, c, "ReplaceItem", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "ReplaceItem", func(ctx context.Context) (float64, error) {
 		e := azcore.ETag(etag)
 		resp, rerr := c.container.ReplaceItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, item, &azcosmos.ItemOptions{IfMatchEtag: &e})
 		if rerr != nil {
-			return rerr
+			return 0, rerr
 		}
 		newETag = string(resp.ETag)
-		return nil
+		return float64(resp.RequestCharge), nil
 	})
 	if err != nil {
 		if isCASStatus(err, http.StatusPreconditionFailed) {
@@ -99,10 +99,13 @@ func (c *CosmosContainer) ReplaceItemWithETag(ctx context.Context, partitionKey,
 // ErrCASPreconditionFailed, so the lease store can distinguish "already gone"
 // from "lost the race".
 func (c *CosmosContainer) DeleteItemWithETag(ctx context.Context, partitionKey, id, etag string) error {
-	err := traceCosmosOp(ctx, c, "DeleteItem", func(ctx context.Context) error {
+	err := traceCosmosOp(ctx, c, "DeleteItem", func(ctx context.Context) (float64, error) {
 		e := azcore.ETag(etag)
-		_, derr := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, &azcosmos.ItemOptions{IfMatchEtag: &e})
-		return derr
+		resp, derr := c.container.DeleteItem(ctx, azcosmos.NewPartitionKeyString(partitionKey), id, &azcosmos.ItemOptions{IfMatchEtag: &e})
+		if derr != nil {
+			return 0, derr
+		}
+		return float64(resp.RequestCharge), nil
 	})
 	switch {
 	case err == nil:

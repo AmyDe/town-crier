@@ -40,6 +40,16 @@ type DecisionDispatcher struct {
 	newID         func() string
 	now           func() time.Time
 	logger        *slog.Logger
+	metrics       notificationMetricsRecorder
+}
+
+// WithMetrics wires the recorder the dispatcher records
+// towncrier.notifications.created on. A post-construction setter so the existing
+// dispatch call sites and tests are unaffected; cmd/worker calls it once after
+// building the dispatcher. Returns the dispatcher for chaining.
+func (d *DecisionDispatcher) WithMetrics(rec notificationMetricsRecorder) *DecisionDispatcher {
+	d.metrics = rec
+	return d
 }
 
 // NewDecisionDispatcher wires the decision dispatcher. newID mints the
@@ -169,7 +179,13 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 		}, userID, n)
 	}
 
-	return d.notifications.Create(ctx, n)
+	if err := d.notifications.Create(ctx, n); err != nil {
+		return err
+	}
+	if d.metrics != nil {
+		d.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
+	}
+	return nil
 }
 
 // canPush OR-merges the per-channel decision-push toggles across the matching
