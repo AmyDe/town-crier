@@ -17,7 +17,9 @@ func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v an
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(body); err != nil {
+	// gosec G705: body is JSON from httputil.EncodeJSON served as
+	// application/json, so it is never interpreted as HTML — no XSS surface.
+	if _, err := w.Write(body); err != nil { //nolint:gosec // JSON body, application/json content type
 		logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
 }
