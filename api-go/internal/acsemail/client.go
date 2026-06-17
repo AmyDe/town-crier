@@ -199,7 +199,7 @@ func (c *Client) pollOperation(ctx context.Context, opLocation string) error {
 			return fmt.Errorf("acsemail: %w: operation %s status=%s: %s", ErrSendFailed, status.ID, status.Status, msg)
 		}
 
-		if err := sleep(ctx, c.pollInterval); err != nil {
+		if err := platform.Sleep(ctx, c.pollInterval); err != nil {
 			return err
 		}
 	}
@@ -297,18 +297,6 @@ func isTerminalFailure(status string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-// sleep waits for d or until ctx is cancelled, whichever comes first.
-func sleep(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
 	}
 }
 

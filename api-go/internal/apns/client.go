@@ -132,7 +132,7 @@ func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMess
 		resp, sendErr := c.do(ctx, token, payload)
 		if sendErr != nil {
 			if attempt < maxAttempts {
-				if waitErr := sleep(ctx, backoff); waitErr != nil {
+				if waitErr := platform.Sleep(ctx, backoff); waitErr != nil {
 					return false, waitErr
 				}
 				backoff *= 2
@@ -163,7 +163,7 @@ func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMess
 			return false, nil
 		case status >= 500 && status < 600 && attempt < maxAttempts:
 			c.logger.WarnContext(ctx, "apns transient error", "status", status, "reason", reason, "attempt", attempt)
-			if waitErr := sleep(ctx, backoff); waitErr != nil {
+			if waitErr := platform.Sleep(ctx, backoff); waitErr != nil {
 				return false, waitErr
 			}
 			backoff *= 2
@@ -227,18 +227,6 @@ func parseReason(body []byte) string {
 		return ""
 	}
 	return parsed.Reason
-}
-
-// sleep waits for d or until ctx is cancelled, whichever comes first.
-func sleep(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 // redactToken keeps only an 8-character prefix so device tokens — which identify
