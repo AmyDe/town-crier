@@ -40,19 +40,6 @@ public final class SavedApplicationListViewModel: ObservableObject, ErrorHandlin
     filteredApplications.isEmpty && error == nil && !isLoading
   }
 
-  public var isNetworkError: Bool {
-    error == .networkUnavailable
-  }
-
-  public var isServerError: Bool {
-    if case .serverError = error { return true }
-    return false
-  }
-
-  public var isSessionExpired: Bool {
-    error == .sessionExpired
-  }
-
   public init(savedApplicationRepository: SavedApplicationRepository) {
     self.savedApplicationRepository = savedApplicationRepository
   }
