@@ -3,10 +3,10 @@ package notifydispatch
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/vocabulary"
 )
 
 // apnsAlertPayload is the APNs body for a single-notification (instant) push.
@@ -69,31 +69,9 @@ func buildAlertPayload(n notifications.DigestNotification, totalUnreadCount int)
 // update ("10 High St — Approved"), falling back to the bare address when the
 // decision string is empty or unrecognised. Mirrors .NET BuildDecisionBody.
 func buildDecisionBody(n notifications.DigestNotification) string {
-	label := ukDisplayString(n.Decision)
+	label := vocabulary.UKDisplayString(n.Decision)
 	if label == "" {
 		return n.ApplicationAddress
 	}
 	return n.ApplicationAddress + " — " + label
-}
-
-// ukDisplayString maps a raw PlanIt app_state to the UK planning term residents
-// recognise, returning "" for a nil or unrecognised input. Port of .NET
-// UkPlanningVocabulary.GetDisplayString (matches the digest worker's copy).
-func ukDisplayString(planItAppState *string) string {
-	if planItAppState == nil {
-		return ""
-	}
-	state := strings.TrimSpace(*planItAppState)
-	switch {
-	case strings.EqualFold(state, "Permitted"):
-		return "Approved"
-	case strings.EqualFold(state, "Conditions"):
-		return "Approved with conditions"
-	case strings.EqualFold(state, "Rejected"):
-		return "Refused"
-	case strings.EqualFold(state, "Appealed"):
-		return "Refusal appealed"
-	default:
-		return ""
-	}
 }
