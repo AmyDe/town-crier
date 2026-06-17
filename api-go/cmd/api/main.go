@@ -157,7 +157,7 @@ func main() {
 	// GDPR erasure (bead tc-qkf2). It is populated only when Cosmos is configured —
 	// the same condition under which profiles.Routes is wired — so the handler's
 	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
-	// stores satisfy profiles.ChildDeleter directly; notification-state is bridged by
+	// stores satisfy erasure.ChildDeleter directly; notification-state is bridged by
 	// erasure.NotificationStateChild (its store method is DeleteByUserID), shared with
 	// the dormant-cleanup worker (bead tc-gf0g). The offer-code anonymiser scrubs the
 	// redeemer back-reference (redeemedByUserId + redeemedAt) without deleting the
