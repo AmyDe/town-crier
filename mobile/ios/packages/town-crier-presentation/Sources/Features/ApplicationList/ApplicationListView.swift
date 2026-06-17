@@ -203,22 +203,13 @@ public struct ApplicationListView: View {
   // MARK: - Filter Chips
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
+    // The extra `!unreadOnly` guard stays here, not in the shared
+    // `FilterChipView`: when the Unread chip is active, every status chip
+    // must read as unselected even if `selectedStatusFilter` still matches.
     let isSelected = !viewModel.unreadOnly && viewModel.selectedStatusFilter == status
-    return Text(label)
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(isSelected ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        viewModel.selectedStatusFilter = status
-      }
+    return FilterChipView(label: label, isSelected: isSelected) {
+      viewModel.selectedStatusFilter = status
+    }
   }
 
   /// The Unread chip lives at the head of the chip group. Selecting it
