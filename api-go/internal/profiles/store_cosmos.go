@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // ErrNotFound signals that no profile exists for the given user id. Callers use
@@ -47,7 +46,7 @@ func NewCosmosStore(items CosmosItems) *CosmosStore {
 func (s *CosmosStore) Get(ctx context.Context, userID string) (*UserProfile, error) {
 	raw, err := s.items.ReadItem(ctx, userID, userID)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("read profile %q: %w", userID, err)
@@ -80,16 +79,10 @@ func (s *CosmosStore) Save(ctx context.Context, p *UserProfile) error {
 // reads first) or tolerable.
 func (s *CosmosStore) Delete(ctx context.Context, userID string) error {
 	if err := s.items.DeleteItem(ctx, userID, userID); err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("delete profile %q: %w", userID, err)
 	}
 	return nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

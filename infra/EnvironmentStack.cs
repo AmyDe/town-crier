@@ -333,6 +333,10 @@ public static class EnvironmentStack
                             Env = new[]
                             {
                                 new EnvironmentVarArgs { Name = "OTEL_SERVICE_NAME", Value = "town-crier-api-go" },
+                                // Read by the in-process Azure Monitor metrics exporter (tc-0rt1):
+                                // the ACA managed OTel agent forwards only logs+traces to App Insights,
+                                // not metrics, so the API exports metrics directly via this conn string.
+                                new EnvironmentVarArgs { Name = "APPLICATIONINSIGHTS_CONNECTION_STRING", Value = appInsightsConnectionString },
                                 new EnvironmentVarArgs { Name = "COSMOS_ENDPOINT", Value = cosmosAccountEndpoint },
                                 new EnvironmentVarArgs { Name = "COSMOS_DATABASE", Value = cosmosDatabase.Name },
                                 new EnvironmentVarArgs { Name = "AZURE_CLIENT_ID", Value = cosmosDataIdentityClientId },

@@ -17,6 +17,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // serviceBusSuffix is the public Azure Service Bus DNS suffix. A bare namespace
@@ -134,7 +136,7 @@ func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, 
 	enqueue := scheduledEnqueueTime.UTC()
 	msg := &azservicebus.Message{
 		Body:                 body,
-		ContentType:          ptr("application/json"),
+		ContentType:          platform.Ptr("application/json"),
 		ScheduledEnqueueTime: &enqueue,
 	}
 	if err := sender.SendMessage(ctx, msg, nil); err != nil {
@@ -206,5 +208,3 @@ func normalizeFQDN(namespace string) string {
 	}
 	return namespace + serviceBusSuffix
 }
-
-func ptr[T any](v T) *T { return &v }

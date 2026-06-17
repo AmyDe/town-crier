@@ -3,12 +3,10 @@ package applications
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // CosmosItems is the consumer-side slice of the Applications container the store
@@ -55,7 +53,7 @@ func (s *CosmosStore) Upsert(ctx context.Context, a PlanningApplication) error {
 func (s *CosmosStore) GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error) {
 	raw, err := s.items.ReadItem(ctx, authorityCode, name)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return PlanningApplication{}, false, nil
 		}
 		return PlanningApplication{}, false, fmt.Errorf("read application %q/%q: %w", authorityCode, name, err)
@@ -116,10 +114,4 @@ func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, lati
 		apps = append(apps, doc.toDomain())
 	}
 	return apps, nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

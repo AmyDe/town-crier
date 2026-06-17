@@ -1,17 +1,6 @@
 package profiles
 
-import "context"
-
-// ChildDeleter erases every document a single per-user container holds for the
-// account being deleted. The per-container cascade stores expose this exact
-// method, so notifications.DeleteStore and the watchzones / savedapplications /
-// devicetokens CosmosStores satisfy it directly; the notification-state store is
-// bridged by a one-line adapter in the api wiring, since its method is
-// DeleteByUserID. Each store tolerates a 404 on an individual delete internally,
-// so any error returned here is real and must abort the cascade.
-type ChildDeleter interface {
-	DeleteAllByUserID(ctx context.Context, userID string) error
-}
+import "github.com/AmyDe/town-crier/api-go/internal/erasure"
 
 // CascadeDeleters bundles the per-container erasure steps DELETE /v1/me runs — in
 // the fixed order the handler invokes them — before deleting the profile document
@@ -21,10 +10,17 @@ type ChildDeleter interface {
 // profile and the Auth0 user, leaving watch zones, saved applications,
 // notifications, device registrations and the notification-state watermark
 // orphaned in Cosmos.
+//
+// The per-container and offer-code step contracts are the shared erasure
+// interfaces (erasure.ChildDeleter, erasure.RedemptionAnonymiser) — the same
+// types the dormant-cleanup worker's cascade uses — so the handler can pass these
+// deleters straight into erasure.Deleters with no per-package interface drift
+// (bead tc-hg65).
 type CascadeDeleters struct {
-	Notifications       ChildDeleter
-	WatchZones          ChildDeleter
-	SavedApplications   ChildDeleter
-	DeviceRegistrations ChildDeleter
-	NotificationState   ChildDeleter
+	Notifications       erasure.ChildDeleter
+	WatchZones          erasure.ChildDeleter
+	SavedApplications   erasure.ChildDeleter
+	DeviceRegistrations erasure.ChildDeleter
+	NotificationState   erasure.ChildDeleter
+	OfferCodes          erasure.RedemptionAnonymiser
 }

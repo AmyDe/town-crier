@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // fakeStateItems is a hand-written double for the poll-state store's Cosmos
@@ -69,7 +71,7 @@ func TestPollStateStore_SaveThenGetRoundTrips(t *testing.T) {
 
 	lastPoll := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	hwm := time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC)
-	cursor := &PollCursor{DifferentStart: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC), NextPage: 3, KnownTotal: ptr(250)}
+	cursor := &PollCursor{DifferentStart: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC), NextPage: 3, KnownTotal: platform.Ptr(250)}
 
 	if err := store.Save(ctx, 99, lastPoll, hwm, cursor); err != nil {
 		t.Fatalf("Save: %v", err)

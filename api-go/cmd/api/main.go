@@ -143,24 +143,6 @@ func main() {
 		savedStore = savedapplications.NewCosmosStore(savedContainer)
 	}
 
-	// cascade bundles the per-container deleters DELETE /v1/me runs for a complete
-	// GDPR erasure (bead tc-qkf2). It is populated only when Cosmos is configured —
-	// the same condition under which profiles.Routes is wired — so the handler's
-	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
-	// stores satisfy profiles.ChildDeleter directly; notification-state is bridged by
-	// erasure.NotificationStateChild (its store method is DeleteByUserID), shared with
-	// the dormant-cleanup worker (bead tc-gf0g).
-	var cascade profiles.CascadeDeleters
-	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil {
-		cascade = profiles.CascadeDeleters{
-			Notifications:       notifications.NewDeleteStore(notificationsContainer),
-			WatchZones:          watchZoneStore,
-			SavedApplications:   savedStore,
-			DeviceRegistrations: deviceStore,
-			NotificationState:   erasure.NotificationStateChild(stateStore),
-		}
-	}
-
 	offerCodesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosOfferCodesContainer, logger)
 	if err != nil {
 		log.Fatal(err)
@@ -169,6 +151,27 @@ func main() {
 	var offerStore *offercodes.CosmosStore
 	if offerCodesContainer != nil {
 		offerStore = offercodes.NewCosmosStore(offerCodesContainer)
+	}
+
+	// cascade bundles the per-container deleters DELETE /v1/me runs for a complete
+	// GDPR erasure (bead tc-qkf2). It is populated only when Cosmos is configured —
+	// the same condition under which profiles.Routes is wired — so the handler's
+	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
+	// stores satisfy erasure.ChildDeleter directly; notification-state is bridged by
+	// erasure.NotificationStateChild (its store method is DeleteByUserID), shared with
+	// the dormant-cleanup worker (bead tc-gf0g). The offer-code anonymiser scrubs the
+	// redeemer back-reference (redeemedByUserId + redeemedAt) without deleting the
+	// admin-issued code (bead tc-5jyh).
+	var cascade profiles.CascadeDeleters
+	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil && offerStore != nil {
+		cascade = profiles.CascadeDeleters{
+			Notifications:       notifications.NewDeleteStore(notificationsContainer),
+			WatchZones:          watchZoneStore,
+			SavedApplications:   savedStore,
+			DeviceRegistrations: deviceStore,
+			NotificationState:   erasure.NotificationStateChild(stateStore),
+			OfferCodes:          offerStore,
+		}
 	}
 
 	// The admin grant/list operations query the Users container cross-partition

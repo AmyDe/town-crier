@@ -119,6 +119,23 @@ func TestCosmosStore_GetByUserID_SinglePartitionQuery(t *testing.T) {
 	}
 }
 
+func TestCosmosStore_GetByUserID_OrdersByZoneIDForDeterminism(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.GetByUserID(context.Background(), "auth0|user"); err != nil {
+		t.Fatalf("GetByUserID: %v", err)
+	}
+	// Without an ORDER BY, Cosmos returns a user's zones in an arbitrary,
+	// non-deterministic order each request, which made the GDPR export's
+	// zonePreferences array flake on order (tc-zgnt). The list query must order by
+	// the zone id (the document id) so successive list calls are stable.
+	if !strings.Contains(items.lastQuery, "ORDER BY c.id") {
+		t.Errorf("list query must ORDER BY c.id for deterministic order: %q", items.lastQuery)
+	}
+}
+
 func TestCosmosStore_GetByUserID_EmptyWhenNoZones(t *testing.T) {
 	t.Parallel()
 	store := NewCosmosStore(newFakeItems())

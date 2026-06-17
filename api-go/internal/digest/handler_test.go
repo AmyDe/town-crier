@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -105,12 +106,13 @@ func (f *fakeDevices) Delete(_ context.Context, _ string, token string) error {
 }
 
 type spyEmail struct {
-	sent []acsemail.Message
+	sent    []acsemail.Message
+	sendErr error // returned (after recording the attempt) when set
 }
 
 func (s *spyEmail) Send(_ context.Context, msg acsemail.Message) error {
 	s.sent = append(s.sent, msg)
-	return nil
+	return s.sendErr
 }
 
 type spyPush struct {
@@ -369,6 +371,43 @@ func TestRunHourly_PaidTierSendsAndMarksEmailSent(t *testing.T) {
 	// Both included notifications marked email-sent for dedup.
 	if len(fn.marked) != 2 {
 		t.Errorf("marked email-sent: got %v, want 2", fn.marked)
+	}
+}
+
+func TestRunHourly_EmailSendFailureDoesNotMarkSent(t *testing.T) {
+	t.Parallel()
+	// If the ACS send fails, the notifications must NOT be flipped emailSent — the
+	// next cycle must retry. A swallowed send error that marks sent anyway is silent
+	// data loss (tc-qvds).
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+
+	n1 := zoneNotif("uid-A", "zone-1")
+	n2 := zoneNotif("uid-B", "")
+	n2.WatchZoneID = nil
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {n1, n2}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{sendErr: errors.New("acs send boom")}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	// Send was attempted...
+	if len(email.sent) != 1 {
+		t.Fatalf("emails attempted: got %d, want 1", len(email.sent))
+	}
+	// ...but the failure must leave EVERY batched notification unmarked so it is retried.
+	if len(fn.marked) != 0 {
+		t.Errorf("failed send must not mark anything email-sent: got %v", fn.marked)
 	}
 }
 

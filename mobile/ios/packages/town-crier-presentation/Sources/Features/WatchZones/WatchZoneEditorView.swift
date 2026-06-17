@@ -32,6 +32,9 @@ public struct WatchZoneEditorView: View {
       #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
       #endif
+      .entitlementGateSheet(entitlement: $viewModel.entitlementGate) {
+        viewModel.viewPlans()
+      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { dismiss() }
@@ -131,17 +134,37 @@ public struct WatchZoneEditorView: View {
 
   private var notificationsSection: some View {
     Section {
-      Toggle("Send push notifications", isOn: $viewModel.pushEnabled)
-        .tint(Color.tcAmber)
-      Toggle("Send instant emails", isOn: $viewModel.emailInstantEnabled)
-        .tint(Color.tcAmber)
+      GatedToggle(
+        label: "Send push notifications",
+        isOn: $viewModel.pushEnabled,
+        entitlement: viewModel.instantAlertEntitlement,
+        featureGate: viewModel.featureGate
+      ) {
+        viewModel.requestInstantAlertUpgrade()
+      }
+      GatedToggle(
+        label: "Send instant emails",
+        isOn: $viewModel.emailInstantEnabled,
+        entitlement: viewModel.instantAlertEntitlement,
+        featureGate: viewModel.featureGate
+      ) {
+        viewModel.requestInstantAlertUpgrade()
+      }
     } header: {
       Text("Notifications")
     } footer: {
-      Text("Choose how this zone alerts you when new applications match.")
+      Text(notificationsFooterText)
         .font(.system(.caption))
         .foregroundStyle(Color.tcTextSecondary)
     }
+  }
+
+  private var notificationsFooterText: String {
+    if viewModel.featureGate.hasEntitlement(viewModel.instantAlertEntitlement) {
+      return "Choose how this zone alerts you when new applications match."
+    }
+    return "Instant push and email alerts are available on Personal and Pro. "
+      + "Free accounts receive a weekly email digest."
   }
 
   @ViewBuilder

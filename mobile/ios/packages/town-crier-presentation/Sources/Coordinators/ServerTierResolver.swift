@@ -14,17 +14,7 @@ import os
 ///
 /// Shared by both ``AppCoordinator`` and ``SettingsViewModel`` so the two
 /// tier-resolution paths cannot drift apart again (tc-aza5).
-public protocol ServerTierResolving: Sendable {
-  /// Ensures the server profile exists and returns its tier.
-  ///
-  /// Returns `nil` when the call fails due to a network or server error,
-  /// so callers can distinguish "ensure failed" from "user is genuinely
-  /// on free tier" and apply the appropriate fallback (preserve cached
-  /// tier vs. fall back to JWT/StoreKit).
-  func ensureServerProfileTier() async -> SubscriptionTier?
-}
-
-public final class ServerTierResolver: ServerTierResolving {
+public final class ServerTierResolver: Sendable {
   private static let logger = Logger(
     subsystem: "uk.towncrierapp",
     category: "ServerTierResolver"
@@ -36,6 +26,12 @@ public final class ServerTierResolver: ServerTierResolving {
     self.userProfileRepository = userProfileRepository
   }
 
+  /// Ensures the server profile exists and returns its tier.
+  ///
+  /// Returns `nil` when the call fails due to a network or server error,
+  /// so callers can distinguish "ensure failed" from "user is genuinely
+  /// on free tier" and apply the appropriate fallback (preserve cached
+  /// tier vs. fall back to JWT/StoreKit).
   public func ensureServerProfileTier() async -> SubscriptionTier? {
     do {
       let profile = try await userProfileRepository.create()

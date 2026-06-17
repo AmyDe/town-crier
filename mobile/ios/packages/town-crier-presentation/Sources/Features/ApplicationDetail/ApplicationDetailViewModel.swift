@@ -78,6 +78,14 @@ public final class ApplicationDetailViewModel: ObservableObject {
   private let savedApplicationRepository: SavedApplicationRepository?
   private let planningApplicationRepository: PlanningApplicationRepository?
 
+  /// Re-entrancy guard for ``refresh()``. The detail sheet's `.task` can fire
+  /// repeatedly for a single open — alongside scenePhase changes or a
+  /// re-appear — and each unguarded call previously spawned a duplicate
+  /// per-id fetch. SRE telemetry caught `GET /v1/applications/{ref}` firing up
+  /// to 6 times within seconds, all cancelled (HTTP 499). While one refresh is
+  /// in flight, further calls short-circuit (bd tc-eum5).
+  private var isRefreshInFlight = false
+
   private var applicationId: PlanningApplicationId { application.id }
 
   public init(
@@ -120,6 +128,14 @@ public final class ApplicationDetailViewModel: ObservableObject {
   /// No-op if no `PlanningApplicationRepository` was injected.
   public func refresh() async {
     guard let repository = planningApplicationRepository else { return }
+    // Drop re-entrant calls while a refresh is already running so a single
+    // detail open issues at most one per-id fetch (bd tc-eum5). The flag is
+    // read and set synchronously before any `await`, so a second call
+    // scheduled on the same actor sees it set and returns immediately.
+    guard !isRefreshInFlight else { return }
+    isRefreshInFlight = true
+    defer { isRefreshInFlight = false }
+
     do {
       let fresh = try await repository.fetchApplication(by: applicationId)
       if fresh != application {

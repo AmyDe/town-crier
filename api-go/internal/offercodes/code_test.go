@@ -73,3 +73,27 @@ func TestOfferCode_Redeem_RejectsSecondRedemption(t *testing.T) {
 		t.Errorf("second Redeem err = %v, want ErrAlreadyRedeemed", err)
 	}
 }
+
+// An anonymised code (redeemer scrubbed for GDPR Art. 17, but the consumed
+// tombstone retained) must still report as redeemed and reject re-redemption,
+// even though its RedeemedByUserID / RedeemedAt are now nil.
+func TestOfferCode_Anonymised_StaysRedeemed(t *testing.T) {
+	t.Parallel()
+
+	code := OfferCode{
+		Code:             "ABCDEFGHJKMN",
+		Tier:             profiles.TierPro,
+		DurationDays:     30,
+		CreatedAt:        time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Redeemed:         true,
+		RedeemedByUserID: nil,
+		RedeemedAt:       nil,
+	}
+
+	if !code.IsRedeemed() {
+		t.Error("anonymised code with the consumed tombstone should still be redeemed")
+	}
+	if err := code.Redeem("auth0|u2", time.Now()); !errors.Is(err, ErrAlreadyRedeemed) {
+		t.Errorf("re-redeem of anonymised code err = %v, want ErrAlreadyRedeemed", err)
+	}
+}

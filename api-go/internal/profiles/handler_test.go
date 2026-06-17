@@ -99,7 +99,22 @@ func (f fakeChildDeleter) DeleteAllByUserID(_ context.Context, userID string) er
 	return f.err
 }
 
-// recordingCascade builds a CascadeDeleters whose five deleters all append to the
+// fakeRedemptionAnonymiser is a hand-written offer-code redemption anonymiser.
+// When calls is non-nil it appends "offerCodes:<userID>" on each invocation, so
+// a test can assert the GDPR offer-code scrub runs in the cascade.
+type fakeRedemptionAnonymiser struct {
+	calls *[]string
+	err   error
+}
+
+func (f fakeRedemptionAnonymiser) AnonymiseRedemptionsByUserID(_ context.Context, userID string) error {
+	if f.calls != nil {
+		*f.calls = append(*f.calls, "offerCodes:"+userID)
+	}
+	return f.err
+}
+
+// recordingCascade builds a CascadeDeleters whose deleters all append to the
 // shared calls log (pass nil for a no-op cascade). Individual deleters can be
 // overwritten by a test to inject a failure in one container.
 func recordingCascade(calls *[]string) CascadeDeleters {
@@ -109,6 +124,7 @@ func recordingCascade(calls *[]string) CascadeDeleters {
 		SavedApplications:   fakeChildDeleter{label: "savedApplications", calls: calls},
 		DeviceRegistrations: fakeChildDeleter{label: "deviceRegistrations", calls: calls},
 		NotificationState:   fakeChildDeleter{label: "notificationState", calls: calls},
+		OfferCodes:          fakeRedemptionAnonymiser{calls: calls},
 	}
 }
 
@@ -379,6 +395,7 @@ func TestHandler_DeleteProfile_CascadesEveryContainerThenProfileThenAuth0(t *tes
 		"savedApplications:auth0|abc",
 		"deviceRegistrations:auth0|abc",
 		"notificationState:auth0|abc",
+		"offerCodes:auth0|abc",
 	}
 	if !slices.Equal(calls, want) {
 		t.Errorf("cascade coverage/order: got %v, want %v", calls, want)
@@ -419,6 +436,34 @@ func TestHandler_DeleteProfile_ChildCascadeFailureLeavesProfileAndAuth0Intact(t 
 	}
 }
 
+// An offer-code anonymise failure must abort the cascade before the profile and
+// the Auth0 user are touched, so the back-reference stays scrubbable on a repeat
+// DELETE rather than the account being half-erased.
+func TestHandler_DeleteProfile_OfferCodeAnonymiseFailureLeavesProfileAndAuth0Intact(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	existing, _ := NewProfile("auth0|abc", "", time.Now())
+	store.byID["auth0|abc"] = existing
+	a0 := newFakeAuth0()
+	cascade := recordingCascade(nil)
+	cascade.OfferCodes = fakeRedemptionAnonymiser{err: errors.New("cosmos down")}
+	h := newTestHandlerCascade(store, a0, "", cascade)
+
+	rec := httptest.NewRecorder()
+	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete status: got %d, want 500", rec.Code)
+	}
+	if len(store.deleted) != 0 {
+		t.Errorf("profile must survive an offer-code anonymise failure, got deleted %v", store.deleted)
+	}
+	if len(a0.deletedUsers) != 0 {
+		t.Errorf("auth0 user must survive an offer-code anonymise failure, got deleted %v", a0.deletedUsers)
+	}
+}
+
 // Auth0 is deleted last: an Auth0 Management-API failure must not strand
 // un-erased Cosmos data, so by the time it runs every container and the profile
 // document are already gone.
@@ -439,8 +484,8 @@ func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("delete status: got %d, want 500", rec.Code)
 	}
-	if len(calls) != 5 {
-		t.Errorf("all child containers must be erased before the auth0 step, got %v", calls)
+	if len(calls) != 6 {
+		t.Errorf("all child containers and the offer-code anonymise must run before the auth0 step, got %v", calls)
 	}
 	if len(store.deleted) != 1 {
 		t.Errorf("profile must be erased before the auth0 step, got %v", store.deleted)

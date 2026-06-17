@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
+	"github.com/AmyDe/town-crier/api-go/internal/vocabulary"
 )
 
 // senderAddress is the verified ACS sender the digest emails are sent from,
@@ -97,7 +98,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 func buildNotificationCard(n notifications.DigestNotification) string {
 	addressLine := htmlEncode(n.ApplicationAddress)
 	if n.EventType == notifications.EventDecisionUpdate {
-		if label := ukDisplayString(n.Decision); label != "" {
+		if label := vocabulary.UKDisplayString(n.Decision); label != "" {
 			addressLine = fmt.Sprintf(
 				`<span style="display:inline-block;background:#eef1ff;color:#1a1a2e;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:2px 6px;border-radius:4px;margin-right:6px;">[%s]</span>%s`,
 				htmlEncode(label), addressLine)

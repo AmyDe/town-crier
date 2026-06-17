@@ -116,4 +116,37 @@ struct WatchZoneEditorViewTests {
     let sut = WatchZoneEditorView(viewModel: vm)
     _ = sut.body
   }
+
+  // MARK: - Instant-alert gating in the View (tc-bd6i)
+
+  /// Free-tier create mode now shows the notifications section with locked
+  /// ``GatedToggle`` rows + upsell instead of hiding it; the View must render.
+  @Test func body_renders_inCreateMode_freeTier_withGatedToggles() {
+    let vm = makeViewModel(tier: .free)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// The notifications section is now shown for every tier in create mode.
+  @Test func body_renders_inCreateMode_personalTier_withInteractiveToggles() {
+    let vm = makeViewModel(tier: .personal)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// Free-tier edit mode renders the gated toggles + upsell without crashing.
+  @Test func body_renders_inEditMode_freeTier_withGatedToggles() {
+    let vm = makeViewModel(tier: .free, editing: .cambridge)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
+
+  /// While the in-editor upsell gate is active, the View still renders.
+  @Test func body_renders_whenEntitlementGateActive() {
+    let vm = makeViewModel(tier: .free)
+    vm.requestInstantAlertUpgrade()
+    #expect(vm.entitlementGate == vm.instantAlertEntitlement)
+    let sut = WatchZoneEditorView(viewModel: vm)
+    _ = sut.body
+  }
 }
