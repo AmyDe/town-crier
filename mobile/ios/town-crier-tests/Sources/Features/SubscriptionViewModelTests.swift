@@ -215,6 +215,29 @@ struct SubscriptionViewModelTests {
     #expect(!disclosure.contains("free trial"))
   }
 
+  // MARK: - Legal documents
+
+  @Test func init_hasNoPresentedLegalDocument() {
+    let (sut, _, _) = makeSUT()
+    #expect(sut.presentedLegalDocument == nil)
+  }
+
+  @Test func showLegalDocument_presentsPrivacyPolicy() {
+    let (sut, _, _) = makeSUT()
+
+    sut.showLegalDocument(.privacyPolicy)
+
+    #expect(sut.presentedLegalDocument == .privacyPolicy)
+  }
+
+  @Test func showLegalDocument_presentsTermsOfService() {
+    let (sut, _, _) = makeSUT()
+
+    sut.showLegalDocument(.termsOfService)
+
+    #expect(sut.presentedLegalDocument == .termsOfService)
+  }
+
   // MARK: - Computed properties
 
   @Test func isSubscribed_returnsFalse_whenNoEntitlement() {

@@ -15,6 +15,12 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   @Published public internal(set) var error: DomainError?
   @Published public private(set) var currentEntitlement: SubscriptionEntitlement?
 
+  /// The legal document currently presented over the paywall, if any.
+  /// Drives a `.sheet(item:)` local to `SubscriptionView` so the Privacy Policy
+  /// and Terms of Use links required by App Store Guideline 3.1.2(c) open without
+  /// routing through the root coordinator (which already owns the paywall sheet).
+  @Published public var presentedLegalDocument: LegalDocumentType?
+
   private let subscriptionService: SubscriptionService
   private let authenticationService: AuthenticationService
 
@@ -77,6 +83,11 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
       handleError(error) { .restoreFailed($0) }
     }
     isRestoring = false
+  }
+
+  /// Presents the given legal document (Privacy Policy or Terms of Use) over the paywall.
+  public func showLegalDocument(_ documentType: LegalDocumentType) {
+    presentedLegalDocument = documentType
   }
 
   // MARK: - Token refresh
