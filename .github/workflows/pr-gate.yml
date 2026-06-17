@@ -258,7 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-dotnet-infra
+      - uses: ./.github/actions/setup-go-infra
 
       - uses: ./.github/actions/azure-login
         with:

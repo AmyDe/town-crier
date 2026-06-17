@@ -37,6 +37,9 @@ _ReSharper*/
 appsettings.Development.json
 appsettings.Local.json
 
+# Pulumi Go infra build artifact (binary named after the go.mod module)
+/infra/town-crier-infra
+
 # iOS / Swift / Xcode
 build/
 DerivedData/
