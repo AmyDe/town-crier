@@ -56,6 +56,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   private let watchZoneRepository: WatchZoneRepository?
   private let notificationStateRepository: NotificationStateRepository?
   private var zone: WatchZone?
+  /// Re-entrancy guard for ``loadApplications()``. A single user action can
+  /// trigger the load repeatedly — `.task` firing alongside `.refreshable`, a
+  /// scenePhase change, or the view re-appearing — and each unguarded call
+  /// previously spawned a duplicate fetch. SRE telemetry caught the same
+  /// request firing 3-6 times within seconds, all cancelled (HTTP 499). While
+  /// one load is in flight, further calls short-circuit (bd tc-eum5).
+  private var isLoadInFlight = false
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
   private let sortKey: String
@@ -191,6 +198,14 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   public func loadApplications() async {
+    // Drop re-entrant calls while a load is already running so a single user
+    // action issues at most one fetch for the active zone (bd tc-eum5). The
+    // flag is read and set synchronously before any `await`, so a second call
+    // scheduled on the same actor sees it set and returns immediately.
+    guard !isLoadInFlight else { return }
+    isLoadInFlight = true
+    defer { isLoadInFlight = false }
+
     isLoading = true
     error = nil
     do {

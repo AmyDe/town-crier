@@ -10,8 +10,33 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
   /// Zone IDs that should throw an error when fetched.
   var fetchApplicationsFailureZones: Set<String> = []
 
+  /// Optional gate that holds every fetch open until ``releaseGate()`` is
+  /// called. Lets a test start a fetch, observe the in-flight load, issue a
+  /// second concurrent call, then release both — proving (or disproving) the
+  /// ViewModel's re-entrancy guard (bd tc-eum5).
+  ///
+  /// Implemented as a cooperatively-polled flag rather than a continuation so
+  /// it can never leak or double-resume a `CheckedContinuation` when a test
+  /// holds multiple fetches open at once.
+  private var isGateClosed = false
+
+  func enableGate() {
+    isGateClosed = true
+  }
+
+  func releaseGate() {
+    isGateClosed = false
+  }
+
+  private func waitForGateIfNeeded() async {
+    while isGateClosed {
+      await Task.yield()
+    }
+  }
+
   func fetchApplications(for zone: WatchZone) async throws -> [PlanningApplication] {
     fetchApplicationsCalls.append(zone)
+    await waitForGateIfNeeded()
     if fetchApplicationsFailureZones.contains(zone.id.value) {
       throw DomainError.unexpected("Simulated failure for \(zone.id.value)")
     }
@@ -26,6 +51,7 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
 
   func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     fetchApplicationCalls.append(id)
+    await waitForGateIfNeeded()
     return try fetchApplicationResult.get()
   }
 }
