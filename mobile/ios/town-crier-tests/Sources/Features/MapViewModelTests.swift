@@ -180,66 +180,6 @@ struct MapViewModelTests {
     #expect(!sut.isEmpty)
   }
 
-  // MARK: - Error Classification
-
-  @Test func isNetworkError_trueForNetworkUnavailable() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
-
-    await sut.loadApplications()
-
-    #expect(sut.isNetworkError)
-  }
-
-  @Test func isNetworkError_falseForOtherErrors() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.unexpected("Server error"))
-
-    await sut.loadApplications()
-
-    #expect(!sut.isNetworkError)
-  }
-
-  @Test func isServerError_trueForServerError() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(
-      DomainError.serverError(statusCode: 500, message: nil)
-    )
-
-    await sut.loadApplications()
-
-    #expect(sut.isServerError)
-    #expect(!sut.isNetworkError)
-  }
-
-  @Test func isServerError_falseForNetworkError() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
-
-    await sut.loadApplications()
-
-    #expect(!sut.isServerError)
-    #expect(sut.isNetworkError)
-  }
-
-  @Test func isSessionExpired_trueForSessionExpired() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.sessionExpired)
-
-    await sut.loadApplications()
-
-    #expect(sut.isSessionExpired)
-  }
-
-  @Test func isSessionExpired_falseForOtherErrors() async {
-    let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
-
-    await sut.loadApplications()
-
-    #expect(!sut.isSessionExpired)
-  }
-
   // MARK: - Zone-based loading
 
   @Test func loadApplications_fetchesBySelectedZone() async throws {

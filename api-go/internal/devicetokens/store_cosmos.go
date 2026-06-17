@@ -3,11 +3,9 @@ package devicetokens
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // CosmosItems is the consumer-side slice of the DeviceRegistrations container
@@ -46,7 +44,7 @@ func NewCosmosStore(items CosmosItems) *CosmosStore {
 func (s *CosmosStore) GetByToken(ctx context.Context, userID, token string) (*DeviceRegistration, error) {
 	raw, err := s.items.ReadItem(ctx, userID, token)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return nil, nil //nolint:nilnil // absent registration is a valid "not found" signal, not an error
 		}
 		return nil, fmt.Errorf("read device token %q: %w", token, err)
@@ -79,7 +77,7 @@ func (s *CosmosStore) Save(ctx context.Context, reg DeviceRegistration) error {
 // matching .NET DeleteByTokenAsync.
 func (s *CosmosStore) Delete(ctx context.Context, userID, token string) error {
 	if err := s.items.DeleteItem(ctx, userID, token); err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return nil
 		}
 		return fmt.Errorf("delete device token %q: %w", token, err)
@@ -133,15 +131,9 @@ func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode device token id for %q: %w", userID, err)
 		}
-		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !platform.IsCosmosNotFound(err) {
 			return fmt.Errorf("delete device token %q for %q: %w", doc.ID, userID, err)
 		}
 	}
 	return nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

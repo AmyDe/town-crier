@@ -8,24 +8,104 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-// restoreOTelGlobals captures the process-global TracerProvider, propagator and
-// LoggerProvider and reinstates them when the test ends, so a test that installs
-// a real SDK provider doesn't bleed into the rest of the suite.
+func TestDeploymentEnvironment(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		cosmosDB string
+		want     string
+	}{
+		{"prod database", "town-crier-prod", "prod"},
+		{"dev database", "town-crier-dev", "dev"},
+		{"empty database", "", ""},
+		{"unprefixed name omits environment", "somethingelse", ""},
+		{"prefix only yields empty env", "town-crier-", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := deploymentEnvironment(tc.cosmosDB); got != tc.want {
+				t.Errorf("deploymentEnvironment(%q) = %q, want %q", tc.cosmosDB, got, tc.want)
+			}
+		})
+	}
+}
+
+// restoreOTelGlobals captures the process-global TracerProvider, propagator,
+// LoggerProvider and MeterProvider and reinstates them when the test ends, so a
+// test that installs a real SDK provider doesn't bleed into the rest of the
+// suite.
 func restoreOTelGlobals(t *testing.T) {
 	t.Helper()
 	tp := otel.GetTracerProvider()
 	prop := otel.GetTextMapPropagator()
 	lp := global.GetLoggerProvider()
+	mp := otel.GetMeterProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(tp)
 		otel.SetTextMapPropagator(prop)
 		global.SetLoggerProvider(lp)
+		otel.SetMeterProvider(mp)
 	})
+}
+
+// resourceHasAttr reports whether the resource carries an attribute with the
+// given key, and returns its string value.
+func resourceHasAttr(res *resource.Resource, key attribute.Key) (string, bool) {
+	for _, kv := range res.Attributes() {
+		if kv.Key == key {
+			return kv.Value.AsString(), true
+		}
+	}
+	return "", false
+}
+
+func TestNewTelemetryResource_TagsDeploymentEnvironment(t *testing.T) {
+	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "town-crier-prod")
+	if err != nil {
+		t.Fatalf("newTelemetryResource: %v", err)
+	}
+
+	const envKey = attribute.Key("deployment.environment")
+	got, ok := resourceHasAttr(res, envKey)
+	if !ok {
+		t.Fatalf("resource missing %q attribute; attributes: %v", envKey, res.Attributes())
+	}
+	if got != "prod" {
+		t.Errorf("deployment.environment = %q, want %q", got, "prod")
+	}
+
+	// service.name must remain explicitly set and unchanged.
+	svc, ok := resourceHasAttr(res, semconv.ServiceNameKey)
+	if !ok || svc != "town-crier-api-go" {
+		t.Errorf("service.name = %q (present=%v), want %q", svc, ok, "town-crier-api-go")
+	}
+}
+
+func TestNewTelemetryResource_OmitsEnvironmentWhenCosmosDBUnset(t *testing.T) {
+	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "")
+	if err != nil {
+		t.Fatalf("newTelemetryResource: %v", err)
+	}
+
+	const envKey = attribute.Key("deployment.environment")
+	if got, ok := resourceHasAttr(res, envKey); ok {
+		t.Errorf("expected no deployment.environment attribute when COSMOS_DATABASE unset, got %q", got)
+	}
+
+	// service.name must still be present.
+	if svc, ok := resourceHasAttr(res, semconv.ServiceNameKey); !ok || svc != "town-crier-api-go" {
+		t.Errorf("service.name = %q (present=%v), want %q", svc, ok, "town-crier-api-go")
+	}
 }
 
 func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {
@@ -57,6 +137,11 @@ func TestSetupTelemetry_DisabledWhenEndpointUnset(t *testing.T) {
 	// slog records are dropped (only stdout JSON appears).
 	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		t.Error("an SDK LoggerProvider was installed while telemetry is disabled")
+	}
+	// The global MeterProvider must stay the no-op default so towncrier.*
+	// instruments record nothing locally (tc-21np).
+	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); ok {
+		t.Error("an SDK MeterProvider was installed while telemetry is disabled")
 	}
 
 	if err := shutdown(context.Background()); err != nil {
@@ -108,6 +193,12 @@ func TestSetupTelemetry_EnabledWhenEndpointSet(t *testing.T) {
 	// bridge to OTel logs (-> AppTraces) — tc-8x8g.
 	if _, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); !ok {
 		t.Errorf("expected an SDK LoggerProvider installed as global, got %T", global.GetLoggerProvider())
+	}
+	// SetupTelemetry must also install an SDK MeterProvider so towncrier.*
+	// instruments (and Go runtime + http.client metrics) flow to AppMetrics —
+	// tc-21np.
+	if _, ok := otel.GetMeterProvider().(*sdkmetric.MeterProvider); !ok {
+		t.Errorf("expected an SDK MeterProvider installed as global, got %T", otel.GetMeterProvider())
 	}
 
 	// Shutdown must be callable without hanging even though no collector exists.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // --- hand-written fakes for the handler's dependencies ---
@@ -249,7 +250,7 @@ func TestHandler_CapsPagesAndSavesResumableCursor(t *testing.T) {
 		full[i] = testApp("app", 99, ld)
 	}
 	for p := 1; p <= 5; p++ {
-		pi.pages[pageKey{99, p}] = planit.FetchPageResult{Page: p, Applications: full, HasMorePages: true, Total: ptr(500)}
+		pi.pages[pageKey{99, p}] = planit.FetchPageResult{Page: p, Applications: full, HasMorePages: true, Total: platform.Ptr(500)}
 	}
 	apps := newFakeApps()
 	state := newFakeStateStore()
@@ -289,7 +290,7 @@ func TestHandler_ResumesFromSavedCursor(t *testing.T) {
 	state.states[99] = PollState{
 		LastPollTime:  hwm,
 		HighWaterMark: hwm,
-		Cursor:        &PollCursor{DifferentStart: hwm, NextPage: 4, KnownTotal: ptr(500)},
+		Cursor:        &PollCursor{DifferentStart: hwm, NextPage: 4, KnownTotal: platform.Ptr(500)},
 	}
 	h := newHandler(t, pi, apps, state, fakeAuthorities{ids: []int{99}}, CycleSeed, defaultHandlerOpts())
 

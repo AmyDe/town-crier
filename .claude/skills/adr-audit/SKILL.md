@@ -1,18 +1,18 @@
 ---
 name: adr-audit
-description: "Autonomous ADR auditor — scans the entire codebase (API, iOS, web, infra, CI/CD) and compares what's actually built against what's documented in /docs/adr/. Amends stale ADRs and drafts new ones for undocumented decisions, then commits the changes. Designed for `/loop` — runs idempotently and only writes when there's genuine drift. MUST use this skill whenever the user says 'audit ADRs', 'check ADRs', 'are my ADRs up to date', 'review architecture decisions', 'ADR sweep', 'documentation audit', or any variation of wanting to ensure architecture decision records match the codebase. Also trigger when used via `/loop` with this skill."
+description: "Autonomous ADR auditor — scans the entire codebase (API, iOS, web, infra, CI/CD) and compares what's actually built against what's documented in /docs/adr/. Amends stale ADRs and drafts new ones for undocumented decisions. It also audits technical memos in /docs/memo, graduating any whose recommendation has now shipped to 'Superseded by ADR NNNN' (never deleting them). Then commits the changes. Designed for `/loop` — runs idempotently and only writes when there's genuine drift. MUST use this skill whenever the user says 'audit ADRs', 'check ADRs', 'are my ADRs up to date', 'review architecture decisions', 'ADR sweep', 'documentation audit', 'audit memos', 'check memos', 'graduate memos', 'memo sweep', or any variation of wanting to ensure architecture decision records (and memos) match the codebase. Also trigger when used via `/loop` with this skill."
 ---
 
 # ADR Audit
 
-You are an autonomous architecture auditor. Your job: scan the entire Town Crier codebase, compare what's actually built against what's documented in `/docs/adr/`, and fix any drift — amending stale ADRs and creating new ones for undocumented decisions. Then commit and push.
+You are an autonomous architecture auditor. Your job: scan the entire Town Crier codebase, compare what's actually built against what's documented in `/docs/adr/`, and fix any drift — amending stale ADRs and creating new ones for undocumented decisions. Then audit the technical memos in `/docs/memo/` and graduate any whose recommendation has now shipped. Then commit and push.
 
-This skill is designed for unattended `/loop` execution. Be idempotent — if ADRs are already up to date, do nothing and return quickly.
+This skill is designed for unattended `/loop` execution. Be idempotent — if ADRs and memos are already up to date, do nothing and return quickly.
 
 ## Execution Flow
 
 ```
-Read ADRs → Scan codebase → Identify drift → Write changes → Commit & push
+Read ADRs → Scan codebase → Identify drift → Audit memos → Write changes → Commit & push
 ```
 
 ## Phase 1: Read Existing ADRs
@@ -121,9 +121,30 @@ ADR accurately reflects codebase reality and no cross-reference contradictions e
 - A feature's existence doesn't automatically need an ADR — only if the feature introduced an architectural decision (new pattern, new integration, new data model, new infrastructure).
 - Capability-level patterns — offline-first, cache-ahead, connectivity monitoring, crash reporting — DO warrant ADRs even if they don't introduce external dependencies. These represent deliberate architectural choices about how the app behaves under adverse conditions, and future developers need to know they exist and why.
 
-## Phase 4: Write Changes
+## Phase 4: Audit Memos (`/docs/memo/`)
 
-If Phase 3 found nothing, report "ADRs are up to date" and stop. Do not make changes for the sake of it.
+Memos in `/docs/memo/` capture analysis or exploration that **hadn't yet resulted in a decision** when written. The template status line is `Open` | `Superseded by ADR NNNN` | `Resolved (no action)`. Over time a memo's recommended path gets built (or explicitly rejected) — at which point it must **graduate**, not silently rot into a stale "Open" that contradicts reality.
+
+Read every memo in `docs/memo/`. For each memo whose status is **`Open`**, identify its core question and recommended path, then check it against what you already gathered:
+
+1. **Did it become an ADR?** Cross-reference against the Phase 1 ADR inventory — is there now an ADR whose decision matches the memo's recommended path?
+2. **Is it built?** Cross-reference against the Phase 2 codebase scan — does the thing the memo explored now exist in the code?
+
+Categorise each `Open` memo:
+
+- **Graduate to Superseded** — the recommendation shipped **and** an ADR records the decision. Set the status to `Superseded by ADR [NNNN](../adr/NNNN-title.md)` and add a one-line resolution note (date · what shipped · which ADR). **Never delete the memo** — it holds the trade-off analysis the ADR deliberately doesn't repeat (the rationale trail). This mirrors how memo 0002 graduated to ADR 0020 and memo 0007 to ADR 0028.
+- **Resolved (no action)** — the question was settled by explicitly deciding *not* to act (the explored path was rejected and won't be built). Set status to `Resolved (no action)` with a one-line note on why.
+- **Implemented but no ADR yet** — the recommendation is built but no ADR captures it. This is also a Phase 3 "new ADR needed" finding: **create the ADR first** (in Phase 5), then graduate the memo to point at it. A significant decision that shipped should have an ADR, not just a memo.
+- **Still Open** — neither built nor decided. Leave it untouched. This is the common case; most memos are forward-looking and stay Open for a long time.
+
+**Judgement calls:**
+- A memo is "implemented" only when its **substance** shipped — not when a sibling feature merely touched the same area. Verify against the actual codebase, not the memo's own optimism.
+- Don't graduate on a partial implementation. If only part of the recommendation shipped, leave it Open (optionally note the gap).
+- **Never delete a memo.** Graduation is a status change. Preserving the analysis is the entire point of a memo.
+
+## Phase 5: Write Changes
+
+If Phase 3 and Phase 4 found nothing, report "ADRs and memos are up to date" and stop. Do not make changes for the sake of it.
 
 If there is drift:
 
@@ -174,19 +195,28 @@ Accepted
 - Include concrete details: library names, versions, configuration choices, and why alternatives weren't chosen where you can infer the rationale
 - Cross-reference related ADRs where relevant (e.g., "See also [ADR 0009](0009-notification-delivery-architecture.md)")
 
+### Graduating a memo
+
+When Phase 4 found a memo to graduate:
+
+- Edit only the `## Status` block. Change `Open` to `Superseded by ADR [NNNN](../adr/NNNN-title.md)` (or `Resolved (no action)`), and add a single blockquote resolution note directly under it: date, what shipped, and the ADR(s) that record it.
+- Leave the rest of the memo (Question, Analysis, Options Considered, Recommendation) **exactly as written** — that is the rationale trail. Do not rewrite or trim it.
+- Never rename or delete the file. The sequence number stays.
+
 ### Naming convention
 
-Files: `NNNN-kebab-case-title.md` (zero-padded to 4 digits)
+Files: `NNNN-kebab-case-title.md` (zero-padded to 4 digits). Memos and ADRs each have their own independent sequence under `docs/memo/` and `docs/adr/`.
 
-## Phase 5: Commit and Push
+## Phase 6: Commit and Push
 
 If changes were made:
 
-1. `git add docs/adr/` — stage only ADR files
+1. Stage only the doc files you touched: `git add docs/adr/ docs/memo/`
 2. Commit with a descriptive message:
-   - For amendments: `docs(adr): update ADR NNNN with [what changed]`
+   - For ADR amendments: `docs(adr): update ADR NNNN with [what changed]`
    - For new ADRs: `docs(adr): add ADR NNNN [title]`
-   - For multiple changes: `docs(adr): audit — [summary of all changes]`
+   - For memo graduation: `docs(memo): graduate memo NNNN → Superseded by ADR MMMM`
+   - For multiple changes: `docs: audit — [summary of all changes]`
 3. Use the `/ship` skill to push via PR if available, otherwise `git push` directly
 
 ## Idempotency
@@ -195,6 +225,7 @@ This skill will be called repeatedly via `/loop`. To avoid churn:
 
 - **Don't re-amend what you just amended.** If an ADR already has an Amendments section with today's date covering the same topic, skip it.
 - **Don't create duplicate ADRs.** Before creating a new ADR, check that no existing ADR (including any you might have created on a previous loop iteration) already covers the topic.
+- **Don't re-graduate memos.** A memo whose status is already `Superseded by ADR NNNN` or `Resolved (no action)` is done — skip it. Only `Open` memos are candidates.
 - **Don't commit empty changes.** If `git diff --cached` is empty after staging, skip the commit.
 - **Quick exit.** If the scan finds no drift, return a one-line status message and stop. The common case on `/loop` should take under a minute.
 
@@ -202,4 +233,4 @@ This skill will be called repeatedly via `/loop`. To avoid churn:
 
 Keep output terse — this runs unattended. Report:
 - `ADR audit: no drift detected` (happy path), or
-- `ADR audit: amended 0011 (added React Query, Leaflet); created 0014 (offline-first iOS), 0015 (community groups)` (changes made)
+- `ADR audit: amended 0011 (added React Query, Leaflet); created 0014 (offline-first iOS); graduated memo 0007 → ADR 0028` (changes made)

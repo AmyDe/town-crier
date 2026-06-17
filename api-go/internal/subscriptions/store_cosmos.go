@@ -3,12 +3,8 @@ package subscriptions
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
@@ -50,7 +46,7 @@ func NewCosmosNotificationStore(items notificationItems, now func() time.Time) *
 func (s *CosmosNotificationStore) IsProcessed(ctx context.Context, notificationUUID string) (bool, error) {
 	_, err := s.items.ReadItem(ctx, notificationUUID, notificationUUID)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("read processed notification %q: %w", notificationUUID, err)
@@ -74,9 +70,4 @@ func (s *CosmosNotificationStore) MarkProcessed(ctx context.Context, notificatio
 		return fmt.Errorf("upsert processed notification %q: %w", notificationUUID, err)
 	}
 	return nil
-}
-
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

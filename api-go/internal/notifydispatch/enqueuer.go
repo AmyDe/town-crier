@@ -68,6 +68,14 @@ type pushSender interface {
 	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
 }
 
+// notificationMetricsRecorder is the consumer-side slice of the metrics registry
+// the dispatchers record towncrier.notifications.created on, after a record is
+// successfully persisted. *metrics.Registry satisfies it; nil leaves the counter
+// dark (the default for the dispatch tests that don't assert on metrics).
+type notificationMetricsRecorder interface {
+	NotificationCreated(ctx context.Context, eventType, sources string)
+}
+
 // Enqueuer ports .NET DispatchNotificationCommandHandler: for a new application
 // that matched a watch zone, it dedups, creates the notification record (which
 // feeds the digest pipeline), and — for paid tiers with devices — sends an
@@ -83,6 +91,16 @@ type Enqueuer struct {
 	newID         func() string
 	now           func() time.Time
 	logger        *slog.Logger
+	metrics       notificationMetricsRecorder
+}
+
+// WithMetrics wires the recorder the enqueuer records
+// towncrier.notifications.created on. A post-construction setter so the existing
+// dispatch call sites and tests are unaffected; cmd/worker calls it once after
+// building the enqueuer. Returns the enqueuer for chaining.
+func (e *Enqueuer) WithMetrics(rec notificationMetricsRecorder) *Enqueuer {
+	e.metrics = rec
+	return e
 }
 
 // NewEnqueuer wires the enqueuer. newID mints the notification id (a GUID in
@@ -185,5 +203,11 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		}, zone.UserID, n)
 	}
 
-	return e.notifications.Create(ctx, n)
+	if err := e.notifications.Create(ctx, n); err != nil {
+		return err
+	}
+	if e.metrics != nil {
+		e.metrics.NotificationCreated(ctx, string(n.EventType), n.Sources)
+	}
+	return nil
 }

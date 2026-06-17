@@ -8,6 +8,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // zoneAuthorityLister yields the user's watch zones; the application-authorities
@@ -82,7 +83,7 @@ func (h *authoritiesHandler) list(w http.ResponseWriter, r *http.Request) {
 		return authorities.CompareOrdinalIgnoreCase(a.Name, b.Name)
 	})
 
-	body, err := encodeJSON(applicationAuthoritiesResult{Authorities: items, Count: len(items)})
+	body, err := httputil.EncodeJSON(applicationAuthoritiesResult{Authorities: items, Count: len(items)})
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "watch-zone request failed", "op", "encode authorities", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)

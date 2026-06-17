@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 const (
@@ -65,6 +67,11 @@ func NewClient(opts Options, logger *slog.Logger, now func() time.Time) (*Client
 		Transport: transport,
 		Timeout:   requestTimeout,
 	}
+	// Wrap the transport so every APNs push emits an OTel client span
+	// (Type=HTTP in AppDependencies) named "APNs push". api.push.apple.com lands
+	// in server.address; the static span name keeps cardinality low (no per-device
+	// token in the name).
+	httpClient = platform.WrapHTTPClient(httpClient, func(string, *http.Request) string { return "APNs push" })
 	return newClientWithBaseURL(opts, opts.baseURL(), httpClient, logger, now)
 }
 
@@ -125,7 +132,7 @@ func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMess
 		resp, sendErr := c.do(ctx, token, payload)
 		if sendErr != nil {
 			if attempt < maxAttempts {
-				if waitErr := sleep(ctx, backoff); waitErr != nil {
+				if waitErr := platform.Sleep(ctx, backoff); waitErr != nil {
 					return false, waitErr
 				}
 				backoff *= 2
@@ -156,7 +163,7 @@ func (c *Client) sendOne(ctx context.Context, token string, payload json.RawMess
 			return false, nil
 		case status >= 500 && status < 600 && attempt < maxAttempts:
 			c.logger.WarnContext(ctx, "apns transient error", "status", status, "reason", reason, "attempt", attempt)
-			if waitErr := sleep(ctx, backoff); waitErr != nil {
+			if waitErr := platform.Sleep(ctx, backoff); waitErr != nil {
 				return false, waitErr
 			}
 			backoff *= 2
@@ -220,18 +227,6 @@ func parseReason(body []byte) string {
 		return ""
 	}
 	return parsed.Reason
-}
-
-// sleep waits for d or until ctx is cancelled, whichever comes first.
-func sleep(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }
 
 // redactToken keeps only an 8-character prefix so device tokens — which identify

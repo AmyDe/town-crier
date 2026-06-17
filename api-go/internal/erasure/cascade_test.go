@@ -23,6 +23,18 @@ func (c recordingChild) DeleteAllByUserID(_ context.Context, userID string) erro
 	return c.err
 }
 
+// recordingAnonymiser records "offerCodes:<userID>" and returns its configured
+// error, standing in for the offer-code redemption anonymiser.
+type recordingAnonymiser struct {
+	log *[]string
+	err error
+}
+
+func (a recordingAnonymiser) AnonymiseRedemptionsByUserID(_ context.Context, userID string) error {
+	*a.log = append(*a.log, "offerCodes:"+userID)
+	return a.err
+}
+
 // recordingProfile records "profile:<userID>" and returns its configured error.
 type recordingProfile struct {
 	log *[]string
@@ -54,6 +66,7 @@ func recordingDeleters(log *[]string) Deleters {
 		SavedApplications:   recordingChild{label: "savedApplications", log: log},
 		DeviceRegistrations: recordingChild{label: "deviceRegistrations", log: log},
 		NotificationState:   recordingChild{label: "notificationState", log: log},
+		OfferCodes:          recordingAnonymiser{log: log},
 		Profile:             recordingProfile{log: log},
 		Auth0:               recordingAuth0{log: log},
 	}
@@ -76,6 +89,7 @@ func TestCascade_RunsEveryStepInFixedOrder(t *testing.T) {
 		"savedApplications:auth0|abc",
 		"deviceRegistrations:auth0|abc",
 		"notificationState:auth0|abc",
+		"offerCodes:auth0|abc",
 		"profile:auth0|abc",
 		"auth0:auth0|abc",
 	}
@@ -102,6 +116,24 @@ func TestCascade_ChildFailureAbortsBeforeProfileAndAuth0(t *testing.T) {
 	}
 }
 
+func TestCascade_OfferCodeAnonymiseFailureAbortsBeforeProfileAndAuth0(t *testing.T) {
+	t.Parallel()
+	var log []string
+	d := recordingDeleters(&log)
+	d.OfferCodes = recordingAnonymiser{log: &log, err: errors.New("cosmos down")}
+
+	err := Cascade(context.Background(), "auth0|abc", d)
+	if err == nil {
+		t.Fatal("expected error when offer-code anonymisation fails")
+	}
+	if slices.Contains(log, "profile:auth0|abc") {
+		t.Errorf("profile must not run after an offer-code failure: %v", log)
+	}
+	if slices.Contains(log, "auth0:auth0|abc") {
+		t.Errorf("auth0 must not run after an offer-code failure: %v", log)
+	}
+}
+
 func TestCascade_Auth0RunsLastAfterEveryOtherStep(t *testing.T) {
 	t.Parallel()
 	var log []string
@@ -120,6 +152,7 @@ func TestCascade_Auth0RunsLastAfterEveryOtherStep(t *testing.T) {
 		"savedApplications:auth0|abc",
 		"deviceRegistrations:auth0|abc",
 		"notificationState:auth0|abc",
+		"offerCodes:auth0|abc",
 		"profile:auth0|abc",
 		"auth0:auth0|abc",
 	}

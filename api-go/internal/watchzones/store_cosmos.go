@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // ErrNotFound signals that no watch zone exists for the given (user, zone) pair.
@@ -32,8 +31,11 @@ type CosmosItems interface {
 }
 
 // listByUserQuery lists a user's zones. It is scoped to the userId partition, so
-// it never fans out cross-partition — matching .NET's CosmosWatchZoneRepository.
-const listByUserQuery = "SELECT * FROM c WHERE c.userId = @userId"
+// it never fans out cross-partition. The ORDER BY c.id makes the result
+// deterministic: without it Cosmos returns the zones in an arbitrary order per
+// request, which flaked the GDPR export's zonePreferences array order (tc-zgnt).
+// The document id equals the zone id, so this orders by zone id.
+const listByUserQuery = "SELECT * FROM c WHERE c.userId = @userId ORDER BY c.id"
 
 // CosmosStore reads and writes watch zones in the WatchZones container. It holds
 // only the consumer-side item interface, so no SDK type leaks past it.
@@ -75,7 +77,7 @@ func (s *CosmosStore) GetByUserID(ctx context.Context, userID string) ([]WatchZo
 func (s *CosmosStore) Get(ctx context.Context, userID, zoneID string) (WatchZone, error) {
 	raw, err := s.items.ReadItem(ctx, userID, zoneID)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return WatchZone{}, ErrNotFound
 		}
 		return WatchZone{}, fmt.Errorf("read watch zone %q: %w", zoneID, err)
@@ -109,7 +111,7 @@ func (s *CosmosStore) Save(ctx context.Context, z WatchZone) error {
 // the .NET REST client.)
 func (s *CosmosStore) Delete(ctx context.Context, userID, zoneID string) error {
 	if err := s.items.DeleteItem(ctx, userID, zoneID); err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("delete watch zone %q: %w", zoneID, err)
@@ -138,7 +140,7 @@ func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode watch zone id for %q: %w", userID, err)
 		}
-		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !platform.IsCosmosNotFound(err) {
 			return fmt.Errorf("delete watch zone %q for %q: %w", doc.ID, userID, err)
 		}
 	}
@@ -211,10 +213,4 @@ func (s *CosmosStore) FindZonesContaining(ctx context.Context, latitude, longitu
 		zones = append(zones, zone)
 	}
 	return zones, nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

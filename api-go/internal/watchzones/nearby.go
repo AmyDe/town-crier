@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -72,6 +73,7 @@ func NearbyRoutes(
 	newID func() string,
 	now func() time.Time,
 	logger *slog.Logger,
+	opts ...Option,
 ) {
 	h := &handler{
 		store:    store,
@@ -83,6 +85,9 @@ func NearbyRoutes(
 		newID:    newID,
 		now:      now,
 		logger:   logger,
+	}
+	for _, opt := range opts {
+		opt(h)
 	}
 	mux.HandleFunc("POST /v1/me/watch-zones", h.create)
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications", h.applications)
@@ -192,6 +197,9 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "save watch zone", err)
 		return
 	}
+	if h.metrics != nil {
+		h.metrics.WatchZoneCreated(r.Context())
+	}
 
 	nearby, err := h.apps.FindNearby(
 		r.Context(), strconv.Itoa(authorityID), req.Latitude, req.Longitude, req.RadiusMetres)
@@ -296,7 +304,7 @@ func boolOrTrue(p *bool) bool {
 // writeCreated emits a 201 Created with a Location header and the JSON body,
 // matching .NET Results.Created.
 func (h *handler) writeCreated(w http.ResponseWriter, r *http.Request, location string, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return

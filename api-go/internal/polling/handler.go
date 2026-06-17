@@ -71,6 +71,26 @@ type NotificationEnqueuer interface {
 	EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error
 }
 
+// metricsRecorder is the consumer-side slice of the metrics registry the handler
+// records the per-cycle / per-authority polling KPIs on. *metrics.Registry
+// satisfies it; a nil recorder no-ops every call, so the handler records nothing
+// until WithMetrics wires one (matching the WithFanOut pattern). cycleType is the
+// CycleType.TelemetryValue() string ("Watched" | "Seed") every instrument tags.
+type metricsRecorder interface {
+	AuthorityPolled(ctx context.Context, cycleType string)
+	AuthoritySkipped(ctx context.Context, cycleType string)
+	ApplicationsIngested(ctx context.Context, n int, cycleType string)
+	RateLimited(ctx context.Context, cycleType string)
+	RetryAfterSeconds(ctx context.Context, seconds float64, cycleType string, authorityID int, headerPresent bool)
+	AuthorityProcessingMillis(ctx context.Context, ms float64, cycleType string)
+	AuthorityTotal(ctx context.Context, total int, cycleType string, authorityID int)
+	CycleCompleted(ctx context.Context, cycleType, termination string)
+	CursorAdvanced(ctx context.Context, cycleType string)
+	CursorCleared(ctx context.Context, cycleType string)
+	OldestHighWaterMarkAge(ctx context.Context, seconds float64, cycleType string, authorityID int, neverPolled bool)
+	NeverPolledCount(ctx context.Context, count int, cycleType string)
+}
+
 // HandlerOptions are the ingestion tunables. MaxPagesPerAuthorityPerCycle caps
 // pagination per authority (nil = unbounded). HandlerBudget is the soft
 // wall-clock deadline; zero disables it. Mirrors the relevant .NET PollingOptions
@@ -118,6 +138,30 @@ type PollPlanItHandler struct {
 	// watch-zone notification fan-out, matching .NET PollPlanItCommandHandler.
 	decision DecisionDispatcher
 	enqueuer NotificationEnqueuer
+
+	// metrics records the towncrier.polling.* business KPIs, wired via WithMetrics.
+	// nil until wired (the no-metrics default), so the handler records nothing
+	// during the many ingestion-only tests and call sites that don't supply one.
+	metrics metricsRecorder
+}
+
+// WithMetrics wires the metrics recorder the handler records the per-cycle and
+// per-authority polling KPIs on. Like WithFanOut it is a post-construction setter
+// so the ingestion-only call sites and tests are unaffected; cmd/worker calls it
+// once after building the handler. Returns the handler for chaining.
+func (h *PollPlanItHandler) WithMetrics(rec metricsRecorder) *PollPlanItHandler {
+	h.metrics = rec
+	return h
+}
+
+// recorder returns a non-nil recorder so call sites can record unconditionally.
+// When no recorder is wired it returns a no-op so the per-call nil checks live in
+// one place rather than at every record site.
+func (h *PollPlanItHandler) recorder() metricsRecorder {
+	if h.metrics == nil {
+		return noopMetrics{}
+	}
+	return h.metrics
 }
 
 // WithFanOut wires the notification fan-out collaborators the worker runs on the
@@ -176,6 +220,9 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 		return hasDeadline && !h.now().UTC().Before(deadline)
 	}
 
+	cycleType := h.cycle.Current().TelemetryValue()
+	rec := h.recorder()
+
 	activeIDs, err := h.authorities.ActiveAuthorityIDs(ctx)
 	if err != nil {
 		return PollPlanItResult{}, err
@@ -184,6 +231,12 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 	if err != nil {
 		return PollPlanItResult{}, err
 	}
+
+	// Cycle-start gauges: the never-polled backlog and the staleness of the
+	// oldest authority's LastPollTime. These mirror .NET's per-cycle gauge
+	// records so the lag dashboards keep working.
+	rec.NeverPolledCount(ctx, lru.NeverPolledCount, cycleType)
+	h.recordOldestHWMAge(ctx, rec, lru, now, cycleType)
 
 	var (
 		count           int
@@ -203,11 +256,16 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 			break
 		}
 
-		outcome := h.pollAuthority(ctx, authorityID, now, budgetExhausted)
+		authorityStart := h.now()
+		outcome := h.pollAuthority(ctx, authorityID, now, budgetExhausted, cycleType)
+		rec.AuthorityProcessingMillis(ctx, h.now().Sub(authorityStart).Seconds()*1000, cycleType)
 		count += outcome.appCount
+
 		if outcome.rateLimited {
 			rateLimited = true
 			retryAfter = outcome.retryAfter
+			rec.RateLimited(ctx, cycleType)
+			h.recordRetryAfter(ctx, rec, outcome.retryAfter, cycleType, authorityID)
 		}
 		if outcome.timeBounded {
 			timeBounded = true
@@ -215,9 +273,16 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 		switch {
 		case outcome.err != nil:
 			authorityErrors++
+			rec.AuthoritySkipped(ctx, cycleType)
 			h.logger.ErrorContext(ctx, "error polling authority, skipping to next", "authorityCode", authorityID, "error", outcome.err)
 		case outcome.completed || outcome.appCount > 0:
 			authoritiesPoll++
+			rec.AuthorityPolled(ctx, cycleType)
+			rec.ApplicationsIngested(ctx, outcome.appCount, cycleType)
+		default:
+			// Polled but produced no work and did not error: counts as skipped,
+			// matching .NET's authorities_skipped on a quiet authority.
+			rec.AuthoritySkipped(ctx, cycleType)
 		}
 
 		// A 429 stops the whole cycle so the scheduler can back off via Retry-After.
@@ -233,6 +298,8 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 	case timeBounded:
 		reason = TerminationTimeBounded
 	}
+
+	rec.CycleCompleted(ctx, cycleType, reason.TelemetryValue())
 
 	return PollPlanItResult{
 		ApplicationCount:  count,
@@ -258,7 +325,7 @@ type authorityOutcome struct {
 // changed applications, and persists the advanced poll state (HWM + cursor). A
 // 429 is an expected outcome (not an error); a transport/5xx failure after
 // retries is an authority error that the caller counts and skips past.
-func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, now time.Time, budgetExhausted func() bool) authorityOutcome {
+func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, now time.Time, budgetExhausted func() bool, cycleType string) authorityOutcome {
 	existing, _, err := h.state.Get(ctx, authorityID)
 	existingHWM := now.AddDate(0, 0, -1)
 	hadCursor := false
@@ -303,6 +370,9 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 
 		if pagesFetched == 0 {
 			firstPageTotal = res.Total
+			if res.Total != nil {
+				h.recorder().AuthorityTotal(ctx, *res.Total, cycleType, authorityID)
+			}
 		}
 
 		for _, app := range res.Applications {
@@ -312,7 +382,7 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 			}
 			if err := h.processApplication(ctx, app); err != nil {
 				out.err = err
-				return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor)
+				return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
 			}
 		}
 
@@ -337,7 +407,7 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 	if out.err == nil && !out.rateLimited {
 		out.completed = true
 	}
-	return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor)
+	return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
 }
 
 // processApplication point-reads the persisted application by uid within its
@@ -420,10 +490,13 @@ func (h *PollPlanItHandler) finishAuthority(
 	lastPageFetched int,
 	firstPageTotal *int,
 	capHit, hadCursor bool,
+	cycleType string,
 ) authorityOutcome {
 	if !out.completed && out.appCount == 0 {
 		return out
 	}
+
+	rec := h.recorder()
 
 	if capHit || (out.rateLimited && out.appCount > 0) {
 		// Freeze HWM, save a resumable cursor at the next unfetched page so the
@@ -438,6 +511,8 @@ func (h *PollPlanItHandler) finishAuthority(
 		if err := h.state.Save(ctx, authorityID, now, existingHWM, cursor); err != nil && out.err == nil {
 			out.err = err
 		}
+		// A persisted non-null cursor advances the resume point.
+		rec.CursorAdvanced(ctx, cycleType)
 		return out
 	}
 
@@ -450,8 +525,46 @@ func (h *PollPlanItHandler) finishAuthority(
 	if err := h.state.Save(ctx, authorityID, now, advancedHWM, nil); err != nil && out.err == nil {
 		out.err = err
 	}
-	_ = hadCursor // telemetry-only in .NET (cursor_cleared counter); omitted here
+	// Clearing a previously-active cursor at a natural end, matching .NET's
+	// cursor_cleared counter (recorded only when a cursor was actually present).
+	if hadCursor {
+		rec.CursorCleared(ctx, cycleType)
+	}
 	return out
+}
+
+// recordOldestHWMAge records the staleness of the oldest candidate authority's
+// LastPollTime at the start of a cycle. The LRU result orders never-polled-first
+// then ascending LastPollTime, so AuthorityIDs[0] is the stalest authority. A
+// never-polled authority (no PollState) reports its age from the Unix epoch and
+// is tagged never_polled=true so dashboards distinguish it from a genuinely stale
+// HWM, matching .NET. An empty candidate set records nothing.
+func (h *PollPlanItHandler) recordOldestHWMAge(ctx context.Context, rec metricsRecorder, lru LeastRecentlyPolledResult, now time.Time, cycleType string) {
+	if len(lru.AuthorityIDs) == 0 {
+		return
+	}
+	oldestID := lru.AuthorityIDs[0]
+	state, found, err := h.state.Get(ctx, oldestID)
+	neverPolled := err != nil || !found || state.LastPollTime.IsZero()
+
+	var ageSeconds float64
+	if neverPolled {
+		ageSeconds = now.Sub(time.Unix(0, 0).UTC()).Seconds()
+	} else {
+		ageSeconds = now.Sub(state.LastPollTime).Seconds()
+	}
+	rec.OldestHighWaterMarkAge(ctx, ageSeconds, cycleType, oldestID, neverPolled)
+}
+
+// recordRetryAfter records the parsed Retry-After value (seconds) for a 429,
+// tagging header_present so dashboards distinguish a PlanIt 429 with no
+// Retry-After header (value 0, header_present=false) from a real small backoff.
+func (h *PollPlanItHandler) recordRetryAfter(ctx context.Context, rec metricsRecorder, retryAfter *time.Duration, cycleType string, authorityID int) {
+	if retryAfter == nil {
+		rec.RetryAfterSeconds(ctx, 0, cycleType, authorityID, false)
+		return
+	}
+	rec.RetryAfterSeconds(ctx, retryAfter.Seconds(), cycleType, authorityID, true)
 }
 
 // sameDate reports whether two instants fall on the same UTC calendar day.
@@ -467,3 +580,20 @@ func truncateToDate(t time.Time) time.Time {
 	y, m, d := t.UTC().Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
+
+// noopMetrics is the recorder used when no metrics registry is wired: every
+// method is a no-op so the handler records nothing without per-site nil checks.
+type noopMetrics struct{}
+
+func (noopMetrics) AuthorityPolled(context.Context, string)                            {}
+func (noopMetrics) AuthoritySkipped(context.Context, string)                           {}
+func (noopMetrics) ApplicationsIngested(context.Context, int, string)                  {}
+func (noopMetrics) RateLimited(context.Context, string)                                {}
+func (noopMetrics) RetryAfterSeconds(context.Context, float64, string, int, bool)      {}
+func (noopMetrics) AuthorityProcessingMillis(context.Context, float64, string)         {}
+func (noopMetrics) AuthorityTotal(context.Context, int, string, int)                   {}
+func (noopMetrics) CycleCompleted(context.Context, string, string)                     {}
+func (noopMetrics) CursorAdvanced(context.Context, string)                             {}
+func (noopMetrics) CursorCleared(context.Context, string)                              {}
+func (noopMetrics) OldestHighWaterMarkAge(context.Context, float64, string, int, bool) {}
+func (noopMetrics) NeverPolledCount(context.Context, int, string)                      {}

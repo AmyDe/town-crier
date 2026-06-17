@@ -1,13 +1,12 @@
 package admin
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -61,7 +60,7 @@ func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore,
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
@@ -71,16 +70,6 @@ func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write admin response", "error", err)
 	}
-}
-
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {

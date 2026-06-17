@@ -36,18 +36,44 @@ The JSON output from `az monitor log-analytics query` is a flat JSON array (one 
 
 | App* table | What it contains | Key columns |
 |---|---|---|
-| `AppRequests` | Inbound HTTP requests served by the app | `TimeGenerated`, `Name` (route), `ResultCode`, `DurationMs`, `Url`, `OperationId`, `AppRoleName`, `AppRoleInstance`, `Success`, `Properties` |
+| `AppRequests` | Inbound HTTP requests served by the app. **⚠️ For Go, `ResultCode` is span-status (0/2), not the HTTP code, and `Success` misses 4xx — use `Properties['http.status_code']`; see the status-field callout below.** | `TimeGenerated`, `Name` (route), `ResultCode`, `DurationMs`, `Url`, `OperationId`, `AppRoleName`, `AppRoleInstance`, `Success`, `Properties` |
 | `AppDependencies` | Outbound calls (HTTP, Cosmos, ServiceBus, InProc spans) | `TimeGenerated`, `Type`, `Target`, `Name`, `DurationMs`, `Success`, `ResultCode`, `Data`, `OperationId`, `AppRoleName` |
 | `AppExceptions` | Captured exceptions | `TimeGenerated`, `ExceptionType`, `OuterMessage`, `OperationId`, `AppRoleName` |
 | `AppTraces` | ILogger output | `TimeGenerated`, `Message`, `SeverityLevel` (0=Verbose..4=Critical), `OperationId`, `AppRoleName`, `Properties`. **Basic Logs tier in this workspace** — see note below |
-| `AppMetrics` | OTel meters and CLR counters that emit numeric values | `TimeGenerated`, `Name`, `Sum`, `Min`, `Max`, `ItemCount`, `Properties`, `AppRoleName`, `AppRoleInstance` |
-| `AppPerformanceCounters` | Process-level counters (CPU, memory, exceptions/sec) | `TimeGenerated`, `Name`, `Value`, `AppRoleName`, `AppRoleInstance` |
+| `AppMetrics` | OTel meters / numeric values. **❌ Empty for the Go roles by design — see the availability callout below.** | `TimeGenerated`, `Name`, `Sum`, `Min`, `Max`, `ItemCount`, `Properties`, `AppRoleName`, `AppRoleInstance` |
+| `AppPerformanceCounters` | Process-level CLR counters (CPU, memory, exceptions/sec). **❌ Empty for the Go roles — a .NET-only feature.** | `TimeGenerated`, `Name`, `Value`, `AppRoleName`, `AppRoleInstance` |
 | `AppAvailabilityResults` | Synthetic availability test results | `TimeGenerated`, `Name`, `Success`, `DurationMs`, `Location` |
+
+> **⚠️ Telemetry availability — read this before treating any empty table as a finding.**
+>
+> The backend is **Go-only** since the .NET decommission (2026-06-15, ADR 0028). The Go services reach App Insights **only** through the ACA managed-environment OpenTelemetry agent, which forwards **logs and traces but NOT metrics**. There is also **no in-process Azure Monitor OpenTelemetry metrics exporter for Go** (verified 2026-06-16, tc-0rt1 — Microsoft's Azure Monitor OTel Distro covers .NET/Java/JS/Python only; for Go they direct you to the OpenTelemetry Collector). So:
+>
+> | App* table | Go backend status | Notes |
+> |---|---|---|
+> | `AppRequests` | ✅ Populated | Inbound HTTP — the primary request signal |
+> | `AppDependencies` | ✅ Populated | Outbound calls (Cosmos, ServiceBus, PlanIt, Auth0, InProc spans) |
+> | `AppExceptions` | ✅ Populated | Captured exceptions |
+> | `AppTraces` | ✅ Populated (Basic Logs tier — see note below) | slog output |
+> | `AppMetrics` | ❌ **Empty by design** | The app emits OTLP metrics correctly, but the ACA agent drops them and there is no in-process Go exporter. **This is NOT a bug.** |
+> | `AppPerformanceCounters` | ❌ **Empty by design** | A .NET CLR feature — the Go runtime does not emit these. |
+> | `AppAvailabilityResults` | ❌ Empty | No synthetic availability tests are configured. |
+>
+> **Do NOT file a bead about empty `AppMetrics`/`AppPerformanceCounters`, missing `towncrier.*` business metrics, or missing `http.client.request.duration` metrics for the Go roles.** That is the deferred-by-design state recorded in **tc-0rt1**; "fixing" it needs an OTel Collector sidecar (ongoing cost, +1 container per app/job) or an archived SDK — neither justified pre-revenue. Business KPIs (polling, RU, throttles) are observable via `AppTraces`/logs and `AppDependencies`, not `AppMetrics`. Re-open tc-0rt1 only if a GA in-process Go Azure Monitor metrics exporter ships or the cost trade-off changes. The metric-oriented phases below (4b–4e) are retained as templates for that future; **today they return empty for the Go roles and that is expected.**
+
+> **⚠️ HTTP status for Go lives in `Properties`, NOT in `ResultCode`/`Success` — using the wrong field silently reports zero errors.**
+>
+> The ACA managed OTel agent derives `AppRequests.ResultCode` from the OTel **span Status**, not the HTTP status: `ResultCode = "0"` for every 2xx/3xx/**4xx** (span Unset) and `"2"` for 5xx (span Error). `Success` follows the same span Status, so a **4xx shows `Success = true`**. Proven on prod probe rows (2026-06-16, tc-oml9/tc-3ovj): a 401 had `ResultCode="0"`, `Success=true`, while `Properties['http.status_code']="401"`.
+>
+> **Consequences — do NOT key Go error detection on `ResultCode`/`Success`:**
+> - `countif(ResultCode startswith "4" or "5")` matches **nothing** for Go → a false "all healthy".
+> - `Success == false` catches only 5xx, never 4xx.
+> - **Use the real HTTP status from `Properties` instead:** `extend httpStatus = toint(Properties['http.status_code'])` then filter on `httpStatus` (e.g. `httpStatus >= 500`, `httpStatus between (400 .. 499)`). `http.response.status_code` is also present (same value). The numeric HTTP status is also visible in the route `Name` context but only `Properties` carries it as a value.
+> - The Phase 1/5 query templates below already apply this pattern. This is the same ACA-agent translation limitation as tc-0rt1 (metrics) — not fixable in-app without the deferred sidecar; tc-oml9 confirmed adding the `http.status_code` attribute does not change `ResultCode`.
 
 Notes on data flow:
 
-- Town Crier uses OpenTelemetry with the Azure Monitor exporter. Most outbound HTTP calls land as both `AppDependencies` rows AND as `AppMetrics` rows for the meter `http.client.request.duration`. Cross-reference both when investigating dependency health.
-- The .NET CLR exception counter (`# of Exceps Thrown / sec`) lives in `AppPerformanceCounters` and counts ALL thrown exceptions including first-chance ones caught internally by the runtime (HTTP retries, DNS, SSL, connection pooling). A nonzero counter with an empty `AppExceptions` table is NOT automatically a finding — only file a bead if there are also failed dependencies or non-200 status codes that should be producing exception records.
+- Outbound calls land in `AppDependencies` (Cosmos, ServiceBus, PlanIt, Auth0, InProc). Note: the legacy cross-reference against an `AppMetrics` `http.client.request.duration` row **no longer applies** — `AppMetrics` is empty for the Go roles (see the availability callout above). Use `AppDependencies` alone for dependency health.
+- `AppPerformanceCounters` and its `.NET CLR exception counter (# of Exceps Thrown / sec)` are a **.NET-only** signal and are **empty for the Go roles**. The notes about that counter below (Phase 4e) are retained only as historical context; they do not produce findings for the current Go backend.
 - **`AppTraces` is on the Basic Logs tier** in this workspace (cost optimisation). The standard query API rejects ALL queries against Basic Logs tables — even a bare `AppTraces | take 1` returns "Query of Basic Logs table is not supported." Two consequences:
   1. Do not include `AppTraces` in `union` queries with other tables — the union fails as a whole.
   2. To read `AppTraces` you must use the **search API** via `az rest` instead of `az monitor log-analytics query`. Even then, only `where`, `take`, `project`, `parse`, `extend` are supported — no `summarize`, `join`, or `union`. Read it as a filtered tail and bucket recurring messages by eye. Example:
@@ -65,10 +91,12 @@ Notes on data flow:
 
 Town Crier's roles (Go backend, Phase 3 onward):
 
-| AppRoleName | What it is |
+| AppRoleName (actual value) | What it is |
 |---|---|
-| `town-crier-api-go` | The Go HTTP API (`api-go/cmd/api/`, container is `ca-town-crier-api-go-prod`; `OTEL_SERVICE_NAME=town-crier-api-go` set in `infra/EnvironmentStack.cs`) |
-| `town-crier-worker-go` | The Go background worker — polling/digest/dormant-cleanup (Container App Job, schedule-driven; `OTEL_SERVICE_NAME=town-crier-worker-go`) |
+| `cae-town-crier-shared.town-crier-api-go` | The Go HTTP API (`api-go/cmd/api/`, container `ca-town-crier-api-go-prod`; `OTEL_SERVICE_NAME=town-crier-api-go` in `infra/EnvironmentStack.cs`) |
+| `cae-town-crier-shared.town-crier-worker-go` | The Go background worker — polling/digest/dormant-cleanup (Container App Job, schedule-driven; `OTEL_SERVICE_NAME=town-crier-worker-go`) |
+
+> **⚠️ The ACA agent prefixes `AppRoleName` with the Container Apps Environment name** (`cae-town-crier-shared.`), so the stored value is `cae-town-crier-shared.town-crier-api-go`, NOT the bare `OTEL_SERVICE_NAME`. **Filter with `AppRoleName has 'town-crier-api-go'` (or `contains`), never `== 'town-crier-api-go'`** — exact-match returns zero rows. Verified 2026-06-16 (tc-3ovj).
 
 If you see `unknown_service:` as a prefix on any role, that IS a finding (means `OTEL_SERVICE_NAME` was unset and the binary fell back to its default service name).
 
@@ -118,10 +146,11 @@ Get a high-level picture before diving in. This tells you whether the system is 
 ```kql
 AppRequests
 | where TimeGenerated > ago(24h)
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP — use Properties
 | summarize
     totalRequests = count(),
-    failedRequests = countif(ResultCode startswith "5"),
-    clientErrors = countif(ResultCode startswith "4"),
+    failedRequests = countif(httpStatus >= 500),
+    clientErrors = countif(httpStatus between (400 .. 499)),
     avgDuration = avg(DurationMs),
     p99Duration = percentile(DurationMs, 99)
 | extend errorRate = round(100.0 * failedRequests / totalRequests, 2)
@@ -133,10 +162,11 @@ let analysisWindow = ago(24h);
 let baselineStart = ago(8d);
 AppRequests
 | where TimeGenerated > baselineStart
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: use Properties, not ResultCode
 | extend period = iff(TimeGenerated > analysisWindow, "current", "baseline")
 | summarize
     count_ = count(),
-    errors = countif(ResultCode startswith "5"),
+    errors = countif(httpStatus >= 500),
     avgDuration = avg(DurationMs),
     p99Duration = percentile(DurationMs, 99)
     by period
@@ -206,7 +236,8 @@ A meaningful regression: p99 increased by more than 50% AND the endpoint handles
 ```kql
 AppRequests
 | where TimeGenerated > ago(24h) and DurationMs > 5000
-| project TimeGenerated, Name, DurationMs, ResultCode, OperationId
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP
+| project TimeGenerated, Name, DurationMs, httpStatus, OperationId
 | order by DurationMs desc
 | take 20
 ```
@@ -239,7 +270,7 @@ AppDependencies
 | order by failureRate desc, calls desc
 ```
 
-If this returns zero rows, note it as a potential instrumentation gap and continue — Phase 4b will check `AppMetrics` for the OTel HTTP client data.
+If this returns zero rows for a role you expect to be active, run a probe (scale-to-zero can mean genuine silence) before concluding an instrumentation gap. Note: the old `AppMetrics` `http.client.request.duration` fallback no longer exists for Go — `AppDependencies` is the only outbound-call signal now (see availability callout).
 
 **4a-ii. Dependency Failure Details**
 ```kql
@@ -257,7 +288,9 @@ Known dependency context for Town Crier:
 
 ### Phase 4b: OTel Custom Metrics & Runtime Counters
 
-This phase often reveals the most actionable data. OpenTelemetry meters land in `AppMetrics`, and .NET CLR performance counters land in `AppPerformanceCounters`. These tables may contain rich signal even when standard tables are sparse.
+> **⚠️ For the current Go backend this entire phase (4c/4d/4e) returns empty — `AppMetrics` and `AppPerformanceCounters` are empty by design (see the availability callout in the schema section). Run these queries to confirm zero rows if you like, but an empty result is EXPECTED and is NOT a finding. Do not file a bead about missing metrics. The templates below are kept for the .NET era / a future in-process Go metrics exporter (tc-0rt1, deferred).**
+
+Historically (pre-.NET-decommission) this phase revealed the most actionable data: OpenTelemetry meters land in `AppMetrics`, and .NET CLR performance counters land in `AppPerformanceCounters`. Those tables could carry rich signal even when standard tables were sparse — but they are dark for Go today.
 
 **4c. Outbound HTTP Client Metrics (OTel)**
 
@@ -281,7 +314,9 @@ Watch for: high 429 rates (rate limiting by external APIs), 400/500 errors on Co
 
 **4d. Town Crier Business Metrics**
 
-The app emits custom meters for polling, API usage, and Cosmos instrumentation. These are the best window into whether the system is actually doing its job.
+> **❌ Empty for Go today.** The app *emits* these `towncrier.*` meters, but they never reach `AppMetrics` (see callout). The polling/RU/throttle KPIs below are currently observable only via `AppTraces`/logs and `AppDependencies`, not here. Do not file a bead about their absence in `AppMetrics`.
+
+The app emits custom meters for polling, API usage, and Cosmos instrumentation. These would be the best window into whether the system is actually doing its job — once a metrics→App Insights path exists (tc-0rt1).
 
 ```kql
 AppMetrics
@@ -301,7 +336,9 @@ Key metrics to check:
 - `towncrier.cosmos.request_charge_ru` — RU consumption (watch for spikes, compare to serverless burst limit of 5000 RU/s)
 - `towncrier.cosmos.throttles` — Cosmos 429s
 
-**4e. .NET Runtime Health**
+**4e. .NET Runtime Health** *(legacy — empty for the Go backend)*
+
+> **❌ Not applicable to Go.** `AppPerformanceCounters` is a .NET CLR feature and is empty for the Go roles. Skip this query unless investigating historical .NET data. Empty results are expected — not a finding.
 
 Performance counters reveal process-level health that application telemetry can miss.
 
@@ -322,7 +359,7 @@ Watch for:
 
 **4f. Service Identity Check**
 
-Verify that services are reporting with correct names. Note: `AppTraces` is excluded because it's Basic Logs tier and cannot participate in `union`.
+Verify that services are reporting with correct names. Note: `AppTraces` is excluded because it's Basic Logs tier and cannot participate in `union`. For the Go roles, only `AppRequests`, `AppDependencies` and `AppExceptions` contribute rows — `AppMetrics`/`AppPerformanceCounters` are empty by design (see callout), so a Go role showing counts only from the first three is normal, not a gap.
 
 ```kql
 union AppRequests, AppMetrics, AppPerformanceCounters, AppDependencies, AppExceptions
@@ -332,7 +369,7 @@ union AppRequests, AppMetrics, AppPerformanceCounters, AppDependencies, AppExcep
 | order by count_ desc
 ```
 
-Expected roles: `town-crier-api-go` (API), `town-crier-worker-go` (jobs). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `OTEL_SERVICE_NAME` is unset on the corresponding Container App in `infra/EnvironmentStack.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
+Expected roles: `cae-town-crier-shared.town-crier-api-go` (API), `cae-town-crier-shared.town-crier-worker-go` (jobs) — env-name-prefixed (see Service Identity). If any `AppRoleName` starts with `unknown_service:`, that's a bead — it means `OTEL_SERVICE_NAME` is unset on the corresponding Container App in `infra/EnvironmentStack.cs`. If a role you expect is missing entirely, run a probe before filing — see the "Service Identity" section.
 
 ### Phase 5: User Frustration Signals
 
@@ -341,8 +378,10 @@ These patterns indicate users are having a bad time, even if the system technica
 **5a. Repeated Client Errors (retry storms / confused users)**
 ```kql
 AppRequests
-| where TimeGenerated > ago(24h) and ResultCode startswith "4"
-| summarize errorCount = count() by Name, ResultCode
+| where TimeGenerated > ago(24h)
+| extend httpStatus = toint(Properties['http.status_code'])  // Go: ResultCode is span-status, not HTTP
+| where httpStatus between (400 .. 499)
+| summarize errorCount = count() by Name, httpStatus
 | where errorCount > 3
 | order by errorCount desc
 ```
@@ -365,8 +404,8 @@ Then for each slow operation, trace the full journey:
 
 ```kql
 union
-  (AppRequests    | where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "request",    Name, DurationMs, ResultCode, Success = (ResultCode startswith "2")),
-  (AppDependencies| where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "dependency", Name, DurationMs, ResultCode, Success)
+  (AppRequests    | where OperationId == "OPERATION_ID" | extend httpStatus = toint(Properties['http.status_code']) | project TimeGenerated, kind = "request",    Name, DurationMs, httpStatus, ok = (httpStatus < 400)),
+  (AppDependencies| where OperationId == "OPERATION_ID" | project TimeGenerated, kind = "dependency", Name, DurationMs, httpStatus = toint(ResultCode), ok = Success)
 | order by TimeGenerated asc
 ```
 
@@ -449,10 +488,11 @@ Now that you have the full picture and have reconciled prior findings, decide wh
 | P99 latency regression > 50% vs baseline | P2 | /v1/applications p99 jumped from 200ms to 400ms |
 | Dependency failure rate > 5% | P1-P2 | Cosmos 429s, PlanIt timeouts |
 | New exception type not seen in baseline | P2 | New HttpRequestException pattern |
-| CLR exception counter > 0 with empty AppExceptions table AND failed dependencies exist | P2 | OTel exception pipeline not wired (verify failed deps/non-200s exist that should produce exception records — CLR counter alone is not sufficient, as it includes first-chance runtime exceptions) |
+| ~~CLR exception counter > 0 with empty AppExceptions~~ | — | **Legacy .NET-only; ignore for Go** — `AppPerformanceCounters` is empty by design. |
 | Service reports as `unknown_service:` prefix | P2 | `OTEL_SERVICE_NAME` missing from the Container App in `infra/EnvironmentStack.cs` |
-| Polling skip ratio > 50% | P2 | Most authorities skipped due to rate limiting |
-| Cosmos RU consumption spiking or throttling (429) | P2 | 60k RU consumed in 3 minutes |
+| Polling skip ratio > 50% (via `AppTraces`/logs, not `AppMetrics`) | P2 | Most authorities skipped due to rate limiting |
+| Cosmos RU spiking / throttling (429) — observe via `AppDependencies` Cosmos rows, **not `AppMetrics`** | P2 | Cosmos 429s in dependency rows |
+| Empty `AppMetrics` / `AppPerformanceCounters` / missing `towncrier.*` for Go | **Never** | Empty by design (tc-0rt1, deferred) — see availability callout. Do NOT file. |
 | Warning/error log pattern with > 10 occurrences | P2-P3 | Repeated auth token refresh failures |
 | User frustration pattern (retry storms, repeated 4xx) | P2-P3 | Same endpoint getting hammered with 400s |
 | Latency outlier > 30s on user-facing endpoint | P3 | Single request took 46s |
@@ -464,6 +504,7 @@ Now that you have the full picture and have reconciled prior findings, decide wh
 - The request count is too low to be meaningful (< 5 in the window)
 - It's an OPTIONS preflight or health check endpoint
 - The "missing telemetry" you'd file about could be explained by scale-to-zero with no traffic — verify with a probe first
+- **It's empty `AppMetrics`, `AppPerformanceCounters`, missing `towncrier.*` business metrics, or missing `http.client.request.duration` for a Go role** — these are empty by design (tc-0rt1, deferred; see the availability callout). This is the single most common false-positive; never file it.
 
 **Before filing each bead:**
 1. Check whether you closed this exact issue in Phase 5b. If so, only re-file if the current data shows it has **recurred at or above** the filing threshold — not just trace-level noise.

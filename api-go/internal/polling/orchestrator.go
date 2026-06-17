@@ -38,6 +38,15 @@ type nextRunScheduler interface {
 	ComputeNextRun(reason TerminationReason, retryAfter *time.Duration, now time.Time) time.Time
 }
 
+// leaseMetricsRecorder is the consumer-side slice of the metrics registry the
+// orchestrator records the lease-acquired counter on. *metrics.Registry
+// satisfies it; nil no-ops, so the counter stays dark until WithLeaseMetrics
+// wires a recorder. caller is always "orchestrator" here (the bootstrap records
+// its own acquisitions with caller "bootstrap").
+type leaseMetricsRecorder interface {
+	LeaseAcquired(ctx context.Context, caller string)
+}
+
 // OrchestratorOptions tune the orchestrator's lease behaviour. LeaseTTL is the
 // TTL requested on acquire — it MUST exceed the handler's worst-case runtime so
 // the lease cannot expire mid-handler and let a peer start a duplicate cycle
@@ -78,6 +87,21 @@ type Orchestrator struct {
 	now       func() time.Time
 	sleep     func(ctx context.Context, d time.Duration) error
 	logger    *slog.Logger
+
+	// metrics records towncrier.polling.lease.acquired, wired via WithLeaseMetrics.
+	// nil until wired, so the counter stays dark in the lease-CAS tests that build
+	// an orchestrator without a registry.
+	metrics leaseMetricsRecorder
+}
+
+// WithLeaseMetrics wires the recorder the orchestrator records the
+// lease-acquired counter on. Like the handler's WithMetrics it is a
+// post-construction setter so the lease-CAS tests are unaffected; cmd/worker
+// calls it once after building the orchestrator. Returns the orchestrator for
+// chaining.
+func (o *Orchestrator) WithLeaseMetrics(rec leaseMetricsRecorder) *Orchestrator {
+	o.metrics = rec
+	return o
 }
 
 // NewOrchestrator wires the orchestrator. now and the internal sleep are injected
@@ -128,6 +152,10 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (OrchestratorRunResult, erro
 		o.logger.WarnContext(ctx, "polling lease unavailable; exiting without polling",
 			"held", acquire.Held, "transient", acquire.TransientErr != nil)
 		return OrchestratorRunResult{LeaseUnavailable: true}, nil
+	}
+
+	if o.metrics != nil {
+		o.metrics.LeaseAcquired(ctx, "orchestrator")
 	}
 
 	// Release is deferred so the lease is always relinquished, but the next

@@ -1,7 +1,6 @@
 package watchzones
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // maxBodyBytes caps the request body the PATCH handler reads.
@@ -29,6 +29,27 @@ type zoneStore interface {
 	Delete(ctx context.Context, userID, zoneID string) error
 }
 
+// MetricsRecorder is the consumer-side slice of the metrics registry the
+// watch-zone handlers record the lifecycle counters on. *metrics.Registry
+// satisfies it. It is exported because Routes / NearbyRoutes accept it as an
+// Option from cmd/api's wiring. A nil recorder no-ops every counter.
+type MetricsRecorder interface {
+	WatchZoneCreated(ctx context.Context)
+	WatchZoneUpdated(ctx context.Context)
+	WatchZoneDeleted(ctx context.Context)
+}
+
+// Option configures the watch-zone routes. WithMetricsRecorder is the only
+// option today; it is variadic so the many existing Routes/NearbyRoutes call
+// sites and tests compile unchanged.
+type Option func(*handler)
+
+// WithMetricsRecorder wires the metrics recorder the handlers record the
+// watch-zone lifecycle counters on.
+func WithMetricsRecorder(rec MetricsRecorder) Option {
+	return func(h *handler) { h.metrics = rec }
+}
+
 // handler serves the /v1/me/watch-zones surface. The auth middleware guarantees
 // a subject in context before these handlers run. The list/update/delete methods
 // use only store + logger; the create and applications methods (nearby.go) use
@@ -43,14 +64,18 @@ type handler struct {
 	newID    func() string
 	now      func() time.Time
 	logger   *slog.Logger
+	metrics  MetricsRecorder
 }
 
 // Routes registers the watch-zone list/update/delete endpoints on mux. POST
 // create and GET /{zoneId}/applications are registered separately by NearbyRoutes
 // (they need the profile, application, geocode, notification-state and
 // notification stores).
-func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger) {
+func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Option) {
 	h := &handler{store: store, logger: logger}
+	for _, opt := range opts {
+		opt(h)
+	}
 	mux.HandleFunc("GET /v1/me/watch-zones", h.list)
 	mux.HandleFunc("PATCH /v1/me/watch-zones/{zoneId}", h.patch)
 	mux.HandleFunc("DELETE /v1/me/watch-zones/{zoneId}", h.delete)
@@ -184,6 +209,9 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "save watch zone", err)
 		return
 	}
+	if h.metrics != nil {
+		h.metrics.WatchZoneUpdated(r.Context())
+	}
 	h.writeJSON(w, r, http.StatusOK, updateResult{Zone: summaryOf(updated)})
 }
 
@@ -201,6 +229,9 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "delete watch zone", err)
 		return
 	}
+	if h.metrics != nil {
+		h.metrics.WatchZoneDeleted(r.Context())
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -215,7 +246,7 @@ type apiErrorResponse struct {
 // escaping off and no trailing newline, matching ASP.NET's Results.Ok byte
 // output (the same approach the profiles handler uses).
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
@@ -231,7 +262,7 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 // the same content type as a success body (Results.Json defaults to
 // application/json; charset=utf-8).
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	body, err := encodeJSON(apiErrorResponse{Error: message})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return
@@ -241,18 +272,6 @@ func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int,
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write error body", "error", err)
 	}
-}
-
-// encodeJSON renders v with HTML escaping disabled and the trailing newline
-// trimmed, matching the relaxed-encoder byte output of the .NET web serializer.
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // serverError logs and emits a bodyless 500; the error envelope (with Detail) is

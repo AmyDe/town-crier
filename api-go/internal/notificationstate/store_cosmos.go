@@ -3,12 +3,8 @@ package notificationstate
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
@@ -45,7 +41,7 @@ func NewCosmosStore(state CosmosItems, notifications CosmosCounter) *CosmosStore
 func (s *CosmosStore) Get(ctx context.Context, userID string) (*State, error) {
 	raw, err := s.state.ReadItem(ctx, userID, userID)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return nil, nil //nolint:nilnil // absent watermark is the first-touch signal, not an error
 		}
 		return nil, fmt.Errorf("read notification state %q: %w", userID, err)
@@ -97,14 +93,8 @@ func (s *CosmosStore) UnreadCount(ctx context.Context, userID string, lastReadAt
 // deletion. The Go cascade deletes it (epic tc-wad3, bead tc-dwcq) for complete
 // GDPR erasure.
 func (s *CosmosStore) DeleteByUserID(ctx context.Context, userID string) error {
-	if err := s.state.DeleteItem(ctx, userID, userID); err != nil && !isNotFound(err) {
+	if err := s.state.DeleteItem(ctx, userID, userID); err != nil && !platform.IsCosmosNotFound(err) {
 		return fmt.Errorf("delete notification state %q: %w", userID, err)
 	}
 	return nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

@@ -1,7 +1,6 @@
 package subscriptions
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -397,7 +397,7 @@ type apiErrorResponse struct {
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, status int, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(r, w, "encode response", err)
 		return
@@ -411,7 +411,7 @@ func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, status int, 
 
 func (h *handler) writeError(r *http.Request, w http.ResponseWriter, status int, code, message string) {
 	msg := message
-	body, err := encodeJSON(apiErrorResponse{Error: code, Message: &msg})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: code, Message: &msg})
 	if err != nil {
 		h.serverError(r, w, "encode error", err)
 		return
@@ -425,16 +425,6 @@ func (h *handler) writeError(r *http.Request, w http.ResponseWriter, status int,
 
 func (h *handler) malformedBody(r *http.Request, w http.ResponseWriter) {
 	h.writeError(r, w, http.StatusBadRequest, "malformed_request", "The request body is not valid JSON.")
-}
-
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 func (h *handler) serverError(r *http.Request, w http.ResponseWriter, op string, err error) {
