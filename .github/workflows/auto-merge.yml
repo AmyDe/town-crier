@@ -5,6 +5,13 @@
 # triggers downstream workflows (e.g., CD Dev). Pushes from GITHUB_TOKEN
 # do not trigger further workflow runs by GitHub's design.
 #
+# Dependabot-triggered runs cannot read this secret (Dependabot has its own
+# secret store), so GH_AUTO_MERGE_TOKEN is empty there and we fall back to the
+# job's GITHUB_TOKEN, which has the contents/pull-requests write granted below.
+# The downstream-trigger caveat is acceptable for dependency bumps — a transitive
+# lib bump doesn't change the deployed resource graph, so skipping CD on merge is
+# fine (and avoids cloud-credentialed jobs running on bot-authored code).
+#
 # Requires secrets:
 #   GH_AUTO_MERGE_TOKEN — Fine-grained PAT with Contents: write + Pull requests: write
 
@@ -27,6 +34,6 @@ jobs:
       - name: Enable auto-merge (squash)
         run: gh pr merge "$PR" --auto --squash --repo "$REPO"
         env:
-          GH_TOKEN: ${{ secrets.GH_AUTO_MERGE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_AUTO_MERGE_TOKEN || github.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
