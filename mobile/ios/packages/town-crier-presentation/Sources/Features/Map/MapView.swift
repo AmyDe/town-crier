@@ -91,33 +91,20 @@ public struct MapView: View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: TCSpacing.small) {
         ForEach(viewModel.zones) { zone in
-          zoneChip(zone: zone, isSelected: zone.id == viewModel.selectedZone?.id)
+          ZoneChipView(
+            label: zone.name,
+            isSelected: zone.id == viewModel.selectedZone?.id
+          ) {
+            Task {
+              await viewModel.selectZone(zone)
+            }
+          }
         }
       }
       .padding(.horizontal, TCSpacing.medium)
       .padding(.vertical, TCSpacing.small)
     }
     .background(Color.tcBackground)
-  }
-
-  private func zoneChip(zone: WatchZone, isSelected: Bool) -> some View {
-    Text(zone.name)
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(isSelected ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        Task {
-          await viewModel.selectZone(zone)
-        }
-      }
   }
 
   // MARK: - Filter Section
