@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -91,7 +92,7 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) writeBadRequest(r *http.Request, w http.ResponseWriter, message string) {
-	body, err := encodeJSON(apiErrorResponse{Error: message, Message: nil})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message, Message: nil})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return

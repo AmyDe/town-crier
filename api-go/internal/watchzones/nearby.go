@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -303,7 +304,7 @@ func boolOrTrue(p *bool) bool {
 // writeCreated emits a 201 Created with a Location header and the JSON body,
 // matching .NET Results.Created.
 func (h *handler) writeCreated(w http.ResponseWriter, r *http.Request, location string, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return

@@ -1,11 +1,11 @@
 package geocoding
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // geocoder is the consumer-side view the handler needs: resolve a normalised
@@ -71,7 +71,7 @@ func (h handler) geocode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "encode geocode response", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -85,7 +85,7 @@ func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
 }
 
 func (h handler) writeError(r *http.Request, w http.ResponseWriter, status int, message string) {
-	body, err := encodeJSON(apiErrorResponse{Error: message})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "encode geocode error", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -96,16 +96,4 @@ func (h handler) writeError(r *http.Request, w http.ResponseWriter, status int, 
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write geocode error body", "error", err)
 	}
-}
-
-// encodeJSON renders v with HTML escaping off and the trailing newline trimmed,
-// so the wire bytes match the compact .NET response exactly.
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }

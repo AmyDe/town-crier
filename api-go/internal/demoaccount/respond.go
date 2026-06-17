@@ -1,25 +1,23 @@
 package demoaccount
 
 import (
-	"bytes"
-	"encoding/json"
 	"log/slog"
 	"net/http"
+
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // writeJSON encodes v as a 200 application/json; charset=utf-8 response with HTML
 // escaping off and no trailing newline, matching ASP.NET's Results.Ok byte output.
 func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v any) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	body, err := httputil.EncodeJSON(v)
+	if err != nil {
 		serverError(w, r, logger, "encode response", err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
+	if _, err := w.Write(body); err != nil {
 		logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
 }
