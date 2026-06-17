@@ -1,7 +1,6 @@
 package watchzones
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 )
 
 // maxBodyBytes caps the request body the PATCH handler reads.
@@ -246,7 +246,7 @@ type apiErrorResponse struct {
 // escaping off and no trailing newline, matching ASP.NET's Results.Ok byte
 // output (the same approach the profiles handler uses).
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
@@ -262,7 +262,7 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 // the same content type as a success body (Results.Json defaults to
 // application/json; charset=utf-8).
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	body, err := encodeJSON(apiErrorResponse{Error: message})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return
@@ -272,18 +272,6 @@ func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int,
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write error body", "error", err)
 	}
-}
-
-// encodeJSON renders v with HTML escaping disabled and the trailing newline
-// trimmed, matching the relaxed-encoder byte output of the .NET web serializer.
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // serverError logs and emits a bodyless 500; the error envelope (with Detail) is

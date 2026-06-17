@@ -1,7 +1,6 @@
 package savedapplications
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
@@ -292,7 +292,7 @@ type apiErrorResponse struct {
 }
 
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
-	body, err := encodeJSON(v)
+	body, err := httputil.EncodeJSON(v)
 	if err != nil {
 		h.serverError(w, r, "encode response", err)
 		return
@@ -305,7 +305,7 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 }
 
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
-	body, err := encodeJSON(apiErrorResponse{Error: message})
+	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
 	if err != nil {
 		h.serverError(w, r, "encode error", err)
 		return
@@ -315,16 +315,6 @@ func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int,
 	if _, err := w.Write(body); err != nil {
 		h.logger.ErrorContext(r.Context(), "write error body", "error", err)
 	}
-}
-
-func encodeJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
