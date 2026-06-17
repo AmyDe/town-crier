@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // ErrNotFound signals that no offer code exists for the given canonical code.
@@ -41,7 +40,7 @@ func NewCosmosStore(items cosmosItems) *CosmosStore { return &CosmosStore{items:
 func (s *CosmosStore) Get(ctx context.Context, canonical string) (OfferCode, error) {
 	raw, err := s.items.ReadItem(ctx, canonical, canonical)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return OfferCode{}, ErrNotFound
 		}
 		return OfferCode{}, fmt.Errorf("read offer code %q: %w", canonical, err)
@@ -104,9 +103,4 @@ func (s *CosmosStore) AnonymiseRedemptionsByUserID(ctx context.Context, userID s
 		}
 	}
 	return nil
-}
-
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }

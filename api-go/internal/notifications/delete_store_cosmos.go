@@ -3,11 +3,9 @@ package notifications
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // DeleteItems is the consumer-side slice of the Notifications container the
@@ -56,15 +54,9 @@ func (s *DeleteStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode notification id for %q: %w", userID, err)
 		}
-		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isDeleteNotFound(err) {
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !platform.IsCosmosNotFound(err) {
 			return fmt.Errorf("delete notification %q for %q: %w", doc.ID, userID, err)
 		}
 	}
 	return nil
-}
-
-// isDeleteNotFound reports whether err is a Cosmos 404 response.
-func isDeleteNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }
