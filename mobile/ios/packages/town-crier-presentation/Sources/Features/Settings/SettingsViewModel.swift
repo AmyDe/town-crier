@@ -26,7 +26,6 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   private let userProfileRepository: UserProfileRepository
-  private let serverTierResolver: ServerTierResolving
   private let tierResolver: SubscriptionTierResolving
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
@@ -36,7 +35,6 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
-    serverTierResolver: ServerTierResolving? = nil,
     tierResolver: SubscriptionTierResolving? = nil,
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService,
@@ -45,9 +43,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    let server =
-      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
-    self.serverTierResolver = server
+    let server = ServerTierResolver(userProfileRepository: userProfileRepository)
     self.tierResolver =
       tierResolver
       ?? SubscriptionTierResolver(

@@ -37,7 +37,6 @@ public final class AppCoordinator: ObservableObject {
   let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   let userProfileRepository: UserProfileRepository
-  private let serverTierResolver: ServerTierResolving
   private let tierResolver: SubscriptionTierResolving
   private let onboardingRepository: OnboardingRepository
   let notificationService: NotificationService
@@ -70,7 +69,6 @@ public final class AppCoordinator: ObservableObject {
     authService: AuthenticationService,
     subscriptionService: SubscriptionService,
     userProfileRepository: UserProfileRepository,
-    serverTierResolver: ServerTierResolving? = nil,
     tierResolver: SubscriptionTierResolving? = nil,
     offlineRepository: OfflineAwareRepository? = nil,
     authorityRepository: ApplicationAuthorityRepository? = nil,
@@ -90,9 +88,7 @@ public final class AppCoordinator: ObservableObject {
     self.authService = authService
     self.subscriptionService = subscriptionService
     self.userProfileRepository = userProfileRepository
-    let server =
-      serverTierResolver ?? ServerTierResolver(userProfileRepository: userProfileRepository)
-    self.serverTierResolver = server
+    let server = ServerTierResolver(userProfileRepository: userProfileRepository)
     self.tierResolver =
       tierResolver
       ?? SubscriptionTierResolver(
