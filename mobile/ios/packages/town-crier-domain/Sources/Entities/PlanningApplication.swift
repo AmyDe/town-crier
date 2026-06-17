@@ -44,20 +44,4 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     self.statusHistory = statusHistory
     self.latestUnreadEvent = latestUnreadEvent
   }
-
-  public mutating func markAsDecided(_ decision: Decision, on decisionDate: Date) throws {
-    let decidedStatus: ApplicationStatus
-    switch decision {
-    case .permitted:
-      decidedStatus = .permitted
-    case .conditions:
-      decidedStatus = .conditions
-    case .rejected:
-      decidedStatus = .rejected
-    }
-    guard status == .undecided else {
-      throw DomainError.invalidStatusTransition(from: status, to: decidedStatus)
-    }
-    status = decidedStatus
-  }
 }
