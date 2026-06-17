@@ -23,6 +23,11 @@ public struct SubscriptionView: View {
           productsSection
           restoreSection
         }
+
+        // Always visible — App Store Guideline 3.1.2(c) requires functional
+        // Privacy Policy and Terms of Use links on the paywall itself, even
+        // when products fail to load.
+        legalLinksFooter
       }
       .padding(.horizontal, TCSpacing.medium)
       .padding(.top, TCSpacing.extraLarge)
@@ -30,6 +35,11 @@ public struct SubscriptionView: View {
     }
     .background(Color.tcBackground)
     .task { await viewModel.loadProducts() }
+    .sheet(item: $viewModel.presentedLegalDocument) { documentType in
+      NavigationStack {
+        LegalDocumentView(viewModel: LegalDocumentViewModel(documentType: documentType))
+      }
+    }
   }
 
   // MARK: - Header
@@ -152,6 +162,29 @@ public struct SubscriptionView: View {
     }
     .disabled(viewModel.isRestoring)
     .padding(.top, TCSpacing.small)
+  }
+
+  // MARK: - Legal
+
+  private var legalLinksFooter: some View {
+    HStack(spacing: TCSpacing.extraSmall) {
+      legalLink("Privacy Policy") { viewModel.showLegalDocument(.privacyPolicy) }
+
+      Text("·")
+        .font(TCTypography.caption)
+        .foregroundStyle(Color.tcTextTertiary)
+
+      legalLink("Terms of Use") { viewModel.showLegalDocument(.termsOfService) }
+    }
+    .frame(minHeight: 44)
+  }
+
+  private func legalLink(_ title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(title)
+        .font(TCTypography.caption)
+        .foregroundStyle(Color.tcAmber)
+    }
   }
 
   // MARK: - Error
