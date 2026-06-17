@@ -53,19 +53,6 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     zones.count > 1
   }
 
-  public var isNetworkError: Bool {
-    error == .networkUnavailable
-  }
-
-  public var isServerError: Bool {
-    if case .serverError = error { return true }
-    return false
-  }
-
-  public var isSessionExpired: Bool {
-    error == .sessionExpired
-  }
-
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
   public init(
