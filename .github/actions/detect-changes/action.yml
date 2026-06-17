@@ -1,9 +1,10 @@
-# Monorepo change detection for push and pull_request events.
+# Monorepo change detection for push, pull_request, and merge_group events.
 # Outputs boolean flags for each component category that changed.
 #
 # Modes:
-#   push — compares HEAD~1..HEAD (squash-merge assumed)
-#   pr   — compares origin/<base-ref>...HEAD
+#   push        — compares HEAD~1..HEAD (squash-merge assumed)
+#   pr          — compares origin/<base-ref>...HEAD
+#   merge_group — compares <base-ref>...HEAD against a raw base SHA (no origin/ prefix)
 #
 # Trigger files:
 #   Workflow files (e.g., cd-dev.yml, pr-gate.yml) can force categories
@@ -14,10 +15,10 @@ description: Monorepo change detection with push/pr modes
 
 inputs:
   mode:
-    description: "Detection mode: 'push' (HEAD~1..HEAD) or 'pr' (origin/base...HEAD)"
+    description: "Detection mode: 'push' (HEAD~1..HEAD), 'pr' (origin/base...HEAD), or 'merge_group' (base-sha...HEAD)"
     required: true
   base-ref:
-    description: "Base branch for PR mode (e.g., github.base_ref). Ignored in push mode."
+    description: "Base ref for PR mode (e.g., github.base_ref) or raw base SHA for merge_group mode. Ignored in push mode."
     required: false
     default: ""
   categories:
@@ -65,8 +66,10 @@ runs:
           CHANGED=$(git diff --name-only HEAD~1 HEAD)
         elif [[ "${{ inputs.mode }}" == "pr" ]]; then
           CHANGED=$(git diff --name-only origin/${{ inputs.base-ref }}...HEAD)
+        elif [[ "${{ inputs.mode }}" == "merge_group" ]]; then
+          CHANGED=$(git diff --name-only "${{ inputs.base-ref }}...HEAD")
         else
-          echo "::error::Unknown mode '${{ inputs.mode }}'. Use 'push' or 'pr'."
+          echo "::error::Unknown mode '${{ inputs.mode }}'. Use 'push', 'pr', or 'merge_group'."
           exit 1
         fi
 
