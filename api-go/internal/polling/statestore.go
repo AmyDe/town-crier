@@ -3,14 +3,12 @@ package polling
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"sort"
 	"strconv"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // pollStateCrossPartitionQuery selects every poll-state document for the
@@ -67,7 +65,7 @@ func (s *PollStateStore) Get(ctx context.Context, authorityID int) (PollState, b
 	id := documentID(authorityID)
 	raw, err := s.items.ReadItem(ctx, id, id)
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return PollState{}, false, nil
 		}
 		return PollState{}, false, fmt.Errorf("read poll state %d: %w", authorityID, err)
@@ -204,12 +202,6 @@ func (d pollStateDocument) readCursor() (*PollCursor, error) {
 // matching .NET FormatDocumentId.
 func documentID(authorityID int) string {
 	return "poll-state-" + strconv.Itoa(authorityID)
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }
 
 // ptr returns a pointer to v. Used by tests and the store for optional fields.

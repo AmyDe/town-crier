@@ -3,11 +3,9 @@ package savedapplications
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
 // CosmosItems is the consumer-side slice of the SavedApplications container the
@@ -58,7 +56,7 @@ func (s *CosmosStore) Save(ctx context.Context, sa SavedApplication) error {
 func (s *CosmosStore) Exists(ctx context.Context, userID, applicationUID string) (bool, error) {
 	_, err := s.items.ReadItem(ctx, userID, makeID(userID, applicationUID))
 	if err != nil {
-		if isNotFound(err) {
+		if platform.IsCosmosNotFound(err) {
 			return false, nil
 		}
 		return false, fmt.Errorf("read saved application %q: %w", applicationUID, err)
@@ -70,7 +68,7 @@ func (s *CosmosStore) Exists(ctx context.Context, userID, applicationUID string)
 // error: the .NET REST delete is idempotent and the DELETE endpoint always
 // returns 204, so a 404 from Cosmos is swallowed.
 func (s *CosmosStore) Delete(ctx context.Context, userID, applicationUID string) error {
-	if err := s.items.DeleteItem(ctx, userID, makeID(userID, applicationUID)); err != nil && !isNotFound(err) {
+	if err := s.items.DeleteItem(ctx, userID, makeID(userID, applicationUID)); err != nil && !platform.IsCosmosNotFound(err) {
 		return fmt.Errorf("delete saved application %q: %w", applicationUID, err)
 	}
 	return nil
@@ -148,15 +146,9 @@ func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return fmt.Errorf("decode saved application id for %q: %w", userID, err)
 		}
-		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !isNotFound(err) {
+		if err := s.items.DeleteItem(ctx, userID, doc.ID); err != nil && !platform.IsCosmosNotFound(err) {
 			return fmt.Errorf("delete saved application %q for %q: %w", doc.ID, userID, err)
 		}
 	}
 	return nil
-}
-
-// isNotFound reports whether err is a Cosmos 404 response.
-func isNotFound(err error) bool {
-	var respErr *azcore.ResponseError
-	return errors.As(err, &respErr) && respErr.StatusCode == http.StatusNotFound
 }
