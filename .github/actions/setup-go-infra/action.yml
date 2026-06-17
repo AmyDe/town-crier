@@ -1,0 +1,22 @@
+# Sets up Go (via infra/go.mod), the Pulumi CLI, and caches Go modules for the
+# infra Pulumi program. Centralises the setup used across infra jobs. Replaces
+# the former setup-dotnet-infra action after the C#->Go infra migration (tc-ycsn).
+name: Setup Go & Pulumi for Infra
+description: Install Go, the Pulumi CLI, and cache Go modules for the infra Pulumi program
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: infra/go.mod
+        cache-dependency-path: infra/go.sum
+
+    - name: Install Pulumi CLI
+      shell: bash
+      run: curl -fsSL https://get.pulumi.com | sh
+
+    - name: Add Pulumi to PATH
+      shell: bash
+      run: echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
