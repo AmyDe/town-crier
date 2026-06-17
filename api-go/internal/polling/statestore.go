@@ -203,6 +203,3 @@ func (d pollStateDocument) readCursor() (*PollCursor, error) {
 func documentID(authorityID int) string {
 	return "poll-state-" + strconv.Itoa(authorityID)
 }
-
-// ptr returns a pointer to v. Used by tests and the store for optional fields.
-func ptr[T any](v T) *T { return &v }

@@ -86,9 +86,9 @@ func (d applicationDocument) toDomain() PlanningApplication {
 		AppType:       d.AppType,
 		AppState:      d.AppState,
 		AppSize:       d.AppSize,
-		StartDate:     dateOnlyToTime(d.StartDate),
-		DecidedDate:   dateOnlyToTime(d.DecidedDate),
-		ConsultedDate: dateOnlyToTime(d.ConsultedDate),
+		StartDate:     platform.DateOnlyPtrToTime(d.StartDate),
+		DecidedDate:   platform.DateOnlyPtrToTime(d.DecidedDate),
+		ConsultedDate: platform.DateOnlyPtrToTime(d.ConsultedDate),
 		Longitude:     lon,
 		Latitude:      lat,
 		URL:           d.URL,
@@ -117,11 +117,3 @@ func coordsToLatLng(p *geoJSONPoint) (lon, lat *float64) {
 	return &lo, &la
 }
 
-// dateOnlyToTime converts an optional stored DateOnly back to the *time.Time the
-// domain carries.
-func dateOnlyToTime(d *platform.DateOnly) *time.Time {
-	if d == nil {
-		return nil
-	}
-	return d.TimePtr()
-}

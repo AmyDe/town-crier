@@ -93,9 +93,9 @@ func (req saveRequest) toApplication() applications.PlanningApplication {
 		AppType:       req.AppType,
 		AppState:      req.AppState,
 		AppSize:       req.AppSize,
-		StartDate:     dateToTime(req.StartDate),
-		DecidedDate:   dateToTime(req.DecidedDate),
-		ConsultedDate: dateToTime(req.ConsultedDate),
+		StartDate:     platform.DateOnlyPtrToTime(req.StartDate),
+		DecidedDate:   platform.DateOnlyPtrToTime(req.DecidedDate),
+		ConsultedDate: platform.DateOnlyPtrToTime(req.ConsultedDate),
 		Longitude:     req.Longitude,
 		Latitude:      req.Latitude,
 		URL:           req.URL,
@@ -276,13 +276,6 @@ func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication)
 		return SavedApplication{}, err
 	}
 	return canonical, nil
-}
-
-func dateToTime(d *platform.DateOnly) *time.Time {
-	if d == nil {
-		return nil
-	}
-	return d.TimePtr()
 }
 
 // apiErrorResponse mirrors the .NET ApiErrorResponse: { error, message:null }.
