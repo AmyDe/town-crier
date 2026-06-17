@@ -116,4 +116,3 @@ func coordsToLatLng(p *geoJSONPoint) (lon, lat *float64) {
 	la := p.Coordinates[1]
 	return &lo, &la
 }
-
