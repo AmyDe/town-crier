@@ -140,22 +140,9 @@ public struct MapView: View {
   }
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
-    let isSelected = viewModel.selectedStatusFilter == status
-    return Text(label)
-      .font(TCTypography.captionEmphasis)
-      .foregroundStyle(isSelected ? Color.tcTextOnAccent : Color.tcTextPrimary)
-      .padding(.horizontal, TCSpacing.small)
-      .padding(.vertical, TCSpacing.extraSmall)
-      .background(isSelected ? Color.tcAmber : Color.tcSurface)
-      .clipShape(Capsule())
-      .overlay(
-        Capsule()
-          .stroke(Color.tcBorder, lineWidth: isSelected ? 0 : 1)
-      )
-      .contentShape(Capsule())
-      .onTapGesture {
-        viewModel.selectedStatusFilter = status
-      }
+    FilterChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
+      viewModel.selectedStatusFilter = status
+    }
   }
 
   // MARK: - Map Body
