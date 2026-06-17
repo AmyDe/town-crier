@@ -17,23 +17,16 @@ func TestEncodeJSON_DoesNotEscapeHTMLOrAppendNewline(t *testing.T) {
 		t.Fatalf("EncodeJSON returned error: %v", err)
 	}
 
-	s := string(got)
-
-	// HTML-significant characters must NOT be escaped (no <, >, &).
-	for _, escaped := range []string{`<`, `>`, `&`} {
-		if strings.Contains(s, escaped) {
-			t.Errorf("output %q contains escaped sequence %q; SetEscapeHTML(false) not applied", s, escaped)
-		}
-	}
-	for _, raw := range []string{"<", ">", "&"} {
-		if !strings.Contains(s, raw) {
-			t.Errorf("output %q is missing raw character %q", s, raw)
-		}
+	// With SetEscapeHTML(false) the <, > and & characters must appear raw (the
+	// default encoder would Unicode-escape them), and the trailing newline that
+	// json.Encoder writes must be trimmed. Asserting the exact bytes covers both
+	// behaviours at once.
+	if want := `{"q":"a < b && c > d"}`; string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
 	}
 
-	// json.Encoder appends a trailing newline; EncodeJSON must trim it.
-	if strings.HasSuffix(s, "\n") {
-		t.Errorf("output %q has a trailing newline; it should be trimmed", s)
+	if strings.HasSuffix(string(got), "\n") {
+		t.Errorf("output %q has a trailing newline; it should be trimmed", string(got))
 	}
 }
 
