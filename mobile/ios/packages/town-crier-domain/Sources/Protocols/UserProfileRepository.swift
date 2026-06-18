@@ -1,3 +1,5 @@
+import Foundation
+
 /// Port for managing the user's server-side profile.
 ///
 /// Maps to the `/v1/me` API endpoints:
@@ -5,6 +7,7 @@
 /// - `fetch()` -> `GET /v1/me`
 /// - `update(...)` -> `PATCH /v1/me`
 /// - `delete()` -> `DELETE /v1/me`
+/// - `exportData()` -> `GET /v1/me/data`
 public protocol UserProfileRepository: Sendable {
   /// Creates the user profile on the server. The API reads identity from the JWT.
   func create() async throws -> ServerProfile
@@ -27,4 +30,12 @@ public protocol UserProfileRepository: Sendable {
 
   /// Deletes the user profile and cascades (removes all user data server-side).
   func delete() async throws
+
+  /// Fetches the full GDPR data export as raw JSON bytes.
+  ///
+  /// The export is opaque to the client: the server bytes are returned as-is so
+  /// the user can save or share a machine-readable copy of all their data. The
+  /// caller must not decode or re-encode the payload, to keep the export
+  /// byte-stable with what the server produced.
+  func exportData() async throws -> Data
 }
