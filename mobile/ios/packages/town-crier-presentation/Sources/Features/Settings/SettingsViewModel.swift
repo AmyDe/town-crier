@@ -22,6 +22,10 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   /// sheet. `nil` until an export succeeds, and reset once the sheet is
   /// dismissed. Setting this is what triggers the View to present the sheet.
   @Published public var exportFileURL: URL?
+
+  /// User-facing message shown when an export fails. `nil` when there is no
+  /// export error to display; the View presents an alert while it is non-nil.
+  @Published public private(set) var exportErrorMessage: String?
   @Published public var appearanceMode: AppearanceMode {
     didSet {
       defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
@@ -168,12 +172,16 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     guard !isExporting else { return }
     isExporting = true
     error = nil
+    exportErrorMessage = nil
     exportFileURL = nil
     do {
       let bytes = try await userProfileRepository.exportData()
       exportFileURL = try exportFileWriter(bytes)
     } catch {
       handleError(error)
+      exportErrorMessage =
+        (error as? DomainError)?.userMessage
+        ?? "We couldn't export your data. Please try again."
     }
     isExporting = false
   }
@@ -181,6 +189,11 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   /// Clears the shareable artifact once the share sheet has been dismissed.
   public func dismissExportShare() {
     exportFileURL = nil
+  }
+
+  /// Clears the export error once its alert has been dismissed.
+  public func dismissExportError() {
+    exportErrorMessage = nil
   }
 
   /// Default writer: persists the export bytes verbatim to a `.json` file in

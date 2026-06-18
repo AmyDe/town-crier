@@ -90,6 +90,32 @@ struct SettingsViewModelDataExportTests {
     #expect(!sut.isExporting)
   }
 
+  @Test func exportData_failure_setsUserFacingExportErrorMessage() async {
+    let (sut, _) = makeSUT(exportResult: .failure(DomainError.networkUnavailable))
+
+    await sut.exportData()
+
+    #expect(sut.exportErrorMessage == DomainError.networkUnavailable.userMessage)
+  }
+
+  @Test func exportData_success_leavesExportErrorMessageNil() async {
+    let (sut, _) = makeSUT()
+
+    await sut.exportData()
+
+    #expect(sut.exportErrorMessage == nil)
+  }
+
+  @Test func dismissExportError_clearsMessage() async {
+    let (sut, _) = makeSUT(exportResult: .failure(DomainError.networkUnavailable))
+    await sut.exportData()
+    #expect(sut.exportErrorMessage != nil)
+
+    sut.dismissExportError()
+
+    #expect(sut.exportErrorMessage == nil)
+  }
+
   @Test func exportData_writerThrows_setsErrorAndNoArtifact() async {
     struct WriteFailure: Error {}
     let (sut, _) = makeSUT { _ in throw WriteFailure() }
