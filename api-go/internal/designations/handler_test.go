@@ -121,5 +121,6 @@ func TestHandler_Designations_ProviderErrorDegradesToEmpty(t *testing.T) {
 func TestClient_SatisfiesProviderInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ provider = NewClient("https://www.planning.data.gov.uk", http.DefaultClient)
+	client := mustNewClient(t, "https://www.planning.data.gov.uk", http.DefaultClient)
+	var _ provider = client
 }

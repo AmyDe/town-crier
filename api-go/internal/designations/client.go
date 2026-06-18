@@ -7,12 +7,18 @@ package designations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
+
+// errCrossHostRedirect is returned by CheckRedirect when a redirect target's
+// host differs from the configured base host.
+var errCrossHostRedirect = errors.New("designations: cross-host redirect refused")
 
 // datasets is the comma-separated dataset filter sent to the entity endpoint.
 // The commas are intentionally left unescaped to match the .NET client, which
@@ -42,8 +48,30 @@ type Client struct {
 }
 
 // NewClient builds a provider over the given base URL and shared HTTP client.
-func NewClient(baseURL string, httpClient *http.Client) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: httpClient}
+// A shallow copy of httpClient is taken so the caller's client is not mutated;
+// CheckRedirect is set on the copy to refuse any redirect whose target host
+// differs from the configured base host (defense-in-depth SSRF hardening).
+// Returns an error if baseURL cannot be parsed.
+func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
+	trimmed := strings.TrimRight(baseURL, "/")
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("designations: parse base URL: %w", err)
+	}
+	configuredHost := u.Host // host:port or bare host; must match exactly
+	// Copy by value so we never mutate the caller's client (avoids data races
+	// when the same *http.Client is reused across multiple NewClient calls).
+	hc := *httpClient
+	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Host != configuredHost {
+			return errCrossHostRedirect
+		}
+		if len(via) >= 10 {
+			return errors.New("designations: stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &Client{baseURL: trimmed, http: &hc}, nil
 }
 
 // entityResponse mirrors the GOV.UK entity.json envelope.

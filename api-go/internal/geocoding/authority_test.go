@@ -38,7 +38,7 @@ func TestClient_ResolveAuthority_MapsAdminDistrictToAuthorityID(t *testing.T) {
 		body: `{"status":200,"result":[{"postcode":"YO1 7HH","admin_district":"York"}]}`,
 	}
 	srv := newReverseServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	id, err := client.ResolveAuthority(context.Background(), 53.9590, -1.0815)
 	if err != nil {
@@ -59,7 +59,7 @@ func TestClient_ResolveAuthority_NoAdminDistrictIsUnresolved(t *testing.T) {
 	t.Parallel()
 	fake := &reverseServer{body: `{"status":200,"result":[]}`}
 	srv := newReverseServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	_, err := client.ResolveAuthority(context.Background(), 0, 0)
 	if !errors.Is(err, ErrAuthorityUnresolved) {
@@ -73,7 +73,7 @@ func TestClient_ResolveAuthority_UnmappedDistrictIsUnresolved(t *testing.T) {
 		body: `{"status":200,"result":[{"admin_district":"Atlantis"}]}`,
 	}
 	srv := newReverseServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	_, err := client.ResolveAuthority(context.Background(), 51.5, -0.1)
 	if !errors.Is(err, ErrAuthorityUnresolved) {
@@ -85,7 +85,7 @@ func TestClient_ResolveAuthority_Non2xxIsUnresolved(t *testing.T) {
 	t.Parallel()
 	fake := &reverseServer{status: http.StatusInternalServerError, body: ""}
 	srv := newReverseServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	_, err := client.ResolveAuthority(context.Background(), 51.5, -0.1)
 	if !errors.Is(err, ErrAuthorityUnresolved) {

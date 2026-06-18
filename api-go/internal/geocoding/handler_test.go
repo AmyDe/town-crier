@@ -131,5 +131,6 @@ func TestHandler_Geocode_ServerErrorOnTransportFailure(t *testing.T) {
 func TestClient_SatisfiesGeocoderInterface(t *testing.T) {
 	t.Parallel()
 
-	var _ geocoder = NewClient("https://api.postcodes.io", http.DefaultClient)
+	client := mustNewClient(t, "https://api.postcodes.io", http.DefaultClient)
+	var _ geocoder = client
 }

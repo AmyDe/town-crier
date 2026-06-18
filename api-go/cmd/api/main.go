@@ -224,9 +224,16 @@ func main() {
 	}
 
 	// Geocode and designation clients call live UK services (the config defaults);
-	// each gets its own timeout-bounded HTTP client.
-	geocodeClient := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
-	designationClient := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
+	// each gets its own timeout-bounded HTTP client. Construction can only fail
+	// with an unparseable base URL, which is a startup misconfiguration.
+	geocodeClient, err := geocoding.NewClient(cfg.PostcodesIoBaseURL, &http.Client{Timeout: 30 * time.Second})
+	if err != nil {
+		log.Fatalf("geocoding client: %v", err)
+	}
+	designationClient, err := designations.NewClient(cfg.GovUkBaseURL, &http.Client{Timeout: 30 * time.Second})
+	if err != nil {
+		log.Fatalf("designations client: %v", err)
+	}
 
 	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
 
