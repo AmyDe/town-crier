@@ -70,7 +70,7 @@ public enum DomainError: Error, Equatable, Sendable {
     case .purchaseFailed, .purchaseCancelled, .restoreFailed, .productNotFound:
       return "There was a problem with your purchase. Please try again."
     case .insufficientEntitlement:
-      return "This feature requires a higher subscription tier. Upgrade to unlock it."
+      return "This feature is on a higher plan. Upgrade to use it."
     case .invalidPostcode(let raw):
       return "The postcode '\(raw)' doesn't look right. Please enter a valid UK postcode."
     case .geocodingFailed:

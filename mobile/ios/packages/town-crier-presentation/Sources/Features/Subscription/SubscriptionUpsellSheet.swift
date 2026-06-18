@@ -4,7 +4,7 @@ import TownCrierDomain
 /// A reusable sheet presented when a user attempts an action above their subscription tier.
 ///
 /// Design (from spec 2.5):
-/// - Title: "Upgrade to unlock"
+/// - Title: "Upgrade to use this"
 /// - Body: describes the specific feature (parameterised by entitlement)
 /// - CTA: "View Plans" -- navigates to existing `SubscriptionView`
 /// - Secondary: "Not now" -- dismisses
@@ -37,7 +37,7 @@ public struct SubscriptionUpsellSheet: View {
         .foregroundStyle(Color.tcAmber)
 
       // Title
-      Text("Upgrade to unlock")
+      Text("Upgrade to use this")
         .font(TCTypography.displaySmall)
         .foregroundStyle(Color.tcTextPrimary)
 

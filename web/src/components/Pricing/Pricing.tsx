@@ -12,7 +12,7 @@ const FEATURES: Feature[] = [
   { label: 'Radius', free: '500m', personal: '2km', pro: '5km' },
   { label: 'Notifications', free: 'Weekly digest', personal: 'Instant', pro: 'Instant' },
   { label: 'Search', free: 'Basic', personal: 'Advanced', pro: 'Advanced + Filters' },
-  { label: 'Historical Data', free: '—', personal: '6 months', pro: '5 years' },
+  { label: 'Historical Data', free: 'None', personal: '6 months', pro: '5 years' },
 ];
 
 interface Tier {

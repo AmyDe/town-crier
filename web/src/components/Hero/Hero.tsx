@@ -11,8 +11,8 @@ export function Hero() {
         Stay informed about what&apos;s being built in your neighbourhood
       </h1>
       <p className={styles.subheading}>
-        Monitoring planning applications across the UK, so you don&apos;t have
-        to.
+        We watch planning applications across the UK and tell you when
+        something&apos;s proposed near you.
       </p>
       <div className={styles.ctaGroup}>
         <a
