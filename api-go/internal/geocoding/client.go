@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// errCrossHostRedirect is returned by CheckRedirect when a redirect target's
+// host differs from the configured base host.
+var errCrossHostRedirect = fmt.Errorf("geocoding: cross-host redirect refused")
+
 // maxRespBytes bounds the postcodes.io response body read.
 const maxRespBytes = 1 << 20
 
@@ -28,7 +32,20 @@ type Client struct {
 }
 
 // NewClient builds a geocoder over the given base URL and shared HTTP client.
+// CheckRedirect is set on httpClient to refuse any redirect whose target host
+// differs from the configured base host (defense-in-depth SSRF hardening).
 func NewClient(baseURL string, httpClient *http.Client) *Client {
+	u, _ := url.Parse(strings.TrimRight(baseURL, "/"))
+	configuredHost := u.Host // host:port or bare host; must match exactly
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Host != configuredHost {
+			return errCrossHostRedirect
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("geocoding: stopped after 10 redirects")
+		}
+		return nil
+	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: httpClient}
 }
 

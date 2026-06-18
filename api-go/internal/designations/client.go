@@ -10,9 +10,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
+
+// errCrossHostRedirect is returned by CheckRedirect when a redirect target's
+// host differs from the configured base host.
+var errCrossHostRedirect = fmt.Errorf("designations: cross-host redirect refused")
 
 // datasets is the comma-separated dataset filter sent to the entity endpoint.
 // The commas are intentionally left unescaped to match the .NET client, which
@@ -42,7 +47,20 @@ type Client struct {
 }
 
 // NewClient builds a provider over the given base URL and shared HTTP client.
+// CheckRedirect is set on httpClient to refuse any redirect whose target host
+// differs from the configured base host (defense-in-depth SSRF hardening).
 func NewClient(baseURL string, httpClient *http.Client) *Client {
+	u, _ := url.Parse(strings.TrimRight(baseURL, "/"))
+	configuredHost := u.Host // host:port or bare host; must match exactly
+	httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Host != configuredHost {
+			return errCrossHostRedirect
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("designations: stopped after 10 redirects")
+		}
+		return nil
+	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: httpClient}
 }
 
