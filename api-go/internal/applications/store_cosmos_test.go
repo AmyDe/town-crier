@@ -12,17 +12,17 @@ import (
 )
 
 type fakeItems struct {
-	stored        map[string][]byte // id -> bytes
-	readErr       error
-	upsertErr     error
-	queryErr      error
-	queryResult   [][]byte
-	lastUpsertPK  string
-	lastUpsert    []byte
-	lastReadPK    string
-	lastReadID    string
-	lastQueryPK   string
-	lastQuery     string
+	stored          map[string][]byte // id -> bytes
+	readErr         error
+	upsertErr       error
+	queryErr        error
+	queryResult     [][]byte
+	lastUpsertPK    string
+	lastUpsert      []byte
+	lastReadPK      string
+	lastReadID      string
+	lastQueryPK     string
+	lastQuery       string
 	lastQueryParams map[string]any
 }
 
