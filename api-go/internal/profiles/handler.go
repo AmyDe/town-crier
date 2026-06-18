@@ -33,33 +33,35 @@ type profileStore interface {
 
 // handler serves the /v1/me lifecycle. It depends on the profile store, the
 // Auth0 management client (real or no-op), the per-container cascade deleters
-// account erasure runs, the auto-grant pro-domain list, a clock, and a logger —
-// all injected, no globals.
+// account erasure runs, the per-collection readers GET /v1/me/data exports, the
+// auto-grant pro-domain list, a clock, and a logger — all injected, no globals.
 type handler struct {
-	store      profileStore
-	auth0      Auth0Manager
-	cascade    CascadeDeleters
-	proDomains proDomainSet
-	now        func() time.Time
-	logger     *slog.Logger
+	store         profileStore
+	auth0         Auth0Manager
+	cascade       CascadeDeleters
+	exportReaders ExportReaders
+	proDomains    proDomainSet
+	now           func() time.Time
+	logger        *slog.Logger
 }
 
 // newHandler builds the /v1/me handler.
-func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, now func() time.Time, logger *slog.Logger) *handler {
+func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) *handler {
 	return &handler{
-		store:      store,
-		auth0:      auth0,
-		cascade:    cascade,
-		proDomains: newProDomainSet(proDomains),
-		now:        now,
-		logger:     logger,
+		store:         store,
+		auth0:         auth0,
+		cascade:       cascade,
+		exportReaders: exportReaders,
+		proDomains:    newProDomainSet(proDomains),
+		now:           now,
+		logger:        logger,
 	}
 }
 
 // Routes registers the /v1/me endpoints on mux. All are authenticated: the auth
 // middleware guarantees a subject in context before these handlers run.
-func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, now func() time.Time, logger *slog.Logger) {
-	h := newHandler(store, auth0, proDomains, cascade, now, logger)
+func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) {
+	h := newHandler(store, auth0, proDomains, cascade, exportReaders, now, logger)
 	mux.HandleFunc("POST /v1/me", h.create)
 	mux.HandleFunc("GET /v1/me", h.get)
 	mux.HandleFunc("PATCH /v1/me", h.patch)
@@ -265,7 +267,12 @@ func (h *handler) exportData(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "load profile", err)
 		return
 	}
-	h.writeJSON(w, r, newExportUserData(profile))
+	export, err := newExportUserData(r.Context(), profile, h.exportReaders)
+	if err != nil {
+		h.serverError(w, r, "build export", err)
+		return
+	}
+	h.writeJSON(w, r, export)
 }
 
 // tryBackfillAuth0Tier syncs Auth0's subscription_tier to the Cosmos tier when
