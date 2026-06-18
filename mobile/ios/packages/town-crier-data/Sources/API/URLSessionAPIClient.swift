@@ -80,7 +80,52 @@ public final class URLSessionAPIClient: Sendable {
     }
   }
 
+  /// Performs a request and returns the raw response body bytes without
+  /// decoding. Used for opaque payloads (e.g. the GDPR data export) that must
+  /// be preserved byte-for-byte as the server produced them. Auth, token
+  /// refresh on 401, and HTTP status mapping are identical to `request(_:)`.
+  public func requestData(_ endpoint: APIEndpoint) async throws -> Data {
+    guard let session = await authService.currentSession() else {
+      throw DomainError.sessionExpired
+    }
+
+    do {
+      return try await executeRequestData(endpoint, accessToken: session.accessToken)
+    } catch APIError.unauthorized {
+      let refreshed: AuthSession
+      do {
+        refreshed = try await authService.refreshSession()
+      } catch is URLError {
+        throw DomainError.networkUnavailable
+      } catch {
+        throw DomainError.sessionExpired
+      }
+      do {
+        return try await executeRequestData(endpoint, accessToken: refreshed.accessToken)
+      } catch is URLError {
+        throw DomainError.networkUnavailable
+      }
+    } catch is URLError {
+      throw DomainError.networkUnavailable
+    }
+  }
+
   // MARK: - Private
+
+  private func executeRequestData(
+    _ endpoint: APIEndpoint,
+    accessToken: String
+  ) async throws -> Data {
+    let urlRequest = try buildRequest(endpoint, accessToken: accessToken)
+    let (data, response) = try await transport.data(for: urlRequest)
+
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw APIError.serverError(statusCode: 0, message: "Invalid response")
+    }
+
+    try mapHTTPStatus(httpResponse.statusCode, data: data)
+    return data
+  }
 
   private func executeRequest<T: Decodable>(
     _ endpoint: APIEndpoint,

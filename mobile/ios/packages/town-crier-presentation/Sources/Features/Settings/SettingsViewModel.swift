@@ -13,6 +13,15 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published public private(set) var isLoading = false
   @Published public internal(set) var error: DomainError?
   @Published public var isShowingDeleteConfirmation = false
+
+  /// True while the data export request is in flight. The View disables the
+  /// row and shows a spinner so the user can't trigger a second export.
+  @Published public private(set) var isExporting = false
+
+  /// The temp file URL of a completed export, ready to hand to the iOS share
+  /// sheet. `nil` until an export succeeds, and reset once the sheet is
+  /// dismissed. Setting this is what triggers the View to present the sheet.
+  @Published public var exportFileURL: URL?
   @Published public var appearanceMode: AppearanceMode {
     didSet {
       defaults.set(appearanceMode.rawValue, forKey: Self.appearanceModeKey)
@@ -30,6 +39,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
   private let appVersionProvider: AppVersionProvider
   private let notificationService: NotificationService
   private let defaults: UserDefaults
+  private let exportFileWriter: (Data) throws -> URL
 
   public init(
     authService: AuthenticationService,
@@ -38,7 +48,8 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     tierResolver: SubscriptionTierResolving? = nil,
     appVersionProvider: AppVersionProvider,
     notificationService: NotificationService,
-    defaults: UserDefaults = .standard
+    defaults: UserDefaults = .standard,
+    exportFileWriter: @escaping (Data) throws -> URL = SettingsViewModel.writeExportToTempFile
   ) {
     self.authService = authService
     self.subscriptionService = subscriptionService
@@ -54,6 +65,7 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     self.appVersionProvider = appVersionProvider
     self.notificationService = notificationService
     self.defaults = defaults
+    self.exportFileWriter = exportFileWriter
 
     let storedRaw = defaults.string(forKey: Self.appearanceModeKey) ?? ""
     self.appearanceMode = AppearanceMode(rawValue: storedRaw) ?? .system
@@ -146,6 +158,41 @@ public final class SettingsViewModel: ObservableObject, ErrorHandlingViewModel {
     } catch {
       handleError(error)
     }
+  }
+
+  /// Fetches the full GDPR data export (GET /v1/me/data), writes the opaque
+  /// server bytes to a temp `.json` file, and publishes the file URL so the
+  /// View can present the iOS share sheet. On failure, sets a user-facing
+  /// error and produces no artifact.
+  public func exportData() async {
+    guard !isExporting else { return }
+    isExporting = true
+    error = nil
+    exportFileURL = nil
+    do {
+      let bytes = try await userProfileRepository.exportData()
+      exportFileURL = try exportFileWriter(bytes)
+    } catch {
+      handleError(error)
+    }
+    isExporting = false
+  }
+
+  /// Clears the shareable artifact once the share sheet has been dismissed.
+  public func dismissExportShare() {
+    exportFileURL = nil
+  }
+
+  /// Default writer: persists the export bytes verbatim to a `.json` file in
+  /// the temporary directory and returns its URL. Overwrites any prior export
+  /// so the temp directory doesn't accumulate stale copies. `nonisolated`
+  /// because it touches no actor-isolated state and is used as a default
+  /// argument to the `@MainActor` initialiser.
+  public nonisolated static func writeExportToTempFile(_ data: Data) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("towncrier-data-export.json")
+    try data.write(to: url, options: .atomic)
+    return url
   }
 
   private func clearSession() {
