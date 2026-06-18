@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"testing"
 	"time"
@@ -426,6 +428,61 @@ func TestApplications_EmptyZoneReturnsEmptyArray(t *testing.T) {
 	}
 	if got := rec.Body.String(); got != "[]" {
 		t.Errorf("empty applications: got %s, want []", got)
+	}
+}
+
+func TestCreate_RejectsOversizedRadius(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		radiusMetres float64
+		wantStatus   int
+	}{
+		{"exactly at limit is valid", 10000, http.StatusCreated},
+		{"just above limit is 400", 10001, http.StatusBadRequest},
+		{"far above limit is 400", 1e308, http.StatusBadRequest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := nearbyDeps{
+				store:    &fakeZoneStore{},
+				profiles: &fakeProfileReader{profile: proProfile(t)},
+				resolver: &fakeResolver{},
+				apps:     &fakeAppFinder{},
+				state:    &fakeWatermark{},
+				unread:   &fakeUnread{},
+			}
+			mux := newNearbyMux(t, d)
+			body := fmt.Sprintf(`{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":%v,"authorityId":471}`, tc.radiusMetres)
+			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("radiusMetres=%v: got status %d, want %d", tc.radiusMetres, rec.Code, tc.wantStatus)
+			}
+		})
+	}
+}
+
+func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		req  createRequest
+	}{
+		{"NaN latitude", createRequest{Name: "Z", Latitude: math.NaN(), Longitude: 0, RadiusMetres: 1000}},
+		{"Inf latitude", createRequest{Name: "Z", Latitude: math.Inf(1), Longitude: 0, RadiusMetres: 1000}},
+		{"NaN longitude", createRequest{Name: "Z", Latitude: 51.5, Longitude: math.NaN(), RadiusMetres: 1000}},
+		{"Inf longitude", createRequest{Name: "Z", Latitude: 51.5, Longitude: math.Inf(-1), RadiusMetres: 1000}},
+		{"NaN radius", createRequest{Name: "Z", Latitude: 51.5, Longitude: -0.12, RadiusMetres: math.NaN()}},
+		{"Inf radius", createRequest{Name: "Z", Latitude: 51.5, Longitude: -0.12, RadiusMetres: math.Inf(1)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.req.valid() {
+				t.Errorf("%s: valid() returned true, want false", tc.name)
+			}
+		})
 	}
 }
 
