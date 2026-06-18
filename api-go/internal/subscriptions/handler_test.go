@@ -732,7 +732,7 @@ func TestWebhook_RejectsOversizedPayloadBeforeVerify(t *testing.T) {
 	// Use a large MaxBytesReader so the outer body cap doesn't fire first.
 	// The serve helper applies the handler's own body limit; we bypass it here
 	// by posting a raw request directly to the mux.
-	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/appstore", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/webhooks/appstore", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	d.mux.ServeHTTP(rec, req)
 
