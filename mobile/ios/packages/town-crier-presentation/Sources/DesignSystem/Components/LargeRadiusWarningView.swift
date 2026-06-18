@@ -32,7 +32,7 @@ public struct LargeRadiusWarningView: View {
         Text(
           """
           A wide watch zone can produce hundreds of notifications a day, \
-          especially in cities. We recommend 100–500 m in built-up areas, \
+          especially in cities. We recommend 100-500 m in built-up areas, \
           and under 2 km everywhere else.
           """
         )

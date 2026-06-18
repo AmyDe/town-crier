@@ -54,7 +54,7 @@ struct DomainErrorMessageTests {
     let error = DomainError.insufficientEntitlement(required: "statusChangeAlerts")
     #expect(
       error.userMessage
-        == "This feature requires a higher subscription tier. Upgrade to unlock it."
+        == "This feature is on a higher plan. Upgrade to use it."
     )
   }
 

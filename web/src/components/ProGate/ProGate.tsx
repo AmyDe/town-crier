@@ -11,7 +11,7 @@ export function ProGate({ featureName }: Props) {
       <h2 className={styles.title}>Pro Feature</h2>
       <p className={styles.message}>
         <span className={styles.highlight}>{featureName}</span> is available on
-        the Pro plan. Upgrade in the iOS app to unlock this feature.
+        the Pro plan. Upgrade in the iOS app to turn it on.
       </p>
     </div>
   );

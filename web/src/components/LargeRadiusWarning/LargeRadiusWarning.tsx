@@ -26,7 +26,7 @@ export function LargeRadiusWarning({ radiusMetres }: Props) {
         <p className={styles.title}>Heads up: large zones get noisy</p>
         <p className={styles.body}>
           A wide watch zone can produce hundreds of notifications a day, especially in
-          cities. We recommend 100–500m in built-up areas, and under 2km everywhere
+          cities. We recommend 100-500m in built-up areas, and under 2km everywhere
           else.
         </p>
       </div>

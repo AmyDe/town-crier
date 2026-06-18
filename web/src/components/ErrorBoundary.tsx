@@ -22,8 +22,8 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className={styles.container}>
           <h1 className={styles.title}>Something went wrong</h1>
           <p className={styles.message}>
-            The application encountered an unexpected error. Please try
-            refreshing the page.
+            That&apos;s on our end, not yours. Refreshing the page usually fixes
+            it.
           </p>
           <button
             className={styles.button}
