@@ -90,6 +90,27 @@ func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, _ string, _ map[
 	return nil, nil
 }
 
+// ReadItemWithETag returns the item body and a synthetic etag, satisfying the
+// offercodes.cosmosItems CAS interface.
+func (f *fakeItems) ReadItemWithETag(_ context.Context, _, id string) ([]byte, string, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	raw, ok := f.items[id]
+	if !ok {
+		return nil, "", false, nil
+	}
+	return raw, "etag-" + id, true, nil
+}
+
+// ReplaceItemWithETag replaces the item unconditionally (no real etag enforcement
+// needed in wiring tests).
+func (f *fakeItems) ReplaceItemWithETag(_ context.Context, _ string, id string, item []byte, _ string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.items[id] = item
+	return "etag-replaced-" + id, nil
+}
+
 func (f *fakeItems) QueryPageCrossPartition(_ context.Context, _ string, _ map[string]any, _ int, _ string) ([][]byte, string, error) {
 	return nil, "", nil
 }

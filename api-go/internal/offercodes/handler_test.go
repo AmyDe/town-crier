@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -17,9 +19,17 @@ type fakeCodeStore struct {
 	codes   map[string]OfferCode
 	saved   *OfferCode
 	saveErr error
+	// casConflictOnce, when true, causes the first RedeemWithCAS call to return
+	// ErrCASPreconditionFailed and then mark the code as already redeemed on
+	// subsequent Get calls — driving the "lost CAS race" path in the handler.
+	casConflictOnce  bool
+	casConflictFired bool
+	mu               sync.Mutex
 }
 
 func (f *fakeCodeStore) Get(_ context.Context, canonical string) (OfferCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	c, ok := f.codes[canonical]
 	if !ok {
 		return OfferCode{}, ErrNotFound
@@ -31,6 +41,40 @@ func (f *fakeCodeStore) Save(_ context.Context, c OfferCode) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
+	cp := c
+	f.saved = &cp
+	return nil
+}
+
+// RedeemWithCAS is the CAS-aware redemption path. When casConflictOnce is set
+// and the conflict has not yet been fired, it returns ErrCASPreconditionFailed
+// and marks the code as redeemed so the handler's re-read observes the redeemed
+// state and returns 409. Otherwise it mutates the stored code and returns nil.
+func (f *fakeCodeStore) RedeemWithCAS(_ context.Context, canonical, userID string, now time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.casConflictOnce && !f.casConflictFired {
+		f.casConflictFired = true
+		// Mark the stored code as redeemed so a subsequent Get sees it redeemed.
+		if c, ok := f.codes[canonical]; ok {
+			uid := "auth0|someone-else"
+			c.Redeemed = true
+			c.RedeemedByUserID = &uid
+			f.codes[canonical] = c
+		}
+		return platform.ErrCASPreconditionFailed
+	}
+	c, ok := f.codes[canonical]
+	if !ok {
+		return ErrNotFound
+	}
+	if c.IsRedeemed() {
+		return ErrAlreadyRedeemed
+	}
+	if err := c.Redeem(userID, now); err != nil {
+		return err
+	}
+	f.codes[canonical] = c
 	cp := c
 	f.saved = &cp
 	return nil
@@ -203,4 +247,83 @@ func TestCosmosStore_SatisfiesProfileStore(t *testing.T) {
 	t.Parallel()
 	// The real profiles.CosmosStore must satisfy the redeem handler's profileStore.
 	var _ profileStore = profiles.NewCosmosStore(nil)
+}
+
+// TestRedeem_CASConflictReturns409 exercises the handler's CAS retry loop: the
+// fake store returns ErrCASPreconditionFailed on the first RedeemWithCAS call
+// (simulating a concurrent writer winning the race) and marks the code as
+// already-redeemed on the subsequent Get re-read, so the handler must surface
+// 409 code_already_redeemed.
+func TestRedeem_CASConflictReturns409(t *testing.T) {
+	t.Parallel()
+
+	codes := seededCode(t)
+	codes.casConflictOnce = true
+	profile := &fakeProfileStore{profile: freeProfile(t)}
+	auth0 := &fakeTierSync{}
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	rec := serveRedeem(t, codes, profile, auth0, now, `{"code":"abcd-efgh-jkmn"}`)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != `{"error":"code_already_redeemed","message":"Offer code 'ABCDEFGHJKMN' has already been redeemed."}` {
+		t.Errorf("body = %s", got)
+	}
+	// Auth0 must not be called when redemption fails.
+	if auth0.calls != 0 {
+		t.Errorf("auth0 should not be called on CAS conflict, got %d calls", auth0.calls)
+	}
+}
+
+// TestRedeem_ConcurrentRedemptionsYieldOneSuccess fires two concurrent redeem
+// requests against the same code. Because the fake store serialises RedeemWithCAS
+// under its mutex, exactly one caller wins; the loser observes the code as
+// already-redeemed on its re-read and receives 409.
+func TestRedeem_ConcurrentRedemptionsYieldOneSuccess(t *testing.T) {
+	t.Parallel()
+
+	// Build a store whose RedeemWithCAS is concurrency-safe: the first caller
+	// wins, the second sees the code already redeemed.
+	c, err := NewOfferCode("ABCDEFGHJKMN", profiles.TierPro, 30, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("NewOfferCode: %v", err)
+	}
+	codes := &fakeCodeStore{codes: map[string]OfferCode{"ABCDEFGHJKMN": c}}
+
+	profile1 := &fakeProfileStore{profile: freeProfile(t)}
+	profile2 := &fakeProfileStore{profile: freeProfile(t)}
+	auth0a := &fakeTierSync{}
+	auth0b := &fakeTierSync{}
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+
+	var wg sync.WaitGroup
+	results := make([]int, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		rec := serveRedeem(t, codes, profile1, auth0a, now, `{"code":"abcd-efgh-jkmn"}`)
+		results[0] = rec.Code
+	}()
+	go func() {
+		defer wg.Done()
+		rec := serveRedeem(t, codes, profile2, auth0b, now, `{"code":"abcd-efgh-jkmn"}`)
+		results[1] = rec.Code
+	}()
+	wg.Wait()
+
+	successes := 0
+	conflicts := 0
+	for _, code := range results {
+		switch code {
+		case http.StatusOK:
+			successes++
+		case http.StatusConflict:
+			conflicts++
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Errorf("want 1 success + 1 conflict, got statuses %v", results)
+	}
 }
