@@ -28,6 +28,12 @@ import (
 // so this prose body produces the same Upgrade-Required UX as a structured one.
 const quotaExceededMessage = "Watch zone quota exceeded. Upgrade your subscription for more zones."
 
+// errProfileCASNotWired signals a wiring bug: the create path requires the
+// CAS-backed profile store and refuses to run an unprotected quota check
+// without it. Unreachable in production, where NearbyRoutes is always wired
+// WithProfileCAS.
+var errProfileCASNotWired = errors.New("profile CAS store not wired")
+
 // profileReader loads the caller's profile so the create handler can read the
 // subscription tier for the watch-zone quota check.
 type profileReader interface {
@@ -161,32 +167,23 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Atomic quota gate: use CAS on the profile counter when available.
-	// Falls back to the non-atomic path only when no CAS store is wired (e.g. dev).
-	if h.profileCAS != nil {
-		ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, profile.Tier.WatchZoneLimit())
-		if casErr != nil {
-			h.serverError(w, r, "atomic quota check", casErr)
-			return
-		}
-		if !ok {
-			h.writeError(w, r, http.StatusForbidden, quotaExceededMessage)
-			return
-		}
-	} else {
-		// Legacy non-atomic path (no CAS store wired).
-		limit := profile.Tier.WatchZoneLimit()
-		if limit < math.MaxInt32 {
-			existing, err := h.store.GetByUserID(r.Context(), userID)
-			if err != nil {
-				h.serverError(w, r, "count existing zones", err)
-				return
-			}
-			if len(existing) >= limit {
-				h.writeError(w, r, http.StatusForbidden, quotaExceededMessage)
-				return
-			}
-		}
+	// Atomic quota gate: the CAS-backed profile counter is the ONLY create path,
+	// so there is no non-atomic footgun. A nil profileCAS at request time is a
+	// wiring bug (never reachable in production, where NearbyRoutes is always
+	// wired WithProfileCAS); fail closed with a 500 rather than running an
+	// unprotected count-then-save.
+	if h.profileCAS == nil {
+		h.serverError(w, r, "quota gate", errProfileCASNotWired)
+		return
+	}
+	ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, profile.Tier.WatchZoneLimit())
+	if casErr != nil {
+		h.serverError(w, r, "atomic quota check", casErr)
+		return
+	}
+	if !ok {
+		h.writeError(w, r, http.StatusForbidden, quotaExceededMessage)
+		return
 	}
 
 	authorityID := 0

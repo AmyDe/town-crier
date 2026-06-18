@@ -121,7 +121,17 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		notificationstate.Routes(mux, stateStore, time.Now, logger)
 	}
 	if watchZoneStore != nil {
-		watchzones.Routes(mux, watchZoneStore, logger, watchzones.WithMetricsRecorder(registry))
+		// The delete path decrements the watch-zone quota counter on the profile
+		// via CAS, so it needs the CAS-capable profile store. Only pass the option
+		// when the profile store is genuinely present — passing a typed-nil
+		// *profiles.CosmosStore would wrap into a non-nil interface and defeat the
+		// handler's nil-check (the same typed-nil gotcha guarded for the saved
+		// store above).
+		zoneOpts := []watchzones.Option{watchzones.WithMetricsRecorder(registry)}
+		if store != nil {
+			zoneOpts = append(zoneOpts, watchzones.WithProfileCAS(store))
+		}
+		watchzones.Routes(mux, watchZoneStore, logger, zoneOpts...)
 		// application-authorities derives from the user's watch zones plus the
 		// static authority data; it needs no Cosmos applications store.
 		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
@@ -139,11 +149,14 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
-		// applications list. Create enforces the tier's zone quota from the
-		// profile store and resolves the authority from coordinates via the
-		// geocode client when the request omits one; the applications list
-		// augments each row with its latest unread notification.
-		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry))
+		// applications list. Create enforces the tier's zone quota atomically via
+		// CAS on the profile counter (WithProfileCAS) — this is the only create
+		// path, so concurrent creates can never exceed the tier limit (F5/#515).
+		// store is non-nil here (guarded above), so no typed-nil concern. It
+		// resolves the authority from coordinates via the geocode client when the
+		// request omits one; the applications list augments each row with its
+		// latest unread notification.
+		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil {
 		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,

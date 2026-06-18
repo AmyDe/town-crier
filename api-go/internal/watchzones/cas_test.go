@@ -235,6 +235,27 @@ func TestCreate_LegacyProfileLazyInit(t *testing.T) {
 	}
 }
 
+// TestCreate_FailsClosedWhenCASNotWired proves the create path fails closed
+// (500) rather than silently running an unprotected quota check when the CAS
+// store is absent. This guards against a wiring regression reintroducing the
+// TOCTOU race: there is no non-atomic fallback create path.
+func TestCreate_FailsClosedWhenCASNotWired(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	// NearbyRoutes WITHOUT WithProfileCAS — profileCAS is nil.
+	NearbyRoutes(mux, &fakeZoneStore{}, &fakeProfileReader{profile: freeProfile(t)},
+		&fakeResolver{}, &fakeAppFinder{}, &fakeWatermark{}, &fakeUnread{},
+		func() string { return "zone-x" }, func() time.Time { return nearbyNow },
+		slog.New(slog.DiscardHandler))
+
+	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("nil CAS must fail closed: got %d, want 500 (body=%s)", rec.Code, rec.Body)
+	}
+}
+
 // newNearbyMuxWithCAS registers NearbyRoutes with the WithProfileCAS option.
 func newNearbyMuxWithCAS(t *testing.T, d nearbyDeps, cas profileCAS) *http.ServeMux {
 	t.Helper()
