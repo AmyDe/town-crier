@@ -10,13 +10,20 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// panicDetail is the fixed generic message written into the client-facing 500
+// Detail field on a recovered panic. The actual panic error is always logged
+// server-side (see logger.ErrorContext call in Recover); it is deliberately
+// never echoed to the client to prevent leaking Go runtime internals (GH#516).
+const panicDetail = "An unexpected error occurred."
+
 // Recover converts a panic in a downstream handler into a 500 response,
 // replicating the unhandled-exception half of the .NET ErrorResponseMiddleware
 // (GH#418, parity behaviour 1). It runs INSIDE ErrorBody: on a panic with the
-// response not yet started, it records the panic message as the request's error
-// Detail and sets status 500, leaving ErrorBody to write the
-// {"Status":500,"Title":"Internal Server Error","Detail":"<message>"} envelope
-// through the same backfill path as the bodyless 4xx responses.
+// response not yet started, it records a generic Detail and sets status 500,
+// leaving ErrorBody to write the
+// {"Status":500,"Title":"Internal Server Error","Detail":"<generic>"} envelope
+// through the same backfill path as the bodyless 4xx responses. The full panic
+// error is retained in the structured log only (GH#516).
 //
 // If the response has already started (the handler wrote bytes before
 // panicking), the status and body are already on the wire and cannot be
@@ -48,7 +55,7 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 					// HasStarted guard skips the envelope in exactly this case.
 					return
 				}
-				SetDetail(ctx, err.Error())
+				SetDetail(ctx, panicDetail)
 				rw.WriteHeader(http.StatusInternalServerError)
 			}()
 			next.ServeHTTP(rw, r)
