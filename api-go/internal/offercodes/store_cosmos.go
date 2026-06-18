@@ -117,6 +117,33 @@ func (s *CosmosStore) RedeemWithCAS(ctx context.Context, canonical, userID strin
 // this is a deliberate cross-partition scan.
 const redeemedByUserIDQuery = "SELECT * FROM c WHERE c.redeemedByUserId = @userId"
 
+// RedeemedByUserID returns every code the user redeemed, hydrated to the domain
+// model, for the GDPR data export (GET /v1/me/data). It reuses the same
+// cross-partition redeemedByUserId scan as the anonymise path (the OfferCodes
+// container is partitioned by /id == the canonical code, not by redeemer, so
+// finding a user's redemptions must fan out across partitions). The common case
+// (the user never redeemed a code) matches nothing and returns an empty, non-nil
+// slice. The export sorts the result, so no ORDER BY is needed here.
+func (s *CosmosStore) RedeemedByUserID(ctx context.Context, userID string) ([]OfferCode, error) {
+	raws, err := s.items.QueryItemsCrossPartition(ctx, redeemedByUserIDQuery, map[string]any{"@userId": userID})
+	if err != nil {
+		return nil, fmt.Errorf("query redemptions for user %q: %w", userID, err)
+	}
+	codes := make([]OfferCode, 0, len(raws))
+	for _, raw := range raws {
+		var doc offerCodeDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode redeemed offer code for user %q: %w", userID, err)
+		}
+		code, err := doc.toDomain()
+		if err != nil {
+			return nil, fmt.Errorf("hydrate redeemed offer code for user %q: %w", userID, err)
+		}
+		codes = append(codes, code)
+	}
+	return codes, nil
+}
+
 // AnonymiseRedemptionsByUserID scrubs the redeemer back-reference
 // (redeemedByUserId + redeemedAt) from every code the user redeemed, for UK
 // GDPR Art. 17 account erasure. It does NOT delete the code document (the code

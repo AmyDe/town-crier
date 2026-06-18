@@ -55,6 +55,25 @@ func (s *DigestStore) ByUserSince(ctx context.Context, userID string, since time
 	return decodeDigests(raws, userID)
 }
 
+// allByUserQuery selects every notification in a user's partition, oldest first,
+// with no since-floor — the GDPR-export read. It is single-partition (scoped to
+// userId) so it never fans out cross-partition; the Notifications container's
+// 90-day TTL naturally bounds the row count. The ORDER BY makes the export's
+// notifications array deterministic so successive exports stay byte-stable.
+const allByUserQuery = "SELECT * FROM c WHERE c.userId = @userId ORDER BY c.createdAt ASC"
+
+// AllByUser returns every notification in the user's partition, hydrated to the
+// full DigestNotification, for the GDPR data export (GET /v1/me/data). Unlike
+// ByUserSince it applies no time window — the export covers the user's whole
+// (TTL-bounded) notification history. Single-partition, never cross-partition.
+func (s *DigestStore) AllByUser(ctx context.Context, userID string) ([]DigestNotification, error) {
+	raws, err := s.items.QueryItems(ctx, userID, allByUserQuery, map[string]any{"@userId": userID})
+	if err != nil {
+		return nil, fmt.Errorf("query all notifications for %q: %w", userID, err)
+	}
+	return decodeDigests(raws, userID)
+}
+
 // unsentEmailsQuery selects a user's notifications whose email has not yet been
 // sent, oldest first. The OR-NOT-IS_DEFINED clause includes legacy rows written
 // before the emailSent field existed. Mirrors .NET GetUnsentEmailsByUserAsync.
