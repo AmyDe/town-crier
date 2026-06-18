@@ -64,11 +64,17 @@ describe('Navbar', () => {
     expect(faq).toHaveAttribute('href', '#faq');
   });
 
-  it('renders Download CTA link', () => {
+  it('renders Download CTA link pointing at TestFlight', () => {
     renderNavbar();
 
     const cta = screen.getByRole('link', { name: /download/i });
     expect(cta).toBeInTheDocument();
+    expect(cta).toHaveAttribute(
+      'href',
+      'https://testflight.apple.com/join/7fZTBZQN',
+    );
+    expect(cta).toHaveAttribute('target', '_blank');
+    expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('renders a ThemeToggle button', () => {

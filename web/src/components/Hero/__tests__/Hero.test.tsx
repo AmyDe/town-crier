@@ -32,12 +32,17 @@ describe('Hero', () => {
     expect(screen.getByText(/417 local authorities/i)).toBeInTheDocument();
   });
 
-  it('renders an App Store CTA link', () => {
+  it('renders a download CTA link pointing at TestFlight', () => {
     renderHero();
 
     const cta = screen.getByRole('link', { name: /app store/i });
     expect(cta).toBeInTheDocument();
-    expect(cta).toHaveAttribute('href', expect.stringContaining('apps.apple.com'));
+    expect(cta).toHaveAttribute(
+      'href',
+      'https://testflight.apple.com/join/7fZTBZQN',
+    );
+    expect(cta).toHaveAttribute('target', '_blank');
+    expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('renders a scroll indicator', () => {

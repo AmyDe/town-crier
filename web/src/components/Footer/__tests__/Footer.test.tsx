@@ -21,11 +21,17 @@ describe('Footer', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders an App Store download link styled as a button', () => {
+  it('renders a download link styled as a button pointing at TestFlight', () => {
     render(<Footer />);
 
     const link = screen.getByRole('link', { name: /download on the app store/i });
     expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute(
+      'href',
+      'https://testflight.apple.com/join/7fZTBZQN',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('renders copyright with the current year', () => {

@@ -1,3 +1,4 @@
+import { APP_DOWNLOAD_URL } from '../../config/links';
 import styles from './Footer.module.css';
 
 export function Footer() {
@@ -11,9 +12,11 @@ export function Footer() {
             Your neighbourhood is changing. Stay informed.
           </h2>
           <a
-            href="https://apps.apple.com/app/town-crier"
+            href={APP_DOWNLOAD_URL}
             className={styles.downloadButton}
             aria-label="Download on the App Store"
+            target="_blank"
+            rel="noopener noreferrer"
           >
             Download on the App Store
           </a>
