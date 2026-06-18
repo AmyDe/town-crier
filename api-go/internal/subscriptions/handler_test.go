@@ -61,11 +61,21 @@ func (f *fakeProfileByUser) Save(_ context.Context, p *profiles.UserProfile) err
 }
 
 type fakeProfileByTxn struct {
+	// profile is returned for all txn lookups when profilesByTxnID is nil.
 	profile *profiles.UserProfile
-	saved   *profiles.UserProfile
+	// profilesByTxnID maps originalTransactionID to a profile, supporting F2
+	// conflict tests where different txn ids resolve to different profiles.
+	profilesByTxnID map[string]*profiles.UserProfile
+	saved           *profiles.UserProfile
 }
 
-func (f *fakeProfileByTxn) GetByOriginalTransactionID(context.Context, string) (*profiles.UserProfile, error) {
+func (f *fakeProfileByTxn) GetByOriginalTransactionID(_ context.Context, txnID string) (*profiles.UserProfile, error) {
+	if f.profilesByTxnID != nil {
+		if p, ok := f.profilesByTxnID[txnID]; ok {
+			return p, nil
+		}
+		return nil, profiles.ErrNotFound
+	}
 	if f.profile == nil {
 		return nil, profiles.ErrNotFound
 	}
@@ -113,7 +123,15 @@ type testDeps struct {
 	mux         *http.ServeMux
 }
 
+// testAllowedEnvs is the default allowlist used by newTestDeps. It mirrors a
+// production config that only accepts Production-environment transactions.
+var testAllowedEnvs = []string{"Production"}
+
 func newTestDeps() *testDeps {
+	return newTestDepsWithEnvs(testAllowedEnvs)
+}
+
+func newTestDepsWithEnvs(allowedEnvs []string) *testDeps {
 	d := &testDeps{
 		verifier:    &fakeVerifier{results: map[string]string{}, errs: map[string]error{}},
 		byUser:      &fakeProfileByUser{},
@@ -122,7 +140,7 @@ func newTestDeps() *testDeps {
 		idempotency: newFakeIdempotency(),
 		mux:         http.NewServeMux(),
 	}
-	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID,
+	Routes(d.mux, d.verifier, d.byUser, d.byTxn, d.auth0, d.idempotency, testBundleID, allowedEnvs,
 		func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
 	return d
 }
@@ -149,8 +167,12 @@ func freshProfile(t *testing.T) *profiles.UserProfile {
 }
 
 func txnJSON(productID, bundleID, origTxn string, expiresMs int64) string {
-	return fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"environment":"Production"}`,
-		origTxn, productID, bundleID, expiresMs)
+	return txnJSONEnv(productID, bundleID, origTxn, expiresMs, "Production")
+}
+
+func txnJSONEnv(productID, bundleID, origTxn string, expiresMs int64, environment string) string {
+	return fmt.Sprintf(`{"transactionId":"t1","originalTransactionId":%q,"productId":%q,"bundleId":%q,"purchaseDate":1,"expiresDate":%d,"environment":%q}`,
+		origTxn, productID, bundleID, expiresMs, environment)
 }
 
 func decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiErrorResponse {
@@ -475,5 +497,182 @@ func TestApplyNotification(t *testing.T) {
 				t.Errorf("grace set = %v, want %v", p.GracePeriodExpiry != nil, tc.wantGrace)
 			}
 		})
+	}
+}
+
+// --- F1: environment allowlist tests ---
+
+func TestVerify_RejectsSandboxTransactionInProduction(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps() // allowedEnvs = ["Production"]
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["JWS_SANDBOX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs(), "Sandbox")
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_SANDBOX"}`, true)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "invalid_transaction_payload" {
+		t.Errorf("error = %q, want invalid_transaction_payload", got)
+	}
+	if d.byUser.saved != nil {
+		t.Error("profile must not be saved on environment mismatch")
+	}
+	if len(d.auth0.tiers) != 0 {
+		t.Error("auth0 must not be synced on environment mismatch")
+	}
+}
+
+func TestVerify_AcceptsProductionTransaction(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps() // allowedEnvs = ["Production"]
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["JWS_PROD"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PROD"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved as Pro")
+	}
+}
+
+func TestVerify_AcceptsSandboxWhenConfiguredForSandbox(t *testing.T) {
+	t.Parallel()
+	d := newTestDepsWithEnvs([]string{"Sandbox"})
+	d.byUser.profile = freshProfile(t)
+	d.verifier.results["JWS_SANDBOX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs(), "Sandbox")
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_SANDBOX"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved as Pro")
+	}
+}
+
+func TestVerify_AcceptsBothEnvironmentsWhenAllowlistHasTwo(t *testing.T) {
+	t.Parallel()
+	allowBoth := []string{"Sandbox", "Production"}
+
+	t.Run("accepts Production", func(t *testing.T) {
+		t.Parallel()
+		d := newTestDepsWithEnvs(allowBoth)
+		d.byUser.profile = freshProfile(t)
+		d.verifier.results["JWS_PROD"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+		rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_PROD"}`, true)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Production status = %d, body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("accepts Sandbox", func(t *testing.T) {
+		t.Parallel()
+		d := newTestDepsWithEnvs(allowBoth)
+		d.byUser.profile = freshProfile(t)
+		d.verifier.results["JWS_SBX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-2", futureExpiryMs(), "Sandbox")
+
+		rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_SBX"}`, true)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Sandbox status = %d, body=%s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+func TestWebhook_IgnoresSandboxTransactionInProduction(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps() // allowedEnvs = ["Production"]
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-env1", "INNER_SBX")
+	d.verifier.results["INNER_SBX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs(), "Sandbox")
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byTxn.saved != nil {
+		t.Error("profile must not be mutated when webhook environment mismatches")
+	}
+	if len(d.auth0.tiers) != 0 {
+		t.Error("auth0 must not be synced when webhook environment mismatches")
+	}
+	// Notification must still be marked processed (Apple should not retry).
+	if len(d.idempotency.marked) != 1 || d.idempotency.marked[0] != "uuid-env1" {
+		t.Errorf("should still mark processed, got %v", d.idempotency.marked)
+	}
+}
+
+// --- F2: transaction ownership tests ---
+
+func TestVerify_RejectsTransactionOwnedByAnotherUser(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+
+	// Another user already owns "orig-claimed".
+	otherUser, err := profiles.NewProfile("auth0|other", "other@example.com", testNow)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	d.byTxn.profilesByTxnID = map[string]*profiles.UserProfile{
+		"orig-claimed": otherUser,
+	}
+	d.verifier.results["JWS_CONFLICT"] = txnJSON(ProductProMonthly, testBundleID, "orig-claimed", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_CONFLICT"}`, true)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "transaction_already_claimed" {
+		t.Errorf("error = %q, want transaction_already_claimed", got)
+	}
+	if d.byUser.saved != nil {
+		t.Error("caller profile must not be saved on conflict")
+	}
+	if len(d.auth0.tiers) != 0 {
+		t.Error("auth0 must not be synced on conflict")
+	}
+}
+
+func TestVerify_AllowsReVerifyBySameOwner(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	p := freshProfile(t) // UserID = testUserID = "auth0|u1"
+	d.byUser.profile = p
+	// Same user already owns the tx id — idempotent re-verify should succeed.
+	d.byTxn.profilesByTxnID = map[string]*profiles.UserProfile{
+		"orig-1": p,
+	}
+	d.verifier.results["JWS_REVERIFY"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_REVERIFY"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVerify_AllowsFirstTimeClaim(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byUser.profile = freshProfile(t)
+	// byTxn returns ErrNotFound for unknown ids (default fakeProfileByTxn behaviour).
+	d.verifier.results["JWS_FIRST"] = txnJSON(ProductProMonthly, testBundleID, "orig-new", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/subscriptions/verify", `{"signedTransaction":"JWS_FIRST"}`, true)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
+		t.Error("profile not saved as Pro on first claim")
 	}
 }
