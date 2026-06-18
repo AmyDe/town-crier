@@ -131,12 +131,21 @@ func (s *rateLimitStore) checkAndIncrement(userID string, limit int) rateLimitRe
 		}
 	}
 
+	// Reclaim the map key once all in-window timestamps have aged out. This
+	// prevents the map from growing by one entry per distinct authenticated
+	// subject for the life of the replica (OWASP API4 / GH#518).
+	if len(kept) == 0 {
+		delete(s.requests, userID)
+	}
+
 	if len(kept) >= limit {
-		retryAfter := kept[0].Add(rateLimitWindow).Sub(now)
+		var retryAfter time.Duration
+		if len(kept) > 0 {
+			retryAfter = kept[0].Add(rateLimitWindow).Sub(now)
+		}
 		if retryAfter < time.Millisecond {
 			retryAfter = time.Millisecond
 		}
-		s.requests[userID] = kept
 		return rateLimitResult{allowed: false, remaining: 0, retryAfter: retryAfter}
 	}
 
