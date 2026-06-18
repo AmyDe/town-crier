@@ -39,17 +39,23 @@ func (f *fakeSavedStore) GetByUserID(_ context.Context, _ string) ([]SavedApplic
 }
 
 type fakeApps struct {
-	upserted []applications.PlanningApplication
-	byUID    map[string]applications.PlanningApplication
-}
-
-func (f *fakeApps) Upsert(_ context.Context, a applications.PlanningApplication) error {
-	f.upserted = append(f.upserted, a)
-	return nil
+	// byUID supports the lazy-backfill GetByUID path used during list hydration.
+	byUID map[string]applications.PlanningApplication
+	// byAuthorityAndName supports the look-up path used by save.
+	byAuthorityAndName map[string]applications.PlanningApplication
+	// writeCount records how many write/upsert calls were made to the app store;
+	// tests assert this is zero to confirm no master-record mutation occurred.
+	writeCount int
 }
 
 func (f *fakeApps) GetByUID(_ context.Context, uid, _ string) (applications.PlanningApplication, bool, error) {
 	a, ok := f.byUID[uid]
+	return a, ok, nil
+}
+
+func (f *fakeApps) GetByAuthorityAndName(_ context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error) {
+	key := authorityCode + "/" + name
+	a, ok := f.byAuthorityAndName[key]
 	return a, ok, nil
 }
 
@@ -71,18 +77,22 @@ func doReq(t *testing.T, mux *http.ServeMux, method, path, body string) *httptes
 
 const validSaveBody = `{"name":"24/0123/FUL","uid":"ABC-1","areaName":"City of London","areaId":471,"address":"1 St","description":"d","lastDifferent":"2026-03-02T09:30:00+00:00"}`
 
-func TestHandler_Save_DualWriteAndCanonicalKey(t *testing.T) {
+func TestHandler_Save_LooksUpMasterAndWritesBookmark(t *testing.T) {
 	t.Parallel()
 	store := &fakeSavedStore{exists: false}
-	apps := &fakeApps{}
+	app := testApp(t)
+	// The master record is present in the applications store.
+	apps := &fakeApps{byAuthorityAndName: map[string]applications.PlanningApplication{"471/24/0123/FUL": app}}
 	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/whatever-path-uid", validSaveBody)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status: got %d, want 204 (body %s)", rec.Code, rec.Body)
 	}
-	if len(apps.upserted) != 1 || apps.upserted[0].Name != "24/0123/FUL" {
-		t.Errorf("master record not upserted: %+v", apps.upserted)
+	// No write to the shared Applications container.
+	if apps.writeCount != 0 {
+		t.Errorf("must not write to master Applications container: writeCount=%d", apps.writeCount)
 	}
+	// Per-user bookmark written with canonical uid from the master record.
 	if len(store.saved) != 1 || store.saved[0].ApplicationUID != "471/24/0123/FUL" {
 		t.Errorf("saved row not keyed on canonical uid: %+v", store.saved)
 	}
@@ -90,16 +100,17 @@ func TestHandler_Save_DualWriteAndCanonicalKey(t *testing.T) {
 
 func TestHandler_Save_IdempotentWhenAlreadySaved(t *testing.T) {
 	t.Parallel()
+	app := testApp(t)
 	store := &fakeSavedStore{exists: true}
-	apps := &fakeApps{}
+	apps := &fakeApps{byAuthorityAndName: map[string]applications.PlanningApplication{"471/24/0123/FUL": app}}
 	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/x", validSaveBody)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status: got %d", rec.Code)
 	}
-	// Master record still upserted, but no duplicate saved row written.
-	if len(apps.upserted) != 1 {
-		t.Errorf("master upsert should still run: %+v", apps.upserted)
+	// No write to the shared Applications container.
+	if apps.writeCount != 0 {
+		t.Errorf("must not write to master Applications container: writeCount=%d", apps.writeCount)
 	}
 	if len(store.saved) != 0 {
 		t.Errorf("must not re-save when already saved: %+v", store.saved)
@@ -271,5 +282,82 @@ func TestHandler_List_DedupsLegacyAndCanonicalPair(t *testing.T) {
 	// Canonical already existed, so re-key only drops the legacy duplicate.
 	if len(store.deletedUID) != 1 || store.deletedUID[0] != "ABC-1" {
 		t.Errorf("legacy duplicate not dropped: %+v", store.deletedUID)
+	}
+}
+
+// TestSave_DoesNotWriteMasterRecordForUnknownApplication asserts that saving an
+// application whose uid/name does not correspond to any master record in the
+// Applications container returns 404 and writes nothing to that container.
+func TestSave_DoesNotWriteMasterRecordForUnknownApplication(t *testing.T) {
+	t.Parallel()
+	store := &fakeSavedStore{}
+	// The apps store has no record matching the body's (areaId, name).
+	apps := &fakeApps{}
+	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/unknown", validSaveBody)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rec.Code)
+	}
+	// No write to the Applications container.
+	if apps.writeCount != 0 {
+		t.Errorf("must not write to master Applications container: writeCount=%d", apps.writeCount)
+	}
+	// No per-user bookmark written.
+	if len(store.saved) != 0 {
+		t.Errorf("must not write bookmark for unknown application: %+v", store.saved)
+	}
+}
+
+// TestSave_PersistsBookmarkForKnownApplication asserts that saving an
+// application that exists in the Applications container writes the per-user
+// bookmark and returns 204, without touching the shared container.
+func TestSave_PersistsBookmarkForKnownApplication(t *testing.T) {
+	t.Parallel()
+	app := testApp(t)
+	apps := &fakeApps{byAuthorityAndName: map[string]applications.PlanningApplication{"471/24/0123/FUL": app}}
+	store := &fakeSavedStore{exists: false}
+	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/x", validSaveBody)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status: got %d, want 204", rec.Code)
+	}
+	if apps.writeCount != 0 {
+		t.Errorf("must not write to master Applications container: writeCount=%d", apps.writeCount)
+	}
+	if len(store.saved) != 1 {
+		t.Fatalf("expected 1 bookmark saved, got %d", len(store.saved))
+	}
+	if store.saved[0].ApplicationUID != "471/24/0123/FUL" {
+		t.Errorf("bookmark uid: got %q, want %q", store.saved[0].ApplicationUID, "471/24/0123/FUL")
+	}
+	if store.saved[0].UserID != user {
+		t.Errorf("bookmark userID: got %q, want %q", store.saved[0].UserID, user)
+	}
+}
+
+// TestSave_RejectsForgedApplication asserts that a forged body for a
+// non-existent application causes no write to the Applications container and
+// returns a rejection (404). Regression: GET /v1/applications/{authorityCode}/{name}
+// must not be able to return attacker-supplied content via the save endpoint.
+func TestSave_RejectsForgedApplication(t *testing.T) {
+	t.Parallel()
+	// Forged body: attacker-chosen address, description, and coordinates for a
+	// record that does not exist in the master Applications container.
+	forgedBody := `{"name":"24/9999/FUL","uid":"forged-uid","areaName":"City of London","areaId":471,"address":"FORGED ADDRESS","description":"FORGED DESCRIPTION","latitude":51.5,"longitude":-0.12,"lastDifferent":"2026-03-02T09:30:00+00:00"}`
+	apps := &fakeApps{} // no master record for (471, "24/9999/FUL")
+	store := &fakeSavedStore{}
+
+	rec := doReq(t, testMux(t, store, apps), http.MethodPut, "/v1/me/saved-applications/forged", forgedBody)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404 — forged application must be rejected", rec.Code)
+	}
+	// The Applications container received no write calls.
+	if apps.writeCount != 0 {
+		t.Errorf("must not write forged data to Applications container: writeCount=%d", apps.writeCount)
+	}
+	// No per-user bookmark written either.
+	if len(store.saved) != 0 {
+		t.Errorf("must not write bookmark for forged application: %+v", store.saved)
 	}
 }
