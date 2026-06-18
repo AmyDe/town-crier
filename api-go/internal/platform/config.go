@@ -95,6 +95,16 @@ type Config struct {
 	// (tc-7g3i.12).
 	AppleBundleID string
 
+	// AppleEnvironments is the allowlist of StoreKit transaction environments
+	// (e.g. "Production", "Sandbox") that the subscription-verify and webhook
+	// paths accept. Loaded from APPLE_ENVIRONMENT (comma-separated, whitespace-
+	// tolerant). Defaults to ["Production"] — fail-safe so an unconfigured
+	// production deployment never accepts a free sandbox transaction. A dev/
+	// TestFlight deployment sets APPLE_ENVIRONMENT=Sandbox,Production so both
+	// real-money (Production) and TestFlight (Sandbox) purchases work during the
+	// testing phase. Matching is case-insensitive at use-time.
+	AppleEnvironments []string
+
 	// APNs* configure the direct APNs HTTP/2 push client the digest worker modes
 	// use to deliver instant and digest alerts (epic tc-wad3, enabler tc-qlqn).
 	// APNsEnabled gates whether the real sender is constructed; when false the
@@ -199,7 +209,8 @@ func LoadConfig() (Config, error) {
 
 		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
 
-		AppleBundleID: getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
+		AppleBundleID:     getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
+		AppleEnvironments: parseAppleEnvironments(os.Getenv("APPLE_ENVIRONMENT")),
 
 		APNsEnabled:    getenvBool("APNS_ENABLED"),
 		APNsAuthKey:    NewSecret(os.Getenv("APNS_AUTH_KEY")),
@@ -247,6 +258,29 @@ func parseOrigins(raw string) []string {
 		return []string{defaultCorsOrigin}
 	}
 	return origins
+}
+
+// defaultAppleEnvironment is the production environment value. A deployment
+// that does not configure APPLE_ENVIRONMENT rejects sandbox transactions,
+// which is the safe default for production.
+const defaultAppleEnvironment = "Production"
+
+// parseAppleEnvironments splits a comma-separated list of Apple StoreKit
+// environment names, trims whitespace, and drops empty entries. An empty or
+// all-empty input returns [defaultAppleEnvironment], so an unconfigured
+// production deployment rejects sandbox transactions by default.
+// Values are stored as-is; callers compare case-insensitively.
+func parseAppleEnvironments(raw string) []string {
+	envs := make([]string, 0, 1)
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			envs = append(envs, trimmed)
+		}
+	}
+	if len(envs) == 0 {
+		return []string{defaultAppleEnvironment}
+	}
+	return envs
 }
 
 func getenv(key, fallback string) string {
