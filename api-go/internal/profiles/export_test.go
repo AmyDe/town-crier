@@ -308,7 +308,10 @@ func TestNewExportUserData_ZonePreferencesSortedByZoneID(t *testing.T) {
 	}
 
 	want := []string{"4abf25b2", "cb5224db", "eb39413d"}
-	export := newExportUserData(p)
+	export, err := newExportUserData(context.Background(), p, ExportReaders{})
+	if err != nil {
+		t.Fatalf("newExportUserData: %v", err)
+	}
 	got := make([]string, 0, len(export.NotificationPreferences.ZonePreferences))
 	for _, z := range export.NotificationPreferences.ZonePreferences {
 		got = append(got, z.ZoneID)

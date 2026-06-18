@@ -94,7 +94,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -109,7 +109,7 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 
 	var dispatch http.Handler = mux
 	if store != nil {
-		profiles.Routes(mux, store, auth0, proDomains, cascade, time.Now, logger)
+		profiles.Routes(mux, store, auth0, proDomains, cascade, exportReaders, time.Now, logger)
 		dispatch = middleware.RateLimit(middleware.NewRateLimitStore(), profiles.NewTierLookup(store), logger)(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)

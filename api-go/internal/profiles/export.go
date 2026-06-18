@@ -2,6 +2,8 @@ package profiles
 
 import (
 	"cmp"
+	"context"
+	"fmt"
 	"slices"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -12,19 +14,21 @@ import (
 // notificationPreferences (with the per-zone array) and subscription blocks.
 // JSON keys are camelCase to match the web serializer; the tier enum renders as
 // its string name. Child collections (watch zones, notifications, saved
-// applications, device registrations, offer-code redemptions) are sourced by
-// stores that arrive in later iterations; until then they serialise as empty
-// arrays — never null — to match .NET's IReadOnlyList<>.ToList() empty result.
+// applications, device registrations, offer-code redemptions) are sourced by the
+// per-feature stores via the consumer-side ExportReaders (export_readers.go);
+// each is sorted deterministically so successive exports are byte-stable, and an
+// absent reader (Cosmos-less local boot) yields an empty array — never null — to
+// match .NET's IReadOnlyList<>.ToList() empty result.
 type exportUserData struct {
 	UserID                  string                        `json:"userId"`
 	Email                   *string                       `json:"email"`
 	NotificationPreferences exportedNotificationPrefs     `json:"notificationPreferences"`
 	Subscription            exportedSubscription          `json:"subscription"`
-	WatchZones              []exportedWatchZone           `json:"watchZones"`
-	Notifications           []exportedNotification        `json:"notifications"`
-	SavedApplications       []exportedSavedApplication    `json:"savedApplications"`
-	DeviceRegistrations     []exportedDeviceRegistration  `json:"deviceRegistrations"`
-	OfferCodeRedemptions    []exportedOfferCodeRedemption `json:"offerCodeRedemptions"`
+	WatchZones              []ExportedWatchZone           `json:"watchZones"`
+	Notifications           []ExportedNotification        `json:"notifications"`
+	SavedApplications       []ExportedSavedApplication    `json:"savedApplications"`
+	DeviceRegistrations     []ExportedDeviceRegistration  `json:"deviceRegistrations"`
+	OfferCodeRedemptions    []ExportedOfferCodeRedemption `json:"offerCodeRedemptions"`
 }
 
 type exportedNotificationPrefs struct {
@@ -51,11 +55,12 @@ type exportedSubscription struct {
 	GracePeriodExpiresAt  *platform.DotNetTime `json:"gracePeriodExpiresAt"`
 }
 
-// The following child-record shapes match .NET's Exported* records. They have no
-// data source in iteration 3 (their stores land later), so the export always
-// renders them as empty arrays; the structs pin the contract for when the
-// sources arrive.
-type exportedWatchZone struct {
+// The following child-record shapes match .NET's Exported* records. They are the
+// neutral return types of the consumer-side ExportReaders (export_readers.go), so
+// they are exported: cmd/api's store adapters build them directly, keeping the
+// store -> row mapping out of profiles (which must not import the feature
+// packages — see the import-cycle note in export_readers.go).
+type ExportedWatchZone struct {
 	ID           string              `json:"id"`
 	Name         string              `json:"name"`
 	Latitude     float64             `json:"latitude"`
@@ -65,7 +70,7 @@ type exportedWatchZone struct {
 	CreatedAt    platform.DotNetTime `json:"createdAt"`
 }
 
-type exportedNotification struct {
+type ExportedNotification struct {
 	ID                     string              `json:"id"`
 	ApplicationName        string              `json:"applicationName"`
 	WatchZoneID            *string             `json:"watchZoneId"`
@@ -79,27 +84,31 @@ type exportedNotification struct {
 	CreatedAt              platform.DotNetTime `json:"createdAt"`
 }
 
-type exportedSavedApplication struct {
+type ExportedSavedApplication struct {
 	ApplicationUID string              `json:"applicationUid"`
 	SavedAt        platform.DotNetTime `json:"savedAt"`
 }
 
-type exportedDeviceRegistration struct {
+type ExportedDeviceRegistration struct {
 	Token        string              `json:"token"`
 	Platform     string              `json:"platform"`
 	RegisteredAt platform.DotNetTime `json:"registeredAt"`
 }
 
-type exportedOfferCodeRedemption struct {
+type ExportedOfferCodeRedemption struct {
 	Code         string              `json:"code"`
 	Tier         string              `json:"tier"`
 	DurationDays int                 `json:"durationDays"`
 	RedeemedAt   platform.DotNetTime `json:"redeemedAt"`
 }
 
-// newExportUserData builds the export contract for a profile, with child
-// collections initialised as empty (non-nil) slices so they serialise as [].
-func newExportUserData(p *UserProfile) exportUserData {
+// newExportUserData builds the export contract for a profile, sourcing each child
+// collection from its reader and sorting it deterministically so two successive
+// exports of the same data are byte-identical (the iOS share fetches the export
+// repeatedly). A nil reader (Cosmos-less local boot) leaves that collection as an
+// empty, non-nil slice so it serialises as [] rather than null. A reader failure
+// is returned so the handler renders a 500 rather than a silently-empty section.
+func newExportUserData(ctx context.Context, p *UserProfile, readers ExportReaders) (exportUserData, error) {
 	zones := make([]exportedZonePreference, 0, len(p.ZonePreferences))
 	for id, z := range p.ZonePreferences {
 		zones = append(zones, exportedZonePreference{
@@ -117,6 +126,57 @@ func newExportUserData(p *UserProfile) exportUserData {
 	slices.SortFunc(zones, func(a, b exportedZonePreference) int {
 		return cmp.Compare(a.ZoneID, b.ZoneID)
 	})
+
+	watchZones := []ExportedWatchZone{}
+	if readers.WatchZones != nil {
+		rows, err := readers.WatchZones.WatchZonesByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export watch zones: %w", err)
+		}
+		watchZones = rows
+	}
+	slices.SortFunc(watchZones, func(a, b ExportedWatchZone) int { return cmp.Compare(a.ID, b.ID) })
+
+	notifs := []ExportedNotification{}
+	if readers.Notifications != nil {
+		rows, err := readers.Notifications.NotificationsByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export notifications: %w", err)
+		}
+		notifs = rows
+	}
+	slices.SortFunc(notifs, func(a, b ExportedNotification) int { return cmp.Compare(a.ID, b.ID) })
+
+	saved := []ExportedSavedApplication{}
+	if readers.SavedApplications != nil {
+		rows, err := readers.SavedApplications.SavedApplicationsByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export saved applications: %w", err)
+		}
+		saved = rows
+	}
+	slices.SortFunc(saved, func(a, b ExportedSavedApplication) int { return cmp.Compare(a.ApplicationUID, b.ApplicationUID) })
+
+	devices := []ExportedDeviceRegistration{}
+	if readers.DeviceRegistrations != nil {
+		rows, err := readers.DeviceRegistrations.DeviceRegistrationsByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export device registrations: %w", err)
+		}
+		devices = rows
+	}
+	slices.SortFunc(devices, func(a, b ExportedDeviceRegistration) int { return cmp.Compare(a.Token, b.Token) })
+
+	codes := []ExportedOfferCodeRedemption{}
+	if readers.OfferCodeRedemptions != nil {
+		rows, err := readers.OfferCodeRedemptions.OfferCodeRedemptionsByUser(ctx, p.UserID)
+		if err != nil {
+			return exportUserData{}, fmt.Errorf("export offer-code redemptions: %w", err)
+		}
+		codes = rows
+	}
+	slices.SortFunc(codes, func(a, b ExportedOfferCodeRedemption) int { return cmp.Compare(a.Code, b.Code) })
+
 	return exportUserData{
 		UserID: p.UserID,
 		Email:  p.Email,
@@ -134,10 +194,10 @@ func newExportUserData(p *UserProfile) exportUserData {
 			OriginalTransactionID: p.OriginalTransactionID,
 			GracePeriodExpiresAt:  platform.DotNetTimePtr(p.GracePeriodExpiry),
 		},
-		WatchZones:           []exportedWatchZone{},
-		Notifications:        []exportedNotification{},
-		SavedApplications:    []exportedSavedApplication{},
-		DeviceRegistrations:  []exportedDeviceRegistration{},
-		OfferCodeRedemptions: []exportedOfferCodeRedemption{},
-	}
+		WatchZones:           watchZones,
+		Notifications:        notifs,
+		SavedApplications:    saved,
+		DeviceRegistrations:  devices,
+		OfferCodeRedemptions: codes,
+	}, nil
 }

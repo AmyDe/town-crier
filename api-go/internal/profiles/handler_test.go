@@ -134,7 +134,14 @@ func newTestHandler(store profileStore, a0 Auth0Manager, proDomains string) *han
 
 func newTestHandlerCascade(store profileStore, a0 Auth0Manager, proDomains string, cascade CascadeDeleters) *handler {
 	now := func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) }
-	return newHandler(store, a0, proDomains, cascade, now, slog.New(slog.DiscardHandler))
+	return newHandler(store, a0, proDomains, cascade, ExportReaders{}, now, slog.New(slog.DiscardHandler))
+}
+
+// newTestHandlerExport builds a handler with the export readers wired, for the
+// GDPR-export tests.
+func newTestHandlerExport(store profileStore, a0 Auth0Manager, readers ExportReaders) *handler {
+	now := func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) }
+	return newHandler(store, a0, "", CascadeDeleters{}, readers, now, slog.New(slog.DiscardHandler))
 }
 
 // withSubject builds a request carrying an authenticated subject in context, as
@@ -571,7 +578,9 @@ func TestHandler_ExportData_NestedContract(t *testing.T) {
 	if sub["gracePeriodExpiresAt"] != nil {
 		t.Errorf("gracePeriodExpiresAt: got %v, want null", sub["gracePeriodExpiresAt"])
 	}
-	// Child collections not yet sourced in this iteration: present as empty arrays.
+	// This handler is built with no export readers (newTestHandler passes a
+	// zero ExportReaders), so the child collections must still render as empty
+	// arrays — never null.
 	for _, k := range []string{"watchZones", "notifications", "savedApplications", "deviceRegistrations", "offerCodeRedemptions"} {
 		arr, ok := got[k].([]any)
 		if !ok {
@@ -579,7 +588,43 @@ func TestHandler_ExportData_NestedContract(t *testing.T) {
 			continue
 		}
 		if len(arr) != 0 {
-			t.Errorf("%s should be empty in it3, got %v", k, arr)
+			t.Errorf("%s should be empty with no readers, got %v", k, arr)
+		}
+	}
+}
+
+// TestHandler_ExportData_PopulatedChildCollections drives the export end-to-end
+// through the handler with the readers wired: every child collection is present,
+// non-empty, and correctly shaped in the HTTP response body.
+func TestHandler_ExportData_PopulatedChildCollections(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	store.byID["auth0|abc"] = &UserProfile{
+		UserID:       "auth0|abc",
+		Preferences:  DefaultPreferences(),
+		Tier:         TierPro,
+		LastActiveAt: time.Now(),
+	}
+	h := newTestHandlerExport(store, newFakeAuth0(), populatedReaders(t))
+
+	rec := httptest.NewRecorder()
+	h.exportData(rec, withSubject(http.MethodGet, "/v1/me/data", "auth0|abc", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("export status: got %d, want 200", rec.Code)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, k := range []string{"watchZones", "notifications", "savedApplications", "deviceRegistrations", "offerCodeRedemptions"} {
+		arr, ok := got[k].([]any)
+		if !ok {
+			t.Errorf("%s should be an array, got %v", k, got[k])
+			continue
+		}
+		if len(arr) == 0 {
+			t.Errorf("%s should be populated, got empty", k)
 		}
 	}
 }

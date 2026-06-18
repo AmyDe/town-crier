@@ -174,6 +174,28 @@ func main() {
 		}
 	}
 
+	// exportReaders bundles the per-collection readers GET /v1/me/data uses to
+	// source the GDPR export's child collections (bead tc-lllv). Like cascade it is
+	// populated only when Cosmos is configured — the same condition under which
+	// profiles.Routes is wired — so the export's readers are never nil when the
+	// route is reachable; on a Cosmos-less local boot the readers stay nil and the
+	// export renders every collection as [] (never null). The adapters
+	// (export_adapters.go) map each store's records to the profiles-local export
+	// row types, keeping the store -> row mapping out of profiles (which must not
+	// import the feature packages — offercodes already imports profiles). The
+	// notifications reader uses the digest store's full-document AllByUser read so
+	// every exported field is carried, not the latest-unread projection.
+	var exportReaders profiles.ExportReaders
+	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && offerStore != nil {
+		exportReaders = profiles.ExportReaders{
+			WatchZones:           watchZoneExportReader{store: watchZoneStore},
+			Notifications:        notificationExportReader{store: notifications.NewDigestStore(notificationsContainer)},
+			SavedApplications:    savedApplicationExportReader{store: savedStore},
+			DeviceRegistrations:  deviceRegistrationExportReader{store: deviceStore},
+			OfferCodeRedemptions: offerCodeExportReader{store: offerStore},
+		}
+	}
+
 	// The admin grant/list operations query the Users container cross-partition
 	// (by email, and the full list), so the admin store reuses the same container
 	// as the profile store.
@@ -235,7 +257,7 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
