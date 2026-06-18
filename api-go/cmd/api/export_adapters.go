@@ -75,7 +75,9 @@ func (r notificationExportReader) NotificationsByUser(ctx context.Context, userI
 
 // savedApplicationExportReader adapts the saved-application store to
 // profiles.SavedApplicationReader.
-type savedApplicationExportReader struct{ store *savedapplications.CosmosStore }
+type savedApplicationExportReader struct {
+	store *savedapplications.CosmosStore
+}
 
 func (r savedApplicationExportReader) SavedApplicationsByUser(ctx context.Context, userID string) ([]profiles.ExportedSavedApplication, error) {
 	saved, err := r.store.GetByUserID(ctx, userID)

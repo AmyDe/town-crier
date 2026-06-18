@@ -109,12 +109,12 @@ func TestDigestStore_AllByUser(t *testing.T) {
 	// the export carries each field. It is single-partition (scoped to userId) and
 	// must never fan out cross-partition.
 	items := &fakeDigestItems{queryResult: [][]byte{
-		fullDocJSON(t, "n-1", "user-1", "uid-A", "zone-1", "2026-02-02T00:00:00+00:00", true),
-		fullDocJSON(t, "n-2", "user-1", "uid-B", "", "2026-02-01T00:00:00+00:00", false),
+		fullDocJSON(t, "n-1", "user-2", "uid-A", "zone-1", "2026-02-02T00:00:00+00:00", true),
+		fullDocJSON(t, "n-2", "user-2", "uid-B", "", "2026-02-01T00:00:00+00:00", false),
 	}}
 	store := NewDigestStore(items)
 
-	got, err := store.AllByUser(context.Background(), "user-1")
+	got, err := store.AllByUser(context.Background(), "user-2")
 	if err != nil {
 		t.Fatalf("AllByUser: %v", err)
 	}
@@ -124,8 +124,10 @@ func TestDigestStore_AllByUser(t *testing.T) {
 	if got[0].ID != "n-1" || got[1].ID != "n-2" {
 		t.Errorf("hydrated ids wrong: %+v", got)
 	}
-	if items.queryPK != "user-1" {
-		t.Errorf("partition key: got %q, want user-1", items.queryPK)
+	// Scoped to the caller's partition (here a distinct user id), so the read never
+	// fans out cross-partition.
+	if items.queryPK != "user-2" {
+		t.Errorf("partition key: got %q, want user-2", items.queryPK)
 	}
 	// No since-floor: the export covers the user's whole (TTL-bounded) history.
 	if strings.Contains(items.queryText, "@since") || strings.Contains(items.queryText, "createdAt >=") {
