@@ -62,9 +62,11 @@ func Routes(mux *http.ServeMux, store savedStore, apps appStore, now func() time
 	mux.HandleFunc("GET /v1/me/saved-applications", h.list)
 }
 
-// saveRequest is the PUT body — the full planning-application payload. The path
-// uid is ignored; the saved record's identity is the canonical uid derived from
-// the body (areaId/name).
+// saveRequest is the PUT body. Only Name, UID, and AreaID are used — they form
+// the key for the master-record look-up ((areaId, name) → canonical uid). The
+// remaining fields are decoded but not trusted as a source of truth; only the
+// data returned from the Applications container is written. The path uid is
+// ignored; identity is derived from the body's (areaId, name) pair.
 type saveRequest struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
