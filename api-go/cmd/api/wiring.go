@@ -191,8 +191,10 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)
 	chain := middleware.CORS(corsOrigins)(
-		middleware.ErrorBody(logger)(
-			middleware.Recover(logger)(authed),
+		middleware.SecurityHeaders(
+			middleware.ErrorBody(logger)(
+				middleware.Recover(logger)(authed),
+			),
 		),
 	)
 	// RouteSpan names the request span after the matched route and records the
