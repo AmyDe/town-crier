@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -17,10 +18,20 @@ import (
 // without a real Cosmos.
 type fakeItems struct {
 	items    map[string][]byte
+	etags    map[string]string // simulated etags keyed by item id
 	queryErr error
+	// replaceConflictOnce, when true, causes the first ReplaceItemWithETag call to
+	// return ErrCASPreconditionFailed, simulating a concurrent write winning the race.
+	replaceConflictOnce  bool
+	replaceConflictFired bool
 }
 
-func newFakeItems() *fakeItems { return &fakeItems{items: map[string][]byte{}} }
+func newFakeItems() *fakeItems {
+	return &fakeItems{
+		items: map[string][]byte{},
+		etags: map[string]string{},
+	}
+}
 
 func (f *fakeItems) ReadItem(_ context.Context, _, id string) ([]byte, error) {
 	raw, ok := f.items[id]
@@ -32,7 +43,39 @@ func (f *fakeItems) ReadItem(_ context.Context, _, id string) ([]byte, error) {
 
 func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []byte) error {
 	f.items[partitionKey] = item
+	f.etags[partitionKey] = "etag-" + partitionKey
 	return nil
+}
+
+// ReadItemWithETag returns the item body and a synthetic etag.
+func (f *fakeItems) ReadItemWithETag(_ context.Context, _, id string) ([]byte, string, bool, error) {
+	raw, ok := f.items[id]
+	if !ok {
+		return nil, "", false, nil
+	}
+	etag := f.etags[id]
+	if etag == "" {
+		etag = "etag-" + id
+	}
+	return raw, etag, true, nil
+}
+
+// ReplaceItemWithETag replaces the item if the etag matches. When
+// replaceConflictOnce is set and the conflict has not yet been fired, it returns
+// ErrCASPreconditionFailed without modifying the store.
+func (f *fakeItems) ReplaceItemWithETag(_ context.Context, partitionKey, _ string, item []byte, etag string) (string, error) {
+	if f.replaceConflictOnce && !f.replaceConflictFired {
+		f.replaceConflictFired = true
+		return "", platform.ErrCASPreconditionFailed
+	}
+	current := f.etags[partitionKey]
+	if current != "" && current != etag {
+		return "", platform.ErrCASPreconditionFailed
+	}
+	newETag := "etag-replaced-" + partitionKey
+	f.items[partitionKey] = item
+	f.etags[partitionKey] = newETag
+	return newETag, nil
 }
 
 // QueryItemsCrossPartition implements the redeemed-by scan the anonymise path

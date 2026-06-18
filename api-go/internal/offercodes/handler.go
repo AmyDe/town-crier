@@ -15,12 +15,22 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
+// maxCASRetries is the maximum number of etag-conditional replace attempts for
+// the redemption CAS loop. After this many ErrCASPreconditionFailed responses
+// the handler treats the code as already redeemed (the overwhelmingly likely
+// cause is a concurrent winner).
+const maxCASRetries = 3
+
 const maxBodyBytes = 1 << 20
 
 // codeStore is the consumer-side offer-code store the redeem handler needs.
 type codeStore interface {
 	Get(ctx context.Context, canonical string) (OfferCode, error)
 	Save(ctx context.Context, c OfferCode) error
+	// RedeemWithCAS atomically redeems the code using an etag-conditional replace.
+	// Returns ErrNotFound, ErrAlreadyRedeemed, or platform.ErrCASPreconditionFailed
+	// (etag mismatch — lost the CAS race to a concurrent writer).
+	RedeemWithCAS(ctx context.Context, canonical, userID string, now time.Time) error
 }
 
 // profileStore is the consumer-side profile store: the redeem path loads the
@@ -92,6 +102,9 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify the code exists and is not already redeemed before loading the
+	// profile. This is a fast-path check; the CAS loop below is the authoritative
+	// single-use enforcement.
 	code, err := h.codes.Get(r.Context(), canonical)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -121,17 +134,59 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := h.now()
-	if err := code.Redeem(userID, now); err != nil {
-		h.serverError(w, r, "redeem offer code", err)
+
+	// CAS retry loop: RedeemWithCAS does read→redeem-in-memory→etag-conditional
+	// replace, making the redemption atomic. On ErrCASPreconditionFailed (412 — a
+	// concurrent writer mutated the document first) we re-read to decide whether
+	// to retry or surface 409.
+	var redeemErr error
+	for range maxCASRetries {
+		redeemErr = h.codes.RedeemWithCAS(r.Context(), canonical, userID, now)
+		if redeemErr == nil {
+			break
+		}
+		if !errors.Is(redeemErr, platform.ErrCASPreconditionFailed) {
+			break
+		}
+		// Lost the CAS race. Re-read the code to determine its current state.
+		reread, rerr := h.codes.Get(r.Context(), canonical)
+		if rerr != nil {
+			h.serverError(w, r, "re-read offer code after CAS conflict", rerr)
+			return
+		}
+		if reread.IsRedeemed() {
+			// Another request won — treat as already redeemed.
+			h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
+			return
+		}
+		// Code still available after conflict (very rare); loop to retry.
+	}
+	switch {
+	case redeemErr == nil:
+		// success — fall through
+	case errors.Is(redeemErr, ErrAlreadyRedeemed):
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
+		return
+	case errors.Is(redeemErr, platform.ErrCASPreconditionFailed):
+		// Exhausted retries without winning; treat conservatively as already redeemed.
+		h.writeError(r, w, http.StatusConflict, "code_already_redeemed", "Offer code '"+canonical+"' has already been redeemed.")
+		return
+	default:
+		h.serverError(w, r, "redeem offer code", redeemErr)
 		return
 	}
+
+	// RedeemWithCAS persisted the redeemed code atomically; re-read for the tier
+	// and duration so the profile grant is based on the authoritative stored state.
+	code, err = h.codes.Get(r.Context(), canonical)
+	if err != nil {
+		h.serverError(w, r, "reload offer code after redeem", err)
+		return
+	}
+
 	expiry := now.AddDate(0, 0, code.DurationDays)
 	profile.ActivateSubscription(code.Tier, expiry)
 
-	if err := h.codes.Save(r.Context(), code); err != nil {
-		h.serverError(w, r, "save offer code", err)
-		return
-	}
 	if err := h.profiles.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
 		return
