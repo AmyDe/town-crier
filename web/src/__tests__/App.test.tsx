@@ -68,7 +68,7 @@ describe('LandingPage (formerly App)', () => {
 
     const main = screen.getByRole('main');
 
-    expect(within(main).getByText('417')).toBeInTheDocument();
+    expect(within(main).getByText('UK-wide')).toBeInTheDocument();
     expect(within(main).getByText('How It Works')).toBeInTheDocument();
     expect(within(main).getByText('Pricing')).toBeInTheDocument();
     expect(within(main).getByText('Frequently Asked Questions')).toBeInTheDocument();

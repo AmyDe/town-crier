@@ -10,11 +10,11 @@ describe('StatsBar', () => {
     expect(statItems).toHaveLength(3);
   });
 
-  it('renders "417" value with "Local Authorities" label', () => {
+  it('renders "UK-wide" value with "Coverage" label', () => {
     render(<StatsBar />);
 
-    expect(screen.getByText('417')).toBeInTheDocument();
-    expect(screen.getByText('Local Authorities')).toBeInTheDocument();
+    expect(screen.getByText('UK-wide')).toBeInTheDocument();
+    expect(screen.getByText('Coverage')).toBeInTheDocument();
   });
 
   it('renders "Free" value with "To Get Started" label', () => {
@@ -34,14 +34,14 @@ describe('StatsBar', () => {
   it('renders values with amber styling class', () => {
     render(<StatsBar />);
 
-    const value = screen.getByText('417');
+    const value = screen.getByText('UK-wide');
     expect(value.className).toMatch(/value/);
   });
 
   it('renders labels with secondary text styling class', () => {
     render(<StatsBar />);
 
-    const label = screen.getByText('Local Authorities');
+    const label = screen.getByText('Coverage');
     expect(label.className).toMatch(/label/);
   });
 

@@ -37,6 +37,17 @@ describe('Faq', () => {
     expect(screen.getByText(/which areas do you cover/i)).toBeInTheDocument();
   });
 
+  it('coverage answer names the whole UK including Northern Ireland', () => {
+    render(<Faq />);
+
+    const coverageAnswer = screen
+      .getByText(/which areas do you cover/i)
+      .closest('details')!
+      .querySelector('p')!;
+    expect(coverageAnswer.textContent).toMatch(/Northern Ireland/i);
+    expect(coverageAnswer.textContent).not.toMatch(/\b417\b/);
+  });
+
   it('renders question about free tier', () => {
     render(<Faq />);
 
