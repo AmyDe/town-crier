@@ -179,3 +179,49 @@ func TestRateLimit_TierLookupFailureFailsOpenToFree(t *testing.T) {
 		t.Errorf("fallback limit: got %q, want 60 (free)", got)
 	}
 }
+
+// hasKey is a test-only accessor that reports whether the store map currently
+// holds an entry for userID. It must not be used in production paths.
+func (s *rateLimitStore) hasKey(userID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.requests[userID]
+	return ok
+}
+
+// TestRateLimitStore_EvictsIdleUserKey verifies that once all of a user's
+// in-window timestamps have aged out and the next checkAndIncrement call
+// evicts them, the store reclaims the map key (delete) rather than writing
+// back an empty slice.
+//
+// The denied path (limit=0) is used here because it is the only code path
+// that writes back without appending a new timestamp, making key deletion
+// observable in a single call. Active-user behaviour (limit>0, allowed path)
+// is covered by the existing window/limit tests above.
+func TestRateLimitStore_EvictsIdleUserKey(t *testing.T) {
+	t.Parallel()
+
+	const userID = "auth0|idle"
+
+	clock := &fixedClock{t: time.Unix(1000, 0)}
+	store := newRateLimitStore(clock.now)
+
+	// Seed one timestamp at t=0 so the user has a map entry.
+	store.checkAndIncrement(userID, freeTierLimit)
+	if !store.hasKey(userID) {
+		t.Fatal("setup: expected key to be present after first request")
+	}
+
+	// Advance past the window so the seeded timestamp is now expired.
+	clock.t = clock.t.Add(rateLimitWindow + time.Second)
+
+	// Use limit=0 to force the denied path: len(kept)==0 after eviction and
+	// 0>=0 is true, so we land on the denied branch without appending a new
+	// timestamp. The fix should delete the key instead of writing back an
+	// empty slice.
+	store.checkAndIncrement(userID, 0)
+
+	if store.hasKey(userID) {
+		t.Errorf("expected map key to be deleted after all timestamps aged out, but key is still present")
+	}
+}
