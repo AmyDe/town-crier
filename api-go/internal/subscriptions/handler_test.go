@@ -28,11 +28,13 @@ func pastExpiryMs() int64   { return testNow.AddDate(0, -1, 0).UnixMilli() }
 // --- fakes ---
 
 type fakeVerifier struct {
-	results map[string]string
-	errs    map[string]error
+	results   map[string]string
+	errs      map[string]error
+	callCount int
 }
 
 func (f *fakeVerifier) VerifyAndDecode(signed string) (string, error) {
+	f.callCount++
 	if e, ok := f.errs[signed]; ok {
 		return "", e
 	}
@@ -670,5 +672,97 @@ func TestVerify_AllowsFirstTimeClaim(t *testing.T) {
 	}
 	if d.byUser.saved == nil || d.byUser.saved.Tier != profiles.TierPro {
 		t.Error("profile not saved as Pro on first claim")
+	}
+}
+
+// --- F7: webhook cheap pre-check tests ---
+
+// TestWebhook_RejectsMalformedPayloadBeforeVerify asserts that a SignedPayload
+// that is not a valid compact JWS (header.payload.signature) is rejected with
+// 400 malformed_request WITHOUT the JWS verifier being invoked at all. The
+// verifier call count proves the expensive crypto path is never entered.
+func TestWebhook_RejectsMalformedPayloadBeforeVerify(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{"no dots", "nodots"},
+		{"one dot", "a.b"},
+		{"three dots", "a.b.c.d"},
+		{"empty first segment", ".b.c"},
+		{"empty second segment", "a..c"},
+		{"empty third segment", "a.b."},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDeps()
+			body := `{"signedPayload":"` + tc.payload + `"}`
+			rec := d.serve(t, "/v1/webhooks/appstore", body, false)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+			}
+			if got := decodeError(t, rec).Error; got != "malformed_request" {
+				t.Errorf("error = %q, want malformed_request", got)
+			}
+			if d.verifier.callCount != 0 {
+				t.Errorf("verifier called %d time(s), want 0 — expensive crypto must not run on malformed input", d.verifier.callCount)
+			}
+		})
+	}
+}
+
+// TestWebhook_RejectsOversizedPayloadBeforeVerify asserts that a SignedPayload
+// exceeding maxWebhookPayloadBytes is rejected with 400 malformed_request
+// WITHOUT invoking the JWS verifier. The verifier call count proves the
+// expensive crypto path is never entered.
+func TestWebhook_RejectsOversizedPayloadBeforeVerify(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+
+	// Build a syntactically valid 3-segment JWS that is over the size bound.
+	// Each segment is a non-empty base64url-like string; the content does not
+	// need to be valid base64 — the size check must fire before decode.
+	bigSeg := strings.Repeat("A", maxWebhookPayloadBytes+1)
+	oversized := bigSeg + "." + bigSeg + "." + bigSeg
+
+	body := `{"signedPayload":"` + oversized + `"}`
+	// Use a large MaxBytesReader so the outer body cap doesn't fire first.
+	// The serve helper applies the handler's own body limit; we bypass it here
+	// by posting a raw request directly to the mux.
+	req := httptest.NewRequest(http.MethodPost, "/v1/webhooks/appstore", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	d.mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if got := decodeError(t, rec).Error; got != "malformed_request" {
+		t.Errorf("error = %q, want malformed_request", got)
+	}
+	if d.verifier.callCount != 0 {
+		t.Errorf("verifier called %d time(s), want 0 — expensive crypto must not run on oversized input", d.verifier.callCount)
+	}
+}
+
+// TestWebhook_WellFormedPayloadReachesVerifier is a positive regression test:
+// a structurally valid 3-segment JWS within the size bound must still reach
+// the verifier (no regression on the happy path introduced by the pre-check).
+func TestWebhook_WellFormedPayloadReachesVerifier(t *testing.T) {
+	t.Parallel()
+	d := newTestDeps()
+	d.byTxn.profile = freshProfile(t)
+	d.verifier.results["hdr.pay.sig"] = notificationJSON("SUBSCRIBED", "uuid-wf1", "INNER")
+	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-wf1", futureExpiryMs())
+
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.pay.sig"}`, false)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if d.verifier.callCount == 0 {
+		t.Error("verifier was not called — well-formed payload must reach the verifier")
 	}
 }
