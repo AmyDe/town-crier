@@ -86,22 +86,27 @@ func (s *CosmosStore) GetByUID(ctx context.Context, uid, authorityCode string) (
 	return doc.toDomain(), true, nil
 }
 
+// findNearbyQuery is the single-partition ST_DISTANCE spatial query for nearby
+// applications. Coordinates and radius are bound as named parameters (mirroring
+// findZonesContainingQuery in the watchzones package) — no float literals are
+// concatenated into the query text.
+const findNearbyQuery = "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
+	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
+
 // FindNearby returns every application within radiusMetres of (latitude,
 // longitude) inside the authorityCode partition, via a single-partition
-// ST_DISTANCE spatial query against the GeoJSON location. It mirrors .NET
-// CosmosPlanningApplicationRepository.FindNearbyAsync: the GeoJSON point and
-// radius are formatted into the query with InvariantCulture-equivalent
-// (strconv) decimals — they are float64 values, never user-supplied strings, so
-// there is no injection surface. The query is scoped to the authorityCode
-// logical partition, so it never fans out cross-partition.
+// ST_DISTANCE spatial query against the GeoJSON location. Coordinates and
+// radius are bound as named parameters (not string-concatenated) to eliminate
+// float-formatting edge cases and to mirror the parameterized style of the
+// sibling watchzones.FindZonesContaining query. The query is scoped to the
+// authorityCode logical partition, so it never fans out cross-partition.
 func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, latitude, longitude, radiusMetres float64) ([]PlanningApplication, error) {
-	lng := strconv.FormatFloat(longitude, 'g', -1, 64)
-	lat := strconv.FormatFloat(latitude, 'g', -1, 64)
-	rad := strconv.FormatFloat(radiusMetres, 'g', -1, 64)
-	query := `SELECT * FROM c WHERE ST_DISTANCE(c.location, ` +
-		`{"type": "Point", "coordinates": [` + lng + `, ` + lat + `]}) <= ` + rad
-
-	raws, err := s.items.QueryItems(ctx, authorityCode, query, nil)
+	params := map[string]any{
+		"@latitude":     latitude,
+		"@longitude":    longitude,
+		"@radiusMetres": radiusMetres,
+	}
+	raws, err := s.items.QueryItems(ctx, authorityCode, findNearbyQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("find applications near %q: %w", authorityCode, err)
 	}

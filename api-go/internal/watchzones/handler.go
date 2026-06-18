@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"time"
 
@@ -174,13 +175,16 @@ type patchRequest struct {
 // checked. Name is deliberately not checked here — like .NET, that is enforced
 // by the domain merge (and a blank name there is a 500, not a 400).
 func (req patchRequest) rangeValid() bool {
-	if req.Latitude != nil && (*req.Latitude < -90 || *req.Latitude > 90) {
+	if req.Latitude != nil && (math.IsNaN(*req.Latitude) || math.IsInf(*req.Latitude, 0) ||
+		*req.Latitude < -90 || *req.Latitude > 90) {
 		return false
 	}
-	if req.Longitude != nil && (*req.Longitude < -180 || *req.Longitude > 180) {
+	if req.Longitude != nil && (math.IsNaN(*req.Longitude) || math.IsInf(*req.Longitude, 0) ||
+		*req.Longitude < -180 || *req.Longitude > 180) {
 		return false
 	}
-	if req.RadiusMetres != nil && *req.RadiusMetres <= 0 {
+	if req.RadiusMetres != nil && (math.IsNaN(*req.RadiusMetres) || math.IsInf(*req.RadiusMetres, 0) ||
+		*req.RadiusMetres <= 0 || *req.RadiusMetres > maxRadiusMetres) {
 		return false
 	}
 	if req.AuthorityID != nil && *req.AuthorityID <= 0 {
