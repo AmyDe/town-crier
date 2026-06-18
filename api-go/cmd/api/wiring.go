@@ -76,10 +76,13 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // middleware chain. Ordering, from outermost to innermost, mirrors the .NET
 // pipeline (WebApplicationExtensions.UseMiddlewarePipeline):
 //
-//		CORS -> ErrorBody -> Recover -> RequireAuth -> RateLimit -> RecordActivity -> mux
+//		CORS -> SecurityHeaders -> ErrorBody -> Recover -> RequireAuth -> RateLimit -> RecordActivity -> mux
 //
 //	  - CORS runs first so its headers are present on every response, including
 //	    the 401s and 500s produced further in.
+//	  - SecurityHeaders sits just inside CORS so X-Content-Type-Options: nosniff
+//	    is set on every response, including the error-body envelopes and
+//	    panic-recovery 500s produced further in (GH#521).
 //	  - ErrorBody backfills the PascalCase envelope onto any bodyless >= 400.
 //	  - Recover converts a handler panic into a 500 + Detail, which ErrorBody
 //	    then renders — the Go equivalent of ErrorResponseMiddleware's try/catch.
@@ -191,8 +194,10 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 
 	authed := auth.RequireAuth(validator, &dispatchMux{ServeMux: mux, dispatch: dispatch}, anonymousPatterns)
 	chain := middleware.CORS(corsOrigins)(
-		middleware.ErrorBody(logger)(
-			middleware.Recover(logger)(authed),
+		middleware.SecurityHeaders(
+			middleware.ErrorBody(logger)(
+				middleware.Recover(logger)(authed),
+			),
 		),
 	)
 	// RouteSpan names the request span after the matched route and records the
