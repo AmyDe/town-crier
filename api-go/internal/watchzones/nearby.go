@@ -113,14 +113,28 @@ type createRequest struct {
 	EmailInstantEnabled *bool   `json:"emailInstantEnabled"`
 }
 
+// maxRadiusMetres is the server-side ceiling for a watch-zone radius. It matches
+// the top-tier iOS UI ceiling (10 km). If a larger radius tier is ever offered,
+// bump this value server-side first before shipping the iOS change.
+const maxRadiusMetres = 10_000
+
 // valid mirrors the .NET create endpoint's pre-handler guard: non-blank name,
-// positive radius, in-range coordinates, and a positive authority id when one is
-// supplied.
+// positive radius within the server ceiling, in-range non-finite coordinates,
+// and a positive authority id when one is supplied.
 func (req createRequest) valid() bool {
 	if strings.TrimSpace(req.Name) == "" {
 		return false
 	}
-	if req.RadiusMetres <= 0 {
+	if math.IsNaN(req.Latitude) || math.IsInf(req.Latitude, 0) {
+		return false
+	}
+	if math.IsNaN(req.Longitude) || math.IsInf(req.Longitude, 0) {
+		return false
+	}
+	if math.IsNaN(req.RadiusMetres) || math.IsInf(req.RadiusMetres, 0) {
+		return false
+	}
+	if req.RadiusMetres <= 0 || req.RadiusMetres > maxRadiusMetres {
 		return false
 	}
 	if req.Latitude < -90 || req.Latitude > 90 {

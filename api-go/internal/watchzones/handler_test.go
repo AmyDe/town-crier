@@ -3,6 +3,7 @@ package watchzones
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -220,6 +221,31 @@ func TestHandler_Delete(t *testing.T) {
 	}
 	if len(store.deleted) != 1 || store.deleted[0] != z.ID {
 		t.Errorf("zone not deleted: %+v", store.deleted)
+	}
+}
+
+func TestPatch_RejectsOversizedRadius(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		radiusMetres float64
+		wantStatus   int
+	}{
+		{"exactly at limit is valid", 10000, http.StatusOK},
+		{"just above limit is 400", 10001, http.StatusBadRequest},
+		{"far above limit is 400", 1e308, http.StatusBadRequest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			z := testZone(t)
+			store := &fakeZoneStore{zones: []WatchZone{z}}
+			body := fmt.Sprintf(`{"radiusMetres":%v}`, tc.radiusMetres)
+			rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, body)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("radiusMetres=%v: got status %d, want %d", tc.radiusMetres, rec.Code, tc.wantStatus)
+			}
+		})
 	}
 }
 

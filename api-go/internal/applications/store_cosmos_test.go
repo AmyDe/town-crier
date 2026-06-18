@@ -5,23 +5,25 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 )
 
 type fakeItems struct {
-	stored       map[string][]byte // id -> bytes
-	readErr      error
-	upsertErr    error
-	queryErr     error
-	queryResult  [][]byte
-	lastUpsertPK string
-	lastUpsert   []byte
-	lastReadPK   string
-	lastReadID   string
-	lastQueryPK  string
-	lastQuery    string
+	stored          map[string][]byte // id -> bytes
+	readErr         error
+	upsertErr       error
+	queryErr        error
+	queryResult     [][]byte
+	lastUpsertPK    string
+	lastUpsert      []byte
+	lastReadPK      string
+	lastReadID      string
+	lastQueryPK     string
+	lastQuery       string
+	lastQueryParams map[string]any
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{stored: map[string][]byte{}} }
@@ -45,9 +47,10 @@ func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []by
 	return f.upsertErr
 }
 
-func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, _ map[string]any) ([][]byte, error) {
+func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
 	f.lastQueryPK = partitionKey
 	f.lastQuery = query
+	f.lastQueryParams = params
 	if f.queryErr != nil {
 		return nil, f.queryErr
 	}
@@ -169,10 +172,46 @@ func TestCosmosStore_FindNearby_ScopesToAuthorityPartitionWithSpatialQuery(t *te
 		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
 	}
 	// The GeoJSON point carries [longitude, latitude] (GeoJSON order) and the
-	// radius is the bare metres value, mirroring .NET's interpolated ST_DISTANCE.
-	want := `SELECT * FROM c WHERE ST_DISTANCE(c.location, {"type": "Point", "coordinates": [-0.1357, 51.4975]}) <= 2000`
+	// radius is a named parameter, mirroring findZonesContainingQuery style.
+	want := "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
 	if items.lastQuery != want {
 		t.Errorf("spatial query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+}
+
+func TestFindNearby_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _ = store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000)
+
+	// The query text must not contain any float literal — values must be bound
+	// as named parameters, not string-concatenated.
+	if items.lastQuery == "" {
+		t.Fatal("no query was issued")
+	}
+	for _, literal := range []string{"51.4975", "-0.1357", "2000"} {
+		if strings.Contains(items.lastQuery, literal) {
+			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastQuery)
+		}
+	}
+	// Verify the three expected params are bound with correct values.
+	wantParams := map[string]any{
+		"@latitude":     51.4975,
+		"@longitude":    -0.1357,
+		"@radiusMetres": 2000.0,
+	}
+	for k, wantVal := range wantParams {
+		gotVal, ok := items.lastQueryParams[k]
+		if !ok {
+			t.Errorf("param %q not found in query params %v", k, items.lastQueryParams)
+			continue
+		}
+		if gotVal != wantVal {
+			t.Errorf("param %q: got %v, want %v", k, gotVal, wantVal)
+		}
 	}
 }
 
