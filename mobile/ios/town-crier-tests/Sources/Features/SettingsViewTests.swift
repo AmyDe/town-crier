@@ -65,4 +65,22 @@ struct SettingsViewTests {
 
     #expect(tapped)
   }
+
+  @Test("SettingsView export-data tap drives the ViewModel export flow")
+  func exportDataTap_invokesViewModelExport() async {
+    let profileSpy = SpyUserProfileRepository()
+    let vm = SettingsViewModel(
+      authService: SpyAuthenticationService(),
+      subscriptionService: SpySubscriptionService(),
+      userProfileRepository: profileSpy,
+      appVersionProvider: SpyAppVersionProvider(),
+      notificationService: SpyNotificationService(),
+      defaults: UserDefaults(suiteName: UUID().uuidString) ?? .standard
+    )
+    let view = SettingsView(viewModel: vm)
+
+    await view.requestExportData()
+
+    #expect(profileSpy.exportDataCallCount == 1)
+  }
 }

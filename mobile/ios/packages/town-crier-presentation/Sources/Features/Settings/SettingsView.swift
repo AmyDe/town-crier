@@ -41,7 +41,34 @@ public struct SettingsView: View {
     onNotificationPreferences?()
   }
 
+  /// Test-only seam: trigger the data-export flow as if the user had tapped the
+  /// "Export your data" row. Mirrors the other seams so the wiring is
+  /// verifiable without UI-level automation.
+  public func requestExportData() async {
+    await viewModel.exportData()
+  }
+
   public var body: some View {
+    listContent
+      .background(Color.tcBackground)
+      .scrollContentBackground(.hidden)
+      .navigationTitle("Settings")
+      .task { await viewModel.load() }
+      .modifier(ExportShareSheetModifier(viewModel: viewModel))
+      .alert(
+        "Export Failed",
+        isPresented: Binding(
+          get: { viewModel.exportErrorMessage != nil },
+          set: { if !$0 { viewModel.dismissExportError() } }
+        )
+      ) {
+        Button("OK", role: .cancel) { viewModel.dismissExportError() }
+      } message: {
+        Text(viewModel.exportErrorMessage ?? "")
+      }
+  }
+
+  private var listContent: some View {
     List {
       accountSection
       appearanceSection
@@ -52,10 +79,6 @@ public struct SettingsView: View {
       dangerZoneSection
       appInfoSection
     }
-    .background(Color.tcBackground)
-    .scrollContentBackground(.hidden)
-    .navigationTitle("Settings")
-    .task { await viewModel.load() }
     .alert("Delete Account", isPresented: $viewModel.isShowingDeleteConfirmation) {
       Button("Delete", role: .destructive) {
         Task { await viewModel.confirmDeleteAccount() }
@@ -240,10 +263,34 @@ public struct SettingsView: View {
       navigationRow("Terms of Service", systemImage: "doc.text") {
         onTermsOfService?()
       }
+
+      exportDataRow
     } header: {
       Text("Legal")
         .font(TCTypography.captionEmphasis)
     }
+  }
+
+  /// "Export your data" row: triggers the GDPR data export. Shows a spinner and
+  /// disables while the export is in flight; the resulting file is handed to
+  /// the iOS share sheet by the body's `.sheet` modifier.
+  private var exportDataRow: some View {
+    Button {
+      Task { await viewModel.exportData() }
+    } label: {
+      HStack {
+        Label("Export your data", systemImage: "square.and.arrow.up")
+          .font(TCTypography.body)
+          .foregroundStyle(Color.tcTextPrimary)
+        Spacer()
+        if viewModel.isExporting {
+          ProgressView()
+        } else {
+          settingChevron
+        }
+      }
+    }
+    .disabled(viewModel.isExporting)
   }
 
   // MARK: - Danger Zone
@@ -280,5 +327,30 @@ public struct SettingsView: View {
         settingCaption(viewModel.appVersion)
       }
     }
+  }
+}
+
+/// Presents the data-export share sheet over Settings when the ViewModel has a
+/// finished export file ready. The `UIActivityViewController` is iOS-only, so
+/// the modifier is a no-op on other platforms (keeping the View buildable for
+/// macOS unit tests).
+private struct ExportShareSheetModifier: ViewModifier {
+  @ObservedObject var viewModel: SettingsViewModel
+
+  func body(content: Content) -> some View {
+    #if os(iOS)
+      content.sheet(
+        isPresented: Binding(
+          get: { viewModel.exportFileURL != nil },
+          set: { if !$0 { viewModel.dismissExportShare() } }
+        )
+      ) {
+        if let url = viewModel.exportFileURL {
+          ShareSheet(activityItems: [url])
+        }
+      }
+    #else
+      content
+    #endif
   }
 }

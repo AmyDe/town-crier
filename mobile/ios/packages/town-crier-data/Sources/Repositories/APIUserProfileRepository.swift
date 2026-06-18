@@ -68,6 +68,18 @@ public final class APIUserProfileRepository: UserProfileRepository, Sendable {
       throw error.toDomainError()
     }
   }
+
+  public func exportData() async throws -> Data {
+    do {
+      // Raw bytes, no decode: the GDPR export is opaque to the client and must
+      // stay byte-stable with what the server produced (GET /v1/me/data).
+      return try await apiClient.requestData(.get("/v1/me/data"))
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+  }
 }
 
 // MARK: - DTOs

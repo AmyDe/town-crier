@@ -1,3 +1,4 @@
+import Foundation
 import TownCrierDomain
 
 final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable {
@@ -70,5 +71,13 @@ final class SpyUserProfileRepository: UserProfileRepository, @unchecked Sendable
     deleteCallCount += 1
     onDelete?()
     try deleteResult.get()
+  }
+
+  private(set) var exportDataCallCount = 0
+  var exportDataResult: Result<Data, Error> = .success(Data("{}".utf8))
+
+  func exportData() async throws -> Data {
+    exportDataCallCount += 1
+    return try exportDataResult.get()
   }
 }
