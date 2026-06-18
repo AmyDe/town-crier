@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { APP_DOWNLOAD_URL } from '../../config/links';
 import { useTheme } from '../../hooks/useTheme';
 import { useNavbarAuth } from './useNavbarAuth';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
@@ -54,7 +55,12 @@ export function Navbar() {
             </button>
           )}
 
-          <a href="#download" className={styles.cta}>
+          <a
+            href={APP_DOWNLOAD_URL}
+            className={styles.cta}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Download
           </a>
 

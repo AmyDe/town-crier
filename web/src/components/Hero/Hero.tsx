@@ -1,3 +1,4 @@
+import { APP_DOWNLOAD_URL } from '../../config/links';
 import { useHeroCta } from './useHeroCta';
 import styles from './Hero.module.css';
 
@@ -16,7 +17,7 @@ export function Hero() {
       <div className={styles.ctaGroup}>
         <a
           className={styles.cta}
-          href="https://apps.apple.com/app/town-crier"
+          href={APP_DOWNLOAD_URL}
           target="_blank"
           rel="noopener noreferrer"
         >
