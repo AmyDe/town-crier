@@ -92,3 +92,9 @@ The Privacy Policy / Terms JSON canonical source moved from the deleted .NET API
 - [ADR 0002 — Monorepo structure](0002-monorepo-structure.md) — the `/api` layout this replaces with `/api-go`
 - [ADR 0018 — OpenTelemetry observability](0018-opentelemetry-observability-with-azure-monitor.md) — the .NET in-process telemetry decommissioned here
 - [ADR 0027 — Go API observability via the ACA OTel agent](0027-go-api-observability-via-aca-otel-agent.md) — the observability slice of this migration
+
+## Amendments
+
+### 2026-06-18
+- Superseded in part: this ADR states (in "What was kept" and again under Consequences → Harder) that **"Pulumi infrastructure stays in C#/.NET"** and that the repo therefore runs "three ecosystems — Go (api), C#/.NET (infra + cli), and TypeScript (web)." That is no longer true. The Pulumi program was subsequently **ported to Go** — see [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md). The decision to *defer* the infra migration was correct at the time of this ADR (the backend cut was already large); infra followed three days later as a separate, zero-diff port.
+- Current state: **.NET now lives only in `/cli`.** The server-side languages are Go (backend **and** infra) and TypeScript (web). The "Pulumi/.NET remains" caveat under Consequences → Harder is historical.

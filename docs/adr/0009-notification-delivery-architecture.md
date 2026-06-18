@@ -4,7 +4,7 @@ Date: 2026-03-16
 
 ## Status
 
-Accepted
+Accepted. Push transport refined by [ADR 0026](0026-apns-direct-http2.md).
 
 ## Context
 
@@ -81,3 +81,7 @@ Notifications include:
 - Updated: **APNs delivery is not live.** `IPushNotificationSender` is currently bound to `NoOpPushNotificationSender`. The APNs device-token storage and registration endpoint exist on the iOS and API sides, but no provider-side delivery adapter is wired. The email channel ([ADR 0020](0020-email-notifications-via-acs.md)) is the active delivery path; push can be added later by implementing a real `IPushNotificationSender`.
 - Updated: **`FailedNotifications` container was not created.** Failed-delivery signal is surfaced through OpenTelemetry counters (`ApiMetrics.EmailsFailed` and related) instead of a Cosmos dead-letter collection. Revisit if operator review of failure detail becomes necessary.
 - Retained: free-tier calendar-month cap, APNs token lifecycle on the `DeviceRegistrations` container, and per-user `Notifications` feed. These continue to reflect the codebase.
+
+### 2026-06-18
+- Updated: **APNs push delivery is now live.** The 2026-04-21 statement that "APNs delivery is not live" and the sender is bound to `NoOpPushNotificationSender` is superseded. [ADR 0026](0026-apns-direct-http2.md) (2026-05-04) decided a direct APNs HTTP/2 + ES256-JWT sender, and that decision shipped. In the Go backend (see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)) it lives in `api-go/internal/apns/` (`client.go`, `jwt.go`, `sender.go`); `cmd/worker/main.go` builds a real `apns.NewClient` when APNs is configured and only falls back to `apns.NewNoOpSender()` when APNs is disabled or unconfigured (e.g. local dev). Push and email ([ADR 0020](0020-email-notifications-via-acs.md)) are now both active delivery channels.
+- Unchanged: dispatch still runs inline within the polling worker (no Cosmos change-feed processor; the `Leases` container remains provisioned but unpopulated, and `FailedNotifications` was never created). The transport detail and error-code handling are documented in [ADR 0026](0026-apns-direct-http2.md); the dispatch flow and free-tier cap here are unchanged.

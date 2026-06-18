@@ -82,3 +82,12 @@ The React SPA is deployed to **Azure Static Web Apps** using the official `Azure
 
 ### 2026-04-03
 - Updated: The promotion step described in the 2026-03-31 amendment is no longer accurate. [ADR 0017](0017-cd-dev-always-deploy-and-pr-gate-no-promote.md) (2026-04-01) removed the `api-promote` step from the PR gate — staging revisions are now validated via integration tests and then deactivated, with no traffic shift to the staging revision. CD Dev also no longer uses component-aware change detection; all components (infrastructure, API, web) deploy unconditionally on every push to `main`. See ADR 0017 for current deployment behaviour.
+
+### 2026-06-18
+- Updated: **the API quality gate now runs Go tooling, not .NET.** The backend was migrated to Go (see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)), so the "API | `dotnet format` / `dotnet build` (Release) / `dotnet test`" row in the Quality Gates table is historical. Current `pr-gate.yml` jobs:
+  - **`go-lint`** + **`go-test`** — `gofmt -l`, `go vet ./...`, `golangci-lint`, `go build ./...`, and `go test -race` with coverage, all against `api-go/`. These are the API gate.
+  - **`cli-format`** + **`cli-build-test`** — `dotnet format --verify-no-changes` and `dotnet test tests/tc.tests`, scoped to **`/cli`** only (the remaining .NET component). The `/api` .NET tree no longer exists.
+  - **`infra-preview`** — still `pulumi preview` with a PR comment, but the Pulumi program is now Go (`infra/`), so the preview job builds Go rather than .NET (`infra/global.json` is gone; see [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md)).
+  - **`ios-*`** and **`web-*`** jobs are unchanged.
+- Updated: path-based change detection keys on **`api-go/`** (and `cli/`), not the deleted `api/`.
+- Unchanged: the three-workflow architecture (PR Gate / CD Dev / CD Prod), the single aggregating `gate` check, OIDC federated Azure auth, SHA-tagged container images, and tag-based prod release gating all stand. This amendment is a tooling-language correction only — the deployment strategy is unaffected.
