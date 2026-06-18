@@ -131,11 +131,18 @@ func (s *rateLimitStore) checkAndIncrement(userID string, limit int) rateLimitRe
 		}
 	}
 
-	// Reclaim the map key once all in-window timestamps have aged out. This
-	// prevents the map from growing by one entry per distinct authenticated
-	// subject for the life of the replica (OWASP API4 / GH#518).
+	// Persist the result of the in-place compaction. kept aliases the stored
+	// slice's backing array (kept := times[:0]); the map header is only updated
+	// when we reassign it. When everything aged out, reclaim the key (delete)
+	// rather than leaving an empty entry — this keeps the map sized to currently
+	// active users (OWASP API4 / GH#518). When some timestamps survive, write the
+	// compacted slice back so its length matches kept; otherwise the stored
+	// header would keep its old length with a stale tail and the next call would
+	// re-count those tail entries.
 	if len(kept) == 0 {
 		delete(s.requests, userID)
+	} else {
+		s.requests[userID] = kept
 	}
 
 	if len(kept) >= limit {
