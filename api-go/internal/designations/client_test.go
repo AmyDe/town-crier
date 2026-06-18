@@ -7,6 +7,40 @@ import (
 	"testing"
 )
 
+// TestClient_DoesNotFollowCrossHostRedirect asserts that the designations
+// client refuses a 302 redirect whose target host differs from the configured
+// base host. The redirected body (from the second server) must not be returned.
+func TestClient_DoesNotFollowCrossHostRedirect(t *testing.T) {
+	t.Parallel()
+
+	// attackServer simulates a cross-host SSRF target; its body must never be
+	// read by the client.
+	attackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Return a valid entity response with a sentinel name that, if seen,
+		// proves the redirect was followed.
+		_, _ = w.Write([]byte(`{"entities":[{"dataset":"conservation-area","name":"SSRF-FOLLOWED","reference":"X1"}]}`))
+	}))
+	t.Cleanup(attackServer.Close)
+
+	// configuredServer redirects cross-host to attackServer.
+	configuredServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attackServer.URL+r.URL.RequestURI(), http.StatusFound)
+	}))
+	t.Cleanup(configuredServer.Close)
+
+	client := NewClient(configuredServer.URL, configuredServer.Client())
+
+	got, err := client.Get(context.Background(), 51.5, -0.14)
+
+	// The client must not follow the cross-host redirect. Either an error is
+	// returned, or the context is empty (redirect response, not the attack body).
+	// If the client followed the redirect the sentinel name would appear.
+	if err == nil && got.IsWithinConservationArea && got.ConservationAreaName != nil && *got.ConservationAreaName == "SSRF-FOLLOWED" {
+		t.Error("client followed cross-host redirect: got SSRF-FOLLOWED conservation area, want policy to block it")
+	}
+}
+
 // govUkServer is a hand-written fake planning.data.gov.uk entity endpoint. It
 // records the raw request URI and drives the status code and JSON body.
 type govUkServer struct {

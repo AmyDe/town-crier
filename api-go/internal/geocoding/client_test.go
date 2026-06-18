@@ -7,6 +7,40 @@ import (
 	"testing"
 )
 
+// TestClient_DoesNotFollowCrossHostRedirect asserts that the geocoding client
+// refuses a 302 redirect whose target host differs from the configured base
+// host. The redirected body (from the second server) must not be returned; the
+// client must error or surface the redirect response, not the cross-host body.
+func TestClient_DoesNotFollowCrossHostRedirect(t *testing.T) {
+	t.Parallel()
+
+	// attackServer simulates a cross-host SSRF target; its body must never be
+	// read by the client.
+	attackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":200,"result":{"postcode":"SW1A 1AA","latitude":99.0,"longitude":99.0}}`))
+	}))
+	t.Cleanup(attackServer.Close)
+
+	// configuredServer redirects cross-host to attackServer.
+	configuredServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attackServer.URL+r.URL.Path, http.StatusFound)
+	}))
+	t.Cleanup(configuredServer.Close)
+
+	client := NewClient(configuredServer.URL, configuredServer.Client())
+
+	coords, found, err := client.Geocode(context.Background(), "SW1A 1AA")
+
+	// The client must not follow the cross-host redirect. Either an error is
+	// returned, or found is false (redirect response, not the attack body).
+	// The attack server returns latitude=99.0; if the client followed the
+	// redirect we'd see that value — a definitive signal of a policy failure.
+	if err == nil && found && coords.Latitude == 99.0 {
+		t.Errorf("client followed cross-host redirect: got coords %+v, want policy to block it", coords)
+	}
+}
+
 // postcodesIoServer is a hand-written fake postcodes.io. It records the requested
 // path and lets a test drive the status code and raw JSON body the lookup
 // endpoint returns.
