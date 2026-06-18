@@ -340,10 +340,10 @@ func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
-	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
@@ -364,10 +364,10 @@ func TestWebhook_DuplicateIsNoOp(t *testing.T) {
 	d := newTestDeps()
 	d.byTxn.profile = freshProfile(t)
 	d.idempotency.processed["uuid-1"] = true
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
-	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -384,10 +384,10 @@ func TestWebhook_UnknownSubscriberStillMarksProcessed(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
 	d.byTxn.profile = nil // no matching subscriber
-	d.verifier.results["OUTER"] = notificationJSON("DID_RENEW", "uuid-2", "INNER")
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("DID_RENEW", "uuid-2", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-x", futureExpiryMs())
 
-	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
@@ -413,18 +413,18 @@ func TestWebhook_ErrorContract(t *testing.T) {
 		{"empty payload", `{"signedPayload":""}`, nil, http.StatusBadRequest, "malformed_request"},
 		{
 			name: "jws failure",
-			body: `{"signedPayload":"BAD"}`,
+			body: `{"signedPayload":"hdr.BAD.sig"}`,
 			setup: func(d *testDeps) {
-				d.verifier.errs["BAD"] = &JWSVerificationError{Message: "bad chain"}
+				d.verifier.errs["hdr.BAD.sig"] = &JWSVerificationError{Message: "bad chain"}
 			},
 			wantStatus: http.StatusUnauthorized,
 			wantError:  "invalid_notification",
 		},
 		{
 			name: "malformed notification payload",
-			body: `{"signedPayload":"OUTER"}`,
+			body: `{"signedPayload":"hdr.OUTER.sig"}`,
 			setup: func(d *testDeps) {
-				d.verifier.results["OUTER"] = `{"notificationType":"SUBSCRIBED","notificationUUID":"u","data":{}}`
+				d.verifier.results["hdr.OUTER.sig"] = `{"notificationType":"SUBSCRIBED","notificationUUID":"u","data":{}}`
 			},
 			wantStatus: http.StatusBadRequest,
 			wantError:  "invalid_notification_payload",
@@ -587,10 +587,10 @@ func TestWebhook_IgnoresSandboxTransactionInProduction(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps() // allowedEnvs = ["Production"]
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-env1", "INNER_SBX")
+	d.verifier.results["hdr.OUTER.sig"] = notificationJSON("SUBSCRIBED", "uuid-env1", "INNER_SBX")
 	d.verifier.results["INNER_SBX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs(), "Sandbox")
 
-	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
+	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"hdr.OUTER.sig"}`, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
