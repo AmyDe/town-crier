@@ -6,7 +6,7 @@ interface Stat {
 }
 
 const STATS: Stat[] = [
-  { value: '417', label: 'Local Authorities' },
+  { value: 'UK-wide', label: 'Coverage' },
   { value: 'Free', label: 'To Get Started' },
   { value: 'Real-time', label: 'Push Alerts' },
 ];

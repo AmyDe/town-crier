@@ -14,7 +14,7 @@ const FAQ_ITEMS: FaqItem[] = [
   {
     question: 'Which areas do you cover?',
     answer:
-      'We cover local planning authorities across England, Scotland, and Wales. Coverage is expanding. If your area isn\u2019t listed yet, let us know and we\u2019ll prioritise it.',
+      'We cover local planning authorities across the whole UK \u2014 England, Scotland, Wales, and Northern Ireland. If your area isn\u2019t listed yet, let us know and we\u2019ll prioritise it.',
   },
   {
     question: 'Is there a free tier?',

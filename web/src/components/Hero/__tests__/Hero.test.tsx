@@ -26,10 +26,12 @@ describe('Hero', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the subheading about 417 authorities', () => {
+  it('renders the subheading about UK-wide coverage', () => {
     renderHero();
 
-    expect(screen.getByText(/417 local authorities/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/planning applications across the UK/i),
+    ).toBeInTheDocument();
   });
 
   it('renders a download CTA link pointing at TestFlight', () => {
