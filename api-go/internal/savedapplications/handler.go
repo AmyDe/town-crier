@@ -23,6 +23,11 @@ const maxBodyBytes = 1 << 20
 // the fields needed to build the canonical key and master record.
 const invalidBodyMessage = "Body must include a non-empty uid and name."
 
+// applicationNotFoundMessage is returned when the body's (areaId, name) does
+// not correspond to any master record in the Applications container. The save
+// path refuses to create master records — the poller is the source of truth.
+const applicationNotFoundMessage = "Application not found."
+
 // savedStore is the consumer-side saved-application store.
 type savedStore interface {
 	Save(ctx context.Context, sa SavedApplication) error
@@ -32,11 +37,11 @@ type savedStore interface {
 }
 
 // appStore is the consumer-side planning-application store the saved handler
-// needs: an upsert so a save always points at a known master record (the search
-// path no longer upserts), and a partition-scoped uid lookup used by the lazy
-// snapshot backfill for legacy rows.
+// needs: a point-read by (authorityCode, name) to verify a master record exists
+// before writing a user's bookmark, and a partition-scoped uid lookup used by
+// the lazy snapshot backfill for legacy rows.
 type appStore interface {
-	Upsert(ctx context.Context, a applications.PlanningApplication) error
+	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (applications.PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
 }
 
@@ -57,9 +62,11 @@ func Routes(mux *http.ServeMux, store savedStore, apps appStore, now func() time
 	mux.HandleFunc("GET /v1/me/saved-applications", h.list)
 }
 
-// saveRequest is the PUT body — the full planning-application payload. The path
-// uid is ignored; the saved record's identity is the canonical uid derived from
-// the body (areaId/name).
+// saveRequest is the PUT body. Only Name, UID, and AreaID are used — they form
+// the key for the master-record look-up ((areaId, name) → canonical uid). The
+// remaining fields are decoded but not trusted as a source of truth; only the
+// data returned from the Applications container is written. The path uid is
+// ignored; identity is derived from the body's (areaId, name) pair.
 type saveRequest struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
@@ -81,33 +88,13 @@ type saveRequest struct {
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
 }
 
-func (req saveRequest) toApplication() applications.PlanningApplication {
-	return applications.PlanningApplication{
-		Name:          req.Name,
-		UID:           req.UID,
-		AreaName:      req.AreaName,
-		AreaID:        req.AreaID,
-		Address:       req.Address,
-		Postcode:      req.Postcode,
-		Description:   req.Description,
-		AppType:       req.AppType,
-		AppState:      req.AppState,
-		AppSize:       req.AppSize,
-		StartDate:     platform.DateOnlyPtrToTime(req.StartDate),
-		DecidedDate:   platform.DateOnlyPtrToTime(req.DecidedDate),
-		ConsultedDate: platform.DateOnlyPtrToTime(req.ConsultedDate),
-		Longitude:     req.Longitude,
-		Latitude:      req.Latitude,
-		URL:           req.URL,
-		Link:          req.Link,
-		LastDifferent: time.Time(req.LastDifferent),
-	}
-}
-
-// save implements PUT /v1/me/saved-applications/{**uid}. The path uid is
-// ignored. The body must carry a non-blank uid and name; the master record is
-// upserted first, then the saved row is written keyed on the canonical uid
-// (skipped when one already exists — idempotent re-save).
+// save implements PUT /v1/me/saved-applications/{**uid}. The body must carry a
+// non-blank uid and name. The handler looks up the canonical master record in
+// the Applications container by (areaId, name); if absent it returns 404 rather
+// than creating a record from untrusted client data — the poller is the sole
+// writer of the shared Applications container. When found, the per-user bookmark
+// is written against the canonical master record (idempotent: skipped when the
+// bookmark already exists).
 func (h *handler) save(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -122,9 +109,16 @@ func (h *handler) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	app := req.toApplication()
-	if err := h.apps.Upsert(r.Context(), app); err != nil {
-		h.serverError(w, r, "upsert application", err)
+	// Look up the canonical master record — never trust the client body as a
+	// source of truth for the shared Applications container.
+	authorityCode := strconv.Itoa(req.AreaID)
+	app, found, err := h.apps.GetByAuthorityAndName(r.Context(), authorityCode, req.Name)
+	if err != nil {
+		h.serverError(w, r, "look up application", err)
+		return
+	}
+	if !found {
+		h.writeError(w, r, http.StatusNotFound, applicationNotFoundMessage)
 		return
 	}
 

@@ -153,8 +153,9 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		demoaccount.Routes(mux, store, watchZoneStore, appStore, time.Now, logger)
 	}
 	if savedStore != nil && appStore != nil {
-		// The save path dual-writes: the master application record (appStore) then
-		// the saved row, so both stores are required to wire the endpoints.
+		// The save path looks up the master application record (appStore) to verify
+		// it exists, then writes only the per-user saved row. Both stores are
+		// required to wire the endpoints.
 		savedapplications.Routes(mux, savedStore, appStore, time.Now, logger)
 	}
 	if store != nil && offerStore != nil {
