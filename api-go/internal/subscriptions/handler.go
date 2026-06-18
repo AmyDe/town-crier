@@ -18,6 +18,16 @@ import (
 
 const maxBodyBytes = 1 << 20
 
+// maxWebhookPayloadBytes is the upper bound on the SignedPayload field of an
+// App Store Server Notification before JWS verification is attempted. A real
+// Apple notification outer JWS is roughly 2–4 KB (header + notification JSON +
+// three X.509 DER certificates base64url-encoded in the x5c header). 32 KB
+// gives a generous 8× headroom above the realistic maximum and is still cheap
+// enough to check in a single len() call, well below the 1 MiB body cap.
+// Anything larger cannot be a genuine Apple notification and is rejected before
+// the expensive X.509 chain verification runs.
+const maxWebhookPayloadBytes = 32 * 1024
+
 // jwsVerifier verifies and decodes an Apple StoreKit JWS. *JWSVerifier satisfies it.
 type jwsVerifier interface {
 	VerifyAndDecode(signedPayload string) (string, error)
@@ -70,6 +80,26 @@ type conflictError struct{}
 
 func (e *conflictError) Error() string {
 	return "Transaction is already claimed by another account."
+}
+
+// isCompactJWS reports whether s is a syntactically valid compact JWS:
+// exactly three non-empty segments separated by two dots
+// (header.payload.signature). It performs no base64url decoding or JSON
+// parsing — the intent is a cheap shape check before expensive crypto.
+func isCompactJWS(s string) bool {
+	first := strings.Index(s, ".")
+	if first <= 0 {
+		return false
+	}
+	rest := s[first+1:]
+	second := strings.Index(rest, ".")
+	if second <= 0 {
+		return false
+	}
+	// The third segment is everything after the second dot; it must be non-empty
+	// and must not contain another dot.
+	third := rest[second+1:]
+	return len(third) > 0 && !strings.Contains(third, ".")
 }
 
 // envAllowed reports whether env appears in the allowlist, comparing
@@ -267,6 +297,24 @@ func (h *handler) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(req.SignedPayload) == "" {
+		h.malformedBody(r, w)
+		return
+	}
+
+	// F7: cheap structural pre-checks — run BEFORE the expensive JWS X.509
+	// chain verification so an attacker cannot drive CPU cost with
+	// attacker-controlled input.
+	//
+	// 1. Size bound: reject payloads that exceed the realistic maximum for a
+	//    genuine Apple App Store Server Notification JWS. This is a secondary
+	//    guard; the 1 MiB MaxBytesReader on the body already exists.
+	if len(req.SignedPayload) > maxWebhookPayloadBytes {
+		h.malformedBody(r, w)
+		return
+	}
+	// 2. Compact JWS shape: a valid JWS is exactly header.payload.signature —
+	//    three non-empty segments separated by exactly two dots.
+	if !isCompactJWS(req.SignedPayload) {
 		h.malformedBody(r, w)
 		return
 	}
