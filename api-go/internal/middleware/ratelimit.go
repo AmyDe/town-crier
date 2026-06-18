@@ -131,12 +131,28 @@ func (s *rateLimitStore) checkAndIncrement(userID string, limit int) rateLimitRe
 		}
 	}
 
+	// Persist the result of the in-place compaction. kept aliases the stored
+	// slice's backing array (kept := times[:0]); the map header is only updated
+	// when we reassign it. When everything aged out, reclaim the key (delete)
+	// rather than leaving an empty entry — this keeps the map sized to currently
+	// active users (OWASP API4 / GH#518). When some timestamps survive, write the
+	// compacted slice back so its length matches kept; otherwise the stored
+	// header would keep its old length with a stale tail and the next call would
+	// re-count those tail entries.
+	if len(kept) == 0 {
+		delete(s.requests, userID)
+	} else {
+		s.requests[userID] = kept
+	}
+
 	if len(kept) >= limit {
-		retryAfter := kept[0].Add(rateLimitWindow).Sub(now)
+		var retryAfter time.Duration
+		if len(kept) > 0 {
+			retryAfter = kept[0].Add(rateLimitWindow).Sub(now)
+		}
 		if retryAfter < time.Millisecond {
 			retryAfter = time.Millisecond
 		}
-		s.requests[userID] = kept
 		return rateLimitResult{allowed: false, remaining: 0, retryAfter: retryAfter}
 	}
 
