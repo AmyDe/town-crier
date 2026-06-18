@@ -149,6 +149,10 @@ type UserProfile struct {
 	OriginalTransactionID *string
 	GracePeriodExpiry     *time.Time
 	LastActiveAt          time.Time
+	// WatchZoneCount is the CAS-maintained quota counter. A nil value indicates
+	// a legacy profile written before this field existed; the create path
+	// initialises it on first use by reading the live zone count (lazy-init).
+	WatchZoneCount *int
 }
 
 // NewProfile registers a fresh profile with default preferences and the Free

@@ -2,6 +2,7 @@ package watchzones
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"sync"
 	"testing"
@@ -234,23 +235,22 @@ func TestCreate_LegacyProfileLazyInit(t *testing.T) {
 	}
 }
 
-// newNearbyMuxWithCAS registers NearbyRoutes with a separate profileCAS
-// dependency alongside the standard profile reader.
+// newNearbyMuxWithCAS registers NearbyRoutes with the WithProfileCAS option.
 func newNearbyMuxWithCAS(t *testing.T, d nearbyDeps, cas profileCAS) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	NearbyRoutesWithCAS(mux, d.store, d.profiles, cas, d.resolver, d.apps, d.state, d.unread,
+	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.state, d.unread,
 		func() string { return "zone-cas-" + time.Now().Format("150405.000000000") },
 		func() time.Time { return nearbyNow },
-		nil /* logger — DiscardHandler */)
+		slog.New(slog.DiscardHandler),
+		WithProfileCAS(cas))
 	return mux
 }
 
-// newDeleteMuxWithCAS registers Routes (delete path) with a profileCAS
-// dependency so the delete can decrement the zone counter.
+// newDeleteMuxWithCAS registers Routes (delete path) with the WithProfileCAS option.
 func newDeleteMuxWithCAS(t *testing.T, store zoneStore, cas profileCAS) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	RoutesWithCAS(mux, store, cas, nil /* logger */)
+	Routes(mux, store, slog.New(slog.DiscardHandler), WithProfileCAS(cas))
 	return mux
 }

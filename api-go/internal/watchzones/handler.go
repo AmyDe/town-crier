@@ -11,6 +11,8 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
 // maxBodyBytes caps the request body the PATCH handler reads.
@@ -29,6 +31,20 @@ type zoneStore interface {
 	Delete(ctx context.Context, userID, zoneID string) error
 }
 
+// profileCAS is the consumer-side interface for atomically updating the
+// watch-zone quota counter on the user's profile document. It is satisfied by
+// *profiles.CosmosStore when wired with a CAS-capable container. A nil value
+// disables atomic quota enforcement (development / legacy path).
+type profileCAS interface {
+	// GetWithETag reads the profile and its current etag for a CAS operation.
+	// Returns (nil, "", nil) when the profile is absent.
+	GetWithETag(ctx context.Context, userID string) (*profiles.UserProfile, string, error)
+	// UpdateZoneCountWithCAS replaces the profile document only if the stored
+	// etag still matches. Returns platform.ErrCASPreconditionFailed on a 412
+	// (concurrent writer won — the caller should re-read and retry).
+	UpdateZoneCountWithCAS(ctx context.Context, userID string, p *profiles.UserProfile, etag string) error
+}
+
 // MetricsRecorder is the consumer-side slice of the metrics registry the
 // watch-zone handlers record the lifecycle counters on. *metrics.Registry
 // satisfies it. It is exported because Routes / NearbyRoutes accept it as an
@@ -39,9 +55,9 @@ type MetricsRecorder interface {
 	WatchZoneDeleted(ctx context.Context)
 }
 
-// Option configures the watch-zone routes. WithMetricsRecorder is the only
-// option today; it is variadic so the many existing Routes/NearbyRoutes call
-// sites and tests compile unchanged.
+// Option configures the watch-zone routes. WithMetricsRecorder and
+// WithProfileCAS are the options today; variadic so existing call sites and
+// tests compile unchanged.
 type Option func(*handler)
 
 // WithMetricsRecorder wires the metrics recorder the handlers record the
@@ -50,21 +66,29 @@ func WithMetricsRecorder(rec MetricsRecorder) Option {
 	return func(h *handler) { h.metrics = rec }
 }
 
+// WithProfileCAS wires the CAS-capable profile store used by the create path
+// for atomic quota enforcement and the delete path for quota decrement. When
+// absent the create path falls back to the non-atomic count-then-save (legacy).
+func WithProfileCAS(cas profileCAS) Option {
+	return func(h *handler) { h.profileCAS = cas }
+}
+
 // handler serves the /v1/me/watch-zones surface. The auth middleware guarantees
 // a subject in context before these handlers run. The list/update/delete methods
 // use only store + logger; the create and applications methods (nearby.go) use
 // the remaining dependencies, which Routes leaves nil and NearbyRoutes populates.
 type handler struct {
-	store    zoneStore
-	profiles profileReader
-	resolver authorityResolver
-	apps     appFinder
-	state    watermarkReader
-	unread   unreadReader
-	newID    func() string
-	now      func() time.Time
-	logger   *slog.Logger
-	metrics  MetricsRecorder
+	store      zoneStore
+	profiles   profileReader
+	profileCAS profileCAS
+	resolver   authorityResolver
+	apps       appFinder
+	state      watermarkReader
+	unread     unreadReader
+	newID      func() string
+	now        func() time.Time
+	logger     *slog.Logger
+	metrics    MetricsRecorder
 }
 
 // Routes registers the watch-zone list/update/delete endpoints on mux. POST
@@ -215,8 +239,15 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, updateResult{Zone: summaryOf(updated)})
 }
 
+// maxCASRetries is the maximum number of etag-conditional replace attempts for
+// quota CAS loops. After this many ErrCASPreconditionFailed responses the
+// create path returns 403 (quota-exceeded is the safe failure mode) and the
+// delete path gives up silently (the counter will self-correct on next create).
+const maxCASRetries = 3
+
 // delete implements DELETE /v1/me/watch-zones/{zoneId}: 204 on success, 404 when
-// the zone does not exist.
+// the zone does not exist. When the CAS profile store is wired, it also
+// decrements the quota counter atomically so a slot is freed immediately.
 func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -229,10 +260,47 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "delete watch zone", err)
 		return
 	}
+
+	if h.profileCAS != nil {
+		h.decrementZoneCount(r.Context(), userID)
+	}
+
 	if h.metrics != nil {
 		h.metrics.WatchZoneDeleted(r.Context())
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// decrementZoneCount reduces the CAS quota counter by 1 (floor 0) after a
+// successful zone delete. It uses a bounded CAS retry loop so concurrent
+// deletes do not race. On persistent conflict it logs and continues — the
+// counter will converge on the next create's lazy-init read.
+func (h *handler) decrementZoneCount(ctx context.Context, userID string) {
+	for range maxCASRetries {
+		profile, etag, err := h.profileCAS.GetWithETag(ctx, userID)
+		if err != nil || profile == nil {
+			h.logger.WarnContext(ctx, "decrement zone count: could not load profile", "user", userID, "error", err)
+			return
+		}
+		updated := *profile
+		newCount := 0
+		if updated.WatchZoneCount != nil && *updated.WatchZoneCount > 0 {
+			newCount = *updated.WatchZoneCount - 1
+		}
+		updated.WatchZoneCount = &newCount
+
+		err = h.profileCAS.UpdateZoneCountWithCAS(ctx, userID, &updated, etag)
+		if err == nil {
+			return // success
+		}
+		if errors.Is(err, platform.ErrCASPreconditionFailed) {
+			// Concurrent writer — retry
+			continue
+		}
+		h.logger.WarnContext(ctx, "decrement zone count: CAS replace failed", "user", userID, "error", err)
+		return
+	}
+	h.logger.WarnContext(ctx, "decrement zone count: exhausted retries", "user", userID)
 }
 
 // apiErrorResponse mirrors the .NET ApiErrorResponse: { error, message } with
