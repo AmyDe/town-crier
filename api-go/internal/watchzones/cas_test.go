@@ -214,7 +214,7 @@ func TestCreate_LegacyProfileLazyInit(t *testing.T) {
 	// p.WatchZoneCount is nil — legacy profile
 
 	// Store already has 1 zone (at the free limit).
-	existingZone := mustZone(t, "zone-existing", 471)
+	existingZone := mustZone(t, "zone-existing", 326)
 	store := &fakeZoneStore{zones: []WatchZone{existingZone}}
 	casFake := newFakeProfileCAS(p)
 
