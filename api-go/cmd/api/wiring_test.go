@@ -133,17 +133,47 @@ func idFromDoc(raw []byte) string {
 // testGeocodeClient and testDesignationClient point at an unroutable address; the
 // deny-all wiring tests never reach the handlers, so the upstream is never
 // called.
-func testGeocodeClient() *geocoding.Client {
-	return geocoding.NewClient("http://127.0.0.1:0", http.DefaultClient)
+func testGeocodeClient(t *testing.T) *geocoding.Client {
+	t.Helper()
+	c, err := geocoding.NewClient("http://127.0.0.1:0", http.DefaultClient)
+	if err != nil {
+		t.Fatalf("geocoding.NewClient: %v", err)
+	}
+	return c
 }
 
-func testDesignationClient() *designations.Client {
-	return designations.NewClient("http://127.0.0.1:0", http.DefaultClient)
+func testDesignationClient(t *testing.T) *designations.Client {
+	t.Helper()
+	c, err := designations.NewClient("http://127.0.0.1:0", http.DefaultClient)
+	if err != nil {
+		t.Fatalf("designations.NewClient: %v", err)
+	}
+	return c
+}
+
+// testGeocodeClientWith and testDesignationClientWith build clients pointing at
+// a specific upstream (used in integration-style wiring tests).
+func testGeocodeClientWith(t *testing.T, baseURL string, httpClient *http.Client) *geocoding.Client {
+	t.Helper()
+	c, err := geocoding.NewClient(baseURL, httpClient)
+	if err != nil {
+		t.Fatalf("geocoding.NewClient(%q): %v", baseURL, err)
+	}
+	return c
+}
+
+func testDesignationClientWith(t *testing.T, baseURL string, httpClient *http.Client) *designations.Client {
+	t.Helper()
+	c, err := designations.NewClient(baseURL, httpClient)
+	if err != nil {
+		t.Fatalf("designations.NewClient(%q): %v", baseURL, err)
+	}
+	return c
 }
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, nil, "", nil, nil, "", nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", nil, nil, "", nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -248,7 +278,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := applications.NewCosmosStore(newFakeItems())
 	savedStore := savedapplications.NewCosmosStore(newFakeItems())
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(), testDesignationClient(), nil, nil, "", nil, nil, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", nil, nil, "", nil, nil, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -329,8 +359,8 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 
 	logger := slog.New(slog.DiscardHandler)
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	geocodeClient := geocoding.NewClient(upstream.URL, upstream.Client())
-	designationClient := designations.NewClient(upstream.URL, upstream.Client())
+	geocodeClient := testGeocodeClientWith(t, upstream.URL, upstream.Client())
+	designationClient := testDesignationClientWith(t, upstream.URL, upstream.Client())
 	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", nil, nil, "", nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
@@ -370,7 +400,7 @@ func TestRouter_SubscriptionsWired(t *testing.T) {
 		t.Fatalf("NewJWSVerifier: %v", err)
 	}
 
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), nil, adminStore, "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, logger)
 
 	// Webhook is anonymous: a malformed body reaches the handler -> 400 with the
 	// malformed_request envelope, not the WWW-Authenticate 401 fallback.
@@ -400,7 +430,7 @@ func TestRouter_AdminGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := offercodes.NewCosmosStore(newFakeItems())
 	adminStore := profiles.NewAdminStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(), testDesignationClient(), offerStore, adminStore, "s3cret", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", nil, nil, "", nil, nil, logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).

@@ -7,6 +7,17 @@ import (
 	"testing"
 )
 
+// mustNewClient calls NewClient and fatals the test on error. All test base
+// URLs are valid httptest addresses so this should never fail in practice.
+func mustNewClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
+	t.Helper()
+	c, err := NewClient(baseURL, httpClient)
+	if err != nil {
+		t.Fatalf("NewClient(%q): %v", baseURL, err)
+	}
+	return c
+}
+
 // TestClient_DoesNotFollowCrossHostRedirect asserts that the geocoding client
 // refuses a 302 redirect whose target host differs from the configured base
 // host. The redirected body (from the second server) must not be returned; the
@@ -28,7 +39,7 @@ func TestClient_DoesNotFollowCrossHostRedirect(t *testing.T) {
 	}))
 	t.Cleanup(configuredServer.Close)
 
-	client := NewClient(configuredServer.URL, configuredServer.Client())
+	client := mustNewClient(t, configuredServer.URL, configuredServer.Client())
 
 	coords, found, err := client.Geocode(context.Background(), "SW1A 1AA")
 
@@ -71,7 +82,7 @@ func TestClient_Geocode_ReturnsCoordinates(t *testing.T) {
 		body: `{"status":200,"result":{"postcode":"SW1A 1AA","latitude":51.501009,"longitude":-0.141588,"admin_district":"Westminster"}}`,
 	}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	coords, found, err := client.Geocode(context.Background(), "SW1A 1AA")
 	if err != nil {
@@ -90,7 +101,7 @@ func TestClient_Geocode_EscapesPostcodeInPath(t *testing.T) {
 
 	fake := &postcodesIoServer{body: `{"status":200,"result":{"latitude":1,"longitude":2}}`}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	if _, _, err := client.Geocode(context.Background(), "SW1A 1AA"); err != nil {
 		t.Fatalf("Geocode: %v", err)
@@ -107,7 +118,7 @@ func TestClient_Geocode_NotFoundOnNon2xx(t *testing.T) {
 
 	fake := &postcodesIoServer{status: http.StatusNotFound, body: `{"status":404,"error":"Postcode not found"}`}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	// A non-2xx response means not found (a 404 for the caller), not an error —
 	// mirroring .NET's null return on !IsSuccessStatusCode.
@@ -127,7 +138,7 @@ func TestClient_Geocode_NotFoundOnEnvelopeStatusNot200(t *testing.T) {
 	// matching .NET's body.Status != 200 short-circuit.
 	fake := &postcodesIoServer{body: `{"status":404,"result":null}`}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	_, found, err := client.Geocode(context.Background(), "ZZ1 1ZZ")
 	if err != nil {
@@ -144,7 +155,7 @@ func TestClient_Geocode_NotFoundOnNilResult(t *testing.T) {
 	// status 200 but a null result is "not found", matching .NET's Result is null.
 	fake := &postcodesIoServer{body: `{"status":200,"result":null}`}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 
 	_, found, err := client.Geocode(context.Background(), "ZZ1 1ZZ")
 	if err != nil {
@@ -163,7 +174,7 @@ func TestClient_Geocode_ErrorOnTransportFailure(t *testing.T) {
 	// capture its URL, then close it so the connection is refused.
 	fake := &postcodesIoServer{body: `{}`}
 	srv := newPostcodesIoServer(t, fake)
-	client := NewClient(srv.URL, srv.Client())
+	client := mustNewClient(t, srv.URL, srv.Client())
 	srv.Close()
 
 	if _, _, err := client.Geocode(context.Background(), "SW1A 1AA"); err == nil {
