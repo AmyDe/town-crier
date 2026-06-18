@@ -279,93 +279,90 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		tags:                        tags,
 	}
 
-	// Container App (Go API) — created for BOTH dev and prod. The placeholder quickstart
-	// image listens on 80, so the first revision stays unhealthy until CD pushes the real
-	// town-crier-api-go image.
-	if env == "dev" || env == "prod" {
-		configuration := &app.ConfigurationArgs{
-			// Single in prod; Multiple in dev (pr-gate stages per-PR revisions).
-			ActiveRevisionsMode: pulumi.String(string(app.ActiveRevisionsModeMultiple)),
-			Ingress: &app.IngressArgs{
-				External:      pulumi.Bool(true),
-				TargetPort:    pulumi.Int(8080),
-				Transport:     pulumi.String(string(app.IngressTransportMethodHttp)),
-				CustomDomains: goApiCustomDomains,
+	// Container App (Go API), created for both dev and prod — the only environment stacks
+	// (shared is handled separately). The placeholder quickstart image listens on 80, so the
+	// first revision stays unhealthy until CD pushes the real town-crier-api-go image.
+	configuration := &app.ConfigurationArgs{
+		// Single in prod; Multiple in dev (pr-gate stages per-PR revisions).
+		ActiveRevisionsMode: pulumi.String(string(app.ActiveRevisionsModeMultiple)),
+		Ingress: &app.IngressArgs{
+			External:      pulumi.Bool(true),
+			TargetPort:    pulumi.Int(8080),
+			Transport:     pulumi.String(string(app.IngressTransportMethodHttp)),
+			CustomDomains: goApiCustomDomains,
+		},
+		Registries: app.RegistryCredentialsArray{
+			&app.RegistryCredentialsArgs{
+				Server:   acrLoginServer,
+				Identity: acrPullIdentityID,
 			},
-			Registries: app.RegistryCredentialsArray{
-				&app.RegistryCredentialsArgs{
-					Server:   acrLoginServer,
-					Identity: acrPullIdentityID,
-				},
-			},
-			Secrets: app.SecretArray{
-				&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
-				&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
-				&app.SecretArgs{Name: pulumi.String("auto-grant-pro-domains"), Value: autoGrantProDomains},
-				// Same admin key as the .NET app so the Go X-Admin-Key gate accepts
-				// identical requests (tc-52t6).
-				&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
-			},
-		}
-		minReplicas := 0
-		if env == "prod" {
-			configuration.ActiveRevisionsMode = pulumi.String(string(app.ActiveRevisionsModeSingle))
-			minReplicas = 1
-		} else {
-			// MaxInactiveRevisions only applies to Multiple mode (caps ACR storage growth
-			// from staged PR revisions); omit it under Single.
-			configuration.MaxInactiveRevisions = pulumi.Int(5)
-		}
+		},
+		Secrets: app.SecretArray{
+			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
+			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
+			&app.SecretArgs{Name: pulumi.String("auto-grant-pro-domains"), Value: autoGrantProDomains},
+			// Admin key the Go X-Admin-Key gate validates for /v1/admin requests (tc-52t6).
+			&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
+		},
+	}
+	minReplicas := 0
+	if env == "prod" {
+		configuration.ActiveRevisionsMode = pulumi.String(string(app.ActiveRevisionsModeSingle))
+		minReplicas = 1
+	} else {
+		// MaxInactiveRevisions only applies to Multiple mode (caps ACR storage growth
+		// from staged PR revisions); omit it under Single.
+		configuration.MaxInactiveRevisions = pulumi.Int(5)
+	}
 
-		_, err = app.NewContainerApp(ctx, fmt.Sprintf("ca-town-crier-api-go-%s", env), &app.ContainerAppArgs{
-			ContainerAppName:     pulumi.String(fmt.Sprintf("ca-town-crier-api-go-%s", env)),
-			ResourceGroupName:    resourceGroup.Name,
-			ManagedEnvironmentId: containerAppsEnvironmentID,
-			Configuration:        configuration,
-			Identity: &app.ManagedServiceIdentityArgs{
-				Type: pulumi.String(string(app.ManagedServiceIdentityTypeUserAssigned)),
-				UserAssignedIdentities: pulumi.StringArray{
-					acrPullIdentityID,
-					cosmosDataIdentityID,
-				},
+	_, err = app.NewContainerApp(ctx, fmt.Sprintf("ca-town-crier-api-go-%s", env), &app.ContainerAppArgs{
+		ContainerAppName:     pulumi.String(fmt.Sprintf("ca-town-crier-api-go-%s", env)),
+		ResourceGroupName:    resourceGroup.Name,
+		ManagedEnvironmentId: containerAppsEnvironmentID,
+		Configuration:        configuration,
+		Identity: &app.ManagedServiceIdentityArgs{
+			Type: pulumi.String(string(app.ManagedServiceIdentityTypeUserAssigned)),
+			UserAssignedIdentities: pulumi.StringArray{
+				acrPullIdentityID,
+				cosmosDataIdentityID,
 			},
-			Template: &app.TemplateArgs{
-				Containers: app.ContainerArray{
-					&app.ContainerArgs{
-						Name:  pulumi.String("api-go"),
-						Image: pulumi.String("mcr.microsoft.com/k8se/quickstart:latest"),
-						Resources: &app.ContainerResourcesArgs{
-							Cpu:    pulumi.Float64(containerCpu),
-							Memory: pulumi.String(containerMemory),
-						},
-						Env: app.EnvironmentVarArray{
-							app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
-							// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
-							app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
-							app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: cosmosAccountEndpoint},
-							app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: cosmosDatabase.Name},
-							app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
-							app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
-							app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
-							app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
-							app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
-							app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
-							app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_AUTOGRANT_PRODOMAINS"), SecretRef: pulumi.String("auto-grant-pro-domains")},
-							app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
-						},
+		},
+		Template: &app.TemplateArgs{
+			Containers: app.ContainerArray{
+				&app.ContainerArgs{
+					Name:  pulumi.String("api-go"),
+					Image: pulumi.String("mcr.microsoft.com/k8se/quickstart:latest"),
+					Resources: &app.ContainerResourcesArgs{
+						Cpu:    pulumi.Float64(containerCpu),
+						Memory: pulumi.String(containerMemory),
+					},
+					Env: app.EnvironmentVarArray{
+						app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
+						// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
+						app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
+						app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: cosmosAccountEndpoint},
+						app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: cosmosDatabase.Name},
+						app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
+						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
+						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
+						app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
+						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
+						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
+						app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_AUTOGRANT_PRODOMAINS"), SecretRef: pulumi.String("auto-grant-pro-domains")},
+						app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
 					},
 				},
-				Scale: &app.ScaleArgs{
-					// Keep one warm replica only for PROD to skip the ~15s ACA cold start.
-					MinReplicas: pulumi.Int(minReplicas),
-					MaxReplicas: pulumi.Int(1),
-				},
 			},
-			Tags: tags,
-		}, pulumi.IgnoreChanges([]string{"template.containers[0].image", "configuration.ingress.traffic"}))
-		if err != nil {
-			return err
-		}
+			Scale: &app.ScaleArgs{
+				// Keep one warm replica only for PROD to skip the ~15s ACA cold start.
+				MinReplicas: pulumi.Int(minReplicas),
+				MaxReplicas: pulumi.Int(1),
+			},
+		},
+		Tags: tags,
+	}, pulumi.IgnoreChanges([]string{"template.containers[0].image", "configuration.ingress.traffic"}))
+	if err != nil {
+		return err
 	}
 
 	// Service Bus — adaptive polling trigger (prod only). The worker identity gets Data
@@ -448,7 +445,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 // + non-nil pollingBus produces an Event-triggered job; otherwise a Schedule-triggered cron
 // job.
 func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string, pollingBus *serviceBusPollingInfra) error {
-	// Base env. WORKER_MODE is inserted after OTEL_SERVICE_NAME (matches the C# List.Insert(1)).
+	// Base env shared by every worker job.
 	envVars := app.EnvironmentVarArray{
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-worker-go")},
 		app.EnvironmentVarArgs{Name: pulumi.String("WORKER_MODE"), Value: pulumi.String(workerMode)},
@@ -550,8 +547,8 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 	return err
 }
 
-// addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names) in the same
-// order as the original C# AddGoWorkerEnv. The consumer is api-go/internal/platform/config.go.
+// addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names). The consumer
+// is api-go/internal/platform/config.go.
 func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string, pollingBus *serviceBusPollingInfra) app.EnvironmentVarArray {
 	// All modes: Go-named Cosmos endpoint/database.
 	envVars = append(envVars,
@@ -567,7 +564,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// poll only: PlanIt client + polling-cycle budgets (the .NET defaults made explicit).
+	// poll only: PlanIt client + polling-cycle budgets (defaults made explicit).
 	if workerMode == "poll-sb" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("PLANIT_BASE_URL"), Value: pulumi.String("https://www.planit.org.uk/")},

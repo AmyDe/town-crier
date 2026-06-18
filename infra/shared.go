@@ -174,42 +174,37 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// ImportId must be a plain string (not an Output) because the Pulumi engine needs it
-	// at planning time. We read the subscription from ARM_SUBSCRIPTION_ID that CI (and
-	// local `pulumi up`) sets via the Azure login step; RG and workspace names are static.
+	// ARM_SUBSCRIPTION_ID is set by CI (and local `pulumi up`) via the Azure login step; it
+	// feeds the subscription-wide budget scope below.
 	armSubscriptionID := os.Getenv("ARM_SUBSCRIPTION_ID")
 	if armSubscriptionID == "" {
-		return fmt.Errorf("ARM_SUBSCRIPTION_ID must be set to import the ContainerAppConsoleLogs table")
+		return fmt.Errorf("ARM_SUBSCRIPTION_ID must be set for the subscription budget scope")
 	}
 
-	// Set the native ContainerAppConsoleLogs table to the Basic plan (import-then-patch).
-	tableImportID := fmt.Sprintf(
-		"/subscriptions/%s/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/ContainerAppConsoleLogs", armSubscriptionID)
+	// Set the native ContainerAppConsoleLogs table to the Basic plan.
 	_, err = operationalinsights.NewTable(ctx, "table-containerappconsolelogs-basic", &operationalinsights.TableArgs{
 		ResourceGroupName: resourceGroup.Name,
 		WorkspaceName:     logAnalytics.Name,
 		TableName:         pulumi.String("ContainerAppConsoleLogs"),
 		Plan:              operationalinsights.TablePlanEnumBasic,
-	}, pulumi.Import(pulumi.ID(tableImportID)))
+	})
 	if err != nil {
 		return err
 	}
 
-	// Move the AppTraces table to the Basic Logs plan (import-then-patch). See tc-9ggc.
-	appTracesTableImportID := fmt.Sprintf(
-		"/subscriptions/%s/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/AppTraces", armSubscriptionID)
+	// Move the AppTraces table to the Basic Logs plan. See tc-9ggc.
 	_, err = operationalinsights.NewTable(ctx, "table-apptraces-basic", &operationalinsights.TableArgs{
 		ResourceGroupName: resourceGroup.Name,
 		WorkspaceName:     logAnalytics.Name,
 		TableName:         pulumi.String("AppTraces"),
 		Plan:              operationalinsights.TablePlanEnumBasic,
-	}, pulumi.Import(pulumi.ID(appTracesTableImportID)))
+	})
 	if err != nil {
 		return err
 	}
 
-	// Cap the workspace-based App* tables at the workspace's 30-day retention
-	// (import-then-patch). See tc-23yb. AppTraces is omitted (already on Basic = 8 days).
+	// Cap the workspace-based App* tables at the workspace's 30-day retention. See tc-23yb.
+	// AppTraces is omitted (already on Basic = 8 days).
 	appTablesToCapAt30Days := []string{
 		"AppRequests",
 		"AppDependencies",
@@ -223,15 +218,13 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		"AppSystemEvents",
 	}
 	for _, tableName := range appTablesToCapAt30Days {
-		importID := fmt.Sprintf(
-			"/subscriptions/%s/resourceGroups/rg-town-crier-shared/providers/Microsoft.OperationalInsights/workspaces/log-town-crier-shared/tables/%s", armSubscriptionID, tableName)
 		_, err = operationalinsights.NewTable(ctx, fmt.Sprintf("table-%s-30day", strings.ToLower(tableName)), &operationalinsights.TableArgs{
 			ResourceGroupName:    resourceGroup.Name,
 			WorkspaceName:        logAnalytics.Name,
 			TableName:            pulumi.String(tableName),
 			RetentionInDays:      pulumi.Int(30),
 			TotalRetentionInDays: pulumi.Int(30),
-		}, pulumi.Import(pulumi.ID(importID)))
+		})
 		if err != nil {
 			return err
 		}
@@ -430,10 +423,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 						dashboardPart(4, 4, 4, 4, metricTile(appInsightsID, "towncrier.watchzones.deleted", "Watch Zones Deleted")),
 						dashboardPart(8, 4, 4, 4, metricTile(appInsightsID, "towncrier.notifications.sent", "Notifications Sent")),
 						// Row 3: Sync & Infrastructure Health
-						dashboardPart(0, 8, 3, 4, stackedMetricTile(appInsightsID,
-							"towncrier.polling.authorities_polled", "Successes",
-							"towncrier.polling.failures", "Failures",
-							"Sync Success vs Failure")),
+						dashboardPart(0, 8, 3, 4, metricChartTile(appInsightsID, "Sync Success vs Failure",
+							metricSpec{name: "towncrier.polling.authorities_polled", label: "Successes"},
+							metricSpec{name: "towncrier.polling.failures", label: "Failures"})),
 						dashboardPart(3, 8, 3, 4, metricTile(appInsightsID, "towncrier.polling.applications_ingested", "Applications Ingested")),
 						dashboardPart(6, 8, 3, 4, metricTile(appInsightsID, "towncrier.cosmos.request_charge_ru", "Cosmos RU Consumption")),
 						dashboardPart(9, 8, 3, 4, metricTile(appInsightsID, "towncrier.api.errors", "API Errors")),
@@ -490,66 +482,31 @@ func dashboardPart(x, y, colSpan, rowSpan int, metadata portal.DashboardPartMeta
 	}
 }
 
-// metricTile renders a single App Insights custom metric as a MonitorChartPart.
-func metricTile(appInsightsID pulumi.StringOutput, metricName, title string) portal.DashboardPartMetadataArgs {
-	return portal.DashboardPartMetadataArgs{
-		Type: pulumi.String("Extension/HubsExtension/PartType/MonitorChartPart"),
-		Settings: pulumi.Map{
-			"content": pulumi.Map{
-				"options": pulumi.Map{
-					"chart": pulumi.Map{
-						"metrics": pulumi.Array{
-							pulumi.Map{
-								"resourceMetadata": pulumi.Map{"id": appInsightsID},
-								"name":             pulumi.String(metricName),
-								"aggregationType":  pulumi.Int(1),
-								"namespace":        pulumi.String("azure.applicationinsights"),
-								"metricVisualization": pulumi.Map{
-									"displayName": pulumi.String(title),
-								},
-							},
-						},
-						"title":     pulumi.String(title),
-						"titleKind": pulumi.Int(1),
-						"visualization": pulumi.Map{
-							"chartType": pulumi.Int(2),
-						},
-						"timespan": pulumi.Map{
-							"relative": pulumi.Map{
-								"duration": pulumi.Int(dashboardTimespan24HoursMs),
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+// metricSpec is one App Insights custom metric series within a chart tile.
+type metricSpec struct {
+	name  string // custom metric name, e.g. "towncrier.users.registered"
+	label string // series display name shown in the chart legend
 }
 
-// stackedMetricTile renders two App Insights custom metrics stacked in one chart.
-func stackedMetricTile(appInsightsID pulumi.StringOutput, metric1, label1, metric2, label2, title string) portal.DashboardPartMetadataArgs {
+// metricChartTile renders one or more App Insights custom metrics as a MonitorChartPart.
+func metricChartTile(appInsightsID pulumi.StringOutput, title string, metrics ...metricSpec) portal.DashboardPartMetadataArgs {
+	series := make(pulumi.Array, len(metrics))
+	for i, m := range metrics {
+		series[i] = pulumi.Map{
+			"resourceMetadata":    pulumi.Map{"id": appInsightsID},
+			"name":                pulumi.String(m.name),
+			"aggregationType":     pulumi.Int(1),
+			"namespace":           pulumi.String("azure.applicationinsights"),
+			"metricVisualization": pulumi.Map{"displayName": pulumi.String(m.label)},
+		}
+	}
 	return portal.DashboardPartMetadataArgs{
 		Type: pulumi.String("Extension/HubsExtension/PartType/MonitorChartPart"),
 		Settings: pulumi.Map{
 			"content": pulumi.Map{
 				"options": pulumi.Map{
 					"chart": pulumi.Map{
-						"metrics": pulumi.Array{
-							pulumi.Map{
-								"resourceMetadata":    pulumi.Map{"id": appInsightsID},
-								"name":                pulumi.String(metric1),
-								"aggregationType":     pulumi.Int(1),
-								"namespace":           pulumi.String("azure.applicationinsights"),
-								"metricVisualization": pulumi.Map{"displayName": pulumi.String(label1)},
-							},
-							pulumi.Map{
-								"resourceMetadata":    pulumi.Map{"id": appInsightsID},
-								"name":                pulumi.String(metric2),
-								"aggregationType":     pulumi.Int(1),
-								"namespace":           pulumi.String("azure.applicationinsights"),
-								"metricVisualization": pulumi.Map{"displayName": pulumi.String(label2)},
-							},
-						},
+						"metrics":       series,
 						"title":         pulumi.String(title),
 						"titleKind":     pulumi.Int(1),
 						"visualization": pulumi.Map{"chartType": pulumi.Int(2)},
@@ -561,6 +518,11 @@ func stackedMetricTile(appInsightsID pulumi.StringOutput, metric1, label1, metri
 			},
 		},
 	}
+}
+
+// metricTile renders a single custom metric whose series label matches the chart title.
+func metricTile(appInsightsID pulumi.StringOutput, metricName, title string) portal.DashboardPartMetadataArgs {
+	return metricChartTile(appInsightsID, title, metricSpec{name: metricName, label: title})
 }
 
 // kqlTile renders an Analytics (KQL query) dashboard part bound to the App Insights component.
