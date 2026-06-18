@@ -102,6 +102,40 @@ func TestDigestStore_ByUserSince(t *testing.T) {
 	}
 }
 
+func TestDigestStore_AllByUser(t *testing.T) {
+	t.Parallel()
+	// AllByUser is the GDPR-export read: every notification in the user's
+	// partition, with no since-floor, hydrated to the full DigestNotification so
+	// the export carries each field. It is single-partition (scoped to userId) and
+	// must never fan out cross-partition.
+	items := &fakeDigestItems{queryResult: [][]byte{
+		fullDocJSON(t, "n-1", "user-1", "uid-A", "zone-1", "2026-02-02T00:00:00+00:00", true),
+		fullDocJSON(t, "n-2", "user-1", "uid-B", "", "2026-02-01T00:00:00+00:00", false),
+	}}
+	store := NewDigestStore(items)
+
+	got, err := store.AllByUser(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("AllByUser: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("count: got %d, want 2", len(got))
+	}
+	if got[0].ID != "n-1" || got[1].ID != "n-2" {
+		t.Errorf("hydrated ids wrong: %+v", got)
+	}
+	if items.queryPK != "user-1" {
+		t.Errorf("partition key: got %q, want user-1", items.queryPK)
+	}
+	// No since-floor: the export covers the user's whole (TTL-bounded) history.
+	if strings.Contains(items.queryText, "@since") || strings.Contains(items.queryText, "createdAt >=") {
+		t.Errorf("AllByUser must not apply a since-floor: %q", items.queryText)
+	}
+	if !strings.Contains(items.queryText, "c.userId = @userId") {
+		t.Errorf("query must be scoped to the user partition: %q", items.queryText)
+	}
+}
+
 func TestDigestStore_UnsentEmailsByUser(t *testing.T) {
 	t.Parallel()
 	items := &fakeDigestItems{queryResult: [][]byte{

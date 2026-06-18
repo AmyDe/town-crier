@@ -163,6 +163,70 @@ func TestCosmosStore_Get_NotFound(t *testing.T) {
 	}
 }
 
+// RedeemedByUserID is the GDPR-export read: every code the user redeemed,
+// hydrated to the domain model, reusing the same cross-partition redeemedByUserId
+// scan the anonymise path uses (the container is keyed by code, not redeemer). It
+// must return only the caller's redemptions, not other users' or unredeemed codes.
+func TestCosmosStore_RedeemedByUserID(t *testing.T) {
+	t.Parallel()
+
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+	ctx := context.Background()
+	created := time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC)
+	redeemedAt := time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC)
+
+	mine, _ := NewOfferCode("AAAAAAAAAAAA", profiles.TierPro, 30, created)
+	if err := mine.Redeem("auth0|target", redeemedAt); err != nil {
+		t.Fatalf("Redeem mine: %v", err)
+	}
+	theirs, _ := NewOfferCode("BBBBBBBBBBBB", profiles.TierPersonal, 14, created)
+	if err := theirs.Redeem("auth0|other", redeemedAt); err != nil {
+		t.Fatalf("Redeem theirs: %v", err)
+	}
+	fresh, _ := NewOfferCode("CCCCCCCCCCCC", profiles.TierPro, 7, created)
+	for _, c := range []OfferCode{mine, theirs, fresh} {
+		if err := store.Save(ctx, c); err != nil {
+			t.Fatalf("Save %s: %v", c.Code, err)
+		}
+	}
+
+	got, err := store.RedeemedByUserID(ctx, "auth0|target")
+	if err != nil {
+		t.Fatalf("RedeemedByUserID: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: got %d, want 1 (only the target's redemption)", len(got))
+	}
+	c := got[0]
+	if c.Code != "AAAAAAAAAAAA" || c.Tier != profiles.TierPro || c.DurationDays != 30 {
+		t.Errorf("hydrated code mismatch: %+v", c)
+	}
+	if c.RedeemedByUserID == nil || *c.RedeemedByUserID != "auth0|target" {
+		t.Errorf("redeemer mismatch: %+v", c)
+	}
+	if c.RedeemedAt == nil || !c.RedeemedAt.Equal(redeemedAt) {
+		t.Errorf("RedeemedAt = %v, want %v", c.RedeemedAt, redeemedAt)
+	}
+}
+
+// A user who never redeemed a code yields an empty, non-nil slice.
+func TestCosmosStore_RedeemedByUserID_NoMatches(t *testing.T) {
+	t.Parallel()
+
+	store := NewCosmosStore(newFakeItems())
+	got, err := store.RedeemedByUserID(context.Background(), "auth0|never")
+	if err != nil {
+		t.Fatalf("RedeemedByUserID: %v", err)
+	}
+	if got == nil {
+		t.Error("must return a non-nil empty slice, not nil")
+	}
+	if len(got) != 0 {
+		t.Errorf("count: got %d, want 0", len(got))
+	}
+}
+
 // AnonymiseRedemptionsByUserID scrubs the PII (redeemedByUserId / redeemedAt)
 // from every code the user redeemed while keeping the consumed tombstone, and
 // must leave codes redeemed by other users — and never-redeemed codes —
