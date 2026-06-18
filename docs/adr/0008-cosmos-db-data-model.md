@@ -114,3 +114,14 @@ The Applications container change feed is consumed by the notification processor
 | `NotificationState` | `/userId` | One read-state watermark document per user. Drives unread badge, unread chip, and iOS app-icon badge sync (see `BadgeSync` coordinator in `mobile/ios`). Single-partition point reads on login and on mark-all-read |
 
 - Total containers provisioned remains **10** (Applications, Users, WatchZones, Notifications, NotificationState, Leases, DeviceRegistrations, SavedApplications, PollState, OfferCodes). DecisionAlerts removed; NotificationState added.
+
+### 2026-06-18
+- Added: **`AppleNotifications`** container, partitioned by `/id`. Holds one document per processed App Store Server Notification v2, so a replayed or duplicate notification is processed exactly once. The subscriptions webhook handler reads/writes it for idempotency (`api-go/internal/platform/cosmos.go` `CosmosAppleNotificationsContainer`, `api-go/internal/subscriptions/store_cosmos.go`). This backs the lifecycle-event handling in [ADR 0010](0010-subscription-entitlement-flow.md).
+
+| Container | Partition Key | Rationale |
+|-----------|--------------|-----------|
+| `AppleNotifications` | `/id` | One document per processed App Store Server Notification v2. Point read/upsert keyed by the notification's unique id gives idempotent webhook handling (replayed notifications are no-ops) |
+
+- Corrected: **`PollState` is partitioned by `/id`, not `/authorityCode`.** The document id is `poll-state-<authorityId>`, and the least-recently-polled scan runs as a cross-partition query (`SELECT * FROM c WHERE STARTSWITH(c.id, 'poll-state-')`, see `api-go/internal/polling/statestore.go`). The 2026-04-21 amendment recorded `/authorityCode`, which no longer matches the provisioned container (`infra/environment.go`).
+- Total containers provisioned: **11** (Applications, Users, WatchZones, Notifications, NotificationState, Leases, DeviceRegistrations, SavedApplications, PollState, OfferCodes, AppleNotifications).
+- Unchanged at the **decision** level: the container boundaries, partition strategy, and access patterns are as designed. The backend is now Go (see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)) — the container/partition design carried over intact; only the implementing package names changed (e.g. `api-go/internal/platform/cosmos.go`).

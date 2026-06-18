@@ -47,3 +47,7 @@ We will use the following technology stack for the initial prototype and develop
 ### 2026-06-15
 - Reversed (item 2, backend): the backend API and worker were **migrated from .NET 10 / Native AOT to Go** and the .NET source was deleted. See [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md). The Native AOT rationale (System.Text.Json source generators, reflection avoidance, the custom `CosmosRestClient` from the 2026-03-31 amendment) no longer applies to the backend — Go uses stdlib `net/http`/`encoding/json`/`log/slog` and the official `azcosmos`/`azservicebus` SDKs.
 - Unchanged: every other item in this ADR still holds. iOS (Swift), Azure hosting, Cosmos DB (Serverless), GitHub Actions, and **Pulumi in .NET 10 (C#)** for IaC are all retained. The migration was backend-language-only; `/infra` (Pulumi) and `/cli` remain on .NET.
+
+### 2026-06-18
+- Reversed (item 7, IaC): the **Pulumi infrastructure program was ported from C#/.NET to Go** (zero-diff, no resource changes). See [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md). The 2026-06-15 amendment above said `/infra` "remains on .NET" — that is no longer true. Pulumi is still the IaC tool, with the same stacks and Azure-native provider version (3.16.0); only the program language changed (`runtime: go`, `infra/go.mod`, no `infra/global.json`).
+- Unchanged: **`/cli` remains on .NET** and is now the only .NET component in the repo. iOS (Swift), Azure hosting, Cosmos DB (Serverless), and GitHub Actions still stand.
