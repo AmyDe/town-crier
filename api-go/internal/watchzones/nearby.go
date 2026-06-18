@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
@@ -26,6 +27,12 @@ import (
 // (tc-gpjk) treats any 403 on create as a quota breach and routes to the paywall,
 // so this prose body produces the same Upgrade-Required UX as a structured one.
 const quotaExceededMessage = "Watch zone quota exceeded. Upgrade your subscription for more zones."
+
+// errProfileCASNotWired signals a wiring bug: the create path requires the
+// CAS-backed profile store and refuses to run an unprotected quota check
+// without it. Unreachable in production, where NearbyRoutes is always wired
+// WithProfileCAS.
+var errProfileCASNotWired = errors.New("profile CAS store not wired")
 
 // profileReader loads the caller's profile so the create handler can read the
 // subscription tier for the watch-zone quota check.
@@ -160,17 +167,23 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := profile.Tier.WatchZoneLimit()
-	if limit < math.MaxInt32 {
-		existing, err := h.store.GetByUserID(r.Context(), userID)
-		if err != nil {
-			h.serverError(w, r, "count existing zones", err)
-			return
-		}
-		if len(existing) >= limit {
-			h.writeError(w, r, http.StatusForbidden, quotaExceededMessage)
-			return
-		}
+	// Atomic quota gate: the CAS-backed profile counter is the ONLY create path,
+	// so there is no non-atomic footgun. A nil profileCAS at request time is a
+	// wiring bug (never reachable in production, where NearbyRoutes is always
+	// wired WithProfileCAS); fail closed with a 500 rather than running an
+	// unprotected count-then-save.
+	if h.profileCAS == nil {
+		h.serverError(w, r, "quota gate", errProfileCASNotWired)
+		return
+	}
+	ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, profile.Tier.WatchZoneLimit())
+	if casErr != nil {
+		h.serverError(w, r, "atomic quota check", casErr)
+		return
+	}
+	if !ok {
+		h.writeError(w, r, http.StatusForbidden, quotaExceededMessage)
+		return
 	}
 
 	authorityID := 0
@@ -290,6 +303,70 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		results = append(results, row)
 	}
 	h.writeJSON(w, r, http.StatusOK, results)
+}
+
+// atomicQuotaIncrement tries to atomically claim one slot in the user's
+// watch-zone quota using a bounded CAS retry loop on the profile document.
+// Returns (true, nil) when the slot was claimed, (false, nil) when the quota
+// is already exhausted, or (false, err) on a persistent store failure.
+//
+// The algorithm:
+//  1. Read the profile with its current etag.
+//  2. If WatchZoneCount is nil (legacy profile), lazy-init from the live
+//     zone count — do NOT run a separate migration.
+//  3. Check count < limit; if at/over, return (false, nil).
+//  4. Increment the counter and ReplaceWithETag. On 412 (CAS conflict),
+//     re-read and retry. After maxCASRetries failures return (false, nil)
+//     — quota-exceeded is the safe failure mode.
+func (h *handler) atomicQuotaIncrement(ctx context.Context, userID string, limit int) (bool, error) {
+	for range maxCASRetries {
+		profile, etag, err := h.profileCAS.GetWithETag(ctx, userID)
+		if err != nil {
+			return false, fmt.Errorf("read profile for quota CAS: %w", err)
+		}
+		if profile == nil {
+			return false, errors.New("profile not found for quota check")
+		}
+
+		// Unlimited tier: no slot to claim.
+		if limit >= math.MaxInt32 {
+			return true, nil
+		}
+
+		// Lazy-init: legacy profile has no counter yet. Initialise from the
+		// live zone count (once). Subsequent requests will trust the counter.
+		currentCount := 0
+		if profile.WatchZoneCount == nil {
+			existing, lerr := h.store.GetByUserID(ctx, userID)
+			if lerr != nil {
+				return false, fmt.Errorf("lazy-init zone count: %w", lerr)
+			}
+			currentCount = len(existing)
+		} else {
+			currentCount = *profile.WatchZoneCount
+		}
+
+		if currentCount >= limit {
+			return false, nil
+		}
+
+		// Claim the slot.
+		newCount := currentCount + 1
+		updated := *profile
+		updated.WatchZoneCount = &newCount
+
+		err = h.profileCAS.UpdateZoneCountWithCAS(ctx, userID, &updated, etag)
+		if err == nil {
+			return true, nil // slot claimed
+		}
+		if errors.Is(err, platform.ErrCASPreconditionFailed) {
+			// Lost the race — re-read and retry.
+			continue
+		}
+		return false, fmt.Errorf("quota CAS replace: %w", err)
+	}
+	// Exhausted retries: conservative 403.
+	return false, nil
 }
 
 // boolOrTrue resolves an optional bool flag, defaulting an absent value to true

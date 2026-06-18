@@ -80,9 +80,15 @@ type nearbyDeps struct {
 func newNearbyMux(t *testing.T, d nearbyDeps) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
+	// The CAS gate is the only create path, so every create test wires a CAS
+	// fake seeded from the same profile the reader returns. With a legacy (nil
+	// counter) profile the gate lazy-inits from the live fakeZoneStore count, so
+	// the existing quota assertions (Free at limit -> 403, Pro -> unlimited)
+	// continue to hold.
+	cas := newFakeProfileCAS(d.profiles.profile)
 	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.state, d.unread,
 		func() string { return "zone-123" }, func() time.Time { return nearbyNow },
-		slog.New(slog.DiscardHandler))
+		slog.New(slog.DiscardHandler), WithProfileCAS(cas))
 	return mux
 }
 

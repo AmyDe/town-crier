@@ -35,6 +35,9 @@ type profileDocument struct {
 	OriginalTransactionID *string    `json:"originalTransactionId"`
 	GracePeriodExpiry     *time.Time `json:"gracePeriodExpiry"`
 	LastActiveAt          time.Time  `json:"lastActiveAt"`
+	// watchZoneCount is the CAS quota counter. omitempty so legacy documents
+	// (written before this field existed) remain unchanged on re-read.
+	WatchZoneCount *int `json:"watchZoneCount,omitempty"`
 }
 
 type zonePreferencesDocument struct {
@@ -70,6 +73,7 @@ func newProfileDocument(p *UserProfile) profileDocument {
 		OriginalTransactionID: p.OriginalTransactionID,
 		GracePeriodExpiry:     p.GracePeriodExpiry,
 		LastActiveAt:          p.LastActiveAt,
+		WatchZoneCount:        p.WatchZoneCount,
 	}
 }
 
@@ -100,6 +104,7 @@ func (d profileDocument) toDomain() (*UserProfile, error) {
 		OriginalTransactionID: d.OriginalTransactionID,
 		GracePeriodExpiry:     d.GracePeriodExpiry,
 		LastActiveAt:          d.LastActiveAt,
+		WatchZoneCount:        d.WatchZoneCount,
 	}, nil
 }
 
