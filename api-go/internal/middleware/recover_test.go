@@ -6,20 +6,62 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
 
-// TestRecover_PanicBecomes500WithDetail pins the .NET unhandled-exception
-// contract (GH#418, ErrorResponseMiddleware): a panic in a downstream handler
-// becomes a 500 whose backfilled body carries the panic message in Detail —
-// {"Status":500,"Title":"Internal Server Error","Detail":"<message>"}. Recover
-// runs INSIDE ErrorBody so the envelope is written by the same backfill path
-// that produces the bodyless 4xx envelopes.
-func TestRecover_PanicBecomes500WithDetail(t *testing.T) {
+// logSpy captures slog records for test assertions.
+type logSpy struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (s *logSpy) Enabled(_ context.Context, _ slog.Level) bool { return true }
+
+func (s *logSpy) Handle(_ context.Context, r slog.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records = append(s.records, r.Clone())
+	return nil
+}
+
+func (s *logSpy) WithAttrs(_ []slog.Attr) slog.Handler { return s }
+func (s *logSpy) WithGroup(_ string) slog.Handler      { return s }
+
+// attrString returns the string representation of the first attribute matching
+// key across all captured records, or empty string when absent.
+func (s *logSpy) attrString(key string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.records {
+		var found string
+		var ok bool
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == key {
+				found = a.Value.String()
+				ok = true
+				return false
+			}
+			return true
+		})
+		if ok {
+			return found
+		}
+	}
+	return ""
+}
+
+// TestRecover_PanicBecomes500WithGenericDetail pins the security fix (GH#516):
+// a panic in a downstream handler must produce a 500 whose Detail is the
+// generic constant panicDetail — never the runtime/internal panic text.
+// Recover runs INSIDE ErrorBody so the envelope is written by the same backfill
+// path that produces the bodyless 4xx envelopes.
+func TestRecover_PanicBecomes500WithGenericDetail(t *testing.T) {
 	t.Parallel()
 
-	status, contentType, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
+	spy := &logSpy{}
+	status, contentType, body := serveChainWithLogger(t, slog.New(spy), func(http.ResponseWriter, *http.Request) {
 		panic("boom: handler exploded")
 	})
 
@@ -29,26 +71,37 @@ func TestRecover_PanicBecomes500WithDetail(t *testing.T) {
 	if contentType != "application/json" {
 		t.Errorf("content-type: got %q, want %q", contentType, "application/json")
 	}
-	if want := `{"Status":500,"Title":"Internal Server Error","Detail":"boom: handler exploded"}`; body != want {
+	// Client body must contain the generic detail, not the panic text.
+	want := `{"Status":500,"Title":"Internal Server Error","Detail":"` + panicDetail + `"}`
+	if body != want {
 		t.Errorf("body: got %s, want %s", body, want)
+	}
+	// The full panic text must still be logged server-side for debugging.
+	if got := spy.attrString("error"); got != "boom: handler exploded" {
+		t.Errorf("logged error: got %q, want %q", got, "boom: handler exploded")
 	}
 }
 
-// TestRecover_PanicWithErrorValuePropagatesMessage covers panicking with an
-// error value rather than a string — its Error() text is what .NET's
-// ex.Message would carry.
-func TestRecover_PanicWithErrorValuePropagatesMessage(t *testing.T) {
+// TestRecover_PanicWithErrorValueUsesGenericDetail covers panicking with an
+// error value — the client still sees the generic Detail, not the error text.
+func TestRecover_PanicWithErrorValueUsesGenericDetail(t *testing.T) {
 	t.Parallel()
 
-	status, _, body := serveChain(t, func(http.ResponseWriter, *http.Request) {
+	spy := &logSpy{}
+	status, _, body := serveChainWithLogger(t, slog.New(spy), func(http.ResponseWriter, *http.Request) {
 		panic(context.DeadlineExceeded)
 	})
 
 	if status != http.StatusInternalServerError {
 		t.Errorf("status: got %d, want %d", status, http.StatusInternalServerError)
 	}
-	if want := `{"Status":500,"Title":"Internal Server Error","Detail":"context deadline exceeded"}`; body != want {
+	want := `{"Status":500,"Title":"Internal Server Error","Detail":"` + panicDetail + `"}`
+	if body != want {
 		t.Errorf("body: got %s, want %s", body, want)
+	}
+	// The full deadline exceeded error must still be logged server-side.
+	if got := spy.attrString("error"); got != "context deadline exceeded" {
+		t.Errorf("logged error: got %q, want %q", got, "context deadline exceeded")
 	}
 }
 
@@ -96,11 +149,18 @@ func TestRecover_PanicAfterPartialWriteDoesNotDoubleWrite(t *testing.T) {
 }
 
 // serveChain runs a request through ErrorBody wrapping Recover wrapping the
-// handler — the production ordering for the panic-to-500 path.
+// handler — the production ordering for the panic-to-500 path. Uses a discard
+// logger; use serveChainWithLogger when log assertions are needed.
 func serveChain(t *testing.T, next http.HandlerFunc) (status int, contentType string, body string) {
 	t.Helper()
+	return serveChainWithLogger(t, slog.New(slog.DiscardHandler), next)
+}
 
-	logger := slog.New(slog.DiscardHandler)
+// serveChainWithLogger is like serveChain but accepts an explicit logger,
+// allowing callers to pass a logSpy for server-side log assertions.
+func serveChainWithLogger(t *testing.T, logger *slog.Logger, next http.HandlerFunc) (status int, contentType string, body string) {
+	t.Helper()
+
 	chain := ErrorBody(logger)(Recover(logger)(next))
 	srv := httptest.NewServer(chain)
 	t.Cleanup(srv.Close)
