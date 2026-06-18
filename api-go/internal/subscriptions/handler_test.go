@@ -329,20 +329,16 @@ func TestVerify_ErrorContract(t *testing.T) {
 
 // --- webhook tests ---
 
-func notificationJSON(notifType, subtype, uuid, signedTxn string) string {
-	sub := ""
-	if subtype != "" {
-		sub = fmt.Sprintf(`"subtype":%q,`, subtype)
-	}
-	return fmt.Sprintf(`{"notificationType":%q,%s"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
-		notifType, sub, uuid, signedTxn)
+func notificationJSON(notifType, uuid, signedTxn string) string {
+	return fmt.Sprintf(`{"notificationType":%q,"notificationUUID":%q,"data":{"signedTransactionInfo":%q}}`,
+		notifType, uuid, signedTxn)
 }
 
 func TestWebhook_SubscribedActivatesProfile(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
@@ -366,7 +362,7 @@ func TestWebhook_DuplicateIsNoOp(t *testing.T) {
 	d := newTestDeps()
 	d.byTxn.profile = freshProfile(t)
 	d.idempotency.processed["uuid-1"] = true
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-1", "INNER")
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-1", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs())
 
 	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
@@ -386,7 +382,7 @@ func TestWebhook_UnknownSubscriberStillMarksProcessed(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps()
 	d.byTxn.profile = nil // no matching subscriber
-	d.verifier.results["OUTER"] = notificationJSON("DID_RENEW", "", "uuid-2", "INNER")
+	d.verifier.results["OUTER"] = notificationJSON("DID_RENEW", "uuid-2", "INNER")
 	d.verifier.results["INNER"] = txnJSON(ProductProMonthly, testBundleID, "orig-x", futureExpiryMs())
 
 	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
@@ -589,7 +585,7 @@ func TestWebhook_IgnoresSandboxTransactionInProduction(t *testing.T) {
 	t.Parallel()
 	d := newTestDeps() // allowedEnvs = ["Production"]
 	d.byTxn.profile = freshProfile(t)
-	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "", "uuid-env1", "INNER_SBX")
+	d.verifier.results["OUTER"] = notificationJSON("SUBSCRIBED", "uuid-env1", "INNER_SBX")
 	d.verifier.results["INNER_SBX"] = txnJSONEnv(ProductProMonthly, testBundleID, "orig-1", futureExpiryMs(), "Sandbox")
 
 	rec := d.serve(t, "/v1/webhooks/appstore", `{"signedPayload":"OUTER"}`, false)
