@@ -52,29 +52,54 @@ type idempotencyStore interface {
 }
 
 type handler struct {
-	verifier       jwsVerifier
-	profilesByUser profileByUser
-	profilesByTxn  profileByTxn
-	auth0          tierSync
-	idempotency    idempotencyStore
-	bundleID       string
-	now            func() time.Time
-	logger         *slog.Logger
+	verifier            jwsVerifier
+	profilesByUser      profileByUser
+	profilesByTxn       profileByTxn
+	auth0               tierSync
+	idempotency         idempotencyStore
+	bundleID            string
+	allowedEnvironments []string
+	now                 func() time.Time
+	logger              *slog.Logger
+}
+
+// conflictError signals that the transaction's originalTransactionId is already
+// owned by a different user's profile. The verify endpoint maps it to
+// 409 transaction_already_claimed.
+type conflictError struct{}
+
+func (e *conflictError) Error() string {
+	return "Transaction is already claimed by another account."
+}
+
+// envAllowed reports whether env appears in the allowlist, comparing
+// case-insensitively and after trimming whitespace.
+func envAllowed(env string, allowed []string) bool {
+	env = strings.TrimSpace(env)
+	for _, a := range allowed {
+		if strings.EqualFold(env, strings.TrimSpace(a)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Routes registers the authed verify endpoint and the anonymous App Store
 // webhook on mux. The webhook is authenticated by the signed JWS itself
 // (Apple -> API), so it is added to the wiring's anonymousPatterns.
-func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUser, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, bundleID string, now func() time.Time, logger *slog.Logger) {
+// allowedEnvironments is the set of Apple StoreKit environments the handler
+// accepts (e.g. ["Production"] for prod, ["Sandbox","Production"] for dev).
+func Routes(mux *http.ServeMux, verifier jwsVerifier, profilesByUser profileByUser, profilesByTxn profileByTxn, auth0 tierSync, idempotency idempotencyStore, bundleID string, allowedEnvironments []string, now func() time.Time, logger *slog.Logger) {
 	h := &handler{
-		verifier:       verifier,
-		profilesByUser: profilesByUser,
-		profilesByTxn:  profilesByTxn,
-		auth0:          auth0,
-		idempotency:    idempotency,
-		bundleID:       bundleID,
-		now:            now,
-		logger:         logger,
+		verifier:            verifier,
+		profilesByUser:      profilesByUser,
+		profilesByTxn:       profilesByTxn,
+		auth0:               auth0,
+		idempotency:         idempotency,
+		bundleID:            bundleID,
+		allowedEnvironments: allowedEnvironments,
+		now:                 now,
+		logger:              logger,
 	}
 	mux.HandleFunc("POST /v1/subscriptions/verify", h.verify)
 	mux.HandleFunc("POST /v1/webhooks/appstore", h.webhook)
@@ -177,6 +202,10 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		if txn.BundleID != h.bundleID {
 			return verifyResponse{}, &PayloadError{Message: fmt.Sprintf("Bundle ID mismatch: expected '%s', got '%s'.", h.bundleID, txn.BundleID)}
 		}
+		// F1: reject transactions from environments not in the allowlist.
+		if !envAllowed(txn.Environment, h.allowedEnvironments) {
+			return verifyResponse{}, &PayloadError{Message: fmt.Sprintf("Transaction environment '%s' is not accepted.", txn.Environment)}
+		}
 		// A restore may legitimately include lapsed transactions — skip them.
 		if !txn.ExpiresDate.After(now) {
 			continue
@@ -195,6 +224,18 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 	if highestTier == profiles.TierFree {
 		profile.ExpireSubscription()
 	} else {
+		// F2: enforce single-owner on the original transaction id. A transaction
+		// signed by Apple proves nothing about which account made the purchase; we
+		// reject cross-user linking to prevent one JWS from granting Pro on
+		// unlimited accounts. Same user (idempotent re-verify) or ErrNotFound
+		// (first-time claim) both proceed.
+		existing, err := h.profilesByTxn.GetByOriginalTransactionID(ctx, highestOriginalTxn)
+		switch {
+		case err != nil && !errors.Is(err, profiles.ErrNotFound):
+			return verifyResponse{}, fmt.Errorf("look up transaction owner %q: %w", highestOriginalTxn, err)
+		case err == nil && existing.UserID != userID:
+			return verifyResponse{}, &conflictError{}
+		}
 		profile.LinkOriginalTransactionID(highestOriginalTxn)
 		profile.ActivateSubscription(highestTier, highestExpiry)
 	}
@@ -276,7 +317,11 @@ func (h *handler) runWebhook(ctx context.Context, signedPayload string) error {
 		return fmt.Errorf("locate subscriber: %w", err)
 	}
 
-	if profile != nil {
+	// F1: on the webhook, an environment mismatch is swallowed — the notification
+	// is still marked processed so Apple does not retry, but the profile is not
+	// mutated. This mirrors the "mark processed, no state change" contract of
+	// unknown-subscriber and no-change events already in this path.
+	if profile != nil && envAllowed(txn.Environment, h.allowedEnvironments) {
 		changed, err := applyNotification(profile, notification, txn)
 		if err != nil {
 			return err
@@ -357,6 +402,11 @@ func (h *handler) writeVerifyError(r *http.Request, w http.ResponseWriter, err e
 	var notFound *userNotFoundError
 	if errors.As(err, &notFound) {
 		h.writeError(r, w, http.StatusNotFound, "user_not_found", notFound.Error())
+		return
+	}
+	var conflict *conflictError
+	if errors.As(err, &conflict) {
+		h.writeError(r, w, http.StatusConflict, "transaction_already_claimed", conflict.Error())
 		return
 	}
 	h.serverError(r, w, "verify subscription", err)

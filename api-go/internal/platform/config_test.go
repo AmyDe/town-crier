@@ -403,6 +403,33 @@ func TestLoadConfig_PollingDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_AppleEnvironments(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want []string
+	}{
+		{"default is Production when unset", "", []string{"Production"}},
+		{"single override", "Sandbox", []string{"Sandbox"}},
+		{"comma list with whitespace", " Sandbox , Production ", []string{"Sandbox", "Production"}},
+		{"empty entries dropped", "Production,,", []string{"Production"}},
+		{"case preserved in value", "sandbox", []string{"sandbox"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("APPLE_ENVIRONMENT", tc.env)
+
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if !reflect.DeepEqual(cfg.AppleEnvironments, tc.want) {
+				t.Errorf("AppleEnvironments: got %v, want %v", cfg.AppleEnvironments, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("PLANIT_BASE_URL", "https://stub.planit.test/")
 	t.Setenv("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "5")
