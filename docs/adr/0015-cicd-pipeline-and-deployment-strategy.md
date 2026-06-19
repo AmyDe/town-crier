@@ -86,8 +86,15 @@ The React SPA is deployed to **Azure Static Web Apps** using the official `Azure
 ### 2026-06-18
 - Updated: **the API quality gate now runs Go tooling, not .NET.** The backend was migrated to Go (see [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)), so the "API | `dotnet format` / `dotnet build` (Release) / `dotnet test`" row in the Quality Gates table is historical. Current `pr-gate.yml` jobs:
   - **`go-lint`** + **`go-test`** — `gofmt -l`, `go vet ./...`, `golangci-lint`, `go build ./...`, and `go test -race` with coverage, all against `api-go/`. These are the API gate.
-  - **`cli-format`** + **`cli-build-test`** — `dotnet format --verify-no-changes` and `dotnet test tests/tc.tests`, scoped to **`/cli`** only (the remaining .NET component). The `/api` .NET tree no longer exists.
+  - **`cli-format`** + **`cli-build-test`** — `dotnet format --verify-no-changes` and `dotnet test tests/tc.tests`, scoped to **`/cli`** only (the remaining .NET component). The `/api` .NET tree no longer exists. *(Superseded 2026-06-19 — see the amendment below; the CLI is now Go.)*
   - **`infra-preview`** — still `pulumi preview` with a PR comment, but the Pulumi program is now Go (`infra/`), so the preview job builds Go rather than .NET (`infra/global.json` is gone; see [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md)).
   - **`ios-*`** and **`web-*`** jobs are unchanged.
 - Updated: path-based change detection keys on **`api-go/`** (and `cli/`), not the deleted `api/`.
 - Unchanged: the three-workflow architecture (PR Gate / CD Dev / CD Prod), the single aggregating `gate` check, OIDC federated Azure auth, SHA-tagged container images, and tag-based prod release gating all stand. This amendment is a tooling-language correction only — the deployment strategy is unaffected.
+
+### 2026-06-19
+- Updated: **the CLI quality gate now runs Go tooling, not .NET.** The `tc` CLI was rebuilt in Go (see [ADR 0030](0030-migrate-admin-cli-from-dotnet-to-go.md)), so the `cli-format`/`cli-build-test` description in the 2026-06-18 amendment above is historical. Current `pr-gate.yml` CLI jobs:
+  - **`cli-lint`** (renamed from `cli-format`) — `gofmt -l`, `go vet ./...`, and `golangci-lint`, scoped to `/cli`.
+  - **`cli-build-test`** — `go build ./...` and `go test -race ./...`, scoped to `/cli`.
+- With the backend ([ADR 0028](0028-migrate-backend-from-dotnet-to-go.md)), infrastructure ([ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md)), and now the CLI all on Go, **no `setup-dotnet` step remains in any workflow** — .NET is fully removed from the repository.
+- Unchanged: the `cli/` change-detection category and the two CLI slots in the aggregating `gate` check (the first is now `cli-lint`).

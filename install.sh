@@ -2,26 +2,21 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/.local/bin"
-PROJECT="cli/src/tc/tc.csproj"
-RUNTIME="osx-arm64"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building tc (Native AOT, ${RUNTIME})..."
-dotnet publish "${SCRIPT_DIR}/${PROJECT}" \
-  -r "${RUNTIME}" \
-  -c Release \
-  --nologo \
-  -v quiet
+echo "Building tc (Go, static binary)..."
+mkdir -p "${INSTALL_DIR}"
+CGO_ENABLED=0 go build -C "${SCRIPT_DIR}/cli" \
+  -trimpath -ldflags="-s -w" \
+  -o "${INSTALL_DIR}/tc" \
+  ./cmd/tc
 
-PUBLISH_DIR="${SCRIPT_DIR}/cli/src/tc/bin/Release/net10.0/${RUNTIME}/publish"
-if [[ ! -f "${PUBLISH_DIR}/tc" ]]; then
-  echo "Error: build did not produce ${PUBLISH_DIR}/tc" >&2
+if [[ ! -f "${INSTALL_DIR}/tc" ]]; then
+  echo "Error: build did not produce ${INSTALL_DIR}/tc" >&2
   exit 1
 fi
 
-mkdir -p "${INSTALL_DIR}"
-cp -f "${PUBLISH_DIR}/tc" "${INSTALL_DIR}/tc"
 chmod +x "${INSTALL_DIR}/tc"
 echo "Installed tc to ${INSTALL_DIR}/tc"
 

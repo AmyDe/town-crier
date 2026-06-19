@@ -10,7 +10,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 ```
 /api-go       # Go backend (HTTP API + background worker)
-/cli          # .NET CLI (self-contained)
+/cli          # Go admin CLI (tc)
 /mobile/ios   # Native iOS app (Clean Architecture / MVVM-C)
 /web          # React/TypeScript frontend
 /infra        # Pulumi IaC (.NET 10 / C#)
@@ -26,7 +26,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 | iOS App | Swift, SwiftUI, SwiftData, SPM |
 | Infrastructure | Pulumi (C#/.NET 10) |
 | CI/CD | GitHub Actions |
-| Testing | go test (Go), XCTest/Swift Testing (iOS), Vitest (web), TUnit (.NET CLI/infra) |
+| Testing | go test (Go API + CLI), XCTest/Swift Testing (iOS), Vitest (web), TUnit (.NET infra) |
 
 ## Data Sources
 
@@ -88,8 +88,7 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 
 | Tech stack          | Path             | Skill                     | Worker agent           |
 |---------------------|------------------|---------------------------|------------------------|
-| .NET / C#           | `/cli`           | `dotnet-coding-standards` | `dotnet-tdd-worker`    |
-| Go                  | `/api-go`        | `go-coding-standards`     | `go-tdd-worker`        |
+| Go                  | `/api-go`, `/cli` | `go-coding-standards`    | `go-tdd-worker`        |
 | iOS / Swift         | `/mobile/ios`    | `ios-coding-standards`    | `ios-tdd-worker`       |
 | Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |
 | Pulumi infra (.NET) | `/infra`         | `dotnet-coding-standards` | `pulumi-infra-worker`  |

@@ -1,12 +1,12 @@
 # .NET test consolidation (TUnit + Stryker.NET)
 
-> **Scope note (Phase 3 onward):** the .NET API and worker were migrated to Go and deleted. The Go tests live in `api-go/` and are covered by Go tooling (`go test`), not this reference. The **only** remaining .NET test suite is the CLI's, so that is the sole .NET consolidation target now.
+> **Dormant (2026-06-19 onward):** the repository no longer contains any .NET code. The API and worker were migrated to Go ([ADR 0028](../../../../docs/adr/0028-migrate-backend-from-dotnet-to-go.md)), the Pulumi infra was ported to Go ([ADR 0029](../../../../docs/adr/0029-migrate-infrastructure-from-dotnet-to-go.md)), and the `tc` CLI was rebuilt in Go ([ADR 0030](../../../../docs/adr/0030-migrate-admin-cli-from-dotnet-to-go.md)). There is **no .NET test suite left to consolidate.** This reference is kept only as a record of the TUnit idioms used while .NET was in the tree; resurrect it if a .NET component is ever reintroduced.
 
-## Where tests live
+## Where tests lived
 
-- `cli/tests/tc.tests/` — the self-contained .NET CLI's tests (the only remaining .NET test project; TUnit)
+- `cli/tests/tc.tests/` — the self-contained .NET CLI's tests (TUnit); removed when the CLI moved to Go (`cli/internal/tc/*_test.go`, `go test`).
 
-The CLI is small, so consolidation wins are modest — but the TUnit idioms, mutation-testing gate, and naming conventions below still apply to any .NET test work.
+The TUnit idioms, mutation-testing gate, and naming conventions below applied to that work.
 
 ## Test framework idioms
 
