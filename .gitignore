@@ -111,3 +111,4 @@ email-notifications/
 
 # All beads/autopilot worktrees (blanket — prevents bd worktree create from appending per-worktree lines)
 .claude/worktrees/
+cf-client-ip/
