@@ -6,21 +6,22 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 | Component | Technology |
 |-----------|-----------|
-| Backend API | .NET 10, ASP.NET Core, Native AOT |
+| Backend API | Go (`net/http`, `log/slog`), Azure Container Apps |
 | Web Frontend | React 19, TypeScript, Vite |
 | Database | Azure Cosmos DB (Serverless) |
 | iOS App | Swift, SwiftUI, SwiftData |
-| Infrastructure | Pulumi (C# / .NET 10), Azure Container Apps |
+| Infrastructure | Pulumi (Go), Azure Container Apps |
 | CI/CD | GitHub Actions |
-| Testing | TUnit (.NET), Vitest (Web), XCTest (iOS) |
+| Testing | go test (Go), Vitest (Web), XCTest / Swift Testing (iOS) |
 
 ## Repository Structure
 
 ```plaintext
-/api          — .NET backend (Hexagonal Architecture / Ports & Adapters)
+/api-go       — Go backend: HTTP API + background worker
+/cli          — Go admin CLI (`tc`)
 /web          — React frontend (Vite, Leaflet maps, Auth0)
 /mobile/ios   — Native iOS app (MVVM-C)
-/infra        — Pulumi Infrastructure as Code
+/infra        — Pulumi Infrastructure as Code (Go)
 /docs/adr     — Architecture Decision Records
 ```
 
@@ -28,17 +29,24 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Go 1.26](https://go.dev/dl/) (backend, CLI, and infrastructure)
 - [Node.js](https://nodejs.org/) (for web development)
 - [Xcode](https://developer.apple.com/xcode/) (for iOS development)
-- [Docker](https://www.docker.com/) (for running integration tests)
 
-### API
+### Backend API
 
 ```bash
-cd api
-dotnet build
-dotnet test
+cd api-go
+go build ./...
+go test ./...
+```
+
+### Admin CLI
+
+```bash
+cd cli
+go build ./...
+go test ./...
 ```
 
 ### Web
@@ -61,10 +69,12 @@ swift test
 
 ## Architecture
 
-Town Crier follows a **hexagonal architecture** (ports and adapters) on the backend with **CQRS** for command/query separation and **Domain-Driven Design** with rich domain models. The web frontend uses **React** with **Leaflet** for interactive maps, **Auth0** for authentication, and **React Query** for server state. The iOS app uses **MVVM-C** (Model-View-ViewModel-Coordinator) with Swift Concurrency.
+The backend is a **Go** service — an HTTP API plus a background worker — with a flat, feature-sliced layout under `internal/`, built on the standard library (`net/http`, `log/slog`) and the official Azure SDKs for Cosmos DB and Service Bus. The web frontend uses **React** with **Leaflet** for interactive maps, **Auth0** for authentication, and **React Query** for server state. The iOS app uses **MVVM-C** (Model-View-ViewModel-Coordinator) with Swift Concurrency. Infrastructure is defined with **Pulumi** in Go.
 
 Data is ingested from [PlanIt](https://www.planit.org.uk/) via a polling-based model. See the [Architecture Decision Records](docs/adr/) for detailed design rationale.
 
 ## License
 
 See [LICENSE](LICENSE) for details.
+</content>
+</invoke>
