@@ -201,6 +201,50 @@ jobs:
       - run: swift test
         working-directory: mobile/ios
 
+  ios-release-note-guard:
+    name: "iOS: Release-note guard"
+    needs: changes
+    if: needs.changes.outputs.ios == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Ensure iOS changes carry a user-note signal
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # A user-facing iOS change must surface in the App Store / TestFlight
+          # changelog. scripts/ios-release-notes.sh derives that changelog from
+          # (1) Release-Note: trailers, then (2) cleaned mobile/ios subjects. A PR
+          # whose squash subject (the PR title) has no recognised conventional
+          # type AND no Release-Note: trailer falls through to the stock line —
+          # which is how v0.15.23's onboarding-wizard launch shipped with no real
+          # notes (tc-0557). Block that class of PR here.
+
+          # Signal 1: any Release-Note: trailer in the PR's commits.
+          if git log --format='%B' "origin/${BASE_REF}..HEAD" | grep -qiE '^Release-Note:'; then
+            echo "✓ Release-Note: trailer present — App Store note authored verbatim."
+            exit 0
+          fi
+
+          # Signal 2: PR title carries a recognised conventional-commit type.
+          #   feat/fix   → generates a cleaned user note (Tier 2)
+          #   chore/ci/… → explicit, intentional opt-out (no note, by design)
+          if printf '%s' "$PR_TITLE" \
+              | grep -qiE '^(feat|fix|chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:'; then
+            echo "✓ PR title has a conventional-commit type prefix: $PR_TITLE"
+            exit 0
+          fi
+
+          echo "::error::iOS-touching PR has no Release-Note: trailer and the PR title has no conventional-commit type prefix: '$PR_TITLE'"
+          echo "::error::The App Store / TestFlight changelog would silently fall back to the generic stock line."
+          echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(ios):/fix(ios): for user-facing changes, or chore(ios):/test(ios): etc. to opt out."
+          exit 1
+
   # ── Web ──────────────────────────────────────────────
 
   web-lint:
@@ -304,7 +348,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [go-lint, go-test, cli-format, cli-build-test, ios-lint, ios-build-test, web-lint, web-build-test, infra-preview]
+    needs: [go-lint, go-test, cli-format, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -318,6 +362,7 @@ jobs:
             "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
+            "${{ needs.ios-release-note-guard.result }}"
             "${{ needs.web-lint.result }}"
             "${{ needs.web-build-test.result }}"
             "${{ needs.infra-preview.result }}"
