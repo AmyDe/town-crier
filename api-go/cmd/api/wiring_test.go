@@ -191,9 +191,6 @@ func TestRouter_AnonymousRoutesServedWithoutToken(t *testing.T) {
 		{"/v1/version-config", http.StatusOK},
 		{"/v1/legal/privacy", http.StatusOK},
 		{"/v1/legal/unknown", http.StatusNotFound}, // anonymous route, bodyless 404 backfilled
-		{"/v1/authorities", http.StatusOK},
-		{"/v1/authorities/384", http.StatusOK},
-		{"/v1/authorities/99999999", http.StatusNotFound},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			t.Parallel()
@@ -221,6 +218,9 @@ func TestRouter_FallbackDeny(t *testing.T) {
 		{"me without token", http.MethodGet, "/v1/me"},
 		{"root", http.MethodGet, "/"},
 		{"unknown path", http.MethodGet, "/v1/nope"},
+		// Authorities routes are authed (GH#418): no token -> 401.
+		{"authorities list without token", http.MethodGet, "/v1/authorities"},
+		{"authority by id without token", http.MethodGet, "/v1/authorities/384"},
 		{"non-int authority id", http.MethodGet, "/v1/authorities/abc"},
 		{"wrong method on me", http.MethodPut, "/api/me"},
 		// Geocode and designations are authed, not anonymous: no token -> 401.
@@ -326,6 +326,21 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	}
 	if got := strings.TrimSpace(rec.Body.String()); got != `{"authorities":[],"count":0}` {
 		t.Errorf("GET /v1/me/application-authorities body = %s", got)
+	}
+
+	// Authorities routes are authed (GH#418): a valid token reaches the handlers,
+	// which are backed by embedded reference data (independent of the stores).
+	rec = serveReq(t, h, http.MethodGet, "/v1/authorities", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/authorities status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = serveReq(t, h, http.MethodGet, "/v1/authorities/384", "", "Bearer tok")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/authorities/384 status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	rec = serveReq(t, h, http.MethodGet, "/v1/authorities/99999999", "", "Bearer tok")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("GET /v1/authorities/99999999 status = %d body = %s", rec.Code, rec.Body.String())
 	}
 
 	// Anonymous routes stay unmetered even on the store-wired router.
