@@ -26,6 +26,12 @@ public final class AppCoordinator: ObservableObject {
   /// Settings sheet — bound to the gear-icon toolbar action installed on each tab.
   @Published public var isSettingsPresented = false
   @Published public private(set) var subscriptionTier: SubscriptionTier = .free
+  /// Drives the root view's choice between the onboarding wizard, a loading
+  /// screen, and the main tab view (tc-w3cb.1). Seeded from the device-local
+  /// completion latch as a fast path so returning users skip the loading
+  /// screen, then confirmed authoritatively against account state by
+  /// ``determineOnboarding()``.
+  @Published public internal(set) var onboardingPresentation: OnboardingPresentation = .undetermined
 
   public var isOnboardingComplete: Bool {
     onboardingRepository.isOnboardingComplete
@@ -38,12 +44,15 @@ public final class AppCoordinator: ObservableObject {
   private let subscriptionService: SubscriptionService
   let userProfileRepository: UserProfileRepository
   private let tierResolver: SubscriptionTierResolving
-  private let onboardingRepository: OnboardingRepository
+  // Internal (not private) so the AppCoordinator+Onboarding extension can read it.
+  let onboardingRepository: OnboardingRepository
   let notificationService: NotificationService
-  private let offlineRepository: OfflineAwareRepository?
+  // Internal (not private) so the AppCoordinator+WatchZones extension can read it.
+  let offlineRepository: OfflineAwareRepository?
   let authorityRepository: ApplicationAuthorityRepository?
   let watchZoneRepository: WatchZoneRepository
-  private let geocoder: PostcodeGeocoder?
+  // Internal (not private) so the AppCoordinator+Onboarding extension can read it.
+  let geocoder: PostcodeGeocoder?
   private let appVersionProvider: AppVersionProvider
   private let versionConfigService: VersionConfigService
   private let savedApplicationRepository: SavedApplicationRepository?
@@ -53,10 +62,17 @@ public final class AppCoordinator: ObservableObject {
   let badgeSetter: BadgeSetting?
   // Cached strongly so SwiftUI's factory re-evaluation doesn't leave the
   // coordinator with a dangling reference; editor `onSave` needs a live VM.
-  private var watchZoneListViewModel: WatchZoneListViewModel?
+  // Internal (not private) so the AppCoordinator+WatchZones extension owns it.
+  var watchZoneListViewModel: WatchZoneListViewModel?
+  // Retained so the live subscription tier can be pushed into the wizard in
+  // place (rather than rebuilding it and losing in-progress postcode/geocode),
+  // and so SwiftUI's StateObject and the coordinator converge on one instance.
+  // Internal (not private) so the AppCoordinator+Onboarding extension owns it.
+  var onboardingViewModel: OnboardingViewModel?
   // In-flight tasks tests can await deterministically (no `Task.sleep`).
   var pendingOfferCodeRefresh: Task<Void, Never>?
-  private var pendingWatchZoneRefresh: Task<Void, Never>?
+  // Internal (not private) so the AppCoordinator+WatchZones extension can drive it.
+  var pendingWatchZoneRefresh: Task<Void, Never>?
   var pendingDetailLoad: Task<Void, Never>?
   // Push-tap watermark advance — fire-and-forget but stored so tests can
   // await deterministically (tc-1nsa.9).
@@ -116,6 +132,14 @@ public final class AppCoordinator: ObservableObject {
     if let cached = self.tierCache.string(forKey: Self.tierCacheKey),
       let tier = SubscriptionTier(rawValue: cached) {
       subscriptionTier = tier
+    }
+
+    // Fast path: a returning user who already completed onboarding on this
+    // device skips the loading screen and lands straight in the app. Account
+    // state stays authoritative — `determineOnboarding()` reconfirms against
+    // the server and can still surface the wizard for a zero-zone account.
+    if onboardingRepository.isOnboardingComplete {
+      onboardingPresentation = .notRequired
     }
   }
 
@@ -248,82 +272,10 @@ public final class AppCoordinator: ObservableObject {
     )
     subscriptionTier = result.tier
     tierCache.set(result.tier.rawValue, forKey: Self.tierCacheKey)
-  }
-
-  // MARK: - Watch Zone Factories
-
-  public func makeWatchZoneListViewModel() -> WatchZoneListViewModel {
-    // Reuse the cached VM only while its gate still reflects the current tier.
-    // The tier resolves from the default `.free` to a paid tier *after* the VM
-    // is first built (resolveSubscriptionTier runs asynchronously at launch),
-    // and the list is keyed `.id(subscriptionTier)` so the view rebuilds on the
-    // change. Returning a stale `.free` gate kept the upgrade badge on the +
-    // button once the 1-zone free limit was hit, blocking paid users below
-    // their actual limit (tc-ujct). Rebuild with a fresh gate when the tier
-    // differs; same-tier calls still return a stable instance so the editor's
-    // post-save reload path converges on the retained VM.
-    if let cached = watchZoneListViewModel, cached.featureGate.tier == subscriptionTier {
-      return cached
-    }
-    let viewModel = WatchZoneListViewModel(
-      repository: watchZoneRepository,
-      featureGate: FeatureGate(tier: subscriptionTier)
-    )
-    viewModel.onAddZone = { [weak self] in
-      self?.isAddingWatchZone = true
-    }
-    viewModel.onEditZone = { [weak self] zone in
-      self?.editingWatchZone = zone
-    }
-    viewModel.onViewPlans = { [weak self] in
-      self?.isSubscriptionPresented = true
-    }
-    watchZoneListViewModel = viewModel
-    return viewModel
-  }
-
-  public func makeWatchZoneEditorViewModel(
-    editing zone: WatchZone? = nil
-  ) -> WatchZoneEditorViewModel {
-    guard let geocoder else {
-      fatalError("PostcodeGeocoder must be injected to create WatchZoneEditorViewModel")
-    }
-    let viewModel = WatchZoneEditorViewModel(
-      geocoder: geocoder,
-      repository: watchZoneRepository,
-      tier: subscriptionTier,
-      editing: zone
-    )
-    let isEditing = zone != nil
-    viewModel.onUpgradeRequired = { [weak self] in
-      // Quota breach on save (tc-gpjk): close the editor sheet and present the
-      // subscription paywall instead of showing an inline error.
-      self?.isAddingWatchZone = false
-      self?.editingWatchZone = nil
-      self?.isSubscriptionPresented = true
-    }
-    viewModel.onSave = { [weak self] saved in
-      self?.isAddingWatchZone = false
-      self?.editingWatchZone = nil
-      self?.pendingWatchZoneRefresh = Task { [weak self] in
-        // Invalidate the per-zone applications cache before reloading so a
-        // radius/centre change does not serve a stale cache hit on the
-        // Apps view for up to the cache TTL (tc-9vid).
-        if isEditing, let offlineRepository = self?.offlineRepository {
-          await offlineRepository.invalidateCache(for: saved.id)
-        }
-        await self?.watchZoneListViewModel?.load()
-      }
-    }
-    return viewModel
-  }
-
-  /// Test-only synchronisation: await the most recently kicked-off post-save
-  /// watch-zone reload so assertions happen after the list view-model has
-  /// been refreshed against the latest repository state. Replaces flaky
-  /// `Task.sleep(...)` waits in tests.
-  public func waitForPendingWatchZoneRefresh() async {
-    await pendingWatchZoneRefresh?.value
+    // Keep an in-flight onboarding wizard's tier live so the radius step can
+    // unlock the paid range the moment a purchase resolves, without rebuilding
+    // the wizard and losing the user's in-progress postcode (tc-w3cb.1/.3).
+    onboardingViewModel?.subscriptionTier = result.tier
   }
 
   // MARK: - Settings Navigation

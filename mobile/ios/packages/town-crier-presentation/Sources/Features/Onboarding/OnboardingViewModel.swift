@@ -22,6 +22,14 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
   private var createdWatchZone: WatchZone?
   @Published public private(set) var isComplete = false
 
+  /// The user's current subscription tier, injected at construction and kept
+  /// fresh by ``AppCoordinator`` (it updates this in place when the live tier
+  /// resolves, e.g. after an in-wizard purchase). It is `@Published` so the
+  /// radius step can unlock the larger paid range reactively *without* the
+  /// wizard being rebuilt — a `.id(tier)` rebuild would discard the in-progress
+  /// postcode/geocode, which must survive the upgrade round-trip (tc-w3cb.3).
+  @Published public internal(set) var subscriptionTier: SubscriptionTier
+
   var onComplete: ((WatchZone) -> Void)?
 
   private let geocoder: PostcodeGeocoder
@@ -33,12 +41,14 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     geocoder: PostcodeGeocoder,
     watchZoneRepository: WatchZoneRepository,
     onboardingRepository: OnboardingRepository,
-    notificationService: NotificationService
+    notificationService: NotificationService,
+    subscriptionTier: SubscriptionTier = .free
   ) {
     self.geocoder = geocoder
     self.watchZoneRepository = watchZoneRepository
     self.onboardingRepository = onboardingRepository
     self.notificationService = notificationService
+    self.subscriptionTier = subscriptionTier
   }
 
   public func advance() {
