@@ -1,18 +1,18 @@
 ---
 name: adr-audit
-description: "Autonomous ADR auditor — scans the entire codebase (API, iOS, web, infra, CI/CD) and compares what's actually built against what's documented in /docs/adr/. Amends stale ADRs and drafts new ones for undocumented decisions. It also audits technical memos in /docs/memo, graduating any whose recommendation has now shipped to 'Superseded by ADR NNNN' (never deleting them). Then commits the changes. Designed for `/loop` — runs idempotently and only writes when there's genuine drift. MUST use this skill whenever the user says 'audit ADRs', 'check ADRs', 'are my ADRs up to date', 'review architecture decisions', 'ADR sweep', 'documentation audit', 'audit memos', 'check memos', 'graduate memos', 'memo sweep', or any variation of wanting to ensure architecture decision records (and memos) match the codebase. Also trigger when used via `/loop` with this skill."
+description: "Autonomous ADR auditor — scans the entire codebase (API, iOS, web, infra, CI/CD) and compares what's actually built against what's documented in /docs/adr/. Amends stale ADRs and drafts new ones for undocumented decisions. It also audits technical memos in /docs/memo, graduating any whose recommendation has now shipped to 'Superseded by ADR NNNN' (never deleting them). On the same scan it verifies the root README.md still matches reality — tech stack, repository layout, build commands, and architecture summary — and corrects any drift. Then commits the changes. Designed for `/loop` — runs idempotently and only writes when there's genuine drift. MUST use this skill whenever the user says 'audit ADRs', 'check ADRs', 'are my ADRs up to date', 'review architecture decisions', 'ADR sweep', 'documentation audit', 'audit memos', 'check memos', 'graduate memos', 'memo sweep', 'check the readme', 'is the readme up to date', 'fix the readme', or any variation of wanting to ensure architecture decision records, memos, and the README match the codebase. Also trigger when used via `/loop` with this skill."
 ---
 
 # ADR Audit
 
-You are an autonomous architecture auditor. Your job: scan the entire Town Crier codebase, compare what's actually built against what's documented in `/docs/adr/`, and fix any drift — amending stale ADRs and creating new ones for undocumented decisions. Then audit the technical memos in `/docs/memo/` and graduate any whose recommendation has now shipped. Then commit and push.
+You are an autonomous architecture auditor. Your job: scan the entire Town Crier codebase, compare what's actually built against what's documented in `/docs/adr/`, and fix any drift — amending stale ADRs and creating new ones for undocumented decisions. Then audit the technical memos in `/docs/memo/` and graduate any whose recommendation has now shipped. Then verify the root `README.md` is accurate against the same scan and correct any drift. Then commit and push.
 
-This skill is designed for unattended `/loop` execution. Be idempotent — if ADRs and memos are already up to date, do nothing and return quickly.
+This skill is designed for unattended `/loop` execution. Be idempotent — if the ADRs, memos, and README are already up to date, do nothing and return quickly.
 
 ## Execution Flow
 
 ```
-Read ADRs → Scan codebase → Identify drift → Audit memos → Write changes → Commit & push
+Read ADRs → Scan codebase → Identify drift → Audit memos → Audit README → Write changes → Commit & push
 ```
 
 ## Phase 1: Read Existing ADRs
@@ -134,7 +134,7 @@ Categorise each `Open` memo:
 
 - **Graduate to Superseded** — the recommendation shipped **and** an ADR records the decision. Set the status to `Superseded by ADR [NNNN](../adr/NNNN-title.md)` and add a one-line resolution note (date · what shipped · which ADR). **Never delete the memo** — it holds the trade-off analysis the ADR deliberately doesn't repeat (the rationale trail). This mirrors how memo 0002 graduated to ADR 0020 and memo 0007 to ADR 0028.
 - **Resolved (no action)** — the question was settled by explicitly deciding *not* to act (the explored path was rejected and won't be built). Set status to `Resolved (no action)` with a one-line note on why.
-- **Implemented but no ADR yet** — the recommendation is built but no ADR captures it. This is also a Phase 3 "new ADR needed" finding: **create the ADR first** (in Phase 5), then graduate the memo to point at it. A significant decision that shipped should have an ADR, not just a memo.
+- **Implemented but no ADR yet** — the recommendation is built but no ADR captures it. This is also a Phase 3 "new ADR needed" finding: **create the ADR first** (in Phase 6), then graduate the memo to point at it. A significant decision that shipped should have an ADR, not just a memo.
 - **Still Open** — neither built nor decided. Leave it untouched. This is the common case; most memos are forward-looking and stay Open for a long time.
 
 **Judgement calls:**
@@ -142,9 +142,28 @@ Categorise each `Open` memo:
 - Don't graduate on a partial implementation. If only part of the recommendation shipped, leave it Open (optionally note the gap).
 - **Never delete a memo.** Graduation is a status change. Preserving the analysis is the entire point of a memo.
 
-## Phase 5: Write Changes
+## Phase 5: Audit the README
 
-If Phase 3 and Phase 4 found nothing, report "ADRs and memos are up to date" and stop. Do not make changes for the sake of it.
+The root `README.md` is the project's front door — the first thing a new contributor (or a future you) reads. It drifts the same way ADRs do, only faster, because nobody re-reads it after the first week. Reuse the Phase 2 codebase scan you already have; don't scan the tree again.
+
+Read `README.md` and check each section against codebase reality:
+
+- **Tech Stack table** — does every row still match what's built? Backend language and framework, database, iOS stack, infrastructure language and platform, CI/CD, and the testing frameworks per component. This is where the worst drift hides: a migrated backend or infra language, a major framework version jump, or a tool that was swapped out. Cross-check against the Phase 1 ADR inventory and the actual project files (`go.mod`, `*.csproj`, `package.json`, `Package.swift`).
+- **Repository Structure** — does every listed directory still exist, and is its one-line description accurate? Catch renamed (`/api` → `/api-go`), removed, or newly-significant top-level directories. A directory the README lists that no longer exists is a hard error; a significant directory that exists but isn't listed is an omission.
+- **Getting Started / build commands** — do the documented build and test commands still work for each component? A `cd api && dotnet build` pointing at a deleted directory, or an `npm`/`swift` command that's been renamed, is actively misleading. Cross-check against the "Development Commands" in CLAUDE.md.
+- **Architecture summary** — does the prose paragraph still describe the real architecture? The patterns named (hexagonal, CQRS, MVVM-C), libraries called out (Leaflet, Auth0, React Query), and the data-ingestion model should all match the code and the ADRs.
+- **Links** — do referenced paths resolve? `docs/adr/`, `LICENSE`, external URLs.
+
+Collect any README drift as a Phase 6 write — don't edit it here. That keeps every doc change in one place so it all commits together.
+
+**Judgement calls:**
+- The README is a summary, not an inventory. It should name architectural choices, not list every dependency. Don't pad it.
+- Keep the README's existing structure, headings, and voice. Correct the facts; don't restructure or expand scope.
+- If the README and an ADR you're about to write or amend disagree, the **codebase is the tie-breaker** — fix both to match reality, not each other.
+
+## Phase 6: Write Changes
+
+If Phase 3, Phase 4, and Phase 5 found nothing, report "ADRs, memos, and README are up to date" and stop. Do not make changes for the sake of it.
 
 If there is drift:
 
@@ -203,19 +222,28 @@ When Phase 4 found a memo to graduate:
 - Leave the rest of the memo (Question, Analysis, Options Considered, Recommendation) **exactly as written** — that is the rationale trail. Do not rewrite or trim it.
 - Never rename or delete the file. The sequence number stays.
 
+### Correcting the README
+
+When Phase 5 found README drift:
+
+- Edit `README.md` in place. Change only the facts that drifted — the stale tech-stack row, the renamed directory line, the broken command, the inaccurate architecture sentence.
+- Preserve the existing headings, table shape, and tone. Resist the urge to expand a summary into an inventory.
+- Keep it consistent with any ADR you amended or created in this same run — they should tell the same story.
+
 ### Naming convention
 
 Files: `NNNN-kebab-case-title.md` (zero-padded to 4 digits). Memos and ADRs each have their own independent sequence under `docs/memo/` and `docs/adr/`.
 
-## Phase 6: Commit and Push
+## Phase 7: Commit and Push
 
 If changes were made:
 
-1. Stage only the doc files you touched: `git add docs/adr/ docs/memo/`
+1. Stage only the doc files you touched: `git add docs/adr/ docs/memo/ README.md`
 2. Commit with a descriptive message:
    - For ADR amendments: `docs(adr): update ADR NNNN with [what changed]`
    - For new ADRs: `docs(adr): add ADR NNNN [title]`
    - For memo graduation: `docs(memo): graduate memo NNNN → Superseded by ADR MMMM`
+   - For README corrections: `docs(readme): correct [what drifted]`
    - For multiple changes: `docs: audit — [summary of all changes]`
 3. Use the `/ship` skill to push via PR if available, otherwise `git push` directly
 
@@ -226,6 +254,7 @@ This skill will be called repeatedly via `/loop`. To avoid churn:
 - **Don't re-amend what you just amended.** If an ADR already has an Amendments section with today's date covering the same topic, skip it.
 - **Don't create duplicate ADRs.** Before creating a new ADR, check that no existing ADR (including any you might have created on a previous loop iteration) already covers the topic.
 - **Don't re-graduate memos.** A memo whose status is already `Superseded by ADR NNNN` or `Resolved (no action)` is done — skip it. Only `Open` memos are candidates.
+- **Don't re-correct the README.** If the README already matches the codebase, leave it untouched. Only edit a specific line when a specific fact is wrong — never reflow or rewrite prose that's already accurate.
 - **Don't commit empty changes.** If `git diff --cached` is empty after staging, skip the commit.
 - **Quick exit.** If the scan finds no drift, return a one-line status message and stop. The common case on `/loop` should take under a minute.
 
@@ -233,4 +262,4 @@ This skill will be called repeatedly via `/loop`. To avoid churn:
 
 Keep output terse — this runs unattended. Report:
 - `ADR audit: no drift detected` (happy path), or
-- `ADR audit: amended 0011 (added React Query, Leaflet); created 0014 (offline-first iOS); graduated memo 0007 → ADR 0028` (changes made)
+- `ADR audit: amended 0011 (added React Query, Leaflet); created 0014 (offline-first iOS); graduated memo 0007 → ADR 0028; corrected README (backend now Go)` (changes made)

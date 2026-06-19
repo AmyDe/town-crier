@@ -3,7 +3,7 @@
 Date: 2026-03-16
 
 ## Status
-Accepted — backend technology choice (item 2) reversed by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md); all other choices stand.
+Accepted — the backend (item 2) and IaC (item 7) technology choices have since been reversed by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md) and [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md), and the admin CLI (added after this ADR, originally .NET) was migrated by [ADR 0030](0030-migrate-admin-cli-from-dotnet-to-go.md); **.NET is no longer used anywhere in the repository.** All non-.NET choices stand: iOS (Swift), Azure hosting, Cosmos DB (Serverless), the Cosmos-SDK / no-ORM data-access pattern, and GitHub Actions.
 
 ## Context
 The project "town-crier" requires a mobile application and a supporting backend API. The primary mobile platform is iOS, and the backend needs to be hosted in a cloud environment with strong enterprise support and scalability.
@@ -51,3 +51,7 @@ We will use the following technology stack for the initial prototype and develop
 ### 2026-06-18
 - Reversed (item 7, IaC): the **Pulumi infrastructure program was ported from C#/.NET to Go** (zero-diff, no resource changes). See [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md). The 2026-06-15 amendment above said `/infra` "remains on .NET" — that is no longer true. Pulumi is still the IaC tool, with the same stacks and Azure-native provider version (3.16.0); only the program language changed (`runtime: go`, `infra/go.mod`, no `infra/global.json`).
 - Unchanged: **`/cli` remains on .NET** and is now the only .NET component in the repo. iOS (Swift), Azure hosting, Cosmos DB (Serverless), and GitHub Actions still stand.
+
+### 2026-06-19
+- Reversed (CLI): the admin CLI (`/cli`, originally C#/.NET 10 Native AOT — added after this ADR) was **rebuilt in Go**, feature-identical. See [ADR 0030](0030-migrate-admin-cli-from-dotnet-to-go.md). The 2026-06-18 amendment's closing line — "`/cli` remains on .NET and is now the only .NET component in the repo" — no longer holds.
+- Current state: **.NET is fully removed from the repository.** The server-side stack is Go (backend, infrastructure, and CLI), with iOS (Swift) and web (TypeScript) as the only other ecosystems. No `setup-dotnet`, NuGet cache, or .NET SDK pin remains anywhere in CI or the repo. This closes the language consolidation begun by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md) and [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md).
