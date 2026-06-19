@@ -44,6 +44,18 @@ public final class WatchZoneListViewModel: ObservableObject, ErrorHandlingViewMo
     featureGate.shouldShowUpgradeBadge(for: .watchZones, currentCount: zones.count)
   }
 
+  /// Whether to show the richer free-tier inline upsell card beneath the zone list.
+  ///
+  /// Single source of truth for that card. True only for a free-tier user who has
+  /// used their single allowed zone. Paid users never see it, including a Personal
+  /// user sitting at their finite 3-zone cap (where `showUpgradeBadge` is also true,
+  /// which is why the card must not piggyback on it). Below-cap free users see
+  /// nothing. Because tier-keyed views rebuild on `coordinator.subscriptionTier`,
+  /// the card disappears live after an in-app purchase with no extra work.
+  public var showsFreeTierUpsell: Bool {
+    featureGate.tier == .free && !canAddZone
+  }
+
   public func load() async {
     isLoading = true
     error = nil
