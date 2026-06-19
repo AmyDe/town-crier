@@ -61,8 +61,7 @@ public struct WatchZoneListView: View {
         onViewPlans: { viewModel.viewPlans() },
         onDismiss: { viewModel.dismissUpgradePrompt() }
       )
-      .presentationDetents([.medium])
-      .presentationDragIndicator(.visible)
+      .selfSizingSheet()
     }
   }
 
