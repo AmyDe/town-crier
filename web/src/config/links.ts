@@ -1,8 +1,8 @@
 /**
  * Public download link for the iOS app.
  *
- * Currently points at the TestFlight beta because Town Crier is not yet on the
- * App Store. Swap this for the App Store URL (https://apps.apple.com/app/...)
- * at GA — every download CTA reads from here, so it's a one-line change.
+ * Points at the live App Store listing. Every download CTA reads from here,
+ * so swapping this single value updates them all.
  */
-export const APP_DOWNLOAD_URL = 'https://testflight.apple.com/join/7fZTBZQN';
+export const APP_DOWNLOAD_URL =
+  'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657';
