@@ -29,8 +29,7 @@ extension View {
           entitlement.wrappedValue = nil
         }
       )
-      .presentationDetents([.medium])
-      .presentationDragIndicator(.visible)
+      .selfSizingSheet()
     }
   }
 }
