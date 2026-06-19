@@ -102,6 +102,15 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     isLoading = false
   }
 
+  /// The maximum radius the user's tier permits, in metres. The radius slider
+  /// is bounded at this so a free user cannot pick a zone larger than their
+  /// tier allows — replacing the old discrete picker that wrongly offered 5 km
+  /// to free accounts (cap 2 km). Shared source of truth with the editor via
+  /// ``WatchZoneLimits`` (tc-w3cb.2).
+  public var maxRadiusMetres: Double {
+    WatchZoneLimits(tier: subscriptionTier).maxRadiusMetres
+  }
+
   /// Whether to surface the "this zone may produce lots of notifications" callout
   /// (tc-1zb7). Triggered at or above 2 km, the upper edge of the recommended
   /// "small zone" range — see `LargeRadiusWarningView`.

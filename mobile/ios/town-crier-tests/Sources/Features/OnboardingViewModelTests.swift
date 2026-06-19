@@ -231,4 +231,28 @@ struct OnboardingViewModelTests {
     #expect(completedZone != nil)
     #expect(completedZone?.radiusMetres == 1000)
   }
+
+  // MARK: - Tier-bounded radius (tc-w3cb.2)
+
+  private func makeViewModel(tier: SubscriptionTier) -> OnboardingViewModel {
+    OnboardingViewModel(
+      geocoder: SpyPostcodeGeocoder(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      subscriptionTier: tier
+    )
+  }
+
+  @Test func maxRadiusMetres_freeTier_capsAt2km() {
+    #expect(makeViewModel(tier: .free).maxRadiusMetres == 2000)
+  }
+
+  @Test func maxRadiusMetres_personalTier_capsAt5km() {
+    #expect(makeViewModel(tier: .personal).maxRadiusMetres == 5000)
+  }
+
+  @Test func maxRadiusMetres_proTier_capsAt10km() {
+    #expect(makeViewModel(tier: .pro).maxRadiusMetres == 10000)
+  }
 }
