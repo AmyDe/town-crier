@@ -73,6 +73,45 @@ struct AppCoordinatorTierResolutionTests {
     #expect(profileSpy.createCallCount >= 1)
   }
 
+  @Test
+  func resolveSubscriptionTier_reEnsuresServerProfile_afterSignIn() async {
+    // Regression for tc-k9fk (GA-breaking first-run watch-zone 500). On a fresh
+    // install the launch-time tier resolve runs while the user is still
+    // UNauthenticated, so POST /v1/me cannot create a Cosmos UserProfile (no
+    // token -> the request 401s and ServerTierResolver swallows it). The user
+    // then signs in. The fix keys the launch
+    // `.task(id: loginViewModel.isAuthenticated)` so resolveSubscriptionTier()
+    // RE-RUNS on the unauthenticated->authenticated transition, ensuring the
+    // profile on the post-auth path -- not only at launch. Without the re-run
+    // the profile never exists this session and the first watch-zone POST 500s
+    // (its quota check loads the profile and hits a Cosmos 404).
+    //
+    // The view wiring (`.task(id:)`) lives in the non-testable app target, so
+    // this locks the coordinator-side invariant the fix depends on: a resolve
+    // AFTER sign-in re-invokes create() and applies the ensured tier.
+    let (sut, authSpy, _, profileSpy) = makeSUT()
+
+    // Phase 1 -- first launch while UNauthenticated. The unauthenticated
+    // POST /v1/me 401s server-side, so create() fails and no profile is
+    // established this pass.
+    authSpy.currentSessionResult = nil
+    profileSpy.createResult = .failure(DomainError.networkUnavailable)
+    await sut.resolveSubscriptionTier()
+    let createCallsBeforeSignIn = profileSpy.createCallCount
+
+    // Phase 2 -- the user signs in; a session (and token) is now available, so
+    // the idempotent POST /v1/me succeeds and backfills the server profile.
+    authSpy.currentSessionResult = .valid
+    profileSpy.createResult = .success(makeServerProfile(tier: .personal))
+    await sut.resolveSubscriptionTier()
+
+    // The post-auth re-run must ensure the profile (create invoked again) and
+    // apply its tier -- proving the profile is established on sign-in, not just
+    // attempted and dropped at launch.
+    #expect(profileSpy.createCallCount > createCallsBeforeSignIn)
+    #expect(sut.subscriptionTier == .personal)
+  }
+
   @Test func resolveSubscriptionTier_picksHighestFromAllSources() async {
     let (sut, _, _, _) = makeSUT(
       authSession: .pro,
