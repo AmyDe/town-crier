@@ -141,7 +141,16 @@ struct TownCrierApp: App {
         else { return }
         coordinator.handleDeepLink(deepLink)
       }
-      .task {
+      // Keyed on auth state (not a bare `.task`) so profile-ensure RE-RUNS on
+      // the unauthenticated->authenticated transition. On a fresh install the
+      // launch-time task fires while still signed out (no token -> the
+      // idempotent POST /v1/me can't create the Cosmos UserProfile); without an
+      // `id:` it never re-runs when the user signs in, so the profile is missing
+      // for the whole session and the first watch-zone POST 500s on its quota
+      // check (Cosmos 404). Re-running on the transition ensures the profile the
+      // moment a session exists. `checkVersion()` is idempotent, so re-running
+      // it here is harmless (tc-k9fk).
+      .task(id: loginViewModel.isAuthenticated) {
         await coordinator.resolveSubscriptionTier()
         await forceUpdateViewModel.checkVersion()
       }
