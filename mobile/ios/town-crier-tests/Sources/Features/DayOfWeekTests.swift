@@ -46,4 +46,37 @@ struct DayOfWeekTests {
     #expect(DayOfWeek.friday.displayName == "Friday")
     #expect(DayOfWeek.saturday.displayName == "Saturday")
   }
+
+  // MARK: - UK display order (Monday-first)
+
+  @Test("weekOrderUK starts on Monday and ends on Sunday")
+  func weekOrderUKIsMondayFirst() {
+    #expect(
+      DayOfWeek.weekOrderUK == [
+        .monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday,
+      ])
+    #expect(DayOfWeek.weekOrderUK.first == .monday)
+    #expect(DayOfWeek.weekOrderUK.last == .sunday)
+  }
+
+  @Test("weekOrderUK contains all seven days with no duplicates")
+  func weekOrderUKCoversEveryDayOnce() {
+    #expect(DayOfWeek.weekOrderUK.count == 7)
+    #expect(Set(DayOfWeek.weekOrderUK) == Set(DayOfWeek.allCases))
+  }
+
+  // MARK: - Wire-contract regression guards
+
+  @Test("allCases declaration order is unchanged (Sunday-first wire order)")
+  func allCasesStillSundayFirst() {
+    #expect(DayOfWeek.allCases.first == .sunday)
+    #expect(DayOfWeek.allCases.last == .saturday)
+  }
+
+  @Test("rawValue is the English day name for every case")
+  func rawValueIsEnglishDayName() {
+    #expect(DayOfWeek.monday.rawValue == "Monday")
+    #expect(DayOfWeek.sunday.rawValue == "Sunday")
+    #expect(DayOfWeek.saturday.rawValue == "Saturday")
+  }
 }
