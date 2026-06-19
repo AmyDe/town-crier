@@ -27,6 +27,22 @@ public struct WatchZoneListView: View {
           let zone = viewModel.zones[index]
           Task { await viewModel.deleteZone(zone) }
         }
+
+        if viewModel.showsFreeTierUpsell {
+          Section {
+            WatchZoneInlineUpsellCard { viewModel.viewPlans() }
+              .listRowInsets(
+                EdgeInsets(
+                  top: TCSpacing.medium,
+                  leading: TCSpacing.medium,
+                  bottom: TCSpacing.medium,
+                  trailing: TCSpacing.medium
+                )
+              )
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+          }
+        }
       }
     }
     .navigationTitle("Watch Zones")
