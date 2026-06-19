@@ -35,23 +35,50 @@ turns that filtered material into polished copy in the user's voice.
 
 ## Step 1 — Resolve the release range
 
-The store copy covers everything shipped since the **last App Store submission**, which
-may span several `v*` tags (not every tag goes to the store). Resolve the range:
+The store copy covers everything shipped since the build **currently live on the App
+Store** — not since the previous `v*` tag. This distinction matters and is easy to get
+wrong:
+
+- Not every tag is promoted to the store. Many tags go only to TestFlight.
+- The marketing version (e.g. `1.0.0`) spans *many* tags, so it can't pin the baseline
+  on its own. `1.0.0` covered `v0.15.10` through `v0.15.21` in one release cycle.
+
+The **build number** (the `(30)` in `1.0.0 (30)`) is the only thing that pins the exact
+baseline commit. There's no way to read the live build number programmatically without
+the App Store Connect API key, and that key is CI-only (not on the workstation). So the
+skill **must ask the user** which build is live — they're submitting a new version, so
+they're already in App Store Connect with the live version on screen.
+
+Make that ask a one-tap answer by pre-computing the candidate builds. First gather:
 
 ```bash
 git fetch --tags origin
-git tag --sort=-v:refname | head -10
+
+# Live marketing version (public, no auth) — for cross-checking the user's answer.
+curl -s "https://itunes.apple.com/lookup?id=6764095657&country=gb" \
+  | python3 -c "import sys,json;r=json.load(sys.stdin)['results'][0];print(r['version'])"
+
+# Recent build -> tag map. CD annotates each GitHub release with 'build **N** uploaded',
+# so this is the authoritative build->tag lookup.
+for t in $(git tag --sort=-v:refname | grep '^v' | head -20); do
+  bn=$(gh release view "$t" --json body -q .body 2>/dev/null \
+        | grep -oiE 'build \*\*[0-9]+\*\*' | head -1 | grep -oE '[0-9]+')
+  [ -n "$bn" ] && printf "build %-4s  %-12s  %s\n" "$bn" "$t" "$(git log -1 --format=%cd --date=short "$t")"
+done
 ```
 
-- Default `<current>` to the tag being submitted (or `HEAD` if the user is preparing
-  before tagging).
-- Default `<previous>` to the previous `v*` tag.
-- If the user names the last shipped store version (e.g. "everything since 1.2.0"),
-  use that tag as `<previous>` even if newer tags exist in between — the store reader
-  hasn't seen any of it.
+Then **ask the user** (via `AskUserQuestion`) which build is currently live, presenting
+the candidate builds with their tags and dates so they just match the number shown in
+App Store Connect. Resolve the range from their answer:
 
-Confirm the resolved range with the user in one line before generating if it's at all
-ambiguous; otherwise just state which range you used.
+- `<previous>` = the tag for the build the user names. This is the baseline.
+- `<current>` = the tag being submitted (or `HEAD` if they're preparing before tagging).
+
+If the user volunteers the live build up front (e.g. "everything since 1.0.0 (30)"),
+skip the question and map that build to its tag directly. Cross-check the marketing
+version against the iTunes lookup; if they disagree, flag it rather than guessing.
+
+State the resolved range in one line before generating.
 
 ## Step 2 — Gather iOS-relevant material only
 
