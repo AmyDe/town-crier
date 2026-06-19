@@ -21,6 +21,12 @@ struct RadiusPickerStepView: View {
 
       radiusControl
 
+      if viewModel.canUnlockLargerRadius {
+        UnlockLargerZonesChip {
+          viewModel.requestLargerRadiusUpgrade()
+        }
+      }
+
       if viewModel.showsLargeRadiusWarning {
         LargeRadiusWarningView()
       }

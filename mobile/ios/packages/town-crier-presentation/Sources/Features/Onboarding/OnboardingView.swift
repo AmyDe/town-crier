@@ -42,6 +42,21 @@ public struct OnboardingView: View {
         Spacer()
       }
     }
+    // In-wizard radius upsell (tc-w3cb.3): presented as a sheet *over* the
+    // wizard so the StateObject — and the in-progress postcode/geocode — survive
+    // the purchase round-trip. On dismiss we re-resolve the tier so a successful
+    // upgrade unlocks the larger radius range live, without rebuilding the wizard.
+    .sheet(
+      isPresented: $viewModel.isRadiusUpsellPresented,
+      onDismiss: { Task { await viewModel.reconcileTierAfterUpgrade() } },
+      content: {
+        if let upsellViewModel = viewModel.makeUpsellViewModel?() {
+          NavigationStack {
+            SubscriptionView(viewModel: upsellViewModel)
+          }
+        }
+      }
+    )
   }
 
   private var stepIndicator: some View {

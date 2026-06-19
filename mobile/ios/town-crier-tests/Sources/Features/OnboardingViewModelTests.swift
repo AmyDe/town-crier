@@ -255,4 +255,24 @@ struct OnboardingViewModelTests {
   @Test func maxRadiusMetres_proTier_capsAt10km() {
     #expect(makeViewModel(tier: .pro).maxRadiusMetres == 10000)
   }
+
+  // MARK: - Radius upsell (tc-w3cb.3)
+
+  @Test func canUnlockLargerRadius_isTrueBelowPro() {
+    #expect(makeViewModel(tier: .free).canUnlockLargerRadius)
+    #expect(makeViewModel(tier: .personal).canUnlockLargerRadius)
+  }
+
+  @Test func canUnlockLargerRadius_isFalseAtTopTier() {
+    #expect(!makeViewModel(tier: .pro).canUnlockLargerRadius)
+  }
+
+  @Test func requestLargerRadiusUpgrade_presentsUpsellSheet() {
+    let sut = makeViewModel(tier: .free)
+    #expect(!sut.isRadiusUpsellPresented)
+
+    sut.requestLargerRadiusUpgrade()
+
+    #expect(sut.isRadiusUpsellPresented)
+  }
 }

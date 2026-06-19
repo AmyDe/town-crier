@@ -125,4 +125,32 @@ struct AppCoordinatorOnboardingTests {
     // in-progress postcode/geocode survives the tier change.
     #expect(vm.subscriptionTier == .pro)
   }
+
+  // MARK: - In-wizard radius upsell (tc-w3cb.3)
+
+  @Test func makeOnboardingViewModel_wiresUpsellPaywallFactory() {
+    let sut = makeSUT()
+    let vm = sut.makeOnboardingViewModel()
+
+    // The coordinator injects the paywall factory so the wizard can present
+    // the subscription sheet over itself.
+    #expect(vm.makeUpsellViewModel?() != nil)
+  }
+
+  @Test func reconcileTierAfterUpgrade_reResolvesTier_unlockingLargerRadiusLive() async {
+    let resolver = FakeSubscriptionTierResolver()
+    resolver.resolveResult = (.pro, false)
+    let sut = makeSUT(tierResolver: resolver)
+    let vm = sut.makeOnboardingViewModel()
+    #expect(vm.canUnlockLargerRadius)
+    #expect(vm.maxRadiusMetres == 2000)
+
+    // Simulates the paywall dismissing after a successful purchase.
+    await vm.reconcileTierAfterUpgrade()
+
+    // Live unlock: the same wizard instance now reflects the upgraded tier.
+    #expect(vm.subscriptionTier == .pro)
+    #expect(vm.maxRadiusMetres == 10000)
+    #expect(!vm.canUnlockLargerRadius)
+  }
 }

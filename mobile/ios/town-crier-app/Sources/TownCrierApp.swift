@@ -298,11 +298,18 @@ struct TownCrierApp: App {
     // Subscription paywall — presented when an upsell (e.g. "View Plans" in
     // the watch-zone quota banner) sets `isSubscriptionPresented`. Hoisted to
     // the TabView so the paywall reaches the user regardless of active tab.
-    .sheet(isPresented: $coordinator.isSubscriptionPresented) {
-      NavigationStack {
-        SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
+    // On dismiss, re-resolve the tier so a successful purchase unlocks gated
+    // features (e.g. the larger watch-zone radius) live, without an app
+    // relaunch — the tier-keyed views rebuild on the change (tc-w3cb.3).
+    .sheet(
+      isPresented: $coordinator.isSubscriptionPresented,
+      onDismiss: { Task { await coordinator.resolveSubscriptionTier() } },
+      content: {
+        NavigationStack {
+          SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
+        }
       }
-    }
+    )
   }
 
   /// Settings sheet — presented from the gear icon installed on every tab.

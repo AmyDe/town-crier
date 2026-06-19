@@ -42,6 +42,15 @@ extension AppCoordinator {
     viewModel.onComplete = { [weak self] _ in
       self?.completeOnboarding()
     }
+    // In-wizard radius upsell (tc-w3cb.3): build the paywall and, on dismiss,
+    // re-resolve the tier so the larger radius unlocks live. resolveSubscriptionTier
+    // pushes the new tier back into this same VM instance.
+    viewModel.makeUpsellViewModel = { [weak self] in
+      self?.makeSubscriptionViewModel()
+    }
+    viewModel.onUpgradeFlowCompleted = { [weak self] in
+      await self?.resolveSubscriptionTier()
+    }
     onboardingViewModel = viewModel
     return viewModel
   }

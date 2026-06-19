@@ -67,6 +67,13 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     limits.maxRadiusMetres
   }
 
+  /// Whether the user's tier still has radius headroom to unlock — true for any
+  /// tier below the top (Pro, 10 km). Drives the "Unlock larger zones" chip
+  /// shown beneath the radius slider, mirroring the onboarding wizard (tc-w3cb.3).
+  public var canUnlockLargerRadius: Bool {
+    tier < .pro
+  }
+
   /// Proactive UI gate exposing the session's tier to entitlement-aware controls
   /// (e.g. ``GatedToggle``) without a network round-trip.
   public var featureGate: FeatureGate {
