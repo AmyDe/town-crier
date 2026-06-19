@@ -39,9 +39,6 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/health":               {},
 	"GET /v1/version-config":       {},
 	"GET /v1/legal/{documentType}": {},
-	"GET /v1/authorities":          {},
-	"GET /v1/authorities/{$}":      {},
-	"GET /v1/authorities/{id}":     {},
 	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
 	// reach a fully-provisioned Pro account without a token, matching .NET's
 	// AllowAnonymous.
