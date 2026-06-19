@@ -91,6 +91,10 @@ public struct SubscriptionView: View {
         }
       }
 
+      featureList(for: product)
+        .padding(.top, TCSpacing.extraSmall)
+        .padding(.bottom, TCSpacing.small)
+
       if isCurrentTier(product) {
         currentPlanLabel
       } else {
@@ -104,6 +108,24 @@ public struct SubscriptionView: View {
     .padding(TCSpacing.medium)
     .background(Color.tcSurface)
     .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
+  }
+
+  private func featureList(for product: SubscriptionProduct) -> some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      ForEach(product.tier.featureHighlights, id: \.self) { feature in
+        Label {
+          Text(feature)
+            .font(TCTypography.body)
+            .foregroundStyle(Color.tcTextPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+          Image(systemName: "checkmark.circle.fill")
+            .font(TCTypography.body)
+            .foregroundStyle(Color.tcAmber)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private func trialBadge(days: Int) -> some View {
