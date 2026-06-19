@@ -23,6 +23,60 @@ const (
 	apnsBundleID = "uk.towncrierapp.mobile"
 )
 
+// cloudflareIPv4Ranges is Cloudflare's published list of IPv4 origin-pull ranges.
+//
+// Snapshot of https://www.cloudflare.com/ips-v4, fetched 2026-06-19. The Go API
+// container app is fronted by the Cloudflare orange-cloud proxy (tc-j222); these
+// ranges are applied as Allow rules on the ACA ingress (see
+// cloudflareIngressIPRestrictions) so the *.azurecontainerapps.io origin only
+// accepts traffic that arrives via Cloudflare.
+//
+// IPv4 ONLY — and deliberately so: the prod origin FQDN
+// ca-town-crier-api-go-prod.<env>.uksouth.azurecontainerapps.io has an A record
+// only and no AAAA (resolves to 85.210.27.198), so Cloudflare reaches the origin
+// over IPv4. ACA ipSecurityRestrictions also only accepts IPv4 CIDRs. Adding the
+// IPv6 ranges (https://www.cloudflare.com/ips-v6) would therefore be both
+// unreachable in practice and rejected by ACA. Refresh this snapshot if
+// Cloudflare publishes new ranges.
+var cloudflareIPv4Ranges = []string{
+	"173.245.48.0/20",
+	"103.21.244.0/22",
+	"103.22.200.0/22",
+	"103.31.4.0/22",
+	"141.101.64.0/18",
+	"108.162.192.0/18",
+	"190.93.240.0/20",
+	"188.114.96.0/20",
+	"197.234.240.0/22",
+	"198.41.128.0/17",
+	"162.158.0.0/15",
+	"104.16.0.0/13",
+	"104.24.0.0/14",
+	"172.64.0.0/13",
+	"131.0.72.0/22",
+}
+
+// cloudflareIngressIPRestrictions builds the ACA ingress ipSecurityRestrictions:
+// one Allow rule per Cloudflare IPv4 range. Once any Allow rule is present, ACA
+// denies every other source, so only Cloudflare can reach the origin. The same
+// list is applied to both prod and dev (api-dev is also Cloudflare-proxied).
+//
+// This is safe and fully reversible: ACME managed-certificate renewal and all
+// real client traffic arrive via the proxied hostname, so their source is a
+// Cloudflare IP and is allowed. Removing the rules restores open ingress.
+func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
+	rules := make(app.IpSecurityRestrictionRuleArray, 0, len(cloudflareIPv4Ranges))
+	for i, cidr := range cloudflareIPv4Ranges {
+		rules = append(rules, &app.IpSecurityRestrictionRuleArgs{
+			Action:         pulumi.String(string(app.ActionAllow)),
+			Name:           pulumi.String(fmt.Sprintf("cloudflare-ipv4-%02d", i+1)),
+			IpAddressRange: pulumi.String(cidr),
+			Description:    pulumi.String(fmt.Sprintf("Cloudflare published IPv4 range %s", cidr)),
+		})
+	}
+	return rules
+}
+
 // cosmosContainerDefinition defines a Cosmos DB container with its partition key and
 // optional advanced settings.
 type cosmosContainerDefinition struct {
@@ -290,6 +344,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			TargetPort:    pulumi.Int(8080),
 			Transport:     pulumi.String(string(app.IngressTransportMethodHttp)),
 			CustomDomains: goApiCustomDomains,
+			// Lock the *.azurecontainerapps.io origin to Cloudflare IPv4 ranges so it can
+			// only be reached via the Cloudflare proxy, not bypassed directly (tc-0und).
+			IpSecurityRestrictions: cloudflareIngressIPRestrictions(),
 		},
 		Registries: app.RegistryCredentialsArray{
 			&app.RegistryCredentialsArgs{
