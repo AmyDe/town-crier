@@ -39,7 +39,7 @@ struct UnlockLargerZonesChipTests {
     #expect(
       UnlockLargerZonesChip.Copy.benefits
         == "Bigger watch zones up to 10 km, more than one zone, and instant alerts by "
-          + "push and email. Free gives you a weekly digest."
+        + "push and email. Free gives you a weekly digest."
     )
   }
 
@@ -49,7 +49,7 @@ struct UnlockLargerZonesChipTests {
     #expect(
       UnlockLargerZonesChip.Copy.accessibilityLabel
         == "Do more with a plan. Bigger watch zones up to 10 kilometres, more than one "
-          + "watch zone, and instant alerts by push and email. Free gives you a weekly digest."
+        + "watch zone, and instant alerts by push and email. Free gives you a weekly digest."
     )
   }
 
@@ -64,7 +64,7 @@ struct UnlockLargerZonesChipTests {
   // MARK: - View
 
   @Test func body_renders() {
-    let sut = UnlockLargerZonesChip(action: {})
+    let sut = UnlockLargerZonesChip {}
     _ = sut.body
   }
 }
