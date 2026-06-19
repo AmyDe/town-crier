@@ -127,7 +127,7 @@ struct TownCrierApp: App {
             appStoreURL: URL(string: "https://apps.apple.com/app/town-crier/id000000000")
           )
         } else if loginViewModel.isAuthenticated {
-          mainTabView
+          authenticatedRootView
         } else {
           LoginView(viewModel: loginViewModel)
         }
@@ -152,6 +152,13 @@ struct TownCrierApp: App {
       // it here is harmless (tc-k9fk).
       .task(id: loginViewModel.isAuthenticated) {
         await coordinator.resolveSubscriptionTier()
+        // Resolve onboarding only once authenticated, and strictly after
+        // resolveSubscriptionTier() has ensured the server profile above — the
+        // wizard's first watch-zone save needs that profile or it 500s
+        // (tc-k9fk / tc-w3cb.1).
+        if loginViewModel.isAuthenticated {
+          await coordinator.determineOnboarding()
+        }
         await forceUpdateViewModel.checkVersion()
       }
       .onChange(of: scenePhase) { _, newPhase in
@@ -192,6 +199,33 @@ struct TownCrierApp: App {
           )
         }
       }
+    }
+  }
+
+  /// Routes the authenticated user to the first-run onboarding wizard, a
+  /// neutral loading screen, or the main app — depending on whether the
+  /// coordinator has determined onboarding is needed (tc-w3cb.1). The wizard
+  /// presents only once profile-ensure has run, so its first watch-zone save
+  /// cannot 500.
+  @ViewBuilder
+  private var authenticatedRootView: some View {
+    switch coordinator.onboardingPresentation {
+    case .required:
+      OnboardingView(viewModel: coordinator.makeOnboardingViewModel())
+    case .notRequired:
+      mainTabView
+    case .undetermined:
+      onboardingLoadingView
+    }
+  }
+
+  /// Branded loading screen shown while onboarding need is still resolving.
+  /// Keeps the wizard from flashing before the watch-zone load completes.
+  private var onboardingLoadingView: some View {
+    ZStack {
+      Color.tcBackground.ignoresSafeArea()
+      ProgressView()
+        .tint(Color.tcAmber)
     }
   }
 
@@ -264,11 +298,18 @@ struct TownCrierApp: App {
     // Subscription paywall — presented when an upsell (e.g. "View Plans" in
     // the watch-zone quota banner) sets `isSubscriptionPresented`. Hoisted to
     // the TabView so the paywall reaches the user regardless of active tab.
-    .sheet(isPresented: $coordinator.isSubscriptionPresented) {
-      NavigationStack {
-        SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
+    // On dismiss, re-resolve the tier so a successful purchase unlocks gated
+    // features (e.g. the larger watch-zone radius) live, without an app
+    // relaunch — the tier-keyed views rebuild on the change (tc-w3cb.3).
+    .sheet(
+      isPresented: $coordinator.isSubscriptionPresented,
+      onDismiss: { Task { await coordinator.resolveSubscriptionTier() } },
+      content: {
+        NavigationStack {
+          SubscriptionView(viewModel: coordinator.makeSubscriptionViewModel())
+        }
       }
-    }
+    )
   }
 
   /// Settings sheet — presented from the gear icon installed on every tab.

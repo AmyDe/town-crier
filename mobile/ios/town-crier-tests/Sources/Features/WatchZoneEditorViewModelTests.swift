@@ -58,21 +58,6 @@ struct WatchZoneEditorCreateTests {
     #expect(sut.error == .geocodingFailed("not found"))
   }
 
-  @Test func radiusOptions_reflectTierLimits() {
-    let limits = WatchZoneLimits(tier: .personal)
-    #expect(sut.availableRadiusOptions == limits.availableRadiusOptions)
-  }
-
-  @Test func radiusOptions_freeTier_capped() {
-    let freeSut = WatchZoneEditorViewModel(
-      geocoder: spyGeocoder,
-      repository: spyRepository,
-      tier: .free
-    )
-    let limits = WatchZoneLimits(tier: .free)
-    #expect(freeSut.availableRadiusOptions == limits.availableRadiusOptions)
-  }
-
   @Test func isPostcodeFieldVisible_inCreateMode_isTrue() {
     #expect(sut.isPostcodeFieldVisible)
   }

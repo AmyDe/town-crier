@@ -231,4 +231,59 @@ struct OnboardingViewModelTests {
     #expect(completedZone != nil)
     #expect(completedZone?.radiusMetres == 1000)
   }
+
+  // MARK: - Tier-bounded radius (tc-w3cb.2)
+
+  private func makeViewModel(tier: SubscriptionTier) -> OnboardingViewModel {
+    OnboardingViewModel(
+      geocoder: SpyPostcodeGeocoder(),
+      watchZoneRepository: SpyWatchZoneRepository(),
+      onboardingRepository: SpyOnboardingRepository(),
+      notificationService: SpyNotificationService(),
+      subscriptionTier: tier
+    )
+  }
+
+  @Test func maxRadiusMetres_freeTier_capsAt2km() {
+    #expect(makeViewModel(tier: .free).maxRadiusMetres == 2000)
+  }
+
+  @Test func maxRadiusMetres_personalTier_capsAt5km() {
+    #expect(makeViewModel(tier: .personal).maxRadiusMetres == 5000)
+  }
+
+  @Test func maxRadiusMetres_proTier_capsAt10km() {
+    #expect(makeViewModel(tier: .pro).maxRadiusMetres == 10000)
+  }
+
+  // MARK: - Radius upsell (tc-w3cb.3)
+
+  @Test func canUnlockLargerRadius_isTrueBelowPro() {
+    #expect(makeViewModel(tier: .free).canUnlockLargerRadius)
+    #expect(makeViewModel(tier: .personal).canUnlockLargerRadius)
+  }
+
+  @Test func canUnlockLargerRadius_isFalseAtTopTier() {
+    #expect(!makeViewModel(tier: .pro).canUnlockLargerRadius)
+  }
+
+  @Test func requestLargerRadiusUpgrade_presentsUpsellSheet() {
+    let sut = makeViewModel(tier: .free)
+    #expect(!sut.isRadiusUpsellPresented)
+
+    sut.requestLargerRadiusUpgrade()
+
+    #expect(sut.isRadiusUpsellPresented)
+  }
+
+  // MARK: - Tier-aware notification copy (tc-w3cb.4)
+
+  @Test func deliversInstantAlerts_isFalseForFree() {
+    #expect(!makeViewModel(tier: .free).deliversInstantAlerts)
+  }
+
+  @Test func deliversInstantAlerts_isTrueForPaidTiers() {
+    #expect(makeViewModel(tier: .personal).deliversInstantAlerts)
+    #expect(makeViewModel(tier: .pro).deliversInstantAlerts)
+  }
 }

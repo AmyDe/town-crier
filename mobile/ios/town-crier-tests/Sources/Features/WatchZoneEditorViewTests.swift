@@ -83,6 +83,17 @@ struct WatchZoneEditorViewTests {
     #expect(vm.maxRadiusMetres == 10000)
   }
 
+  // MARK: - Radius upsell chip (tc-w3cb.3)
+
+  @Test func canUnlockLargerRadius_belowTopTier() {
+    #expect(makeViewModel(tier: .free).canUnlockLargerRadius)
+    #expect(makeViewModel(tier: .personal).canUnlockLargerRadius)
+  }
+
+  @Test func canUnlockLargerRadius_falseAtProTier() {
+    #expect(!makeViewModel(tier: .pro).canUnlockLargerRadius)
+  }
+
   @Test func liveLabelFormatsCurrentRadius() {
     let vm = makeViewModel()
     vm.selectedRadiusMetres = 1500

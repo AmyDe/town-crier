@@ -29,10 +29,4 @@ public struct WatchZoneLimits: Equatable, Sendable {
   public func clampRadius(_ radius: Double) -> Double {
     min(radius, maxRadiusMetres)
   }
-
-  /// Predefined radius options available for this tier.
-  public var availableRadiusOptions: [Double] {
-    let allOptions: [Double] = [500, 1000, 1500, 2000, 3000, 5000, 7500, 10000]
-    return allOptions.filter { $0 <= maxRadiusMetres }
-  }
 }

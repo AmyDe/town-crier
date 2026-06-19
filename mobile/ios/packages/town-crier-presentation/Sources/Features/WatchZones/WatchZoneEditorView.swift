@@ -124,6 +124,17 @@ public struct WatchZoneEditorView: View {
         .font(TCTypography.caption)
         .foregroundStyle(Color.tcTextSecondary)
 
+        if viewModel.canUnlockLargerRadius {
+          // Radius upsell (tc-w3cb.3). Routes through viewPlans()/onUpgradeRequired
+          // like the instant-alert upsell: the editor closes and the paywall
+          // opens. After purchase the list rebuilds on the new tier (.id), so a
+          // reopened editor offers the larger range.
+          UnlockLargerZonesChip {
+            viewModel.viewPlans()
+          }
+          .padding(.top, TCSpacing.small)
+        }
+
         if viewModel.showsLargeRadiusWarning {
           LargeRadiusWarningView()
             .padding(.top, TCSpacing.small)

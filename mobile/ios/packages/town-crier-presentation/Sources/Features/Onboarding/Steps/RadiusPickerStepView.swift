@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Radius selection step — user picks how far around their postcode to monitor.
+///
+/// Uses the same `Slider` paradigm as `WatchZoneEditorView`, bounded at the
+/// tier's maximum radius so a free user cannot exceed their 2 km cap by
+/// construction (tc-w3cb.2).
 struct RadiusPickerStepView: View {
   @ObservedObject var viewModel: OnboardingViewModel
-
-  private let radiusOptions: [Double] = [500, 1000, 2000, 5000]
 
   var body: some View {
     VStack(spacing: TCSpacing.large) {
@@ -17,34 +19,11 @@ struct RadiusPickerStepView: View {
         .foregroundStyle(Color.tcTextSecondary)
         .multilineTextAlignment(.center)
 
-      VStack(spacing: TCSpacing.small) {
-        ForEach(radiusOptions, id: \.self) { radius in
-          Button {
-            viewModel.selectedRadiusMetres = radius
-          } label: {
-            HStack {
-              Text(formatRadius(radius))
-                .font(TCTypography.bodyEmphasis)
-              Spacer()
-              if viewModel.selectedRadiusMetres == radius {
-                Image(systemName: "checkmark.circle.fill")
-                  .foregroundStyle(Color.tcAmber)
-              }
-            }
-            .padding(TCSpacing.medium)
-            .background(Color.tcSurface)
-            .clipShape(RoundedRectangle(cornerRadius: TCCornerRadius.medium))
-            .overlay(
-              RoundedRectangle(cornerRadius: TCCornerRadius.medium)
-                .stroke(
-                  viewModel.selectedRadiusMetres == radius
-                    ? Color.tcAmber : Color.tcBorder,
-                  lineWidth: 1
-                )
-            )
-          }
-          .buttonStyle(.plain)
-          .foregroundStyle(Color.tcTextPrimary)
+      radiusControl
+
+      if viewModel.canUnlockLargerRadius {
+        UnlockLargerZonesChip {
+          viewModel.requestLargerRadiusUpgrade()
         }
       }
 
@@ -63,6 +42,32 @@ struct RadiusPickerStepView: View {
       .foregroundStyle(Color.tcTextSecondary)
     }
     .padding(TCSpacing.extraLarge)
+  }
+
+  private var radiusControl: some View {
+    VStack(alignment: .leading, spacing: TCSpacing.small) {
+      Text(formatRadius(viewModel.selectedRadiusMetres))
+        .font(TCTypography.bodyEmphasis)
+        .foregroundStyle(Color.tcTextPrimary)
+        .frame(maxWidth: .infinity, alignment: .center)
+
+      Slider(
+        value: $viewModel.selectedRadiusMetres,
+        in: 100...viewModel.maxRadiusMetres,
+        step: 100
+      )
+      .tint(Color.tcAmber)
+      .accessibilityLabel("Radius")
+      .accessibilityValue(formatRadius(viewModel.selectedRadiusMetres))
+
+      HStack {
+        Text(formatRadius(100))
+        Spacer()
+        Text(formatRadius(viewModel.maxRadiusMetres))
+      }
+      .font(TCTypography.caption)
+      .foregroundStyle(Color.tcTextSecondary)
+    }
   }
 
 }
