@@ -115,21 +115,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # ── CLI ──────────────────────────────────────────────
+  # ── CLI (Go) ─────────────────────────────────────────
 
-  cli-format:
-    name: "CLI: Format"
+  cli-lint:
+    name: "CLI: Lint"
     needs: changes
     if: needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-go@v6
         with:
-          global-json-file: cli/global.json
-      - run: dotnet format --verify-no-changes
+          go-version-file: cli/go.mod
+          # No go.sum yet (zero dependencies); enable module caching when one appears.
+          cache: false
+      - name: gofmt
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::gofmt required on: $UNFORMATTED"
+            exit 1
+          fi
         working-directory: cli
+      - run: go vet ./...
+        working-directory: cli
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12
+          working-directory: cli
 
   cli-build-test:
     name: "CLI: Build & test"
@@ -139,20 +153,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-go@v6
         with:
-          global-json-file: cli/global.json
-      - uses: actions/cache@v5
-        with:
-          path: ~/.nuget/packages
-          key: nuget-cli-${{ runner.os }}-${{ hashFiles('cli/**/*.csproj', 'cli/**/Directory.Build.props') }}
-          restore-keys: nuget-cli-${{ runner.os }}-
-      - run: dotnet restore
+          go-version-file: cli/go.mod
+          cache: false
+      - run: go build ./...
         working-directory: cli
-      - run: dotnet build --no-restore --configuration Release
-        working-directory: cli
-      - name: Run tests
-        run: dotnet test tests/tc.tests --no-build --configuration Release
+      - name: Run tests (race detector)
+        run: go test -race ./...
         working-directory: cli
 
   # ── iOS ──────────────────────────────────────────────
@@ -348,7 +356,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [go-lint, go-test, cli-format, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
+    needs: [go-lint, go-test, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -358,7 +366,7 @@ jobs:
           results=(
             "${{ needs.go-lint.result }}"
             "${{ needs.go-test.result }}"
-            "${{ needs.cli-format.result }}"
+            "${{ needs.cli-lint.result }}"
             "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
