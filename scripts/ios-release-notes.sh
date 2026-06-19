@@ -7,15 +7,21 @@
 # user-centric notes deterministically, with no LLM or human in the loop, so it
 # can run unattended in CD.
 #
-# Resolution order (first tier that yields any line wins):
-#   1. `Release-Note:` commit trailers in the range. Authored, plain-English,
-#      shipped verbatim. This is the way to get polished copy: when you make a
-#      user-facing iOS change, add a trailer, e.g.
+# Each user-facing change contributes one note; the two sources are MERGED, not
+# ranked (an early "first tier wins" design let a single trailer suppress every
+# sibling commit's note — that is how a multi-PR range silently dropped the
+# onboarding-wizard launch, tc-0557). Per change, in commit order:
+#   1. If the commit carries `Release-Note:` trailer(s), use them verbatim.
+#      Authored, plain-English copy — the way to get polished notes:
 #          Release-Note: Saved searches now refresh the moment an application changes.
-#   2. mobile/ios/ feat & fix commit subjects, with the conventional-commit
-#      `type(scope):` prefix, `(#NN)` PR refs and `(tc-xxxx)` bead IDs stripped.
-#      No backend, no infra, no chores, no internal IDs.
-#   3. A stock catch-all line.
+#   2. Otherwise, if it is a user-facing mobile/ios/ commit, use its subject with
+#      the conventional-commit `type(scope):` prefix, `(#NN)` PR refs and
+#      `(tc-xxxx)` bead IDs stripped. Explicitly non-user-facing types
+#      (chore/ci/docs/test/build/style/refactor/perf) and version-bump plumbing
+#      are excluded. This also catches subjects that LOST their feat/fix prefix
+#      during squash-merge (e.g. a plain "iOS onboarding wizard: ..." title).
+#   3. If nothing qualifies, a stock catch-all line.
+# A commit's own subject is never emitted alongside its trailer (no duplicates).
 #
 # Usage: ios-release-notes.sh <previous-tag> <current-ref>
 #   <previous-tag> may be empty (first release / workflow_dispatch) — the range
@@ -38,27 +44,45 @@ fi
 
 STOCK="Bug fixes and performance improvements."
 
-# --- Tier 1: Release-Note: trailers (authored, verbatim) ---------------------
+# --- Source 1: authored Release-Note: trailers (verbatim, any commit) --------
 # `|| true` guards against grep exiting 1 (no match) tripping pipefail.
-notes="$(
+trailer_notes="$(
   git log --format='%B' "$RANGE" 2>/dev/null \
     | grep -iE '^Release-Note:' \
-    | sed -E 's/^[Rr]elease-[Nn]ote:[[:space:]]*//' \
-    | awk 'NF && !seen[$0]++' || true
+    | sed -E 's/^[Rr]elease-[Nn]ote:[[:space:]]*//' || true
 )"
 
-# --- Tier 2: mobile/ios feat/fix subjects (cleaned) --------------------------
-if [ -z "$notes" ]; then
-  notes="$(
-    git log --no-merges --format='%s' "$RANGE" -- mobile/ios/ 2>/dev/null \
-      | grep -E '^(feat|fix)(\([^)]*\))?!?:' \
-      | sed -E 's/^(feat|fix)(\([^)]*\))?!?:[[:space:]]*//' \
-      | sed -E 's/[[:space:]]*\(#[0-9]+\)//g; s/[[:space:]]*\(tc-[a-z0-9]+\)//g; s/[[:space:]]+$//' \
-      | awk 'NF && !seen[$0]++ { print toupper(substr($0,1,1)) substr($0,2) }' || true
-  )"
-fi
+# --- Source 2: cleaned mobile/ios subjects for commits WITHOUT a trailer -----
+# Skipping trailer-carrying commits is what keeps the two sources from either
+# duplicating a change (subject + its own trailer) or — the bug this replaces —
+# letting one source suppress the other. Non-user-facing types and version-bump
+# plumbing are excluded so they can never leak to App Store users.
+subject_notes="$(
+  while IFS= read -r h; do
+    [ -z "$h" ] && continue
+    if git show -s --format='%B' "$h" 2>/dev/null | grep -qiE '^Release-Note:'; then
+      continue   # its trailer already covers it (Source 1)
+    fi
+    git show -s --format='%s' "$h" 2>/dev/null
+  done < <(git log --no-merges --format='%H' "$RANGE" -- mobile/ios/ 2>/dev/null) \
+    | grep -viE '^(chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:' \
+    | sed -E 's/^(feat|fix)(\([^)]*\))?!?:[[:space:]]*//' \
+    | sed -E 's/[[:space:]]*\(#[0-9]+\)//g; s/[[:space:]]*\(tc-[a-z0-9]+\)//g; s/[[:space:]]+$//' \
+    | grep -viE 'bump.*version|marketing version|version bump' || true
+)"
 
-# --- Tier 3: stock catch-all -------------------------------------------------
+# --- Merge, dedupe, tidy -----------------------------------------------------
+notes="$(
+  printf '%s\n%s\n' "$trailer_notes" "$subject_notes" \
+    | awk 'NF && !seen[$0]++ {
+        first = substr($0, 1, 1); second = substr($0, 2, 1)
+        # Capitalise the lead char, but leave "iOS"/"macOS"-style words alone.
+        if (first ~ /[a-z]/ && second !~ /[A-Z]/) $0 = toupper(first) substr($0, 2)
+        print
+      }'
+)"
+
+# --- Stock catch-all ---------------------------------------------------------
 if [ -z "$notes" ]; then
   printf '%s\n' "$STOCK"
   exit 0
