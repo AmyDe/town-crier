@@ -59,16 +59,4 @@ struct WatchZoneLimitsTests {
     #expect(limits.clampRadius(8000) == 5000)
   }
 
-  @Test func availableRadiusOptions_freeTier() {
-    let limits = WatchZoneLimits(tier: .free)
-    let options = limits.availableRadiusOptions
-    #expect(options.allSatisfy { $0 <= 2000 })
-    #expect(!options.isEmpty)
-  }
-
-  @Test func availableRadiusOptions_proTier_includesLargeRadii() {
-    let limits = WatchZoneLimits(tier: .pro)
-    let options = limits.availableRadiusOptions
-    #expect(options.contains(10000))
-  }
 }

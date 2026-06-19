@@ -181,7 +181,7 @@ struct AppCoordinatorTierResolutionTests {
     await sut.resolveSubscriptionTier()
     let vm = sut.makeWatchZoneEditorViewModel()
 
-    #expect(vm.availableRadiusOptions == WatchZoneLimits(tier: .personal).availableRadiusOptions)
+    #expect(vm.maxRadiusMetres == WatchZoneLimits(tier: .personal).maxRadiusMetres)
   }
 
   // MARK: - Tier preservation when all sources fail

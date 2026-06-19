@@ -55,10 +55,6 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
     }
   }
 
-  public var availableRadiusOptions: [Double] {
-    limits.availableRadiusOptions
-  }
-
   public var isPostcodeFieldVisible: Bool {
     !isEditing
   }
