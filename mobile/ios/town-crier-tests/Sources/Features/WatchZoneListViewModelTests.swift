@@ -127,6 +127,73 @@ struct WatchZoneListViewModelTests {
     #expect(!sut.showUpgradeBadge)
   }
 
+  // MARK: - Free-tier inline upsell gating
+
+  // `showsFreeTierUpsell` is the single source of truth for the richer inline
+  // upsell card. It must be true ONLY for a free-tier user who has used their
+  // one allowed zone. Crucially it must NOT fire for a Personal user sitting at
+  // their finite 3-zone cap (where `showUpgradeBadge`/`!canAddZone` is also true).
+
+  @Test func showsFreeTierUpsell_freeBelowCap_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([])
+
+    await sut.load()
+
+    #expect(!sut.showsFreeTierUpsell)
+  }
+
+  @Test func showsFreeTierUpsell_freeAtCap_returnsTrue() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .free)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+
+    await sut.load()
+
+    #expect(sut.showsFreeTierUpsell)
+  }
+
+  @Test func showsFreeTierUpsell_personalAtCap_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .personal)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london, .cambridge])
+
+    await sut.load()
+
+    #expect(!sut.showsFreeTierUpsell)
+  }
+
+  @Test func showsFreeTierUpsell_personalBelowCap_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .personal)
+    )
+    spyRepository.loadAllResult = .success([.cambridge])
+
+    await sut.load()
+
+    #expect(!sut.showsFreeTierUpsell)
+  }
+
+  @Test func showsFreeTierUpsell_proWithManyZones_returnsFalse() async {
+    let sut = WatchZoneListViewModel(
+      repository: spyRepository,
+      featureGate: FeatureGate(tier: .pro)
+    )
+    spyRepository.loadAllResult = .success([.cambridge, .london])
+
+    await sut.load()
+
+    #expect(!sut.showsFreeTierUpsell)
+  }
+
   // MARK: - Feature gate exposure
 
   @Test func featureGate_exposesInjectedGate() {
