@@ -131,6 +131,14 @@ public final class OnboardingViewModel: ObservableObject, ErrorHandlingViewModel
     subscriptionTier < .pro
   }
 
+  /// Whether the user's tier delivers instant alerts (push and instant email).
+  /// Free accounts receive only the weekly email digest, so the notification
+  /// step adapts its copy — and shows a light upgrade nudge — accordingly
+  /// (tc-w3cb.4). Same entitlement the editor's instant-alert toggles gate on.
+  public var deliversInstantAlerts: Bool {
+    EntitlementMap.hasEntitlement(.statusChangeAlerts, for: subscriptionTier)
+  }
+
   /// Surfaces the in-wizard paywall when the user taps the unlock chip.
   public func requestLargerRadiusUpgrade() {
     isRadiusUpsellPresented = true

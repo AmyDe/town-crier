@@ -275,4 +275,15 @@ struct OnboardingViewModelTests {
 
     #expect(sut.isRadiusUpsellPresented)
   }
+
+  // MARK: - Tier-aware notification copy (tc-w3cb.4)
+
+  @Test func deliversInstantAlerts_isFalseForFree() {
+    #expect(!makeViewModel(tier: .free).deliversInstantAlerts)
+  }
+
+  @Test func deliversInstantAlerts_isTrueForPaidTiers() {
+    #expect(makeViewModel(tier: .personal).deliversInstantAlerts)
+    #expect(makeViewModel(tier: .pro).deliversInstantAlerts)
+  }
 }
