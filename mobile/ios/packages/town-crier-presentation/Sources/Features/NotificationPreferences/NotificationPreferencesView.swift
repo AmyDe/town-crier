@@ -190,7 +190,7 @@ public struct NotificationPreferencesView: View {
           }
         )
       ) {
-        ForEach(DayOfWeek.allCases, id: \.self) { day in
+        ForEach(DayOfWeek.weekOrderUK, id: \.self) { day in
           Text(day.displayName).tag(day)
         }
       }
