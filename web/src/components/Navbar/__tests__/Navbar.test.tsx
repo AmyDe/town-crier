@@ -64,14 +64,14 @@ describe('Navbar', () => {
     expect(faq).toHaveAttribute('href', '#faq');
   });
 
-  it('renders Download CTA link pointing at TestFlight', () => {
+  it('renders Download CTA link pointing at the App Store', () => {
     renderNavbar();
 
     const cta = screen.getByRole('link', { name: /download/i });
     expect(cta).toBeInTheDocument();
     expect(cta).toHaveAttribute(
       'href',
-      'https://testflight.apple.com/join/7fZTBZQN',
+      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657',
     );
     expect(cta).toHaveAttribute('target', '_blank');
     expect(cta).toHaveAttribute('rel', 'noopener noreferrer');

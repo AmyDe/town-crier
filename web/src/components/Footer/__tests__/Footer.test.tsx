@@ -21,14 +21,14 @@ describe('Footer', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders a download link styled as a button pointing at TestFlight', () => {
+  it('renders a download link styled as a button pointing at the App Store', () => {
     render(<Footer />);
 
     const link = screen.getByRole('link', { name: /download on the app store/i });
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute(
       'href',
-      'https://testflight.apple.com/join/7fZTBZQN',
+      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657',
     );
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
