@@ -52,7 +52,7 @@ func TestWatchZoneDocument_CamelCaseAndDotNetTime(t *testing.T) {
 	}
 	// createdAt must serialise with a numeric UTC offset ("+00:00"), never RFC 3339 Z.
 	if !strings.Contains(body, "2026-06-01T09:00:00+00:00") {
-		t.Errorf("createdAt not in .NET DateTimeOffset format: %s", body)
+		t.Errorf("createdAt not in numeric-offset format: %s", body)
 	}
 	if strings.Contains(body, "09:00:00Z") {
 		t.Errorf("createdAt used RFC 3339 Z suffix: %s", body)
