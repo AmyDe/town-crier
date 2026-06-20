@@ -1,0 +1,5 @@
+Offer codes now work the first time you enter them.
+
+It's also clearer what Pro includes, both while you set up the app and when you reach the free limit on Watch Zones.
+
+Two smaller fixes: setup now makes clear you can enter any UK postcode, not just your own, and the weekly digest day picker starts the week on Monday.
