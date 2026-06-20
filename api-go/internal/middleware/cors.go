@@ -4,13 +4,11 @@ import (
 	"net/http"
 )
 
-// CORS replicates the .NET API's default CORS policy (GH#418, parity behaviour
-// 7): origins from configuration, AllowAnyHeader and AllowAnyMethod. ASP.NET
-// Core's CorsMiddleware only emits headers when an Origin header is present and
-// matches a configured origin; mismatched or absent origins pass through with
-// no CORS headers (the request is still served — the browser, not the server,
-// enforces the policy). Credentials are not allowed, matching the .NET policy
-// which never calls AllowCredentials.
+// CORS applies the API's CORS policy (GH#418): origins from configuration, any
+// header and any method allowed. Headers are emitted only when an Origin header
+// is present and matches a configured origin; mismatched or absent origins pass
+// through with no CORS headers (the request is still served — the browser, not
+// the server, enforces the policy). Credentials are never allowed.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowed := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
@@ -26,8 +24,8 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			}
 
 			if _, ok := allowed[origin]; !ok {
-				// Origin not configured: emit no CORS headers. ASP.NET serves the
-				// request anyway; the browser blocks the response client-side.
+				// Origin not configured: emit no CORS headers. The request is
+				// still served; the browser blocks the response client-side.
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -1,20 +1,20 @@
 ---
 name: pulumi-infra-worker
-description: Infrastructure worker for Pulumi (.NET/C#) beads. Implements Azure infrastructure, validates via dotnet build.
+description: Infrastructure worker for Pulumi (Go) beads. Implements Azure infrastructure, validates via go build.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
 model: opus
 ---
 
 # Pulumi Infrastructure Worker
 
-You implement Azure infrastructure using Pulumi with C# in an isolated worktree.
+You implement Azure infrastructure using Pulumi with Go in an isolated worktree.
 
 ## Setup
 
 1. `/beads:show <bead-id>` — read what infrastructure is needed and why
 2. `/beads:update <bead-id> --status=in_progress`
 3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
-4. Review existing infrastructure: read `infra/Program.cs` and any `Pulumi*.yaml` files
+4. Review existing infrastructure: read `infra/main.go`, `infra/environment.go`, `infra/shared.go` and any `Pulumi*.yaml` files
 5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
@@ -30,13 +30,13 @@ git diff --name-only HEAD $(git merge-base HEAD main) | grep -v '^infra/' && ech
 Plan changes, then for each:
 
 1. **Implement** — Write infrastructure code in `/infra`
-2. **Verify** — `cd infra && dotnet build` (and `pulumi preview` if a stack is configured)
+2. **Verify** — `cd infra && go build ./...` (and `pulumi preview` if a stack is configured)
 3. **Commit** — `"infra: <what was added/changed> (<bead-id>)"`
 
 ## Pre-flight
 
 ```bash
-cd infra && dotnet format && dotnet build
+cd infra && gofmt -w . && go build ./...
 ```
 
 Commit any fixes: `"chore: pre-flight fixes (<bead-id>)"`
@@ -61,10 +61,9 @@ Commit any fixes: `"chore: pre-flight fixes (<bead-id>)"`
 
 ## Rules
 
-- Use `Pulumi.AzureNative` (not classic provider)
-- Native AOT-compatible — no reflection, source generators for serialization
-- Use `Output<T>` and `Apply()` — never `.Result`
+- Use the azure-native Go SDK (`github.com/pulumi/pulumi-azure-native-sdk`), not the classic provider
+- Use `pulumi.Output` values and `ApplyT` — never block on outputs
 - Tag resources: `project: "town-crier"`, `managedBy: "pulumi"`
-- Use `Pulumi.Config` for env-specific values — never hardcode
+- Use `config.New`/`config.Get` for env-specific values — never hardcode
 - Prefer managed identities over connection strings
 - Stay in `infra/` — escalate if out-of-scope work needed

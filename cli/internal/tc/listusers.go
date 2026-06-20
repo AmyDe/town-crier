@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// defaultPageSize mirrors the .NET list-users default (pageSize ?? 20).
+// defaultPageSize is the list-users default when no page size is given.
 const defaultPageSize = 20
 
 // runListUsers implements `tc list-users`: page through /v1/admin/users,

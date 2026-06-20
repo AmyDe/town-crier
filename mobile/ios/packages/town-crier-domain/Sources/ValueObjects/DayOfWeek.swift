@@ -1,6 +1,6 @@
 import Foundation
 
-/// Day of the week matching the API's `DayOfWeek` enum (System.DayOfWeek).
+/// Day of the week matching the API's `DayOfWeek` enum.
 public enum DayOfWeek: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
   case sunday = "Sunday"
   case monday = "Monday"

@@ -1,8 +1,7 @@
-// Package auth replicates the .NET API's Auth0 JWT bearer authentication and
-// fallback-deny authorization (GH#418, parity behaviours 6 and the JwtBearer
-// mapping). Every route requires a valid Auth0 access token unless it was
-// explicitly registered as anonymous; unmatched routes fall through to the same
-// 401 challenge, mirroring ASP.NET's "no endpoint -> fallback policy" flow.
+// Package auth provides Auth0 JWT bearer authentication and fallback-deny
+// authorization (GH#418). Every route requires a valid Auth0 access token unless
+// it was explicitly registered as anonymous; unmatched routes fall through to a
+// 401 challenge (a "no endpoint -> fallback policy" flow).
 package auth
 
 import (
@@ -32,9 +31,9 @@ type TokenValidator interface {
 }
 
 // routeMatcher is the subset of *http.ServeMux the middleware uses: it both
-// reports which registered pattern (if any) a request matches — the Go
-// equivalent of ASP.NET resolving an endpoint before authorization — and
-// dispatches the request once the auth decision is made.
+// reports which registered pattern (if any) a request matches — resolving the
+// endpoint before the authorization decision — and dispatches the request once
+// the auth decision is made.
 type routeMatcher interface {
 	http.Handler
 	Handler(r *http.Request) (h http.Handler, pattern string)
@@ -103,10 +102,9 @@ func ClaimsFrom(ctx context.Context) Claims {
 	return Claims{}
 }
 
-// Challenge writes the bodyless 401 that .NET's JwtBearer handler emits on an
-// unauthenticated request: status 401 plus WWW-Authenticate: Bearer. The
-// PascalCase error envelope is added downstream by middleware.ErrorBody, the
-// same way ASP.NET's ErrorResponseMiddleware backfills the JwtBearer challenge.
+// Challenge writes the bodyless 401 emitted on an unauthenticated request:
+// status 401 plus WWW-Authenticate: Bearer. The PascalCase error envelope is
+// added downstream by middleware.ErrorBody.
 func Challenge(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	w.WriteHeader(http.StatusUnauthorized)

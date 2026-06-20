@@ -28,10 +28,6 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  DOTNET_NOLOGO: true
-  DOTNET_CLI_TELEMETRY_OPTOUT: true
-
 jobs:
   changes:
     name: Detect changes

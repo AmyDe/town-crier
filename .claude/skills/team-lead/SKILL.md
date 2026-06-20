@@ -58,7 +58,7 @@ One fresh worker per bead — never reuse.
 | Signals | Worker |
 |---------|--------|
 | Swift, iOS, mobile | `ios-tdd-worker` |
-| .NET, C#, API | `dotnet-tdd-worker` |
+| Go, API | `go-tdd-worker` |
 | React, TypeScript, web | `react-tdd-worker` |
 | Pulumi, infrastructure | `pulumi-infra-worker` |
 | CI/CD, GitHub Actions | `github-actions-worker` |
@@ -79,7 +79,7 @@ bd worktree create ".claude/worktrees/tc-42" --branch "guild/tc-42"
 
 ```json
 Agent({
-  "subagent_type": "dotnet-tdd-worker",
+  "subagent_type": "go-tdd-worker",
   "name": "aldric",
   "description": "Implement bead TC-42",
   "team_name": "town-crier-guild",
@@ -115,10 +115,10 @@ You are a **transparent pipe** — never answer decisions yourself, even trivial
 
 | Worker | Test Command |
 |--------|-------------|
-| `dotnet-tdd-worker` | `cd api && dotnet test` |
+| `go-tdd-worker` | `cd api-go && go test ./...` |
 | `ios-tdd-worker` | `cd mobile/ios && swift test` |
 | `react-tdd-worker` | `cd web && npx vitest run` |
-| `pulumi-infra-worker` | `cd infra && dotnet build` |
+| `pulumi-infra-worker` | `cd infra && go build ./...` |
 | `github-actions-worker` | YAML validation only |
 | `delete-worker` | *(same as tech area)* |
 

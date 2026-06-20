@@ -8,7 +8,7 @@ import (
 )
 
 // writeJSON encodes v as a 200 application/json; charset=utf-8 response with HTML
-// escaping off and no trailing newline, matching ASP.NET's Results.Ok byte output.
+// escaping off and no trailing newline.
 func writeJSON(w http.ResponseWriter, r *http.Request, logger *slog.Logger, v any) {
 	body, err := httputil.EncodeJSON(v)
 	if err != nil {

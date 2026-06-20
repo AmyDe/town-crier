@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Exit codes shared across commands, matching the .NET CLI:
+// Exit codes shared across commands:
 //
 //	0 success, 1 usage/validation/config error, 2 API/runtime error.
 const (
@@ -41,8 +41,7 @@ type listUsersItem struct {
 }
 
 // parseStrictInt parses s as a non-negative base-10 integer, accepting only
-// ASCII digits. It rejects signs, whitespace, and decimals, matching the .NET
-// int.TryParse(NumberStyles.None) the original CLI relied on. Overflow is
+// ASCII digits. It rejects signs, whitespace, and decimals. Overflow is
 // reported as invalid.
 func parseStrictInt(s string) (int, bool) {
 	if s == "" {

@@ -9,10 +9,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
-// TestMe_ReturnsSubjectAsUserId pins the .NET GET /api/me contract:
-// Results.Ok(new UserIdResponse(sub)) -> {"userId":"<sub>"} (camelCase via the
-// record's explicit JsonPropertyName), Content-Type application/json with the
-// charset that ASP.NET's Results.Ok writes.
+// TestMe_ReturnsSubjectAsUserId pins the GET /api/me contract: a 200 returning
+// {"userId":"<sub>"} (camelCase) with Content-Type application/json;
+// charset=utf-8.
 func TestMe_ReturnsSubjectAsUserId(t *testing.T) {
 	t.Parallel()
 

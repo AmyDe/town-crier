@@ -315,8 +315,8 @@ type apiErrorResponse struct {
 }
 
 // writeJSON encodes v as an application/json; charset=utf-8 response with HTML
-// escaping off and no trailing newline, matching ASP.NET's Results.Ok byte
-// output (the same approach the profiles handler uses).
+// escaping off and no trailing newline (the same approach the profiles handler
+// uses).
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	body, err := httputil.EncodeJSON(v)
 	if err != nil {

@@ -29,8 +29,8 @@ func TestRoutes_VersionConfig(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	// Parity: .NET's Results.Ok serializes via the web JSON options (camelCase)
-	// with the ASP.NET Core JSON content type including the charset parameter.
+	// JSON is serialized camelCase with the content type including the explicit
+	// charset parameter.
 	if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
 		t.Errorf("content-type: got %q, want %q", got, want)
 	}

@@ -305,9 +305,8 @@ func profileResultFrom(p *UserProfile) profileResult {
 }
 
 // writeJSON encodes v as a 200 application/json; charset=utf-8 response with
-// HTML escaping off and no trailing newline, matching ASP.NET's Results.Ok byte
-// output (the same approach the /api/me handler uses). Every /v1/me success path
-// is a 200, so the status is fixed.
+// HTML escaping off and no trailing newline (the same approach the /api/me
+// handler uses). Every /v1/me success path is a 200, so the status is fixed.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

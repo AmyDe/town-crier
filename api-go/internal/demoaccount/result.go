@@ -2,9 +2,8 @@ package demoaccount
 
 import "github.com/AmyDe/town-crier/api-go/internal/applications"
 
-// demoAccountResult is the wire shape of GET /v1/demo-account, mirroring .NET
-// GetDemoAccountResult. JSON keys are the camelCase forms ASP.NET emits; tier is
-// the SubscriptionTier string ("Pro").
+// demoAccountResult is the wire shape of GET /v1/demo-account. JSON keys are
+// camelCase; tier is the SubscriptionTier string ("Pro").
 type demoAccountResult struct {
 	UserID       string                  `json:"userId"`
 	Tier         string                  `json:"tier"`

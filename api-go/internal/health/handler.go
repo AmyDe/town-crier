@@ -26,8 +26,7 @@ type handler struct {
 }
 
 func (h handler) check(w http.ResponseWriter, r *http.Request) {
-	// Content-Type matches ASP.NET Core's JSON results byte-for-byte,
-	// including the charset parameter.
+	// Content-Type is application/json including the explicit charset parameter.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write([]byte(body)); err != nil {
 		h.logger.ErrorContext(r.Context(), "write health response", "error", err)

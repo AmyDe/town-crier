@@ -49,9 +49,9 @@ type detailResult struct {
 func Routes(mux *http.ServeMux, logger *slog.Logger) {
 	h := handler{store: newStaticStore(), logger: logger}
 	mux.HandleFunc("GET /v1/authorities", h.list)
-	// Trailing slash: ASP.NET Core routing is trailing-slash-insensitive and
-	// serves the list for GET /v1/authorities/ . Go's mux treats it as a
-	// distinct path that {id} will not match, so register it explicitly.
+	// Trailing slash: GET /v1/authorities/ should also serve the list. Go's mux
+	// treats it as a distinct path that {id} will not match, so register it
+	// explicitly.
 	mux.HandleFunc("GET /v1/authorities/{$}", h.list)
 	mux.HandleFunc("GET /v1/authorities/{id}", h.byID)
 }

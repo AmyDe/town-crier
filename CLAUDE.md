@@ -13,7 +13,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 /cli          # Go admin CLI (tc)
 /mobile/ios   # Native iOS app (Clean Architecture / MVVM-C)
 /web          # React/TypeScript frontend
-/infra        # Pulumi IaC (.NET 10 / C#)
+/infra        # Pulumi IaC (Go)
 /docs/adr     # Architecture Decision Records
 ```
 
@@ -24,9 +24,9 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 | Backend API | Go (net/http, log/slog), Azure Container Apps |
 | Database | Azure Cosmos DB (Serverless) via Cosmos DB SDK (no ORM) |
 | iOS App | Swift, SwiftUI, SwiftData, SPM |
-| Infrastructure | Pulumi (C#/.NET 10) |
+| Infrastructure | Pulumi (Go) |
 | CI/CD | GitHub Actions |
-| Testing | go test (Go API + CLI), XCTest/Swift Testing (iOS), Vitest (web), TUnit (.NET infra) |
+| Testing | go test (Go API, CLI + infra), XCTest/Swift Testing (iOS), Vitest (web) |
 
 ## Data Sources
 
@@ -91,7 +91,7 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 | Go                  | `/api-go`, `/cli` | `go-coding-standards`    | `go-tdd-worker`        |
 | iOS / Swift         | `/mobile/ios`    | `ios-coding-standards`    | `ios-tdd-worker`       |
 | Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |
-| Pulumi infra (.NET) | `/infra`         | `dotnet-coding-standards` | `pulumi-infra-worker`  |
+| Pulumi infra (Go)   | `/infra`         | `go-coding-standards`     | `pulumi-infra-worker`  |
 | GitHub Actions      | `.github/`       | —                         | `github-actions-worker`|
 | UI (any platform)   | UI code in any of the above | `design-language` (in addition to the platform skill) | — |
 
@@ -99,31 +99,20 @@ Skills live in `.claude/skills/` as `SKILL.md` files. Agents live in `.claude/ag
 
 ## Key Architectural Constraints
 
-### Native AOT (.NET)
-All .NET code must be Native AOT-compatible:
-- No reflection (`typeof(T).GetProperties()`, `Activator.CreateInstance`)
-- System.Text.Json with `[JsonSerializable]` source generators — no Newtonsoft.Json
-- No dynamic assembly loading or runtime code generation
-- No EF Core or Dapper — use Cosmos DB SDK directly
+Per-stack architecture and patterns live in that stack's coding-standards skill (see the table above). Cross-cutting constraints:
 
-### CQRS (Manual Dispatch)
-Command/Query handlers are manually dispatched — no MediatR or similar libraries. Keep the dependency tree minimal.
-
-### DDD (Rich Domain Models)
-Business logic lives in domain entities and value objects, not in handlers. Handlers are lightweight orchestrators only.
+### Data Access
+No ORM — read and write Cosmos DB through the SDK directly. Business logic lives in domain entities and value objects, with HTTP handlers kept as lightweight orchestrators.
 
 ### Testing
-- TDD workflow: Red-Green-Refactor
-- Handlers are the primary unit of test (.NET); ViewModels and Use Cases for iOS
-- Builder pattern for test data (.NET); static extension fixtures for iOS
-- Manual fakes/spies — no reflection-based mocking libraries
+- TDD workflow: Red-Green-Refactor.
+- Primary unit of test by stack: HTTP handlers and stores (Go); ViewModels and Use Cases (iOS); hooks (web).
+- Hand-written fakes/spies — no reflection-based mocking libraries.
 
 ## Naming Conventions
 
-- **Directory/project names:** `town-crier.*` (lowercase, hyphenated)
-- **C# namespaces:** `TownCrier.*` (PascalCase)
-- **Swift types:** PascalCase; no `I` prefix on protocols (use `...able`, `...Service`, `...Repository`)
-- **C# classes:** `sealed` by default; Swift classes: `final` by default
+- **Directory names:** lowercase, hyphenated
+- **Swift types:** PascalCase; no `I` prefix on protocols (use `...able`, `...Service`, `...Repository`); classes `final` by default
 
 ## Legal Documents
 
@@ -354,7 +343,6 @@ Current thinking, even if no decision has been made.
 ## Style Enforcement Assets
 
 Standard linting/formatting configs are bundled with their respective skills:
-- `.claude/skills/dotnet-coding-standards/assets/.editorconfig` and `Directory.Build.props` (SonarAnalyzer, StyleCop, warnings-as-errors)
 - `.claude/skills/go-coding-standards/assets/.golangci.yml` (errcheck, gosec, sloglint, bodyclose, contextcheck, errorlint, noctx — style-opinion linters deliberately disabled)
 - `.claude/skills/ios-coding-standards/assets/.swiftlint.yml` (force cast/try/unwrap as errors)
 

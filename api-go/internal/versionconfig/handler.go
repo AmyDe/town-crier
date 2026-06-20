@@ -26,7 +26,7 @@ type handler struct {
 }
 
 func (h handler) get(w http.ResponseWriter, r *http.Request) {
-	// charset=utf-8 matches ASP.NET Core's JSON results byte-for-byte.
+	// Content-Type is application/json with an explicit charset=utf-8 parameter.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write([]byte(body)); err != nil {
 		h.logger.ErrorContext(r.Context(), "write version-config response", "error", err)

@@ -133,7 +133,7 @@ If any check fails:
    ```
 
 2. **Assess each failure:**
-   - **Format/lint failure** (e.g., `dotnet format`, `swiftlint`, `npm run lint`): Fix it locally, commit, and push. These are mechanical fixes.
+   - **Format/lint failure** (e.g., `gofmt`, `swiftlint`, `npm run lint`): Fix it locally, commit, and push. These are mechanical fixes.
    - **Test failure:** Read the test output, diagnose the issue, fix it, commit, and push.
    - **Build failure:** Read the build output, fix the issue, commit, and push.
    - **Infrastructure/deployment failure** (staging deploy, integration tests): These may involve secrets or environment issues. Report the failure details and the PR URL, then stop — the user needs to investigate.

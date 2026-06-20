@@ -46,7 +46,7 @@ func (h handler) me(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	// charset=utf-8 matches ASP.NET Core's Results.Ok JSON byte-for-byte.
+	// Content-Type is application/json with an explicit charset=utf-8 parameter.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
 		h.logger.ErrorContext(r.Context(), "write me response", "error", err)

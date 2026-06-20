@@ -81,10 +81,9 @@ func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // backfillWriter defers WriteHeader for >= 400 statuses until the handler
-// either writes body bytes or returns. net/http flushes headers on WriteHeader
-// — unlike ASP.NET, where a response only starts on its first body write — so
-// deferring is what makes the .NET "response has not started" check (and a
-// late Content-Type overwrite) possible.
+// either writes body bytes or returns. net/http flushes headers on WriteHeader,
+// so deferring is what lets us check whether the response has started yet (and
+// apply a late Content-Type overwrite) before the header is sent.
 type backfillWriter struct {
 	http.ResponseWriter
 	holder    *detailHolder // shared mailbox carrying the panic Detail, if any

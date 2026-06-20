@@ -1,6 +1,5 @@
 # Sets up Go (via infra/go.mod), the Pulumi CLI, and caches Go modules for the
-# infra Pulumi program. Centralises the setup used across infra jobs. Replaces
-# the former setup-dotnet-infra action after the C#->Go infra migration (tc-ycsn).
+# infra Pulumi program. Centralises the setup used across infra jobs.
 name: Setup Go & Pulumi for Infra
 description: Install Go, the Pulumi CLI, and cache Go modules for the infra Pulumi program
 

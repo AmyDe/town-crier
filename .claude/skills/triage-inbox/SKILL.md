@@ -53,7 +53,7 @@ Infer labels from the issue. Apply ALL that match — beads can have multiple ar
 
 | Signal in title/body | Label |
 |---|---|
-| `/api/`, `cosmos`, `handler`, `endpoint`, C# / .NET terms | `api` |
+| `/api-go/`, `cosmos`, `handler`, `endpoint`, Go terms | `api` |
 | `/mobile/ios/`, `swift`, `swiftui`, `xcode`, `testflight` | `ios` |
 | `/web/`, `react`, `tsx`, `css`, `vite`, page name (Pricing, Hero, FAQ) | `web` |
 | `/infra/`, `pulumi`, `azure`, `aca`, `acs` | `infra` |
