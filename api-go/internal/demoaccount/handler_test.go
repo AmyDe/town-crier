@@ -186,8 +186,7 @@ func TestGetDemoAccount_EmptyNearby_SerialisesEmptyArray(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	// The applications array must serialise as [] (not null) when empty, matching
-	// .NET's List<DemoApplicationResult>.
+	// The applications array must serialise as [] (not null) when empty.
 	var raw struct {
 		Applications json.RawMessage `json:"applications"`
 	}

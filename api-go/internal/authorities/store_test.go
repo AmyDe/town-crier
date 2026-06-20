@@ -12,9 +12,8 @@ func TestStaticStore_AllSortedByNameOrdinalIgnoreCase(t *testing.T) {
 	s := newStaticStore()
 	all := s.all()
 
-	// Golden order captured verbatim from the .NET dev API's GET /v1/authorities
-	// response, which sorts by name with StringComparer.OrdinalIgnoreCase. The
-	// Go store must reproduce the exact same ordering.
+	// Golden order against which the store's ordinal, case-insensitive sort is
+	// verified. The store must reproduce the exact same ordering.
 	raw, err := os.ReadFile("testdata/golden_authorities.json")
 	if err != nil {
 		t.Fatalf("read golden: %v", err)

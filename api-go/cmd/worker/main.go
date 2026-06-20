@@ -1,6 +1,5 @@
 // Command worker runs the Town Crier background-worker modes as short-lived
-// Container Apps Jobs — the Go port of the .NET town-crier.worker (GH#418
-// Phase 2, epic tc-wad3). One process per job: WORKER_MODE selects the mode,
+// Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
 // poll-bootstrap, digest, hourly-digest, and dormant-cleanup are implemented;
@@ -75,8 +74,8 @@ func run() int {
 	// OTEL_SERVICE_NAME (set to town-crier-worker-go by infra) drives the service
 	// name on exported spans and logs. The deferred shutdown force-flushes the
 	// final batch before this short-lived process exits — without it the worker
-	// can terminate before its spans and logs reach the collector (mirrors the
-	// .NET worker's ForceFlush).
+	// can terminate before its spans and logs reach the collector; the deferred
+	// shutdown flushes the final batch.
 	shutdownTelemetry, err := platform.SetupTelemetry(context.Background(), logger)
 	if err != nil {
 		log.Print(err)
@@ -254,7 +253,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 
 	// Wire the poll-path notification fan-out: each upserted application drives a
 	// decision-event dispatch (on a non-decision -> decision transition) and a
-	// watch-zone notification fan-out, matching .NET PollPlanItCommandHandler.
+	// watch-zone notification fan-out.
 	// This is the CUTOVER-BLOCKER fan-out (bead tc-uc2p) — without it the
 	// Notifications container stays empty and every alert/digest breaks.
 	if err := wirePollFanOut(cfg, handler, zoneStore, registry, logger); err != nil {
@@ -265,7 +264,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 
 	// Lease TTL must exceed the handler's worst-case runtime so the lease cannot
 	// expire mid-handler (which would let a peer start a duplicate cycle). Size it
-	// at the handler budget plus a 30s margin, matching .NET's 4.5m-vs-4m gap.
+	// at the handler budget plus a 30s margin.
 	leaseTTL := secondsToDuration(float64(cfg.PollingHandlerBudgetSeconds)) + 30*time.Second
 
 	orchestrator := polling.NewOrchestrator(
@@ -284,9 +283,9 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// Record towncrier.polling.lease.acquired with caller "orchestrator" (tc-21np).
 	orchestrator.WithLeaseMetrics(registry)
 
-	// The hard cycle budget is replicaTimeout − grace (mirrors the .NET worker);
-	// it bounds the whole RunOnce so the process exits cleanly before Container
-	// Apps SIGTERMs the replica.
+	// The hard cycle budget is replicaTimeout − grace; it bounds the whole
+	// RunOnce so the process exits cleanly before Container Apps SIGTERMs the
+	// replica.
 	cycleBudget := time.Duration(maxInt(1, cfg.PollReplicaTimeoutSeconds-cfg.PollShutdownGraceSeconds)) * time.Second
 
 	return &pollOrchestratorAdapter{orchestrator: orchestrator, cycleBudget: cycleBudget}, nil
@@ -300,8 +299,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // NotificationState / DeviceRegistrations / SavedApplications containers. The
 // APNs push sender is real when its credentials are present, NoOp otherwise so
 // the poll job boots even without APNs config (the record is still written, so
-// the digest pipeline keeps working). Mirrors .NET's per-app
-// decisionEventDispatcher + notificationEnqueuer wiring.
+// the digest pipeline keeps working).
 func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore *watchzones.CosmosStore, registry *metrics.Registry, logger *slog.Logger) error {
 	notifsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
@@ -585,7 +583,7 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, logger *slog.
 
 // buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
 // credentials are configured, else a no-op so a job without Auth0 M2M config
-// still erases Cosmos data, mirroring .NET's NoOpAuth0ManagementClient fallback.
+// still erases Cosmos data.
 func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0Deleter {
 	if !cfg.Auth0M2MConfigured() {
 		logger.Info("auth0 m2m unconfigured; dormant cleanup will skip Auth0 user deletion (NoOp)")

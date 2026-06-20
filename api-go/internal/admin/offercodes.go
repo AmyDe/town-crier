@@ -11,8 +11,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// maxOfferCodeCount bounds a single generate request, mirroring the .NET
-// GenerateOfferCodesCommandHandler.MaxCount.
+// maxOfferCodeCount bounds a single generate request to 1000 codes.
 const maxOfferCodeCount = 1000
 
 type generateRequest struct {
@@ -21,8 +20,8 @@ type generateRequest struct {
 	DurationDays int    `json:"durationDays"`
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse { error, message:null } the
-// generate endpoint returns for validation failures.
+// apiErrorResponse is the { error, message:null } envelope the generate endpoint
+// returns for validation failures.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
@@ -30,9 +29,8 @@ type apiErrorResponse struct {
 
 // generateOfferCodes implements POST /v1/admin/offer-codes: mint N codes for a
 // paid tier and return them, one display-formatted code per line, as text/plain.
-// Validation failures mirror the .NET handler's ArgumentException /
-// ArgumentOutOfRangeException messages byte-for-byte (including the runtime's
-// " (Parameter 'command')" and "Actual value was N." suffixes).
+// Validation failure messages include the " (Parameter 'command')" and
+// "Actual value was N." suffixes for client compatibility.
 func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req generateRequest
@@ -46,7 +44,7 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validation order matches the .NET handler: count, then tier, then duration.
+	// Validation order: count, then tier, then duration.
 	if req.Count < 1 || req.Count > maxOfferCodeCount {
 		h.writeBadRequest(r, w, argOutOfRange("Count must be between 1 and 1000.", req.Count))
 		return
@@ -81,9 +79,8 @@ func (h *handler) generateOfferCodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := strings.Join(formatted, "\n") + "\n"
-	// Bare "text/plain" (no charset) to match .NET Results.Text(body,
-	// contentType: "text/plain") byte-for-byte — verified by the contract diff
-	// (tc-52t6); Go's default would append "; charset=utf-8".
+	// Bare "text/plain" (no charset): the contract test (tc-52t6) requires no
+	// charset suffix; Go's default would append "; charset=utf-8".
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte(body)); err != nil {
@@ -104,13 +101,13 @@ func (h *handler) writeBadRequest(r *http.Request, w http.ResponseWriter, messag
 	}
 }
 
-// argOutOfRange reproduces .NET ArgumentOutOfRangeException.Message for
-// nameof(command): "{message} (Parameter 'command')\nActual value was {value}.".
+// argOutOfRange formats an out-of-range validation message in the shape
+// "{message} (Parameter 'command')\nActual value was {value}.".
 func argOutOfRange(message string, value int) string {
 	return message + " (Parameter 'command')\nActual value was " + strconv.Itoa(value) + "."
 }
 
-// argException reproduces .NET ArgumentException.Message for nameof(command):
+// argException formats a validation message in the shape
 // "{message} (Parameter 'command')".
 func argException(message string) string {
 	return message + " (Parameter 'command')"

@@ -31,8 +31,8 @@ type handler struct {
 
 // Routes registers the application read endpoint. The {name...} wildcard matches
 // the remainder of the path so a PlanIt case reference containing slashes (e.g.
-// "24/0123/FUL") is captured whole, mirroring the .NET {**name} catch-all. The
-// refresher is optional (nil disables refresh-on-tap).
+// "24/0123/FUL") is captured whole. The refresher is optional (nil disables
+// refresh-on-tap).
 func Routes(mux *http.ServeMux, store appStore, refresher snapshotRefresher, logger *slog.Logger) {
 	h := &handler{store: store, refresher: refresher, logger: logger}
 	mux.HandleFunc("GET /v1/applications/{authorityCode}/{name...}", h.getByAuthorityAndName)
@@ -57,7 +57,7 @@ func (h *handler) getByAuthorityAndName(w http.ResponseWriter, r *http.Request) 
 
 	// Refresh-on-tap: if the requesting user has this application saved, heal
 	// their saved snapshot as a best-effort side effect. It must never fail the
-	// read, so errors are logged and swallowed (mirrors .NET TryRefreshSavedSnapshotAsync).
+	// read, so errors are logged and swallowed.
 	if h.refresher != nil {
 		if userID := auth.Subject(r.Context()); userID != "" {
 			if err := h.refresher.RefreshSnapshot(r.Context(), userID, app); err != nil {

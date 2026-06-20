@@ -39,7 +39,7 @@ func TestMe_ReturnsSubjectAsUserId(t *testing.T) {
 // TestMe_EmptySubjectStillServes documents the boundary: the route is reached
 // only after the auth middleware authenticated the request, so the subject is
 // always non-empty in practice. The handler does no extra guarding — it echoes
-// whatever subject the middleware injected — matching .NET's `sub` read.
+// whatever subject the middleware injected.
 func TestMe_EchoesInjectedSubject(t *testing.T) {
 	t.Parallel()
 

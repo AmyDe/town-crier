@@ -249,8 +249,8 @@ func TestRouter_FallbackDeny(t *testing.T) {
 }
 
 // TestRouter_CorsLayeredOnAllResponses confirms CORS is the outermost layer:
-// the matched-origin header appears on a 401 just as on a 200, matching .NET's
-// CORS-before-everything ordering.
+// the matched-origin header appears on a 401 just as on a 200; CORS runs
+// before all other middleware.
 func TestRouter_CorsLayeredOnAllResponses(t *testing.T) {
 	t.Parallel()
 
@@ -268,7 +268,7 @@ func TestRouter_CorsLayeredOnAllResponses(t *testing.T) {
 
 // TestRouter_AuthenticatedPipeline runs the full wired chain with a store: a
 // valid token reaches the /v1/me handlers through rate limiting (headers set,
-// .NET RateLimit-before-handler order) and activity recording.
+// rate-limit-before-handler order) and activity recording.
 func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	t.Parallel()
 

@@ -8,16 +8,15 @@ import (
 )
 
 // geoJSONPoint is the Cosmos GeoJSON projection of an application's coordinates:
-// a Point with [longitude, latitude] order (GeoJSON convention). Mirrors the
-// .NET GeoJsonPoint so ST_DISTANCE spatial queries see the same shape.
+// a Point with [longitude, latitude] order (GeoJSON convention), matching what
+// Cosmos expects for ST_DISTANCE spatial queries.
 type geoJSONPoint struct {
 	Type        string    `json:"type"`
 	Coordinates []float64 `json:"coordinates"`
 }
 
 // applicationDocument is the Cosmos persistence shape for a PlanningApplication
-// in the Applications container. JSON tags reproduce the camelCase keys the .NET
-// CosmosPlanningApplicationRepository writes.
+// in the Applications container. JSON tags use camelCase keys.
 //
 // Partition key: authorityCode (the AreaID as a string). Document id: the PlanIt
 // case reference (Name). A point read is keyed on (authorityCode, name); upserts
@@ -46,7 +45,7 @@ type applicationDocument struct {
 
 // newApplicationDocument maps a domain snapshot to its Applications-container
 // shape. The document id is the name and the partition key is the stringified
-// area id, matching .NET FromDomain.
+// area id.
 func newApplicationDocument(a PlanningApplication) applicationDocument {
 	return applicationDocument{
 		ID:            a.Name,
@@ -97,8 +96,8 @@ func (d applicationDocument) toDomain() PlanningApplication {
 	}
 }
 
-// newGeoPoint builds a GeoJSON point only when both coordinates are present,
-// matching .NET (which writes null when either is absent).
+// newGeoPoint builds a GeoJSON point only when both coordinates are present;
+// returns nil when either is absent.
 func newGeoPoint(lon, lat *float64) *geoJSONPoint {
 	if lon == nil || lat == nil {
 		return nil

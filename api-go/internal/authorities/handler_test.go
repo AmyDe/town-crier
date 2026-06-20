@@ -113,7 +113,7 @@ func TestRoutes_AuthoritiesList_EmptySearchSerializesAsEmptyArray(t *testing.T) 
 	if c.status != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", c.status)
 	}
-	// Parity: .NET emits an empty JSON array, never null.
+	// The authorities array serialises as [] (not null) when no results match.
 	if got, want := string(c.body), `{"authorities":[],"total":0}`; got != want {
 		t.Errorf("body: got %s, want %s", got, want)
 	}
@@ -133,8 +133,8 @@ func TestRoutes_AuthorityByID(t *testing.T) {
 		if got, want := c.contentType, "application/json; charset=utf-8"; got != want {
 			t.Errorf("content-type: got %q, want %q", got, want)
 		}
-		// Exact wire bytes from the .NET dev API: councilUrl/planningUrl are
-		// always null (the provider never populates them), in declaration order.
+		// councilUrl/planningUrl are always null (the embedded data never
+		// populates them), in declaration order.
 		if got, want := string(c.body), `{"id":384,"name":"Aberdeen","areaType":"Scottish Council","councilUrl":null,"planningUrl":null}`; got != want {
 			t.Errorf("body: got %s, want %s", got, want)
 		}
@@ -154,13 +154,10 @@ func TestRoutes_AuthorityByID(t *testing.T) {
 	})
 }
 
-// TestRoutes_AuthorityNonIntID pins the iteration-2 contract: a non-integer id
-// does NOT match .NET's {id:int} route, so no endpoint is selected and the
-// fallback-deny policy returns 401 with WWW-Authenticate: Bearer (bodyless; the
-// PascalCase envelope is backfilled by middleware.ErrorBody). Go's {id}
-// wildcard matches any segment, so the handler self-denies non-ints with the
-// same challenge the auth middleware emits, keeping the observable contract
-// identical.
+// TestRoutes_AuthorityNonIntID pins the contract for a non-integer id: Go's
+// {id} wildcard matches any segment, so the handler self-denies non-ints with
+// the same 401 challenge the auth middleware would emit (bodyless; the PascalCase
+// envelope is backfilled by middleware.ErrorBody).
 func TestRoutes_AuthorityNonIntID(t *testing.T) {
 	t.Parallel()
 

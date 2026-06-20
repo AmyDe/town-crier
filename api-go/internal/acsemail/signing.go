@@ -29,7 +29,7 @@ func newSecret(v string) platform.SecretString { return platform.NewSecret(v) }
 // parseConnectionString splits an ACS connection string of the form
 // "endpoint=https://...;accesskey=<base64>" into its endpoint (trailing slash
 // trimmed) and base64 access key. Keys are matched case-insensitively, matching
-// the format the .NET EmailClient(connectionString) accepts.
+// the "endpoint=https://...;accesskey=<base64>" format ACS expects.
 func parseConnectionString(cs string) (credentials, error) {
 	var endpoint, key string
 	for _, part := range strings.Split(cs, ";") {
