@@ -23,12 +23,11 @@ type savedMatcher interface {
 	UserIDsForApplication(ctx context.Context, applicationUID string, authorityID int) ([]string, error)
 }
 
-// DecisionDispatcher ports .NET DispatchDecisionEventCommandHandler: when a
-// polled application transitions into a decision state, it computes the union of
-// users matched by a watch zone (geographic) and users who bookmarked the
-// application (saved), then dispatches exactly one DecisionUpdate notification
-// per user. Idempotent — at most one DecisionUpdate per (userId, applicationUid,
-// authorityId).
+// DecisionDispatcher handles decision-event fan-out: when a polled application
+// transitions into a decision state, it computes the union of users matched by a
+// watch zone (geographic) and users who bookmarked the application (saved), then
+// dispatches exactly one DecisionUpdate notification per user. Idempotent — at
+// most one DecisionUpdate per (userId, applicationUid, authorityId).
 type DecisionDispatcher struct {
 	notifications notificationWriter
 	zones         zoneMatcher
@@ -189,8 +188,7 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 }
 
 // canPush OR-merges the per-channel decision-push toggles across the matching
-// sources, gated on the paid tier and the global push preference. Mirrors .NET's
-// zonePushOptIn || savedPushOptIn.
+// sources, gated on the paid tier and the global push preference.
 func (d *DecisionDispatcher) canPush(profile *profiles.UserProfile, m *userMatch) bool {
 	if !profile.Tier.IsPaid() || !profile.Preferences.PushEnabled {
 		return false
@@ -200,7 +198,7 @@ func (d *DecisionDispatcher) canPush(profile *profiles.UserProfile, m *userMatch
 	return zonePushOptIn || savedPushOptIn
 }
 
-// mergeSources renders the .NET NotificationSources flag string for a match:
+// mergeSources renders the NotificationSources flag string for a match:
 // "Zone", "Saved", or "Zone,Saved" when both apply.
 func mergeSources(m *userMatch) string {
 	switch {

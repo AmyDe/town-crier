@@ -10,7 +10,7 @@ func TestDigestNotificationDocument_RoundTrips(t *testing.T) {
 	t.Parallel()
 	// A full Notifications-container document hydrates into a DigestNotification
 	// carrying every field the digest email body and APNs payload need. The
-	// camelCase JSON keys match the .NET NotificationDocument exactly.
+	// camelCase JSON keys match the Cosmos document contract.
 	raw := []byte(`{
 		"id": "n-1",
 		"userId": "user-1",
@@ -139,7 +139,7 @@ func TestDigestNotification_MarkEmailSentRoundTripsDocument(t *testing.T) {
 	if back.toDigest().EmailSent != true {
 		t.Error("emailSent should survive the document round trip")
 	}
-	// The 90-day TTL must be written so digest rows expire like .NET's.
+	// The 90-day TTL must be written so digest rows expire on schedule.
 	if back.TTL <= 0 {
 		t.Errorf("ttl should be a positive value, got %d", back.TTL)
 	}

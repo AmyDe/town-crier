@@ -19,7 +19,7 @@ type CosmosItems interface {
 // latestUnreadQuery selects a user's unread notifications for a set of
 // application uids, newest first. ARRAY_CONTAINS binds the uid set as one
 // parameter; the query is scoped to the userId partition so it never fans out
-// cross-partition, mirroring .NET GetLatestUnreadByApplicationsAsync.
+// cross-partition.
 const latestUnreadQuery = "SELECT * FROM c " +
 	"WHERE c.userId = @userId AND ARRAY_CONTAINS(@uids, c.applicationUid) " +
 	"AND c.createdAt > @lastReadAt " +
@@ -41,9 +41,9 @@ func NewCosmosStore(items CosmosItems) *CosmosStore {
 // GetLatestUnreadByApplications returns, for each application uid that has at
 // least one notification created strictly after lastReadAt, the latest such
 // notification — in a single single-partition round trip rather than a per-uid
-// N+1 loop. An empty uid set returns an empty map without issuing a query,
-// mirroring .NET. lastReadAt is passed in the .NET DateTimeOffset string form so
-// Cosmos's lexicographic comparison lines up with the stored "+00:00" timestamps.
+// N+1 loop. An empty uid set returns an empty map without issuing a query.
+// lastReadAt is passed as a "+00:00"-formatted DateTimeOffset string so
+// Cosmos's lexicographic comparison lines up with the stored timestamps.
 func (s *CosmosStore) GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]LatestUnread, error) {
 	if len(applicationUIDs) == 0 {
 		return map[string]LatestUnread{}, nil

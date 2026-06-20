@@ -7,9 +7,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// offerCodeDocument is the Cosmos persistence shape, mirroring the .NET
-// OfferCodeDocument field-for-field (camelCase, .NET DateTimeOffset format for
-// the timestamps). id == code == partition key.
+// offerCodeDocument is the Cosmos persistence shape (camelCase keys, DateTimeOffset
+// "+00:00" format for timestamps). id == code == partition key.
 //
 // Redeemed is the consumed tombstone (GDPR Art. 17): it stays true after a
 // redeemer is scrubbed from RedeemedByUserId / RedeemedAt, so the code can never

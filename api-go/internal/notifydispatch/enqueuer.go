@@ -1,10 +1,8 @@
 // Package notifydispatch is the poll-path notification fan-out: the per-app
-// orchestration the Go poll-sb handler runs after upserting a changed planning
-// application. It ports the two .NET command handlers the .NET
-// PollPlanItCommandHandler invokes per app — DispatchNotificationCommandHandler
-// (new-application zone fan-out) as the Enqueuer, and
-// DispatchDecisionEventCommandHandler (non-decision -> decision transition) as
-// the DecisionDispatcher.
+// orchestration the poll-sb handler runs after upserting a changed planning
+// application. It implements two dispatch paths: the new-application zone
+// fan-out (Enqueuer) and the non-decision → decision transition fan-out
+// (DecisionDispatcher).
 //
 // It lives in its own package, not in notifications, to avoid an import cycle:
 // the watchzones package already imports notifications (for the latest-unread
@@ -76,10 +74,10 @@ type notificationMetricsRecorder interface {
 	NotificationCreated(ctx context.Context, eventType, sources string)
 }
 
-// Enqueuer ports .NET DispatchNotificationCommandHandler: for a new application
-// that matched a watch zone, it dedups, creates the notification record (which
-// feeds the digest pipeline), and — for paid tiers with devices — sends an
-// instant push, pruning any device tokens APNs reports invalid. The higher-level
+// Enqueuer handles new-application zone fan-out: for a new application that
+// matched a watch zone, it dedups, creates the notification record (which feeds
+// the digest pipeline), and — for paid tiers with devices — sends an instant
+// push, pruning any device tokens APNs reports invalid. The higher-level
 // EnqueueForApplication runs the per-app zone fan-out the poll handler calls.
 type Enqueuer struct {
 	notifications notificationWriter
@@ -137,7 +135,6 @@ func NewEnqueuer(
 // zone created after the application last changed is skipped — its owner only
 // subscribes to changes from creation onward, so a back-dated application is not
 // "new" to them. An application without coordinates fans out to nothing.
-// Mirrors the .NET PollPlanItCommandHandler zone-fan-out loop (L212-226).
 func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error {
 	if app.Latitude == nil || app.Longitude == nil {
 		return nil
@@ -172,8 +169,7 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 	profile, err := e.profiles.Get(ctx, zone.UserID)
 	if err != nil {
 		// A missing profile is not a fan-out failure — the user may have been
-		// deleted between zone creation and this poll. Skip them, matching .NET's
-		// null-profile early return.
+		// deleted between zone creation and this poll. Skip them.
 		e.logger.WarnContext(ctx, "enqueue: profile unavailable, skipping", "user", zone.UserID, "error", err)
 		return nil
 	}

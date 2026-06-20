@@ -342,7 +342,7 @@ func TestLoadConfig_CorsAllowedOrigins(t *testing.T) {
 		env  string
 		want []string
 	}{
-		// Default mirrors .NET's fallback when Cors:AllowedOrigins is unset.
+		// Default when CORS_ALLOWED_ORIGINS is unset.
 		{"default localhost", "", []string{"http://localhost:5173"}},
 		{"single origin", "https://towncrierapp.uk", []string{"https://towncrierapp.uk"}},
 		{

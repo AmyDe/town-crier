@@ -40,9 +40,8 @@ type deleteIDOnlyDocument struct {
 }
 
 // DeleteAllByUserID removes every notification in the user's partition: it
-// queries the partition for the document ids, then point-deletes each, mirroring
-// .NET CosmosNotificationRepository.DeleteAllByUserIdAsync. A 404 on an
-// individual delete is tolerated so a concurrent delete does not fail the cascade.
+// queries the partition for the document ids, then point-deletes each. A 404 on
+// an individual delete is tolerated so a concurrent delete does not fail the cascade.
 func (s *DeleteStore) DeleteAllByUserID(ctx context.Context, userID string) error {
 	const query = "SELECT c.id FROM c WHERE c.userId = @userId"
 	raws, err := s.items.QueryItems(ctx, userID, query, map[string]any{"@userId": userID})

@@ -85,7 +85,7 @@ func TestGetLatestUnreadByApplications_ReducesToLatestPerUID(t *testing.T) {
 		t.Errorf("query missing ARRAY_CONTAINS clause: %q", items.lastQuery)
 	}
 	if got, ok := items.lastParams["@lastReadAt"].(string); !ok || got == "" {
-		t.Errorf("@lastReadAt must be the .NET string form, got %v", items.lastParams["@lastReadAt"])
+		t.Errorf("@lastReadAt must be the +00:00 DateTimeOffset string form, got %v", items.lastParams["@lastReadAt"])
 	}
 }
 
@@ -109,7 +109,7 @@ func TestGetLatestUnreadByApplications_EmptyUIDsSkipsQuery(t *testing.T) {
 func TestGetLatestUnreadByApplications_LegacyNullEventTypeCoalescesToNewApplication(t *testing.T) {
 	t.Parallel()
 	// A legacy row with no eventType field (predating tc-so3a.3) must hydrate as
-	// NewApplication, mirroring .NET's lazy backfill.
+	// NewApplication (the legacy backfill coalesce).
 	legacy := []byte(`{"applicationUid":"uid-X","createdAt":"2026-01-01T00:00:00+00:00"}`)
 	items := &fakeItems{result: [][]byte{legacy}}
 	store := NewCosmosStore(items)

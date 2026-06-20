@@ -37,7 +37,7 @@ func NewCosmosStore(state CosmosItems, notifications CosmosCounter) *CosmosStore
 }
 
 // Get point-reads the user's watermark. A missing document returns (nil, nil) —
-// the first-touch signal the handlers branch on, mirroring .NET's null return.
+// the first-touch signal the handlers branch on.
 func (s *CosmosStore) Get(ctx context.Context, userID string) (*State, error) {
 	raw, err := s.state.ReadItem(ctx, userID, userID)
 	if err != nil {
@@ -67,10 +67,9 @@ func (s *CosmosStore) Save(ctx context.Context, st State) error {
 }
 
 // UnreadCount counts the user's notifications created strictly after the
-// watermark (the boundary instant itself counts as read), mirroring .NET
-// GetUnreadCountAsync. The parameter is passed in the .NET DateTimeOffset
-// string form so Cosmos's lexicographic string comparison lines up with the
-// "+00:00"-formatted createdAt values .NET writes.
+// watermark (the boundary instant itself counts as read). The parameter is
+// passed as a "+00:00"-formatted DateTimeOffset string so Cosmos's lexicographic
+// comparison lines up with the stored createdAt values.
 func (s *CosmosStore) UnreadCount(ctx context.Context, userID string, lastReadAt time.Time) (int, error) {
 	const query = "SELECT VALUE COUNT(1) FROM c WHERE c.userId = @userId AND c.createdAt > @lastReadAt"
 	count, err := s.notifications.CountItems(ctx, userID, query, map[string]any{
@@ -88,10 +87,9 @@ func (s *CosmosStore) UnreadCount(ctx context.Context, userID string, lastReadAt
 // per user (id == userId == partition key), so this is a single point delete; a
 // 404 is tolerated so an account with no watermark yet is not a cascade failure.
 //
-// Note: the retired .NET DeleteUserProfileCommandHandler did not erase the
-// notification-state watermark, leaving an orphaned document after account
-// deletion. The Go cascade deletes it (epic tc-wad3, bead tc-dwcq) for complete
-// GDPR erasure.
+// Note: the legacy account-deletion flow did not erase the notification-state
+// watermark, leaving an orphaned document after account deletion; this cascade
+// deletes it (epic tc-wad3, bead tc-dwcq) for complete GDPR erasure.
 func (s *CosmosStore) DeleteByUserID(ctx context.Context, userID string) error {
 	if err := s.state.DeleteItem(ctx, userID, userID); err != nil && !platform.IsCosmosNotFound(err) {
 		return fmt.Errorf("delete notification state %q: %w", userID, err)

@@ -20,7 +20,7 @@ type stateStore interface {
 	UnreadCount(ctx context.Context, userID string, lastReadAt time.Time) (int, error)
 }
 
-// stateResult mirrors .NET GetNotificationStateResult via Results.Ok:
+// stateResult is the GET /v1/me/notification-state response body:
 // camelCase keys, lastReadAt in DateTimeOffset wire format.
 type stateResult struct {
 	LastReadAt       platform.DotNetTime `json:"lastReadAt"`
@@ -28,7 +28,7 @@ type stateResult struct {
 	TotalUnreadCount int                 `json:"totalUnreadCount"`
 }
 
-// advanceRequest mirrors .NET AdvanceNotificationStateRequest.
+// advanceRequest is the POST /v1/me/notification-state/advance request body.
 type advanceRequest struct {
 	AsOf platform.DotNetTime `json:"asOf"`
 }
@@ -123,8 +123,8 @@ func (h handler) markAllRead(w http.ResponseWriter, r *http.Request) {
 
 // advance moves the watermark forward to the request's asOf. First-touch users
 // are seeded at now and the advance applied on top; for existing state a stale
-// asOf is a no-op without a write. Mirrors AdvanceNotificationStateCommandHandler.
-// 204 on success; a malformed body fails binding -> bodyless 400 like .NET.
+// asOf is a no-op without a write. 204 on success; a malformed body returns a
+// bodyless 400.
 func (h handler) advance(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -174,8 +174,7 @@ func (h handler) advance(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSON encodes compactly with HTML escaping off and the trailing newline
-// trimmed, matching the .NET Results.Ok wire bytes (same idiom as the legal and
-// profiles handlers).
+// trimmed (same idiom as the legal and profiles handlers).
 func (h handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

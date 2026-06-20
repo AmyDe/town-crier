@@ -40,8 +40,8 @@ type profileStore interface {
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
-// tierSync mirrors the .NET IAuth0ManagementClient subset used here: push the
-// new tier into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
+// tierSync is the Auth0 Management client subset used here: push the new tier
+// into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
 type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
@@ -64,23 +64,22 @@ type redeemRequest struct {
 	Code string `json:"code"`
 }
 
-// redeemResponse mirrors the .NET RedeemOfferCodeResponse: { tier, expiresAt }.
+// redeemResponse is the POST /v1/offer-codes/redeem success body: { tier, expiresAt }.
 type redeemResponse struct {
 	Tier      string              `json:"tier"`
 	ExpiresAt platform.DotNetTime `json:"expiresAt"`
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse { error, message }. Unlike
+// apiErrorResponse is the error response body { error, message }. Unlike
 // the bodyless-backfill paths, the offer-code errors carry a human message.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
 }
 
-// redeem implements POST /v1/offer-codes/redeem. It mirrors the .NET endpoint's
-// error contract exactly: malformed code -> 400 invalid_code_format, unknown
-// code -> 404 invalid_code, already-claimed -> 409 code_already_redeemed,
-// caller already paid -> 409 already_subscribed.
+// redeem implements POST /v1/offer-codes/redeem: malformed code -> 400
+// invalid_code_format, unknown code -> 404 invalid_code, already-claimed ->
+// 409 code_already_redeemed, caller already paid -> 409 already_subscribed.
 func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -120,8 +119,7 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A missing profile for an authenticated caller is a server-side
-	// inconsistency: .NET throws UserProfileNotFoundException, which the endpoint
-	// does not catch, yielding a 500. Mirror that — any load failure is a 500.
+	// inconsistency; any load failure is a 500.
 	profile, err := h.profiles.Get(r.Context(), userID)
 	if err != nil {
 		h.serverError(w, r, "load profile", err)
