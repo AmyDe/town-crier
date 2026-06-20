@@ -45,4 +45,29 @@ struct WatchZoneListViewTests {
     let sut = WatchZoneListView(viewModel: vm)
     _ = sut.body
   }
+
+  // Free tier at their one-zone cap: the richer inline upsell card fills the
+  // space beneath the single zone. The card itself is driven by
+  // `showsFreeTierUpsell`, asserted exhaustively in the ViewModel tests.
+  @Test func body_renders_whenFreeTierUpsellShown() async {
+    let (vm, spy) = makeViewModel(tier: .free)
+    spy.loadAllResult = .success([.cambridge])
+    await vm.load()
+
+    #expect(vm.showsFreeTierUpsell)
+
+    let sut = WatchZoneListView(viewModel: vm)
+    _ = sut.body
+  }
+
+  @Test func body_renders_whenPersonalAtCap_noFreeTierUpsell() async {
+    let (vm, spy) = makeViewModel(tier: .personal)
+    spy.loadAllResult = .success([.cambridge, .london, .cambridge])
+    await vm.load()
+
+    #expect(!vm.showsFreeTierUpsell)
+
+    let sut = WatchZoneListView(viewModel: vm)
+    _ = sut.body
+  }
 }

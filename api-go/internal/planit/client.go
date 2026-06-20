@@ -79,21 +79,6 @@ type RetryOptions struct {
 	RateLimitBackoff time.Duration
 }
 
-// DefaultThrottleOptions returns the default throttle settings (2s between requests).
-func DefaultThrottleOptions() ThrottleOptions {
-	return ThrottleOptions{DelayBetweenRequests: 2 * time.Second}
-}
-
-// DefaultRetryOptions returns the default retry settings (3 retries, 1s initial
-// backoff, 5s rate-limit backoff base).
-func DefaultRetryOptions() RetryOptions {
-	return RetryOptions{
-		MaxRetries:       3,
-		InitialBackoff:   1 * time.Second,
-		RateLimitBackoff: 5 * time.Second,
-	}
-}
-
 // httpErrorRecorder is the consumer-side slice of the metrics registry the
 // client records towncrier.planit.http_errors on. *metrics.Registry satisfies
 // it; nil leaves the counter dark. The tag keys are owned by the recorder
