@@ -1,15 +1,13 @@
 // Package metrics holds the Town Crier business-metric registry: the
-// towncrier.* OpenTelemetry instruments the .NET worker/api emitted before the
-// Go cutover, re-registered against the global OTel MeterProvider (wired in
-// internal/platform/telemetry.go via the OTLP/gRPC metric exporter -> the ACA
-// managed-environment OTel agent -> App Insights AppMetrics). It restores the
-// polling-pipeline KPIs, PlanIt error rate, Cosmos RU consumption and watch-zone
-// counters the SRE team monitors on (bead tc-21np).
+// towncrier.* OpenTelemetry instruments, registered against the global OTel
+// MeterProvider (wired in internal/platform/telemetry.go via the OTLP/gRPC
+// metric exporter -> the ACA managed-environment OTel agent -> App Insights
+// AppMetrics). It covers the polling-pipeline KPIs, PlanIt error rate, Cosmos
+// RU consumption and watch-zone counters the SRE team monitors (bead tc-21np).
 //
-// The instrument NAMES and the tag keys (cycle.type, polling.authority_code,
-// never_polled, header_present, caller, ...) match the .NET implementation
-// exactly so the existing App Insights dashboards and alerts that key on them
-// keep working across the cutover.
+// Instrument names and tag keys (cycle.type, polling.authority_code,
+// never_polled, header_present, caller, ...) are stable: changing them would
+// break the App Insights dashboards and alerts that key on them.
 //
 // Registry exposes recording METHODS rather than raw instruments so every call
 // site stays trivial and the tag conventions live in one place. Recording
@@ -304,8 +302,7 @@ func (r *Registry) NeverPolledCount(ctx context.Context, count int, cycleType st
 
 // PlanItHTTPError counts a non-2xx PlanIt response, tagged with the status code
 // and authority. The tag keys (http.response.status_code, planit.authority_code)
-// match the .NET PlanItClient instrumentation so existing App Insights queries
-// keep working.
+// are stable so existing App Insights queries keep working.
 func (r *Registry) PlanItHTTPError(ctx context.Context, statusCode, authorityID int) {
 	if r == nil || r.planitHTTPErrors == nil {
 		return
@@ -317,8 +314,7 @@ func (r *Registry) PlanItHTTPError(ctx context.Context, statusCode, authorityID 
 }
 
 // NotificationCreated counts a notification record created, tagged by event_type
-// ("NewApplication" | "DecisionUpdate") and sources ("Zone" | "Saved" | both),
-// matching the .NET ApiMetrics.NotificationsCreated tags.
+// ("NewApplication" | "DecisionUpdate") and sources ("Zone" | "Saved" | both).
 func (r *Registry) NotificationCreated(ctx context.Context, eventType, sources string) {
 	if r == nil || r.notificationsCreated == nil {
 		return
@@ -365,8 +361,8 @@ func (r *Registry) WatchZoneDeleted(ctx context.Context) {
 	r.watchZonesDeleted.Add(ctx, 1)
 }
 
-// boolStr renders a bool as the lowercase "true"/"false" string the .NET tags
-// used, so App Insights filters keep matching across the cutover.
+// boolStr renders a bool as the lowercase "true"/"false" string used in App
+// Insights metric tags.
 func boolStr(b bool) string {
 	if b {
 		return "true"

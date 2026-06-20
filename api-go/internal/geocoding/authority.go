@@ -13,9 +13,7 @@ import (
 )
 
 // authorityMappingJSON is the postcodes.io admin-district -> PlanIt authority-id
-// table, embedded byte-for-byte from the .NET
-// TownCrier.Infrastructure.Geocoding.authority-mapping.json resource so the Go
-// resolver maps coordinates to the exact same authority ids.
+// table, embedded from authority-mapping.json at build time.
 //
 //go:embed authority-mapping.json
 var authorityMappingJSON []byte
@@ -35,8 +33,7 @@ func loadAuthorityMapping() map[string]int {
 
 // ErrAuthorityUnresolved is returned when coordinates cannot be mapped to a
 // PlanIt authority — postcodes.io found no nearby admin district, or no mapping
-// exists for it. The watch-zone create handler surfaces it as a 500, mirroring
-// .NET PostcodesIoAuthorityResolver's propagated InvalidOperationException.
+// exists for it. The watch-zone create handler surfaces it as a 500.
 var ErrAuthorityUnresolved = errors.New("authority could not be resolved from coordinates")
 
 // reverseGeocodeResponse is the postcodes.io reverse-lookup envelope. Unlike the
@@ -51,10 +48,9 @@ type reverseGeocodeResult struct {
 }
 
 // ResolveAuthority reverse-geocodes coordinates to a PlanIt authority id via
-// postcodes.io, mirroring .NET PostcodesIoAuthorityResolver.ResolveFromCoordinatesAsync:
-// it queries the nearest postcode, reads its admin district, and looks the
-// district up in the embedded mapping. A non-2xx response, an absent admin
-// district, or an unmapped district all yield an error wrapping
+// postcodes.io: it queries the nearest postcode, reads its admin district, and
+// looks the district up in the embedded mapping. A non-2xx response, an absent
+// admin district, or an unmapped district all yield an error wrapping
 // ErrAuthorityUnresolved (a 500 at the boundary); a transport failure is
 // returned wrapped (also a 500).
 func (c *Client) ResolveAuthority(ctx context.Context, latitude, longitude float64) (int, error) {
@@ -100,7 +96,7 @@ func (c *Client) ResolveAuthority(ctx context.Context, latitude, longitude float
 }
 
 // firstAdminDistrict returns the first non-empty admin district in the result
-// list, matching .NET's Result.FirstOrDefault().AdminDistrict.
+// list.
 func firstAdminDistrict(results []reverseGeocodeResult) string {
 	for _, r := range results {
 		if r.AdminDistrict != nil && *r.AdminDistrict != "" {

@@ -5,9 +5,8 @@
 // renders an email HTML body and (weekly, Pro tier only) an APNs push payload,
 // hands them to the transport-only acsemail / apns senders, and records dedup
 // state (the hourly cycle flips emailSent; the weekly push prunes invalid device
-// tokens). It ports the .NET GenerateWeeklyDigests / GenerateHourlyDigests
-// command handlers (epic tc-wad3) following idiomatic Go: consumer-side
-// interfaces, hand-written test fakes, business logic in the package.
+// tokens). It follows idiomatic Go: consumer-side interfaces, hand-written test
+// fakes, business logic in the package.
 package digest
 
 import (
@@ -26,8 +25,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// digestWindow is the look-back the weekly digest gathers notifications over,
-// matching .NET's now.AddDays(-7).
+// digestWindow is the 7-day look-back the weekly digest gathers notifications over.
 const digestWindow = 7 * 24 * time.Hour
 
 // profileReader is the consumer-side slice of the profile stores the digest
@@ -120,7 +118,7 @@ func NewHandler(
 // RunWeekly generates the weekly digest for every user whose configured digest
 // day is today. For each user it sends a digest email (when email is enabled and
 // the user has an address) and a digest push (Pro tier only, when push is
-// enabled). It ports .NET GenerateWeeklyDigestsCommandHandler.
+// enabled).
 func (h *Handler) RunWeekly(ctx context.Context) error {
 	now := h.now().UTC()
 	today := now.Weekday()
@@ -218,7 +216,7 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 // notifications, honouring per-zone instant-email gating. It marks the included
 // notifications email-sent so the next cycle excludes them; excluded (per-zone
 // disabled) notifications are left unsent so the weekly digest can still pick them
-// up. It ports .NET GenerateHourlyDigestsCommandHandler.
+// up.
 func (h *Handler) RunHourly(ctx context.Context) error {
 	userIDs, err := h.notifications.UserIDsWithUnsentEmails(ctx)
 	if err != nil {
@@ -285,8 +283,7 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 
 // filterByInstantGate keeps notifications whose watch zone has instant email
 // enabled, plus all saved-only notifications (no zone — driven by the saved
-// bookmark contract, which bypasses the per-zone gate). Mirrors .NET's
-// instantEnabledZones filter.
+// bookmark contract, which bypasses the per-zone gate).
 func filterByInstantGate(notifs []notifications.DigestNotification, zones []watchzones.WatchZone) []notifications.DigestNotification {
 	instantEnabled := make(map[string]struct{}, len(zones))
 	for _, z := range zones {
@@ -319,8 +316,7 @@ func markSent(n notifications.DigestNotification) notifications.DigestNotificati
 // can decide whether to proceed: the hourly cycle must NOT flip emailSent when the
 // send fails (otherwise the email is silently lost and never retried — tc-qvds),
 // while the weekly cycle simply moves on to the next user. A failed email never
-// aborts the rest of the cycle either way, mirroring .NET's catch-and-continue in
-// AcsEmailSender.
+// aborts the rest of the cycle either way.
 func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, notifs []notifications.DigestNotification) error {
 	zones, err := h.zones.GetByUserID(ctx, userID)
 	if err != nil {
@@ -349,8 +345,8 @@ func (h *Handler) sendDigestEmail(ctx context.Context, userID, email string, not
 
 // groupByZone partitions notifications into per-zone sections (preserving zone
 // order by first appearance) plus a saved-only slice for zone-less notifications,
-// returning the total count. An unknown zone id renders as "Unknown Zone",
-// mirroring .NET's zoneLookup.GetValueOrDefault fallback.
+// returning the total count. An unknown zone id renders as "Unknown Zone"
+// (fallback when the id is not in the zone-name map).
 func groupByZone(notifs []notifications.DigestNotification, zoneName map[string]string) (sections []watchZoneDigest, saved []notifications.DigestNotification, total int) {
 	index := map[string]int{}
 	for _, n := range notifs {

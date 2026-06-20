@@ -195,7 +195,7 @@ func TestHandler_Run_ProfileNotFoundIsToleratedAndCounted(t *testing.T) {
 	// A concurrent delete between the scan and the cascade leaves the profile
 	// gone; the cascade must tolerate ErrNotFound on the profile delete (via the
 	// ProfileAbsent predicate) and still count the account as removed (its end
-	// state is achieved), mirroring .NET's UserProfileNotFoundException catch.
+	// state is achieved).
 	finder := &fakeFinder{dormant: []*profiles.UserProfile{profile(t, "auth0|gone")}}
 	cascade := newCascadeRecorder()
 	cascade.profileErr["auth0|gone"] = profiles.ErrNotFound

@@ -1,6 +1,6 @@
-// Package middleware holds the cross-cutting http.Handler wrappers that
-// replicate the .NET API's pipeline behaviours (GH#418). Composition is plain
-// func(http.Handler) http.Handler, chained by hand in cmd/api/main.go.
+// Package middleware holds the cross-cutting http.Handler wrappers (GH#418).
+// Composition is plain func(http.Handler) http.Handler, chained by hand in
+// cmd/api/main.go.
 package middleware
 
 import (
@@ -14,20 +14,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// errorResponse mirrors the .NET ErrorResponse record: PascalCase keys in
-// declaration order, Detail serialized as an explicit null when unset. Detail
-// is populated only from the unhandled-exception (panic recovery) path, exactly
-// as .NET reads context.Items["ErrorDetail"] before backfilling.
+// errorResponse is the error envelope: PascalCase keys in declaration order,
+// Detail serialized as an explicit null when unset. Detail is populated only
+// from the unhandled-exception (panic recovery) path.
 type errorResponse struct {
 	Status int     `json:"Status"`
 	Title  string  `json:"Title"`
 	Detail *string `json:"Detail"`
 }
 
-// detailHolder is a per-request mailbox for the error Detail. .NET uses the
-// mutable context.Items bag; Go contexts are immutable, so a pointer installed
-// once by ErrorBody and mutated by Recover (which runs further down the chain)
-// is the equivalent shared-write channel. ErrorBody reads it after next returns.
+// detailHolder is a per-request mailbox for the error Detail. Go contexts are
+// immutable, so a pointer installed once by ErrorBody and mutated by Recover
+// (which runs further down the chain) is the shared-write channel. ErrorBody
+// reads it after next returns.
 type detailHolder struct {
 	detail *string
 }
@@ -44,14 +43,11 @@ func SetDetail(ctx context.Context, detail string) {
 	}
 }
 
-// ErrorBody replicates the backfill half of the .NET ErrorResponseMiddleware
-// contract (GH#418, parity behaviour 1): any response with status >= 400 that
-// would otherwise be sent with an empty body gets the PascalCase JSON envelope
+// ErrorBody backfills any response with status >= 400 that would otherwise be
+// sent with an empty body (GH#418): it adds the PascalCase JSON envelope
 // {"Status":<n>,"Title":"<reason>","Detail":null} with Content-Type exactly
 // "application/json" (no charset on this path, unlike handler-written bodies).
-// Responses that already carry a body pass through untouched — which means the
-// ServeMux's own text-bodied 404/405 defaults still diverge from .NET until
-// iteration 2's auth fallback owns the unmatched-route surface.
+// Responses that already carry a body pass through untouched.
 func ErrorBody(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +116,7 @@ func (b *backfillWriter) Write(p []byte) (int, error) {
 func (b *backfillWriter) Unwrap() http.ResponseWriter { return b.ResponseWriter }
 
 // backfill writes the error envelope if the handler finished a >= 400 response
-// without a body. Mirrors .NET's status/HasStarted/ContentLength==0 guard.
+// without a body.
 func (b *backfillWriter) backfill() error {
 	if b.flushed || b.status < 400 || b.wroteBody {
 		return nil
@@ -144,9 +140,9 @@ func (b *backfillWriter) backfill() error {
 	return nil
 }
 
-// reasonPhrase mirrors the .NET middleware's GetReasonPhrase switch exactly.
-// 429 is deliberately absent from the map there, so it — like every other
-// unmapped status — falls through to "Error".
+// reasonPhrase returns the reason-phrase title for the given status code. 429
+// is deliberately absent, so it — like every other unmapped status — falls
+// through to "Error".
 func reasonPhrase(status int) string {
 	switch status {
 	case http.StatusBadRequest:

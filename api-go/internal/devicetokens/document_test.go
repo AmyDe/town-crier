@@ -6,11 +6,10 @@ import (
 	"time"
 )
 
-// TestDeviceDocument_WireShape pins the exact Cosmos document the .NET
-// CosmosDeviceRegistrationRepository writes: id == token, partition field
-// userId, token, the string platform, the +00:00 registeredAt, and the 180-day
-// TTL. A drift here would make a Go-written document incompatible with the
-// existing container and break the GDPR export contract.
+// TestDeviceDocument_WireShape pins the Cosmos document wire shape: id == token,
+// partition field userId, token, the string platform, the +00:00 registeredAt,
+// and the 180-day TTL. A drift here would make written documents incompatible
+// with the existing container and break the GDPR export contract.
 func TestDeviceDocument_WireShape(t *testing.T) {
 	t.Parallel()
 
@@ -81,8 +80,8 @@ func TestDeviceDocument_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestDeviceDocument_RejectsUnknownPlatform mirrors .NET Enum.Parse throwing on
-// an unrecognised stored platform.
+// TestDeviceDocument_RejectsUnknownPlatform verifies that an unrecognised
+// stored platform value is rejected.
 func TestDeviceDocument_RejectsUnknownPlatform(t *testing.T) {
 	t.Parallel()
 

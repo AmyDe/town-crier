@@ -18,8 +18,8 @@ type registrationStore interface {
 	Delete(ctx context.Context, userID, token string) error
 }
 
-// registerRequest mirrors .NET RegisterDeviceTokenRequest. Platform arrives as
-// the string-enum form ("Ios"/"Android", bound case-insensitively).
+// registerRequest is the JSON body for PUT /v1/me/device-token. Platform
+// arrives as the string-enum form ("Ios"/"Android", matched case-insensitively).
 type registerRequest struct {
 	Token    string `json:"token"`
 	Platform string `json:"platform"`
@@ -40,10 +40,9 @@ type handler struct {
 }
 
 // register PUTs a device token: refresh the registration instant when the
-// (user, token) pair already exists, create it otherwise. 204 on success,
-// mirroring .NET RegisterDeviceToken -> Results.NoContent(). A malformed body
-// or unknown platform fails JSON binding in .NET and yields a bodyless 400
-// (backfilled by the error middleware) — reproduced here.
+// (user, token) pair already exists, create it otherwise. 204 on success.
+// A malformed body or unknown platform yields a bodyless 400 (backfilled by
+// the error middleware).
 func (h handler) register(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -61,9 +60,8 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 
 	reg, err := NewRegistration(userID, req.Token, platform, h.now())
 	if err != nil {
-		// .NET reaches the domain guard only after binding succeeds, so a blank
-		// token surfaces as an unhandled ArgumentException -> 500. Mirror the
-		// status; the Detail string is .NET-internal and not contract-pinned.
+		// A blank token only reaches this guard after binding succeeds (a blank is
+		// technically valid JSON), so it surfaces as a 500.
 		h.logger.ErrorContext(r.Context(), "register device token", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -88,7 +86,7 @@ func (h handler) register(w http.ResponseWriter, r *http.Request) {
 }
 
 // remove DELETEs a (user, token) registration. Idempotent: removing an absent
-// token still returns 204, mirroring .NET RemoveInvalidDeviceToken.
+// token still returns 204.
 func (h handler) remove(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	token := r.PathValue("token")

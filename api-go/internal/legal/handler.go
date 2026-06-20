@@ -1,12 +1,10 @@
 // Package legal serves GET /v1/legal/{documentType} — the Privacy Policy and
 // Terms of Service. The documents are embedded at build time and served as
-// compact camelCase JSON, byte-for-byte matching the .NET API's Results.Ok
-// output (which re-serializes the same source files compactly).
+// compact camelCase JSON.
 //
-// The embedded resources/{privacy,terms}.json are byte-identical copies of the
-// canonical files at api/src/town-crier.application/Legal/Resources. Go cannot
-// embed files outside its own module, so the copies live here and are guarded
-// against drift by scripts/check-legal-drift.sh.
+// The source files are api-go/internal/legal/resources/{privacy,terms}.json.
+// The iOS app bundles a byte-equal mirror; scripts/check-legal-drift.sh
+// validates parity on every PR.
 package legal
 
 import (
@@ -22,9 +20,8 @@ import (
 //go:embed resources/privacy.json resources/terms.json
 var resources embed.FS
 
-// document mirrors the .NET GetLegalDocumentResult record. Field order matches
-// the record declaration so the compact JSON wire order is identical to .NET's
-// source-generated output.
+// document is the JSON shape for a legal document response. Field order is
+// significant: the compact JSON wire order follows declaration order.
 type document struct {
 	DocumentType string    `json:"documentType"`
 	Title        string    `json:"title"`
@@ -38,7 +35,7 @@ type section struct {
 }
 
 // store holds the pre-encoded compact JSON for each known document type, keyed
-// by the upper-cased type to match .NET's ToUpperInvariant lookup.
+// by the upper-cased type so the lookup is case-insensitive.
 type store struct {
 	docs map[string][]byte
 }
@@ -61,9 +58,9 @@ func newStore() *store {
 	return s
 }
 
-// loadCompact reads an embedded document and re-encodes it compactly in the
-// .NET field order. Round-tripping through the struct (rather than serving the
-// raw pretty-printed file) is what reproduces .NET's compact wire bytes.
+// loadCompact reads an embedded document and re-encodes it compactly in
+// struct field order. Round-tripping through the struct (rather than serving
+// the raw pretty-printed file) produces compact wire bytes in declaration order.
 func loadCompact(file string) ([]byte, error) {
 	raw, err := resources.ReadFile(file)
 	if err != nil {
@@ -73,9 +70,9 @@ func loadCompact(file string) ([]byte, error) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("unmarshal %s: %w", file, err)
 	}
-	// Disable HTML escaping: .NET's System.Text.Json does not escape <, >, or &
-	// in this code path, so escaping them (Go's default) would break byte
-	// parity the moment legal copy includes one of those characters.
+	// Disable HTML escaping: JSON-encoding legal content must not escape <, >,
+	// or & (Go's json.Encoder escapes them by default, which would corrupt the
+	// text).
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -86,9 +83,8 @@ func loadCompact(file string) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// lookup returns the pre-encoded document for the given route value, matching
-// .NET's case-insensitive ToUpperInvariant switch. The bool reports whether a
-// known type was found.
+// lookup returns the pre-encoded document for the given route value
+// (case-insensitive). The bool reports whether a known type was found.
 func (s *store) lookup(documentType string) ([]byte, bool) {
 	doc, ok := s.docs[strings.ToUpper(documentType)]
 	return doc, ok
@@ -108,8 +104,8 @@ type handler struct {
 func (h handler) get(w http.ResponseWriter, r *http.Request) {
 	doc, ok := h.store.lookup(r.PathValue("documentType"))
 	if !ok {
-		// Parity: .NET returns Results.NotFound() (bodyless); the PascalCase
-		// envelope is backfilled by middleware.ErrorBody, as in .NET.
+		// Returns a bodyless 404; the PascalCase envelope is backfilled by
+		// middleware.ErrorBody.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

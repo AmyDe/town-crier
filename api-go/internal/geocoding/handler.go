@@ -20,38 +20,34 @@ type handler struct {
 	logger   *slog.Logger
 }
 
-// Routes registers the geocode endpoint on mux. The endpoint is authed (it is
-// not in the .NET AllowAnonymous set) and has no Cosmos dependency, so it is
-// always wired.
+// Routes registers the geocode endpoint on mux. The endpoint requires
+// authentication and has no Cosmos dependency, so it is always wired.
 func Routes(mux *http.ServeMux, g geocoder, logger *slog.Logger) {
 	h := handler{geocoder: g, logger: logger}
 	mux.HandleFunc("GET /v1/geocode/{postcode}", h.geocode)
 }
 
-// geocodeResult mirrors the .NET GeocodePostcodeResult record: { coordinates }.
+// geocodeResult is the JSON response shape: { coordinates }.
 type geocodeResult struct {
 	Coordinates Coordinates `json:"coordinates"`
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse: { error, message:null }.
+// apiErrorResponse is the error JSON shape: { error, message:null }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
 }
 
-// geocode implements GET /v1/geocode/{postcode}, mirroring the .NET endpoint's
-// three outcomes: a malformed postcode is a 400 (the .NET ArgumentException
-// path), an unresolvable one a 404 (the InvalidOperationException path), and a
-// transport failure a bodyless 500 (the propagated HttpRequestException, whose
-// PascalCase envelope middleware.ErrorBody backfills — as in .NET).
+// geocode implements GET /v1/geocode/{postcode} with three outcomes: a malformed
+// postcode is a 400, an unresolvable one a 404, and a transport failure a
+// bodyless 500 (the PascalCase envelope is backfilled by middleware.ErrorBody).
 func (h handler) geocode(w http.ResponseWriter, r *http.Request) {
 	raw := r.PathValue("postcode")
 
 	normalised, ok := normalisePostcode(raw)
 	if !ok {
-		// .NET throws ArgumentException(msg, nameof(raw)); its Message — which the
-		// endpoint serializes — carries the " (Parameter 'raw')" suffix the
-		// runtime appends when a paramName is supplied. Reproduce it byte-for-byte.
+		// The error message carries the " (Parameter 'raw')" suffix that the iOS
+		// client depends on; reproduce it exactly.
 		h.writeError(r, w, http.StatusBadRequest, "'"+raw+"' is not a valid UK postcode. (Parameter 'raw')")
 		return
 	}

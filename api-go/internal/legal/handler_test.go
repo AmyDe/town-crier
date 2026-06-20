@@ -32,8 +32,8 @@ func TestRoutes_LegalDocument(t *testing.T) {
 		wantTitle        string
 	}{
 		{"privacy lowercase", "privacy", http.StatusOK, "application/json; charset=utf-8", "privacy", "Privacy Policy"},
-		// .NET upper-cases the lookup key (ToUpperInvariant) so case does not
-		// matter on the route value; the body still reflects the file content.
+		// The lookup is case-insensitive (ToUpper), so case does not matter on
+		// the route value; the body still reflects the file content.
 		{"privacy uppercase", "PRIVACY", http.StatusOK, "application/json; charset=utf-8", "privacy", "Privacy Policy"},
 		{"terms lowercase", "terms", http.StatusOK, "application/json; charset=utf-8", "terms", "Terms of Service"},
 		{"terms mixed case", "Terms", http.StatusOK, "application/json; charset=utf-8", "terms", "Terms of Service"},
@@ -109,9 +109,9 @@ func TestRoutes_LegalDocument_CompactCamelCaseWire(t *testing.T) {
 		t.Fatalf("read body: %v", err)
 	}
 
-	// .NET emits compact JSON (Results.Ok), not the pretty-printed file. Parity
-	// requires the same: the body must start with the camelCase field in
-	// declaration order and contain no indentation whitespace.
+	// The endpoint serves compact JSON (not the pretty-printed source file): the
+	// body must start with the camelCase fields in declaration order and contain
+	// no indentation whitespace.
 	const wantPrefix = `{"documentType":"privacy","title":"Privacy Policy","lastUpdated":`
 	if got := string(body); len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
 		t.Errorf("body prefix: got %.80q, want prefix %q", got, wantPrefix)
@@ -148,9 +148,8 @@ func TestRoutes_LegalDocument_UnknownTypeReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
-	// Iteration 1 has no error-body backfill middleware yet (that lands in
-	// iteration 2). The handler returns a bodyless 404 like .NET's
-	// Results.NotFound() before the middleware adds the PascalCase backfill.
+	// The handler returns a bodyless 404; middleware.ErrorBody (added in the
+	// middleware chain) adds the PascalCase envelope.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)

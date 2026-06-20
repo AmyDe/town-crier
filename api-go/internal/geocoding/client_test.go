@@ -106,8 +106,7 @@ func TestClient_Geocode_EscapesPostcodeInPath(t *testing.T) {
 	if _, _, err := client.Geocode(context.Background(), "SW1A 1AA"); err != nil {
 		t.Fatalf("Geocode: %v", err)
 	}
-	// The space is percent-escaped as a single path segment, mirroring .NET's
-	// Uri.EscapeDataString.
+	// The space is percent-escaped as a single path segment (url.PathEscape).
 	if want := "/postcodes/SW1A%201AA"; fake.requestedPath != want {
 		t.Errorf("requested path = %q, want %q", fake.requestedPath, want)
 	}
@@ -120,8 +119,7 @@ func TestClient_Geocode_NotFoundOnNon2xx(t *testing.T) {
 	srv := newPostcodesIoServer(t, fake)
 	client := mustNewClient(t, srv.URL, srv.Client())
 
-	// A non-2xx response means not found (a 404 for the caller), not an error —
-	// mirroring .NET's null return on !IsSuccessStatusCode.
+	// A non-2xx response means not found (a 404 for the caller), not an error.
 	coords, found, err := client.Geocode(context.Background(), "ZZ1 1ZZ")
 	if err != nil {
 		t.Fatalf("Geocode: %v", err)
@@ -134,8 +132,7 @@ func TestClient_Geocode_NotFoundOnNon2xx(t *testing.T) {
 func TestClient_Geocode_NotFoundOnEnvelopeStatusNot200(t *testing.T) {
 	t.Parallel()
 
-	// A 2xx wrapper whose envelope status is not 200 is still "not found",
-	// matching .NET's body.Status != 200 short-circuit.
+	// A 2xx wrapper whose envelope status is not 200 is still "not found".
 	fake := &postcodesIoServer{body: `{"status":404,"result":null}`}
 	srv := newPostcodesIoServer(t, fake)
 	client := mustNewClient(t, srv.URL, srv.Client())
@@ -152,7 +149,7 @@ func TestClient_Geocode_NotFoundOnEnvelopeStatusNot200(t *testing.T) {
 func TestClient_Geocode_NotFoundOnNilResult(t *testing.T) {
 	t.Parallel()
 
-	// status 200 but a null result is "not found", matching .NET's Result is null.
+	// status 200 but a null result is "not found".
 	fake := &postcodesIoServer{body: `{"status":200,"result":null}`}
 	srv := newPostcodesIoServer(t, fake)
 	client := mustNewClient(t, srv.URL, srv.Client())
@@ -170,7 +167,7 @@ func TestClient_Geocode_ErrorOnTransportFailure(t *testing.T) {
 	t.Parallel()
 
 	// A dead upstream is a transport failure: it returns an error (a 500 for the
-	// caller), mirroring .NET's propagated HttpRequestException. Build a server,
+	// caller). Build a server,
 	// capture its URL, then close it so the connection is refused.
 	fake := &postcodesIoServer{body: `{}`}
 	srv := newPostcodesIoServer(t, fake)
