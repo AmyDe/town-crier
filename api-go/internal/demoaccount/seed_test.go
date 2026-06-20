@@ -25,8 +25,7 @@ func TestSeedApplications_AllInWestminsterAuthority(t *testing.T) {
 // TestSeedApplications_WithinDemoRadius guards the contract the production
 // ST_DISTANCE query depends on: every seeded application must lie inside the
 // demo zone, or FindNearby would return fewer than five rows in prod (where the
-// fake here can't catch it). Distance is haversine, mirroring the in-memory
-// .NET repository's metric.
+// fake here can't catch it). Distance is computed using the haversine formula.
 func TestSeedApplications_WithinDemoRadius(t *testing.T) {
 	t.Parallel()
 	for _, a := range seedApplications(time.Now()) {

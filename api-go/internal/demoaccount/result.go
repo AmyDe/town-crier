@@ -11,8 +11,8 @@ type demoAccountResult struct {
 	Applications []demoApplicationResult `json:"applications"`
 }
 
-// demoWatchZoneResult mirrors .NET DemoWatchZoneResult. authorityName is the
-// council display name (not the stored zone name).
+// demoWatchZoneResult is the watch-zone projection within the demo response.
+// authorityName is the council display name (not the stored zone name).
 type demoWatchZoneResult struct {
 	ZoneID        string  `json:"zoneId"`
 	AuthorityName string  `json:"authorityName"`
@@ -21,10 +21,9 @@ type demoWatchZoneResult struct {
 	RadiusMetres  float64 `json:"radiusMetres"`
 }
 
-// demoApplicationResult mirrors .NET DemoApplicationResult — the trimmed
-// application projection the demo endpoint returns (no coordinates, dates, or
-// unread-event data). appType and appState are nullable, marshalling to null
-// when absent.
+// demoApplicationResult is the trimmed application projection the demo endpoint
+// returns (no coordinates, dates, or unread-event data). appType and appState
+// are nullable, marshalling to null when absent.
 type demoApplicationResult struct {
 	UID         string  `json:"uid"`
 	Name        string  `json:"name"`
@@ -34,9 +33,8 @@ type demoApplicationResult struct {
 	AppState    *string `json:"appState"`
 }
 
-// applicationResultOf maps a domain snapshot to its demo wire projection,
-// mirroring .NET's new DemoApplicationResult(a.Uid, a.Name, a.Address,
-// a.Description, a.AppType, a.AppState).
+// applicationResultOf maps a domain snapshot to its demo wire projection
+// (uid, name, address, description, appType, appState).
 func applicationResultOf(a applications.PlanningApplication) demoApplicationResult {
 	return demoApplicationResult{
 		UID:         a.UID,

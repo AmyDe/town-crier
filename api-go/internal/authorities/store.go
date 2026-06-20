@@ -1,7 +1,6 @@
 // Package authorities serves GET /v1/authorities and GET /v1/authorities/{id}
-// from an embedded authorities.json. The list is sorted by name with the same
-// ordinal, case-insensitive ordering the .NET StaticAuthorityProvider uses, so
-// the wire order is byte-for-byte identical.
+// from an embedded authorities.json. The list is sorted by name with ordinal,
+// case-insensitive ordering so the wire order is stable.
 package authorities
 
 import (
@@ -15,8 +14,8 @@ import (
 var resources embed.FS
 
 // Authority is the embedded record. councilUrl and planningUrl are absent from
-// authorities.json and the .NET provider always sets them to null, so they are
-// not stored here; the detail handler emits explicit nulls for parity.
+// authorities.json so they are not stored here; the detail handler emits
+// explicit nulls for wire compatibility.
 type Authority struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
@@ -24,7 +23,7 @@ type Authority struct {
 }
 
 // staticStore holds the authorities pre-sorted by name (ordinal-ignore-case)
-// and indexed by id for O(1) point lookups, mirroring the .NET provider.
+// and indexed by id for O(1) point lookups.
 type staticStore struct {
 	sorted []Authority
 	byIDx  map[int]Authority
@@ -64,9 +63,8 @@ func (s *staticStore) byID(id int) (Authority, bool) {
 	return a, ok
 }
 
-// compareOrdinalIgnoreCase reproduces .NET's StringComparer.OrdinalIgnoreCase
-// for the ASCII-only authority names: compare code unit by code unit after
-// ASCII-uppercasing, falling back to length. Returns -1, 0, or 1.
+// compareOrdinalIgnoreCase sorts ASCII strings by code unit after uppercasing,
+// falling back to length. Returns -1, 0, or 1.
 func compareOrdinalIgnoreCase(a, b string) int {
 	n := min(len(a), len(b))
 	for i := range n {

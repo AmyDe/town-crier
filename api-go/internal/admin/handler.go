@@ -22,8 +22,8 @@ type profileAdminStore interface {
 	List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (profiles.Page, error)
 }
 
-// tierSync mirrors the .NET IAuth0ManagementClient subset: push the tier into
-// Auth0's app_metadata. profiles.Auth0Manager satisfies it.
+// tierSync is the Auth0 management interface the admin handlers use: push the
+// tier into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
 type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }

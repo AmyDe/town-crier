@@ -30,9 +30,9 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-// anonymousPatterns lists the mux patterns registered with AllowAnonymous in
-// the .NET API (GH#418). Every other matched route — and every unmatched
-// request — requires a valid Auth0 bearer token via the fallback-deny policy.
+// anonymousPatterns lists the mux patterns that are served without a token.
+// Every other matched route — and every unmatched request — requires a valid
+// Auth0 bearer token via the fallback-deny policy.
 // Keep this in lockstep with the routes wired below.
 var anonymousPatterns = map[string]struct{}{
 	"GET /health":                  {},
@@ -40,12 +40,10 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/version-config":       {},
 	"GET /v1/legal/{documentType}": {},
 	// The demo-account endpoint is anonymous so Apple's App Store reviewer can
-	// reach a fully-provisioned Pro account without a token, matching .NET's
-	// AllowAnonymous.
+	// reach a fully-provisioned Pro account without a token (no bearer required).
 	"GET /v1/demo-account": {},
 	// Admin routes are anonymous to Auth0 (no bearer token); they are
-	// authenticated solely by the X-Admin-Key gate inside the handlers, matching
-	// .NET's AllowAnonymous + AdminApiKeyFilter.
+	// authenticated solely by the X-Admin-Key gate inside the handlers.
 	"PUT /v1/admin/subscriptions": {},
 	"GET /v1/admin/users":         {},
 	"POST /v1/admin/offer-codes":  {},
@@ -57,8 +55,7 @@ var anonymousPatterns = map[string]struct{}{
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
 // from the embedded mux, while dispatch runs the post-auth pipeline (rate limit
-// -> activity recording -> handlers). This reproduces .NET's middleware order
-// — UseAuthorization, RateLimitMiddleware, RecordUserActivityMiddleware — in a
+// -> activity recording -> handlers). This encodes the pipeline order in a
 // world where Go's mux both matches and dispatches.
 type dispatchMux struct {
 	*http.ServeMux
@@ -70,8 +67,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production
-// middleware chain. Ordering, from outermost to innermost, mirrors the .NET
-// pipeline (WebApplicationExtensions.UseMiddlewarePipeline):
+// middleware chain. Ordering, from outermost to innermost:
 //
 //		CORS -> SecurityHeaders -> ErrorBody -> Recover -> RequireAuth -> RateLimit -> RecordActivity -> mux
 //

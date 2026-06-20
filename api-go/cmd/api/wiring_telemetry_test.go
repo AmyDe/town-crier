@@ -42,7 +42,7 @@ func recordSpansFor(t *testing.T, h http.Handler, method, path, authz string) []
 // TestRouter_RequestSpanCarriesRouteAndStatus pins tc-r8eo end to end: a request
 // through the production chain produces a request span whose Name is the matched
 // route pattern and which carries http.route and http.response.status_code, so
-// Azure Monitor's AppRequests.Name and ResultCode are restored to .NET parity.
+// Azure Monitor's AppRequests.Name and ResultCode are set correctly (tc-r8eo).
 func TestRouter_RequestSpanCarriesRouteAndStatus(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

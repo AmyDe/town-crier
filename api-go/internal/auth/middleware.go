@@ -12,8 +12,7 @@ import (
 
 // Claims carries the JWT claims the handlers need after a token is validated:
 // the subject plus the email, email-verified flag, and subscription_tier the
-// create-profile path reads (mirroring .NET's ClaimsPrincipal lookups in
-// UserProfileEndpoints). Email-derived claims are empty when the token omits
+// create-profile path reads. Email-derived claims are empty when the token omits
 // them.
 type Claims struct {
 	Subject          string
@@ -43,18 +42,16 @@ type claimsKey struct{}
 
 // RequireAuth wraps mux with Auth0 bearer authentication and fallback-deny
 // authorization. anonymousPatterns is the set of mux patterns (e.g.
-// "GET /v1/health") registered with AllowAnonymous in .NET; requests matching
-// one are served without a token. Every other matched route requires a valid
-// bearer token, and any unmatched request is denied with the same 401 challenge
-// — reproducing .NET's behaviour where an unselected endpoint triggers the
-// RequireAuthenticatedUser fallback policy.
+// "GET /v1/health") served without a token. Every other matched route requires a
+// valid bearer token, and any unmatched request is denied with the same 401
+// challenge — no endpoint selected means deny.
 func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[string]struct{}) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, pattern := mux.Handler(r)
 
 		// No pattern matched (unknown path, wrong method, or a constrained route
-		// that did not match): deny, exactly as .NET's fallback policy does when
-		// no endpoint is selected.
+		// that did not match): deny — no endpoint selected means the fallback
+		// policy kicks in.
 		if pattern == "" {
 			Challenge(w)
 			return
@@ -117,8 +114,8 @@ func Subject(ctx context.Context) string {
 }
 
 // bearerToken extracts the token from an "Authorization: Bearer <token>"
-// header. The scheme match is case-insensitive (RFC 7235), matching the .NET
-// JwtBearer handler; an empty or malformed header yields ok=false.
+// header. The scheme match is case-insensitive (RFC 7235); an empty or
+// malformed header yields ok=false.
 func bearerToken(r *http.Request) (string, bool) {
 	const prefix = "bearer "
 	header := r.Header.Get("Authorization")

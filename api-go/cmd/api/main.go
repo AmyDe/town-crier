@@ -1,6 +1,4 @@
-// Command api serves the Town Crier HTTP API — the Go port of the .NET API
-// (GH#418). It must stay contract-identical to the .NET implementation until
-// cutover.
+// Command api serves the Town Crier HTTP API.
 package main
 
 import (

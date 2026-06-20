@@ -6,11 +6,10 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// Result mirrors .NET PlanningApplicationResult — the wire shape of a
-// planning application. Coordinates are flat (the GeoJSON projection is a Cosmos
-// storage concern only). latestUnreadEvent is always null on these endpoints
-// (the .NET ToResult never populates it); a nil json.RawMessage marshals to the
-// explicit null .NET emits.
+// Result is the wire shape of a planning application returned by the API.
+// Coordinates are flat (the GeoJSON projection is a Cosmos storage concern
+// only). latestUnreadEvent is always null on these endpoints; a nil
+// json.RawMessage marshals to explicit JSON null.
 type Result struct {
 	Name              string              `json:"name"`
 	UID               string              `json:"uid"`
@@ -33,8 +32,7 @@ type Result struct {
 	LatestUnreadEvent json.RawMessage     `json:"latestUnreadEvent"`
 }
 
-// ResultOf maps a domain snapshot to its wire shape, mirroring .NET
-// GetApplicationByUidQueryHandler.ToResult.
+// ResultOf maps a domain snapshot to its wire shape.
 func ResultOf(a PlanningApplication) Result {
 	return Result{
 		Name:          a.Name,
@@ -59,10 +57,9 @@ func ResultOf(a PlanningApplication) Result {
 }
 
 // NearbyResult is the wire shape of a raw domain PlanningApplication, as emitted
-// by the watch-zone create response (CreateWatchZoneResult.NearbyApplications in
-// .NET serialises the domain entity directly). It is exactly Result without
-// latestUnreadEvent — that field is a PlanningApplicationResult projection
-// concern, absent from the domain shape.
+// by the watch-zone create response. It is exactly Result without
+// latestUnreadEvent — that field is a Result projection concern, absent from
+// the domain shape.
 type NearbyResult struct {
 	Name          string              `json:"name"`
 	UID           string              `json:"uid"`
