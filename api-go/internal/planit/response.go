@@ -8,7 +8,7 @@ import (
 )
 
 // planItResponse is the PlanIt list-endpoint envelope. JSON tags mirror the
-// snake_case keys PlanIt returns and the .NET PlanItResponse.
+// snake_case keys PlanIt returns.
 type planItResponse struct {
 	Records []planItRecord `json:"records"`
 	PageSiz *int           `json:"pg_sz"`
@@ -16,8 +16,8 @@ type planItResponse struct {
 	Total   *int           `json:"total"`
 }
 
-// planItRecord is one PlanIt application record. JSON tags mirror .NET
-// PlanItApplicationRecord. Nullable upstream fields are pointers so an absent
+// planItRecord is one PlanIt application record. JSON tags match PlanIt's
+// snake_case field names. Nullable upstream fields are pointers so an absent
 // value maps to a nil domain pointer.
 type planItRecord struct {
 	Name          string   `json:"name"`
@@ -40,11 +40,11 @@ type planItRecord struct {
 	LastDifferent string   `json:"last_different"`
 }
 
-// toDomain maps a PlanIt record to the applications.PlanningApplication snapshot,
-// mirroring .NET PlanItClient.MapToDomain: location_x is longitude, location_y
-// latitude; app_type / app_state are carried as non-empty pointers; date-only
-// fields parse to *time.Time; last_different parses as a UTC instant, tolerating
-// the no-timezone fractional-second form PlanIt actually emits.
+// toDomain maps a PlanIt record to the applications.PlanningApplication snapshot:
+// location_x is longitude, location_y latitude; app_type / app_state are carried
+// as non-empty pointers; date-only fields parse to *time.Time; last_different
+// parses as a UTC instant, tolerating the no-timezone fractional-second form
+// PlanIt actually emits.
 func (r planItRecord) toDomain() (applications.PlanningApplication, error) {
 	startDate, err := parseDateOnly(r.StartDate)
 	if err != nil {
@@ -109,7 +109,7 @@ func parsePlanItInstant(value string) (time.Time, error) {
 }
 
 // parseDateOnly parses an optional "yyyy-MM-dd" PlanIt date into a *time.Time,
-// returning nil for an absent or empty value (matching .NET ParseDate).
+// returning nil for an absent or empty value.
 func parseDateOnly(value *string) (*time.Time, error) {
 	if value == nil || *value == "" {
 		return nil, nil //nolint:nilnil // absent optional date is a valid nil, not an error

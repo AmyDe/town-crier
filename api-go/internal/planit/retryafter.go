@@ -8,10 +8,9 @@ import (
 
 // ParseRetryAfter parses an HTTP Retry-After header value, supporting both the
 // delta-seconds form ("120") and the HTTP-date form
-// ("Wed, 21 Oct 2015 07:28:00 GMT"). It mirrors .NET RetryAfterParser.Parse:
-// malformed, negative, or absent values report ok=false so callers fall back to
-// a default policy; a past HTTP-date clamps to zero. now anchors the HTTP-date
-// delta computation.
+// ("Wed, 21 Oct 2015 07:28:00 GMT"). Malformed, negative, or absent values
+// report ok=false so callers fall back to a default policy; a past HTTP-date
+// clamps to zero. now anchors the HTTP-date delta computation.
 func ParseRetryAfter(header string, now time.Time) (time.Duration, bool) {
 	header = strings.TrimSpace(header)
 	if header == "" {

@@ -21,7 +21,7 @@ type instantPushDeps struct {
 // sendInstantPush loads the user's devices, builds the alert payload, sends it,
 // prunes any tokens APNs reports invalid, and reports whether a push was actually
 // sent. A user with no devices is a no-op (false). Every failure is logged and
-// swallowed — a push failure must not abort the record write, mirroring .NET.
+// swallowed — a push failure must not abort the record write.
 func sendInstantPush(ctx context.Context, deps instantPushDeps, userID string, n notifications.DigestNotification) bool {
 	devices, err := deps.devices.ListByUser(ctx, userID)
 	if err != nil {
@@ -60,7 +60,7 @@ func sendInstantPush(ctx context.Context, deps instantPushDeps, userID string, n
 // unreadBadge computes the app-icon badge: notifications created strictly after
 // the read watermark plus 1 for the just-created notification (not yet persisted
 // but unread by construction). A first-touch user (no watermark) starts at the
-// Unix epoch so everything counts, matching .NET's MinValue + 1.
+// Unix epoch so all existing notifications count.
 func unreadBadge(ctx context.Context, state stateReader, logger *slog.Logger, userID string) int {
 	lastReadAt := time.Unix(0, 0).UTC()
 	st, err := state.Get(ctx, userID)

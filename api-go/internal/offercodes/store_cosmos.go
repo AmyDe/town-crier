@@ -55,8 +55,8 @@ func (s *CosmosStore) Get(ctx context.Context, canonical string) (OfferCode, err
 	return doc.toDomain()
 }
 
-// Save upserts the code document (id == code == partition key). The .NET
-// repository's CreateAsync is a best-effort upsert too, so Save covers both.
+// Save upserts the code document (id == code == partition key), covering both
+// create and update.
 func (s *CosmosStore) Save(ctx context.Context, c OfferCode) error {
 	body, err := json.Marshal(newOfferCodeDocument(c))
 	if err != nil {

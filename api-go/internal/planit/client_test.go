@@ -60,7 +60,7 @@ func TestFetchApplicationsPage_ParsesRecordsAndTotal(t *testing.T) {
 		{"name":"24/0001","uid":"24/0001/FUL","area_name":"Test","area_id":99,"address":"1 High St","postcode":"AB1 2CD","description":"A shed","app_type":"Full","app_state":"Undecided","app_size":"Small","start_date":"2026-06-01","location_x":-0.1,"location_y":51.5,"url":"http://x","link":"http://y","last_different":"2026-06-10T09:00:00Z"}
 	]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify the query the .NET client builds: pg_sz, sort, page, auth, different_start.
+		// Verify the query parameters: pg_sz, sort, page, auth, different_start.
 		q := r.URL.Query()
 		if q.Get("auth") != "99" || q.Get("page") != "1" || q.Get("different_start") != "2026-06-09" {
 			t.Errorf("unexpected query: %s", r.URL.RawQuery)

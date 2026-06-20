@@ -1,9 +1,7 @@
 // Package notificationstate owns the per-user read-watermark feature: the
 // State domain value, its Cosmos document shape, the store (watermark document
 // + unread count over the Notifications container), and the
-// GET/mark-all-read/advance HTTP handlers. It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.NotificationState slice
-// (GH#418 iteration 4).
+// GET/mark-all-read/advance HTTP handlers (GH#418 iteration 4).
 package notificationstate
 
 import (
@@ -12,9 +10,9 @@ import (
 	"time"
 )
 
-// State is one user's notification read watermark. It mirrors the .NET
-// NotificationStateAggregate: LastReadAt is the cutoff (notifications created
-// at exactly that instant count as read), Version increments on every change.
+// State is one user's notification read watermark. LastReadAt is the cutoff
+// (notifications created at exactly that instant count as read); Version
+// increments on every change.
 type State struct {
 	UserID     string
 	LastReadAt time.Time

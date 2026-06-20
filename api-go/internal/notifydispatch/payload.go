@@ -10,9 +10,7 @@ import (
 )
 
 // apnsAlertPayload is the APNs body for a single-notification (instant) push.
-// The JSON keys reproduce the .NET ApnsAlertPayload / ApnsAlertAps /
-// ApnsAlertContent shapes exactly so the iOS client receives an unchanged
-// payload across the cutover: the top-level notificationId / applicationRef /
+// JSON keys are camelCase; the top-level notificationId / applicationRef /
 // authorityId / createdAt fields are the deep-link metadata iOS reads.
 type apnsAlertPayload struct {
 	Aps            apnsAlertAps        `json:"aps"`
@@ -33,11 +31,10 @@ type apnsAlertContent struct {
 	Body  string `json:"body"`
 }
 
-// buildAlertPayload renders the instant-push body for a notification, mirroring
-// .NET ApnsPushNotificationSender.BuildAlertPayload: a zone-matched notification
-// is titled "Planning update near you", a saved-only one "Town Crier"; a decision
-// update body appends the UK display label, otherwise the body is the address.
-// totalUnreadCount is the app-icon badge.
+// buildAlertPayload renders the instant-push body for a notification: a
+// zone-matched notification is titled "Planning update near you", a saved-only
+// one "Town Crier"; a decision update body appends the UK display label,
+// otherwise the body is the address. totalUnreadCount is the app-icon badge.
 func buildAlertPayload(n notifications.DigestNotification, totalUnreadCount int) (json.RawMessage, error) {
 	title := "Town Crier"
 	if n.WatchZoneID != nil {
@@ -67,7 +64,7 @@ func buildAlertPayload(n notifications.DigestNotification, totalUnreadCount int)
 
 // buildDecisionBody appends the UK display label to the address for a decision
 // update ("10 High St — Approved"), falling back to the bare address when the
-// decision string is empty or unrecognised. Mirrors .NET BuildDecisionBody.
+// decision string is empty or unrecognised.
 func buildDecisionBody(n notifications.DigestNotification) string {
 	label := vocabulary.UKDisplayString(n.Decision)
 	if label == "" {

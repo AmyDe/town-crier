@@ -9,9 +9,8 @@ import (
 // notificationDocument is the read projection of a Notifications-container
 // document. Only the fields the latest-unread lookup needs are declared; the
 // SELECT * query returns the full document, and json.Unmarshal ignores the rest.
-// JSON keys match the .NET NotificationDocument camelCase. eventType is a
-// pointer so legacy rows predating the field (stored null) coalesce to
-// NewApplication, mirroring .NET's lazy backfill in NotificationDocument.ToDomain.
+// JSON keys are camelCase. eventType is a pointer so legacy rows predating the
+// field (stored null) coalesce to NewApplication on read.
 type notificationDocument struct {
 	ApplicationUID *string             `json:"applicationUid"`
 	Decision       *string             `json:"decision"`

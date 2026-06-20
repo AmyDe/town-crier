@@ -6,10 +6,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// stateDocument is the stored Cosmos shape, byte-compatible with the .NET
-// NotificationStateDocument: camelCase keys, userId doubling as id and
-// partition key (one document per user), lastReadAt in the .NET
-// DateTimeOffset wire format.
+// stateDocument is the stored Cosmos shape: camelCase keys, userId doubling as
+// id and partition key (one document per user), lastReadAt in the DateTimeOffset
+// "+00:00" wire format.
 type stateDocument struct {
 	ID         string              `json:"id"`
 	UserID     string              `json:"userId"`

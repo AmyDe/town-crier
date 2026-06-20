@@ -7,16 +7,15 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// ninetyDaysSeconds is the TTL the .NET NotificationDocument writes so dispatched
-// notifications expire after 90 days. Preserved here so a Go-written document
-// matches the .NET retention.
+// ninetyDaysSeconds is the TTL applied to notification documents so dispatched
+// notifications expire after 90 days.
 const ninetyDaysSeconds = 90 * 24 * 60 * 60
 
 // DigestNotification is the full read/write model the digest worker needs — the
 // complete Notifications-container document, not the latest-unread projection
 // used by the web API. It carries every field the digest email body and APNs
 // payload render, plus the EmailSent flag the hourly cycle flips after a
-// successful send. It mirrors the .NET Notification aggregate.
+// successful send.
 type DigestNotification struct {
 	ID                     string
 	UserID                 string
@@ -36,8 +35,7 @@ type DigestNotification struct {
 }
 
 // HasSavedSource reports whether the notification was produced (in part) by the
-// user's Saved list. It mirrors .NET's NotificationSources.HasFlag(Saved), used
-// to render the "★ saved" indicator on a zone card.
+// user's Saved list, used to render the "★ saved" indicator on a zone card.
 func (n DigestNotification) HasSavedSource() bool {
 	for _, part := range strings.Split(n.Sources, ",") {
 		if strings.EqualFold(strings.TrimSpace(part), "Saved") {
@@ -48,16 +46,15 @@ func (n DigestNotification) HasSavedSource() bool {
 }
 
 // MarkEmailSent flips EmailSent so the persisted document is excluded from the
-// next hourly cycle's unsent-emails query, mirroring .NET Notification.MarkEmailSent.
+// next hourly cycle's unsent-emails query.
 func (n *DigestNotification) MarkEmailSent() {
 	n.EmailSent = true
 }
 
 // digestDocument is the full Cosmos persistence shape of a Notifications-container
-// document. The JSON keys reproduce the .NET NotificationDocument camelCase so a
-// Go-written document is byte-compatible with the existing container. Nullable
-// pointer fields hydrate legacy rows (predating eventType/sources/applicationUid)
-// with the backfill defaults, matching .NET's lazy coalesce on read.
+// document. JSON keys are camelCase so Go-written documents are byte-compatible
+// with the existing container. Nullable pointer fields hydrate legacy rows
+// (predating eventType/sources/applicationUid) with the backfill defaults.
 type digestDocument struct {
 	ID                     string              `json:"id"`
 	UserID                 string              `json:"userId"`
@@ -115,7 +112,7 @@ func (d digestDocument) toDigest() DigestNotification {
 
 // newDigestDocument maps the digest model back to its persistence shape for the
 // MarkEmailSent upsert. It always writes the 90-day TTL so re-saved documents
-// keep the .NET retention.
+// keep the 90-day retention.
 func newDigestDocument(n DigestNotification) digestDocument {
 	eventType := string(n.EventType)
 	sources := n.Sources

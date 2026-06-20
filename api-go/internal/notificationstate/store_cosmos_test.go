@@ -76,7 +76,7 @@ func TestCosmosStore_RoundTrip(t *testing.T) {
 	if err := store.Save(context.Background(), st); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	// Stored shape pins the .NET document contract.
+	// Stored shape pins the Cosmos document contract.
 	want := `{"id":"auth0|s1","userId":"auth0|s1","lastReadAt":"2026-06-12T09:00:00+00:00","version":4}`
 	if got := string(items.docs["auth0|s1"]); got != want {
 		t.Errorf("stored doc = %s, want %s", got, want)
@@ -102,8 +102,8 @@ func TestCosmosStore_UnreadCount_CutoffFormat(t *testing.T) {
 	if err != nil || got != 5 {
 		t.Fatalf("count: got (%d, %v), want (5, nil)", got, err)
 	}
-	// The cutoff parameter must use the .NET DateTimeOffset string form so the
-	// lexicographic comparison against .NET-written createdAt values holds.
+	// The cutoff parameter must use the +00:00 DateTimeOffset string form so the
+	// lexicographic comparison against stored createdAt values holds.
 	if cutoff := counter.params["@lastReadAt"]; cutoff != "2026-06-12T09:00:00+00:00" {
 		t.Errorf("cutoff param = %v, want +00:00 form", cutoff)
 	}

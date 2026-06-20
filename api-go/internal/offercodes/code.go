@@ -13,9 +13,8 @@ import (
 var ErrAlreadyRedeemed = errors.New("offer code has already been redeemed")
 
 // OfferCode is a single redeemable code granting a paid tier for a fixed
-// duration, mirroring the .NET OfferCode aggregate. Fields are exported so the
-// store can rehydrate a stored document directly; NewOfferCode enforces the
-// invariants for freshly minted codes.
+// duration. Fields are exported so the store can rehydrate a stored document
+// directly; NewOfferCode enforces the invariants for freshly minted codes.
 //
 // Redeemed is a consumed tombstone that survives GDPR Art. 17 anonymisation:
 // when a redeemer is scrubbed from a redeemed code, RedeemedByUserID and
@@ -33,8 +32,7 @@ type OfferCode struct {
 }
 
 // NewOfferCode mints a code, validating the canonical format, a non-Free tier,
-// and a 1..365 day duration — the same invariants the .NET OfferCode
-// constructor enforces.
+// and a 1..365 day duration.
 func NewOfferCode(code string, tier profiles.SubscriptionTier, durationDays int, createdAt time.Time) (OfferCode, error) {
 	if !IsValidCanonical(code) {
 		return OfferCode{}, errors.New("code is not a valid canonical offer code")

@@ -86,7 +86,7 @@ func TestHandler_Get_ExistingState(t *testing.T) {
 	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
 		t.Errorf("content-type = %q", got)
 	}
-	// .NET DateTimeOffset wire format: numeric offset, never Z.
+	// DateTimeOffset wire format: numeric offset, never Z.
 	want := `{"lastReadAt":"2026-06-01T12:00:00+00:00","version":3,"totalUnreadCount":7}`
 	if rec.Body.String() != want {
 		t.Errorf("body = %s, want %s", rec.Body.String(), want)
