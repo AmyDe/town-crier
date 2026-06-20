@@ -39,7 +39,7 @@ func TestRoutes_VersionConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	// Exact wire bytes captured from the .NET dev API: camelCase, no whitespace.
+	// Exact wire format: camelCase, no whitespace.
 	if got, want := string(body), `{"minimumVersion":"1.0.0"}`; got != want {
 		t.Errorf("body: got %s, want %s", got, want)
 	}

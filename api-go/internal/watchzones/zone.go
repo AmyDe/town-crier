@@ -1,9 +1,7 @@
 // Package watchzones owns the watch-zone feature: the domain model, the Cosmos
-// store over the WatchZones container, and the /v1/me/watch-zones HTTP handlers.
-// It mirrors the .NET TownCrier.{Domain,Application,Infrastructure}.WatchZones
-// slices (GH#418 iteration 5) but follows idiomatic Go — a plain struct
-// validated at construction, a consumer-side store interface, and hand-written
-// test fakes.
+// store over the WatchZones container, and the /v1/me/watch-zones HTTP handlers
+// (GH#418 iteration 5). It follows idiomatic Go — a plain struct validated at
+// construction, a consumer-side store interface, and hand-written test fakes.
 //
 // Scope note: POST create (whose response body carries nearby applications) and
 // GET /{zoneId}/applications are deferred to bead tc-5847 — they hard-depend on
@@ -20,7 +18,7 @@ import (
 
 // WatchZone is a user's geofenced monitoring area: a circle (centre + radius)
 // scoped to one planning authority. Exported fields keep it a plain Go value;
-// the constructor enforces the invariants .NET guards in WatchZone's ctor.
+// the constructor enforces all invariants.
 type WatchZone struct {
 	ID                  string
 	UserID              string
@@ -34,11 +32,10 @@ type WatchZone struct {
 	EmailInstantEnabled bool
 }
 
-// NewWatchZone validates and constructs a watch zone. It mirrors the .NET
-// WatchZone constructor: id, user id and name must be non-blank and radius and
-// authority id must be positive. Coordinate range is deliberately NOT checked
-// here — like .NET, that is an HTTP-layer validation, so the domain accepts any
-// latitude/longitude.
+// NewWatchZone validates and constructs a watch zone. id, user id and name must
+// be non-blank and radius and authority id must be positive. Coordinate range is
+// deliberately NOT checked here — that is an HTTP-layer validation, so the
+// domain accepts any latitude/longitude.
 func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres float64, authorityID int, createdAt time.Time, pushEnabled, emailInstantEnabled bool) (WatchZone, error) {
 	if strings.TrimSpace(id) == "" {
 		return WatchZone{}, errors.New("id is required")
@@ -69,8 +66,7 @@ func NewWatchZone(id, userID, name string, latitude, longitude, radiusMetres flo
 	}, nil
 }
 
-// ZoneUpdate is a partial PATCH: a nil field leaves the existing value
-// untouched, mirroring the nullable parameters of .NET's WatchZone.WithUpdates.
+// ZoneUpdate is a partial PATCH: a nil field leaves the existing value untouched.
 type ZoneUpdate struct {
 	Name                *string
 	Latitude            *float64
@@ -83,9 +79,8 @@ type ZoneUpdate struct {
 
 // WithUpdates returns a copy of the zone with the non-nil fields of u applied,
 // re-validated through the constructor — so a merge that would violate an
-// invariant (e.g. a blank name) returns an error rather than a corrupt zone,
-// exactly as .NET's WithUpdates re-runs its guards. Identity (id, user id) and
-// the creation timestamp are immutable across an update.
+// invariant (e.g. a blank name) returns an error rather than a corrupt zone.
+// Identity (id, user id) and the creation timestamp are immutable across an update.
 func (z WatchZone) WithUpdates(u ZoneUpdate) (WatchZone, error) {
 	updated := z
 	if u.Name != nil {

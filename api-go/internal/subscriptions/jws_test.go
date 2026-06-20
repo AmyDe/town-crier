@@ -134,7 +134,7 @@ func requireJWSError(t *testing.T, err error) {
 // testJWSBuilder builds a self-contained EC certificate chain
 // (root -> intermediate -> leaf) and signs an ES256 JWS the way Apple's
 // StoreKit infrastructure does: an x5c header carrying the chain (leaf first)
-// and an ES256 signature over header.payload. Mirrors the .NET TestJwsBuilder.
+// and an ES256 signature over header.payload.
 type testJWSBuilder struct {
 	root         *x509.Certificate
 	intermediate *x509.Certificate

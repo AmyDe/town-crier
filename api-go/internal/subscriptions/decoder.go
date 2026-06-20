@@ -8,10 +8,9 @@ import (
 )
 
 // PayloadError signals a decoded Apple payload that is malformed or missing a
-// required field. It is the Go analog of the .NET ArgumentException the
-// decoders and the bundle-id check raise — the verify/webhook endpoints map it
-// to a 400 invalid_transaction_payload / invalid_notification_payload, whereas
-// a *JWSVerificationError maps to a 401.
+// required field. The verify/webhook endpoints map it to a 400
+// invalid_transaction_payload / invalid_notification_payload, whereas a
+// *JWSVerificationError maps to a 401.
 type PayloadError struct {
 	Message string
 }
@@ -65,8 +64,7 @@ type appleNotificationData struct {
 }
 
 // DecodeTransaction maps the verified JWS transaction JSON onto a
-// DecodedTransaction, mirroring .NET TransactionDecoder including its exact
-// error messages.
+// DecodedTransaction.
 func DecodeTransaction(jsonStr string) (DecodedTransaction, error) {
 	if strings.TrimSpace(jsonStr) == "" {
 		return DecodedTransaction{}, &PayloadError{Message: "The transaction JSON is empty."}
@@ -101,8 +99,7 @@ func DecodeTransaction(jsonStr string) (DecodedTransaction, error) {
 }
 
 // DecodeNotification maps the verified outer JWS notification JSON onto a
-// DecodedNotification, mirroring .NET NotificationDecoder including its exact
-// error messages.
+// DecodedNotification.
 func DecodeNotification(jsonStr string) (DecodedNotification, error) {
 	if strings.TrimSpace(jsonStr) == "" {
 		return DecodedNotification{}, &PayloadError{Message: "The notification JSON is empty."}

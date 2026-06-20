@@ -23,8 +23,7 @@ import (
 
 // serviceBusSuffix is the public Azure Service Bus DNS suffix. A bare namespace
 // name has it appended; a value already carrying it is left unchanged so the
-// FQDN is never doubled (the .NET worker hit NXDOMAIN when it doubled the
-// suffix — see ServiceBusServiceExtensions.cs).
+// FQDN is never doubled.
 const serviceBusSuffix = ".servicebus.windows.net"
 
 // Sentinel errors for construction-time validation.
@@ -34,8 +33,8 @@ var (
 )
 
 // QueueDepth is a snapshot of the trigger queue's active and scheduled message
-// counts. It mirrors .NET's PollTriggerQueueDepth: the bootstrapper seeds a new
-// trigger only when both counts are zero (IsEmpty).
+// counts. The bootstrapper seeds a new trigger only when both counts are zero
+// (IsEmpty).
 type QueueDepth struct {
 	ActiveMessageCount    int64
 	ScheduledMessageCount int64
@@ -118,8 +117,8 @@ func (c *Client) QueueDepth(ctx context.Context) (QueueDepth, error) {
 
 // PublishAt publishes one poll-trigger message scheduled to enqueue at
 // scheduledEnqueueTime. The body carries only a diagnostic timestamp — the
-// message is a "run once now" tick, matching .NET's PollTriggerPayload. A
-// scheduled enqueue (server-side) defers delivery without holding a goroutine.
+// message is a "run once now" tick. A scheduled enqueue (server-side) defers
+// delivery without holding a goroutine.
 func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, body []byte) (err error) {
 	sender, err := c.sbClient.NewSender(c.queueName, nil)
 	if err != nil {
@@ -146,8 +145,7 @@ func (c *Client) PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, 
 }
 
 // receiveWaitTimeout bounds a single receive-and-delete attempt so an empty
-// queue returns promptly rather than blocking until a message arrives. It
-// mirrors .NET ServiceBusPollTriggerQueue's 5s receive timeout.
+// queue returns promptly rather than blocking until a message arrives (5s).
 const receiveWaitTimeout = 5 * time.Second
 
 // ReceiveTrigger destructively receives one poll-trigger message in

@@ -307,8 +307,7 @@ func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T
 		t.Fatalf("zones: got %+v", zones)
 	}
 	// The point-in-circle predicate is an ST_DISTANCE against the zone radius,
-	// run cross-partition (every user's zones), mirroring .NET
-	// FindZonesContainingCrossPartitionAsync.
+	// run cross-partition (every user's zones).
 	if !strings.Contains(items.lastQuery, "ST_DISTANCE") {
 		t.Errorf("query missing ST_DISTANCE: %q", items.lastQuery)
 	}

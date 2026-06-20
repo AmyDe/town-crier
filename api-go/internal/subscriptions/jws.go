@@ -18,9 +18,8 @@ import (
 var appleRootCAG3DER []byte
 
 // JWSVerificationError signals a JWS that failed structural, certificate-chain,
-// or signature validation. It mirrors the .NET AppleJwsVerificationException;
-// the message is surfaced in the 401 invalid_transaction / invalid_notification
-// response body.
+// or signature validation. The message is surfaced in the 401 invalid_transaction
+// / invalid_notification response body.
 type JWSVerificationError struct {
 	Message string
 }
@@ -59,7 +58,6 @@ func NewJWSVerifier(trustedRoots []*x509.Certificate, now func() time.Time) (*JW
 // LoadAppleRootCertificates returns the trusted Apple root certificate(s) for
 // JWS chain validation. The DER-encoded "Apple Root CA - G3" is embedded as a
 // package resource so verification needs no filesystem or network access.
-// Mirrors .NET AppleRootCertificates.Load.
 func LoadAppleRootCertificates() ([]*x509.Certificate, error) {
 	cert, err := x509.ParseCertificate(appleRootCAG3DER)
 	if err != nil {
@@ -143,9 +141,8 @@ func parseCertificateChain(header jwsHeader) ([]*x509.Certificate, error) {
 
 // verifyChainTrust builds the leaf -> ... -> root path against the trusted
 // roots. Intermediates travel in the x5c header, so they are supplied as the
-// intermediate pool. ExtKeyUsageAny mirrors .NET's permissive chain policy
-// (CustomRootTrust, no EKU constraint); revocation is not checked, matching
-// .NET's RevocationMode.NoCheck.
+// intermediate pool. ExtKeyUsageAny is used (no EKU constraint); revocation is
+// not checked.
 func (v *JWSVerifier) verifyChainTrust(chain []*x509.Certificate) error {
 	intermediates := x509.NewCertPool()
 	for _, cert := range chain[1:] {

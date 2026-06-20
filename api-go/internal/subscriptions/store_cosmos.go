@@ -21,7 +21,6 @@ type notificationItems interface {
 // processedNotificationDocument records that an App Store Server Notification
 // has been handled. The document id and partition key are both the
 // notificationUUID, so a duplicate delivery is detected with one point read.
-// Mirrors the .NET ProcessedNotificationDocument.
 type processedNotificationDocument struct {
 	ID          string              `json:"id"`
 	ProcessedAt platform.DotNetTime `json:"processedAt"`
@@ -29,7 +28,7 @@ type processedNotificationDocument struct {
 
 // CosmosNotificationStore records and detects processed App Store Server
 // Notifications in the AppleNotifications container, giving the webhook handler
-// at-most-once processing. Mirrors the .NET CosmosNotificationIdempotencyStore.
+// at-most-once processing.
 type CosmosNotificationStore struct {
 	items notificationItems
 	now   func() time.Time

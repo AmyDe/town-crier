@@ -19,8 +19,8 @@ import (
 
 const maxBodyBytes = 1 << 20
 
-// invalidBodyMessage is the .NET ApiErrorResponse text when the save body lacks
-// the fields needed to build the canonical key and master record.
+// invalidBodyMessage is the error text when the save body lacks the fields
+// needed to build the canonical key and master record.
 const invalidBodyMessage = "Body must include a non-empty uid and name."
 
 // applicationNotFoundMessage is returned when the body's (areaId, name) does
@@ -53,8 +53,8 @@ type handler struct {
 }
 
 // Routes registers the saved-application endpoints. PUT/DELETE use a {**uid}
-// catch-all so a slash-bearing application uid is captured whole, mirroring the
-// .NET {**applicationUid} route.
+// catch-all so a slash-bearing application uid is captured whole (matching the
+// {**applicationUid} path pattern).
 func Routes(mux *http.ServeMux, store savedStore, apps appStore, now func() time.Time, logger *slog.Logger) {
 	h := &handler{store: store, apps: apps, now: now, logger: logger}
 	mux.HandleFunc("PUT /v1/me/saved-applications/{applicationUid...}", h.save)
@@ -150,8 +150,7 @@ func (h *handler) delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// savedEntry mirrors .NET SavedApplicationResult: { applicationUid, savedAt,
-// application }.
+// savedEntry is the per-row wire shape: { applicationUid, savedAt, application }.
 type savedEntry struct {
 	ApplicationUID string              `json:"applicationUid"`
 	SavedAt        platform.DotNetTime `json:"savedAt"`
@@ -159,9 +158,9 @@ type savedEntry struct {
 }
 
 // list implements GET /v1/me/saved-applications, returning a JSON array of the
-// user's saved applications rendered from their embedded snapshots. It runs the
-// lazy migration the .NET GetSavedApplicationsQueryHandler runs on every read,
-// reachable only by pre-PR#398 legacy data: (1) backfill the snapshot for rows
+// user's saved applications rendered from their embedded snapshots. It runs a
+// lazy migration on every read, reachable only by pre-PR#398 legacy data:
+// (1) backfill the snapshot for rows
 // persisted before the snapshot column existed, (2) re-key legacy bare-ref uids
 // to the canonical {areaId}/{name} uid, (3) dedup a legacy+canonical pair for
 // the same application to a single row.
@@ -272,7 +271,7 @@ func (h *handler) reKeyToCanonical(ctx context.Context, legacy SavedApplication)
 	return canonical, nil
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse: { error, message:null }.
+// apiErrorResponse is the error envelope: { error, message:null }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`

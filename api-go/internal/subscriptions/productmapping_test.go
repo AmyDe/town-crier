@@ -46,14 +46,13 @@ func TestTierForProduct_UnknownErrorMessage(t *testing.T) {
 	if !errors.As(err, &upe) {
 		t.Fatalf("want *UnknownProductError, got %T (%v)", err, err)
 	}
-	// Message matches .NET ProductMapping's ArgumentException text so a future
-	// contract test could diff it against the retired .NET API verbatim.
+	// Message matches the canonical error format for unknown product ID errors.
 	if want := "Unknown App Store product ID: 'com.example.bogus'"; upe.Error() != want {
 		t.Errorf("message = %q, want %q", upe.Error(), want)
 	}
 }
 
-// TestProductIDs_NoLegacyDomain guards against anyone reintroducing the .NET
+// TestProductIDs_NoLegacyDomain guards against reintroducing the legacy
 // "uk.co.towncrier" domain typo into the canonical constants.
 func TestProductIDs_NoLegacyDomain(t *testing.T) {
 	t.Parallel()

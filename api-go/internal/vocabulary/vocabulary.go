@@ -9,7 +9,7 @@ import "strings"
 // "Rejected", "Appealed") to the UK planning term residents recognise
 // ("Approved", "Approved with conditions", "Refused", "Refusal appealed"),
 // returning "" for a nil or unrecognised input. Matching is case-insensitive to
-// tolerate upstream casing drift. Port of .NET UkPlanningVocabulary.GetDisplayString.
+// tolerate upstream casing drift.
 func UKDisplayString(planItAppState *string) string {
 	if planItAppState == nil {
 		return ""
