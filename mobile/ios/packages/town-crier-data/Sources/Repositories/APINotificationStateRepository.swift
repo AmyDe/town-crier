@@ -64,9 +64,10 @@ struct NotificationStateDTO: Decodable, Sendable {
   let totalUnreadCount: Int
 
   func toDomain() -> NotificationState {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    let date = formatter.date(from: lastReadAt) ?? Date(timeIntervalSince1970: 0)
+    // The backend's DotNetTime format carries fractional seconds whenever the
+    // sub-second part is non-zero; parse robustly via the shared helper. The
+    // epoch fallback is retained only for genuinely unparseable input.
+    let date = DotNetTimeParser.date(from: lastReadAt) ?? Date(timeIntervalSince1970: 0)
     return NotificationState(
       lastReadAt: date,
       version: version,
