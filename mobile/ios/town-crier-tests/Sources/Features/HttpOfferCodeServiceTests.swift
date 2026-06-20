@@ -80,6 +80,53 @@ struct HttpOfferCodeServiceTests {
     #expect(redemption.expiresAt == expected)
   }
 
+  @Test("redeem succeeds when expiresAt has fractional seconds")
+  func redeem_fractionalSecondsExpiry_succeeds() async throws {
+    // The Go backend emits fractional seconds whenever the sub-second part is
+    // non-zero (expiry = time.Now().AddDate(...)). A plain .withInternetDateTime
+    // parse returns nil on this and used to throw .network — the user-reported
+    // "Something went wrong while redeeming that code" bug (tc-1gbh).
+    let body = """
+      {
+        "tier": "pro",
+        "expiresAt": "2026-07-20T14:23:45.6789123+00:00"
+      }
+      """
+    let (sut, _) = makeSUT(responses: [
+      (Data(body.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let redemption = try await sut.redeem(code: "A7KMZQR3FNXP")
+
+    #expect(redemption.tier == .pro)
+    let wholeSecond = try #require(
+      DotNetTimeParser.date(from: "2026-07-20T14:23:45+00:00")
+    )
+    #expect(redemption.expiresAt.timeIntervalSince(wholeSecond) > 0.6)
+    #expect(redemption.expiresAt.timeIntervalSince(wholeSecond) < 0.7)
+  }
+
+  @Test("redeem succeeds when expiresAt has whole seconds (no regression)")
+  func redeem_wholeSecondExpiry_succeeds() async throws {
+    let body = """
+      {
+        "tier": "pro",
+        "expiresAt": "2026-06-12T09:30:00+00:00"
+      }
+      """
+    let (sut, _) = makeSUT(responses: [
+      (Data(body.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let redemption = try await sut.redeem(code: "A7KMZQR3FNXP")
+
+    #expect(redemption.tier == .pro)
+    let expected = try #require(
+      DotNetTimeParser.date(from: "2026-06-12T09:30:00+00:00")
+    )
+    #expect(redemption.expiresAt == expected)
+  }
+
   @Test("redeem throws .network when tier rawValue is unknown")
   func redeem_unknownTier_throwsNetworkError() async throws {
     let body = """

@@ -201,6 +201,37 @@ struct APISavedApplicationRepositoryTests {
     #expect(result[0].application?.address == "12 Mill Road, Cambridge, CB1 2AD")
   }
 
+  @Test("loadAll parses a fractional-seconds savedAt (not now)")
+  func loadAll_fractionalSecondsSavedAt_parsesCorrectly() async throws {
+    // The Go backend emits fractional seconds when the sub-second part is
+    // non-zero. A plain .withInternetDateTime parse returns nil and used to
+    // silently substitute Date() (now) — the tc-ephy bug, which corrupts the
+    // saved-application sort/display order.
+    let json = """
+      [
+        {
+          "applicationUid": "BK/2026/0042",
+          "savedAt": "2026-04-10T14:30:00.7654321Z",
+          "application": null
+        }
+      ]
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let result = try await sut.loadAll()
+
+    #expect(result.count == 1)
+    // Must NOT fall back to "now".
+    #expect(abs(result[0].savedAt.timeIntervalSinceNow) > 60)
+    let wholeSecond = try #require(
+      DotNetTimeParser.date(from: "2026-04-10T14:30:00Z")
+    )
+    #expect(result[0].savedAt.timeIntervalSince(wholeSecond) > 0.7)
+    #expect(result[0].savedAt.timeIntervalSince(wholeSecond) < 0.8)
+  }
+
   @Test("loadAll returns empty array for empty response")
   func loadAll_emptyResponse() async throws {
     let json = "[]"

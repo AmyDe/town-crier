@@ -87,6 +87,34 @@ struct APINotificationStateRepositoryTests {
     #expect(state.lastReadAt == expected)
   }
 
+  @Test("fetchState parses a fractional-seconds lastReadAt (not 1970)")
+  func fetchState_fractionalSecondsLastReadAt_parsesCorrectly() async throws {
+    // The Go backend emits fractional seconds when the sub-second part is
+    // non-zero. A plain .withInternetDateTime parse returns nil and used to
+    // silently substitute Date(timeIntervalSince1970: 0) — the 1970 bug
+    // (tc-ubfm), which corrupts read/unread computation.
+    let json = """
+      {
+        "lastReadAt": "2026-04-10T14:30:00.5551234Z",
+        "version": 1,
+        "totalUnreadCount": 0
+      }
+      """
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(json.utf8), httpResponse(statusCode: 200))
+    ])
+
+    let state = try await sut.fetchState()
+
+    // Must NOT fall back to the epoch.
+    #expect(state.lastReadAt != Date(timeIntervalSince1970: 0))
+    let wholeSecond = try #require(
+      DotNetTimeParser.date(from: "2026-04-10T14:30:00Z")
+    )
+    #expect(state.lastReadAt.timeIntervalSince(wholeSecond) > 0.5)
+    #expect(state.lastReadAt.timeIntervalSince(wholeSecond) < 0.6)
+  }
+
   @Test("fetchState maps zero unread count")
   func fetchState_zeroUnread_mapsCorrectly() async throws {
     let json = """
