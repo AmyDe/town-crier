@@ -10,28 +10,25 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/vocabulary"
 )
 
-// senderAddress is the verified ACS sender the digest emails are sent from,
-// matching the .NET AcsEmailSender.SenderAddress constant.
+// senderAddress is the verified ACS sender address all digest emails are sent from.
 const senderAddress = "hello@towncrierapp.uk"
 
 // watchZoneDigest groups a watch zone's display name with the notifications that
-// fell inside it. It is the Go analogue of the .NET WatchZoneDigest record.
+// fell inside it.
 type watchZoneDigest struct {
 	name          string
 	notifications []notifications.DigestNotification
 }
 
-// buildDigestSubject renders the digest email subject line, mirroring .NET
-// AcsEmailSender.BuildDigestSubject.
+// buildDigestSubject renders the digest email subject line.
 func buildDigestSubject(totalCount int) string {
 	return fmt.Sprintf("Planning update — %d new applications near you", totalCount)
 }
 
 // buildDigestHTML renders the full digest email body: a header, one block per
 // watch zone (each with its application cards), an optional Saved Applications
-// section, a CTA button, and a footer. It is a faithful port of .NET
-// AcsEmailSender.BuildDigestHtml so the rendered email is unchanged across the
-// cutover. All user-supplied content is HTML-encoded.
+// section, a CTA button, and a footer. All user-supplied content is
+// HTML-encoded.
 func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notifications.DigestNotification, totalCount int) string {
 	var zoneBlocks strings.Builder
 	for _, section := range zoneSections {
@@ -93,8 +90,7 @@ func buildDigestHTML(zoneSections []watchZoneDigest, savedApplications []notific
 // buildNotificationCard renders one application card for the digest body. A
 // decision update prepends the UK display-label badge; a zone notification that
 // is also saved appends a "★ saved" indicator. Each card line links to the
-// application detail page so iOS Universal Links open the app. Ports .NET
-// AcsEmailSender.BuildNotificationCard.
+// application detail page so iOS Universal Links open the app.
 func buildNotificationCard(n notifications.DigestNotification) string {
 	addressLine := htmlEncode(n.ApplicationAddress)
 	if n.EventType == notifications.EventDecisionUpdate {
@@ -135,8 +131,7 @@ func buildNotificationCard(n notifications.DigestNotification) string {
 
 // buildApplicationDetailURL builds the application detail URL, keeping the
 // slashes in a PlanIt uid (e.g. "19/00123/FUL") as path separators while
-// percent-encoding every other reserved character per segment. Ports .NET
-// AcsEmailSender.BuildApplicationDetailUrl.
+// percent-encoding every other reserved character per segment.
 func buildApplicationDetailURL(applicationUID string) string {
 	segments := strings.Split(applicationUID, "/")
 	for i, seg := range segments {
@@ -146,13 +141,13 @@ func buildApplicationDetailURL(applicationUID string) string {
 }
 
 // htmlEncode HTML-encodes user-supplied text for safe inclusion in the email
-// body, matching .NET's WebUtility.HtmlEncode.
+// body.
 func htmlEncode(text string) string {
 	return html.EscapeString(text)
 }
 
 // truncate caps text at maxLength, replacing the tail with an ellipsis when it
-// overflows, matching .NET AcsEmailSender.Truncate.
+// overflows.
 func truncate(text string, maxLength int) string {
 	if len([]rune(text)) <= maxLength {
 		return text

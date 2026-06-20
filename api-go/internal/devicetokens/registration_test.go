@@ -35,8 +35,8 @@ func TestParsePlatform(t *testing.T) {
 	}
 }
 
-// TestDevicePlatform_String pins the .NET enum names ("Ios"/"Android"), which are
-// both the stored Platform value and the UseStringEnumConverter export value.
+// TestDevicePlatform_String pins the platform string values ("Ios"/"Android"),
+// which are both the stored Platform value and the wire-format enum name.
 func TestDevicePlatform_String(t *testing.T) {
 	t.Parallel()
 
@@ -84,9 +84,9 @@ func TestNewRegistration(t *testing.T) {
 	}
 }
 
-// TestRegistration_Refresh advances RegisteredAt unconditionally, mirroring
-// .NET DeviceRegistration.RefreshRegistration (a re-PUT stamps the new instant
-// even if it is earlier — the client's clock is authoritative).
+// TestRegistration_Refresh advances RegisteredAt unconditionally: a re-PUT
+// stamps the new instant even if it is earlier — the client's clock is
+// authoritative.
 func TestRegistration_Refresh(t *testing.T) {
 	t.Parallel()
 

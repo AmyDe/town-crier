@@ -9,12 +9,11 @@ import (
 	"net/http"
 )
 
-// body is the .NET HealthStatus contract verbatim: {"status":"Healthy"}.
-// Kept as a pre-encoded constant so the handler does no work per request.
+// body is the health-check response body: {"status":"Healthy"}.
+// Pre-encoded as a constant so the handler does no work per request.
 const body = `{"status":"Healthy"}`
 
-// Routes registers the health endpoints. The .NET API exposes the check at
-// both the bare and the /v1 path; parity requires both.
+// Routes registers the health endpoints at GET /health and GET /v1/health.
 func Routes(mux *http.ServeMux, logger *slog.Logger) {
 	h := handler{logger: logger}
 	mux.HandleFunc("GET /health", h.check)

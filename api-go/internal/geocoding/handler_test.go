@@ -99,7 +99,7 @@ func TestHandler_Geocode_NotFoundWhenUnresolvable(t *testing.T) {
 	t.Parallel()
 
 	// A valid-format postcode the geocoder cannot resolve is a 404 carrying the
-	// raw input in the message, mirroring .NET's InvalidOperationException path.
+	// raw input in the message.
 	fake := &fakeGeocoder{found: false}
 	rec := newGeocodeRequest(t, fake, "ZZ1 1ZZ")
 
@@ -115,8 +115,7 @@ func TestHandler_Geocode_ServerErrorOnTransportFailure(t *testing.T) {
 	t.Parallel()
 
 	// A geocoder transport failure is a bodyless 500 (the PascalCase envelope is
-	// backfilled downstream by middleware.ErrorBody), matching .NET's propagated
-	// HttpRequestException.
+	// backfilled downstream by middleware.ErrorBody).
 	fake := &fakeGeocoder{err: errors.New("upstream down")}
 	rec := newGeocodeRequest(t, fake, "SW1A 1AA")
 

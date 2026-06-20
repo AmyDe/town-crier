@@ -105,7 +105,7 @@ func TestHandler_Designations_ProviderErrorDegradesToEmpty(t *testing.T) {
 	t.Parallel()
 
 	// A provider failure must not fail the request: the handler answers 200 with
-	// the empty context, mirroring .NET's catch(HttpRequestException) -> None.
+	// the empty context (provider errors are swallowed and logged).
 	fake := &fakeProvider{err: errors.New("gov.uk down")}
 	rec := newDesignationsRequest(t, fake, "?latitude=55&longitude=2")
 

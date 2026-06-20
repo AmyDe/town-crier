@@ -9,12 +9,11 @@
 // DELETE /v1/me HTTP handler share one ordered erasure (bead tc-gf0g); this
 // package only scans for dormant accounts and drives the cascade per account.
 //
-// It ports the .NET DormantAccountCleanupCommandHandler + DeleteUserProfile
-// CommandHandler (epic tc-wad3, bead tc-dwcq) following idiomatic Go:
-// consumer-side interfaces declared here, concrete stores injected from main(),
-// and hand-written test fakes. The 12-month retention window is a code constant
-// (not config) so the privacy policy's "12 months of inactivity" promise is
-// enforced uniformly (UK GDPR Art. 5(1)(e), ADR 0023).
+// Consumer-side interfaces are declared here, concrete stores injected from
+// main(), and hand-written test fakes keep the package unit-testable. The
+// 12-month retention window is a code constant (not config) so the privacy
+// policy's "12 months of inactivity" promise is enforced uniformly (UK GDPR
+// Art. 5(1)(e), ADR 0023).
 package dormant
 
 import (
@@ -29,7 +28,7 @@ import (
 
 // retentionMonths is the inactivity window after which an account is erased. It
 // is a constant, not configuration, so the retention promise is enforced
-// uniformly in code, mirroring .NET's DormantAccountCleanupCommandHandler.
+// uniformly in code.
 const retentionMonths = 12
 
 // Finder returns the dormant-account set: every profile last active strictly
@@ -60,7 +59,7 @@ func New(finder Finder, deleters erasure.Deleters, logger *slog.Logger, now func
 // the account is not counted; a profile that has already been deleted by a
 // concurrent caller is tolerated and still counted (its end state is achieved).
 // A scan failure is fatal to the cycle; per-account failures are logged and the
-// run continues, mirroring .NET's per-account try/catch.
+// run continues (per-account failures are isolated and logged).
 func (h *Handler) Run(ctx context.Context) (int, error) {
 	cutoff := h.now().AddDate(0, -retentionMonths, 0)
 	dormant, err := h.finder.Dormant(ctx, cutoff)

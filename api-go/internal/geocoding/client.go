@@ -18,8 +18,7 @@ var errCrossHostRedirect = errors.New("geocoding: cross-host redirect refused")
 // maxRespBytes bounds the postcodes.io response body read.
 const maxRespBytes = 1 << 20
 
-// Coordinates is the geocoded location, mirroring .NET Coordinates: { latitude,
-// longitude }.
+// Coordinates is the geocoded location: { latitude, longitude }.
 type Coordinates struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
@@ -74,9 +73,8 @@ type postcodesIoResult struct {
 
 // Geocode resolves a normalised UK postcode to coordinates. The boolean reports
 // whether the postcode was found: a non-2xx response or an envelope that is not
-// status 200 with a result yields found=false (a 404 for the caller), mirroring
-// .NET's null return. A transport failure returns an error (a 500 for the
-// caller), mirroring .NET's propagated HttpRequestException.
+// status 200 with a result yields found=false (a 404 for the caller). A
+// transport failure returns an error (a 500 for the caller).
 func (c *Client) Geocode(ctx context.Context, postcode string) (Coordinates, bool, error) {
 	endpoint := c.baseURL + "/postcodes/" + url.PathEscape(postcode)
 	// gosec G704: the host is the trusted PostcodesIoBaseURL config value; the

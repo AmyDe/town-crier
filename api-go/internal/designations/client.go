@@ -1,7 +1,5 @@
 // Package designations owns the planning-designation feature: the GOV.UK
-// planning.data.gov.uk outbound client and GET /v1/designations. It mirrors the
-// .NET TownCrier.{Domain,Application,Infrastructure} Designations slices
-// (GH#418 iteration 7).
+// planning.data.gov.uk outbound client and GET /v1/designations (GH#418).
 package designations
 
 import (
@@ -21,16 +19,16 @@ import (
 var errCrossHostRedirect = errors.New("designations: cross-host redirect refused")
 
 // datasets is the comma-separated dataset filter sent to the entity endpoint.
-// The commas are intentionally left unescaped to match the .NET client, which
-// concatenates this string straight into the query.
+// The commas are intentionally left unescaped; the planning.data.gov.uk
+// dataset query parameter accepts a comma-separated list directly.
 const datasets = "conservation-area,listed-building-outline,article-4-direction-area"
 
 // maxRespBytes bounds the planning.data.gov.uk response body read.
 const maxRespBytes = 1 << 20
 
-// Context is the planning-designation context for a point, mirroring .NET
-// DesignationContext. The zero value is the "none" context (all false/nil) the
-// API returns when a point intersects no designated entity.
+// Context is the planning-designation context for a point. The zero value is
+// the "none" context (all false/nil) the API returns when a point intersects
+// no designated entity.
 type Context struct {
 	IsWithinConservationArea        bool
 	ConservationAreaName            *string
@@ -88,12 +86,12 @@ type entity struct {
 
 // Get resolves the designation context for a point. A 404 — the entity endpoint's
 // response when the geometry intersects nothing, which is most UK points —
-// yields the empty context with no error, mirroring .NET. Any other non-2xx, a
-// transport failure, or a malformed body returns an error; the handler maps that
-// to the empty context (mirroring .NET's catch of HttpRequestException).
+// yields the empty context with no error. Any other non-2xx, a transport
+// failure, or a malformed body returns an error; the handler maps that to the
+// empty context (logging the failure and degrading gracefully).
 func (c *Client) Get(ctx context.Context, latitude, longitude float64) (Context, error) {
 	// WKT is "POINT(longitude latitude)" with invariant (shortest round-trip)
-	// formatting, escaped exactly as .NET's Uri.EscapeDataString does.
+	// formatting, percent-encoded via escapeDataString.
 	point := "POINT(" + strconv.FormatFloat(longitude, 'g', -1, 64) + " " + strconv.FormatFloat(latitude, 'g', -1, 64) + ")"
 	endpoint := c.baseURL + "/api/v1/entity.json?geometry_intersects=" + escapeDataString(point) + "&dataset=" + datasets
 
@@ -133,7 +131,7 @@ func (c *Client) Get(ctx context.Context, latitude, longitude float64) (Context,
 }
 
 // mapContext folds the matched entities into a designation context, picking the
-// first entity of each dataset, mirroring the .NET MapToDesignationContext.
+// first entity of each dataset.
 func mapContext(entities []entity) Context {
 	conservation := findDataset(entities, "conservation-area")
 	listed := findDataset(entities, "listed-building-outline")
@@ -155,7 +153,7 @@ func mapContext(entities []entity) Context {
 }
 
 // findDataset returns the first entity whose dataset matches (case-insensitively),
-// or nil, mirroring .NET's List.Find with OrdinalIgnoreCase.
+// or nil.
 func findDataset(entities []entity, dataset string) *entity {
 	for i := range entities {
 		if strings.EqualFold(entities[i].Dataset, dataset) {
@@ -168,9 +166,9 @@ func findDataset(entities []entity, dataset string) *entity {
 const upperHex = "0123456789ABCDEF"
 
 // escapeDataString percent-encodes everything outside the RFC 3986 unreserved
-// set (ALPHA / DIGIT / "-" / "." / "_" / "~"), reproducing .NET's
-// Uri.EscapeDataString so the geometry_intersects value is byte-identical on the
-// wire — in particular a space becomes %20 (not "+", as url.QueryEscape would).
+// set (ALPHA / DIGIT / "-" / "." / "_" / "~") so the geometry_intersects value
+// is correctly encoded for the wire — in particular a space becomes %20 (not
+// "+", as url.QueryEscape would).
 func escapeDataString(s string) string {
 	var b strings.Builder
 	for i := range len(s) {

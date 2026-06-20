@@ -102,7 +102,7 @@ func TestRecordActivity_RunsAfterHandler(t *testing.T) {
 	var orderedHandlerRan bool
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Activity must not have been recorded yet — it runs only after the
-		// handler completes (mirroring .NET's `await next(); then record`).
+		// handler completes.
 		if len(rec.recorded()) != 0 {
 			t.Error("activity recorded before handler completed")
 		}

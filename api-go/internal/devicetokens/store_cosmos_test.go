@@ -117,8 +117,8 @@ func TestCosmosStore_SaveThenGetByToken(t *testing.T) {
 	}
 }
 
-// TestCosmosStore_GetByToken_Missing returns (nil, nil) for an absent token,
-// mirroring .NET's null return — the handler's existence check, not an error.
+// TestCosmosStore_GetByToken_Missing returns (nil, nil) for an absent token —
+// the handler's existence check, not an error.
 func TestCosmosStore_GetByToken_Missing(t *testing.T) {
 	t.Parallel()
 
@@ -133,7 +133,7 @@ func TestCosmosStore_GetByToken_Missing(t *testing.T) {
 }
 
 // TestCosmosStore_Delete_Idempotent: a 404 on delete is tolerated (the token was
-// already removed by a prior call or the TTL), matching .NET's idempotent delete.
+// already removed by a prior call or the TTL).
 func TestCosmosStore_Delete_Idempotent(t *testing.T) {
 	t.Parallel()
 

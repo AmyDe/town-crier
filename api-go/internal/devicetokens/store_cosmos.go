@@ -40,7 +40,7 @@ func NewCosmosStore(items CosmosItems) *CosmosStore {
 
 // GetByToken point-reads the registration for (userID, token). A missing
 // document returns (nil, nil) — the "not registered yet" signal the PUT handler
-// branches on, mirroring .NET's null return; any other failure is wrapped.
+// branches on; any other failure is wrapped.
 func (s *CosmosStore) GetByToken(ctx context.Context, userID, token string) (*DeviceRegistration, error) {
 	raw, err := s.items.ReadItem(ctx, userID, token)
 	if err != nil {
@@ -73,8 +73,7 @@ func (s *CosmosStore) Save(ctx context.Context, reg DeviceRegistration) error {
 }
 
 // Delete removes the registration for (userID, token). A 404 is tolerated so the
-// operation is idempotent — the token may already be gone (prior call or TTL),
-// matching .NET DeleteByTokenAsync.
+// operation is idempotent — the token may already be gone (prior call or TTL).
 func (s *CosmosStore) Delete(ctx context.Context, userID, token string) error {
 	if err := s.items.DeleteItem(ctx, userID, token); err != nil {
 		if platform.IsCosmosNotFound(err) {
@@ -86,8 +85,7 @@ func (s *CosmosStore) Delete(ctx context.Context, userID, token string) error {
 }
 
 // ListByUser returns every registration in the user's partition, for the GDPR
-// export. Single-partition query keyed on the user id, mirroring .NET
-// GetByUserIdAsync.
+// export. Single-partition query keyed on the user id.
 func (s *CosmosStore) ListByUser(ctx context.Context, userID string) ([]DeviceRegistration, error) {
 	const query = "SELECT * FROM c WHERE c.userId = @userId"
 	items, err := s.items.QueryItems(ctx, userID, query, map[string]any{"@userId": userID})
@@ -117,9 +115,9 @@ type idOnlyDocument struct {
 
 // DeleteAllByUserID removes every device registration in the user's partition: it
 // queries the partition for the document ids, then point-deletes each. Used by
-// the account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring
-// .NET CosmosDeviceRegistrationRepository.DeleteAllByUserIdAsync. All operations
-// are single-partition; a 404 on an individual delete is tolerated (idempotent).
+// the account-deletion cascade (dormant cleanup and DELETE /v1/me). All
+// operations are single-partition; a 404 on an individual delete is tolerated
+// (idempotent).
 func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
 	const query = "SELECT c.id FROM c WHERE c.userId = @userId"
 	raws, err := s.items.QueryItems(ctx, userID, query, map[string]any{"@userId": userID})

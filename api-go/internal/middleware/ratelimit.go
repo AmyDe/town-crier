@@ -11,11 +11,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
-// Rate-limit budgets mirror .NET's RateLimitOptions defaults: a fixed 1-minute
-// window, 60 requests for free users, 600 for paid. The in-memory store is
-// correct because the Go app, like the .NET one, runs with MaxReplicas = 1
-// (GH#418 parity behaviour 3); a distributed store would be needed only if it
-// scaled out.
+// Rate-limit budgets: a fixed 1-minute window, 60 requests for free users,
+// 600 for paid. The in-memory store is correct because the app runs with
+// MaxReplicas = 1; a distributed store would be needed only if it scaled out.
 const (
 	rateLimitWindow = time.Minute
 	freeTierLimit   = 60
@@ -31,8 +29,8 @@ type tierLookup interface {
 }
 
 // RateLimit returns middleware that enforces the per-user fixed-window limit.
-// Anonymous requests (no subject in context) pass through unmetered, matching
-// .NET's skip-when-no-sub behaviour. On an allowed request it sets
+// Anonymous requests (no subject in context) pass through unmetered. On an
+// allowed request it sets
 // X-RateLimit-Limit and X-RateLimit-Remaining; on a throttled one it returns 429
 // with those headers (Remaining 0) plus Retry-After.
 func RateLimit(store *rateLimitStore, tiers tierLookup, logger *slog.Logger) func(http.Handler) http.Handler {
@@ -79,8 +77,8 @@ type rateLimitResult struct {
 	retryAfter time.Duration
 }
 
-// retryAfterSeconds rounds the retry-after up to whole seconds (minimum 1),
-// matching .NET's Math.Ceiling on the TotalSeconds.
+// retryAfterSeconds rounds the retry-after up to the next whole second
+// (minimum 1).
 func (r rateLimitResult) retryAfterSeconds() int {
 	secs := int(r.retryAfter / time.Second)
 	if r.retryAfter%time.Second != 0 {
@@ -92,9 +90,9 @@ func (r rateLimitResult) retryAfterSeconds() int {
 	return secs
 }
 
-// rateLimitStore is an in-memory sliding-window counter keyed by user id. It
-// reproduces .NET's InMemoryRateLimitStore: a per-user queue of request
-// timestamps, evicting entries older than the window on each check.
+// rateLimitStore is an in-memory sliding-window counter keyed by user id:
+// a per-user queue of request timestamps, evicting entries older than the
+// window on each check.
 type rateLimitStore struct {
 	now func() time.Time
 
