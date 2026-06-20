@@ -8,13 +8,6 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
-// NewLogger returns a JSON slog logger at the given level. Production wiring
-// passes os.Stdout; tests pass a buffer. Retained unchanged so unit tests that
-// want a plain JSON logger are unaffected by the OTel fan-out.
-func NewLogger(w io.Writer, level slog.Level) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level}))
-}
-
 // NewOTelLogger returns a logger that fans every record out to BOTH a stdout
 // JSON handler (-> ContainerAppConsoleLogs) AND the otelslog bridge (-> OTel
 // logs -> App Insights AppTraces). tc-8x8g / ADR 0027: without the bridge the Go
