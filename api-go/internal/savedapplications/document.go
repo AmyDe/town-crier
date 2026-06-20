@@ -9,7 +9,7 @@ import (
 
 // savedApplicationDocument is the Cosmos persistence shape for a SavedApplication
 // in the SavedApplications container. JSON tags reproduce the camelCase keys the
-// .NET CosmosSavedApplicationRepository writes.
+// Cosmos repository writes.
 //
 // Partition key: userId. Document id: "{userId}:{applicationUid}" — so a save is
 // an idempotent point upsert and a user's list is one single-partition query.
@@ -22,7 +22,7 @@ type savedApplicationDocument struct {
 	Application    *applications.SnapshotDocument `json:"application"`
 }
 
-// makeID builds the composite document id, matching .NET SavedApplicationDocument.MakeId.
+// makeID builds the composite document id: "{userId}:{applicationUid}".
 func makeID(userID, applicationUID string) string {
 	return userID + ":" + applicationUID
 }
@@ -47,7 +47,7 @@ func newSavedApplicationDocument(s SavedApplication) savedApplicationDocument {
 
 // toDomain reconstitutes a domain record, coalescing the projected authorityId
 // from the embedded snapshot for legacy rows persisted before that column
-// existed, exactly as .NET does.
+// existed.
 func (d savedApplicationDocument) toDomain() SavedApplication {
 	authorityID := 0
 	switch {

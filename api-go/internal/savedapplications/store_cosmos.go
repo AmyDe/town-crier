@@ -65,8 +65,8 @@ func (s *CosmosStore) Exists(ctx context.Context, userID, applicationUID string)
 }
 
 // Delete removes the saved-application document. A missing document is not an
-// error: the .NET REST delete is idempotent and the DELETE endpoint always
-// returns 204, so a 404 from Cosmos is swallowed.
+// error: the DELETE endpoint is idempotent (always returns 204), so a 404 from
+// Cosmos is swallowed.
 func (s *CosmosStore) Delete(ctx context.Context, userID, applicationUID string) error {
 	if err := s.items.DeleteItem(ctx, userID, makeID(userID, applicationUID)); err != nil && !platform.IsCosmosNotFound(err) {
 		return fmt.Errorf("delete saved application %q: %w", applicationUID, err)
@@ -95,9 +95,8 @@ func (s *CosmosStore) GetByUserID(ctx context.Context, userID string) ([]SavedAp
 // (applicationUid, authorityId), across all partitions. The authority predicate
 // is load-bearing: PlanIt uids collide across councils (tc-th98 / GH#384), so a
 // uid-only match would falsely fan out a decision to bookmark holders in another
-// authority. Mirrors .NET GetUserIdsForApplicationCrossPartitionAsync. Legacy
-// rows persisted before the authorityId column was added fall through the filter
-// naturally — they won't match until backfilled.
+// authority. Legacy rows persisted before the authorityId column was added fall
+// through the filter naturally — they won't match until backfilled.
 const userIDsForApplicationQuery = "SELECT VALUE c.userId FROM c " +
 	"WHERE c.applicationUid = @applicationUid AND c.authorityId = @authorityId"
 
@@ -133,9 +132,8 @@ type idOnlyDocument struct {
 
 // DeleteAllByUserID removes every saved application in the user's partition: it
 // queries the partition for the document ids, then point-deletes each. Used by
-// the account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring
-// .NET CosmosSavedApplicationRepository.DeleteAllByUserIdAsync. All operations
-// are single-partition.
+// the account-deletion cascade (dormant cleanup and DELETE /v1/me). All
+// operations are single-partition.
 func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
 	raws, err := s.items.QueryItems(ctx, userID, "SELECT c.id FROM c WHERE c.userId = @userId", map[string]any{"@userId": userID})
 	if err != nil {

@@ -19,8 +19,8 @@ import (
 // maxBodyBytes caps the request body the PATCH handler reads.
 const maxBodyBytes = 1 << 20
 
-// invalidPayloadMessage is the .NET ApiErrorResponse error text for a watch-zone
-// validation failure (Create/Update endpoints).
+// invalidPayloadMessage is the error text for a watch-zone validation failure
+// (Create/Update endpoints).
 const invalidPayloadMessage = "Invalid watch zone payload."
 
 // zoneStore is the consumer-side store the handlers use. *CosmosStore satisfies
@@ -106,8 +106,8 @@ func Routes(mux *http.ServeMux, store zoneStore, logger *slog.Logger, opts ...Op
 	mux.HandleFunc("DELETE /v1/me/watch-zones/{zoneId}", h.delete)
 }
 
-// watchZoneSummary mirrors .NET WatchZoneSummary: the per-zone shape returned by
-// list and update. createdAt is deliberately absent, matching .NET.
+// watchZoneSummary is the per-zone wire shape returned by list and update.
+// createdAt is deliberately absent from the summary.
 type watchZoneSummary struct {
 	ID                  string  `json:"id"`
 	Name                string  `json:"name"`
@@ -132,12 +132,12 @@ func summaryOf(z WatchZone) watchZoneSummary {
 	}
 }
 
-// listResult mirrors .NET ListWatchZonesResult: { zones: [...] }.
+// listResult is the GET /v1/me/watch-zones response: { zones: [...] }.
 type listResult struct {
 	Zones []watchZoneSummary `json:"zones"`
 }
 
-// updateResult mirrors .NET UpdateWatchZoneResult: { zone: {...} }.
+// updateResult is the PATCH response: { zone: {...} }.
 type updateResult struct {
 	Zone watchZoneSummary `json:"zone"`
 }
@@ -158,8 +158,7 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, listResult{Zones: summaries})
 }
 
-// patchRequest is the PATCH body: every field optional (nil = unchanged),
-// mirroring .NET UpdateWatchZoneRequest.
+// patchRequest is the PATCH body: every field optional (nil = unchanged).
 type patchRequest struct {
 	Name                *string  `json:"name"`
 	Latitude            *float64 `json:"latitude"`
@@ -171,9 +170,8 @@ type patchRequest struct {
 }
 
 // rangeValid reports whether the present coordinate/radius/authority fields are
-// in range, mirroring the .NET endpoint's pre-handler guard. A nil field is not
-// checked. Name is deliberately not checked here — like .NET, that is enforced
-// by the domain merge (and a blank name there is a 500, not a 400).
+// in range. A nil field is not checked. Name is deliberately not checked here —
+// that is enforced by the domain merge (and a blank name there is a 500, not a 400).
 func (req patchRequest) rangeValid() bool {
 	if req.Latitude != nil && (math.IsNaN(*req.Latitude) || math.IsInf(*req.Latitude, 0) ||
 		*req.Latitude < -90 || *req.Latitude > 90) {
@@ -202,7 +200,7 @@ func (req patchRequest) toUpdate() ZoneUpdate {
 // patch implements PATCH /v1/me/watch-zones/{zoneId}: range-validate the body
 // (400), load the zone (404 if absent), apply the merge, persist, and return the
 // updated summary. A merge that violates a domain invariant (e.g. a blank name)
-// is a 500, mirroring .NET's unhandled ArgumentException.
+// is a 500.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -307,8 +305,8 @@ func (h *handler) decrementZoneCount(ctx context.Context, userID string) {
 	h.logger.WarnContext(ctx, "decrement zone count: exhausted retries", "user", userID)
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse: { error, message } with
-// message serialised as an explicit null when unset.
+// apiErrorResponse is the error envelope: { error, message } with message
+// serialised as an explicit null when unset.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`
@@ -330,9 +328,8 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 	}
 }
 
-// writeError emits the .NET ApiErrorResponse envelope at the given status with
-// the same content type as a success body (Results.Json defaults to
-// application/json; charset=utf-8).
+// writeError emits the error envelope at the given status with
+// application/json; charset=utf-8 content type.
 func (h *handler) writeError(w http.ResponseWriter, r *http.Request, status int, message string) {
 	body, err := httputil.EncodeJSON(apiErrorResponse{Error: message})
 	if err != nil {

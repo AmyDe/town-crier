@@ -8,9 +8,8 @@ import (
 	"net/http"
 )
 
-// body is the exact wire response captured from the .NET API:
-// Results.Ok(new GetVersionConfigResult("1.0.0")) serialized via the web JSON
-// options (camelCase). Kept pre-encoded so the handler allocates nothing.
+// body is the exact wire response: {"minimumVersion":"1.0.0"} in camelCase with
+// no whitespace. Kept pre-encoded so the handler allocates nothing.
 const body = `{"minimumVersion":"1.0.0"}`
 
 // Routes registers the version-config endpoint on mux. The path already

@@ -48,8 +48,8 @@ type profileByTxn interface {
 	Save(ctx context.Context, p *profiles.UserProfile) error
 }
 
-// tierSync mirrors the .NET IAuth0ManagementClient subset used here: push the
-// new tier into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
+// tierSync is the consumer-side interface for Auth0 tier sync: push the new tier
+// into Auth0's app_metadata. profiles.Auth0Manager satisfies it.
 type tierSync interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 }
@@ -167,18 +167,17 @@ type webhookRequest struct {
 }
 
 // userNotFoundError signals that an authenticated caller has no Cosmos profile
-// — a server-side inconsistency the verify endpoint reports as 404, mirroring
-// .NET's UserProfileNotFoundException message.
+// — a server-side inconsistency the verify endpoint reports as 404.
 type userNotFoundError struct{ userID string }
 
 func (e *userNotFoundError) Error() string {
 	return fmt.Sprintf("No user profile found for user '%s'.", e.userID)
 }
 
-// verify implements POST /v1/subscriptions/verify. It mirrors the .NET endpoint
-// error contract: 401 invalid_transaction (JWS failure), 400
-// invalid_transaction_payload (decode / bundle mismatch / unknown product), 404
-// user_not_found, 400 malformed_request (bad body).
+// verify implements POST /v1/subscriptions/verify. Error contract: 401
+// invalid_transaction (JWS failure), 400 invalid_transaction_payload (decode /
+// bundle mismatch / unknown product), 404 user_not_found, 400 malformed_request
+// (bad body).
 func (h *handler) verify(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -288,7 +287,7 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 // webhook implements POST /v1/webhooks/appstore (App Store Server Notifications
 // v2). Apple POSTs lifecycle events here; the call is anonymous and the signed
 // JWS is the authentication. Always 200 on success (including duplicates and
-// unknown subscribers), mirroring .NET.
+// unknown subscribers).
 func (h *handler) webhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req webhookRequest
@@ -392,7 +391,6 @@ func (h *handler) runWebhook(ctx context.Context, signedPayload string) error {
 
 // applyNotification mutates the profile per the App Store notification type and
 // reports whether any state changed (a no-change event needs no save/sync).
-// Mirrors the .NET ApplyNotification switch.
 func applyNotification(profile *profiles.UserProfile, notification DecodedNotification, txn DecodedTransaction) (bool, error) {
 	switch notification.NotificationType {
 	case "SUBSCRIBED", "OFFER_REDEEMED":
@@ -474,8 +472,7 @@ func (h *handler) writeWebhookError(r *http.Request, w http.ResponseWriter, err 
 }
 
 // clientPayloadError reports whether err is a malformed/invalid payload error
-// (the Go analog of .NET catching ArgumentException -> 400), as opposed to a
-// server-side failure (Cosmos, Auth0) which is a 500.
+// (a 400), as opposed to a server-side failure (Cosmos, Auth0) which is a 500.
 func clientPayloadError(err error) (string, bool) {
 	var pe *PayloadError
 	if errors.As(err, &pe) {
@@ -488,7 +485,7 @@ func clientPayloadError(err error) (string, bool) {
 	return "", false
 }
 
-// apiErrorResponse mirrors the .NET ApiErrorResponse { error, message }.
+// apiErrorResponse is the error envelope { error, message }.
 type apiErrorResponse struct {
 	Error   string  `json:"error"`
 	Message *string `json:"message"`

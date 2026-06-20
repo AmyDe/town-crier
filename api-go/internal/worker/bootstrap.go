@@ -15,10 +15,10 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
 )
 
-// naturalCadence and jitterBound mirror the .NET PollNextRunSchedulerOptions
-// defaults for a Natural-cadence reseed: a 5-minute base delay with up to 10s of
-// jitter on either side. The bootstrap trigger represents a healthy cycle
-// starting from scratch, so it uses the same cadence the orchestrator would.
+// naturalCadence and jitterBound define the reseed schedule: a 5-minute base
+// delay with up to 10s of jitter on either side. The bootstrap trigger represents
+// a healthy cycle starting from scratch, so it uses the same cadence the
+// orchestrator would.
 const (
 	naturalCadence = 5 * time.Minute
 	jitterBound    = 10 * time.Second
@@ -32,10 +32,9 @@ type triggerQueue interface {
 	PublishAt(ctx context.Context, scheduledEnqueueTime time.Time, body []byte) error
 }
 
-// BootstrapResult is the outcome of TryBootstrap. The field names mirror .NET's
-// PollTriggerBootstrapResult so the existing App Insights telemetry tags
-// (polling.safety_net.bootstrap_published / bootstrap_probe_failed) keep their
-// meaning across the cutover.
+// BootstrapResult is the outcome of TryBootstrap. The field names match the
+// App Insights telemetry tags (polling.safety_net.bootstrap_published /
+// bootstrap_probe_failed).
 type BootstrapResult struct {
 	// Published reports whether a seed trigger was successfully published.
 	Published bool
@@ -62,8 +61,7 @@ func NewBootstrapper(queue triggerQueue, logger *slog.Logger, now func() time.Ti
 }
 
 // triggerPayload is the seed message body. It carries only a diagnostic
-// timestamp — the message is a "run once now" tick — matching .NET's
-// PollTriggerPayload (publishedAtUtc).
+// timestamp — the message is a "run once now" tick (publishedAtUtc).
 type triggerPayload struct {
 	PublishedAtUtc string `json:"publishedAtUtc"`
 }

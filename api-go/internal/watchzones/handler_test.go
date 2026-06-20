@@ -201,8 +201,8 @@ func TestHandler_Patch_NotFound(t *testing.T) {
 
 func TestHandler_Patch_BlankNameIsServerError(t *testing.T) {
 	t.Parallel()
-	// .NET does not validate Name at the endpoint; WithUpdates' guard throws,
-	// surfacing as a 500. The Go merge re-validates and we mirror the 500.
+	// Name is not validated at the endpoint; WithUpdates' guard rejects a blank
+	// name, surfacing as a 500.
 	z := testZone(t)
 	store := &fakeZoneStore{zones: []WatchZone{z}}
 	rec := doReq(t, testMux(t, store), http.MethodPatch, "/v1/me/watch-zones/"+z.ID, `{"name":"   "}`)

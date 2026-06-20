@@ -132,8 +132,8 @@ func TestHandler_PutZonePreferences_MissingFieldsDefaultFalse(t *testing.T) {
 	seededProfile(t, store)
 	h := newTestHandler(store, newFakeAuth0(), "")
 
-	// Only one field present; the rest default to false (matching STJ on the
-	// .NET command record's non-nullable bools).
+	// Only one field present; the rest default to false (JSON zero-value
+	// decoding for non-nullable bool fields).
 	rec := httptest.NewRecorder()
 	h.putZonePreferences(rec, withZonePath(http.MethodPut, prefsUser, `{"newApplicationPush":true}`))
 

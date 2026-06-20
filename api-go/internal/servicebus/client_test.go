@@ -55,8 +55,7 @@ func TestNormalizeFQDN(t *testing.T) {
 			"sb-town-crier-prod.servicebus.windows.net",
 			"sb-town-crier-prod.servicebus.windows.net",
 		},
-		// A bare namespace name gets the suffix appended (mirrors .NET's
-		// double-suffix guard that avoids NXDOMAIN).
+		// A bare namespace name gets the suffix appended to build the full FQDN.
 		{"bare name", "sb-town-crier-prod", "sb-town-crier-prod.servicebus.windows.net"},
 		// Mixed-case suffix is still recognised (case-insensitive).
 		{

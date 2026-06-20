@@ -19,8 +19,7 @@ type snapshotStore interface {
 
 // SnapshotRefresher implements refresh-on-tap: when a user views an application
 // they have already saved, re-embed the fresh snapshot into their saved row so
-// the saved list self-heals on the items they actually engage with. Mirrors the
-// .NET GetApplicationBy{Uid,AuthorityAndName}QueryHandler.TryRefreshSavedSnapshotAsync
+// the saved list self-heals on the items they actually engage with
 // (bd tc-udby, tc-o88i).
 type SnapshotRefresher struct {
 	store snapshotStore

@@ -22,10 +22,10 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// quotaExceededMessage is the .NET ApiErrorResponse error text for a watch-zone
-// quota breach (403). It is matched verbatim for contract parity; the iOS client
-// (tc-gpjk) treats any 403 on create as a quota breach and routes to the paywall,
-// so this prose body produces the same Upgrade-Required UX as a structured one.
+// quotaExceededMessage is the error text for a watch-zone quota breach (403).
+// The iOS client (tc-gpjk) treats any 403 on create as a quota breach and routes
+// to the paywall, so this prose body produces the same Upgrade-Required UX as a
+// structured one.
 const quotaExceededMessage = "Watch zone quota exceeded. Upgrade your subscription for more zones."
 
 // errProfileCASNotWired signals a wiring bug: the create path requires the
@@ -100,9 +100,8 @@ func NearbyRoutes(
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications", h.applications)
 }
 
-// createRequest is the POST body, mirroring .NET CreateWatchZoneRequest. The
-// optional flags default to true (matching the record's default parameter
-// values) and authorityId defaults to nil (resolve from coordinates).
+// createRequest is the POST body. The optional flags default to true
+// and authorityId defaults to nil (resolve from coordinates).
 type createRequest struct {
 	Name                string  `json:"name"`
 	Latitude            float64 `json:"latitude"`
@@ -118,9 +117,9 @@ type createRequest struct {
 // bump this value server-side first before shipping the iOS change.
 const maxRadiusMetres = 10_000
 
-// valid mirrors the .NET create endpoint's pre-handler guard: non-blank name,
-// positive radius within the server ceiling, in-range non-finite coordinates,
-// and a positive authority id when one is supplied.
+// valid reports whether the create request passes the pre-handler guard:
+// non-blank name, positive radius within the server ceiling, in-range
+// coordinates, and a positive authority id when one is supplied.
 func (req createRequest) valid() bool {
 	if strings.TrimSpace(req.Name) == "" {
 		return false
@@ -149,7 +148,7 @@ func (req createRequest) valid() bool {
 	return true
 }
 
-// createResult mirrors .NET CreateWatchZoneResult: { nearbyApplications: [...] }.
+// createResult is the POST /v1/me/watch-zones response: { nearbyApplications: [...] }.
 // The applications are the raw-domain wire shape (no latestUnreadEvent).
 type createResult struct {
 	NearbyApplications []applications.NearbyResult `json:"nearbyApplications"`
@@ -158,7 +157,6 @@ type createResult struct {
 // create implements POST /v1/me/watch-zones: validate (400), enforce the tier's
 // watch-zone quota (403), resolve the authority from coordinates when absent,
 // persist the zone, and return 201 Created with the applications already nearby.
-// Mirrors .NET CreateWatchZoneCommandHandler + the endpoint's quota catch.
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -175,8 +173,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 
 	profile, err := h.profiles.Get(r.Context(), userID)
 	if err != nil || profile == nil {
-		// A missing profile is a 500, mirroring .NET's InvalidOperationException
-		// for an unregistered caller (the iOS app registers on first launch).
+		// A missing profile is a 500 — the iOS app always registers on first launch.
 		h.serverError(w, r, "load profile for quota check", err)
 		return
 	}
@@ -243,8 +240,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 // latestUnreadEventWire is the per-row unread descriptor on the applications
-// list, mirroring .NET LatestUnreadEvent: { type, decision, createdAt }. type is
-// the NotificationEventType name (UseStringEnumConverter).
+// list: { type, decision, createdAt }. type is the NotificationEventType name.
 type latestUnreadEventWire struct {
 	Type      string              `json:"type"`
 	Decision  *string             `json:"decision"`
@@ -255,7 +251,7 @@ type latestUnreadEventWire struct {
 // zone (404 if absent), find the applications in it, and augment each row with
 // its latest unread notification. When the caller has no read-watermark yet
 // (first touch) the unread lookup is skipped and every row's latestUnreadEvent
-// is null, mirroring .NET GetApplicationsByZoneQueryHandler.
+// is null.
 func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -383,8 +379,7 @@ func (h *handler) atomicQuotaIncrement(ctx context.Context, userID string, limit
 	return false, nil
 }
 
-// boolOrTrue resolves an optional bool flag, defaulting an absent value to true
-// to match .NET CreateWatchZoneRequest's default parameter values.
+// boolOrTrue resolves an optional bool flag, defaulting an absent value to true.
 func boolOrTrue(p *bool) bool {
 	if p == nil {
 		return true
@@ -392,8 +387,7 @@ func boolOrTrue(p *bool) bool {
 	return *p
 }
 
-// writeCreated emits a 201 Created with a Location header and the JSON body,
-// matching .NET Results.Created.
+// writeCreated emits a 201 Created with a Location header and the JSON body.
 func (h *handler) writeCreated(w http.ResponseWriter, r *http.Request, location string, v any) {
 	body, err := httputil.EncodeJSON(v)
 	if err != nil {

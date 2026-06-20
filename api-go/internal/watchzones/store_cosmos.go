@@ -10,8 +10,7 @@ import (
 )
 
 // ErrNotFound signals that no watch zone exists for the given (user, zone) pair.
-// Callers use errors.Is to translate it to a 404, mirroring .NET's
-// WatchZoneNotFoundException / null-return paths.
+// Callers use errors.Is to translate it to a 404.
 var ErrNotFound = errors.New("watch zone not found")
 
 // CosmosItems is the consumer-side slice of the Cosmos container the store uses:
@@ -106,9 +105,8 @@ func (s *CosmosStore) Save(ctx context.Context, z WatchZone) error {
 }
 
 // Delete removes a zone. A 404 surfaces as ErrNotFound so the handler can return
-// the .NET 404, mirroring WatchZoneNotFoundException. (The azcosmos delete is
-// not idempotent — it 404s on a missing id — so no read-first is needed, unlike
-// the .NET REST client.)
+// a 404. (The azcosmos delete is not idempotent — it 404s on a missing id —
+// so no read-first is needed.)
 func (s *CosmosStore) Delete(ctx context.Context, userID, zoneID string) error {
 	if err := s.items.DeleteItem(ctx, userID, zoneID); err != nil {
 		if platform.IsCosmosNotFound(err) {
@@ -127,9 +125,8 @@ type idOnlyDocument struct {
 
 // DeleteAllByUserID removes every watch zone in the user's partition: it queries
 // the partition for the document ids, then point-deletes each. Used by the
-// account-deletion cascade (dormant cleanup and DELETE /v1/me), mirroring .NET
-// CosmosWatchZoneRepository.DeleteAllByUserIdAsync. The scan and the deletes are
-// all single-partition, so they never fan out cross-partition.
+// account-deletion cascade (dormant cleanup and DELETE /v1/me). The scan and the
+// deletes are all single-partition, so they never fan out cross-partition.
 func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) error {
 	raws, err := s.items.QueryItems(ctx, userID, "SELECT c.id FROM c WHERE c.userId = @userId", map[string]any{"@userId": userID})
 	if err != nil {
@@ -153,8 +150,7 @@ func (s *CosmosStore) DeleteAllByUserID(ctx context.Context, userID string) erro
 // directly served by the gateway"; tc-b7cm). The VALUE projection returns bare
 // JSON integers, one per zone row, so the same authority id repeats once per
 // zone in it and is de-duplicated here in first-seen order. It backs the polling
-// watch-zone active-authority provider (poll-sb cycle), mirroring .NET
-// CosmosWatchZoneRepository.GetDistinctAuthorityIdsCrossPartitionAsync.
+// watch-zone active-authority provider (poll-sb cycle).
 func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 	raws, err := s.items.QueryItemsCrossPartition(ctx, "SELECT VALUE c.authorityId FROM c", nil)
 	if err != nil {
@@ -179,8 +175,7 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 // findZonesContainingQuery selects every watch zone whose circle (centre +
 // radius) contains the candidate point, across all partitions. The candidate
 // point is bound as parameters; the zone centre is read from each document's
-// latitude/longitude columns. Mirrors .NET
-// CosmosWatchZoneRepository.FindZonesContainingCrossPartitionAsync.
+// latitude/longitude columns.
 const findZonesContainingQuery = "SELECT * FROM c WHERE ST_DISTANCE(" +
 	"{'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
 	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
@@ -188,10 +183,9 @@ const findZonesContainingQuery = "SELECT * FROM c WHERE ST_DISTANCE(" +
 // FindZonesContaining returns every watch zone (across all users) whose circle
 // contains the point (latitude, longitude), via a cross-partition ST_DISTANCE
 // query against each zone's centre and radius. It backs the poll-path
-// notification fan-out and decision-event dispatch (epic tc-wad3, bead tc-uc2p),
-// mirroring .NET FindZonesContainingCrossPartitionAsync. This is a deliberate
-// cross-partition scan — a polled application's coordinates must be matched
-// against every user's zones.
+// notification fan-out and decision-event dispatch (epic tc-wad3, bead tc-uc2p).
+// This is a deliberate cross-partition scan — a polled application's coordinates
+// must be matched against every user's zones.
 func (s *CosmosStore) FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error) {
 	raws, err := s.items.QueryItemsCrossPartition(ctx, findZonesContainingQuery, map[string]any{
 		"@latitude":  latitude,

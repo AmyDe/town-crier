@@ -54,8 +54,8 @@ func TestNewWatchZone_Validation(t *testing.T) {
 
 func TestNewWatchZone_DoesNotValidateCoordinateRange(t *testing.T) {
 	t.Parallel()
-	// Mirrors .NET WatchZone: latitude/longitude range is an HTTP-layer concern,
-	// not a domain invariant. The constructor accepts any coordinate.
+	// Latitude/longitude range is an HTTP-layer concern, not a domain invariant.
+	// The constructor accepts any coordinate.
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	if _, err := NewWatchZone("z1", "u1", "Home", 999, -999, 500, 471, now, true, true); err != nil {
 		t.Fatalf("constructor must not range-check coordinates: %v", err)

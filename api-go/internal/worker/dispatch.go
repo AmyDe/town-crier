@@ -120,14 +120,13 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 }
 
 // runPollSB executes one Service-Bus-triggered adaptive poll cycle inside a
-// telemetry span named "Polling Cycle (SB)" (mirroring the .NET worker so
-// existing App Insights queries keep working). It tags the span with the same
-// keys .NET emits (polling.sb.message_received / published_next /
-// authorities_polled / applications_ingested / termination / authority_errors)
-// and applies the .NET exit-code rule: exit 1 only when the run did NO useful
-// work AND hit authority errors. A nil orchestrator (job missing Service Bus /
-// Cosmos config) is an exit-1 condition; an orchestrator error is recorded on the
-// span and also exits 1.
+// telemetry span named "Polling Cycle (SB)" (so existing App Insights queries
+// keep working). It tags the span with the canonical keys
+// (polling.sb.message_received / published_next / authorities_polled /
+// applications_ingested / termination / authority_errors) and applies the
+// exit-code rule: exit 1 only when the run did NO useful work AND hit authority
+// errors. A nil orchestrator (job missing Service Bus / Cosmos config) is an
+// exit-1 condition; an orchestrator error is recorded on the span and also exits 1.
 func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Polling Cycle (SB)")
@@ -161,10 +160,9 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 		"authorityErrors", res.AuthorityErrors,
 		"leaseUnavailable", res.LeaseUnavailable)
 
-	// Same exit-code semantics as the .NET poll-sb branch: only exit 1 when the
-	// run did no useful work AND hit authority errors. A quiet cycle (0 apps, 0
-	// errors), a lease-unavailable exit, and any cycle that ingested apps all
-	// exit 0.
+	// Exit-code rule: only exit 1 when the run did no useful work AND hit
+	// authority errors. A quiet cycle (0 apps, 0 errors), a lease-unavailable
+	// exit, and any cycle that ingested apps all exit 0.
 	if res.ApplicationCount == 0 && res.AuthorityErrors > 0 {
 		return 1
 	}
@@ -172,10 +170,10 @@ func runPollSB(ctx context.Context, poller PollOrchestrator, logger *slog.Logger
 }
 
 // runDigest executes one digest cycle (weekly or hourly) under a soft self-cancel
-// budget, inside a telemetry span whose name mirrors the .NET worker ("Digest
-// Cycle" / "Hourly Digest Cycle") so existing App Insights queries keep working.
-// A nil digester (job missing Cosmos/ACS config) is an exit-1 condition; a cycle
-// error is recorded on the span and also exits 1 so the job surfaces the failure.
+// budget, inside a telemetry span ("Digest Cycle" / "Hourly Digest Cycle") so
+// existing App Insights queries keep working. A nil digester (job missing
+// Cosmos/ACS config) is an exit-1 condition; a cycle error is recorded on the
+// span and also exits 1 so the job surfaces the failure.
 func runDigest(ctx context.Context, spanName string, digester DigestRunner, run func(DigestRunner, context.Context) error, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, spanName)
@@ -199,11 +197,11 @@ func runDigest(ctx context.Context, spanName string, digester DigestRunner, run 
 }
 
 // runDormant executes one dormant-cleanup cycle under a soft self-cancel budget,
-// inside a telemetry span named "Dormant Cleanup Cycle" (mirroring the .NET
-// worker so existing App Insights queries keep working). It records the number of
-// erased accounts as the dormant_cleanup.deleted_count tag. A nil runner (job
-// missing Cosmos config) is an exit-1 condition; a cycle error is recorded on the
-// span and also exits 1 so the job surfaces the failure.
+// inside a telemetry span named "Dormant Cleanup Cycle" (so existing App Insights
+// queries keep working). It records the number of erased accounts as the
+// dormant_cleanup.deleted_count tag. A nil runner (job missing Cosmos config) is
+// an exit-1 condition; a cycle error is recorded on the span and also exits 1 so
+// the job surfaces the failure.
 func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Dormant Cleanup Cycle")
@@ -254,8 +252,8 @@ func runPollBootstrap(ctx context.Context, bootstrapper *Bootstrapper, logger *s
 		return 1
 	}
 
-	// Tag names match the .NET safety-net path so existing App Insights queries
-	// and dashboards keep working across the cutover.
+	// Tag names match the App Insights telemetry schema so existing queries
+	// and dashboards keep working.
 	span.SetAttributes(
 		attribute.Bool("polling.safety_net.bootstrap_published", res.Published),
 		attribute.Bool("polling.safety_net.bootstrap_probe_failed", res.ProbeFailed),
