@@ -7,9 +7,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 )
 
-// NotificationSources values reproduce the .NET NotificationSources flag names
-// (comma-joined when both apply), preserved verbatim because the stored sources
-// string is read by the digest worker's HasSavedSource check and the web API.
+// NotificationSources values are the flag names used for the stored sources
+// string (comma-joined when both apply), preserved verbatim because the field
+// is read by the digest worker's HasSavedSource check and the web API.
 const (
 	sourceZone  = "Zone"
 	sourceSaved = "Saved"
@@ -30,9 +30,8 @@ type recordInput struct {
 // newRecord builds the notification record from a polled application. The result
 // is a notifications.DigestNotification — the exact shape the digest worker reads
 // (ByUserSince / UnsentEmailsByUser) and writes — so a record created here flows
-// into the weekly and hourly digests unchanged. It mirrors .NET
-// Notification.Create: a decision update carries the PlanIt app_state string, a
-// new application leaves Decision nil.
+// into the weekly and hourly digests unchanged. A decision update carries the
+// PlanIt app_state string; a new application leaves Decision nil.
 func newRecord(in recordInput) notifications.DigestNotification {
 	n := notifications.DigestNotification{
 		ID:                     in.id,

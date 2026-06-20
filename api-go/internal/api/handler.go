@@ -12,9 +12,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
 
-// userIDResponse mirrors the .NET UserIdResponse record. The JSON key is
-// userId — explicit camelCase via [JsonPropertyName] — not the PascalCase the
-// field name would otherwise produce.
+// userIDResponse is the GET /api/me response shape. The JSON key is userId —
+// explicit camelCase via the json struct tag — not the PascalCase the field name
+// would otherwise produce.
 type userIDResponse struct {
 	UserID string `json:"userId"`
 }
@@ -33,11 +33,11 @@ type handler struct {
 
 func (h handler) me(w http.ResponseWriter, r *http.Request) {
 	// The subject was injected by the auth middleware after validating the
-	// bearer token; .NET reads the same value via ClaimsPrincipal sub claim.
+	// bearer token.
 	resp := userIDResponse{UserID: auth.Subject(r.Context())}
 
-	// Encode through a buffer with HTML escaping off (matching .NET) and trim
-	// the trailing newline so the wire bytes are compact and identical.
+	// Encode through a buffer with HTML escaping off and trim the trailing
+	// newline so the wire bytes are compact.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
@@ -46,7 +46,7 @@ func (h handler) me(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	// charset=utf-8 matches ASP.NET Core's Results.Ok JSON byte-for-byte.
+	// Content-Type is application/json with an explicit charset=utf-8 parameter.
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if _, err := w.Write(bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
 		h.logger.ErrorContext(r.Context(), "write me response", "error", err)

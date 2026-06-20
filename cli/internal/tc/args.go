@@ -6,8 +6,7 @@ import (
 )
 
 // ParsedArgs holds the parsed command name and its --key value options.
-// Option keys are matched case-insensitively, mirroring the .NET
-// OrdinalIgnoreCase dictionary.
+// Option keys are matched case-insensitively.
 type ParsedArgs struct {
 	Command string
 	options map[string]string
@@ -26,7 +25,7 @@ var helpAliases = map[string]struct{}{
 // With no arguments, or when the first argument is a help alias, the command is
 // "help". Otherwise the first argument is the command and the remainder are read
 // as --key value pairs from index 1 onwards in steps of two; a trailing flag
-// with no value is ignored, exactly as the .NET ArgParser does.
+// with no value is ignored.
 func ParseArgs(args []string) *ParsedArgs {
 	if len(args) == 0 {
 		return newParsedArgs("help")

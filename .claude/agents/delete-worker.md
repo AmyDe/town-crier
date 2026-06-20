@@ -14,7 +14,7 @@ You remove code described in a bead, verifying the codebase still builds and tes
 1. `/beads:show <bead-id>` — read what needs removing and why
 2. `/beads:update <bead-id> --status=in_progress`
 3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
-4. Invoke the coding standards skill for your scope (`api/` -> `/dotnet-coding-standards`, `web/` -> `/react-coding-standards`, `mobile/ios/` -> `/ios-coding-standards`)
+4. Invoke the coding standards skill for your scope (`api-go/`, `cli/`, `infra/` -> `/go-coding-standards`, `web/` -> `/react-coding-standards`, `mobile/ios/` -> `/ios-coding-standards`)
 5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
@@ -41,7 +41,7 @@ git diff --name-only HEAD $(git merge-base HEAD main) | grep -v '^<allowed-path>
 
 | Scope | Test | Build |
 |-------|------|-------|
-| `api/` | `cd api && dotnet test` | `cd api && dotnet build` |
+| `api-go/`, `cli/`, `infra/` | `go test ./...` | `go build ./...` |
 | `web/` | `cd web && npx vitest run` | `cd web && npx tsc --noEmit` |
 | `mobile/ios/` | `cd mobile/ios && swift test` | `cd mobile/ios && swift build` |
 

@@ -168,8 +168,8 @@ func TestRequireAuth_UnmatchedRouteFallsToDeny(t *testing.T) {
 	h := RequireAuth(v, mux, anonymous)
 
 	// Unmatched paths (incl. "/") and method mismatches return the fallback-deny
-	// 401 even with a valid token — there is no endpoint to authorise against,
-	// mirroring .NET's no-endpoint -> fallback policy.
+	// 401 even with a valid token — there is no endpoint to authorise against;
+	// the fallback policy denies when no endpoint is selected.
 	tests := []struct {
 		name   string
 		method string
@@ -193,7 +193,7 @@ func TestRequireAuth_UnmatchedRouteFallsToDeny(t *testing.T) {
 
 // assertChallenge verifies the fallback-deny contract: 401, bodyless (the
 // PascalCase envelope is added downstream by middleware.ErrorBody), and the
-// WWW-Authenticate: Bearer header .NET's JwtBearer handler emits on challenge.
+// WWW-Authenticate: Bearer header emitted on challenge.
 func assertChallenge(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusUnauthorized {

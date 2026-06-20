@@ -1,17 +1,14 @@
 // Package notifications provides read access to the Notifications container for
 // the per-application latest-unread lookup that augments the
-// applications-by-zone endpoint. It ports the slice of .NET
-// CosmosNotificationRepository.GetLatestUnreadByApplicationsAsync that the Go
-// watch-zone applications handler needs (GH#418). Full notification dispatch and
-// digest generation live in the worker, out of scope for this web-API port.
+// applications-by-zone endpoint (GH#418). Full notification dispatch and
+// digest generation live in the worker, out of scope for this package.
 package notifications
 
 import "time"
 
 // EventType is the lifecycle event a notification was raised for. The string
-// forms ("NewApplication", "DecisionUpdate") are the exact values .NET stores in
-// Cosmos and emits on the wire (the web context sets UseStringEnumConverter), so
-// they are preserved verbatim here.
+// forms ("NewApplication", "DecisionUpdate") are the exact values stored in
+// Cosmos and emitted on the wire, preserved verbatim here.
 type EventType string
 
 const (
@@ -25,8 +22,7 @@ const (
 
 // LatestUnread is the per-application unread descriptor surfaced on each row of
 // the applications-by-zone result: the event, the optional PlanIt decision
-// string (decision updates only), and when the notification was raised. It
-// mirrors the source fields of .NET LatestUnreadEvent.
+// string (decision updates only), and when the notification was raised.
 type LatestUnread struct {
 	ApplicationUID string
 	EventType      EventType

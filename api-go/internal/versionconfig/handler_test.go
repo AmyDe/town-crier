@@ -29,8 +29,8 @@ func TestRoutes_VersionConfig(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status: got %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	// Parity: .NET's Results.Ok serializes via the web JSON options (camelCase)
-	// with the ASP.NET Core JSON content type including the charset parameter.
+	// JSON is serialized camelCase with the content type including the explicit
+	// charset parameter.
 	if got, want := resp.Header.Get("Content-Type"), "application/json; charset=utf-8"; got != want {
 		t.Errorf("content-type: got %q, want %q", got, want)
 	}
@@ -39,7 +39,7 @@ func TestRoutes_VersionConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	// Exact wire bytes captured from the .NET dev API: camelCase, no whitespace.
+	// Exact wire format: camelCase, no whitespace.
 	if got, want := string(body), `{"minimumVersion":"1.0.0"}`; got != want {
 		t.Errorf("body: got %s, want %s", got, want)
 	}

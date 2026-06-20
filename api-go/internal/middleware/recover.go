@@ -16,20 +16,17 @@ import (
 // never echoed to the client to prevent leaking Go runtime internals (GH#516).
 const panicDetail = "An unexpected error occurred."
 
-// Recover converts a panic in a downstream handler into a 500 response,
-// replicating the unhandled-exception half of the .NET ErrorResponseMiddleware
-// (GH#418, parity behaviour 1). It runs INSIDE ErrorBody: on a panic with the
-// response not yet started, it records a generic Detail and sets status 500,
-// leaving ErrorBody to write the
-// {"Status":500,"Title":"Internal Server Error","Detail":"<generic>"} envelope
-// through the same backfill path as the bodyless 4xx responses. The full panic
-// error is retained in the structured log only (GH#516).
+// Recover converts a panic in a downstream handler into a 500 response
+// (GH#418). It runs INSIDE ErrorBody: on a panic with the response not yet
+// started, it records a generic Detail and sets status 500, leaving ErrorBody
+// to write the {"Status":500,"Title":"Internal Server Error","Detail":"<generic>"}
+// envelope through the same backfill path as the bodyless 4xx responses. The
+// full panic error is retained in the structured log only (GH#516).
 //
 // If the response has already started (the handler wrote bytes before
 // panicking), the status and body are already on the wire and cannot be
-// replaced — matching .NET's `!Response.HasStarted` guard. The panic is logged
-// and swallowed so the connection closes cleanly instead of crashing the
-// process.
+// replaced. The panic is logged and swallowed so the connection closes cleanly
+// instead of crashing the process.
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +48,7 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 				if rw.started {
-					// Response already on the wire; cannot replace it. .NET's
-					// HasStarted guard skips the envelope in exactly this case.
+					// Response already on the wire; cannot replace it.
 					return
 				}
 				SetDetail(ctx, panicDetail)
@@ -89,9 +85,8 @@ func (w *recoverWriter) Write(p []byte) (int, error) {
 // own unwrapping, so flush and the deferred-status machinery keep working.
 func (w *recoverWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// panicError normalises a recovered value into an error whose message mirrors
-// what .NET's ex.Message would carry: an error's Error() text, or the value's
-// default formatting otherwise.
+// panicError normalises a recovered value into an error: an error's Error()
+// text, or the value's default formatting otherwise.
 func panicError(rec any) error {
 	if err, ok := rec.(error); ok {
 		return err

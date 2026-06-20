@@ -128,9 +128,9 @@ func TestRecover_NoPanicPassesThrough(t *testing.T) {
 
 // TestRecover_PanicAfterPartialWriteDoesNotDoubleWrite guards the edge where a
 // handler writes some bytes and then panics: the response has already started,
-// so .NET cannot replace the body. We must not attempt to write the 500
-// envelope on top of a started response (which would corrupt it); the recover
-// is swallowed (logged) and the already-sent status stands.
+// so we must not attempt to write the 500 envelope on top of it (which would
+// corrupt it); the recover is swallowed (logged) and the already-sent status
+// stands.
 func TestRecover_PanicAfterPartialWriteDoesNotDoubleWrite(t *testing.T) {
 	t.Parallel()
 

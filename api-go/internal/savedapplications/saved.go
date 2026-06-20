@@ -1,13 +1,11 @@
 // Package savedapplications owns the saved-application feature: the domain
 // record, the Cosmos store over the SavedApplications container, and the
-// /v1/me/saved-applications HTTP handlers. It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.SavedApplications slices
-// (GH#418 iteration 6).
+// /v1/me/saved-applications HTTP handlers (GH#418 iteration 6).
 //
 // Scope note: this ships the fresh-data path (a save always embeds the
 // snapshot and keys on the canonical uid). The legacy-row migration machinery
-// the .NET list handler runs — lazy snapshot backfill, legacy-uid re-keying and
-// dedup, plus refresh-on-tap — is deferred to bead tc-wans.
+// — lazy snapshot backfill, legacy-uid re-keying and dedup, plus refresh-on-tap
+// — is deferred to bead tc-wans.
 package savedapplications
 
 import (
@@ -31,8 +29,7 @@ type SavedApplication struct {
 
 // NewSavedApplication builds a saved record from a planning application, keyed on
 // the canonical {areaId}/{name} uid (not the raw client-supplied uid) so re-saves
-// of the same application are idempotent. The snapshot is embedded. Mirrors .NET
-// SavedApplication.Create(userId, application, now).
+// of the same application are idempotent. The snapshot is embedded.
 func NewSavedApplication(userID string, app applications.PlanningApplication, now time.Time) SavedApplication {
 	snapshot := app
 	return SavedApplication{
@@ -47,7 +44,7 @@ func NewSavedApplication(userID string, app applications.PlanningApplication, no
 // withEmbeddedSnapshot returns a copy of the saved record with app embedded as
 // its snapshot, keeping the existing ApplicationUID and SavedAt. Re-keying to the
 // canonical uid is a separate step, so the lazy backfill and the re-key stay
-// independently testable. Mirrors .NET SavedApplication.WithEmbeddedSnapshot.
+// independently testable.
 func (s SavedApplication) withEmbeddedSnapshot(app applications.PlanningApplication) SavedApplication {
 	snapshot := app
 	s.Application = &snapshot

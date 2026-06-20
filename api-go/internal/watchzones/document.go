@@ -7,10 +7,8 @@ import (
 )
 
 // watchZoneDocument is the Cosmos persistence shape for a WatchZone. The JSON
-// tags reproduce the camelCase keys the .NET CosmosWatchZoneRepository writes
-// (its serializer context uses the CamelCase naming policy), so a Go-written
-// document is byte-compatible with the existing WatchZones container and an
-// existing document hydrates here unchanged.
+// tags use camelCase so a document written here is byte-compatible with the
+// existing WatchZones container and an existing document hydrates unchanged.
 //
 // Partition key: the WatchZones container is partitioned by /userId; the
 // document id equals the zone id. Every single-zone operation is therefore a
@@ -25,22 +23,21 @@ type watchZoneDocument struct {
 	RadiusMetres float64 `json:"radiusMetres"`
 	AuthorityID  int     `json:"authorityId"`
 
-	// createdAt carries a .NET DateTimeOffset, so it must serialise with a
-	// numeric UTC offset ("+00:00"), never Go's RFC 3339 "Z" — platform.DotNetTime
-	// handles that. Nullable so a legacy document missing it hydrates to the zero
-	// instant, mirroring .NET's `CreatedAt ?? DateTimeOffset.MinValue`.
+	// createdAt must serialise with a numeric UTC offset ("+00:00"), never Go's
+	// RFC 3339 "Z" — platform.DotNetTime handles that. Nullable so a legacy
+	// document missing it hydrates to the zero instant (time.Time{}).
 	CreatedAt *platform.DotNetTime `json:"createdAt"`
 
 	// pushEnabled / emailInstantEnabled are pointers so a document predating the
 	// per-zone flags (tc-kh1s) hydrates as opt-in (true) rather than the Go zero
-	// value (false) — mirroring .NET's bool? coalesce-to-true on read.
+	// value (false) — absent bools coalesce to true.
 	PushEnabled         *bool `json:"pushEnabled"`
 	EmailInstantEnabled *bool `json:"emailInstantEnabled"`
 }
 
 // newWatchZoneDocument maps a domain zone to its persistence shape. The flags are
 // always written explicitly (never absent) so a freshly written document carries
-// the user's actual preference; createdAt is written in .NET DateTimeOffset form.
+// the user's actual preference; createdAt is written with a numeric UTC offset.
 func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 	createdAt := platform.DotNetTime(z.CreatedAt)
 	push := z.PushEnabled
@@ -60,8 +57,7 @@ func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 }
 
 // toDomain reconstitutes a domain zone from its stored document, coalescing the
-// legacy-nullable flags to true and an absent createdAt to the zero instant,
-// exactly as .NET does on read.
+// legacy-nullable flags to true and an absent createdAt to the zero instant.
 func (d watchZoneDocument) toDomain() (WatchZone, error) {
 	var createdAt time.Time
 	if d.CreatedAt != nil {

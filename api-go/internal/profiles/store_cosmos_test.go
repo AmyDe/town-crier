@@ -147,8 +147,7 @@ func TestCosmosStore_Delete_NotFoundTolerant(t *testing.T) {
 	store := NewCosmosStore(items)
 
 	// A 404 on delete surfaces as ErrNotFound so the caller (DELETE /v1/me) can
-	// translate it to a 404 status, mirroring .NET's UserProfileNotFoundException
-	// path. The store itself does not swallow it.
+	// translate it to a 404 status. The store itself does not swallow it.
 	if err := store.Delete(context.Background(), "u1"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Delete 404: got %v, want ErrNotFound", err)
 	}

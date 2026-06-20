@@ -9,9 +9,9 @@ type Jitter interface {
 	NextOffset(bound time.Duration) time.Duration
 }
 
-// SchedulerOptions are the next-run scheduler tunables. Defaults mirror .NET
-// PollNextRunSchedulerOptions: 5m natural cadence, 1m resume after a time-bounded
-// cut-off, 3h cap on a Retry-After hint, 5m rate-limit default, 10s jitter bound.
+// SchedulerOptions are the next-run scheduler tunables: 5m natural cadence, 1m
+// resume after a time-bounded cut-off, 3h cap on a Retry-After hint, 5m
+// rate-limit default, 10s jitter bound.
 type SchedulerOptions struct {
 	NaturalCadence     time.Duration
 	TimeBoundedCadence time.Duration
@@ -20,7 +20,7 @@ type SchedulerOptions struct {
 	JitterBound        time.Duration
 }
 
-// DefaultSchedulerOptions returns the .NET-default tunables.
+// DefaultSchedulerOptions returns the default scheduler tunables.
 func DefaultSchedulerOptions() SchedulerOptions {
 	return SchedulerOptions{
 		NaturalCadence:     5 * time.Minute,
@@ -32,7 +32,7 @@ func DefaultSchedulerOptions() SchedulerOptions {
 }
 
 // NextRunScheduler computes when the next poll trigger should be enqueued, given
-// how the previous cycle ended. It is the Go port of .NET PollNextRunScheduler.
+// how the previous cycle ended.
 type NextRunScheduler struct {
 	opts   SchedulerOptions
 	jitter Jitter
@@ -45,7 +45,7 @@ func NewNextRunScheduler(opts SchedulerOptions, jitter Jitter) *NextRunScheduler
 
 // ComputeNextRun returns the absolute time the next trigger should enqueue.
 // retryAfter is the optional Retry-After hint from a 429 (nil when absent). Only
-// the rate-limited path consults retryAfter and applies jitter, matching .NET.
+// the rate-limited path consults retryAfter and applies jitter.
 func (s *NextRunScheduler) ComputeNextRun(reason TerminationReason, retryAfter *time.Duration, now time.Time) time.Time {
 	switch reason {
 	case TerminationRateLimited:
@@ -60,8 +60,7 @@ func (s *NextRunScheduler) ComputeNextRun(reason TerminationReason, retryAfter *
 }
 
 // rateLimitedDelay caps the Retry-After hint at RetryAfterCap (falling back to
-// RateLimitDefault when absent) and adds a symmetric jitter, mirroring .NET
-// ComputeRateLimitedDelay.
+// RateLimitDefault when absent) and adds a symmetric jitter.
 func (s *NextRunScheduler) rateLimitedDelay(retryAfter *time.Duration) time.Duration {
 	base := s.opts.RateLimitDefault
 	if retryAfter != nil {

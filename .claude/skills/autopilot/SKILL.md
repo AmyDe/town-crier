@@ -76,7 +76,7 @@ Walk highest priority first. For each candidate, `/beads:show` and read the bead
 |---------|--------|-------------|
 | delete/remove/strip + tech signals | `delete-worker` | *(by tech area)* |
 | Swift, iOS, mobile, `mobile/ios` | `ios-tdd-worker` | `mobile/ios/` |
-| .NET, C#, API, handler, `api` | `dotnet-tdd-worker` | `api/` |
+| Go, API, handler, worker, `api-go`, `cli` | `go-tdd-worker` | `api-go/` |
 | React, TypeScript, web, `web` | `react-tdd-worker` | `web/` |
 | Pulumi, infra, Azure, `infra` | `pulumi-infra-worker` | `infra/` |
 | CI/CD, GitHub Actions, `.github` | `github-actions-worker` | `.github/` |
@@ -143,7 +143,7 @@ bd dep add <consumer-child-id> <producer-child-id>
 Heuristics, in order:
 
 1. **Contract producers before consumers:**
-   - `.NET` / API → iOS, web (endpoint before its clients).
+   - Go / API → iOS, web (endpoint before its clients).
    - Pulumi / infra → anything that deploys into it.
    - GitHub Actions → code that relies on a new workflow or secret.
 2. **Delete after migrate:** a `delete-worker` child always depends on any non-delete siblings.
@@ -231,10 +231,10 @@ Run the relevant test suite on the merged result:
 
 | Worker | Test Command |
 |--------|-------------|
-| `dotnet-tdd-worker` | `cd api && dotnet test` |
+| `go-tdd-worker` | `cd api-go && go test ./...` |
 | `ios-tdd-worker` | `cd mobile/ios && swift test` |
 | `react-tdd-worker` | `cd web && npx vitest run` |
-| `pulumi-infra-worker` | `cd infra && dotnet build` |
+| `pulumi-infra-worker` | `cd infra && go build ./...` |
 | `github-actions-worker` | YAML validation only |
 | `delete-worker` | *(same as tech area)* |
 

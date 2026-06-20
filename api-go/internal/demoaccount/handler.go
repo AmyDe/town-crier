@@ -14,9 +14,8 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// The fixed demo identity and zone geometry, mirroring .NET
-// GetDemoAccountQueryHandler. The reviewer account is keyed on a synthetic Auth0
-// subject; the zone centres on Westminster with a 2 km radius.
+// The fixed demo identity and zone geometry. The reviewer account is keyed on a
+// synthetic Auth0 subject; the zone centres on Westminster with a 2 km radius.
 const (
 	demoUserID       = "demo|apple-reviewer"
 	demoZoneID       = "demo-zone"
@@ -25,7 +24,7 @@ const (
 	demoLongitude    = -0.1357
 	demoRadiusMetres = 2000
 	// demoSubscriptionYears is how far ahead the demo Pro subscription is set to
-	// expire, matching .NET's DateTimeOffset.UtcNow.AddYears(10).
+	// expire (10 years from the seed call time).
 	demoSubscriptionYears = 10
 )
 
@@ -58,8 +57,7 @@ type handler struct {
 }
 
 // Routes registers the anonymous demo-account endpoint. The route is added to
-// the wiring's anonymousPatterns so it bypasses the Auth0 bearer requirement,
-// matching .NET's AllowAnonymous.
+// the wiring's anonymousPatterns so it bypasses the Auth0 bearer requirement.
 func Routes(mux *http.ServeMux, profiles profileStore, zones zoneStore, apps appStore, now func() time.Time, logger *slog.Logger) {
 	h := &handler{profiles: profiles, zones: zones, apps: apps, now: now, logger: logger}
 	mux.HandleFunc("GET /v1/demo-account", h.getDemoAccount)
@@ -67,8 +65,7 @@ func Routes(mux *http.ServeMux, profiles profileStore, zones zoneStore, apps app
 
 // getDemoAccount returns the demo account, seeding Cosmos on first call. The
 // seed is gated on the profile's absence, so repeated calls are idempotent —
-// they skip straight to the spatial lookup. Mirrors .NET
-// GetDemoAccountQueryHandler.HandleAsync.
+// they skip straight to the spatial lookup.
 func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -113,8 +110,7 @@ func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
 
 // seed provisions the demo profile (Pro, 10-year expiry), the Westminster watch
 // zone, and the five fixed applications, returning the saved profile. It runs
-// only when the profile is absent. Mirrors .NET's seed branch; the watch zone is
-// created with DateTimeOffset.MinValue (Go's zero time) as its CreatedAt.
+// only when the profile is absent; CreatedAt is set to Go's zero time.
 func (h *handler) seed(ctx context.Context) (*profiles.UserProfile, error) {
 	now := h.now()
 

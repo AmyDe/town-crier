@@ -11,9 +11,8 @@ func TestCosmosRetryOptions_MatchesBoundedBudget(t *testing.T) {
 
 	opts := cosmosRetryOptions()
 
-	// The .NET CosmosThrottleRetryHandler budget: 3 attempts total (1 try + 2
-	// retries), a 750ms per-delay cap, and ~1.5s overall. MaxRetries counts
-	// retries only, so 2 => 3 attempts.
+	// Retry budget: 3 attempts total (1 try + 2 retries), a 750ms per-delay cap,
+	// and ~1.5s overall. MaxRetries counts retries only, so 2 => 3 attempts.
 	if opts.MaxRetries != 2 {
 		t.Errorf("MaxRetries: got %d, want 2 (3 attempts total)", opts.MaxRetries)
 	}
@@ -62,9 +61,8 @@ func TestNewCosmosContainerNamed_RequiresConfig(t *testing.T) {
 func TestCosmosContainerNames_MirrorDotNet(t *testing.T) {
 	t.Parallel()
 
-	// These constants mirror .NET CosmosContainerNames; the device-token and
-	// notification-state stores read them so a typo here would silently target
-	// the wrong container.
+	// The device-token and notification-state stores read these constants, so a
+	// typo here would silently target the wrong container.
 	if CosmosDeviceRegistrationsContainer != "DeviceRegistrations" {
 		t.Errorf("DeviceRegistrations container = %q", CosmosDeviceRegistrationsContainer)
 	}

@@ -1,9 +1,7 @@
 // Package applications owns the master planning-application feature: the domain
 // snapshot, the Cosmos store over the Applications container (point read by
 // authority + name), and the read endpoints (GET /v1/applications/{authorityCode}/{name}
-// and GET /v1/me/application-authorities). It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.PlanningApplications slices
-// (GH#418 iteration 6).
+// and GET /v1/me/application-authorities).
 //
 // A PlanningApplication is a snapshot of a PlanIt case: a plain data carrier
 // (the values come from an external provider, validated at the HTTP boundary),
@@ -16,9 +14,8 @@ import (
 )
 
 // PlanningApplication is the planning-application snapshot. Nullable fields are
-// pointers so an absent value serialises as JSON null, matching the .NET
-// nullable properties. Coordinates are carried flat here; the Cosmos document
-// projects them into a GeoJSON point.
+// pointers so an absent value serialises as JSON null. Coordinates are carried
+// flat here; the Cosmos document projects them into a GeoJSON point.
 type PlanningApplication struct {
 	Name          string
 	UID           string
@@ -45,7 +42,7 @@ type PlanningApplication struct {
 // the key. This is deliberately independent of the raw UID field — a client may
 // send a stale-format uid, but two saves of the same (AreaID, Name) always
 // produce the same canonical uid, keeping the saved-application doc id stable
-// and re-saves idempotent. Mirrors .NET PlanningApplication.CanonicalUid.
+// and re-saves idempotent.
 func (a PlanningApplication) CanonicalUID() string {
 	return strconv.Itoa(a.AreaID) + "/" + a.Name
 }
@@ -53,8 +50,7 @@ func (a PlanningApplication) CanonicalUID() string {
 // HasSameBusinessFieldsAs reports whether every business-material field matches
 // other, ignoring LastDifferent. The poll cycle uses it to skip a redundant
 // upsert when PlanIt re-emits an application with only a bumped LastDifferent
-// timestamp — the load-bearing reindex-flood guard. Mirrors .NET
-// PlanningApplication.HasSameBusinessFieldsAs.
+// timestamp — the load-bearing reindex-flood guard.
 func (a PlanningApplication) HasSameBusinessFieldsAs(other PlanningApplication) bool {
 	return a.Name == other.Name &&
 		a.UID == other.UID &&
@@ -84,8 +80,7 @@ func eqStrPtr(a, b *string) bool {
 	return *a == *b
 }
 
-// eqFloatPtr reports whether two optional floats are equal, mirroring .NET
-// Nullable.Equals.
+// eqFloatPtr reports whether two optional floats are equal.
 func eqFloatPtr(a, b *float64) bool {
 	if a == nil || b == nil {
 		return a == b

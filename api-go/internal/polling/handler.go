@@ -1,8 +1,7 @@
-// Package polling is the Go port of the .NET TownCrier.Application.Polling and
-// TownCrier.Infrastructure.Polling slices: the Service-Bus-triggered adaptive
-// PlanIt poll (WORKER_MODE=poll-sb). It owns the trigger orchestrator, the
-// PlanIt ingestion handler, the next-run scheduler, the Cosmos etag-CAS lease
-// and poll-state stores, and the cycle-alternating authority providers.
+// Package polling implements the Service-Bus-triggered adaptive PlanIt poll
+// (WORKER_MODE=poll-sb). It owns the trigger orchestrator, the PlanIt ingestion
+// handler, the next-run scheduler, the Cosmos etag-CAS lease and poll-state
+// stores, and the cycle-alternating authority providers.
 //
 // The crash-safety model is receive-and-delete + publish-after-consume per
 // ADR 0024 (2026-04-22 amendment): the orchestrator acquires a Cosmos lease,
@@ -26,7 +25,7 @@ import (
 
 // resumeOverlap is the one-page overlap applied when resuming from a saved
 // cursor (start at max(1, NextPage-1)) to tolerate PlanIt page-shift between
-// cycles, matching .NET's resumable-cursor logic.
+// cycles.
 const resumeOverlap = 1
 
 // planItFetcher is the consumer-side slice of the PlanIt client the handler
@@ -93,16 +92,15 @@ type metricsRecorder interface {
 
 // HandlerOptions are the ingestion tunables. MaxPagesPerAuthorityPerCycle caps
 // pagination per authority (nil = unbounded). HandlerBudget is the soft
-// wall-clock deadline; zero disables it. Mirrors the relevant .NET PollingOptions
-// fields.
+// wall-clock deadline; zero disables it.
 type HandlerOptions struct {
 	MaxPagesPerAuthorityPerCycle *int
 	HandlerBudget                time.Duration
 }
 
-// PollPlanItResult is the outcome of one ingestion cycle. Mirrors .NET
-// PollPlanItResult and drives the worker's exit code (exit 1 only when
-// ApplicationCount==0 AND AuthorityErrors>0) and the next-run cadence.
+// PollPlanItResult is the outcome of one ingestion cycle. Drives the worker's
+// exit code (exit 1 only when ApplicationCount==0 AND AuthorityErrors>0) and
+// the next-run cadence.
 type PollPlanItResult struct {
 	ApplicationCount  int
 	AuthoritiesPolled int
@@ -117,10 +115,9 @@ type PollPlanItResult struct {
 // PollPlanItHandler runs one adaptive PlanIt poll cycle: select the active
 // authorities for the current cycle type, walk them least-recently-polled first,
 // page each up to the cap, upsert changed applications, and advance per-authority
-// poll state (high-water mark + resumable cursor). It is the Go port of .NET
-// PollPlanItCommandHandler, scoped to ingestion (zone fan-out and decision-event
-// dispatch are the notification pipeline's concern and not wired into the worker
-// poll path — see bd follow-up).
+// poll state (high-water mark + resumable cursor). Scoped to ingestion (zone
+// fan-out and decision-event dispatch are the notification pipeline's concern and
+// not wired into the worker poll path — see bd follow-up).
 type PollPlanItHandler struct {
 	planIt      planItFetcher
 	apps        applicationStore
@@ -135,7 +132,7 @@ type PollPlanItHandler struct {
 	// collaborators wired via WithFanOut. When nil, the handler ingests only (the
 	// behaviour before bead tc-uc2p); when set, each upserted application drives a
 	// decision-event dispatch (on a non-decision -> decision transition) and a
-	// watch-zone notification fan-out, matching .NET PollPlanItCommandHandler.
+	// watch-zone notification fan-out.
 	decision DecisionDispatcher
 	enqueuer NotificationEnqueuer
 
@@ -233,8 +230,7 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 	}
 
 	// Cycle-start gauges: the never-polled backlog and the staleness of the
-	// oldest authority's LastPollTime. These mirror .NET's per-cycle gauge
-	// records so the lag dashboards keep working.
+	// oldest authority's LastPollTime, so the lag dashboards keep working.
 	rec.NeverPolledCount(ctx, lru.NeverPolledCount, cycleType)
 	h.recordOldestHWMAge(ctx, rec, lru, now, cycleType)
 
@@ -280,8 +276,8 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 			rec.AuthorityPolled(ctx, cycleType)
 			rec.ApplicationsIngested(ctx, outcome.appCount, cycleType)
 		default:
-			// Polled but produced no work and did not error: counts as skipped,
-			// matching .NET's authorities_skipped on a quiet authority.
+			// Polled but produced no work and did not error: counts as skipped
+			// (authorities_skipped on a quiet authority).
 			rec.AuthoritySkipped(ctx, cycleType)
 		}
 
@@ -415,8 +411,7 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 // guard; a first-time insert always counts as changed) — upserts it, then runs
 // the poll-path notification fan-out: a decision-event dispatch when the app has
 // just transitioned into a decision state, and the watch-zone notification
-// fan-out. It is the Go port of .NET PollPlanItCommandHandler's per-app body
-// (L186-226).
+// fan-out.
 //
 // The new-decision check is computed BEFORE the upsert so it compares the
 // PERSISTED state, not the incoming one: a non-decision -> decision transition
@@ -460,7 +455,7 @@ func (h *PollPlanItHandler) processApplication(ctx context.Context, app applicat
 
 // isDecisionState reports whether a PlanIt app_state is a decision outcome
 // (Permitted, Conditions, Rejected, Appealed), case-insensitively. A nil/empty
-// state is not a decision. Mirrors .NET PollPlanItCommandHandler.IsDecisionState.
+// state is not a decision.
 func isDecisionState(appState *string) bool {
 	if appState == nil || *appState == "" {
 		return false
@@ -480,7 +475,7 @@ func isDecisionState(appState *string) bool {
 // mid-pagination 429 it freezes the HWM and saves a resumable cursor at the next
 // unfetched page; on a natural end it advances the HWM to the max LastDifferent
 // observed and clears any cursor. State is only written when the authority
-// produced work (completed or saw applications), matching .NET.
+// produced work (completed or saw applications).
 func (h *PollPlanItHandler) finishAuthority(
 	ctx context.Context,
 	authorityID int,
@@ -525,8 +520,8 @@ func (h *PollPlanItHandler) finishAuthority(
 	if err := h.state.Save(ctx, authorityID, now, advancedHWM, nil); err != nil && out.err == nil {
 		out.err = err
 	}
-	// Clearing a previously-active cursor at a natural end, matching .NET's
-	// cursor_cleared counter (recorded only when a cursor was actually present).
+	// Clearing a previously-active cursor at a natural end (cursor_cleared
+	// is recorded only when a cursor was actually present).
 	if hadCursor {
 		rec.CursorCleared(ctx, cycleType)
 	}
@@ -538,7 +533,7 @@ func (h *PollPlanItHandler) finishAuthority(
 // then ascending LastPollTime, so AuthorityIDs[0] is the stalest authority. A
 // never-polled authority (no PollState) reports its age from the Unix epoch and
 // is tagged never_polled=true so dashboards distinguish it from a genuinely stale
-// HWM, matching .NET. An empty candidate set records nothing.
+// HWM. An empty candidate set records nothing.
 func (h *PollPlanItHandler) recordOldestHWMAge(ctx context.Context, rec metricsRecorder, lru LeastRecentlyPolledResult, now time.Time, cycleType string) {
 	if len(lru.AuthorityIDs) == 0 {
 		return

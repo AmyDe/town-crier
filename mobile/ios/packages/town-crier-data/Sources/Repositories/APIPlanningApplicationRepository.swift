@@ -148,7 +148,7 @@ struct LatestUnreadEventDTO: Decodable, Sendable {
   func toDomain() -> LatestUnreadEvent? {
     // Server may emit either fractional or integer-second precision so
     // try fractional first and fall back to plain ISO-8601 — both are
-    // legal `DateTimeOffset` outputs from `System.Text.Json` on .NET.
+    // legal ISO-8601 date-time outputs the API can produce.
     let withFractional = ISO8601DateFormatter()
     withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     if let parsed = withFractional.date(from: createdAt) {

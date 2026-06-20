@@ -10,13 +10,13 @@ import (
 
 // leaseDocumentID is the single lease document gating concurrent poll cycles.
 // The Leases container is partitioned by /id, so this lease lives in its own
-// logical partition. Mirrors .NET CosmosPollingLeaseStore.LeaseDocumentId.
+// logical partition.
 const leaseDocumentID = "polling"
 
 // Lease-store sentinel errors. The CAS-aware Cosmos accessor returns these to
 // distinguish the expected race outcomes from genuine transient failures. The
 // store maps create/replace conflicts to Held and never lets them escape as
-// errors, matching .NET's result-type contract.
+// errors.
 var (
 	// ErrLeaseConflict is returned by CreateLease when the document already exists
 	// (Cosmos 409) — a peer created the lease first.
@@ -41,13 +41,13 @@ type leaseItems interface {
 }
 
 // LeaseHandle carries the etag of the winning write so Release can perform a
-// conditional delete. Mirrors .NET LeaseHandle.
+// conditional delete.
 type LeaseHandle struct {
 	ETag string
 }
 
 // LeaseAcquireResult is the outcome of a TryAcquire. Exactly one of Acquired,
-// Held, or TransientErr-set is true. Mirrors .NET LeaseAcquireResult.
+// Held, or TransientErr-set is true.
 type LeaseAcquireResult struct {
 	// Acquired reports whether this caller now holds the lease; Handle is valid
 	// only when Acquired.
@@ -61,8 +61,7 @@ type LeaseAcquireResult struct {
 	TransientErr error
 }
 
-// LeaseReleaseOutcome is the outcome of a Release. Mirrors .NET
-// LeaseReleaseOutcome.
+// LeaseReleaseOutcome is the outcome of a Release.
 type LeaseReleaseOutcome int
 
 const (
@@ -77,10 +76,10 @@ const (
 )
 
 // leaseDocument is the Cosmos persistence shape for the polling lease. JSON tags
-// reproduce the camelCase keys the .NET CosmosPollingLeaseStore writes, so the
-// Go and .NET workers contend on a byte-compatible document during cutover.
-// expiresAtUtc is the only field acquisition decisions consult; holderId and
-// acquiredAtUtc are diagnostic. Times use the .NET "O" round-trip layout.
+// use camelCase to match the stored document shape (holderId, acquiredAtUtc,
+// expiresAtUtc). expiresAtUtc is the only field acquisition decisions consult;
+// holderId and acquiredAtUtc are diagnostic. Times use the ISO 8601 round-trip
+// layout with a numeric UTC offset.
 type leaseDocument struct {
 	ID            string `json:"id"`
 	HolderID      string `json:"holderId"`
@@ -89,11 +88,10 @@ type leaseDocument struct {
 }
 
 // LeaseStore is the etag-CAS-backed polling lease over the Cosmos Leases
-// container. It is the Go port of .NET CosmosPollingLeaseStore: a missing
-// document is created with create-if-absent; an expired document is replaced
-// with an If-Match etag; a live document or a lost race yields Held. The lease
-// prevents the orchestrator and the safety-net bootstrap from running a poll
-// cycle concurrently.
+// container. A missing document is created with create-if-absent; an expired
+// document is replaced with an If-Match etag; a live document or a lost race
+// yields Held. The lease prevents the orchestrator and the safety-net bootstrap
+// from running a poll cycle concurrently.
 type LeaseStore struct {
 	items    leaseItems
 	now      func() time.Time
@@ -162,9 +160,9 @@ func (s *LeaseStore) TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAc
 	}
 }
 
-// Release performs a conditional delete using the handle's etag. It never throws
-// — failures are surfaced as an outcome, and the lease TTL is the backstop for
-// any non-Released outcome. Mirrors .NET ReleaseAsync.
+// Release performs a conditional delete using the handle's etag. It never returns
+// an error — failures are surfaced as an outcome, and the lease TTL is the
+// backstop for any non-Released outcome.
 func (s *LeaseStore) Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome {
 	err := s.items.DeleteLeaseWithETag(ctx, leaseDocumentID, handle.ETag)
 	switch {

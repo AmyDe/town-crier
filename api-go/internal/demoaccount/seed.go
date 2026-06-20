@@ -2,8 +2,7 @@
 // GET /v1/demo-account (anonymous). On first call for the fixed demo identity it
 // idempotently seeds Cosmos — a Pro-tier profile, a Westminster watch zone, and
 // five fixed Westminster planning applications — then returns the zone plus the
-// applications found within the zone via a spatial lookup. It mirrors the .NET
-// TownCrier.Application.DemoAccount slice (GH#418 iteration 7).
+// applications found within the zone via a spatial lookup.
 //
 // The seed is a deliberate write side effect of a GET: it provisions a stable,
 // data-rich account so Apple's reviewer can exercise the paid experience without
@@ -35,8 +34,8 @@ func dateptr(year int, month time.Month, day int) *time.Time {
 
 func floatptr(f float64) *float64 { return &f }
 
-// seedApplications builds the five fixed Westminster demo applications, mirroring
-// .NET DemoSeedData.CreateApplications. lastDifferent is stamped with now (the
+// seedApplications builds the five fixed Westminster demo applications.
+// lastDifferent is stamped with now (the
 // value is not part of the response, but is persisted for fidelity). Coordinates
 // place all five within the 2 km demo zone so the spatial lookup returns them.
 func seedApplications(now time.Time) []applications.PlanningApplication {

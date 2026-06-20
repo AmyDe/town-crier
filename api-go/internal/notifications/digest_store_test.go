@@ -98,7 +98,7 @@ func TestDigestStore_ByUserSince(t *testing.T) {
 		t.Errorf("query missing since clause: %q", items.queryText)
 	}
 	if _, ok := items.queryParams["@since"].(string); !ok {
-		t.Errorf("@since must be the .NET string form, got %v", items.queryParams["@since"])
+		t.Errorf("@since must be the +00:00 DateTimeOffset string form, got %v", items.queryParams["@since"])
 	}
 }
 

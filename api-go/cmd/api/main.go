@@ -1,6 +1,4 @@
-// Command api serves the Town Crier HTTP API — the Go port of the .NET API
-// (GH#418). It must stay contract-identical to the .NET implementation until
-// cutover.
+// Command api serves the Town Crier HTTP API.
 package main
 
 import (
@@ -226,8 +224,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Real M2M client only when fully configured; otherwise the no-op fallback,
-	// matching .NET's conditional IAuth0ManagementClient registration.
+	// Real M2M client only when fully configured; otherwise the no-op fallback.
 	var manager profiles.Auth0Manager = profiles.NoOpAuth0Client{}
 	if cfg.Auth0M2MConfigured() {
 		// Wrap the transport so Auth0 token/PATCH/DELETE calls emit OTel client

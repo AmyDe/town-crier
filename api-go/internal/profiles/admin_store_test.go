@@ -202,8 +202,8 @@ func TestAdminStore_ByDigestDay(t *testing.T) {
 	if items.gotQuery != "SELECT * FROM c WHERE c.digestDay = @digestDay" {
 		t.Errorf("query = %q", items.gotQuery)
 	}
-	// .NET binds the digest day as the int DayOfWeek value; Go's time.Weekday
-	// numbering matches (Sunday=0 … Saturday=6), so Wednesday must bind as 3.
+	// The digest day is bound as the int weekday value (Sunday=0 … Saturday=6);
+	// Wednesday must bind as 3.
 	if day, ok := items.gotParams["@digestDay"].(int); !ok || day != int(time.Wednesday) {
 		t.Errorf("@digestDay = %v, want int %d", items.gotParams["@digestDay"], int(time.Wednesday))
 	}

@@ -1,9 +1,8 @@
-// Town Crier Infrastructure (Go port of the original C# Pulumi program).
+// Town Crier Infrastructure (Pulumi program).
 //
-// Zero-diff migration: logical resource names, the project name ("town-crier"),
-// and the azure-native provider version (3.16.0) are all preserved so the URNs
-// match the existing shared/dev/prod state exactly. Do not rename resources —
-// add aliases instead.
+// Logical resource names, the project name ("town-crier"), and the azure-native
+// provider version (3.16.0) are pinned so the URNs match the existing
+// shared/dev/prod state exactly. Do not rename resources — add aliases instead.
 package main
 
 import (

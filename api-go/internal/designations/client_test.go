@@ -111,7 +111,7 @@ func TestClient_Get_EscapesPointLongitudeFirst(t *testing.T) {
 	if _, err := client.Get(context.Background(), 55, 2); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	// POINT(longitude latitude) with .NET-style escaping: "(" -> %28, " " -> %20,
+	// POINT(longitude latitude) with percent-encoding: "(" -> %28, " " -> %20,
 	// ")" -> %29; the dataset commas stay literal.
 	want := "/api/v1/entity.json?geometry_intersects=POINT%282%2055%29&dataset=conservation-area,listed-building-outline,article-4-direction-area"
 	if fake.requestedURI != want {
@@ -156,7 +156,7 @@ func TestClient_Get_ErrorOnServerError(t *testing.T) {
 	t.Parallel()
 
 	// A non-404 error status is an error (the handler maps it to the empty
-	// context), mirroring .NET's EnsureSuccessStatusCode throw.
+	// context); any non-success status code raises an error.
 	fake := &govUkServer{status: http.StatusInternalServerError, body: `{}`}
 	srv := newGovUkServer(t, fake)
 	client := mustNewClient(t, srv.URL, srv.Client())

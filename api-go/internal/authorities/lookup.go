@@ -25,7 +25,7 @@ func (l *Lookup) All() []Authority {
 
 // CompareOrdinalIgnoreCase exposes the package's ordinal, case-insensitive name
 // comparator so callers building authority lists order them identically to the
-// /v1/authorities list and to .NET's StringComparer.OrdinalIgnoreCase.
+// /v1/authorities list ordering.
 func CompareOrdinalIgnoreCase(a, b string) int {
 	return compareOrdinalIgnoreCase(a, b)
 }

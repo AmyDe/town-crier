@@ -294,7 +294,7 @@ func TestHandler_PatchProfile_UpdatesAndDefaults(t *testing.T) {
 	h := newTestHandler(store, newFakeAuth0(), "")
 
 	// iOS-style body: omits digestDay and emailDigestEnabled, which must take the
-	// command defaults (Monday / true), exactly as the .NET record defaults do.
+	// command defaults (Monday / true).
 	body := `{"pushEnabled":false,"savedDecisionPush":false,"savedDecisionEmail":false}`
 	rec := httptest.NewRecorder()
 	h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|abc", body))
@@ -348,8 +348,8 @@ func TestHandler_PatchProfile_AcceptsDigestDayAsInt(t *testing.T) {
 	store.byID["auth0|abc"] = existing
 	h := newTestHandler(store, newFakeAuth0(), "")
 
-	// System.Text.Json with the string-enum converter still accepts the integer
-	// form; the Go handler must too.
+	// The API accepts digestDay as an integer in addition to the weekday name;
+	// the handler must accept both.
 	body := `{"pushEnabled":true,"digestDay":3}`
 	rec := httptest.NewRecorder()
 	h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|abc", body))
@@ -570,8 +570,8 @@ func TestHandler_ExportData_NestedContract(t *testing.T) {
 	if !ok || sub["tier"] != "Pro" {
 		t.Errorf("subscription wrong: %v", got["subscription"])
 	}
-	// .NET serialises DateTimeOffset with a numeric offset — "+00:00", never
-	// Go's RFC 3339 "Z" (caught live by the contract gate on PR #424).
+	// Timestamps use a numeric offset — "+00:00", never Go's RFC 3339 "Z"
+	// (caught live by the contract gate on PR #424).
 	if sub["expiresAt"] != "2099-12-31T00:00:00+00:00" {
 		t.Errorf("expiresAt wire format: got %v, want 2099-12-31T00:00:00+00:00", sub["expiresAt"])
 	}

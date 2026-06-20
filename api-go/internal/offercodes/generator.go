@@ -8,7 +8,7 @@ import (
 
 // RandomGenerator mints canonical offer codes from cryptographically secure
 // randomness: 60 bits (12 × 5) drawn from 8 random bytes, each 5-bit group
-// mapped through the Crockford alphabet — mirroring the .NET OfferCodeGenerator.
+// mapped through the Crockford alphabet.
 type RandomGenerator struct{}
 
 // NewRandomGenerator returns a crypto/rand-backed generator.

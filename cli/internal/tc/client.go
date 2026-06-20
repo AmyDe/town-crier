@@ -18,8 +18,8 @@ const apiKeyHeader = "X-Admin-Key"
 const maxRespBytes = 10 << 20 // 10 MiB
 
 // Client is a thin admin-API HTTP client. It targets the configured base URL and
-// attaches the X-Admin-Key header to every request. Like the .NET ApiClient it
-// does not enforce HTTPS, so http://localhost dev endpoints work unchanged.
+// attaches the X-Admin-Key header to every request. It does not enforce HTTPS,
+// so http://localhost dev endpoints work unchanged.
 type Client struct {
 	baseURL string
 	apiKey  string
@@ -27,7 +27,7 @@ type Client struct {
 }
 
 // NewClient builds a Client from resolved config. The trailing slash on the base
-// URL is trimmed to match the .NET HttpClient BaseAddress handling.
+// URL is trimmed so path joins are predictable.
 func NewClient(cfg Config) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(cfg.URL, "/"),
@@ -70,8 +70,7 @@ func (c *Client) Put(ctx context.Context, path string, body any) (*http.Response
 }
 
 // GetJSON sends a GET and decodes a successful JSON response into out. A non-2xx
-// status becomes an error of the form "API error (<status>): <body>", matching
-// the .NET ApiClient.GetFromJsonAsync failure message.
+// status becomes an error of the form "API error (<status>): <body>".
 func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
 	resp, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {

@@ -9,8 +9,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
-// farFutureExpiry is the sentinel expiry an admin grant assigns to a paid tier,
-// mirroring the .NET GrantSubscriptionCommandHandler.FarFutureExpiry
+// farFutureExpiry is the sentinel expiry an admin grant assigns to a paid tier
 // (2099-12-31T00:00:00+00:00).
 var farFutureExpiry = time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC)
 
@@ -19,7 +18,7 @@ type grantRequest struct {
 	Tier  string `json:"tier"`
 }
 
-// grantResult mirrors the .NET GrantSubscriptionResult: { userId, email, tier }.
+// grantResult is the response shape for PUT /v1/admin/subscriptions: { userId, email, tier }.
 type grantResult struct {
 	UserID string  `json:"userId"`
 	Email  *string `json:"email"`
@@ -28,8 +27,7 @@ type grantResult struct {
 
 // grantSubscription implements PUT /v1/admin/subscriptions: set a user's tier by
 // email. Granting Free expires the subscription; any paid tier activates it to
-// the far-future expiry. A missing profile is a bodyless 404, matching .NET's
-// Results.NotFound() on UserProfileNotFoundException.
+// the far-future expiry. A missing profile is a bodyless 404.
 func (h *handler) grantSubscription(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req grantRequest

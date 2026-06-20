@@ -9,8 +9,8 @@ import (
 // SnapshotDocument is the embedded planning-application snapshot stored inline on
 // a saved-application document. It carries the same fields as the master
 // applicationDocument minus the container identity (id / authorityCode /
-// planitName) — the case reference is the "name" key here. Mirrors .NET
-// SavedApplicationSnapshotDocument. The applications package owns it because it
+// planitName) — the case reference is the "name" key here. The applications
+// package owns it because it
 // is a PlanningApplication wire projection; the savedapplications package embeds
 // it without duplicating the GeoJSON / date mapping.
 type SnapshotDocument struct {

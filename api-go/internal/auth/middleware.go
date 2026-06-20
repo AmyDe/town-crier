@@ -1,8 +1,7 @@
-// Package auth replicates the .NET API's Auth0 JWT bearer authentication and
-// fallback-deny authorization (GH#418, parity behaviours 6 and the JwtBearer
-// mapping). Every route requires a valid Auth0 access token unless it was
-// explicitly registered as anonymous; unmatched routes fall through to the same
-// 401 challenge, mirroring ASP.NET's "no endpoint -> fallback policy" flow.
+// Package auth provides Auth0 JWT bearer authentication and fallback-deny
+// authorization (GH#418). Every route requires a valid Auth0 access token unless
+// it was explicitly registered as anonymous; unmatched routes fall through to a
+// 401 challenge (a "no endpoint -> fallback policy" flow).
 package auth
 
 import (
@@ -13,8 +12,7 @@ import (
 
 // Claims carries the JWT claims the handlers need after a token is validated:
 // the subject plus the email, email-verified flag, and subscription_tier the
-// create-profile path reads (mirroring .NET's ClaimsPrincipal lookups in
-// UserProfileEndpoints). Email-derived claims are empty when the token omits
+// create-profile path reads. Email-derived claims are empty when the token omits
 // them.
 type Claims struct {
 	Subject          string
@@ -32,9 +30,9 @@ type TokenValidator interface {
 }
 
 // routeMatcher is the subset of *http.ServeMux the middleware uses: it both
-// reports which registered pattern (if any) a request matches — the Go
-// equivalent of ASP.NET resolving an endpoint before authorization — and
-// dispatches the request once the auth decision is made.
+// reports which registered pattern (if any) a request matches — resolving the
+// endpoint before the authorization decision — and dispatches the request once
+// the auth decision is made.
 type routeMatcher interface {
 	http.Handler
 	Handler(r *http.Request) (h http.Handler, pattern string)
@@ -44,18 +42,16 @@ type claimsKey struct{}
 
 // RequireAuth wraps mux with Auth0 bearer authentication and fallback-deny
 // authorization. anonymousPatterns is the set of mux patterns (e.g.
-// "GET /v1/health") registered with AllowAnonymous in .NET; requests matching
-// one are served without a token. Every other matched route requires a valid
-// bearer token, and any unmatched request is denied with the same 401 challenge
-// — reproducing .NET's behaviour where an unselected endpoint triggers the
-// RequireAuthenticatedUser fallback policy.
+// "GET /v1/health") served without a token. Every other matched route requires a
+// valid bearer token, and any unmatched request is denied with the same 401
+// challenge — no endpoint selected means deny.
 func RequireAuth(v TokenValidator, mux routeMatcher, anonymousPatterns map[string]struct{}) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, pattern := mux.Handler(r)
 
 		// No pattern matched (unknown path, wrong method, or a constrained route
-		// that did not match): deny, exactly as .NET's fallback policy does when
-		// no endpoint is selected.
+		// that did not match): deny — no endpoint selected means the fallback
+		// policy kicks in.
 		if pattern == "" {
 			Challenge(w)
 			return
@@ -103,10 +99,9 @@ func ClaimsFrom(ctx context.Context) Claims {
 	return Claims{}
 }
 
-// Challenge writes the bodyless 401 that .NET's JwtBearer handler emits on an
-// unauthenticated request: status 401 plus WWW-Authenticate: Bearer. The
-// PascalCase error envelope is added downstream by middleware.ErrorBody, the
-// same way ASP.NET's ErrorResponseMiddleware backfills the JwtBearer challenge.
+// Challenge writes the bodyless 401 emitted on an unauthenticated request:
+// status 401 plus WWW-Authenticate: Bearer. The PascalCase error envelope is
+// added downstream by middleware.ErrorBody.
 func Challenge(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	w.WriteHeader(http.StatusUnauthorized)
@@ -119,8 +114,8 @@ func Subject(ctx context.Context) string {
 }
 
 // bearerToken extracts the token from an "Authorization: Bearer <token>"
-// header. The scheme match is case-insensitive (RFC 7235), matching the .NET
-// JwtBearer handler; an empty or malformed header yields ok=false.
+// header. The scheme match is case-insensitive (RFC 7235); an empty or
+// malformed header yields ok=false.
 func bearerToken(r *http.Request) (string, bool) {
 	const prefix = "bearer "
 	header := r.Header.Get("Authorization")

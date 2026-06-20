@@ -1,9 +1,8 @@
 // Package devicetokens owns the device-token feature: the DeviceRegistration
 // domain value, its Cosmos document shape, the Cosmos store, and the
-// PUT/DELETE /v1/me/device-token HTTP handlers. It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.DeviceRegistrations slice
-// (GH#418 iteration 4) but follows idiomatic Go: a plain struct validated at
-// construction, a consumer-side store interface, and hand-written test fakes.
+// PUT/DELETE /v1/me/device-token HTTP handlers (GH#418). A plain struct
+// validated at construction, a consumer-side store interface, and hand-written
+// test fakes.
 package devicetokens
 
 import (
@@ -13,8 +12,8 @@ import (
 )
 
 // DevicePlatform enumerates the push platforms. The string forms ("Ios",
-// "Android") are the exact values the .NET DevicePlatform enum serialises to
-// (UseStringEnumConverter) and stores in Cosmos, so they are preserved here.
+// "Android") are the exact values stored in Cosmos and sent over the wire,
+// so they are preserved here.
 type DevicePlatform int
 
 const (
@@ -40,8 +39,7 @@ func (p DevicePlatform) String() string {
 var ErrUnknownPlatform = errors.New("unknown device platform")
 
 // ParsePlatform converts a wire/stored platform string to the enum. The match is
-// case-insensitive — the .NET System.Text.Json string-enum converter is
-// case-insensitive by default, so "ios" and "Ios" both bind on the inbound side.
+// case-insensitive, so "ios" and "Ios" both bind on the inbound side.
 func ParsePlatform(s string) (DevicePlatform, error) {
 	switch {
 	case strings.EqualFold(s, "Ios"):
@@ -55,7 +53,7 @@ func ParsePlatform(s string) (DevicePlatform, error) {
 
 // DeviceRegistration is one (user, token) push registration. Exported fields
 // keep it a plain Go value; the constructor enforces the only real invariants
-// (non-blank user id and token), matching .NET DeviceRegistration.Create.
+// (non-blank user id and token).
 type DeviceRegistration struct {
 	UserID       string
 	Token        string
@@ -64,7 +62,7 @@ type DeviceRegistration struct {
 }
 
 // NewRegistration builds a registration, rejecting a blank user id or token —
-// the same guard as .NET's ArgumentException.ThrowIfNullOrWhiteSpace.
+// rejects a blank (whitespace-only) user id or token.
 func NewRegistration(userID, token string, platform DevicePlatform, now time.Time) (DeviceRegistration, error) {
 	if strings.TrimSpace(userID) == "" {
 		return DeviceRegistration{}, errors.New("user id is required")
@@ -80,10 +78,9 @@ func NewRegistration(userID, token string, platform DevicePlatform, now time.Tim
 	}, nil
 }
 
-// Refresh stamps RegisteredAt to now unconditionally, mirroring .NET
-// RefreshRegistration: a re-PUT records the client's instant even when it is
-// earlier than the stored one (the client's clock is authoritative, and the
-// re-write resets the Cosmos TTL).
+// Refresh stamps RegisteredAt to now unconditionally: a re-PUT records the
+// client's instant even when it is earlier than the stored one (the client's
+// clock is authoritative, and the re-write resets the Cosmos TTL).
 func (r *DeviceRegistration) Refresh(now time.Time) {
 	r.RegisteredAt = now
 }

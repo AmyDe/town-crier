@@ -23,8 +23,8 @@ func TestNewProfile_Defaults(t *testing.T) {
 	if p.Tier != TierFree {
 		t.Errorf("Tier: got %v, want Free", p.Tier)
 	}
-	// Default notification preferences mirror .NET NotificationPreferences.Default:
-	// push on, Monday digest, email digest + saved-decision channels all on.
+	// Default notification preferences: push on, Monday digest, email digest
+	// + saved-decision channels all on.
 	if !p.Preferences.PushEnabled {
 		t.Error("PushEnabled: got false, want true (default)")
 	}

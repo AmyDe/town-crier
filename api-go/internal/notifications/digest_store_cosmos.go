@@ -28,7 +28,7 @@ type DigestItems interface {
 //
 // Partition strategy: the container is partitioned by /userId. The per-user
 // reads target one partition; the unsent-email user list is the only
-// cross-partition scan, mirroring .NET's GetUserIdsWithUnsentEmailsCrossPartition.
+// cross-partition scan (UserIDsWithUnsentEmails deduplicates client-side).
 type DigestStore struct {
 	items DigestItems
 }
@@ -39,7 +39,7 @@ func NewDigestStore(items DigestItems) *DigestStore {
 }
 
 // byUserSinceQuery selects a user's notifications created at or after a cutoff,
-// newest first — the weekly-digest window. Mirrors .NET GetByUserSinceAsync.
+// newest first — the weekly-digest window.
 const byUserSinceQuery = "SELECT * FROM c WHERE c.userId = @userId AND c.createdAt >= @since ORDER BY c.createdAt DESC"
 
 // ByUserSince returns the user's notifications created at or after since, used by
@@ -76,7 +76,7 @@ func (s *DigestStore) AllByUser(ctx context.Context, userID string) ([]DigestNot
 
 // unsentEmailsQuery selects a user's notifications whose email has not yet been
 // sent, oldest first. The OR-NOT-IS_DEFINED clause includes legacy rows written
-// before the emailSent field existed. Mirrors .NET GetUnsentEmailsByUserAsync.
+// before the emailSent field existed.
 const unsentEmailsQuery = "SELECT * FROM c WHERE c.userId = @userId AND (c.emailSent = false OR NOT IS_DEFINED(c.emailSent)) ORDER BY c.createdAt ASC"
 
 // UnsentEmailsByUser returns the user's notifications awaiting an email, used by
@@ -94,8 +94,7 @@ func (s *DigestStore) UnsentEmailsByUser(ctx context.Context, userID string) ([]
 // projection with client-side dedup (azcosmos cannot serve a cross-partition
 // DISTINCT — the gateway returns 400 "can not be directly served by the
 // gateway"; tc-b7cm). The same row's userId repeats once per unsent
-// notification, so UserIDsWithUnsentEmails collapses them in Go. Mirrors .NET
-// GetUserIdsWithUnsentEmailsCrossPartitionAsync.
+// notification, so UserIDsWithUnsentEmails collapses them client-side.
 const userIDsWithUnsentEmailsQuery = "SELECT VALUE c.userId FROM c WHERE c.emailSent = false OR NOT IS_DEFINED(c.emailSent)"
 
 // UserIDsWithUnsentEmails returns every user id with at least one unsent-email
@@ -128,8 +127,7 @@ func (s *DigestStore) UserIDsWithUnsentEmails(ctx context.Context) ([]string, er
 // is the poll-path enqueuer's write primitive (epic tc-wad3, bead tc-uc2p): the
 // document it writes is the full digestDocument shape — camelCase keys, the
 // 90-day TTL, emailSent=false — so the digest worker's ByUserSince /
-// UnsentEmailsByUser reads hydrate it unchanged. Mirrors .NET
-// CosmosNotificationRepository.SaveAsync for a new notification.
+// UnsentEmailsByUser reads hydrate it unchanged.
 func (s *DigestStore) Create(ctx context.Context, n DigestNotification) error {
 	body, err := json.Marshal(newDigestDocument(n))
 	if err != nil {
@@ -145,7 +143,7 @@ func (s *DigestStore) Create(ctx context.Context, n DigestNotification) error {
 // any) for a given (applicationUid, authorityId, eventType). Authority is part
 // of the key because PlanIt uids collide across councils (tc-th98 / GH#384), so
 // a uid-only match would suppress a legitimate notification for a same-uid
-// application in a different authority. Mirrors .NET GetByUserAndApplicationAsync.
+// application in a different authority.
 const getByUserAndApplicationQuery = "SELECT * FROM c WHERE c.userId = @userId " +
 	"AND c.applicationUid = @applicationUid AND c.authorityId = @authorityId " +
 	"AND c.eventType = @eventType"
@@ -153,7 +151,7 @@ const getByUserAndApplicationQuery = "SELECT * FROM c WHERE c.userId = @userId "
 // GetByUserAndApplication returns the user's existing notification for the
 // (applicationUid, authorityId, eventType) tuple, or nil when none exists — the
 // "not yet notified" signal the enqueuer and decision dispatcher branch on for
-// idempotency. The read is single-partition (scoped to userId), mirroring .NET.
+// idempotency. The read is single-partition (scoped to userId).
 func (s *DigestStore) GetByUserAndApplication(ctx context.Context, userID, applicationUID string, authorityID int, eventType EventType) (*DigestNotification, error) {
 	raws, err := s.items.QueryItems(ctx, userID, getByUserAndApplicationQuery, map[string]any{
 		"@userId":         userID,
@@ -176,8 +174,7 @@ func (s *DigestStore) GetByUserAndApplication(ctx context.Context, userID, appli
 }
 
 // MarkEmailSent upserts the notification document (with EmailSent already set by
-// the caller) so it is excluded from the next hourly cycle, mirroring .NET's
-// MarkEmailSent + SaveAsync.
+// the caller) so it is excluded from the next hourly cycle.
 func (s *DigestStore) MarkEmailSent(ctx context.Context, n DigestNotification) error {
 	body, err := json.Marshal(newDigestDocument(n))
 	if err != nil {

@@ -27,7 +27,7 @@ import (
 )
 
 // defaultPageSize is PlanIt's page size; a full page (>= this many records) is
-// the page-fill heuristic for "more pages may follow", matching .NET.
+// the page-fill heuristic for "more pages may follow".
 const defaultPageSize = 100
 
 // maxResponseBytes bounds a PlanIt JSON body so a hostile or broken upstream
@@ -67,13 +67,12 @@ func (e *httpError) Error() string {
 	return fmt.Sprintf("planit http error: status %d", e.StatusCode)
 }
 
-// ThrottleOptions paces outbound requests. Mirrors .NET PlanItThrottleOptions.
+// ThrottleOptions paces outbound requests.
 type ThrottleOptions struct {
 	DelayBetweenRequests time.Duration
 }
 
-// RetryOptions tune the exponential-backoff retry on transient failures. Mirrors
-// .NET PlanItRetryOptions.
+// RetryOptions tune the exponential-backoff retry on transient failures.
 type RetryOptions struct {
 	MaxRetries       int
 	InitialBackoff   time.Duration
@@ -83,7 +82,7 @@ type RetryOptions struct {
 // httpErrorRecorder is the consumer-side slice of the metrics registry the
 // client records towncrier.planit.http_errors on. *metrics.Registry satisfies
 // it; nil leaves the counter dark. The tag keys are owned by the recorder
-// (http.response.status_code, planit.authority_code) so they match .NET.
+// (http.response.status_code, planit.authority_code).
 type httpErrorRecorder interface {
 	PlanItHTTPError(ctx context.Context, statusCode, authorityID int)
 }
@@ -109,7 +108,7 @@ type Options struct {
 
 // FetchPageResult is one page of a PlanIt fetch: the parsed applications, the
 // reported total (nil when PlanIt omitted it), and whether more pages may follow
-// (the page-fill heuristic). Mirrors .NET FetchPageResult.
+// (the page-fill heuristic).
 type FetchPageResult struct {
 	Page         int
 	Applications []applications.PlanningApplication
@@ -244,8 +243,7 @@ func (c *Client) sendWithThrottle(ctx context.Context, target string, authorityI
 		}
 
 		// Every non-2xx response is an http error — count it on each attempt
-		// (including 429 and retried 5xx), tagged with status + authority, matching
-		// .NET PlanItClient's per-response HttpErrors.Add.
+		// (including 429 and retried 5xx), tagged with status + authority.
 		if c.metrics != nil {
 			c.metrics.PlanItHTTPError(ctx, resp.StatusCode, authorityID)
 		}
@@ -303,7 +301,7 @@ func isRetryable(status int) bool {
 	}
 }
 
-// buildPath builds the PlanIt applications query path, mirroring .NET BuildUrl:
+// buildPath builds the PlanIt applications query path:
 // pg_sz, sort=last_different, page, auth, and optional different_start (date).
 func buildPath(authorityID int, differentStart *time.Time, page int) string {
 	path := fmt.Sprintf("/api/applics/json?pg_sz=%d&sort=last_different&page=%d&auth=%d", defaultPageSize, page, authorityID)

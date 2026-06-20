@@ -1,9 +1,8 @@
 // Package profiles owns the user-profile feature: the domain model, the Cosmos
 // store, the /v1/me HTTP handlers, and the Auth0 Management (M2M) client used to
-// keep Auth0's subscription_tier metadata in sync. It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.UserProfiles slices (GH#418
-// iteration 3) but follows idiomatic Go: a plain struct validated at
-// construction, a consumer-side store interface, and hand-written test fakes.
+// keep Auth0's subscription_tier metadata in sync. It follows idiomatic Go: a
+// plain struct validated at construction, a consumer-side store interface, and
+// hand-written test fakes.
 package profiles
 
 import (
@@ -14,8 +13,8 @@ import (
 )
 
 // SubscriptionTier enumerates the entitlement levels. The string forms ("Free",
-// "Personal", "Pro") are the exact values the .NET SubscriptionTier enum
-// serialises to on the wire and stores in Cosmos, so they are preserved here.
+// "Personal", "Pro") are the canonical values stored in Cosmos and served on the
+// wire.
 type SubscriptionTier int
 
 const (
@@ -45,23 +44,21 @@ func (t SubscriptionTier) String() string {
 func (t SubscriptionTier) IsPaid() bool { return t != TierFree }
 
 // IsPaidPro reports whether the tier is specifically Pro. The weekly digest PUSH
-// is Pro-only (.NET gates on Tier == SubscriptionTier.Pro), distinct from the
-// hourly-digest entitlement which Personal also holds.
+// is Pro-only, distinct from the hourly-digest entitlement which Personal also
+// holds.
 func (t SubscriptionTier) IsPaidPro() bool { return t == TierPro }
 
 // HasHourlyDigestEntitlement reports whether the tier grants the
-// HourlyDigestEmails entitlement (Personal and Pro, never Free), mirroring .NET
-// EntitlementMap — hourly digest emails are a paid, server-enforced entitlement.
+// HourlyDigestEmails entitlement (Personal and Pro, never Free) — hourly digest
+// emails are a paid, server-enforced entitlement.
 func (t SubscriptionTier) HasHourlyDigestEntitlement() bool { return t.IsPaid() }
 
-// unlimitedWatchZones is the Pro-tier watch-zone limit: .NET's int.MaxValue,
-// the sentinel the iOS app reads as "no limit". Preserved exactly so the
-// /v1/subscriptions/verify response is byte-identical to .NET's.
+// unlimitedWatchZones is the Pro-tier watch-zone limit: 2147483647 (int32 max),
+// the sentinel the iOS app reads as "no limit".
 const unlimitedWatchZones = 2147483647
 
-// Entitlements returns the entitlement strings granted by the tier, mirroring
-// the .NET EntitlementMap: the paid tiers grant the same three, Free grants
-// none. The order matches the .NET Entitlement enum declaration so the
+// Entitlements returns the entitlement strings granted by the tier: paid tiers
+// grant the same three, Free grants none. The order is fixed so the
 // /v1/subscriptions/verify response is stable.
 func (t SubscriptionTier) Entitlements() []string {
 	if t.IsPaid() {
@@ -70,9 +67,8 @@ func (t SubscriptionTier) Entitlements() []string {
 	return []string{}
 }
 
-// WatchZoneLimit returns the maximum number of watch zones the tier permits,
-// mirroring .NET EntitlementMap.LimitFor(tier, Quota.WatchZones): Free=1,
-// Personal=3, Pro=unlimited.
+// WatchZoneLimit returns the maximum number of watch zones the tier permits:
+// Free=1, Personal=3, Pro=unlimited.
 func (t SubscriptionTier) WatchZoneLimit() int {
 	switch t {
 	case TierPersonal:
@@ -88,8 +84,7 @@ func (t SubscriptionTier) WatchZoneLimit() int {
 var ErrUnknownTier = errors.New("unknown subscription tier")
 
 // ParseSubscriptionTier converts a stored/wire tier string back to the enum.
-// The match is exact and case-sensitive, mirroring .NET's Enum.Parse on the
-// PascalCase stored value.
+// The match is exact and case-sensitive (PascalCase: "Free", "Personal", "Pro").
 func ParseSubscriptionTier(s string) (SubscriptionTier, error) {
 	switch s {
 	case "Free":
@@ -104,8 +99,7 @@ func ParseSubscriptionTier(s string) (SubscriptionTier, error) {
 }
 
 // NotificationPreferences captures the user's global notification settings.
-// Mirrors the .NET NotificationPreferences record; defaults are push-on,
-// Monday digest, all email/saved-decision channels on.
+// Defaults are push-on, Monday digest, all email/saved-decision channels on.
 type NotificationPreferences struct {
 	PushEnabled        bool
 	DigestDay          time.Weekday
@@ -114,7 +108,7 @@ type NotificationPreferences struct {
 	SavedDecisionEmail bool
 }
 
-// DefaultPreferences returns the .NET NotificationPreferences.Default value.
+// DefaultPreferences returns the default notification preferences.
 func DefaultPreferences() NotificationPreferences {
 	return NotificationPreferences{
 		PushEnabled:        true,
@@ -137,8 +131,8 @@ type ZonePreferences struct {
 
 // UserProfile is the user-profile aggregate. Exported fields keep it a plain Go
 // value; the constructor enforces the only real invariant (non-blank user id),
-// and the small mutators preserve .NET's behaviours (forward-only activity,
-// non-overwriting email backfill).
+// and the small mutators maintain forward-only activity and non-overwriting
+// email backfill.
 type UserProfile struct {
 	UserID                string
 	Email                 *string
@@ -156,8 +150,8 @@ type UserProfile struct {
 }
 
 // NewProfile registers a fresh profile with default preferences and the Free
-// tier, mirroring .NET UserProfile.Register. A blank user id is rejected; a
-// blank email is stored as nil (absent), not an empty string.
+// tier. A blank user id is rejected; a blank email is stored as nil (absent),
+// not an empty string.
 func NewProfile(userID, email string, now time.Time) (*UserProfile, error) {
 	if strings.TrimSpace(userID) == "" {
 		return nil, errors.New("user id is required")
@@ -172,9 +166,9 @@ func NewProfile(userID, email string, now time.Time) (*UserProfile, error) {
 	}, nil
 }
 
-// RecordActivity advances LastActiveAt to now only when now is later, matching
-// .NET's forward-only RecordActivity. The dormancy-cleanup worker relies on this
-// timestamp (UK GDPR Art. 5(1)(e)).
+// RecordActivity advances LastActiveAt to now only when now is later
+// (forward-only). The dormancy-cleanup worker relies on this timestamp
+// (UK GDPR Art. 5(1)(e)).
 func (p *UserProfile) RecordActivity(now time.Time) {
 	if now.After(p.LastActiveAt) {
 		p.LastActiveAt = now
@@ -182,7 +176,7 @@ func (p *UserProfile) RecordActivity(now time.Time) {
 }
 
 // BackfillEmail sets the email only if it is currently absent. An already-set
-// email is never overwritten, mirroring .NET BackfillEmail.
+// email is never overwritten.
 func (p *UserProfile) BackfillEmail(email string) {
 	if p.Email != nil || strings.TrimSpace(email) == "" {
 		return
@@ -196,7 +190,7 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 }
 
 // ActivateSubscription moves the profile to a paid tier with the given expiry
-// and clears any grace period, mirroring .NET ActivateSubscription.
+// and clears any grace period.
 func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Time) {
 	p.Tier = tier
 	exp := expiry
@@ -205,8 +199,8 @@ func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Ti
 }
 
 // ExpireSubscription drops the profile back to the Free tier and clears the
-// subscription expiry and grace period, mirroring .NET ExpireSubscription. Used
-// by the admin grant endpoint when granting the Free tier (a downgrade).
+// subscription expiry and grace period. Used by the admin grant endpoint when
+// granting the Free tier (a downgrade).
 func (p *UserProfile) ExpireSubscription() {
 	p.Tier = TierFree
 	p.SubscriptionExpiry = nil
@@ -214,8 +208,8 @@ func (p *UserProfile) ExpireSubscription() {
 }
 
 // RenewSubscription extends the subscription to a new expiry and clears any
-// grace period, without changing the tier — mirroring .NET RenewSubscription.
-// Applied on the App Store DID_RENEW notification.
+// grace period, without changing the tier. Applied on the App Store DID_RENEW
+// notification.
 func (p *UserProfile) RenewSubscription(newExpiry time.Time) {
 	exp := newExpiry
 	p.SubscriptionExpiry = &exp
@@ -223,18 +217,17 @@ func (p *UserProfile) RenewSubscription(newExpiry time.Time) {
 }
 
 // EnterGracePeriod records the grace-period end while leaving the tier and
-// expiry intact, so the entitlement persists through a billing retry — mirroring
-// .NET EnterGracePeriod. Applied on DID_FAIL_TO_RENEW with the GRACE_PERIOD
-// subtype.
+// expiry intact, so the entitlement persists through a billing retry. Applied
+// on DID_FAIL_TO_RENEW with the GRACE_PERIOD subtype.
 func (p *UserProfile) EnterGracePeriod(graceEnd time.Time) {
 	end := graceEnd
 	p.GracePeriodExpiry = &end
 }
 
 // LinkOriginalTransactionID records the Apple original transaction ID so App
-// Store Server Notifications can later locate this profile cross-partition,
-// mirroring .NET LinkOriginalTransactionId. The caller supplies a non-blank ID
-// (the transaction decoder requires originalTransactionId).
+// Store Server Notifications can later locate this profile cross-partition.
+// The caller supplies a non-blank ID (the transaction decoder requires
+// originalTransactionId).
 func (p *UserProfile) LinkOriginalTransactionID(originalTransactionID string) {
 	id := originalTransactionID
 	p.OriginalTransactionID = &id

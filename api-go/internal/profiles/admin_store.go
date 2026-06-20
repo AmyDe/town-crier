@@ -36,7 +36,7 @@ type Page struct {
 }
 
 // GetByEmail returns the first profile whose email matches exactly, or
-// ErrNotFound. Mirrors the .NET GetByEmailCrossPartitionAsync.
+// ErrNotFound.
 func (s *AdminStore) GetByEmail(ctx context.Context, email string) (*UserProfile, error) {
 	rows, err := s.items.QueryItemsCrossPartition(ctx,
 		"SELECT * FROM c WHERE c.email = @email",
@@ -57,7 +57,7 @@ func (s *AdminStore) GetByEmail(ctx context.Context, email string) (*UserProfile
 // GetByOriginalTransactionID returns the profile whose stored Apple original
 // transaction id matches, or ErrNotFound. App Store Server Notifications carry
 // no user id, so the webhook locates the subscriber by this cross-partition
-// lookup. Mirrors the .NET GetByOriginalTransactionIdCrossPartitionAsync.
+// lookup.
 func (s *AdminStore) GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*UserProfile, error) {
 	rows, err := s.items.QueryItemsCrossPartition(ctx,
 		"SELECT * FROM c WHERE c.originalTransactionId = @txnId",
@@ -77,9 +77,8 @@ func (s *AdminStore) GetByOriginalTransactionID(ctx context.Context, originalTra
 
 // ByDigestDay returns every profile whose configured digest day matches day —
 // the weekly-digest candidate set, before per-user tier and preference gating.
-// The digest day is bound as the int DayOfWeek value (Sunday=0 … Saturday=6),
-// matching .NET's GetAllByDigestDayCrossPartitionAsync (which casts the enum to
-// int) and the int stored by the profile document's digestDay field.
+// The digest day is bound as the int weekday value (Sunday=0 … Saturday=6),
+// matching the int stored in the profile document's digestDay field.
 func (s *AdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*UserProfile, error) {
 	rows, err := s.items.QueryItemsCrossPartition(ctx,
 		"SELECT * FROM c WHERE c.digestDay = @digestDay",
@@ -104,13 +103,12 @@ func (s *AdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*User
 
 // Dormant returns every profile last active strictly before cutoff — the
 // dormant-account set the cleanup worker erases (UK GDPR Art. 5(1)(e), ADR 0023).
-// Mirrors .NET GetDormantCrossPartitionAsync, with one deliberate hardening: the
-// cutoff comparison is done in Go on the parsed LastActiveAt rather than as a
-// Cosmos string comparison. Production documents carry lastActiveAt in two wire
-// formats — .NET's DateTimeOffset "+00:00" form and the Go store's RFC 3339 "Z"
-// form — and "Z" sorts after "+", so a lexicographic SQL "<" would silently miss
-// "Z"-stored dormant accounts. The scan is a once-a-day batch over a small user
-// base, so hydrating all profiles and filtering in Go is both correct and cheap.
+// The cutoff comparison is done in Go on the parsed LastActiveAt rather than as a
+// Cosmos string comparison: production documents carry lastActiveAt in two wire
+// formats ("+00:00" and RFC 3339 "Z"), and "Z" sorts after "+", so a
+// lexicographic SQL "<" would silently miss "Z"-stored dormant accounts. The
+// scan is a once-a-day batch over a small user base, so hydrating all profiles
+// and filtering in Go is both correct and cheap.
 func (s *AdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*UserProfile, error) {
 	rows, err := s.items.QueryItemsCrossPartition(ctx, "SELECT * FROM c", nil)
 	if err != nil {
@@ -146,10 +144,10 @@ func (s *AdminStore) Save(ctx context.Context, p *UserProfile) error {
 }
 
 // List returns one page of profiles, optionally filtered by a case-insensitive
-// email substring, plus the continuation token for the next page. Mirrors the
-// .NET ListCrossPartitionAsync: CONTAINS(c.email, @search, true) when a search
-// is given, else an unfiltered scan. An empty search applies no filter (an empty
-// substring matches every email, so the result set is identical either way).
+// email substring, plus the continuation token for the next page. Uses
+// CONTAINS(c.email, @search, true) when a search is given, else an unfiltered
+// scan. An empty search applies no filter (an empty substring matches every
+// email, so the result set is identical either way).
 func (s *AdminStore) List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (Page, error) {
 	query := "SELECT * FROM c"
 	var params map[string]any

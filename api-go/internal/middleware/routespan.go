@@ -46,8 +46,8 @@ func (s *statusWriter) Write(p []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer (Flush etc.).
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// RouteSpan restores the request-telemetry parity the .NET API had (tc-r8eo):
-// it names the inbound request span after the matched ServeMux route (e.g.
+// RouteSpan names the inbound request span after the matched ServeMux route (tc-r8eo),
+// e.g.
 // "GET /v1/me") and records the real HTTP status code on the span. Azure Monitor
 // maps span Name -> AppRequests.Name and http.response.status_code ->
 // ResultCode, so without this every Go request row showed only the bare verb and

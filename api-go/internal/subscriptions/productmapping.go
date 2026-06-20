@@ -3,10 +3,7 @@
 // x5c chain to the embedded Apple Root CA - G3), the transaction and
 // notification decoders, the Cosmos notification-idempotency store, and the
 // POST /v1/subscriptions/verify (authed) + POST /v1/webhooks/appstore
-// (anonymous) handlers. It mirrors the .NET
-// TownCrier.{Domain,Application,Infrastructure}.Subscriptions slices (GH#418
-// iteration 9) but follows idiomatic Go: plain structs, consumer-side
-// interfaces, and hand-written test fakes.
+// (anonymous) handlers (GH#418 iteration 9).
 package subscriptions
 
 import (
@@ -20,11 +17,10 @@ import (
 // matching the app bundle id uk.towncrierapp.mobile and the domain
 // towncrierapp.uk.
 //
-// The .NET ProductMapping expected uk.co.towncrier.personal.monthly /
-// uk.co.towncrier.pro.monthly (an extra ".co.", wrong domain), which never
-// matched a real purchase, so .NET would have rejected every live transaction.
-// That bug is deliberately NOT carried over here (tc-7g3i.12); .NET is being
-// retired by this migration and will not be fixed.
+// Legacy product IDs uk.co.towncrier.personal.monthly /
+// uk.co.towncrier.pro.monthly (an extra ".co.", wrong domain) were never correct
+// and never matched a real purchase. They are deliberately NOT added here
+// (tc-7g3i.12).
 const (
 	// ProductPersonalMonthly is the Personal-tier monthly subscription.
 	ProductPersonalMonthly = "uk.towncrierapp.personal.monthly"
@@ -33,8 +29,7 @@ const (
 )
 
 // UnknownProductError signals a product ID with no tier mapping. Its message is
-// surfaced verbatim in the 400 invalid_transaction_payload response body and
-// matches the .NET ProductMapping ArgumentException text.
+// surfaced verbatim in the 400 invalid_transaction_payload response body.
 type UnknownProductError struct {
 	ProductID string
 }
@@ -44,7 +39,7 @@ func (e *UnknownProductError) Error() string {
 }
 
 // TierForProduct maps a canonical App Store product ID to its subscription
-// tier. An unrecognised ID — including the retired .NET typo IDs — yields an
+// tier. An unrecognised ID — including the legacy typo IDs — yields an
 // *UnknownProductError and the Free tier.
 func TierForProduct(productID string) (profiles.SubscriptionTier, error) {
 	switch productID {

@@ -8,9 +8,8 @@ import (
 )
 
 // EncodeJSON renders v as JSON with HTML escaping disabled and the trailing
-// newline that json.Encoder appends trimmed off. This matches the relaxed
-// (non-HTML-escaping) byte output of the .NET web serializer, so the wire bytes
-// stay identical across the handlers that emit JSON responses.
+// newline that json.Encoder appends trimmed off, producing compact wire-ready
+// bytes for the handlers that emit JSON responses.
 func EncodeJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

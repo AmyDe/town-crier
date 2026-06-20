@@ -20,12 +20,11 @@ import (
 var ErrUnconfigured = errors.New("auth0 validator not configured")
 
 // jwksCacheTTL caps how long a fetched JWKS is trusted before a background
-// refresh. 15 minutes matches the library default and the .NET handler's
-// effective JWKS cache window.
+// refresh. 15 minutes matches the go-jwt-middleware library default.
 const jwksCacheTTL = 15 * time.Minute
 
 // allowedClockSkew tolerates minor clock drift between the API host and Auth0
-// when validating exp/nbf, mirroring the small skew .NET's handler permits.
+// when validating exp/nbf.
 const allowedClockSkew = 30 * time.Second
 
 // underlyingValidator is the slice of the library *validator.Validator the

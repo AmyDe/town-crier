@@ -60,8 +60,7 @@ export function isApplicationStatus(value: unknown): value is ApplicationStatus 
 
 /**
  * Wire-format tag distinguishing the lifecycle event a notification was raised
- * for. Mirrors the `.NET` `NotificationEventType` enum which serialises as a
- * string via `UseStringEnumConverter`.
+ * for. Matches the API's `NotificationEventType`, which serialises as a string.
  *
  * - `NewApplication` — a new planning application appeared in PlanIt.
  * - `DecisionUpdate` — a previously-tracked application transitioned to a
@@ -91,7 +90,7 @@ export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
 }
 
 /**
- * Matches .NET System.DayOfWeek numeric enum.
+ * Matches the API's numeric day-of-week enum.
  * 0 = Sunday, 1 = Monday, ..., 6 = Saturday.
  */
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;

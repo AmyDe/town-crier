@@ -39,15 +39,14 @@ func AuthoritiesRoutes(mux *http.ServeMux, zones zoneAuthorityLister, lookup aut
 	mux.HandleFunc("GET /v1/me/application-authorities", h.list)
 }
 
-// authorityItem mirrors .NET AuthorityListItem: { id, name, areaType }.
+// authorityItem is the wire shape for one authority: { id, name, areaType }.
 type authorityItem struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	AreaType string `json:"areaType"`
 }
 
-// applicationAuthoritiesResult mirrors .NET GetUserApplicationAuthoritiesResult:
-// { authorities: [...], count }.
+// applicationAuthoritiesResult is the wire response: { authorities: [...], count }.
 type applicationAuthoritiesResult struct {
 	Authorities []authorityItem `json:"authorities"`
 	Count       int             `json:"count"`
@@ -56,7 +55,7 @@ type applicationAuthoritiesResult struct {
 // list resolves the distinct authorities across the user's watch zones to
 // display metadata, sorts them by name (ordinal, case-insensitive) and returns
 // the list with its count. Authorities not present in the static data are
-// silently skipped, matching .NET's null-skip.
+// silently skipped.
 func (h *authoritiesHandler) list(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 

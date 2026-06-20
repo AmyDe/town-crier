@@ -18,25 +18,23 @@ type authorityStore interface {
 	byID(id int) (Authority, bool)
 }
 
-// listItem is one entry in the GET /v1/authorities response. Field order
-// matches the .NET AuthorityListItem record so the wire bytes are identical.
+// listItem is one entry in the GET /v1/authorities response.
 type listItem struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	AreaType string `json:"areaType"`
 }
 
-// listResult mirrors the .NET GetAuthoritiesResult record: a non-null array
+// listResult is the GET /v1/authorities response shape: a non-null array
 // plus a total count.
 type listResult struct {
 	Authorities []listItem `json:"authorities"`
 	Total       int        `json:"total"`
 }
 
-// detailResult mirrors the .NET GetAuthorityByIdResult record. councilUrl and
+// detailResult is the GET /v1/authorities/{id} response shape. councilUrl and
 // planningUrl are always null because the embedded data never populates them,
-// but the fields are emitted explicitly for parity. Pointers serialize a nil
-// as JSON null.
+// but the fields are emitted explicitly. Pointers serialize a nil as JSON null.
 type detailResult struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name"`
@@ -49,9 +47,9 @@ type detailResult struct {
 func Routes(mux *http.ServeMux, logger *slog.Logger) {
 	h := handler{store: newStaticStore(), logger: logger}
 	mux.HandleFunc("GET /v1/authorities", h.list)
-	// Trailing slash: ASP.NET Core routing is trailing-slash-insensitive and
-	// serves the list for GET /v1/authorities/ . Go's mux treats it as a
-	// distinct path that {id} will not match, so register it explicitly.
+	// Trailing slash: GET /v1/authorities/ should also serve the list. Go's mux
+	// treats it as a distinct path that {id} will not match, so register it
+	// explicitly.
 	mux.HandleFunc("GET /v1/authorities/{$}", h.list)
 	mux.HandleFunc("GET /v1/authorities/{id}", h.byID)
 }
@@ -66,8 +64,8 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 
 	all := h.store.all()
 	items := make([]listItem, 0, len(all))
-	// .NET filters with !IsNullOrWhiteSpace(search): a blank or whitespace-only
-	// search applies no filter and returns the full list.
+	// Filter is skipped when search is blank or whitespace-only; the full list
+	// is returned.
 	filter := strings.TrimSpace(search) != ""
 	for _, a := range all {
 		if filter && !containsOrdinalIgnoreCase(a.Name, search) {
@@ -82,19 +80,18 @@ func (h handler) list(w http.ResponseWriter, r *http.Request) {
 func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
-		// Non-integer id: the .NET {id:int} route constraint does not match, so
-		// no endpoint is selected and the fallback-deny policy returns 401 with
-		// WWW-Authenticate: Bearer. Go's {id} wildcard matches any segment, so we
-		// emit the same challenge the auth middleware would — the PascalCase
-		// envelope is backfilled downstream by middleware.ErrorBody.
+		// Non-integer id: Go's {id} wildcard matches any segment, so the handler
+		// self-denies non-ints with the same 401 challenge the auth middleware
+		// would emit — the PascalCase envelope is backfilled downstream by
+		// middleware.ErrorBody.
 		auth.Challenge(w)
 		return
 	}
 
 	a, ok := h.store.byID(id)
 	if !ok {
-		// Parity: .NET returns Results.NotFound() (bodyless); the PascalCase
-		// envelope is backfilled by middleware.ErrorBody, as in .NET.
+		// Returns bodyless 404; the PascalCase envelope is backfilled by
+		// middleware.ErrorBody.
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -103,9 +100,8 @@ func (h handler) byID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
-	// Encode through a buffer with HTML escaping off (matching .NET) and trim
-	// the trailing newline json.Encoder appends, so the wire bytes are compact
-	// and identical to the .NET response.
+	// Encode through a buffer with HTML escaping off and trim the trailing
+	// newline json.Encoder appends, so the wire bytes are compact.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)

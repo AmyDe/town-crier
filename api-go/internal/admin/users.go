@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-// defaultPageSize mirrors the .NET admin endpoint default (pageSize ?? 20).
+// defaultPageSize is the default page size for the admin users list.
 const defaultPageSize = 20
 
 type listItem struct {
@@ -14,7 +14,7 @@ type listItem struct {
 	Tier   string  `json:"tier"`
 }
 
-// listResult mirrors the .NET ListUsersResult: { items, continuationToken }.
+// listResult is the response shape for GET /v1/admin/users: { items, continuationToken }.
 // continuationToken is null when the query is exhausted.
 type listResult struct {
 	Items             []listItem `json:"items"`
@@ -23,8 +23,7 @@ type listResult struct {
 
 // listUsers implements GET /v1/admin/users?search&pageSize&continuationToken: a
 // cross-partition page of profiles, optionally filtered by case-insensitive
-// email substring. An unparseable pageSize is a bodyless 400 (the .NET int?
-// binding failure).
+// email substring. An unparseable pageSize is a bodyless 400.
 func (h *handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	search := q.Get("search")

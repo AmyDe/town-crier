@@ -11,13 +11,13 @@ import (
 
 // Per-zone notification preferences live on the user profile document, so the
 // /v1/me/watch-zones/{zoneId}/preferences endpoints are served here (over the
-// profile store) rather than in the watchzones package — mirroring .NET, where
-// the Get/UpdateZonePreferences handlers sit in the UserProfiles application
-// slice even though the route is registered alongside the watch-zone endpoints.
+// profile store) rather than in the watchzones package. The
+// Get/UpdateZonePreferences handlers are registered alongside the watch-zone
+// routes even though they read and write the user profile document.
 
 // zonePreferencesRequest is the PUT body. The four channel flags are plain
-// bools: an omitted field decodes to false, matching System.Text.Json on the
-// .NET UpdateZonePreferencesCommand record's non-nullable bools.
+// bools: an omitted field decodes to false (JSON zero-value decoding for
+// non-nullable bool fields).
 type zonePreferencesRequest struct {
 	NewApplicationPush  bool `json:"newApplicationPush"`
 	NewApplicationEmail bool `json:"newApplicationEmail"`
@@ -25,7 +25,8 @@ type zonePreferencesRequest struct {
 	DecisionEmail       bool `json:"decisionEmail"`
 }
 
-// zonePreferencesResult mirrors .NET Get/UpdateZonePreferencesResult:
+// zonePreferencesResult is the wire response for GET and PUT
+// /v1/me/watch-zones/{zoneId}/preferences:
 // { zoneId, newApplicationPush, newApplicationEmail, decisionPush, decisionEmail }.
 type zonePreferencesResult struct {
 	ZoneID              string `json:"zoneId"`
@@ -47,7 +48,7 @@ func zonePreferencesResultFrom(zoneID string, prefs ZonePreferences) zonePrefere
 
 // getZonePreferences implements GET /v1/me/watch-zones/{zoneId}/preferences. A
 // zone the user never customised returns the all-on defaults; a missing profile
-// is a bodyless 404 (mirroring .NET's UserProfileNotFoundException -> NotFound).
+// is a bodyless 404.
 func (h *handler) getZonePreferences(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")

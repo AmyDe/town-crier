@@ -18,10 +18,10 @@ func TestTierForProduct(t *testing.T) {
 	}{
 		{"personal monthly", "uk.towncrierapp.personal.monthly", profiles.TierPersonal, false},
 		{"pro monthly", "uk.towncrierapp.pro.monthly", profiles.TierPro, false},
-		// The .NET typo IDs (extra ".co.") must NOT map — they are the bug this
+		// The legacy typo IDs (extra ".co.") must NOT map — they are the bug this
 		// mapping deliberately does not carry over (tc-7g3i.12).
-		{"dotnet personal typo", "uk.co.towncrier.personal.monthly", profiles.TierFree, true},
-		{"dotnet pro typo", "uk.co.towncrier.pro.monthly", profiles.TierFree, true},
+		{"legacy personal typo", "uk.co.towncrier.personal.monthly", profiles.TierFree, true},
+		{"legacy pro typo", "uk.co.towncrier.pro.monthly", profiles.TierFree, true},
 		{"unknown", "com.example.bogus", profiles.TierFree, true},
 		{"empty", "", profiles.TierFree, true},
 	}
@@ -46,14 +46,13 @@ func TestTierForProduct_UnknownErrorMessage(t *testing.T) {
 	if !errors.As(err, &upe) {
 		t.Fatalf("want *UnknownProductError, got %T (%v)", err, err)
 	}
-	// Message matches .NET ProductMapping's ArgumentException text so a future
-	// contract test could diff it against the retired .NET API verbatim.
+	// Message matches the canonical error format for unknown product ID errors.
 	if want := "Unknown App Store product ID: 'com.example.bogus'"; upe.Error() != want {
 		t.Errorf("message = %q, want %q", upe.Error(), want)
 	}
 }
 
-// TestProductIDs_NoLegacyDomain guards against anyone reintroducing the .NET
+// TestProductIDs_NoLegacyDomain guards against reintroducing the legacy
 // "uk.co.towncrier" domain typo into the canonical constants.
 func TestProductIDs_NoLegacyDomain(t *testing.T) {
 	t.Parallel()

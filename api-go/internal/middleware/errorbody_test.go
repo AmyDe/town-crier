@@ -10,11 +10,9 @@ import (
 	"time"
 )
 
-// The expected bodies are the live .NET dev API's wire bytes (captured
-// 2026-06-11, e.g. GET /v1/legal/unknown), not derived from the Go marshaller:
-// PascalCase keys in record declaration order, Detail explicitly null, and
-// Content-Type exactly "application/json" — no charset, unlike handler-written
-// bodies.
+// The expected bodies pin the exact wire format: PascalCase keys in declaration
+// order, Detail explicitly null, and Content-Type exactly "application/json" —
+// no charset, unlike handler-written bodies.
 func TestErrorBody_BackfillsEmptyErrorResponses(t *testing.T) {
 	t.Parallel()
 
@@ -58,8 +56,8 @@ func TestErrorBody_PreservesHeadersSetBeforeError(t *testing.T) {
 
 	status, contentType, header, body := serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
-		// A handler-set Content-Type on a bodyless error is overwritten, the
-		// way .NET's middleware assigns Response.ContentType unconditionally.
+		// A handler-set Content-Type on a bodyless error is overwritten by the
+		// ErrorBody middleware.
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusUnauthorized)
 	})

@@ -39,7 +39,7 @@ func TestCORS_AllowedOriginEchoed(t *testing.T) {
 			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != tc.origin {
 				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, tc.origin)
 			}
-			// ASP.NET echoes the matched origin and adds Vary: Origin so caches
+			// The matched origin is echoed and Vary: Origin is added so caches
 			// don't serve one origin's CORS response to another.
 			if got := rec.Header().Get("Vary"); got != "Origin" {
 				t.Errorf("Vary = %q, want %q", got, "Origin")

@@ -21,16 +21,15 @@ type handler struct {
 	logger   *slog.Logger
 }
 
-// Routes registers the designations endpoint on mux. The endpoint is authed (it
-// is not in the .NET AllowAnonymous set) and has no Cosmos dependency, so it is
-// always wired.
+// Routes registers the designations endpoint on mux. The endpoint requires
+// authentication and has no Cosmos dependency, so it is always wired.
 func Routes(mux *http.ServeMux, p provider, logger *slog.Logger) {
 	h := handler{provider: p, logger: logger}
 	mux.HandleFunc("GET /v1/designations", h.designations)
 }
 
-// designationsResult mirrors the .NET GetDesignationContextResult record; field
-// order matches so the wire bytes are identical.
+// designationsResult is the JSON response shape for GET /v1/designations; field
+// order matches the Context struct so the wire shape is stable.
 type designationsResult struct {
 	IsWithinConservationArea        bool    `json:"isWithinConservationArea"`
 	ConservationAreaName            *string `json:"conservationAreaName"`
@@ -40,11 +39,9 @@ type designationsResult struct {
 }
 
 // designations implements GET /v1/designations?latitude=&longitude=. Missing or
-// unparseable coordinates are a bodyless 400 (mirroring .NET's value-type query
-// binding failure, whose PascalCase envelope middleware.ErrorBody backfills). A
-// provider failure degrades to the empty context, mirroring the .NET handler's
-// catch of HttpRequestException — the endpoint always answers 200 once the
-// coordinates parse.
+// unparseable coordinates are a bodyless 400 (the PascalCase envelope is
+// backfilled by middleware.ErrorBody). A provider failure degrades to the empty
+// context — the endpoint always answers 200 once the coordinates parse.
 func (h handler) designations(w http.ResponseWriter, r *http.Request) {
 	latitude, latErr := strconv.ParseFloat(r.URL.Query().Get("latitude"), 64)
 	longitude, lngErr := strconv.ParseFloat(r.URL.Query().Get("longitude"), 64)

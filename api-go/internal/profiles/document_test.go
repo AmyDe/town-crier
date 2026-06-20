@@ -40,7 +40,7 @@ func TestProfileDocument_JSONShapeMatchesNET(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	// camelCase keys exactly as .NET's CosmosJsonSerializerContext (CamelCase policy).
+	// camelCase keys matching the stored document shape.
 	wantStr := map[string]string{
 		"id":     "auth0|abc",
 		"userId": "auth0|abc",
@@ -53,8 +53,8 @@ func TestProfileDocument_JSONShapeMatchesNET(t *testing.T) {
 		}
 	}
 
-	// DayOfWeek serialises as an integer in .NET (no string-enum converter on the
-	// Cosmos context); Wednesday == 3 in both .NET DayOfWeek and Go time.Weekday.
+	// digestDay serialises as an integer (no string-enum converter on the Cosmos
+	// document); Wednesday == 3 in Go's time.Weekday.
 	if got, _ := doc["digestDay"].(float64); got != 3 {
 		t.Errorf("doc[digestDay]: got %v, want 3 (Wednesday)", doc["digestDay"])
 	}
@@ -121,8 +121,7 @@ func TestProfileDocument_LegacyDefaultsTrue(t *testing.T) {
 	t.Parallel()
 
 	// Legacy documents predating emailDigestEnabled / savedDecision* hydrate as
-	// opt-in (true), mirroring .NET's bool? coalesce-to-true. Missing fields must
-	// not become false.
+	// opt-in (true) via coalesceTrue. Missing fields must not become false.
 	raw := `{"id":"u1","userId":"u1","pushEnabled":true,"digestDay":1,"tier":"Free","lastActiveAt":"2026-06-11T09:30:00Z"}`
 	var doc profileDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
@@ -144,8 +143,7 @@ func TestProfileDocument_OmitsNilOptionals(t *testing.T) {
 	t.Parallel()
 
 	// A free profile with no subscription/email leaves the optional fields as
-	// JSON null, matching .NET's nullable serialization (the fields are present
-	// with null values, not omitted, in the System.Text.Json output).
+	// JSON null (the fields are present with null values, not omitted).
 	p, _ := NewProfile("u1", "", time.Now())
 	b, err := json.Marshal(newProfileDocument(p))
 	if err != nil {

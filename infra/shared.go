@@ -131,8 +131,8 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Container Apps Environment (shared across environments). See the original C#
-	// program's comments for the azure-monitor + managed-OpenTelemetry rationale.
+	// Container Apps Environment (shared across environments). Logs go to
+	// azure-monitor via the managed OpenTelemetry agent.
 	containerAppsEnv, err := app.NewManagedEnvironment(ctx, "cae-town-crier-shared", &app.ManagedEnvironmentArgs{
 		EnvironmentName:   pulumi.String("cae-town-crier-shared"),
 		ResourceGroupName: resourceGroup.Name,

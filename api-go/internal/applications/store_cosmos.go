@@ -66,9 +66,9 @@ func (s *CosmosStore) GetByAuthorityAndName(ctx context.Context, authorityCode, 
 }
 
 // GetByUID looks up an application by its raw PlanIt uid within the authorityCode
-// partition, via a single-partition query on the uid field. It mirrors .NET
-// GetByUidAsync(uid, authorityCode): used by the saved-application lazy snapshot
-// backfill, where a legacy row holds the bare uid and the authority is known.
+// partition, via a single-partition query on the uid field. Used by the
+// saved-application lazy snapshot backfill, where a legacy row holds the bare
+// uid and the authority is known.
 // The boolean reports presence; a miss is normal (the master record may be gone).
 func (s *CosmosStore) GetByUID(ctx context.Context, uid, authorityCode string) (PlanningApplication, bool, error) {
 	const query = "SELECT * FROM c WHERE c.uid = @uid"

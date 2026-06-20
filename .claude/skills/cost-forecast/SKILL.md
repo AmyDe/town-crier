@@ -23,7 +23,7 @@ The whole reason this skill exists is that Azure's own forecast (the number the 
 
 ```
 Subscription:  ae5e40cd-96ef-48d8-950a-2e22cf8f991a   (Azure subscription 1)
-Pulumi root:   /infra                                  (.NET 10 / C#, stacks: dev, prod, shared)
+Pulumi root:   /infra                                  (Go, stacks: dev, prod, shared)
 Report path:   docs/cost-forecast/YYYY-MM-DD.md        (date = today, UK)
 Currency:      GBP (the subscription's billing currency)
 ```

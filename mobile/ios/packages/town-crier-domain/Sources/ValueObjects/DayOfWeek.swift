@@ -1,6 +1,6 @@
 import Foundation
 
-/// Day of the week matching the API's `DayOfWeek` enum (System.DayOfWeek).
+/// Day of the week matching the API's `DayOfWeek` enum.
 public enum DayOfWeek: String, CaseIterable, Codable, Equatable, Hashable, Sendable {
   case sunday = "Sunday"
   case monday = "Monday"
@@ -12,7 +12,7 @@ public enum DayOfWeek: String, CaseIterable, Codable, Equatable, Hashable, Senda
 
   /// Display order for UK-facing pickers: the week starts on Monday.
   /// This is presentation-only — `allCases` and `rawValue` keep the API/wire
-  /// order (Sunday-first, mirroring System.DayOfWeek) untouched.
+  /// order (Sunday-first) untouched.
   public static let weekOrderUK: [DayOfWeek] = [
     .monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday,
   ]

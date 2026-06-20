@@ -50,9 +50,9 @@ func TestWatchZoneDocument_CamelCaseAndDotNetTime(t *testing.T) {
 			t.Errorf("missing camelCase key %s in %s", key, body)
 		}
 	}
-	// .NET DateTimeOffset serialises with a numeric offset, never the RFC 3339 Z.
+	// createdAt must serialise with a numeric UTC offset ("+00:00"), never RFC 3339 Z.
 	if !strings.Contains(body, "2026-06-01T09:00:00+00:00") {
-		t.Errorf("createdAt not in .NET DateTimeOffset format: %s", body)
+		t.Errorf("createdAt not in numeric-offset format: %s", body)
 	}
 	if strings.Contains(body, "09:00:00Z") {
 		t.Errorf("createdAt used RFC 3339 Z suffix: %s", body)
@@ -61,8 +61,8 @@ func TestWatchZoneDocument_CamelCaseAndDotNetTime(t *testing.T) {
 
 func TestWatchZoneDocument_LegacyNullFlagsCoalesceTrue(t *testing.T) {
 	t.Parallel()
-	// A document written before the per-zone flags existed omits them; .NET
-	// hydrates the absent bool? as opt-in (true). The Go store must match.
+	// A document written before the per-zone flags existed omits them; absent
+	// bool fields must coalesce to true (the opt-in default).
 	raw := `{"id":"z1","userId":"u1","name":"Home","latitude":51,"longitude":-0.1,"radiusMetres":500,"authorityId":471,"createdAt":"2026-06-01T09:00:00+00:00"}`
 	var doc watchZoneDocument
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
