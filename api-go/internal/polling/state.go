@@ -4,7 +4,7 @@ import "time"
 
 // PollCursor is a resumable PlanIt pagination cursor: where a previous cycle
 // stopped mid-pagination so the next cycle resumes from the same different_start
-// date and page. All three fields move as a set. Mirrors .NET PollCursor.
+// date and page. All three fields move as a set.
 type PollCursor struct {
 	// DifferentStart is the PlanIt different_start date the cursor was recorded
 	// against. The cursor is valid only while the authority's high-water mark
@@ -19,7 +19,7 @@ type PollCursor struct {
 
 // PollState is the combined poll-state snapshot for one authority: when it was
 // last polled (scheduling clock), its PlanIt high-water mark (cursoring), and an
-// optional resumable pagination cursor. Mirrors .NET PollState.
+// optional resumable pagination cursor.
 type PollState struct {
 	// LastPollTime is the wall-clock time of the last poll attempt. Drives the
 	// least-recently-polled ordering so quiet authorities drop to the back of the
@@ -35,7 +35,6 @@ type PollState struct {
 
 // LeastRecentlyPolledResult is the LRU-sorted candidate authority ids the cycle
 // should walk, plus the count of never-polled candidates (no PollState doc).
-// Mirrors .NET LeastRecentlyPolledResult.
 type LeastRecentlyPolledResult struct {
 	// AuthorityIDs are ordered never-polled-first, then ascending LastPollTime.
 	AuthorityIDs []int

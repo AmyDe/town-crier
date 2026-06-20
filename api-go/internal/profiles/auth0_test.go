@@ -129,7 +129,7 @@ func TestAuth0Client_DeleteUser_404Tolerant(t *testing.T) {
 	client := newTestAuth0Client(srv)
 
 	// A 404 on delete is tolerated — the Auth0 user is already gone, which is the
-	// desired end state. No error, mirroring .NET's NotFound short-circuit.
+	// desired end state. No error.
 	if err := client.DeleteUser(context.Background(), "auth0|abc"); err != nil {
 		t.Errorf("DeleteUser 404: got %v, want nil (tolerated)", err)
 	}

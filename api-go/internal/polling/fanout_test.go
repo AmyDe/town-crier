@@ -135,7 +135,7 @@ func TestHandler_FanOut_FirstSeenDecidedAppCountsAsTransition(t *testing.T) {
 	pi := newFakePlanIt()
 	ld := time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC)
 	// First-time insert that arrives already decided (no existing record) counts
-	// as a transition, mirroring .NET (existing == null).
+	// as a transition (no prior state means the new state is a first-time decision).
 	pi.pages[pageKey{99, 1}] = planitPage(decisionApp("Rejected", ld))
 	apps := newFakeApps()
 	state := newFakeStateStore()

@@ -10,8 +10,7 @@ import (
 )
 
 // ErrNotFound signals that no profile exists for the given user id. Callers use
-// errors.Is to translate it to a 404 response, mirroring .NET's null-return /
-// UserProfileNotFoundException paths.
+// errors.Is to translate it to a 404 response.
 var ErrNotFound = errors.New("user profile not found")
 
 // CosmosItems is the consumer-side slice of the Cosmos container the store uses:

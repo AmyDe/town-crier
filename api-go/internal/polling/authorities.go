@@ -7,8 +7,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 )
 
-// CycleType selects which authority set a poll cycle walks. Mirrors .NET
-// CycleType.
+// CycleType selects which authority set a poll cycle walks.
 type CycleType int
 
 const (
@@ -19,8 +18,8 @@ const (
 	CycleSeed
 )
 
-// TelemetryValue returns the span-tag string for this cycle type, matching .NET
-// CycleType.ToTelemetryValue().
+// TelemetryValue returns the span-tag string for this cycle type ("Watched" or
+// "Seed").
 func (c CycleType) TelemetryValue() string {
 	if c == CycleSeed {
 		return "Seed"
@@ -29,8 +28,7 @@ func (c CycleType) TelemetryValue() string {
 }
 
 // MinuteCycleSelector alternates between Watched and Seed cycles on a 15-minute
-// boundary within each half hour, matching .NET MinuteBasedCycleSelector:
-// minute%30 < 15 → Watched, else Seed.
+// boundary within each half hour: minute%30 < 15 → Watched, else Seed.
 type MinuteCycleSelector struct {
 	now func() time.Time
 }
@@ -55,7 +53,7 @@ type zoneAuthoritySource interface {
 }
 
 // WatchZoneAuthorityProvider returns the authorities that at least one user is
-// watching. Mirrors .NET WatchZoneActiveAuthorityProvider.
+// watching.
 type WatchZoneAuthorityProvider struct {
 	source zoneAuthoritySource
 }
@@ -72,9 +70,8 @@ func (p *WatchZoneAuthorityProvider) ActiveAuthorityIDs(ctx context.Context) ([]
 
 // nonPollableAreaTypes are the regional aggregates and non-LPA containers PlanIt
 // exposes but which never return planning applications. Polling them wastes RUs
-// and skews diagnostics. Mirrors .NET AllAuthorityIdProvider.NonPollableAreaTypes
-// — note "Crown Dependencies" (plural, the aggregate) is excluded while the
-// singular "Crown Dependency" records remain pollable.
+// and skews diagnostics. Note: "Crown Dependencies" (plural, the aggregate) is
+// excluded while the singular "Crown Dependency" records remain pollable.
 var nonPollableAreaTypes = map[string]struct{}{
 	"English Region":      {},
 	"UK Nation":           {},
@@ -90,8 +87,7 @@ type allAuthorityLister interface {
 }
 
 // AllAuthorityProvider returns every pollable authority id from the static
-// authority list, filtering out the non-pollable area-type aggregates. Mirrors
-// .NET AllAuthorityIdProvider.
+// authority list, filtering out the non-pollable area-type aggregates.
 type AllAuthorityProvider struct {
 	lister allAuthorityLister
 }
@@ -128,7 +124,6 @@ type cycleSelector interface {
 
 // CycleAlternatingProvider chooses the authority set per cycle: the Seed cycle
 // walks all pollable authorities; every other cycle walks the watch-zone set.
-// Mirrors .NET CycleAlternatingAuthorityProvider.
 type CycleAlternatingProvider struct {
 	watched  authorityProvider
 	all      authorityProvider

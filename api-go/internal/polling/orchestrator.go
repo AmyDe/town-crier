@@ -59,8 +59,7 @@ type OrchestratorOptions struct {
 }
 
 // OrchestratorRunResult is the outcome of one orchestrator run. PollResult is
-// non-nil only when a trigger was received and the handler ran. Mirrors .NET
-// PollTriggerOrchestratorRunResult.
+// non-nil only when a trigger was received and the handler ran.
 type OrchestratorRunResult struct {
 	MessageReceived  bool
 	PublishedNext    bool
@@ -75,8 +74,7 @@ type OrchestratorRunResult struct {
 // during the critical section, and the next trigger is published before the lease
 // is released so a single in-flight trigger is preserved. There is no Service Bus
 // settle — a crash anywhere between receive and publish pauses the chain until
-// the safety-net bootstrap re-seeds. This is the faithful port of .NET
-// PollTriggerOrchestrator.RunOnceAsync.
+// the safety-net bootstrap re-seeds.
 type Orchestrator struct {
 	handler   cycleHandler
 	receiver  triggerReceiver
@@ -130,8 +128,7 @@ func NewOrchestrator(
 }
 
 // triggerPayload is the next-trigger body. It carries only a diagnostic
-// timestamp — the message is a "run once" tick — matching .NET's
-// PollTriggerPayload (publishedAtUtc).
+// timestamp (publishedAtUtc) — the message is a "run once" tick.
 type triggerPayload struct {
 	PublishedAtUTC string `json:"publishedAtUtc"`
 }
@@ -204,8 +201,7 @@ func (o *Orchestrator) RunOnce(ctx context.Context) (OrchestratorRunResult, erro
 }
 
 // acquireWithRetry attempts to acquire the lease, retrying once after a short
-// pause to absorb the common case where the bootstrap briefly holds it. Mirrors
-// .NET's single-retry path.
+// pause to absorb the common case where the bootstrap briefly holds it.
 func (o *Orchestrator) acquireWithRetry(ctx context.Context) (LeaseAcquireResult, error) {
 	res, err := o.lease.TryAcquire(ctx, o.opts.LeaseTTL)
 	if err != nil {

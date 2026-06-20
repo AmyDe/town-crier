@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// TestDotNetTime_WireFormat pins the exact System.Text.Json DateTimeOffset wire
-// shape: ISO 8601 with a numeric UTC offset ("+00:00"), never Go's RFC 3339 "Z"
-// suffix, with trailing fractional zeros trimmed. Every Cosmos timestamp the Go
-// API writes or returns must match this so the contract-diff harness passes.
+// TestDotNetTime_WireFormat pins the timestamp wire shape: ISO 8601 with a
+// numeric UTC offset ("+00:00"), never Go's RFC 3339 "Z" suffix, with trailing
+// fractional zeros trimmed. Every Cosmos timestamp the API writes or returns
+// must use this layout.
 func TestDotNetTime_WireFormat(t *testing.T) {
 	t.Parallel()
 
@@ -50,8 +50,8 @@ func TestDotNetTime_WireFormat(t *testing.T) {
 
 // TestDotNetTime_RoundTrip confirms a value survives marshal then unmarshal, so
 // stored Cosmos documents carrying a DotNetTime hydrate back to the same
-// instant. The unmarshal side accepts both the "+00:00" .NET form and Go's "Z"
-// form so legacy documents parse too.
+// instant. The unmarshal side accepts both the "+00:00" form and Go's "Z"
+// form so all stored documents parse.
 func TestDotNetTime_RoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +71,7 @@ func TestDotNetTime_RoundTrip(t *testing.T) {
 		if !time.Time(dt).Equal(time.Date(2026, 6, 12, 9, 30, 0, time.Time(dt).Nanosecond(), time.UTC)) {
 			t.Errorf("unmarshal %s parsed to %v", in, time.Time(dt))
 		}
-		// Marshalling always normalises to the +00:00 .NET form.
+		// Marshalling always normalises to the +00:00 form.
 		if got := string(out); got[len(got)-7:len(got)-1] != "+00:00" {
 			t.Errorf("re-marshal of %s = %s, want +00:00 offset", in, out)
 		}

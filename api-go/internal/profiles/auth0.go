@@ -17,14 +17,14 @@ import (
 // Auth0Manager is the consumer-side interface the profile handlers use to keep
 // Auth0's app_metadata in sync and to remove users on account deletion. Both the
 // real *Auth0Client and the NoOpAuth0Client satisfy it; the handlers never see
-// the concrete type. Mirrors .NET's IAuth0ManagementClient.
+// the concrete type.
 type Auth0Manager interface {
 	UpdateSubscriptionTier(ctx context.Context, userID, tier string) error
 	DeleteUser(ctx context.Context, userID string) error
 }
 
-// tokenExpirySkew shortens the cached token's lifetime so it is refreshed before
-// Auth0 considers it expired, matching the 60-second margin the .NET client uses.
+// tokenExpirySkew shortens the cached token's lifetime by 60 seconds so it is
+// refreshed before Auth0 considers it expired.
 const tokenExpirySkew = 60 * time.Second
 
 // auth0RequestTimeout bounds every outbound call to the Auth0 Management API.
@@ -34,10 +34,9 @@ const auth0RequestTimeout = 15 * time.Second
 const maxAuth0ResponseBytes = 1 << 20
 
 // Auth0Client is a hand-rolled Auth0 Management API client using the M2M
-// client-credentials grant with an in-memory cached token. It mirrors the .NET
-// Auth0ManagementClient: PATCH app_metadata.subscription_tier and DELETE user
-// (tolerating 404). baseURL is "https://{domain}" in production; tests point it
-// at an httptest server.
+// client-credentials grant with an in-memory cached token. Supports PATCH
+// app_metadata.subscription_tier and DELETE user (tolerating 404). baseURL is
+// "https://{domain}" in production; tests point it at an httptest server.
 type Auth0Client struct {
 	httpClient   *http.Client
 	baseURL      string
@@ -99,7 +98,7 @@ func (c *Auth0Client) UpdateSubscriptionTier(ctx context.Context, userID, tier s
 }
 
 // DeleteUser DELETEs the Auth0 user, tolerating 404 (the user is already gone,
-// which is the desired end state), mirroring the .NET client.
+// which is the desired end state).
 func (c *Auth0Client) DeleteUser(ctx context.Context, userID string) error {
 	token, err := c.token(ctx)
 	if err != nil {
@@ -189,23 +188,22 @@ func (c *Auth0Client) token(ctx context.Context) (string, error) {
 
 // userURL builds the management-API user resource URL with the user id escaped.
 // url.PathEscape leaves sub-delims like "|" unescaped, but Auth0 ids carry "|"
-// (e.g. "auth0|abc") and .NET's Uri.EscapeDataString escapes it to %7C; escapeUserID
-// reproduces that data-string escaping so the resource path matches the .NET client.
+// (e.g. "auth0|abc"); escapeUserID encodes "|" and other sub-delims so the
+// resource path is correctly percent-encoded.
 func (c *Auth0Client) userURL(userID string) string {
 	return c.baseURL + "/api/v2/users/" + escapeUserID(userID)
 }
 
-// escapeUserID escapes a user id for use as a single path segment, matching
-// .NET's Uri.EscapeDataString (escapes "|" and other sub-delims). url.QueryEscape
-// matches for the realistic id forms (provider|id, email) which never contain
-// spaces; the only divergence — space -> "+" — cannot occur in an Auth0 subject.
+// escapeUserID escapes a user id for use as a single path segment, encoding
+// "|" and other sub-delims. url.QueryEscape matches for the realistic id forms
+// (provider|id, email) which never contain spaces; the only divergence —
+// space -> "+" — cannot occur in an Auth0 subject.
 func escapeUserID(userID string) string {
 	return url.QueryEscape(userID)
 }
 
-// NoOpAuth0Client is the fallback used when the Auth0 M2M config is absent
-// (matching .NET's NoOpAuth0ManagementClient): every operation succeeds without
-// contacting Auth0.
+// NoOpAuth0Client is the fallback used when the Auth0 M2M config is absent:
+// every operation succeeds without contacting Auth0.
 type NoOpAuth0Client struct{}
 
 // UpdateSubscriptionTier does nothing and succeeds.

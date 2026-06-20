@@ -13,8 +13,7 @@ import (
 
 // pollStateCrossPartitionQuery selects every poll-state document for the
 // least-recently-polled scan. The PollState container is partitioned by /id, so
-// the LRU ordering needs a cross-partition read, matching .NET's
-// "SELECT * FROM c WHERE STARTSWITH(c.id, 'poll-state-')".
+// the LRU ordering needs a cross-partition read.
 const pollStateCrossPartitionQuery = "SELECT * FROM c WHERE STARTSWITH(c.id, 'poll-state-')"
 
 // stateItems is the consumer-side slice of the PollState container the store
@@ -28,11 +27,9 @@ type stateItems interface {
 }
 
 // pollStateDocument is the Cosmos persistence shape for a PollState. JSON tags
-// reproduce the camelCase keys the .NET CosmosPollStateStore writes (its
-// serializer context uses CamelCase), so a Go-written document is byte-compatible
-// with the existing PollState container and a .NET-written document hydrates here
-// unchanged. Times use the .NET "O" round-trip layout; the cursor date uses
-// yyyy-MM-dd. The container is partitioned by /id.
+// use camelCase to match the stored document shape. Times use ISO 8601 with a
+// numeric UTC offset (see dotNetRoundTrip); the cursor date uses yyyy-MM-dd.
+// The container is partitioned by /id.
 type pollStateDocument struct {
 	ID            string  `json:"id"`
 	LastPollTime  string  `json:"lastPollTime"`
@@ -44,12 +41,12 @@ type pollStateDocument struct {
 	CursorKnownTotal     *int    `json:"cursorKnownTotal"`
 }
 
-// dotNetRoundTrip is Go's equivalent of .NET DateTimeOffset.ToString("O"): a
-// 7-digit fractional second and a numeric UTC offset.
+// dotNetRoundTrip is the time layout for PollState timestamps: ISO 8601 with a
+// 7-digit fractional second and a numeric UTC offset (e.g. "+00:00").
 const dotNetRoundTrip = "2006-01-02T15:04:05.0000000-07:00"
 
 // PollStateStore reads and writes per-authority poll state in the PollState
-// container. It is the Go port of .NET CosmosPollStateStore.
+// container.
 type PollStateStore struct {
 	items stateItems
 }
@@ -111,8 +108,8 @@ func (s *PollStateStore) Save(ctx context.Context, authorityID int, lastPollTime
 
 // GetLeastRecentlyPolled returns the candidate authority ids ordered
 // never-polled-first then ascending LastPollTime, plus the never-polled count.
-// It mirrors .NET GetLeastRecentlyPolledAsync: one cross-partition scan over all
-// poll-state docs, then an in-memory sort of the candidate set.
+// One cross-partition scan over all poll-state docs, then an in-memory sort of
+// the candidate set.
 func (s *PollStateStore) GetLeastRecentlyPolled(ctx context.Context, candidateAuthorityIDs []int) (LeastRecentlyPolledResult, error) {
 	if len(candidateAuthorityIDs) == 0 {
 		return LeastRecentlyPolledResult{AuthorityIDs: []int{}, NeverPolledCount: 0}, nil
@@ -139,7 +136,7 @@ func (s *PollStateStore) GetLeastRecentlyPolled(ctx context.Context, candidateAu
 	sorted := make([]int, len(candidateAuthorityIDs))
 	copy(sorted, candidateAuthorityIDs)
 	// Stable sort: never-polled (rank 0) before polled (rank 1), then by oldest
-	// LastPollTime ascending. Matches .NET OrderBy(rank).ThenBy(lastPollTime).
+	// LastPollTime ascending.
 	sort.SliceStable(sorted, func(i, j int) bool {
 		ai, aj := sorted[i], sorted[j]
 		ti, polledI := lastPollByAuthority[ai]
@@ -165,7 +162,7 @@ func (s *PollStateStore) GetLeastRecentlyPolled(ctx context.Context, candidateAu
 }
 
 // toState hydrates a stored document into a PollState. A legacy document missing
-// highWaterMark falls back to lastPollTime, matching .NET's backward-compat path.
+// highWaterMark falls back to lastPollTime.
 func (d pollStateDocument) toState() (PollState, error) {
 	lpt, err := time.Parse(time.RFC3339Nano, d.LastPollTime)
 	if err != nil {
@@ -198,8 +195,7 @@ func (d pollStateDocument) readCursor() (*PollCursor, error) {
 	return &PollCursor{DifferentStart: ds, NextPage: *d.CursorNextPage, KnownTotal: d.CursorKnownTotal}, nil
 }
 
-// documentID formats the per-authority PollState document id (== partition key),
-// matching .NET FormatDocumentId.
+// documentID formats the per-authority PollState document id (== partition key).
 func documentID(authorityID int) string {
 	return "poll-state-" + strconv.Itoa(authorityID)
 }

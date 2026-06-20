@@ -6,15 +6,14 @@ import (
 	"time"
 )
 
-// activityWriteDedupeWindow matches .NET's RecordUserActivityCommandHandler:
+// activityWriteDedupeWindow is the 24h deduplication window for activity writes:
 // activity is persisted at most once per 24h to avoid an upsert per request.
 const activityWriteDedupeWindow = 24 * time.Hour
 
 // ActivityRecorder updates a profile's LastActiveAt, deduping writes within 24h.
-// It adapts the profile store to the middleware's activityRecorder interface and
-// reproduces the .NET RecordUserActivityCommandHandler exactly: read the
-// profile, skip when it was active within the window, otherwise advance and
-// save. An unknown user is a no-op (registration is POST /v1/me only).
+// It adapts the profile store to the middleware's activityRecorder interface:
+// read the profile, skip when it was active within the window, otherwise advance
+// and save. An unknown user is a no-op (registration is POST /v1/me only).
 type ActivityRecorder struct {
 	store profileStore
 }

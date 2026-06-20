@@ -1,10 +1,8 @@
 package polling
 
-// TerminationReason records how a poll cycle ended. It mirrors .NET
-// PollTerminationReason and drives both the next-run cadence and the worker's
-// exit code. The telemetry value strings match .NET's
-// PollTerminationReason.ToTelemetryValue() so existing App Insights queries keep
-// working across the cutover.
+// TerminationReason records how a poll cycle ended. It drives both the next-run
+// cadence and the worker's exit code. The telemetry value strings are stable so
+// existing App Insights queries keep working.
 type TerminationReason int
 
 const (
@@ -19,8 +17,7 @@ const (
 	TerminationRateLimited
 )
 
-// TelemetryValue returns the span-tag string for this reason, matching .NET's
-// PollTerminationReason.ToTelemetryValue().
+// TelemetryValue returns the span-tag string for this reason.
 func (r TerminationReason) TelemetryValue() string {
 	switch r {
 	case TerminationTimeBounded:

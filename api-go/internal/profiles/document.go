@@ -5,10 +5,8 @@ import (
 )
 
 // profileDocument is the Cosmos persistence shape for a UserProfile. The JSON
-// tags reproduce the camelCase keys the .NET CosmosUserProfileRepository writes
-// (its serializer context uses the CamelCase naming policy), so a Go-written
-// document is byte-compatible with the existing container and an existing
-// document hydrates here unchanged.
+// tags use camelCase to match the stored document shape, so documents in the
+// existing container hydrate here unchanged.
 //
 // Partition key: the Users container is partitioned by /id, which equals the
 // Auth0 user id. Every read/write is therefore a single-partition point
@@ -23,7 +21,7 @@ type profileDocument struct {
 
 	// emailDigestEnabled / savedDecision* are pointers so a legacy document that
 	// predates these fields hydrates as opt-in (true) rather than the Go zero
-	// value (false) — mirroring .NET's bool? coalesce-to-true on read.
+	// value (false) — see coalesceTrue.
 	EmailDigestEnabled *bool `json:"emailDigestEnabled"`
 	SavedDecisionPush  *bool `json:"savedDecisionPush"`
 	SavedDecisionEmail *bool `json:"savedDecisionEmail"`
@@ -49,7 +47,7 @@ type zonePreferencesDocument struct {
 
 // newProfileDocument maps a domain profile to its persistence shape. The Cosmos
 // document id equals the user id (the partition key), so a point read needs only
-// the user id, matching .NET's FromDomain.
+// the user id.
 func newProfileDocument(p *UserProfile) profileDocument {
 	zones := make(map[string]zonePreferencesDocument, len(p.ZonePreferences))
 	for id, z := range p.ZonePreferences {
@@ -78,7 +76,7 @@ func newProfileDocument(p *UserProfile) profileDocument {
 }
 
 // toDomain reconstitutes a domain profile from its stored document, coalescing
-// the legacy-nullable preference flags to true exactly as .NET does on read.
+// the legacy-nullable preference flags to true (see coalesceTrue).
 func (d profileDocument) toDomain() (*UserProfile, error) {
 	tier, err := ParseSubscriptionTier(d.Tier)
 	if err != nil {
