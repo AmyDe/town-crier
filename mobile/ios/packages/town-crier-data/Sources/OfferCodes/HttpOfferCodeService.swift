@@ -26,9 +26,7 @@ public final class HttpOfferCodeService: OfferCodeService, Sendable {
       guard let tier = SubscriptionTier(rawValue: dto.tier.lowercased()) else {
         throw OfferCodeError.network("Unknown tier: \(dto.tier)")
       }
-      let formatter = ISO8601DateFormatter()
-      formatter.formatOptions = [.withInternetDateTime]
-      guard let expiresAt = formatter.date(from: dto.expiresAt) else {
+      guard let expiresAt = DotNetTimeParser.date(from: dto.expiresAt) else {
         throw OfferCodeError.network("Unparseable expiresAt: \(dto.expiresAt)")
       }
       return OfferCodeRedemption(tier: tier, expiresAt: expiresAt)
