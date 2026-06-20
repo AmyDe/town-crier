@@ -19,8 +19,7 @@ import (
 // maxBodyBytes caps the request body the /v1/me write handlers read.
 const maxBodyBytes = 1 << 20
 
-// farFutureExpiry is the auto-grant subscription expiry, matching .NET's
-// CreateUserProfileCommandHandler.FarFutureExpiry (2099-12-31).
+// farFutureExpiry is the auto-grant subscription expiry (2099-12-31).
 var farFutureExpiry = time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC)
 
 // profileStore is the consumer-side store the handlers use. *CosmosStore
@@ -69,21 +68,20 @@ func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomai
 	mux.HandleFunc("GET /v1/me/data", h.exportData)
 	// Per-zone notification preferences read/write the profile document, so they
 	// are served here (over the profile store) even though their route sits under
-	// /me/watch-zones — mirroring .NET's UserProfiles-slice handlers.
+	// /me/watch-zones.
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/preferences", h.getZonePreferences)
 	mux.HandleFunc("PUT /v1/me/watch-zones/{zoneId}/preferences", h.putZonePreferences)
 }
 
-// createResult mirrors .NET CreateUserProfileResult: { userId, pushEnabled, tier }.
+// createResult is the POST /v1/me response body: { userId, pushEnabled, tier }.
 type createResult struct {
 	UserID      string `json:"userId"`
 	PushEnabled bool   `json:"pushEnabled"`
 	Tier        string `json:"tier"`
 }
 
-// profileResult mirrors .NET Get/UpdateUserProfileResult. DigestDay renders as
-// the weekday name ("Wednesday") via weekdayName, matching the web serializer's
-// string-enum output.
+// profileResult is the GET and PATCH /v1/me response body. DigestDay renders as
+// the weekday name ("Wednesday") via weekdayName.
 type profileResult struct {
 	UserID             string      `json:"userId"`
 	PushEnabled        bool        `json:"pushEnabled"`
@@ -146,7 +144,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 }
 
 // get implements GET /v1/me. A missing profile is a bodyless 404 (the error
-// envelope is backfilled by middleware), mirroring .NET's Results.NotFound().
+// envelope is backfilled by middleware).
 func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 	profile, err := h.store.Get(r.Context(), subject)
@@ -162,9 +160,8 @@ func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateRequest is the PATCH /v1/me body. DigestDay accepts either the weekday
-// name ("Wednesday") or its integer index, mirroring System.Text.Json with the
-// string-enum converter. Omitted fields take the .NET command defaults via
-// defaultUpdateRequest.
+// name ("Wednesday") or its integer index. Omitted fields take their command
+// defaults via toPreferences.
 type updateRequest struct {
 	PushEnabled        *bool           `json:"pushEnabled"`
 	DigestDay          *digestDayValue `json:"digestDay"`
@@ -173,9 +170,9 @@ type updateRequest struct {
 	SavedDecisionEmail *bool           `json:"savedDecisionEmail"`
 }
 
-// patch implements PATCH /v1/me. Unset body fields take the .NET
-// UpdateUserProfileCommand record defaults (pushEnabled true, digestDay Monday,
-// the rest true), then the merged preferences replace the profile's.
+// patch implements PATCH /v1/me. Unset body fields take their command defaults
+// (pushEnabled true, digestDay Monday, the rest true), then the merged
+// preferences replace the profile's.
 func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 	subject := auth.Subject(r.Context())
 
@@ -277,7 +274,7 @@ func (h *handler) exportData(w http.ResponseWriter, r *http.Request) {
 
 // tryBackfillAuth0Tier syncs Auth0's subscription_tier to the Cosmos tier when
 // the JWT claim drifts. Failures are swallowed and logged — an Auth0 outage must
-// never fail POST /v1/me, mirroring .NET's best-effort backfill.
+// never fail POST /v1/me.
 func (h *handler) tryBackfillAuth0Tier(ctx context.Context, p *UserProfile, jwtTier string) {
 	if strings.TrimSpace(jwtTier) == "" {
 		return
@@ -343,8 +340,8 @@ func newProDomainSet(raw string) proDomainSet {
 	return set
 }
 
-// contains reports whether the email's domain is an auto-grant pro domain,
-// mirroring .NET AutoGrantOptions.IsProDomain (case-insensitive domain match).
+// contains reports whether the email's domain is an auto-grant pro domain
+// (case-insensitive domain match).
 func (s proDomainSet) contains(email string) bool {
 	at := strings.LastIndex(email, "@")
 	if at < 0 || at == len(email)-1 {
@@ -355,7 +352,7 @@ func (s proDomainSet) contains(email string) bool {
 }
 
 // weekdayName serialises a time.Weekday as its English name (e.g. "Wednesday"),
-// matching the web serializer's UseStringEnumConverter output for DayOfWeek.
+// matching the web API's string-enum convention.
 type weekdayName time.Weekday
 
 func (d weekdayName) MarshalJSON() ([]byte, error) {
@@ -363,8 +360,7 @@ func (d weekdayName) MarshalJSON() ([]byte, error) {
 }
 
 // digestDayValue accepts a digest day as either the weekday name ("Wednesday")
-// or its integer index (0=Sunday..6=Saturday), mirroring System.Text.Json with
-// the string-enum converter on the inbound side.
+// or its integer index (0=Sunday..6=Saturday) on the inbound side.
 type digestDayValue time.Weekday
 
 func (d *digestDayValue) UnmarshalJSON(data []byte) error {
@@ -401,9 +397,9 @@ func parseWeekday(name string) (time.Weekday, error) {
 	return time.Sunday, fmt.Errorf("unknown weekday %q", name)
 }
 
-// toPreferences merges the PATCH body onto the .NET command defaults: an absent
-// field takes its default (pushEnabled true, digestDay Monday, email/saved flags
-// true), so a partial body never silently zeroes an unspecified preference.
+// toPreferences merges the PATCH body onto the command defaults: an absent field
+// takes its default (pushEnabled true, digestDay Monday, email/saved flags true),
+// so a partial body never silently zeroes an unspecified preference.
 func (req updateRequest) toPreferences() NotificationPreferences {
 	prefs := NotificationPreferences{
 		PushEnabled:        true,

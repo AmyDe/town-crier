@@ -16,8 +16,8 @@ func TestActivityRecorder_DedupesWithin24h(t *testing.T) {
 
 	rec := NewActivityRecorder(store)
 
-	// A second activity within 24h of the last must NOT trigger a save (the .NET
-	// handler's WriteDedupeWindow short-circuit).
+	// A second activity within 24h of the last must NOT trigger a save
+	// (WriteDedupeWindow short-circuit).
 	if err := rec.RecordActivity(context.Background(), "auth0|abc", base.Add(time.Hour)); err != nil {
 		t.Fatalf("RecordActivity: %v", err)
 	}

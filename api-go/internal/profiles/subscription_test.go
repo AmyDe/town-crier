@@ -97,7 +97,7 @@ func TestSubscriptionTier_IsPaidPro(t *testing.T) {
 func TestSubscriptionTier_HasHourlyDigestEntitlement(t *testing.T) {
 	t.Parallel()
 	// Hourly digest emails are a paid entitlement granted to Personal and Pro,
-	// never Free — mirroring .NET EntitlementMap (HourlyDigestEmails in PaidEntitlements).
+	// never Free (HourlyDigestEmails is in the paid-entitlements set).
 	tests := []struct {
 		tier SubscriptionTier
 		want bool

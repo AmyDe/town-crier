@@ -9,16 +9,14 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
-// exportUserData is the GDPR data-export contract returned by GET /v1/me/data.
-// It mirrors .NET's ExportUserDataResult, including the nested
-// notificationPreferences (with the per-zone array) and subscription blocks.
-// JSON keys are camelCase to match the web serializer; the tier enum renders as
-// its string name. Child collections (watch zones, notifications, saved
-// applications, device registrations, offer-code redemptions) are sourced by the
-// per-feature stores via the consumer-side ExportReaders (export_readers.go);
-// each is sorted deterministically so successive exports are byte-stable, and an
-// absent reader (Cosmos-less local boot) yields an empty array — never null — to
-// match .NET's IReadOnlyList<>.ToList() empty result.
+// exportUserData is the GDPR data-export contract returned by GET /v1/me/data,
+// including the nested notificationPreferences (with the per-zone array) and
+// subscription blocks. JSON keys are camelCase; the tier enum renders as its
+// string name. Child collections (watch zones, notifications, saved applications,
+// device registrations, offer-code redemptions) are sourced by the per-feature
+// stores via the consumer-side ExportReaders (export_readers.go); each is sorted
+// deterministically so successive exports are byte-stable, and an absent reader
+// (Cosmos-less local boot) yields an empty array — never null.
 type exportUserData struct {
 	UserID                  string                        `json:"userId"`
 	Email                   *string                       `json:"email"`
@@ -55,8 +53,8 @@ type exportedSubscription struct {
 	GracePeriodExpiresAt  *platform.DotNetTime `json:"gracePeriodExpiresAt"`
 }
 
-// The following child-record shapes match .NET's Exported* records. They are the
-// neutral return types of the consumer-side ExportReaders (export_readers.go), so
+// The following child-record shapes are the neutral return types of the
+// consumer-side ExportReaders (export_readers.go), so
 // they are exported: cmd/api's store adapters build them directly, keeping the
 // store -> row mapping out of profiles (which must not import the feature
 // packages — see the import-cycle note in export_readers.go).

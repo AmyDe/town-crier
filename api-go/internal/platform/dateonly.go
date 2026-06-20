@@ -6,17 +6,16 @@ import (
 	"time"
 )
 
-// dateOnlyLayout is the wire format of a .NET DateOnly: an ISO calendar date
-// with no time component, e.g. "2026-03-07".
+// dateOnlyLayout is the ISO calendar date format (no time component),
+// e.g. "2026-03-07".
 const dateOnlyLayout = "2006-01-02"
 
-// DateOnly marshals like System.Text.Json's DateOnly: a bare "yyyy-MM-dd" date,
-// never a full timestamp. Planning-application dates (start/decided/consulted)
-// carry .NET DateOnly values, so wire and stored documents must use this type to
-// stay byte-identical under the contract-diff harness.
+// DateOnly marshals as a bare "yyyy-MM-dd" date, never a full timestamp.
+// Planning-application dates (start/decided/consulted) are stored and served
+// in this format; Cosmos documents must use this type so the wire shape is exact.
 type DateOnly time.Time
 
-// String renders the calendar date in the .NET DateOnly wire format.
+// String renders the calendar date as "yyyy-MM-dd".
 func (d DateOnly) String() string {
 	return time.Time(d).Format(dateOnlyLayout)
 }

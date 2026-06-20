@@ -45,8 +45,7 @@ type cosmosMetricsRecorder interface {
 // fn returns the operation's RU charge (read from the SDK ItemResponse /
 // QueryResponse); on success the charge is recorded as the
 // db.cosmosdb.request_charge span attribute and on the
-// towncrier.cosmos.request_charge_ru histogram (tc-21np), restoring the RU /
-// cost telemetry that went dark at the .NET->Go cutover.
+// towncrier.cosmos.request_charge_ru histogram (tc-21np).
 func traceCosmosOp(ctx context.Context, c *CosmosContainer, op string, fn func(context.Context) (float64, error)) error {
 	tracer := otel.Tracer(cosmosTracerName)
 	ctx, span := tracer.Start(ctx, "Cosmos "+op+" "+c.name,
@@ -91,19 +90,18 @@ func parseAccountHost(endpoint string) string {
 
 // cosmosMaxRetries is the number of retries (not attempts) the SDK performs on a
 // throttled/transient response. Two retries plus the initial try gives the
-// 3-attempt budget of the .NET CosmosThrottleRetryHandler.
+// 3-attempt budget.
 const cosmosMaxRetries = 2
 
-// cosmosMaxRetryDelay caps a single backoff delay, matching the .NET handler's
-// 750ms ceiling.
+// cosmosMaxRetryDelay caps a single backoff delay at 750ms.
 const cosmosMaxRetryDelay = 750 * time.Millisecond
 
 // cosmosTryTimeout bounds one attempt so the worst-case total (3 attempts plus
 // capped backoff) stays within the ~1.5s overall budget rather than hanging.
 const cosmosTryTimeout = 1500 * time.Millisecond
 
-// cosmosRetryOptions returns the azcore retry policy tuned to the .NET bounded
-// retry budget: 3 attempts, 750ms per-delay cap, ~1.5s overall.
+// cosmosRetryOptions returns the azcore retry policy tuned to the bounded retry
+// budget: 3 attempts, 750ms per-delay cap, ~1.5s overall.
 func cosmosRetryOptions() policy.RetryOptions {
 	return policy.RetryOptions{
 		MaxRetries:    cosmosMaxRetries,
@@ -218,9 +216,8 @@ func NewCosmosContainerNamed(cfg Config, name string, logger *slog.Logger) (*Cos
 	}, nil
 }
 
-// Cosmos container names mirror the .NET CosmosContainerNames constants so the
-// Go stores target the exact same physical containers the .NET API reads and
-// writes.
+// Cosmos container names for the production physical containers the Go stores
+// read and write.
 const (
 	cosmosUsersContainer = "Users"
 	// CosmosDeviceRegistrationsContainer holds one document per (user, token);
@@ -323,8 +320,7 @@ func (c *CosmosContainer) QueryItems(ctx context.Context, partitionKey, query st
 }
 
 // CountItems runs a SELECT VALUE COUNT(1) scalar query in a single partition and
-// returns the integer result, mirroring .NET's ScalarQueryAsync<int>. An empty
-// result set (no rows match) yields 0.
+// returns the integer result. An empty result set (no rows match) yields 0.
 func (c *CosmosContainer) CountItems(ctx context.Context, partitionKey, query string, params map[string]any) (int, error) {
 	items, err := c.QueryItems(ctx, partitionKey, query, params)
 	if err != nil {
@@ -370,10 +366,8 @@ func (c *CosmosContainer) QueryItemsCrossPartition(ctx context.Context, query st
 // QueryPageCrossPartition runs a cross-partition query and returns a single
 // gateway page of up to pageSize documents plus the continuation token for the
 // next page (empty when the query is exhausted). A non-empty continuationToken
-// resumes a prior page. Mirrors the .NET CosmosRestClient.QueryPageAsync used by
-// the admin user list. The Gateway may return inconsistently sized or empty
-// pages with a non-nil token — an inherent property of cross-partition queries
-// shared by both APIs.
+// resumes a prior page. The Gateway may return inconsistently sized or empty
+// pages with a non-nil token — an inherent property of cross-partition queries.
 func (c *CosmosContainer) QueryPageCrossPartition(ctx context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error) {
 	var (
 		items [][]byte

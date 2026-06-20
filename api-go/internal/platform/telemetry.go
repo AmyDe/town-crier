@@ -2,9 +2,7 @@
 // go-coding-standards skill favours a minimal dependency tree, but GH#418 (Go
 // API it10) and ADR 0027 mandate OpenTelemetry so the Go app emits OTLP traces
 // AND logs to the Azure Container Apps managed-environment OTel agent, which
-// forwards them to Application Insights. This leaves the .NET app's in-process
-// Azure Monitor exporter untouched, so the two implementations don't
-// double-count during the cutover window.
+// forwards them to Application Insights.
 //
 // tc-8x8g adds the logs pipeline: the four new deps below
 // (otelslog / otlploggrpc / sdk/log / log/global, pinned to the otel v1.44.0
@@ -16,7 +14,7 @@
 // MeterProvider (PeriodicReader), installed as the global meter provider, plus
 // Go runtime metrics via contrib/instrumentation/runtime. This restores the
 // towncrier.* business metrics (defined in internal/metrics) and runtime /
-// http.client metrics that went dark at the .NET->Go cutover. There is NO direct
+// http.client metrics. There is NO direct
 // Azure Monitor exporter — like traces and logs, metrics export OTLP/gRPC to the
 // ACA managed-environment OTel agent, which forwards them to App Insights
 // AppMetrics.

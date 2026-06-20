@@ -134,7 +134,7 @@ func TestNewExportUserData_PopulatedFromReaders(t *testing.T) {
 }
 
 // TestNewExportUserData_PopulatedShapes asserts the wire shape (camelCase keys,
-// .NET timestamp format, nested optional fields) of one fully-shaped row per
+// timestamp format, nested optional fields) of one fully-shaped row per
 // collection so the contract the Privacy Policy promises is exact.
 func TestNewExportUserData_PopulatedShapes(t *testing.T) {
 	t.Parallel()

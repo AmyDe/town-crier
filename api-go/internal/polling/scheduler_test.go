@@ -73,7 +73,7 @@ func TestNextRunScheduler_RateLimitedAppliesJitter(t *testing.T) {
 	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
 	opts := DefaultSchedulerOptions()
 	// A fixed +7s jitter must be added on top of the (capped) base delay only on
-	// the rate-limited path, matching .NET's ComputeRateLimitedDelay.
+	// the rate-limited path.
 	s := NewNextRunScheduler(opts, fixedJitter{offset: 7 * time.Second})
 
 	ra := 90 * time.Second
@@ -83,8 +83,7 @@ func TestNextRunScheduler_RateLimitedAppliesJitter(t *testing.T) {
 		t.Errorf("rate-limited jittered next run: got %v, want %v", got, want)
 	}
 
-	// Natural cadence does NOT apply jitter (only the rate-limited branch does in
-	// .NET PollNextRunScheduler).
+	// Natural cadence does NOT apply jitter (only the rate-limited branch does).
 	gotNatural := s.ComputeNextRun(TerminationNatural, nil, now)
 	if !gotNatural.Equal(now.Add(5 * time.Minute)) {
 		t.Errorf("natural cadence should not jitter: got %v, want %v", gotNatural, now.Add(5*time.Minute))
