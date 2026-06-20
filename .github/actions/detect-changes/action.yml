@@ -22,22 +22,19 @@ inputs:
     required: false
     default: ""
   categories:
-    description: "Comma-separated list of categories to detect (e.g., api,web,infra,ios)"
+    description: "Comma-separated list of categories to detect (e.g., go,web,infra,ios)"
     required: true
   trigger-files:
     description: |
       Newline-separated list of workflow files that force categories when changed.
       Format: "path:cat1,cat2,..." per line.
       Example:
-        .github/workflows/pr-gate.yml:api,ios,web,infra
-        .github/workflows/cd-dev.yml:api,web,infra
+        .github/workflows/pr-gate.yml:ios,web,infra
+        .github/workflows/cd-dev.yml:web,infra
     required: false
     default: ""
 
 outputs:
-  api:
-    description: "true if api/ changed"
-    value: ${{ steps.detect.outputs.api }}
   cli:
     description: "true if cli/ changed"
     value: ${{ steps.detect.outputs.cli }}
@@ -105,7 +102,6 @@ runs:
         while IFS= read -r file; do
           [[ -z "$file" ]] && continue
           case "$file" in
-            api/*) [[ -v "flags[api]" ]] && flags[api]=true ;;
             api-go/*) [[ -v "flags[go]" ]] && flags[go]=true ;;
             cli/*) [[ -v "flags[cli]" ]] && flags[cli]=true ;;
             mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
