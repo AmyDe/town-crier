@@ -1,11 +1,11 @@
 ---
 name: test-consolidation-sweep
-description: "Autonomous test-consolidation auditor — scans TUnit/.NET, Swift Testing/iOS, and Vitest/React test suites for over-granular tests that can be merged, parameterised, or folded into verbose behaviour-preserving tests WITHOUT losing coverage. Files one bead per consolidation opportunity with a mutation-testing gate to prove coverage holds. Designed for daily /loop. MUST use this skill whenever the user says 'test consolidation', 'reduce test count', 'consolidate tests', 'test sweep', 'too many tests', 'slim down tests', 'test audit', 'merge tests', 'parameterize tests', 'parameterise tests', or any variation of wanting to reduce the size of the test suite without losing coverage."
+description: "Autonomous test-consolidation auditor — scans Swift Testing/iOS and Vitest/React test suites for over-granular tests that can be merged, parameterised, or folded into verbose behaviour-preserving tests WITHOUT losing coverage. Files one bead per consolidation opportunity with a mutation-testing gate to prove coverage holds. Designed for daily /loop. MUST use this skill whenever the user says 'test consolidation', 'reduce test count', 'consolidate tests', 'test sweep', 'too many tests', 'slim down tests', 'test audit', 'merge tests', 'parameterize tests', 'parameterise tests', or any variation of wanting to reduce the size of the test suite without losing coverage."
 ---
 
 # Test Consolidation Sweep
 
-Scan the Town Crier test suites (.NET, iOS, web), find tests that can be consolidated into fewer, verbose, coverage-preserving tests, and raise one lightweight bead per finding. Each bead encodes a mutation-testing gate so the worker implementing the consolidation can prove coverage hasn't degraded.
+Scan the Town Crier test suites (iOS, web), find tests that can be consolidated into fewer, verbose, coverage-preserving tests, and raise one lightweight bead per finding. Each bead encodes a mutation-testing gate so the worker implementing the consolidation can prove coverage hasn't degraded.
 
 Runs daily via `/loop` — be idempotent.
 
@@ -57,7 +57,6 @@ A finding is a duplicate if an existing open bead covers the **same test file(s)
 
 Scan stacks in parallel via subagents where possible. Load the relevant reference file per stack — each reference tells you the local test framework, file conventions, assertion idioms, and mutation tool setup:
 
-- **.NET** (`api/tests`) — see [references/dotnet.md](references/dotnet.md) — TUnit, Stryker.NET
 - **iOS** (`mobile/ios/town-crier-tests`) — see [references/ios.md](references/ios.md) — Swift Testing, muter (with a textual-assertion fallback when muter can't run cleanly)
 - **Web** (`web/src/**/__tests__`) — see [references/web.md](references/web.md) — Vitest, Stryker-JS
 
