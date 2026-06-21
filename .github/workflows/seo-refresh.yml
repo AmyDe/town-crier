@@ -1,11 +1,22 @@
-# Nightly refresh of the baked SEO pages for BOTH dev and prod web.
+# Weekly refresh of the baked SEO pages for BOTH dev and prod web.
 #
-# The programmatic authority-level SEO pages are statically prerendered at build
-# time (the prerender step is wired into `npm run build` via build-web, pulling
-# fresh applications from the gated API using SITE_BUILD_KEY). A normal CD deploy
-# only happens on push (dev) or tag (prod), so without this job the baked data
-# would go stale. This workflow redeploys the web as a *data-only* refresh — no
-# code change — for both environments.
+# The programmatic SEO pages (authority-level AND per-town) are statically
+# prerendered at build time (the prerender step is wired into `npm run build`
+# via build-web, pulling fresh applications from the gated API using
+# SITE_BUILD_KEY). A normal CD deploy only happens on push (dev) or tag (prod),
+# so without this job the baked data would go stale. This workflow redeploys the
+# web as a *data-only* refresh — no code change — for both environments.
+#
+# Cadence is a WEEKLY FULL rebuild — every run builds the complete set of
+# authority AND town pages together, emits one combined sitemap, and ships it as
+# a full-replace SWA deploy (owner decision, GH #585, tc-2avw.6). We deliberately
+# do NOT run a more frequent authority-only refresh: a full-replace deploy with a
+# single combined sitemap would silently drop all town pages if only authorities
+# were rebuilt. Building everything together every week keeps the sitemap ≡ the
+# live page set by construction. The build cost is negligible (~£0.10/run, see
+# GH #585), so there is no benefit to sharding. A normal code deploy (cd-dev on
+# push, cd-prod on tag) still rebuilds everything immediately. Accepted trade-off:
+# authority-page data refreshes weekly rather than nightly.
 #
 # Deploying prod on a schedule is a deliberate exception to the tag-triggered
 # prod convention (see GH #570, tc-nnte.6), accepted so prod SEO pages stay fresh.
@@ -30,8 +41,9 @@ name: SEO Refresh
 
 on:
   schedule:
-    # 04:00 UTC daily — low UK traffic window.
-    - cron: '0 4 * * *'
+    # 04:00 UTC every Monday — low UK traffic window. Weekly full rebuild of the
+    # complete authority + town SEO page set (see header for why weekly-full).
+    - cron: '0 4 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -43,11 +55,15 @@ permissions:
   id-token: write
 
 jobs:
-  # ── Web: refresh dev ────────────────────────────────────
+  # ── Web: weekly full refresh dev ────────────────────────
   web-dev:
-    name: "Web: Refresh dev"
+    name: "Web: Weekly refresh dev"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 30 min: a full rebuild prerenders the complete authority + town set, and the
+    # prerender fetches serially (~410 authorities + several hundred towns, two
+    # bounded Cosmos reads each), so the build runs much longer than the old
+    # authority-only refresh.
+    timeout-minutes: 30
     environment: development
     steps:
       - uses: actions/checkout@v6
@@ -60,6 +76,7 @@ jobs:
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
 
       - uses: ./.github/actions/azure-login
         with:
@@ -83,13 +100,14 @@ jobs:
           skip_app_build: true
           skip_api_build: true
 
-  # ── Web: refresh prod ───────────────────────────────────
+  # ── Web: weekly full refresh prod ───────────────────────
   # No infra job here, so swa-name is hardcoded (cd-prod reads it from a
   # Pulumi output; this data-only refresh has no Pulumi step).
   web-prod:
-    name: "Web: Refresh prod"
+    name: "Web: Weekly refresh prod"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 30 min: full authority + town rebuild (see web-dev for the rationale).
+    timeout-minutes: 30
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -102,6 +120,7 @@ jobs:
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
 
       - uses: ./.github/actions/azure-login
         with:
