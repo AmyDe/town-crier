@@ -118,6 +118,28 @@ describe('renderPlanningPage', () => {
     expect(html).toContain(APP_DOWNLOAD_URL);
   });
 
+  it('renders an above-the-fold download button in the site header', () => {
+    const html = renderPlanningPage(pageData());
+    const header = html.match(/<header class="siteHeader">[\s\S]*?<\/header>/);
+    expect(header).not.toBeNull();
+    const [headerHtml] = header;
+    expect(headerHtml).toContain('siteHeader__cta');
+    expect(headerHtml).toContain(`href="${APP_DOWNLOAD_URL}"`);
+    expect(headerHtml).toContain('Get the app');
+    // Match the bottom CTA's link safety exactly.
+    expect(headerHtml).toContain('rel="noopener"');
+    expect(headerHtml).toContain('target="_blank"');
+    // The brand link stays on the left.
+    expect(headerHtml).toContain('>Town Crier</a>');
+  });
+
+  it('keeps the rich bottom CTA block when the header CTA is present', () => {
+    const html = renderPlanningPage(pageData());
+    expect(html).toContain('<section class="cta">');
+    expect(html).toContain('class="cta__button"');
+    expect(html).toContain('Download on the App Store');
+  });
+
   it('carries the mandatory PlanIt + OGL + OS + OSM attribution', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain('PlanIt');
