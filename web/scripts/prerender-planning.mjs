@@ -5,15 +5,20 @@
  * `web/dist/sitemap.xml`.
  *
  * Three run modes, selected by environment:
- *   - SITE_BUILD_KEY set        -> live: fetch our gated API, fail LOUD on any
- *                                  transport/shape error (never empty pages).
+ *   - SITE_BUILD_KEY set        -> live: read the committed authority list from
+ *                                  the repo, then fetch each authority's recent
+ *                                  applications from our build-key-gated API.
+ *                                  Fail LOUD on any transport/shape error
+ *                                  (never empty pages).
  *   - PRERENDER_FIXTURE=<path>  -> fixture: render from a committed JSON file,
  *                                  no network (used by the tracer + tests).
  *   - neither set               -> skip: leave the SPA build untouched so
  *                                  `npm run build` still succeeds without a key.
  *
- * The build key is server-side only and is NEVER written into any page or the
- * client bundle. We read ONLY our own API — never PlanIt (ADR 0006).
+ * The authority list itself is static, public, committed data (read from disk,
+ * not over HTTP — the live `/v1/authorities` endpoint needs an Auth0 token). The
+ * build key is server-side only and is NEVER written into any page or the client
+ * bundle. We read ONLY our own API — never PlanIt (ADR 0006).
  */
 
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -27,6 +32,28 @@ import { renderPlanningPage } from './lib/render-page.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 
 const DEFAULT_LIMIT = 30;
+
+/** Directory containing this script (`web/scripts`), independent of cwd. */
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The authority list is static, public, committed data — read it from the repo
+ * rather than over HTTP. The live `GET /v1/authorities` endpoint requires an
+ * Auth0 bearer token (401 anonymously), and only the per-authority applications
+ * endpoint is build-key-anonymous. The whole monorepo is checked out in CI, so
+ * this file is always present two directories up from `web/scripts`.
+ * @type {string}
+ */
+export const AUTHORITIES_FILE = join(
+  SCRIPT_DIR,
+  '..',
+  '..',
+  'api-go',
+  'internal',
+  'authorities',
+  'resources',
+  'authorities.json',
+);
 
 /**
  * @typedef {Object} PrerenderResult
@@ -45,26 +72,38 @@ function trimTrailingSlash(base) {
 }
 
 /**
- * Fetch the full authority list (anonymous, no key). Throws on any non-OK
- * status or unexpected shape so a broken upstream fails the build loudly.
+ * Load and validate the full authority list from the committed JSON file.
+ * Throws loudly if the file is missing, is not valid JSON, is not a non-empty
+ * array, or has a malformed row — never a silent empty list.
  *
- * @param {string} apiBase
- * @param {typeof globalThis.fetch} fetchImpl
+ * @param {string} filePath
+ * @param {(path: string, encoding: string) => Promise<string>} readFileImpl
  * @returns {Promise<Array<{ id: number, name: string, areaType: string }>>}
  */
-async function fetchAuthorities(apiBase, fetchImpl) {
-  const url = `${apiBase}/v1/authorities`;
-  const res = await fetchImpl(url);
-  if (!res.ok) {
-    throw new Error(`GET /v1/authorities failed: HTTP ${res.status}`);
-  }
-  const body = await res.json();
-  // The Go handler returns { authorities: [...], total }. Accept a bare array
-  // defensively too.
-  const list = Array.isArray(body) ? body : body?.authorities;
-  if (!Array.isArray(list)) {
+export async function loadAuthoritiesFromFile(filePath, readFileImpl) {
+  let raw;
+  try {
+    raw = await readFileImpl(filePath, 'utf-8');
+  } catch (err) {
     throw new Error(
-      'GET /v1/authorities returned an unexpected shape (no authorities array)',
+      `authority list not found at ${filePath}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  let list;
+  try {
+    list = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `authority list at ${filePath} is not valid JSON: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error(
+      `authority list at ${filePath} must be a non-empty JSON array`,
     );
   }
   for (const a of list) {
@@ -73,7 +112,9 @@ async function fetchAuthorities(apiBase, fetchImpl) {
       typeof a?.name !== 'string' ||
       typeof a?.areaType !== 'string'
     ) {
-      throw new Error('GET /v1/authorities returned a malformed authority row');
+      throw new Error(
+        `authority list at ${filePath} has a malformed authority row`,
+      );
     }
   }
   return list;
@@ -249,13 +290,15 @@ async function runFixtureMode(outDir, fixturePath, limit, logger) {
  * @param {string} args.buildKey
  * @param {number} args.limit
  * @param {typeof globalThis.fetch} args.fetchImpl
+ * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<PrerenderResult>}
  */
 async function runLiveMode(args) {
-  const { outDir, apiBase, buildKey, limit, fetchImpl, logger } = args;
+  const { outDir, apiBase, buildKey, limit, fetchImpl, loadAuthorities, logger } =
+    args;
 
-  const authorities = await fetchAuthorities(apiBase, fetchImpl);
+  const authorities = await loadAuthorities();
 
   /** @type {string[]} */
   const published = [];
@@ -306,6 +349,7 @@ async function runLiveMode(args) {
  * @param {string} [options.fixturePath]           committed JSON fixture (fixture mode)
  * @param {number} [options.limit]                 applications rendered per page
  * @param {typeof globalThis.fetch} [options.fetchImpl]
+ * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
  * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
  * @returns {Promise<PrerenderResult>}
  */
@@ -317,6 +361,7 @@ export async function runPrerender(options) {
     fixturePath,
     limit = DEFAULT_LIMIT,
     fetchImpl = globalThis.fetch,
+    loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
     logger = console,
   } = options;
 
@@ -345,6 +390,7 @@ export async function runPrerender(options) {
     buildKey,
     limit,
     fetchImpl,
+    loadAuthorities,
     logger,
   });
 }
@@ -356,8 +402,7 @@ export async function runPrerender(options) {
  * @returns {Promise<void>}
  */
 async function main() {
-  const scriptDir = dirname(fileURLToPath(import.meta.url));
-  const outDir = process.env.PRERENDER_OUT_DIR || join(scriptDir, '..', 'dist');
+  const outDir = process.env.PRERENDER_OUT_DIR || join(SCRIPT_DIR, '..', 'dist');
   const apiBase =
     process.env.PRERENDER_API_BASE || process.env.VITE_API_BASE_URL;
   const buildKey = process.env.SITE_BUILD_KEY;
