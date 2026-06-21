@@ -440,71 +440,149 @@ func TestCosmosStore_RecentNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_CountByAuthority_DecodesScalarScopedToPartition(t *testing.T) {
+// breakdownRow marshals a single GROUP BY projection row. A nil state omits the
+// appState property entirely (Cosmos omits an undefined projection), modelling
+// the "missing" case; a non-nil state emits an explicit string. The explicit
+// JSON-null case is built inline by the test that needs it.
+func breakdownRow(t *testing.T, state *string, count int) []byte {
+	t.Helper()
+	row := map[string]any{"count": count}
+	if state != nil {
+		row["appState"] = *state
+	}
+	body, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("marshal breakdown row: %v", err)
+	}
+	return body
+}
+
+func TestCosmosStore_BreakdownByAuthority_DecodesGroupByScopedToPartition(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
-	// SELECT VALUE COUNT(1) returns a single row that is a bare JSON number.
-	items.queryResult = [][]byte{[]byte("42")}
+	// GROUP BY returns one row per appState: {"appState": "...", "count": N}.
+	items.queryResult = [][]byte{
+		breakdownRow(t, strPtr("Permitted"), 2100),
+		breakdownRow(t, strPtr("Rejected"), 900),
+	}
 	store := NewCosmosStore(items)
 
-	got, err := store.CountByAuthority(context.Background(), "471")
+	got, err := store.BreakdownByAuthority(context.Background(), "471")
 	if err != nil {
-		t.Fatalf("CountByAuthority: %v", err)
+		t.Fatalf("BreakdownByAuthority: %v", err)
 	}
-	if got != 42 {
-		t.Errorf("count: got %d, want 42", got)
+	want := []StateCount{
+		{AppState: strPtr("Permitted"), Count: 2100},
+		{AppState: strPtr("Rejected"), Count: 900},
 	}
+	assertBreakdownEqual(t, got, want)
 	// Scoped to the authorityCode logical partition (never cross-partition).
 	if items.lastQueryPK != "471" {
 		t.Errorf("query partition key: got %q, want \"471\"", items.lastQueryPK)
 	}
-	// Index-only scalar count over the whole partition — no TOP @cap (that would
-	// saturate the total), no ordering.
-	want := "SELECT VALUE COUNT(1) FROM c"
-	if items.lastQuery != want {
-		t.Errorf("count query:\n got %q\nwant %q", items.lastQuery, want)
+	// Index-served GROUP BY over the whole partition — no TOP @cap (that would
+	// saturate the total).
+	wantQuery := "SELECT c.appState, COUNT(1) AS count FROM c GROUP BY c.appState"
+	if items.lastQuery != wantQuery {
+		t.Errorf("breakdown query:\n got %q\nwant %q", items.lastQuery, wantQuery)
 	}
 	if _, ok := items.lastQueryParams["@cap"]; ok {
-		t.Errorf("count query must not bind @cap (it counts the whole partition): %v", items.lastQueryParams)
+		t.Errorf("breakdown query must not bind @cap (it spans the whole partition): %v", items.lastQueryParams)
 	}
 }
 
-func TestCosmosStore_CountByAuthority_EmptyResultIsZero(t *testing.T) {
-	t.Parallel()
-	// No rows at all (defensive): an empty result set yields 0, not an error.
-	store := NewCosmosStore(newFakeItems())
-
-	got, err := store.CountByAuthority(context.Background(), "471")
-	if err != nil {
-		t.Fatalf("CountByAuthority: %v", err)
-	}
-	if got != 0 {
-		t.Errorf("count: got %d, want 0", got)
-	}
-}
-
-func TestCosmosStore_CountByAuthority_UsesLongReadBudget(t *testing.T) {
+func TestCosmosStore_BreakdownByAuthority_OrdersCountDescStateAscNilLast(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
-	items.queryResult = [][]byte{[]byte("3")}
+	// Deliberately unsorted, with a tie (Permitted vs Rejected both 5) and a nil
+	// bucket tying on count too, to prove the deterministic ordering.
+	items.queryResult = [][]byte{
+		breakdownRow(t, strPtr("Rejected"), 5),
+		breakdownRow(t, nil, 5),
+		breakdownRow(t, strPtr("Conditions"), 9),
+		breakdownRow(t, strPtr("Permitted"), 5),
+	}
 	store := NewCosmosStore(items)
 
-	if _, err := store.CountByAuthority(context.Background(), "156"); err != nil {
-		t.Fatalf("CountByAuthority: %v", err)
+	got, err := store.BreakdownByAuthority(context.Background(), "471")
+	if err != nil {
+		t.Fatalf("BreakdownByAuthority: %v", err)
 	}
-	if !items.lastQueryViaLongRead {
-		t.Error("CountByAuthority must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	// count DESC primary; on the 5-way tie, appState ASC then nil last.
+	want := []StateCount{
+		{AppState: strPtr("Conditions"), Count: 9},
+		{AppState: strPtr("Permitted"), Count: 5},
+		{AppState: strPtr("Rejected"), Count: 5},
+		{AppState: nil, Count: 5},
+	}
+	assertBreakdownEqual(t, got, want)
+}
+
+func TestCosmosStore_BreakdownByAuthority_MissingAndNullAppStateFoldIntoOneNilBucket(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// One row omits appState (absent projection); a separate row carries explicit
+	// JSON null. Both must merge into the SINGLE nil bucket, matching
+	// breakdownByState's nil semantics.
+	items.queryResult = [][]byte{
+		breakdownRow(t, nil, 30),                  // appState absent
+		[]byte(`{"appState": null, "count": 12}`), // appState explicit null
+		breakdownRow(t, strPtr("Permitted"), 100),
+	}
+	store := NewCosmosStore(items)
+
+	got, err := store.BreakdownByAuthority(context.Background(), "471")
+	if err != nil {
+		t.Fatalf("BreakdownByAuthority: %v", err)
+	}
+	// 30 + 12 = 42 fold into one nil bucket; Permitted (100) outranks it.
+	want := []StateCount{
+		{AppState: strPtr("Permitted"), Count: 100},
+		{AppState: nil, Count: 42},
+	}
+	assertBreakdownEqual(t, got, want)
+}
+
+func TestCosmosStore_BreakdownByAuthority_EmptyPartitionIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	// No rows at all (empty partition): an empty result set yields an empty
+	// non-nil slice, not an error.
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.BreakdownByAuthority(context.Background(), "471")
+	if err != nil {
+		t.Fatalf("BreakdownByAuthority: %v", err)
+	}
+	if got == nil {
+		t.Fatal("BreakdownByAuthority: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("BreakdownByAuthority: got %d entries, want 0", len(got))
 	}
 }
 
-func TestCosmosStore_CountByAuthority_PropagatesQueryError(t *testing.T) {
+func TestCosmosStore_BreakdownByAuthority_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryResult = [][]byte{breakdownRow(t, strPtr("Permitted"), 3)}
+	store := NewCosmosStore(items)
+
+	if _, err := store.BreakdownByAuthority(context.Background(), "156"); err != nil {
+		t.Fatalf("BreakdownByAuthority: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("BreakdownByAuthority must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
+func TestCosmosStore_BreakdownByAuthority_PropagatesQueryError(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	items.queryErr = context.DeadlineExceeded
 	store := NewCosmosStore(items)
 
-	if _, err := store.CountByAuthority(context.Background(), "471"); err == nil {
-		t.Fatal("CountByAuthority: expected error, got nil")
+	if _, err := store.BreakdownByAuthority(context.Background(), "471"); err == nil {
+		t.Fatal("BreakdownByAuthority: expected error, got nil")
 	}
 }
 

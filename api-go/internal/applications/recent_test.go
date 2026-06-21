@@ -12,19 +12,20 @@ import (
 
 // fakeRecentStore is a hand-written double for the recent-by-authority read. It
 // honours cap the way Cosmos TOP @cap does (so the handler's cap/limit logic is
-// exercised against realistic bounded results) and serves an exact partition
-// count independently, so a test can prove total comes from the count call rather
-// than the bounded read length.
+// exercised against realistic bounded results) and serves a whole-partition
+// status breakdown independently of the bounded read, so a test can prove the
+// rendered Total is the sum of those buckets — not the bounded read length nor
+// the rendered slice.
 type fakeRecentStore struct {
-	apps     []PlanningApplication
-	err      error
-	count    int
-	countErr error
+	apps         []PlanningApplication
+	err          error
+	breakdown    []StateCount
+	breakdownErr error
 
-	lastAuthorityCode      string
-	lastCap                int
-	countCalled            bool
-	lastCountAuthorityCode string
+	lastAuthorityCode          string
+	lastCap                    int
+	breakdownCalled            bool
+	lastBreakdownAuthorityCode string
 }
 
 func (f *fakeRecentStore) RecentByAuthority(_ context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
@@ -39,13 +40,21 @@ func (f *fakeRecentStore) RecentByAuthority(_ context.Context, authorityCode str
 	return f.apps, nil
 }
 
-func (f *fakeRecentStore) CountByAuthority(_ context.Context, authorityCode string) (int, error) {
-	f.countCalled = true
-	f.lastCountAuthorityCode = authorityCode
-	if f.countErr != nil {
-		return 0, f.countErr
+func (f *fakeRecentStore) BreakdownByAuthority(_ context.Context, authorityCode string) ([]StateCount, error) {
+	f.breakdownCalled = true
+	f.lastBreakdownAuthorityCode = authorityCode
+	if f.breakdownErr != nil {
+		return nil, f.breakdownErr
 	}
-	return f.count, nil
+	return f.breakdown, nil
+}
+
+// breakdownOf builds a []StateCount from raw appState/count pairs, for seeding the
+// fake's whole-partition breakdown.
+func breakdownOf(pairs ...StateCount) []StateCount {
+	out := make([]StateCount, 0, len(pairs))
+	out = append(out, pairs...)
+	return out
 }
 
 // recentApps builds n distinct planning applications for the handler tests.
@@ -108,9 +117,16 @@ func recentBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 
 func TestRecentHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	t.Parallel()
-	// count is deliberately distinct from len(apps) to prove total is the exact
-	// partition count, not the bounded read length.
-	store := &fakeRecentStore{apps: recentApps(t, 2), count: 1234}
+	// The whole-partition breakdown sums to 1234, deliberately distinct from
+	// len(apps) (2), to prove total is the sum of the breakdown buckets, not the
+	// bounded read length.
+	store := &fakeRecentStore{
+		apps: recentApps(t, 2),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 1000},
+			StateCount{AppState: strPtr("Rejected"), Count: 234},
+		),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
@@ -120,13 +136,13 @@ func TestRecentHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("content-type: got %q", ct)
 	}
-	// The handler reads the bounded cap (200) and counts the partition, both scoped
-	// to the numeric id -> code.
+	// The handler reads the bounded cap (200) and computes the whole-partition
+	// breakdown, both scoped to the numeric id -> code.
 	if store.lastAuthorityCode != "471" || store.lastCap != 200 {
 		t.Errorf("store read call: authorityCode=%q cap=%d, want \"471\" 200", store.lastAuthorityCode, store.lastCap)
 	}
-	if !store.countCalled || store.lastCountAuthorityCode != "471" {
-		t.Errorf("count call: called=%v authorityCode=%q, want true \"471\"", store.countCalled, store.lastCountAuthorityCode)
+	if !store.breakdownCalled || store.lastBreakdownAuthorityCode != "471" {
+		t.Errorf("breakdown call: called=%v authorityCode=%q, want true \"471\"", store.breakdownCalled, store.lastBreakdownAuthorityCode)
 	}
 	got := recentBody(t, rec)
 	if got["authorityId"].(float64) != 471 {
@@ -143,7 +159,7 @@ func TestRecentHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 		t.Errorf("applications length: got %d, want 2", len(apps))
 	}
 	if got["total"].(float64) != 1234 {
-		t.Errorf("total: got %v, want 1234 (the exact count)", got["total"])
+		t.Errorf("total: got %v, want 1234 (sum of the breakdown buckets)", got["total"])
 	}
 	if _, present := got["totalCapped"]; present {
 		t.Errorf("totalCapped must be gone from the wire shape, got %v", got["totalCapped"])
@@ -166,7 +182,7 @@ func TestRecentHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 
 func TestRecentHandler_RejectsMissingKey(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeRecentStore{apps: recentApps(t, 2)}
 
 	rec := serveRecent(t, store, "buildkey", "", "/v1/authorities/471/applications")
 
@@ -176,28 +192,34 @@ func TestRecentHandler_RejectsMissingKey(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("401 must be bodyless (backfilled downstream), got %s", rec.Body)
 	}
-	if store.lastCap != 0 || store.countCalled {
+	if store.lastCap != 0 || store.breakdownCalled {
 		t.Errorf("store must not be hit when the key is missing")
 	}
 }
 
 func TestRecentHandler_EmptyConfiguredKeyRejectsAll(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeRecentStore{apps: recentApps(t, 2)}
 
 	rec := serveRecent(t, store, "", "anything", "/v1/authorities/471/applications")
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("empty configured key must reject all: got %d, want 401", rec.Code)
 	}
-	if store.lastCap != 0 || store.countCalled {
+	if store.lastCap != 0 || store.breakdownCalled {
 		t.Errorf("store must not be hit when the configured key is empty")
 	}
 }
 
 func TestRecentHandler_LimitsReturnedApplications(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 50), count: 73}
+	// Breakdown sums to 73, distinct from len(apps) (50) and the limit (10).
+	store := &fakeRecentStore{
+		apps: recentApps(t, 50),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 73},
+		),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications?limit=10")
 
@@ -209,15 +231,19 @@ func TestRecentHandler_LimitsReturnedApplications(t *testing.T) {
 	if len(apps) != 10 {
 		t.Errorf("applications length: got %d, want 10 (the limit)", len(apps))
 	}
-	// total is the exact partition count, not the rendered slice nor the bounded read.
+	// total is the sum of the whole-partition breakdown, not the rendered slice nor
+	// the bounded read.
 	if got["total"].(float64) != 73 {
-		t.Errorf("total: got %v, want 73 (exact count)", got["total"])
+		t.Errorf("total: got %v, want 73 (sum of breakdown buckets)", got["total"])
 	}
 }
 
 func TestRecentHandler_DefaultLimitIs30(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 50), count: 50}
+	store := &fakeRecentStore{
+		apps:      recentApps(t, 50),
+		breakdown: breakdownOf(StateCount{AppState: strPtr("Permitted"), Count: 50}),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
@@ -230,7 +256,10 @@ func TestRecentHandler_DefaultLimitIs30(t *testing.T) {
 
 func TestRecentHandler_LimitHardCappedAt100(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 150), count: 150}
+	store := &fakeRecentStore{
+		apps:      recentApps(t, 150),
+		breakdown: breakdownOf(StateCount{AppState: strPtr("Permitted"), Count: 150}),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications?limit=999")
 
@@ -243,27 +272,41 @@ func TestRecentHandler_LimitHardCappedAt100(t *testing.T) {
 
 func TestRecentHandler_ExactTotalIndependentOfSaturatedRead(t *testing.T) {
 	t.Parallel()
-	// The bounded read saturates at cap (200) but the exact count is far larger:
-	// total must be the count, and the render slice clamps to the limit, not the
-	// count (the bug the bounded-read clamp guards against).
-	store := &fakeRecentStore{apps: recentApps(t, 200), count: 8421}
+	// The bounded read saturates at cap (200) but the whole-partition breakdown
+	// sums to far more: total must be that sum, and the render slice clamps to the
+	// limit, not the total (the bug the bounded-read clamp guards against).
+	store := &fakeRecentStore{
+		apps: recentApps(t, 200),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 6000},
+			StateCount{AppState: strPtr("Rejected"), Count: 2421},
+		),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
 	got := recentBody(t, rec)
 	if got["total"].(float64) != 8421 {
-		t.Errorf("total: got %v, want 8421 (exact count)", got["total"])
+		t.Errorf("total: got %v, want 8421 (sum of breakdown buckets)", got["total"])
 	}
 	if apps := got["applications"].([]any); len(apps) != 30 {
-		t.Errorf("applications length: got %d, want 30 (default limit, NOT the count)", len(apps))
+		t.Errorf("applications length: got %d, want 30 (default limit, NOT the total)", len(apps))
 	}
 }
 
-func TestRecentHandler_StatusBreakdownSpansBoundedReadNotRenderedSlice(t *testing.T) {
+func TestRecentHandler_StatusBreakdownIsWholePartitionEchoedVerbatim(t *testing.T) {
 	t.Parallel()
-	// 40 in the bounded read (25 Permitted, 15 Rejected); only 30 are rendered, but
-	// the breakdown denominator is the whole bounded read.
-	store := &fakeRecentStore{apps: appsByState(t, 25, 15), count: 40}
+	// The store's whole-partition breakdown sums to 3771 — far beyond the bounded
+	// read (40 cards) and the rendered slice (30). The handler must echo the
+	// store's breakdown verbatim, order preserved, and set total to its sum.
+	store := &fakeRecentStore{
+		apps: appsByState(t, 25, 15),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 2100},
+			StateCount{AppState: strPtr("Rejected"), Count: 900},
+			StateCount{AppState: strPtr("Conditions"), Count: 771},
+		),
+	}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
@@ -272,22 +315,28 @@ func TestRecentHandler_StatusBreakdownSpansBoundedReadNotRenderedSlice(t *testin
 	if !ok {
 		t.Fatalf("statusBreakdown must be an array, got %T", got["statusBreakdown"])
 	}
-	if len(breakdown) != 2 {
-		t.Fatalf("statusBreakdown length: got %d, want 2 (%v)", len(breakdown), breakdown)
+	if len(breakdown) != 3 {
+		t.Fatalf("statusBreakdown length: got %d, want 3 (%v)", len(breakdown), breakdown)
 	}
-	first := breakdown[0].(map[string]any)
-	second := breakdown[1].(map[string]any)
-	if first["appState"] != "Permitted" || first["count"].(float64) != 25 {
-		t.Errorf("breakdown[0]: got %v, want Permitted/25", first)
+	// Echoed verbatim from the store, order preserved.
+	wantStates := []string{"Permitted", "Rejected", "Conditions"}
+	wantCounts := []float64{2100, 900, 771}
+	for i, row := range breakdown {
+		m := row.(map[string]any)
+		if m["appState"] != wantStates[i] || m["count"].(float64) != wantCounts[i] {
+			t.Errorf("breakdown[%d]: got %v, want %s/%v", i, m, wantStates[i], wantCounts[i])
+		}
 	}
-	if second["appState"] != "Rejected" || second["count"].(float64) != 15 {
-		t.Errorf("breakdown[1]: got %v, want Rejected/15", second)
+	// total is the sum of the breakdown buckets (2100+900+771), equal to the
+	// rendered "tracking N applications" lead line.
+	if got["total"].(float64) != 3771 {
+		t.Errorf("total: got %v, want 3771 (sum of breakdown buckets)", got["total"])
 	}
 }
 
 func TestRecentHandler_EmptyResultIsNonNullArray(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: nil, count: 0}
+	store := &fakeRecentStore{apps: nil, breakdown: nil}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
@@ -303,7 +352,7 @@ func TestRecentHandler_EmptyResultIsNonNullArray(t *testing.T) {
 		t.Errorf("applications length: got %d, want 0", len(apps))
 	}
 	if got["total"].(float64) != 0 {
-		t.Errorf("total: got %v, want 0", got["total"])
+		t.Errorf("total: got %v, want 0 (empty breakdown sums to 0)", got["total"])
 	}
 	if got["areaName"] != "" {
 		t.Errorf("areaName: got %v, want empty when no applications", got["areaName"])
@@ -319,14 +368,14 @@ func TestRecentHandler_EmptyResultIsNonNullArray(t *testing.T) {
 
 func TestRecentHandler_NonIntIdReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeRecentStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeRecentStore{apps: recentApps(t, 2)}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/abc/applications")
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-int id: got %d, want 400", rec.Code)
 	}
-	if store.lastCap != 0 || store.countCalled {
+	if store.lastCap != 0 || store.breakdownCalled {
 		t.Errorf("store must not be hit on a malformed id")
 	}
 }
@@ -342,14 +391,15 @@ func TestRecentHandler_StoreErrorReturns500(t *testing.T) {
 	}
 }
 
-func TestRecentHandler_CountErrorReturns500(t *testing.T) {
+func TestRecentHandler_BreakdownErrorReturns500(t *testing.T) {
 	t.Parallel()
-	// The bounded read succeeds but the exact count fails -> 500 (no partial total).
-	store := &fakeRecentStore{apps: recentApps(t, 2), countErr: context.DeadlineExceeded}
+	// The bounded read succeeds but the whole-partition breakdown fails -> 500 (no
+	// partial total).
+	store := &fakeRecentStore{apps: recentApps(t, 2), breakdownErr: context.DeadlineExceeded}
 
 	rec := serveRecent(t, store, "buildkey", "buildkey", "/v1/authorities/471/applications")
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("count error: got %d, want 500", rec.Code)
+		t.Fatalf("breakdown error: got %d, want 500", rec.Code)
 	}
 }
