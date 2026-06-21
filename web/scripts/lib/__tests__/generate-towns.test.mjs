@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   bngToLatLon,
   resolveAuthorityId,
+  parseCsvLine,
   parsePopulationRow,
   parseCentroidRow,
   joinBua,
@@ -272,6 +273,45 @@ describe('joinBua (population x centroid on BUA code)', () => {
   });
 });
 
+describe('parseCsvLine (RFC-4180 quoting)', () => {
+  it('splits an unquoted line on every comma', () => {
+    expect(parseCsvLine('E63001234,Truro,Cornwall,18766')).toEqual([
+      'E63001234',
+      'Truro',
+      'Cornwall',
+      '18766',
+    ]);
+  });
+
+  it('keeps a comma inside a quoted field (official LAD name)', () => {
+    // ONS names "Bristol, City of" / "Kingston upon Hull, City of" carry a comma
+    // that must survive so lad_name matches authority-mapping.json verbatim.
+    expect(parseCsvLine('E63005057,Bristol,"Bristol, City of",425215')).toEqual([
+      'E63005057',
+      'Bristol',
+      'Bristol, City of',
+      '425215',
+    ]);
+  });
+
+  it('handles a quoted comma in both the BUA name and the LAD name', () => {
+    expect(
+      parseCsvLine(
+        'E63006696,"Christchurch (Bournemouth, Christchurch and Poole)","Bournemouth, Christchurch and Poole",48985',
+      ),
+    ).toEqual([
+      'E63006696',
+      'Christchurch (Bournemouth, Christchurch and Poole)',
+      'Bournemouth, Christchurch and Poole',
+      '48985',
+    ]);
+  });
+
+  it('unescapes a doubled quote inside a quoted field', () => {
+    expect(parseCsvLine('A,"say ""hi""",B')).toEqual(['A', 'say "hi"', 'B']);
+  });
+});
+
 describe('buildGazetteer (end-to-end CSV text -> records)', () => {
   const mapping = { Cornwall: 52, Stockport: 320 };
 
@@ -318,6 +358,27 @@ describe('buildGazetteer (end-to-end CSV text -> records)', () => {
     for (const r of records) {
       expect(Number.isFinite(r.population)).toBe(true);
     }
+  });
+
+  it('resolves a BUA whose official LAD name contains a comma', () => {
+    // Regression: "Bristol, City of" must round-trip through the quoted CSV and
+    // match the authority mapping, otherwise Bristol is silently dropped.
+    const popCsv = [
+      'bua_code,bua_name,lad_name,population',
+      'E63005057,Bristol,"Bristol, City of",425215',
+    ].join('\n');
+    const cenCsv = [
+      'bua_code,bua_name,latitude,longitude,bng_easting,bng_northing',
+      'E63005057,Bristol,51.4518,-2.5898,358000,173000',
+    ].join('\n');
+    const { records } = buildGazetteer(popCsv, cenCsv, { 'Bristol, City of': 23 });
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      slug: 'bristol',
+      name: 'Bristol',
+      authorityId: 23,
+      population: 425215,
+    });
   });
 });
 
