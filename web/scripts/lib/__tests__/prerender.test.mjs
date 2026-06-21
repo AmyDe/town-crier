@@ -3,7 +3,11 @@ import { mkdtemp, rm, readFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runPrerender } from '../../prerender-planning.mjs';
+import {
+  runPrerender,
+  loadAuthoritiesFromFile,
+  AUTHORITIES_FILE,
+} from '../../prerender-planning.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, '..', '..', 'fixtures', 'sample-authorities.json');
@@ -109,22 +113,13 @@ describe('runPrerender — no key, no fixture', () => {
 });
 
 describe('runPrerender — live mode', () => {
-  function authoritiesBody(items) {
-    return { authorities: items, total: items.length };
-  }
+  const adurAndWestSussex = [
+    { id: 1, name: 'Adur', areaType: 'English District' },
+    { id: 2, name: 'West Sussex', areaType: 'English County' },
+  ];
 
-  it('fetches the gated endpoint with X-Build-Key and publishes gated authorities only', async () => {
+  it('reads the committed authority list (no HTTP) and fetches only the gated applications endpoint with X-Build-Key', async () => {
     const stub = new StubFetch((url) => {
-      if (url.endsWith('/v1/authorities')) {
-        return {
-          ok: true,
-          status: 200,
-          body: authoritiesBody([
-            { id: 1, name: 'Adur', areaType: 'English District' },
-            { id: 2, name: 'West Sussex', areaType: 'English County' },
-          ]),
-        };
-      }
       if (url.includes('/v1/authorities/1/applications')) {
         return {
           ok: true,
@@ -157,15 +152,18 @@ describe('runPrerender — live mode', () => {
       apiBase: 'https://api-dev.towncrierapp.uk',
       buildKey: 'test-key',
       fetchImpl: stub.fetch,
+      loadAuthorities: async () => adurAndWestSussex,
       logger: silentLogger,
     });
 
     expect(result.published).toEqual(['adur']);
 
+    // The authority list must NEVER be fetched over HTTP — only the per-authority
+    // gated applications endpoint is called.
+    expect(stub.calls.every((c) => c.url.includes('/applications'))).toBe(true);
+
     // West Sussex (English County) must never trigger an applications fetch.
-    const appsCalls = stub.calls.filter((c) =>
-      c.url.includes('/applications'),
-    );
+    const appsCalls = stub.calls.filter((c) => c.url.includes('/applications'));
     expect(appsCalls).toHaveLength(1);
     expect(appsCalls[0].url).toContain('/v1/authorities/1/applications');
     expect(appsCalls[0].url).toContain('limit=30');
@@ -179,34 +177,26 @@ describe('runPrerender — live mode', () => {
   });
 
   it('excludes a qualifying authority that fails the coverage gate', async () => {
-    const stub = new StubFetch((url) => {
-      if (url.endsWith('/v1/authorities')) {
-        return {
-          ok: true,
-          status: 200,
-          body: authoritiesBody([
-            { id: 1, name: 'Adur', areaType: 'English District' },
-          ]),
-        };
-      }
-      return {
-        ok: true,
-        status: 200,
-        body: {
-          authorityId: 1,
-          areaName: 'Adur',
-          applications: [],
-          total: 5,
-          totalCapped: false,
-        },
-      };
-    });
+    const stub = new StubFetch(() => ({
+      ok: true,
+      status: 200,
+      body: {
+        authorityId: 1,
+        areaName: 'Adur',
+        applications: [],
+        total: 5,
+        totalCapped: false,
+      },
+    }));
 
     const result = await runPrerender({
       outDir,
       apiBase: 'https://api-dev.towncrierapp.uk',
       buildKey: 'test-key',
       fetchImpl: stub.fetch,
+      loadAuthorities: async () => [
+        { id: 1, name: 'Adur', areaType: 'English District' },
+      ],
       logger: silentLogger,
     });
 
@@ -215,52 +205,32 @@ describe('runPrerender — live mode', () => {
   });
 
   it('treats zero qualifying authorities as a valid (non-error) build', async () => {
-    const stub = new StubFetch(() => ({
-      ok: true,
-      status: 200,
-      body: authoritiesBody([
-        { id: 9, name: 'Surrey', areaType: 'English County' },
-      ]),
-    }));
+    const stub = new StubFetch(() => {
+      throw new Error('applications endpoint must not be called');
+    });
 
     const result = await runPrerender({
       outDir,
       apiBase: 'https://api-dev.towncrierapp.uk',
       buildKey: 'test-key',
       fetchImpl: stub.fetch,
+      loadAuthorities: async () => [
+        { id: 9, name: 'Surrey', areaType: 'English County' },
+      ],
       logger: silentLogger,
     });
 
     expect(result.skipped).toBe(false);
     expect(result.published).toEqual([]);
-  });
-
-  it('fails loud when the authorities endpoint returns a non-OK status', async () => {
-    const stub = new StubFetch(() => ({ ok: false, status: 500, body: {} }));
-    await expect(
-      runPrerender({
-        outDir,
-        apiBase: 'https://api-dev.towncrierapp.uk',
-        buildKey: 'test-key',
-        fetchImpl: stub.fetch,
-        logger: silentLogger,
-      }),
-    ).rejects.toThrow();
+    expect(stub.calls).toHaveLength(0);
   });
 
   it('fails loud when the applications endpoint returns an unexpected shape', async () => {
-    const stub = new StubFetch((url) => {
-      if (url.endsWith('/v1/authorities')) {
-        return {
-          ok: true,
-          status: 200,
-          body: authoritiesBody([
-            { id: 1, name: 'Adur', areaType: 'English District' },
-          ]),
-        };
-      }
-      return { ok: true, status: 200, body: { not: 'what we expect' } };
-    });
+    const stub = new StubFetch(() => ({
+      ok: true,
+      status: 200,
+      body: { not: 'what we expect' },
+    }));
 
     await expect(
       runPrerender({
@@ -268,6 +238,9 @@ describe('runPrerender — live mode', () => {
         apiBase: 'https://api-dev.towncrierapp.uk',
         buildKey: 'test-key',
         fetchImpl: stub.fetch,
+        loadAuthorities: async () => [
+          { id: 1, name: 'Adur', areaType: 'English District' },
+        ],
         logger: silentLogger,
       }),
     ).rejects.toThrow();
@@ -279,8 +252,71 @@ describe('runPrerender — live mode', () => {
         outDir,
         apiBase: undefined,
         buildKey: 'test-key',
+        loadAuthorities: async () => [
+          { id: 1, name: 'Adur', areaType: 'English District' },
+        ],
         logger: silentLogger,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('loadAuthoritiesFromFile', () => {
+  const FAKE_PATH = '/fake/authorities.json';
+
+  it('loads and validates a well-formed authority list', async () => {
+    const readImpl = async () =>
+      JSON.stringify([
+        { id: 1, name: 'Adur', areaType: 'English District' },
+        { id: 2, name: 'Aberdeen', areaType: 'Scottish Council' },
+      ]);
+    const list = await loadAuthoritiesFromFile(FAKE_PATH, readImpl);
+    expect(list).toHaveLength(2);
+    expect(list[0]).toEqual({
+      id: 1,
+      name: 'Adur',
+      areaType: 'English District',
+    });
+  });
+
+  it('throws when the file is missing', async () => {
+    const readImpl = async () => {
+      throw new Error('ENOENT: no such file or directory');
+    };
+    await expect(loadAuthoritiesFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on invalid JSON', async () => {
+    const readImpl = async () => 'not json at all';
+    await expect(loadAuthoritiesFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on a non-array payload', async () => {
+    const readImpl = async () => JSON.stringify({ authorities: [] });
+    await expect(loadAuthoritiesFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on an empty array (never a silent empty list)', async () => {
+    const readImpl = async () => JSON.stringify([]);
+    await expect(loadAuthoritiesFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on a malformed authority row', async () => {
+    const readImpl = async () =>
+      JSON.stringify([{ id: 'not-a-number', name: 'X', areaType: 'Y' }]);
+    await expect(loadAuthoritiesFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+});
+
+describe('authorities.json drift guard', () => {
+  it('the committed authority list loads, is a non-empty array, and every row is well-formed', async () => {
+    const list = await loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile);
+    expect(Array.isArray(list)).toBe(true);
+    expect(list.length).toBeGreaterThan(0);
+    for (const a of list) {
+      expect(typeof a.id).toBe('number');
+      expect(typeof a.name).toBe('string');
+      expect(typeof a.areaType).toBe('string');
+    }
   });
 });
