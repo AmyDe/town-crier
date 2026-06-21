@@ -86,6 +86,37 @@ func (s *CosmosStore) GetByUID(ctx context.Context, uid, authorityCode string) (
 	return doc.toDomain(), true, nil
 }
 
+// recentByAuthorityQuery is the bounded, index-backed top-N query for the most
+// recently active applications in a single authorityCode partition. It rides the
+// existing (/authorityCode ASC, /lastDifferent DESC) composite index, so the RU
+// cost is bounded by the @cap top-N (an index seek), never the partition size —
+// even for authorities holding tens of thousands of documents. Ordering is by
+// lastDifferent (most recently active) DESC, NOT startDate: startDate is excluded
+// from the indexing policy, so ordering by it would force a full-partition scan.
+const recentByAuthorityQuery = "SELECT TOP @cap * FROM c ORDER BY c.lastDifferent DESC"
+
+// RecentByAuthority returns up to cap most-recently-active applications in the
+// authorityCode partition, ordered by lastDifferent DESC. It is the read behind
+// the build-time SEO endpoint: a single bounded single-partition query, never a
+// cross-partition fan-out and never an unbounded scan. There is no PlanIt
+// fallback (GH#395 Invariant 1) — it reads only from Cosmos.
+func (s *CosmosStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
+	params := map[string]any{"@cap": cap}
+	raws, err := s.items.QueryItems(ctx, authorityCode, recentByAuthorityQuery, params)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
+	}
+	apps := make([]PlanningApplication, 0, len(raws))
+	for _, raw := range raws {
+		var doc applicationDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode recent application in %q: %w", authorityCode, err)
+		}
+		apps = append(apps, doc.toDomain())
+	}
+	return apps, nil
+}
+
 // findNearbyQuery is the single-partition ST_DISTANCE spatial query for nearby
 // applications. Coordinates and radius are bound as named parameters (mirroring
 // findZonesContainingQuery in the watchzones package) — no float literals are

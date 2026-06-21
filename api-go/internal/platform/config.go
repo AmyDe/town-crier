@@ -81,6 +81,14 @@ type Config struct {
 	// deployment exposes no admin surface.
 	AdminAPIKey string
 
+	// SiteBuildKey gates the build-time SEO endpoint
+	// GET /v1/authorities/{id}/applications (the X-Build-Key header). It is a
+	// dedicated, least-privilege key, distinct from AdminAPIKey: the SEO endpoint
+	// reads only public planning data, never user PII or subscriptions. Empty
+	// means the endpoint rejects every request, so an unconfigured deployment
+	// exposes no SEO surface.
+	SiteBuildKey string
+
 	// AppleBundleID is the App Store bundle id a verified StoreKit transaction
 	// must carry (the /v1/subscriptions/verify bundle check). It defaults to the
 	// canonical uk.towncrierapp.mobile — the value the iOS app is built under and
@@ -195,7 +203,8 @@ func LoadConfig() (Config, error) {
 		PostcodesIoBaseURL: getenv("POSTCODES_IO_BASE_URL", defaultPostcodesIoBaseURL),
 		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),
 
-		AdminAPIKey: os.Getenv("ADMIN_API_KEY"),
+		AdminAPIKey:  os.Getenv("ADMIN_API_KEY"),
+		SiteBuildKey: os.Getenv("SITE_BUILD_KEY"),
 
 		AppleBundleID:     getenv("APPLE_BUNDLE_ID", defaultAppleBundleID),
 		AppleEnvironments: parseAppleEnvironments(os.Getenv("APPLE_ENVIRONMENT")),

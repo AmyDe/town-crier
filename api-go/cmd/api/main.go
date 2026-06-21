@@ -254,7 +254,7 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cfg.ProDomains, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

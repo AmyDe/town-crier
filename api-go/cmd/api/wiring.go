@@ -51,6 +51,10 @@ var anonymousPatterns = map[string]struct{}{
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
 	"POST /v1/webhooks/appstore": {},
+	// The build-time SEO endpoint is anonymous to Auth0 (no bearer token); it is
+	// authenticated solely by the X-Build-Key gate inside the handler, mirroring
+	// the admin routes. It reads only public planning data from Cosmos.
+	"GET /v1/authorities/{id}/applications": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -90,7 +94,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, proDomains string, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, siteBuildKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -142,6 +146,11 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		} else {
 			applications.Routes(mux, appStore, nil, logger)
 		}
+		// The build-time SEO endpoint (anonymous to Auth0, gated by the dedicated
+		// X-Build-Key) reads recent applications by authority from the same store.
+		// It is registered here because it needs the applications store; the route
+		// is absent on a Cosmos-less local boot, where it falls to the 401 fallback.
+		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
