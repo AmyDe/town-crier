@@ -513,6 +513,48 @@ func recentRequest(t *testing.T, h http.Handler, key string) *httptest.ResponseR
 	return rec
 }
 
+// TestRouter_NearApplicationsBuildKeyGate confirms the build-time town-level SEO
+// endpoint (GET /v1/applications/near) is wired, anonymous to Auth0, and gated
+// solely by the X-Build-Key. The deny-all validator distinguishes the gates: the
+// Auth0 fallback would 401 with WWW-Authenticate: Bearer, whereas the build gate's
+// 401 carries no such header, and a correct key reaches the handler.
+func TestRouter_NearApplicationsBuildKeyGate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	appStore := applications.NewCosmosStore(newFakeItems())
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, "", profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
+
+	noKey := nearRequest(t, h, "")
+	if noKey.Code != http.StatusUnauthorized {
+		t.Fatalf("no key: status = %d, want 401", noKey.Code)
+	}
+	if got := noKey.Header().Get("WWW-Authenticate"); got != "" {
+		t.Errorf("no key: WWW-Authenticate = %q, want empty (build gate, not Auth0)", got)
+	}
+
+	withKey := nearRequest(t, h, "buildsecret")
+	if withKey.Code != http.StatusOK {
+		t.Fatalf("with key: status = %d body = %s", withKey.Code, withKey.Body.String())
+	}
+	if got := withKey.Body.String(); !strings.Contains(got, `"applications":[]`) {
+		t.Errorf("with key: body = %s, want a non-null applications array", got)
+	}
+}
+
+func nearRequest(t *testing.T, h http.Handler, key string) *httptest.ResponseRecorder {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1", nil)
+	if key != "" {
+		req.Header.Set("X-Build-Key", key)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 func adminRequest(t *testing.T, h http.Handler, key string) *httptest.ResponseRecorder {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
