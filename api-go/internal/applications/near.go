@@ -31,13 +31,24 @@ const (
 	maxLongitude = 180
 )
 
-// nearStore is the consumer-side store the recent-nearby SEO handler needs: a
-// bounded, single-partition spatial top-N read plus an exact in-radius count. The
-// concrete *CosmosStore satisfies it structurally.
+// nearStore is the consumer-side store the recent-nearby SEO handler needs: two
+// bounded, single-partition spatial top-N reads (recency-ordered and
+// distance-ordered) plus an exact in-radius count. The concrete *CosmosStore
+// satisfies it structurally.
 type nearStore interface {
 	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
+	NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
 	CountNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error)
 }
+
+// near ordering modes for the optional order query param. recency (the default,
+// also selected by an absent param) orders by lastDifferent DESC via
+// RecentNearby; distance orders by ST_DISTANCE ASC (nearest first) via
+// NearestNearby. Any other value is a 400.
+const (
+	orderRecency  = "recency"
+	orderDistance = "distance"
+)
 
 // nearHandler serves the build-time town-level SEO endpoint.
 type nearHandler struct {
@@ -55,12 +66,15 @@ func NearRoutes(mux *http.ServeMux, store nearStore, buildKey string, logger *sl
 	mux.HandleFunc("GET /v1/applications/near", requireBuildKey(buildKey, h.recentNearby))
 }
 
-// recentNearby returns up to limit most-recently-active applications within a
-// bounded radius of (lat, lng), scoped to the required authorityId's single
-// Cosmos partition, drawn from one bounded read of at most nearReadCap documents.
-// authorityId scopes the partition; a missing/invalid id, a non-finite or
-// out-of-range coordinate, or a non-finite/non-positive radius is a bodyless 400
-// (the build key was already validated by the gate). There is no PlanIt fallback.
+// recentNearby returns up to limit applications within a bounded radius of (lat,
+// lng), scoped to the required authorityId's single Cosmos partition, drawn from
+// one bounded read of at most nearReadCap documents. The optional order param
+// selects the ordering: recency (default, also when absent) is most-recently-
+// active first; distance is nearest-first (for overlap reduction between adjacent
+// town pages). authorityId scopes the partition; a missing/invalid id, a
+// non-finite or out-of-range coordinate, a non-finite/non-positive radius, or an
+// unknown order value is a bodyless 400 (the build key was already validated by
+// the gate). There is no PlanIt fallback.
 func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -88,10 +102,18 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// nearby selects the ordering: distance -> NearestNearby (nearest first),
+	// recency or absent -> RecentNearby (lastDifferent DESC, unchanged default).
+	nearby, ok := selectNearbyRead(h.store, q.Get("order"))
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	limit := parseLimit(q.Get("limit"))
 	authorityCode := strconv.Itoa(id)
 
-	apps, err := h.store.RecentNearby(r.Context(), authorityCode, lat, lng, radius, nearReadCap)
+	apps, err := nearby(r.Context(), authorityCode, lat, lng, radius, nearReadCap)
 	if err != nil {
 		serverError(w, r, h.logger, "recent applications near point", err)
 		return
@@ -135,6 +157,23 @@ func parseCoordinate(raw string, minVal, maxVal float64) (float64, bool) {
 		return 0, false
 	}
 	return v, true
+}
+
+// selectNearbyRead maps the optional order query param to the bounded
+// single-partition read it selects: an empty or "recency" value picks the
+// recency-ordered RecentNearby (the unchanged default), "distance" picks the
+// distance-ordered NearestNearby (nearest first). The bool reports validity; the
+// caller turns false into a 400. Both reads share the same signature, so the
+// handler calls the result without branching further.
+func selectNearbyRead(store nearStore, order string) (func(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error), bool) {
+	switch strings.TrimSpace(order) {
+	case "", orderRecency:
+		return store.RecentNearby, true
+	case orderDistance:
+		return store.NearestNearby, true
+	default:
+		return nil, false
+	}
 }
 
 // parseRadius parses the optional radius in metres: it defaults to
