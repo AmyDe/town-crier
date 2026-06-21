@@ -183,6 +183,8 @@ describe('runPrerender — town live mode', () => {
     expect(nearCalls[0].url).toContain('lat=50.2632');
     expect(nearCalls[0].url).toContain('lng=-5.051');
     expect(nearCalls[0].url).toContain('limit=30');
+    // Selects the nearest-N by distance (the order=distance variant from tc-2avw.1).
+    expect(nearCalls[0].url).toContain('order=distance');
     expect(nearCalls[0].init.headers['X-Build-Key']).toBe('test-key');
 
     const html = await readFile(
