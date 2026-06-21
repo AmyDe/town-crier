@@ -9,9 +9,11 @@ import (
 )
 
 // recentReadCap is the hard upper bound on documents read per authority in one
-// SEO build request. The query is bounded by it (SELECT TOP @cap), so the RU cost
-// and response size stay flat regardless of how busy the authority is. It also
-// bounds the denominator of the status breakdown.
+// SEO build request for the rendered list. The list query is bounded by it
+// (SELECT TOP @cap), so the RU cost and response size of the card list stay flat
+// regardless of how busy the authority is. It bounds only the rendered list, not
+// the status breakdown — that is an index-served GROUP BY over the whole
+// partition (BreakdownByAuthority).
 const recentReadCap = 200
 
 // recentDefaultLimit and recentMaxLimit bound how many applications the response
@@ -23,11 +25,12 @@ const (
 )
 
 // recentStore is the consumer-side store the SEO read handler needs: a bounded,
-// single-partition top-N read by authority plus an exact partition count. The
-// concrete *CosmosStore satisfies it structurally.
+// single-partition top-N read by authority plus a whole-partition per-appState
+// breakdown (whose buckets sum to the exact partition total). The concrete
+// *CosmosStore satisfies it structurally.
 type recentStore interface {
 	RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error)
-	CountByAuthority(ctx context.Context, authorityCode string) (int, error)
+	BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error)
 }
 
 // recentHandler serves the build-time SEO endpoint.
@@ -66,13 +69,27 @@ func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// total is the EXACT partition count (index-only COUNT), independent of the
-	// bounded read which saturates at recentReadCap. The render slice must clamp
-	// against the bounded read length, NOT total — total can dwarf len(apps).
-	total, err := h.store.CountByAuthority(r.Context(), authorityCode)
+	// breakdown is the per-appState distribution over the WHOLE partition (an
+	// index-served GROUP BY), independent of the bounded read which saturates at
+	// recentReadCap. The render slice must clamp against the bounded read length,
+	// NOT the breakdown total — the total can dwarf len(apps).
+	breakdown, err := h.store.BreakdownByAuthority(r.Context(), authorityCode)
 	if err != nil {
-		serverError(w, r, h.logger, "count applications by authority", err)
+		serverError(w, r, h.logger, "status breakdown by authority", err)
 		return
+	}
+
+	// StatusBreakdown is always a non-null array on the wire; an empty partition
+	// yields an empty (not nil) slice so it marshals to [] rather than null.
+	if breakdown == nil {
+		breakdown = []StateCount{}
+	}
+
+	// total is the EXACT whole-partition total: the sum of the breakdown buckets,
+	// so the rendered "tracking N applications" lead line equals the breakdown.
+	total := 0
+	for _, sc := range breakdown {
+		total += sc.Count
 	}
 
 	render := len(apps)
@@ -97,7 +114,7 @@ func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request
 		AreaName:        areaName,
 		Applications:    results,
 		Total:           total,
-		StatusBreakdown: breakdownByState(apps),
+		StatusBreakdown: breakdown,
 	})
 }
 

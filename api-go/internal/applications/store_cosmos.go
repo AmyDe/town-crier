@@ -122,33 +122,65 @@ func (s *CosmosStore) RecentByAuthority(ctx context.Context, authorityCode strin
 	return apps, nil
 }
 
-// countByAuthorityQuery is the exact, index-only count of every application in a
-// single authorityCode partition. SELECT VALUE COUNT(1) hydrates no documents, so
-// it stays cheap even for an authority holding tens of thousands of rows, and it
-// returns the EXACT partition total — unlike the TOP-@cap bounded read, which
-// saturates at the cap. Cosmos returns a single row that is a bare JSON number.
-const countByAuthorityQuery = "SELECT VALUE COUNT(1) FROM c"
+// breakdownByAuthorityQuery is the exact, index-served per-appState distribution
+// over a single authorityCode partition. The GROUP BY is served by the appState
+// index, so it hydrates no documents and stays cheap (≈3 RU flat, regardless of
+// partition size), and the buckets sum to the EXACT partition total — unlike the
+// TOP-@cap bounded read, which saturates at the cap. Each row is a projection
+// {"appState": "...", "count": N}; Cosmos OMITS the appState property entirely
+// when the value is undefined, so a missing-appState bucket arrives without that
+// key (decoded as a nil *string), distinct from an explicit JSON null.
+const breakdownByAuthorityQuery = "SELECT c.appState, COUNT(1) AS count FROM c GROUP BY c.appState"
 
-// CountByAuthority returns the exact number of applications in the authorityCode
-// partition. It backs the build-time SEO endpoint's total: RecentByAuthority
-// renders the bounded list, this counts the whole partition. It runs on the
+// BreakdownByAuthority returns the per-appState distribution over the WHOLE
+// authorityCode partition, ordered count DESC then appState ASC with nil last
+// (sortStateCounts, the same comparator breakdownByState uses). It backs the
+// build-time SEO endpoint's status breakdown and total: RecentByAuthority renders
+// the bounded list, this spans the whole partition, and the handler sums these
+// buckets for the exact Total. A row whose appState is absent (Cosmos omits an
+// undefined projection) OR explicit JSON null folds into the single nil-*string
+// bucket, matching breakdownByState's nil semantics. It runs on the
 // latency-tolerant build-read budget (QueryItemsLongRead), like the sibling SEO
 // reads, and reads only from Cosmos (GH#395 Invariant 1) — never PlanIt.
-func (s *CosmosStore) CountByAuthority(ctx context.Context, authorityCode string) (int, error) {
+func (s *CosmosStore) BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error) {
 	// Latency-tolerant build-time read: a LARGE authority partition legitimately
 	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
-	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, countByAuthorityQuery, nil)
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, breakdownByAuthorityQuery, nil)
 	if err != nil {
-		return 0, fmt.Errorf("count applications for authority %q: %w", authorityCode, err)
+		return nil, fmt.Errorf("status breakdown for authority %q: %w", authorityCode, err)
 	}
-	if len(raws) == 0 {
-		return 0, nil
+	// breakdownRow decodes a GROUP BY projection. AppState is a *string so an
+	// absent property (Cosmos omits undefined projections) and an explicit JSON
+	// null both decode to nil — folded into the single nil bucket below.
+	type breakdownRow struct {
+		AppState *string `json:"appState"`
+		Count    int     `json:"count"`
 	}
-	var total int
-	if err := json.Unmarshal(raws[0], &total); err != nil {
-		return 0, fmt.Errorf("decode application count for authority %q: %w", authorityCode, err)
+	counts := make(map[string]int)
+	nilCount := 0
+	for _, raw := range raws {
+		var row breakdownRow
+		if err := json.Unmarshal(raw, &row); err != nil {
+			return nil, fmt.Errorf("decode status breakdown row for authority %q: %w", authorityCode, err)
+		}
+		if row.AppState == nil {
+			nilCount += row.Count
+			continue
+		}
+		counts[*row.AppState] += row.Count
 	}
-	return total, nil
+
+	out := make([]StateCount, 0, len(counts)+1)
+	for state, n := range counts {
+		s := state
+		out = append(out, StateCount{AppState: &s, Count: n})
+	}
+	if nilCount > 0 {
+		out = append(out, StateCount{AppState: nil, Count: nilCount})
+	}
+
+	sortStateCounts(out)
+	return out, nil
 }
 
 // findNearbyQuery is the single-partition ST_DISTANCE spatial query for nearby

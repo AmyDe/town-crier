@@ -84,10 +84,12 @@ type NearbyResult struct {
 
 // RecentByAuthorityResult is the wire shape of the build-time SEO endpoint
 // GET /v1/authorities/{id}/applications. Applications is always a non-null array
-// (at most the request's limit). Total is the EXACT count of applications in the
-// authority partition (a separate index-only COUNT, not the bounded read length).
-// StatusBreakdown is the per-appState distribution over the bounded read (its
-// denominator is that read, not the whole partition), always a non-null array.
+// (at most the request's limit). Total is the EXACT whole-partition total: the
+// sum of the StatusBreakdown buckets, so the rendered "tracking N applications"
+// lead line always equals the breakdown. StatusBreakdown is the per-appState
+// distribution over the WHOLE authority partition (its denominator is the whole
+// partition, not the bounded read), computed by an index-served GROUP BY, always
+// a non-null array.
 type RecentByAuthorityResult struct {
 	AuthorityID     int                 `json:"authorityId"`
 	AreaName        string              `json:"areaName"`
@@ -147,20 +149,18 @@ func RecentApplicationOf(a PlanningApplication) RecentApplication {
 }
 
 // StateCount is one row of an appState breakdown: a nullable raw appState and how
-// many applications in the bounded read carried it. The appState is the RAW
-// PlanIt value (nil when absent), not a resident-facing label — the web owns that
-// mapping.
+// many applications carried it. The appState is the RAW PlanIt value (nil when
+// absent), not a resident-facing label — the web owns that mapping.
 type StateCount struct {
 	AppState *string `json:"appState"`
 	Count    int     `json:"count"`
 }
 
-// breakdownByState computes the per-appState distribution over the given bounded
-// read of applications. The denominator is the bounded read (at most the handler
-// cap), NOT the whole partition — appState is not indexed, so an exact
-// over-everything breakdown is out of scope. Keys are the RAW appState values; a
-// nil appState is a distinct bucket. The order is deterministic: count DESC, then
-// appState ASC, with nil sorting last.
+// breakdownByState computes the per-appState distribution over the GIVEN slice of
+// applications: the denominator is exactly the slice it is handed (e.g. the town
+// page's bounded read), not the whole partition. Keys are the RAW appState
+// values; a nil appState is a distinct bucket. The order is deterministic: count
+// DESC, then appState ASC, with nil sorting last.
 func breakdownByState(apps []PlanningApplication) []StateCount {
 	counts := make(map[string]int)
 	nilCount := 0
@@ -181,6 +181,15 @@ func breakdownByState(apps []PlanningApplication) []StateCount {
 		out = append(out, StateCount{AppState: nil, Count: nilCount})
 	}
 
+	sortStateCounts(out)
+	return out
+}
+
+// sortStateCounts orders a breakdown deterministically in place: count DESC, then
+// raw appState ASC, with the nil-appState bucket sorting last on a count tie. It
+// is the single comparator shared by breakdownByState (over a bounded slice) and
+// CosmosStore.BreakdownByAuthority (over a whole-partition GROUP BY).
+func sortStateCounts(out []StateCount) {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
 			return out[i].Count > out[j].Count // count DESC
@@ -194,7 +203,6 @@ func breakdownByState(apps []PlanningApplication) []StateCount {
 		}
 		return *out[i].AppState < *out[j].AppState // appState ASC
 	})
-	return out
 }
 
 // NearbyResultOf maps a domain snapshot to the raw-domain wire shape.
