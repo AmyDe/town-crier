@@ -105,7 +105,9 @@ const recentByAuthorityQuery = "SELECT TOP @cap * FROM c ORDER BY c.lastDifferen
 // fallback (GH#395 Invariant 1) — it reads only from Cosmos.
 func (s *CosmosStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
 	params := map[string]any{"@cap": cap}
-	raws, err := s.items.QueryItems(ctx, authorityCode, recentByAuthorityQuery, params)
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, recentByAuthorityQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
 	}
@@ -183,7 +185,9 @@ func (s *CosmosStore) RecentNearby(ctx context.Context, authorityCode string, la
 		"@radiusMetres": radiusMetres,
 		"@cap":          cap,
 	}
-	raws, err := s.items.QueryItems(ctx, authorityCode, recentNearbyQuery, params)
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, recentNearbyQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications near %q: %w", authorityCode, err)
 	}
