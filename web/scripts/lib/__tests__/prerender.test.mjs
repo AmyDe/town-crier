@@ -68,6 +68,11 @@ describe('runPrerender — fixture mode', () => {
     );
     expect(html).toContain('PlanIt');
     expect(html).toContain('Get push alerts for Basingstoke and Deane');
+    // The lastDifferent date threads through to a "Last updated" card label.
+    expect(html).toContain('Last updated 15 Jun 2026');
+    // The server breakdown (20 Granted) is threaded through and exceeds the three
+    // cards rendered — proving the stats are server-driven, not card-counted.
+    expect(html).toMatch(/Granted[\s\S]*?20/);
   });
 
   it('excludes a non-qualifying areaType (English County) and a below-gate authority', async () => {
@@ -135,12 +140,13 @@ describe('runPrerender — live mode', () => {
                 description: 'Extension',
                 appState: 'Permitted',
                 startDate: '2026-01-10',
+                lastDifferent: '2026-06-10T10:00:00+00:00',
                 link: 'https://planit.org.uk/planapplic/A1',
                 url: null,
               },
             ],
             total: 12,
-            totalCapped: false,
+            statusBreakdown: [{ appState: 'Permitted', count: 12 }],
           },
         };
       }
@@ -186,7 +192,7 @@ describe('runPrerender — live mode', () => {
         areaName: 'Adur',
         applications: [],
         total: 5,
-        totalCapped: false,
+        statusBreakdown: [],
       },
     }));
 
@@ -204,6 +210,33 @@ describe('runPrerender — live mode', () => {
 
     expect(result.published).toEqual([]);
     expect(await exists(join(outDir, 'planning', 'adur'))).toBe(false);
+  });
+
+  it('fails loud when the applications endpoint omits statusBreakdown', async () => {
+    const stub = new StubFetch(() => ({
+      ok: true,
+      status: 200,
+      body: {
+        authorityId: 1,
+        areaName: 'Adur',
+        applications: [],
+        total: 12,
+      },
+    }));
+
+    await expect(
+      runPrerender({
+        outDir,
+        apiBase: 'https://api-dev.towncrierapp.uk',
+        buildKey: 'test-key',
+        fetchImpl: stub.fetch,
+        loadAuthorities: async () => [
+          { id: 1, name: 'Adur', areaType: 'English District' },
+        ],
+        loadTowns: async () => [],
+        logger: silentLogger,
+      }),
+    ).rejects.toThrow();
   });
 
   it('treats zero qualifying authorities as a valid (non-error) build', async () => {

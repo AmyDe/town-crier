@@ -5,7 +5,12 @@
     "areaType": "English District",
     "areaName": "Basingstoke and Deane",
     "total": 42,
-    "totalCapped": false,
+    "statusBreakdown": [
+      { "appState": "Permitted", "count": 20 },
+      { "appState": "Rejected", "count": 12 },
+      { "appState": "Undecided", "count": 8 },
+      { "appState": null, "count": 2 }
+    ],
     "applications": [
       {
         "uid": "BDB/2026/0001",
@@ -14,6 +19,7 @@
         "description": "Erection of a two-storey rear extension and associated landscaping works to an existing dwelling house.",
         "appState": "Permitted",
         "startDate": "2026-01-15",
+        "lastDifferent": "2026-06-15T10:00:00+00:00",
         "link": "https://planit.org.uk/planapplic/26-00001-FUL",
         "url": "https://planning.basingstoke.gov.uk/online-applications/26-00001-FUL"
       },
@@ -24,6 +30,7 @@
         "description": "Single-storey side extension, replacement boundary wall and new vehicular access.",
         "appState": "Rejected",
         "startDate": "2026-02-03",
+        "lastDifferent": "2026-06-12T09:00:00+00:00",
         "link": "https://planit.org.uk/planapplic/26-00002-HSE",
         "url": null
       },
@@ -34,6 +41,7 @@
         "description": "Listed building consent for internal alterations and the installation of accessible facilities.",
         "appState": "Undecided",
         "startDate": "2026-02-20",
+        "lastDifferent": "2026-06-09T08:00:00+00:00",
         "link": "https://planit.org.uk/planapplic/26-00003-LBC",
         "url": "https://planning.basingstoke.gov.uk/online-applications/26-00003-LBC"
       }
@@ -45,7 +53,7 @@
     "areaType": "English County",
     "areaName": "West Sussex",
     "total": 88,
-    "totalCapped": false,
+    "statusBreakdown": [],
     "applications": []
   },
   {
@@ -54,7 +62,7 @@
     "areaType": "English District",
     "areaName": "Sparse Parish",
     "total": 4,
-    "totalCapped": false,
+    "statusBreakdown": [{ "appState": "Undecided", "count": 4 }],
     "applications": [
       {
         "uid": "SP/2026/0001",
@@ -63,6 +71,7 @@
         "description": "Single dwelling.",
         "appState": "Undecided",
         "startDate": "2026-01-01",
+        "lastDifferent": "2026-06-01T08:00:00+00:00",
         "link": "https://planit.org.uk/planapplic/SP-26-0001",
         "url": null
       }
