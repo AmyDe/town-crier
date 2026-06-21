@@ -25,6 +25,10 @@ type fakeNearStore struct {
 	lastRadius        float64
 	lastCap           int
 
+	// nearestCalled records whether the distance-ordered read path was taken
+	// (order=distance) instead of the recency-ordered RecentNearby default.
+	nearestCalled bool
+
 	countCalled       bool
 	lastCountAuthCode string
 	lastCountLat      float64
@@ -34,6 +38,23 @@ type fakeNearStore struct {
 
 func (f *fakeNearStore) RecentNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
 	f.called = true
+	f.lastAuthorityCode = authorityCode
+	f.lastLat = lat
+	f.lastLng = lng
+	f.lastRadius = radiusMetres
+	f.lastCap = cap
+	if f.err != nil {
+		return nil, f.err
+	}
+	if cap >= 0 && cap < len(f.apps) {
+		return f.apps[:cap], nil
+	}
+	return f.apps, nil
+}
+
+func (f *fakeNearStore) NearestNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
+	f.called = true
+	f.nearestCalled = true
 	f.lastAuthorityCode = authorityCode
 	f.lastLat = lat
 	f.lastLng = lng
@@ -460,5 +481,109 @@ func TestNearHandler_CountErrorReturns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("count error: got %d, want 500", rec.Code)
+	}
+}
+
+func TestNearHandler_DefaultOrderRoutesToRecentNearby(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	// Absent order param -> recency-ordered RecentNearby (the unchanged default).
+	if !store.called || store.nearestCalled {
+		t.Errorf("default order must route to RecentNearby, not NearestNearby (called=%v nearest=%v)", store.called, store.nearestCalled)
+	}
+}
+
+func TestNearHandler_OrderRecencyRoutesToRecentNearby(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=recency")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	// Explicit order=recency must behave exactly like the default.
+	if !store.called || store.nearestCalled {
+		t.Errorf("order=recency must route to RecentNearby, not NearestNearby (called=%v nearest=%v)", store.called, store.nearestCalled)
+	}
+}
+
+func TestNearHandler_OrderDistanceRoutesToNearestNearby(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5155&lng=-0.0931&radius=4000&order=distance")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	// order=distance must route to the distance-ordered NearestNearby read.
+	if !store.nearestCalled {
+		t.Fatalf("order=distance must route to NearestNearby")
+	}
+	// Same scoping/clamping/cap and geo args reach the distance-ordered read.
+	if store.lastAuthorityCode != "471" || store.lastCap != 200 {
+		t.Errorf("nearest read call: authorityCode=%q cap=%d, want \"471\" 200", store.lastAuthorityCode, store.lastCap)
+	}
+	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
+		t.Errorf("nearest geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
+	}
+	// The exact count is still taken over the same scoped, clamped geo window.
+	if !store.countCalled || store.lastCountAuthCode != "471" {
+		t.Errorf("count call: called=%v auth=%q, want true \"471\"", store.countCalled, store.lastCountAuthCode)
+	}
+}
+
+func TestNearHandler_UnknownOrderReturns400(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=banana")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown order: got %d, want 400", rec.Code)
+	}
+	if store.called || store.countCalled {
+		t.Errorf("store must not be hit on an unknown order value")
+	}
+}
+
+func TestNearHandler_OrderDistanceStillRejectsOutOfRangeCoord(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=91&lng=-0.1&order=distance")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("out-of-range lat with order=distance: got %d, want 400", rec.Code)
+	}
+	if store.called || store.countCalled {
+		t.Errorf("store must not be hit on an out-of-range coord, even with order=distance")
+	}
+}
+
+func TestNearHandler_OrderDistanceStillRejectsNonPositiveRadius(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=0&order=distance")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("non-positive radius with order=distance: got %d, want 400", rec.Code)
+	}
+	if store.called || store.countCalled {
+		t.Errorf("store must not be hit on a non-positive radius, even with order=distance")
 	}
 }
