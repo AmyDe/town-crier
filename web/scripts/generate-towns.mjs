@@ -337,8 +337,13 @@ export function buildGazetteer(populationCsv, centroidCsv, mapping) {
 
 /**
  * Split CSV text into field arrays, dropping the header row and blank lines.
- * ONS BUA names do not contain embedded commas, so a full RFC-4180 parser is
- * unnecessary; we strip a single layer of surrounding double quotes per field.
+ * A handful of official ONS names carry embedded commas — both BUA names
+ * (`Longfield, New Ash Green and Hartley`) and, more importantly, LAD names
+ * that must match `authority-mapping.json` verbatim (`Bristol, City of`,
+ * `Kingston upon Hull, City of`, `Herefordshire, County of`, `Bournemouth,
+ * Christchurch and Poole`). Those fields are double-quoted in the source CSVs,
+ * so we honour RFC-4180 quoting: a comma inside a quoted field is part of the
+ * value, and a doubled `""` is a literal quote.
  *
  * @param {string} text raw CSV text (first non-blank line is the header)
  * @returns {string[][]}
@@ -346,7 +351,45 @@ export function buildGazetteer(populationCsv, centroidCsv, mapping) {
 function parseCsvRows(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
   // Drop the header row.
-  return lines.slice(1).map((line) => line.split(',').map((f) => f.replace(/^"|"$/g, '')));
+  return lines.slice(1).map((line) => parseCsvLine(line));
+}
+
+/**
+ * Split a single CSV line into fields, respecting RFC-4180 double-quoting so a
+ * comma inside a quoted field is not treated as a delimiter. A doubled quote
+ * (`""`) inside a quoted field is an escaped literal quote.
+ *
+ * @param {string} line one CSV record (no trailing newline)
+ * @returns {string[]} the parsed fields, with surrounding quotes removed
+ */
+export function parseCsvLine(line) {
+  const fields = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      fields.push(field);
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+  fields.push(field);
+  return fields;
 }
 
 // ── OSGB36 British National Grid -> WGS84 ──────────────────────────────────
