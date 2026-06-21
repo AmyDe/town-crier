@@ -440,6 +440,163 @@ func TestCosmosStore_RecentNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 }
 
+func TestCosmosStore_CountByAuthority_DecodesScalarScopedToPartition(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// SELECT VALUE COUNT(1) returns a single row that is a bare JSON number.
+	items.queryResult = [][]byte{[]byte("42")}
+	store := NewCosmosStore(items)
+
+	got, err := store.CountByAuthority(context.Background(), "471")
+	if err != nil {
+		t.Fatalf("CountByAuthority: %v", err)
+	}
+	if got != 42 {
+		t.Errorf("count: got %d, want 42", got)
+	}
+	// Scoped to the authorityCode logical partition (never cross-partition).
+	if items.lastQueryPK != "471" {
+		t.Errorf("query partition key: got %q, want \"471\"", items.lastQueryPK)
+	}
+	// Index-only scalar count over the whole partition — no TOP @cap (that would
+	// saturate the total), no ordering.
+	want := "SELECT VALUE COUNT(1) FROM c"
+	if items.lastQuery != want {
+		t.Errorf("count query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+	if _, ok := items.lastQueryParams["@cap"]; ok {
+		t.Errorf("count query must not bind @cap (it counts the whole partition): %v", items.lastQueryParams)
+	}
+}
+
+func TestCosmosStore_CountByAuthority_EmptyResultIsZero(t *testing.T) {
+	t.Parallel()
+	// No rows at all (defensive): an empty result set yields 0, not an error.
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.CountByAuthority(context.Background(), "471")
+	if err != nil {
+		t.Fatalf("CountByAuthority: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("count: got %d, want 0", got)
+	}
+}
+
+func TestCosmosStore_CountByAuthority_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryResult = [][]byte{[]byte("3")}
+	store := NewCosmosStore(items)
+
+	if _, err := store.CountByAuthority(context.Background(), "156"); err != nil {
+		t.Fatalf("CountByAuthority: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("CountByAuthority must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
+func TestCosmosStore_CountByAuthority_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryErr = context.DeadlineExceeded
+	store := NewCosmosStore(items)
+
+	if _, err := store.CountByAuthority(context.Background(), "471"); err == nil {
+		t.Fatal("CountByAuthority: expected error, got nil")
+	}
+}
+
+func TestCosmosStore_CountNearby_DecodesScalarWithSpatialFilterScopedToPartition(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryResult = [][]byte{[]byte("17")}
+	store := NewCosmosStore(items)
+
+	got, err := store.CountNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
+	if err != nil {
+		t.Fatalf("CountNearby: %v", err)
+	}
+	if got != 17 {
+		t.Errorf("count: got %d, want 17", got)
+	}
+	if items.lastQueryPK != "441" {
+		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
+	}
+	// Same single-partition ST_DISTANCE filter and named-param style as
+	// recentNearbyQuery, but a scalar COUNT instead of a bounded TOP @cap.
+	want := "SELECT VALUE COUNT(1) FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
+	if items.lastQuery != want {
+		t.Errorf("count nearby query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+	if _, ok := items.lastQueryParams["@cap"]; ok {
+		t.Errorf("count query must not bind @cap: %v", items.lastQueryParams)
+	}
+}
+
+func TestCosmosStore_CountNearby_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _ = store.CountNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
+
+	// No coordinate or radius value may be string-concatenated into the query —
+	// they must all be bound as named parameters.
+	if items.lastQuery == "" {
+		t.Fatal("no query was issued")
+	}
+	for _, literal := range []string{"51.4975", "-0.1357", "5000"} {
+		if strings.Contains(items.lastQuery, literal) {
+			t.Errorf("query contains literal %q — should be a named parameter; query: %s", literal, items.lastQuery)
+		}
+	}
+	wantParams := map[string]any{
+		"@latitude":     51.4975,
+		"@longitude":    -0.1357,
+		"@radiusMetres": 5000.0,
+	}
+	for k, wantVal := range wantParams {
+		gotVal, ok := items.lastQueryParams[k]
+		if !ok {
+			t.Errorf("param %q not found in query params %v", k, items.lastQueryParams)
+			continue
+		}
+		if gotVal != wantVal {
+			t.Errorf("param %q: got %v, want %v", k, gotVal, wantVal)
+		}
+	}
+}
+
+func TestCosmosStore_CountNearby_EmptyResultIsZero(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.CountNearby(context.Background(), "471", 51.5, -0.1, 5000)
+	if err != nil {
+		t.Fatalf("CountNearby: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("count: got %d, want 0", got)
+	}
+}
+
+func TestCosmosStore_CountNearby_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryResult = [][]byte{[]byte("9")}
+	store := NewCosmosStore(items)
+
+	if _, err := store.CountNearby(context.Background(), "156", 51.5, -0.1, 5000); err != nil {
+		t.Fatalf("CountNearby: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("CountNearby must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
 // The build-time SEO reads run over a LARGE authority partition and legitimately
 // exceed the tight 1.5s OLTP budget, so they must route through the longer-budget
 // QueryItemsLongRead accessor — never the OLTP QueryItems (tc-9tov).
