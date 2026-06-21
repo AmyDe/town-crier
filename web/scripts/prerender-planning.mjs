@@ -61,7 +61,7 @@ export const AUTHORITIES_FILE = join(
  * The town gazetteer is a slim, committed JSON file in the web app's source
  * tree (`web/src/data/towns.json`). It is regenerated occasionally by
  * `scripts/generate-towns.mjs` from OS Open Names — never downloaded at build
- * time. Each row is `{ slug, name, lat, lng, authorityId }`.
+ * time. Each row is `{ slug, name, lat, lng, authorityId, population }`.
  * @type {string}
  */
 export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
@@ -140,6 +140,7 @@ export async function loadAuthoritiesFromFile(filePath, readFileImpl) {
  * @property {number} lat           WGS84 latitude (centroid)
  * @property {number} lng           WGS84 longitude (centroid)
  * @property {number} authorityId   parent authority id (resolves to its slug)
+ * @property {number} population    built-up-area population (gates which towns ship)
  */
 
 /**
@@ -184,7 +185,8 @@ export async function loadTownsFromFile(filePath, readFileImpl) {
       t.name.length === 0 ||
       !Number.isFinite(t?.lat) ||
       !Number.isFinite(t?.lng) ||
-      !Number.isFinite(t?.authorityId)
+      !Number.isFinite(t?.authorityId) ||
+      !Number.isFinite(t?.population)
     ) {
       throw new Error(`town gazetteer at ${filePath} has a malformed town row`);
     }
@@ -323,9 +325,13 @@ async function considerAuthority(args) {
  * @returns {Promise<{ applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
+  // `order=distance` (tc-2avw.1) makes the server return the nearest-N in the
+  // radius by ST_DISTANCE, so adjacent town pages in a conurbation overlap less.
+  // The returned set is left in the API's order here; recency-display re-sorting
+  // is the renderer's job.
   const url =
     `${apiBase}/v1/applications/near?authorityId=${town.authorityId}` +
-    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}`;
+    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}&order=distance`;
   const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
   if (!res.ok) {
     throw new Error(

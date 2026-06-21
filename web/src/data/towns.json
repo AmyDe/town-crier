@@ -1,14 +1,14 @@
 [
-  { "slug": "croydon", "name": "Croydon", "lat": 51.3762, "lng": -0.0982, "authorityId": 301 },
-  { "slug": "truro", "name": "Truro", "lat": 50.2632, "lng": -5.0510, "authorityId": 52 },
-  { "slug": "newquay", "name": "Newquay", "lat": 50.4156, "lng": -5.0739, "authorityId": 52 },
-  { "slug": "cambridge", "name": "Cambridge", "lat": 52.2053, "lng": 0.1218, "authorityId": 61 },
-  { "slug": "wembley", "name": "Wembley", "lat": 51.5530, "lng": -0.2963, "authorityId": 298 },
-  { "slug": "ealing", "name": "Ealing", "lat": 51.5130, "lng": -0.3089, "authorityId": 302 },
-  { "slug": "greenwich", "name": "Greenwich", "lat": 51.4826, "lng": -0.0077, "authorityId": 304 },
-  { "slug": "woolwich", "name": "Woolwich", "lat": 51.4920, "lng": 0.0640, "authorityId": 304 },
-  { "slug": "bexleyheath", "name": "Bexleyheath", "lat": 51.4549, "lng": 0.1505, "authorityId": 297 },
-  { "slug": "hackney", "name": "Hackney", "lat": 51.5450, "lng": -0.0553, "authorityId": 305 },
-  { "slug": "islington", "name": "Islington", "lat": 51.5362, "lng": -0.1033, "authorityId": 312 },
-  { "slug": "finchley", "name": "Finchley", "lat": 51.5990, "lng": -0.1870, "authorityId": 296 }
+  { "slug": "croydon", "name": "Croydon", "lat": 51.3762, "lng": -0.0982, "authorityId": 301, "population": 192064 },
+  { "slug": "truro", "name": "Truro", "lat": 50.2632, "lng": -5.0510, "authorityId": 52, "population": 18766 },
+  { "slug": "newquay", "name": "Newquay", "lat": 50.4156, "lng": -5.0739, "authorityId": 52, "population": 20342 },
+  { "slug": "cambridge", "name": "Cambridge", "lat": 52.2053, "lng": 0.1218, "authorityId": 61, "population": 145674 },
+  { "slug": "wembley", "name": "Wembley", "lat": 51.5530, "lng": -0.2963, "authorityId": 298, "population": 102856 },
+  { "slug": "ealing", "name": "Ealing", "lat": 51.5130, "lng": -0.3089, "authorityId": 302, "population": 85014 },
+  { "slug": "greenwich", "name": "Greenwich", "lat": 51.4826, "lng": -0.0077, "authorityId": 304, "population": 52783 },
+  { "slug": "woolwich", "name": "Woolwich", "lat": 51.4920, "lng": 0.0640, "authorityId": 304, "population": 84959 },
+  { "slug": "bexleyheath", "name": "Bexleyheath", "lat": 51.4549, "lng": 0.1505, "authorityId": 297, "population": 31929 },
+  { "slug": "hackney", "name": "Hackney", "lat": 51.5450, "lng": -0.0553, "authorityId": 305, "population": 281120 },
+  { "slug": "islington", "name": "Islington", "lat": 51.5362, "lng": -0.1033, "authorityId": 312, "population": 215667 },
+  { "slug": "finchley", "name": "Finchley", "lat": 51.5990, "lng": -0.1870, "authorityId": 296, "population": 65812 }
 ]

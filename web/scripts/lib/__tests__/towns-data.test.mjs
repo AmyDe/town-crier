@@ -15,7 +15,14 @@ describe('loadTownsFromFile', () => {
   it('loads and validates a well-formed gazetteer', async () => {
     const readImpl = async () =>
       JSON.stringify([
-        { slug: 'truro', name: 'Truro', lat: 50.2632, lng: -5.051, authorityId: 52 },
+        {
+          slug: 'truro',
+          name: 'Truro',
+          lat: 50.2632,
+          lng: -5.051,
+          authorityId: 52,
+          population: 19000,
+        },
       ]);
     const towns = await loadTownsFromFile(FAKE_PATH, readImpl);
     expect(towns).toHaveLength(1);
@@ -25,6 +32,7 @@ describe('loadTownsFromFile', () => {
       lat: 50.2632,
       lng: -5.051,
       authorityId: 52,
+      population: 19000,
     });
   });
 
@@ -55,7 +63,30 @@ describe('loadTownsFromFile', () => {
 
   it('throws on a malformed town row (missing authorityId)', async () => {
     const readImpl = async () =>
-      JSON.stringify([{ slug: 'x', name: 'X', lat: 0, lng: 0 }]);
+      JSON.stringify([{ slug: 'x', name: 'X', lat: 0, lng: 0, population: 5000 }]);
+    await expect(loadTownsFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on a malformed town row (missing population)', async () => {
+    const readImpl = async () =>
+      JSON.stringify([
+        { slug: 'x', name: 'X', lat: 0, lng: 0, authorityId: 1 },
+      ]);
+    await expect(loadTownsFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
+  });
+
+  it('throws on a malformed town row (non-numeric population)', async () => {
+    const readImpl = async () =>
+      JSON.stringify([
+        {
+          slug: 'x',
+          name: 'X',
+          lat: 0,
+          lng: 0,
+          authorityId: 1,
+          population: 'lots',
+        },
+      ]);
     await expect(loadTownsFromFile(FAKE_PATH, readImpl)).rejects.toThrow();
   });
 });
@@ -71,6 +102,7 @@ describe('committed towns.json gazetteer', () => {
       expect(Number.isFinite(t.lat)).toBe(true);
       expect(Number.isFinite(t.lng)).toBe(true);
       expect(Number.isFinite(t.authorityId)).toBe(true);
+      expect(Number.isFinite(t.population)).toBe(true);
     }
   });
 
