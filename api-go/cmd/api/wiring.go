@@ -51,10 +51,12 @@ var anonymousPatterns = map[string]struct{}{
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
 	"POST /v1/webhooks/appstore": {},
-	// The build-time SEO endpoint is anonymous to Auth0 (no bearer token); it is
-	// authenticated solely by the X-Build-Key gate inside the handler, mirroring
-	// the admin routes. It reads only public planning data from Cosmos.
+	// The build-time SEO endpoints are anonymous to Auth0 (no bearer token); they
+	// are authenticated solely by the X-Build-Key gate inside the handler, mirroring
+	// the admin routes. They read only public planning data from Cosmos. The first
+	// feeds authority pages; the second feeds town pages (bounded geo query).
 	"GET /v1/authorities/{id}/applications": {},
+	"GET /v1/applications/near":             {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -146,11 +148,14 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		} else {
 			applications.Routes(mux, appStore, nil, logger)
 		}
-		// The build-time SEO endpoint (anonymous to Auth0, gated by the dedicated
-		// X-Build-Key) reads recent applications by authority from the same store.
-		// It is registered here because it needs the applications store; the route
-		// is absent on a Cosmos-less local boot, where it falls to the 401 fallback.
+		// The build-time SEO endpoints (anonymous to Auth0, gated by the dedicated
+		// X-Build-Key) read recent applications from the same store: RecentRoutes by
+		// authority (authority pages) and NearRoutes by a bounded geo point (town
+		// pages). Both are registered here because they need the applications store;
+		// the routes are absent on a Cosmos-less local boot, where they fall to the
+		// 401 fallback.
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
+		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
