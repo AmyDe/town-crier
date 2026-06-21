@@ -10,13 +10,15 @@ import (
 
 // fakeNearStore is a hand-written double for the recent-nearby read. It records
 // the arguments the handler passed (so clamping/defaulting is asserted at the
-// store boundary), honours cap the way Cosmos TOP @cap does, and serves an exact
-// in-radius count independently of the bounded read.
+// store boundary), honours cap the way Cosmos TOP @cap does, and serves a
+// whole-in-radius status breakdown independently of the bounded read, so a test
+// can prove the rendered Total is the sum of those buckets — not the bounded read
+// length nor the rendered slice.
 type fakeNearStore struct {
-	apps     []PlanningApplication
-	err      error
-	count    int
-	countErr error
+	apps         []PlanningApplication
+	err          error
+	breakdown    []StateCount
+	breakdownErr error
 
 	called            bool
 	lastAuthorityCode string
@@ -29,11 +31,11 @@ type fakeNearStore struct {
 	// (order=distance) instead of the recency-ordered RecentNearby default.
 	nearestCalled bool
 
-	countCalled       bool
-	lastCountAuthCode string
-	lastCountLat      float64
-	lastCountLng      float64
-	lastCountRadius   float64
+	breakdownCalled       bool
+	lastBreakdownAuthCode string
+	lastBreakdownLat      float64
+	lastBreakdownLng      float64
+	lastBreakdownRadius   float64
 }
 
 func (f *fakeNearStore) RecentNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
@@ -69,16 +71,16 @@ func (f *fakeNearStore) NearestNearby(_ context.Context, authorityCode string, l
 	return f.apps, nil
 }
 
-func (f *fakeNearStore) CountNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error) {
-	f.countCalled = true
-	f.lastCountAuthCode = authorityCode
-	f.lastCountLat = lat
-	f.lastCountLng = lng
-	f.lastCountRadius = radiusMetres
-	if f.countErr != nil {
-		return 0, f.countErr
+func (f *fakeNearStore) BreakdownNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error) {
+	f.breakdownCalled = true
+	f.lastBreakdownAuthCode = authorityCode
+	f.lastBreakdownLat = lat
+	f.lastBreakdownLng = lng
+	f.lastBreakdownRadius = radiusMetres
+	if f.breakdownErr != nil {
+		return nil, f.breakdownErr
 	}
-	return f.count, nil
+	return f.breakdown, nil
 }
 
 func serveNear(t *testing.T, store nearStore, buildKey, providedKey, path string) *httptest.ResponseRecorder {
@@ -96,7 +98,16 @@ func serveNear(t *testing.T, store nearStore, buildKey, providedKey, path string
 
 func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 1234}
+	// The whole-in-radius breakdown sums to 1234, deliberately distinct from
+	// len(apps) (2), to prove total is the sum of the breakdown buckets, not the
+	// bounded read length.
+	store := &fakeNearStore{
+		apps: recentApps(t, 2),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 1000},
+			StateCount{AppState: strPtr("Rejected"), Count: 234},
+		),
+	}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5155&lng=-0.0931&radius=4000")
@@ -115,11 +126,11 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
 		t.Errorf("store geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
 	}
-	// The exact count is taken over the same scoped, clamped geo window.
-	if !store.countCalled || store.lastCountAuthCode != "471" ||
-		store.lastCountLat != 51.5155 || store.lastCountLng != -0.0931 || store.lastCountRadius != 4000 {
-		t.Errorf("count call: called=%v auth=%q lat=%v lng=%v radius=%v, want true \"471\" 51.5155 -0.0931 4000",
-			store.countCalled, store.lastCountAuthCode, store.lastCountLat, store.lastCountLng, store.lastCountRadius)
+	// The whole-in-radius breakdown is computed over the same scoped, clamped geo window.
+	if !store.breakdownCalled || store.lastBreakdownAuthCode != "471" ||
+		store.lastBreakdownLat != 51.5155 || store.lastBreakdownLng != -0.0931 || store.lastBreakdownRadius != 4000 {
+		t.Errorf("breakdown call: called=%v auth=%q lat=%v lng=%v radius=%v, want true \"471\" 51.5155 -0.0931 4000",
+			store.breakdownCalled, store.lastBreakdownAuthCode, store.lastBreakdownLat, store.lastBreakdownLng, store.lastBreakdownRadius)
 	}
 	got := recentBody(t, rec)
 	if got["authorityId"].(float64) != 471 {
@@ -136,7 +147,7 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 		t.Errorf("applications length: got %d, want 2", len(apps))
 	}
 	if got["total"].(float64) != 1234 {
-		t.Errorf("total: got %v, want 1234 (the exact count)", got["total"])
+		t.Errorf("total: got %v, want 1234 (sum of the breakdown buckets)", got["total"])
 	}
 	if _, present := got["totalCapped"]; present {
 		t.Errorf("totalCapped must be gone from the wire shape, got %v", got["totalCapped"])
@@ -154,7 +165,7 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 
 func TestNearHandler_RejectsMissingKey(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -165,14 +176,14 @@ func TestNearHandler_RejectsMissingKey(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("401 must be bodyless (backfilled downstream), got %s", rec.Body)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit when the key is missing")
 	}
 }
 
 func TestNearHandler_EmptyConfiguredKeyRejectsAll(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "", "anything",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -180,14 +191,14 @@ func TestNearHandler_EmptyConfiguredKeyRejectsAll(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("empty configured key must reject all: got %d, want 401", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit when the configured key is empty")
 	}
 }
 
 func TestNearHandler_MissingAuthorityIdReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?lat=51.5&lng=-0.1")
@@ -195,14 +206,14 @@ func TestNearHandler_MissingAuthorityIdReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing authorityId: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit without a valid authorityId")
 	}
 }
 
 func TestNearHandler_NonIntAuthorityIdReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=abc&lat=51.5&lng=-0.1")
@@ -210,14 +221,14 @@ func TestNearHandler_NonIntAuthorityIdReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-int authorityId: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a malformed authorityId")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=NaN&lng=-0.1")
@@ -225,14 +236,14 @@ func TestNearHandler_RejectsNonFiniteLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("NaN lat: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a non-finite lat")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteLng(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=Inf")
@@ -240,14 +251,14 @@ func TestNearHandler_RejectsNonFiniteLng(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("Inf lng: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a non-finite lng")
 	}
 }
 
 func TestNearHandler_RejectsOutOfRangeLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=91&lng=-0.1")
@@ -255,14 +266,14 @@ func TestNearHandler_RejectsOutOfRangeLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("out-of-range lat: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on an out-of-range lat")
 	}
 }
 
 func TestNearHandler_RejectsOutOfRangeLng(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=200")
@@ -270,14 +281,14 @@ func TestNearHandler_RejectsOutOfRangeLng(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("out-of-range lng: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on an out-of-range lng")
 	}
 }
 
 func TestNearHandler_RejectsMissingLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lng=-0.1")
@@ -285,14 +296,14 @@ func TestNearHandler_RejectsMissingLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing lat: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit without a lat")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteRadius(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=Inf")
@@ -300,14 +311,14 @@ func TestNearHandler_RejectsNonFiniteRadius(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-finite radius: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a non-finite radius")
 	}
 }
 
 func TestNearHandler_RejectsNonPositiveRadius(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=0")
@@ -315,14 +326,14 @@ func TestNearHandler_RejectsNonPositiveRadius(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-positive radius: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a non-positive radius")
 	}
 }
 
 func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=99999")
@@ -330,10 +341,10 @@ func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	// The clamped 10km radius is what reaches both the read and the count, and what
-	// the response echoes.
-	if store.lastRadius != 10000 || store.lastCountRadius != 10000 {
-		t.Errorf("store radius: read=%v count=%v, want 10000 (clamped to 10km)", store.lastRadius, store.lastCountRadius)
+	// The clamped 10km radius is what reaches both the read and the breakdown, and
+	// what the response echoes.
+	if store.lastRadius != 10000 || store.lastBreakdownRadius != 10000 {
+		t.Errorf("store radius: read=%v breakdown=%v, want 10000 (clamped to 10km)", store.lastRadius, store.lastBreakdownRadius)
 	}
 	got := recentBody(t, rec)
 	if got["radius"].(float64) != 10000 {
@@ -343,7 +354,7 @@ func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 
 func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -351,8 +362,8 @@ func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	if store.lastRadius != 5000 || store.lastCountRadius != 5000 {
-		t.Errorf("store radius: read=%v count=%v, want 5000 (default when unset)", store.lastRadius, store.lastCountRadius)
+	if store.lastRadius != 5000 || store.lastBreakdownRadius != 5000 {
+		t.Errorf("store radius: read=%v breakdown=%v, want 5000 (default when unset)", store.lastRadius, store.lastBreakdownRadius)
 	}
 	got := recentBody(t, rec)
 	if got["radius"].(float64) != 5000 {
@@ -362,7 +373,11 @@ func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 
 func TestNearHandler_DefaultLimitIs30(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 50), count: 73}
+	// Breakdown sums to 73, distinct from len(apps) (50) and the limit (30).
+	store := &fakeNearStore{
+		apps:      recentApps(t, 50),
+		breakdown: breakdownOf(StateCount{AppState: strPtr("Permitted"), Count: 73}),
+	}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -373,13 +388,16 @@ func TestNearHandler_DefaultLimitIs30(t *testing.T) {
 		t.Errorf("applications length: got %d, want 30 (default limit)", len(apps))
 	}
 	if got["total"].(float64) != 73 {
-		t.Errorf("total: got %v, want 73 (exact count)", got["total"])
+		t.Errorf("total: got %v, want 73 (sum of breakdown buckets)", got["total"])
 	}
 }
 
 func TestNearHandler_LimitHardCappedAt100(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 150), count: 150}
+	store := &fakeNearStore{
+		apps:      recentApps(t, 150),
+		breakdown: breakdownOf(StateCount{AppState: strPtr("Permitted"), Count: 150}),
+	}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&limit=999")
@@ -393,25 +411,42 @@ func TestNearHandler_LimitHardCappedAt100(t *testing.T) {
 
 func TestNearHandler_ExactTotalIndependentOfSaturatedRead(t *testing.T) {
 	t.Parallel()
-	// The bounded read saturates at cap (200) but the exact count is far larger:
-	// total must be the count, and the render slice clamps to the limit.
-	store := &fakeNearStore{apps: recentApps(t, 200), count: 6502}
+	// The bounded read saturates at cap (200) but the whole-in-radius breakdown
+	// sums to far more: total must be that sum, and the render slice clamps to the
+	// limit, not the total (the bug the bounded-read clamp guards against).
+	store := &fakeNearStore{
+		apps: recentApps(t, 200),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 4500},
+			StateCount{AppState: strPtr("Rejected"), Count: 2002},
+		),
+	}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
 
 	got := recentBody(t, rec)
 	if got["total"].(float64) != 6502 {
-		t.Errorf("total: got %v, want 6502 (exact count)", got["total"])
+		t.Errorf("total: got %v, want 6502 (sum of breakdown buckets)", got["total"])
 	}
 	if apps := got["applications"].([]any); len(apps) != 30 {
-		t.Errorf("applications length: got %d, want 30 (default limit, NOT the count)", len(apps))
+		t.Errorf("applications length: got %d, want 30 (default limit, NOT the total)", len(apps))
 	}
 }
 
-func TestNearHandler_StatusBreakdownSpansBoundedReadNotRenderedSlice(t *testing.T) {
+func TestNearHandler_StatusBreakdownIsWholeInRadiusEchoedVerbatim(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: appsByState(t, 25, 15), count: 40}
+	// The store's whole-in-radius breakdown sums to 3771 — far beyond the bounded
+	// read (40 cards) and the rendered slice (30). The handler must echo the
+	// store's breakdown verbatim, order preserved, and set total to its sum.
+	store := &fakeNearStore{
+		apps: appsByState(t, 25, 15),
+		breakdown: breakdownOf(
+			StateCount{AppState: strPtr("Permitted"), Count: 2100},
+			StateCount{AppState: strPtr("Rejected"), Count: 900},
+			StateCount{AppState: strPtr("Conditions"), Count: 771},
+		),
+	}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -421,18 +456,27 @@ func TestNearHandler_StatusBreakdownSpansBoundedReadNotRenderedSlice(t *testing.
 	if !ok {
 		t.Fatalf("statusBreakdown must be an array, got %T", got["statusBreakdown"])
 	}
-	if len(breakdown) != 2 {
-		t.Fatalf("statusBreakdown length: got %d, want 2 (%v)", len(breakdown), breakdown)
+	if len(breakdown) != 3 {
+		t.Fatalf("statusBreakdown length: got %d, want 3 (%v)", len(breakdown), breakdown)
 	}
-	first := breakdown[0].(map[string]any)
-	if first["appState"] != "Permitted" || first["count"].(float64) != 25 {
-		t.Errorf("breakdown[0]: got %v, want Permitted/25", first)
+	// Echoed verbatim from the store, order preserved.
+	wantStates := []string{"Permitted", "Rejected", "Conditions"}
+	wantCounts := []float64{2100, 900, 771}
+	for i, row := range breakdown {
+		m := row.(map[string]any)
+		if m["appState"] != wantStates[i] || m["count"].(float64) != wantCounts[i] {
+			t.Errorf("breakdown[%d]: got %v, want %s/%v", i, m, wantStates[i], wantCounts[i])
+		}
+	}
+	// total is the sum of the breakdown buckets (2100+900+771).
+	if got["total"].(float64) != 3771 {
+		t.Errorf("total: got %v, want 3771 (sum of breakdown buckets)", got["total"])
 	}
 }
 
 func TestNearHandler_EmptyResultIsNonNullArray(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: nil, count: 0}
+	store := &fakeNearStore{apps: nil, breakdown: nil}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -449,7 +493,7 @@ func TestNearHandler_EmptyResultIsNonNullArray(t *testing.T) {
 		t.Errorf("applications length: got %d, want 0", len(apps))
 	}
 	if got["total"].(float64) != 0 {
-		t.Errorf("total: got %v, want 0", got["total"])
+		t.Errorf("total: got %v, want 0 (empty breakdown sums to 0)", got["total"])
 	}
 	breakdown, ok := got["statusBreakdown"].([]any)
 	if !ok {
@@ -472,21 +516,23 @@ func TestNearHandler_StoreErrorReturns500(t *testing.T) {
 	}
 }
 
-func TestNearHandler_CountErrorReturns500(t *testing.T) {
+func TestNearHandler_BreakdownErrorReturns500(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), countErr: context.DeadlineExceeded}
+	// The bounded read succeeds but the whole-in-radius breakdown fails -> 500 (no
+	// partial total).
+	store := &fakeNearStore{apps: recentApps(t, 2), breakdownErr: context.DeadlineExceeded}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("count error: got %d, want 500", rec.Code)
+		t.Fatalf("breakdown error: got %d, want 500", rec.Code)
 	}
 }
 
 func TestNearHandler_DefaultOrderRoutesToRecentNearby(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -502,7 +548,7 @@ func TestNearHandler_DefaultOrderRoutesToRecentNearby(t *testing.T) {
 
 func TestNearHandler_OrderRecencyRoutesToRecentNearby(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=recency")
@@ -518,7 +564,7 @@ func TestNearHandler_OrderRecencyRoutesToRecentNearby(t *testing.T) {
 
 func TestNearHandler_OrderDistanceRoutesToNearestNearby(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5155&lng=-0.0931&radius=4000&order=distance")
@@ -537,15 +583,15 @@ func TestNearHandler_OrderDistanceRoutesToNearestNearby(t *testing.T) {
 	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
 		t.Errorf("nearest geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
 	}
-	// The exact count is still taken over the same scoped, clamped geo window.
-	if !store.countCalled || store.lastCountAuthCode != "471" {
-		t.Errorf("count call: called=%v auth=%q, want true \"471\"", store.countCalled, store.lastCountAuthCode)
+	// The whole-in-radius breakdown is still computed over the same scoped, clamped geo window.
+	if !store.breakdownCalled || store.lastBreakdownAuthCode != "471" {
+		t.Errorf("breakdown call: called=%v auth=%q, want true \"471\"", store.breakdownCalled, store.lastBreakdownAuthCode)
 	}
 }
 
 func TestNearHandler_UnknownOrderReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=banana")
@@ -553,14 +599,14 @@ func TestNearHandler_UnknownOrderReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("unknown order: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on an unknown order value")
 	}
 }
 
 func TestNearHandler_OrderDistanceStillRejectsOutOfRangeCoord(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=91&lng=-0.1&order=distance")
@@ -568,14 +614,14 @@ func TestNearHandler_OrderDistanceStillRejectsOutOfRangeCoord(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("out-of-range lat with order=distance: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on an out-of-range coord, even with order=distance")
 	}
 }
 
 func TestNearHandler_OrderDistanceStillRejectsNonPositiveRadius(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2), count: 5}
+	store := &fakeNearStore{apps: recentApps(t, 2)}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=0&order=distance")
@@ -583,7 +629,7 @@ func TestNearHandler_OrderDistanceStillRejectsNonPositiveRadius(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-positive radius with order=distance: got %d, want 400", rec.Code)
 	}
-	if store.called || store.countCalled {
+	if store.called || store.breakdownCalled {
 		t.Errorf("store must not be hit on a non-positive radius, even with order=distance")
 	}
 }
