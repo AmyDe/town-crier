@@ -4,7 +4,7 @@ import {
   truncate,
   formatDate,
   statusDisplayLabel,
-  countByState,
+  aggregateBreakdown,
   leadLine,
 } from '../format.mjs';
 
@@ -64,34 +64,58 @@ describe('statusDisplayLabel', () => {
   });
 });
 
-describe('countByState', () => {
-  it('counts applications by display label, most common first', () => {
-    const apps = [
-      { appState: 'Permitted' },
-      { appState: 'Permitted' },
-      { appState: 'Rejected' },
-      { appState: null },
+describe('aggregateBreakdown', () => {
+  it('maps each raw appState to its resident label and re-aggregates by label', () => {
+    const breakdown = [
+      { appState: 'Permitted', count: 5 },
+      { appState: 'Conditions', count: 2 },
+      { appState: 'Rejected', count: 3 },
+      { appState: null, count: 1 },
+      { appState: '', count: 1 },
+      { appState: 'Unknown', count: 2 },
     ];
 
-    expect(countByState(apps)).toEqual([
-      { label: 'Granted', count: 2 },
-      { label: 'Refused', count: 1 },
-      { label: 'Unknown', count: 1 },
+    // null, '' and a literal "Unknown" all collapse to the "Unknown" label and
+    // their counts sum (1 + 1 + 2 = 4). Sorted by count DESC, then label ASC.
+    expect(aggregateBreakdown(breakdown)).toEqual([
+      { label: 'Granted', count: 5 },
+      { label: 'Unknown', count: 4 },
+      { label: 'Refused', count: 3 },
+      { label: 'Granted with conditions', count: 2 },
     ]);
+  });
+
+  it('breaks count ties alphabetically by label', () => {
+    const breakdown = [
+      { appState: 'Rejected', count: 2 },
+      { appState: 'Permitted', count: 2 },
+    ];
+
+    expect(aggregateBreakdown(breakdown)).toEqual([
+      { label: 'Granted', count: 2 },
+      { label: 'Refused', count: 2 },
+    ]);
+  });
+
+  it('returns an empty array for an empty breakdown', () => {
+    expect(aggregateBreakdown([])).toEqual([]);
   });
 });
 
 describe('leadLine', () => {
-  it('shows the exact total when the read was not capped', () => {
-    expect(leadLine('Adur', 42, false)).toContain('42');
-    expect(leadLine('Adur', 42, false)).toContain('Adur');
-  });
-
-  it('shows a capped count as "<total>+" when the read hit the cap', () => {
-    expect(leadLine('Leeds', 200, true)).toContain('200+');
+  it('shows the exact total and the area name', () => {
+    expect(leadLine('Adur', 42)).toBe(
+      'Town Crier is tracking 42 planning applications in Adur.',
+    );
   });
 
   it('uses the singular noun for a single application', () => {
-    expect(leadLine('Tiny', 1, false)).toContain('1 recent planning application ');
+    expect(leadLine('Tiny', 1)).toBe(
+      'Town Crier is tracking 1 planning application in Tiny.',
+    );
+  });
+
+  it('does not describe the count as "recent"', () => {
+    expect(leadLine('Adur', 42)).not.toContain('recent');
   });
 });
