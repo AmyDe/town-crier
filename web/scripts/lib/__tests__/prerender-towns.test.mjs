@@ -152,12 +152,13 @@ describe('runPrerender — town live mode', () => {
                 description: 'Café conversion',
                 appState: 'Permitted',
                 startDate: '2026-01-12',
+                lastDifferent: '2026-06-12T10:00:00+00:00',
                 link: 'https://planit.org.uk/planapplic/CW1',
                 url: null,
               },
             ],
             total: 14,
-            totalCapped: false,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
           },
         };
       }
@@ -202,7 +203,7 @@ describe('runPrerender — town live mode', () => {
         radius: 5000,
         applications: [],
         total: 3,
-        totalCapped: false,
+        statusBreakdown: [],
       },
     }));
 
@@ -245,6 +246,33 @@ describe('runPrerender — town live mode', () => {
       ok: true,
       status: 200,
       body: { not: 'what we expect' },
+    }));
+
+    await expect(
+      runPrerender({
+        outDir,
+        apiBase: 'https://api-dev.towncrierapp.uk',
+        buildKey: 'test-key',
+        fetchImpl: stub.fetch,
+        loadAuthorities: async () => cornwallAuthorities,
+        loadTowns: async () => cornwallTowns,
+        logger: silentLogger,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('fails loud when the geo endpoint omits statusBreakdown', async () => {
+    const stub = new StubFetch(() => ({
+      ok: true,
+      status: 200,
+      body: {
+        authorityId: 52,
+        lat: 50.2632,
+        lng: -5.051,
+        radius: 5000,
+        applications: [],
+        total: 14,
+      },
     }));
 
     await expect(

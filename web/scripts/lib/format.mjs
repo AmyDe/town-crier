@@ -86,22 +86,28 @@ export function statusDisplayLabel(appState) {
 }
 
 /**
- * @typedef {{ label: string, count: number }} StateCount
+ * @typedef {{ label: string, count: number }} LabelCount
  */
 
 /**
- * Count applications by resident-facing status label, most common first then
- * alphabetical for a stable order.
+ * Collapse the server's raw per-`appState` distribution into resident-facing
+ * labels. Each wire `appState` is translated via `statusDisplayLabel` and then
+ * RE-AGGREGATED by that label, so null, "" and a literal "Unknown" all fold into
+ * a single "Unknown" row whose count is the sum. Sorted most common first, then
+ * alphabetically by label for a stable order.
  *
- * @param {ReadonlyArray<{ appState: string | null | undefined }>} applications
- * @returns {StateCount[]}
+ * The breakdown is computed server-side over the bounded read (~200 docs), so it
+ * can legitimately total more than the handful of cards rendered on the page.
+ *
+ * @param {ReadonlyArray<{ appState: string | null | undefined, count: number }>} statusBreakdown
+ * @returns {LabelCount[]}
  */
-export function countByState(applications) {
+export function aggregateBreakdown(statusBreakdown) {
   /** @type {Map<string, number>} */
   const counts = new Map();
-  for (const app of applications) {
-    const label = statusDisplayLabel(app.appState);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+  for (const { appState, count } of statusBreakdown) {
+    const label = statusDisplayLabel(appState);
+    counts.set(label, (counts.get(label) ?? 0) + count);
   }
   return [...counts.entries()]
     .map(([label, count]) => ({ label, count }))
@@ -109,19 +115,14 @@ export function countByState(applications) {
 }
 
 /**
- * Build the data-filled lead sentence under the H1. Uses "<total>+" when the
- * bounded read hit its cap, otherwise the exact total with the right plural.
+ * Build the data-filled lead sentence under the H1: the exact whole-partition
+ * total with the right plural.
  *
  * @param {string} areaName
  * @param {number} total
- * @param {boolean} totalCapped
  * @returns {string}
  */
-export function leadLine(areaName, total, totalCapped) {
-  const countPhrase = totalCapped ? `${total}+` : `${total}`;
-  const noun =
-    !totalCapped && total === 1
-      ? 'recent planning application'
-      : 'recent planning applications';
-  return `Town Crier is tracking ${countPhrase} ${noun} in ${areaName}.`;
+export function leadLine(areaName, total) {
+  const noun = total === 1 ? 'planning application' : 'planning applications';
+  return `Town Crier is tracking ${total} ${noun} in ${areaName}.`;
 }

@@ -14,7 +14,13 @@ function townData(overrides = {}) {
     authoritySlug: 'cornwall',
     authorityId: 52,
     total: 18,
-    totalCapped: false,
+    // Server-provided distribution over the bounded read: deliberately sums to
+    // more than the two cards below, proving the stats use the breakdown.
+    statusBreakdown: [
+      { appState: 'Permitted', count: 12 },
+      { appState: 'Rejected', count: 4 },
+      { appState: null, count: 2 },
+    ],
     applications: [
       {
         uid: 'CW/2026/0001',
@@ -23,6 +29,7 @@ function townData(overrides = {}) {
         description: 'Change of use of ground floor from retail to café',
         appState: 'Permitted',
         startDate: '2026-01-12',
+        lastDifferent: '2026-06-12T09:30:00+00:00',
         link: 'https://planit.org.uk/planapplic/CW-26-0001',
         url: 'https://planning.cornwall.gov.uk/26-0001',
       },
@@ -33,6 +40,7 @@ function townData(overrides = {}) {
         description: 'Two-storey rear extension to a listed building',
         appState: 'Rejected',
         startDate: '2026-02-01',
+        lastDifferent: '2026-06-10T08:00:00+00:00',
         link: 'https://planit.org.uk/planapplic/CW-26-0002',
         url: null,
       },
@@ -84,26 +92,41 @@ describe('renderTownPage', () => {
     expect(html).toMatch(/breadcrumb[\s\S]*?Cornwall/);
   });
 
-  it('renders each application address, status label, date and links', () => {
+  it('renders each application address, status label, Last updated date and links', () => {
     const html = renderTownPage(townData());
     expect(html).toContain('Lemon Quay, Truro, TR1 2LW');
     expect(html).toContain('Change of use of ground floor from retail to café');
     expect(html).toContain('Granted'); // Permitted -> Granted
     expect(html).toContain('Refused'); // Rejected -> Refused
-    expect(html).toContain('12 Jan 2026');
+    // The visible card date is the lastDifferent date, labelled "Last updated".
+    expect(html).toContain('Last updated 12 Jun 2026');
     expect(html).toContain('https://planning.cornwall.gov.uk/26-0001');
     expect(html).toContain('https://planit.org.uk/planapplic/CW-26-0001');
   });
 
-  it('shows the exact total in the lead line when not capped', () => {
-    const html = renderTownPage(townData({ total: 18, totalCapped: false }));
-    expect(html).toContain('18');
-    expect(html).toContain('Truro');
+  it('orders the visible Last updated dates to match the lastDifferent DESC sort', () => {
+    const html = renderTownPage(townData());
+    expect(html).toContain('Last updated 12 Jun 2026');
+    expect(html).toContain('Last updated 10 Jun 2026');
+    expect(html.indexOf('Last updated 12 Jun 2026')).toBeLessThan(
+      html.indexOf('Last updated 10 Jun 2026'),
+    );
   });
 
-  it('shows a capped count as "200+" when the read hit the cap', () => {
-    const html = renderTownPage(townData({ total: 200, totalCapped: true }));
-    expect(html).toContain('200+');
+  it('shows the exact total in the lead line', () => {
+    const html = renderTownPage(townData({ total: 18 }));
+    expect(html).toContain(
+      'Town Crier is tracking 18 planning applications in Truro.',
+    );
+  });
+
+  it('renders a stats block from the server breakdown, not the visible cards', () => {
+    const html = renderTownPage(townData());
+    // 12 Granted comes from the server breakdown over the bounded read; only two
+    // cards are rendered, so a count of 12 proves the stats are server-driven.
+    expect(html).toMatch(/Granted[\s\S]*?12/);
+    expect(html).toMatch(/Refused[\s\S]*?4/);
+    expect(html).toMatch(/Unknown[\s\S]*?2/);
   });
 
   it('includes the evergreen how-to-comment explainer naming the town and its authority', () => {
@@ -161,6 +184,7 @@ describe('renderTownPage', () => {
             description: 'safe',
             appState: 'Permitted',
             startDate: null,
+            lastDifferent: '2026-06-12T09:30:00+00:00',
             link: null,
             url: null,
           },

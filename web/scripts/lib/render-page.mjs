@@ -17,7 +17,7 @@ import {
  * @property {string} areaName
  * @property {number} authorityId
  * @property {number} total
- * @property {boolean} totalCapped
+ * @property {Array<{ appState: string | null, count: number }>} statusBreakdown
  * @property {PlanningApplicationItem[]} applications
  */
 
@@ -68,7 +68,7 @@ function buildJsonLd(data, canonical) {
 export function renderPlanningPage(data) {
   const area = escapeHtml(data.areaName);
   const canonical = `${SITE_ORIGIN}/planning/${data.slug}`;
-  const lead = escapeHtml(leadLine(data.areaName, data.total, data.totalCapped));
+  const lead = escapeHtml(leadLine(data.areaName, data.total));
   const title = `Planning applications in ${area} | Town Crier`;
   const metaDescription = escapeHtml(
     `Recent planning applications in ${data.areaName}. See what is being built nearby and get push alerts the moment an application is submitted or decided in your area.`,
@@ -112,7 +112,7 @@ ${pageStyles()}
         <h1>Planning applications in ${area}</h1>
         <p class="lead">${lead}</p>
 
-${renderStats(data.applications)}
+${renderStats(data.statusBreakdown)}
 
         <h2>Recent applications</h2>
         <ul class="appList">

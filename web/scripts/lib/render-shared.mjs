@@ -15,7 +15,7 @@ import {
   truncate,
   formatDate,
   statusDisplayLabel,
-  countByState,
+  aggregateBreakdown,
 } from './format.mjs';
 
 /**
@@ -25,9 +25,10 @@ import {
  * @property {string} address
  * @property {string} description
  * @property {string | null} appState
- * @property {string | null} startDate  yyyy-MM-dd
- * @property {string | null} link       council-portal deep link
- * @property {string | null} url        application detail link
+ * @property {string | null} startDate      yyyy-MM-dd
+ * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
+ * @property {string | null} link           council-portal deep link
+ * @property {string | null} url            application detail link
  */
 
 const MAX_DESCRIPTION_LENGTH = 160;
@@ -58,7 +59,9 @@ function statusModifier(appState) {
 function renderApplication(app) {
   const label = escapeHtml(statusDisplayLabel(app.appState));
   const modifier = statusModifier(app.appState);
-  const date = formatDate(app.startDate);
+  // The visible date is lastDifferent (the bounded read's DESC sort key), so the
+  // dates read top-to-bottom in the same order the cards are listed.
+  const date = formatDate(app.lastDifferent);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
   const links = [];
@@ -81,7 +84,7 @@ function renderApplication(app) {
         <p class="appCard__address">${escapeHtml(app.address)}</p>
         <p class="appCard__desc">${description}</p>
         <div class="appCard__meta">
-          ${date ? `<span class="appCard__date">${escapeHtml(date)}</span>` : ''}
+          ${date ? `<span class="appCard__date">Last updated ${escapeHtml(date)}</span>` : ''}
           ${links.join('\n          ')}
         </div>
       </li>`;
@@ -98,11 +101,16 @@ export function renderApplicationsList(applications) {
 }
 
 /**
- * @param {PlanningApplicationItem[]} applications
+ * Render the status-breakdown block from the server-provided per-`appState`
+ * distribution (computed over the bounded read), folded into resident-facing
+ * labels. This is intentionally NOT derived from the handful of cards rendered
+ * on the page, so the counts reflect the wider bounded set.
+ *
+ * @param {ReadonlyArray<{ appState: string | null, count: number }>} statusBreakdown
  * @returns {string}
  */
-export function renderStats(applications) {
-  const rows = countByState(applications)
+export function renderStats(statusBreakdown) {
+  const rows = aggregateBreakdown(statusBreakdown)
     .map(
       (s) =>
         `        <li class="statRow"><span class="statRow__label">${escapeHtml(s.label)}</span><span class="statRow__count">${s.count}</span></li>`,
