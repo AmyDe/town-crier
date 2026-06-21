@@ -27,8 +27,8 @@ import {
  * @property {string | null} appState
  * @property {string | null} startDate      yyyy-MM-dd
  * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
- * @property {string | null} link           council-portal deep link
- * @property {string | null} url            application detail link
+ * @property {string | null} link           PlanIt permalink (always a reliable per-application record)
+ * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link)
  */
 
 const MAX_DESCRIPTION_LENGTH = 160;
@@ -67,12 +67,12 @@ function renderApplication(app) {
   const links = [];
   if (app.link) {
     links.push(
-      `<a class="appLink" href="${escapeHtml(app.link)}" rel="nofollow noopener" target="_blank">View on the council portal</a>`,
+      `<a class="appLink" href="${escapeHtml(app.link)}" rel="nofollow noopener" target="_blank">View full record on PlanIt</a>`,
     );
   }
   if (app.url) {
     links.push(
-      `<a class="appLink" href="${escapeHtml(app.url)}" rel="nofollow noopener" target="_blank">Application details</a>`,
+      `<a class="appLink" href="${escapeHtml(app.url)}" rel="nofollow noopener" target="_blank">View on the council website</a>`,
     );
   }
 
