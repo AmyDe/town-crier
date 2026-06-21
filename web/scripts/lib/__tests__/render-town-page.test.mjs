@@ -173,6 +173,20 @@ describe('renderTownPage', () => {
     expect(html).toContain('OpenStreetMap');
   });
 
+  it('additionally credits the ONS Built-Up-Area and NRS Scotland gazetteers (the town centroid sources) under OGL', () => {
+    const html = renderTownPage(townData());
+    // Town positions come from the ONS Built-Up-Areas (2022) centroid gazetteer
+    // and (for Scotland) NRS settlements — both Open Government Licence sources —
+    // so town pages must credit them alongside the existing lines.
+    expect(html).toContain('Office for National Statistics');
+    expect(html).toContain('Built-Up Areas');
+    expect(html).toContain('National Records of Scotland');
+    // The four base lines are still present (not replaced).
+    expect(html).toContain('PlanIt');
+    expect(html).toContain('Ordnance Survey');
+    expect(html).toContain('OpenStreetMap');
+  });
+
   it('escapes HTML in application fields to prevent markup injection', () => {
     const html = renderTownPage(
       townData({
