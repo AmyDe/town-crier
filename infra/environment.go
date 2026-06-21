@@ -202,9 +202,9 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 				IndexingMode: cosmosdb.IndexingModeConsistent,
 				IncludedPaths: cosmosdb.IncludedPathArray{
 					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/authorityCode/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/status/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/applicationType/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/decisionDate/?")},
+					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/appState/?")},
+					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/appType/?")},
+					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/decidedDate/?")},
 					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/lastDifferent/?")},
 				},
 				ExcludedPaths: cosmosdb.ExcludedPathArray{
