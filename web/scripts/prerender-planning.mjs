@@ -29,6 +29,8 @@ import { slugify } from './lib/slug.mjs';
 import { isQualifyingAreaType } from './lib/area-types.mjs';
 import { meetsCoverageGate } from './lib/coverage-gate.mjs';
 import { renderPlanningPage } from './lib/render-page.mjs';
+import { renderTownPage } from './lib/render-town-page.mjs';
+import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 
 const DEFAULT_LIMIT = 30;
@@ -68,8 +70,10 @@ export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
  * @typedef {Object} PrerenderResult
  * @property {boolean} skipped
  * @property {string} [reason]
- * @property {string[]} published                       slugs written
+ * @property {string[]} published                       authority slugs written
  * @property {Array<{ name: string, reason: string }>} excluded
+ * @property {string[]} publishedTowns                  town paths written (<authority>/<town>)
+ * @property {Array<{ name: string, reason: string }>} excludedTowns
  */
 
 /**
@@ -306,18 +310,180 @@ async function considerAuthority(args) {
 }
 
 /**
- * @param {string} outDir
- * @param {string} fixturePath
+ * Fetch the bounded recent-applications-near-a-point projection for one town via
+ * the build-key-gated geo endpoint. Scopes the spatial query to the town's
+ * authority partition (authorityId) and centroid (lat/lng); the server defaults
+ * and clamps the radius. Throws on any non-OK status or unexpected shape.
+ *
+ * @param {string} apiBase
+ * @param {Town} town
+ * @param {string} buildKey
  * @param {number} limit
- * @param {{ warn: (msg: string) => void }} logger
+ * @param {typeof globalThis.fetch} fetchImpl
+ * @returns {Promise<{ applications: object[], total: number, totalCapped: boolean }>}
+ */
+async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
+  const url =
+    `${apiBase}/v1/applications/near?authorityId=${town.authorityId}` +
+    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}`;
+  const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
+  if (!res.ok) {
+    throw new Error(
+      `GET /v1/applications/near (authority ${town.authorityId}, ${town.name}) ` +
+        `failed: HTTP ${res.status}`,
+    );
+  }
+  const body = await res.json();
+  if (
+    !body ||
+    !Array.isArray(body.applications) ||
+    typeof body.total !== 'number' ||
+    typeof body.totalCapped !== 'boolean'
+  ) {
+    throw new Error(
+      `GET /v1/applications/near (authority ${town.authorityId}, ${town.name}) ` +
+        `returned an unexpected shape`,
+    );
+  }
+  return {
+    applications: body.applications,
+    total: body.total,
+    totalCapped: body.totalCapped,
+  };
+}
+
+/**
+ * Write one town's page to <outDir>/planning/<authority-slug>/<town-slug>/index.html.
+ *
+ * @param {string} outDir
+ * @param {import('./lib/render-town-page.mjs').TownPageData} data
+ * @returns {Promise<void>}
+ */
+async function writeTownPage(outDir, data) {
+  const dir = join(outDir, 'planning', data.authoritySlug, data.townSlug);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), renderTownPage(data), 'utf-8');
+}
+
+/**
+ * Render and write a town page if it clears the coverage gate, after resolving
+ * its parent authority slug. Mutates `publishedTowns`/`excludedTowns`/`seenPaths`.
+ *
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {Town} args.town
+ * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities
+ * @param {number} args.total
+ * @param {boolean} args.totalCapped
+ * @param {object[]} args.applications
+ * @param {number} args.limit
+ * @param {string[]} args.publishedTowns
+ * @param {Array<{ name: string, reason: string }>} args.excludedTowns
+ * @param {Set<string>} args.seenPaths
+ * @param {{ warn: (msg: string) => void }} args.logger
+ * @returns {Promise<void>}
+ */
+async function considerTown(args) {
+  const {
+    outDir,
+    town,
+    authorities,
+    total,
+    totalCapped,
+    applications,
+    limit,
+    publishedTowns,
+    excludedTowns,
+    seenPaths,
+    logger,
+  } = args;
+
+  if (!meetsCoverageGate(total)) {
+    excludedTowns.push({ name: town.name, reason: 'coverage' });
+    return;
+  }
+
+  const { name: authorityName, slug: authoritySlug } = resolveAuthority(
+    town.authorityId,
+    authorities,
+  );
+  const path = townPagePath(authoritySlug, town.slug);
+  if (seenPaths.has(path)) {
+    logger.warn(`[prerender] duplicate town path "${path}" — skipped`);
+    excludedTowns.push({ name: town.name, reason: 'duplicate-path' });
+    return;
+  }
+  seenPaths.add(path);
+
+  await writeTownPage(outDir, {
+    townName: town.name,
+    townSlug: town.slug,
+    authorityName,
+    authoritySlug,
+    authorityId: town.authorityId,
+    total,
+    totalCapped,
+    applications: applications.slice(0, limit),
+  });
+  publishedTowns.push(path);
+}
+
+/**
+ * Render every town that clears the coverage gate. `getGeo` resolves a town to
+ * its bounded recent-nearby projection (a live geo fetch, or inline fixture
+ * data). The parent authority slug is resolved from `authorities`.
+ *
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {Town[]} args.towns
+ * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities
+ * @param {(town: Town) => Promise<{ applications: object[], total: number, totalCapped: boolean }>} args.getGeo
+ * @param {number} args.limit
+ * @param {{ warn: (msg: string) => void }} args.logger
+ * @returns {Promise<{ publishedTowns: string[], excludedTowns: Array<{ name: string, reason: string }> }>}
+ */
+async function renderTownPages(args) {
+  const { outDir, towns, authorities, getGeo, limit, logger } = args;
+
+  /** @type {string[]} */
+  const publishedTowns = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  const excludedTowns = [];
+  const seenPaths = new Set();
+
+  for (const town of towns) {
+    const geo = await getGeo(town);
+    await considerTown({
+      outDir,
+      town,
+      authorities,
+      total: geo.total,
+      totalCapped: geo.totalCapped,
+      applications: Array.isArray(geo.applications) ? geo.applications : [],
+      limit,
+      publishedTowns,
+      excludedTowns,
+      seenPaths,
+      logger,
+    });
+  }
+
+  return { publishedTowns, excludedTowns };
+}
+
+/**
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {string} args.fixturePath               authority fixture (optional)
+ * @param {string} [args.townFixturePath]         town fixture (optional)
+ * @param {number} args.limit
+ * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
+ * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<PrerenderResult>}
  */
-async function runFixtureMode(outDir, fixturePath, limit, logger) {
-  const raw = await readFile(fixturePath, 'utf-8');
-  const entries = JSON.parse(raw);
-  if (!Array.isArray(entries)) {
-    throw new Error(`fixture ${fixturePath} must be a JSON array`);
-  }
+async function runFixtureMode(args) {
+  const { outDir, fixturePath, townFixturePath, limit, loadAuthorities, logger } =
+    args;
 
   /** @type {string[]} */
   const published = [];
@@ -325,30 +491,71 @@ async function runFixtureMode(outDir, fixturePath, limit, logger) {
   const excluded = [];
   const seenSlugs = new Set();
 
-  for (const entry of entries) {
-    if (!isQualifyingAreaType(entry.areaType)) {
-      excluded.push({ name: entry.name, reason: 'areaType' });
-      continue;
+  if (fixturePath) {
+    const raw = await readFile(fixturePath, 'utf-8');
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) {
+      throw new Error(`fixture ${fixturePath} must be a JSON array`);
     }
-    await considerAuthority({
-      outDir,
-      authorityId: entry.id,
-      name: entry.name,
-      areaType: entry.areaType,
-      areaName: entry.areaName ?? entry.name,
-      total: entry.total,
-      totalCapped: Boolean(entry.totalCapped),
-      applications: Array.isArray(entry.applications) ? entry.applications : [],
-      limit,
-      published,
-      excluded,
-      seenSlugs,
-      logger,
-    });
+    for (const entry of entries) {
+      if (!isQualifyingAreaType(entry.areaType)) {
+        excluded.push({ name: entry.name, reason: 'areaType' });
+        continue;
+      }
+      await considerAuthority({
+        outDir,
+        authorityId: entry.id,
+        name: entry.name,
+        areaType: entry.areaType,
+        areaName: entry.areaName ?? entry.name,
+        total: entry.total,
+        totalCapped: Boolean(entry.totalCapped),
+        applications: Array.isArray(entry.applications)
+          ? entry.applications
+          : [],
+        limit,
+        published,
+        excluded,
+        seenSlugs,
+        logger,
+      });
+    }
   }
 
-  await writeFile(join(outDir, 'sitemap.xml'), renderSitemap(published), 'utf-8');
-  return { skipped: false, published, excluded };
+  /** @type {string[]} */
+  let publishedTowns = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  let excludedTowns = [];
+
+  // Town fixture rows carry the geo projection inline (total/totalCapped/
+  // applications), so `getGeo` is a pure lookup — no network in fixture mode.
+  if (townFixturePath) {
+    const rawTowns = await readFile(townFixturePath, 'utf-8');
+    const townEntries = JSON.parse(rawTowns);
+    if (!Array.isArray(townEntries)) {
+      throw new Error(`town fixture ${townFixturePath} must be a JSON array`);
+    }
+    const authorities = await loadAuthorities();
+    ({ publishedTowns, excludedTowns } = await renderTownPages({
+      outDir,
+      towns: townEntries,
+      authorities,
+      getGeo: async (town) => ({
+        applications: Array.isArray(town.applications) ? town.applications : [],
+        total: town.total,
+        totalCapped: Boolean(town.totalCapped),
+      }),
+      limit,
+      logger,
+    }));
+  }
+
+  await writeFile(
+    join(outDir, 'sitemap.xml'),
+    renderSitemap([...published, ...publishedTowns]),
+    'utf-8',
+  );
+  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
 }
 
 /**
@@ -359,12 +566,21 @@ async function runFixtureMode(outDir, fixturePath, limit, logger) {
  * @param {number} args.limit
  * @param {typeof globalThis.fetch} args.fetchImpl
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
+ * @param {() => Promise<Town[]>} args.loadTowns
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<PrerenderResult>}
  */
 async function runLiveMode(args) {
-  const { outDir, apiBase, buildKey, limit, fetchImpl, loadAuthorities, logger } =
-    args;
+  const {
+    outDir,
+    apiBase,
+    buildKey,
+    limit,
+    fetchImpl,
+    loadAuthorities,
+    loadTowns,
+    logger,
+  } = args;
 
   const authorities = await loadAuthorities();
 
@@ -403,8 +619,24 @@ async function runLiveMode(args) {
     });
   }
 
-  await writeFile(join(outDir, 'sitemap.xml'), renderSitemap(published), 'utf-8');
-  return { skipped: false, published, excluded };
+  // Town pages: one bounded geo read per town, scoped to its authority partition
+  // and centroid. Reuses the same authority list (no extra HTTP) to resolve slugs.
+  const towns = await loadTowns();
+  const { publishedTowns, excludedTowns } = await renderTownPages({
+    outDir,
+    towns,
+    authorities,
+    getGeo: (town) => fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
+    limit,
+    logger,
+  });
+
+  await writeFile(
+    join(outDir, 'sitemap.xml'),
+    renderSitemap([...published, ...publishedTowns]),
+    'utf-8',
+  );
+  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
 }
 
 /**
@@ -414,10 +646,12 @@ async function runLiveMode(args) {
  * @param {string} options.outDir                  directory to emit into (web/dist)
  * @param {string} [options.apiBase]               API base URL (live mode)
  * @param {string} [options.buildKey]              SITE_BUILD_KEY (live mode)
- * @param {string} [options.fixturePath]           committed JSON fixture (fixture mode)
+ * @param {string} [options.fixturePath]           committed authority JSON fixture (fixture mode)
+ * @param {string} [options.townFixturePath]       committed town JSON fixture (fixture mode)
  * @param {number} [options.limit]                 applications rendered per page
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
+ * @param {() => Promise<Town[]>} [options.loadTowns]
  * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
  * @returns {Promise<PrerenderResult>}
  */
@@ -427,14 +661,23 @@ export async function runPrerender(options) {
     apiBase,
     buildKey,
     fixturePath,
+    townFixturePath,
     limit = DEFAULT_LIMIT,
     fetchImpl = globalThis.fetch,
     loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
+    loadTowns = () => loadTownsFromFile(TOWNS_FILE, readFile),
     logger = console,
   } = options;
 
-  if (fixturePath) {
-    return runFixtureMode(outDir, fixturePath, limit, logger);
+  if (fixturePath || townFixturePath) {
+    return runFixtureMode({
+      outDir,
+      fixturePath,
+      townFixturePath,
+      limit,
+      loadAuthorities,
+      logger,
+    });
   }
 
   if (!buildKey) {
@@ -443,6 +686,8 @@ export async function runPrerender(options) {
       reason: 'SITE_BUILD_KEY not set',
       published: [],
       excluded: [],
+      publishedTowns: [],
+      excludedTowns: [],
     };
   }
 
@@ -459,6 +704,7 @@ export async function runPrerender(options) {
     limit,
     fetchImpl,
     loadAuthorities,
+    loadTowns,
     logger,
   });
 }
@@ -475,6 +721,7 @@ async function main() {
     process.env.PRERENDER_API_BASE || process.env.VITE_API_BASE_URL;
   const buildKey = process.env.SITE_BUILD_KEY;
   const fixturePath = process.env.PRERENDER_FIXTURE;
+  const townFixturePath = process.env.PRERENDER_TOWN_FIXTURE;
 
   try {
     const result = await runPrerender({
@@ -482,14 +729,17 @@ async function main() {
       apiBase,
       buildKey,
       fixturePath,
+      townFixturePath,
     });
     if (result.skipped) {
       console.log(`[prerender] skipped — ${result.reason} (SPA build only)`);
       return;
     }
     console.log(
-      `[prerender] wrote ${result.published.length} planning page(s); ` +
-        `excluded ${result.excluded.length} authority/-ies`,
+      `[prerender] wrote ${result.published.length} authority page(s) and ` +
+        `${result.publishedTowns.length} town page(s); excluded ` +
+        `${result.excluded.length} authority/-ies and ` +
+        `${result.excludedTowns.length} town(s)`,
     );
   } catch (err) {
     console.error(

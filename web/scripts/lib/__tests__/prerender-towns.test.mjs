@@ -126,8 +126,11 @@ describe('runPrerender — town live mode', () => {
   const cornwallTowns = [
     { slug: 'truro', name: 'Truro', lat: 50.2632, lng: -5.051, authorityId: 52 },
   ];
+  // areaType is deliberately non-qualifying here so the authority pass is a
+  // no-op and these tests isolate the TOWN pipeline. Slug resolution
+  // (authorityId 52 -> "Cornwall" -> "cornwall") ignores areaType.
   const cornwallAuthorities = [
-    { id: 52, name: 'Cornwall', areaType: 'English Unitary Authority' },
+    { id: 52, name: 'Cornwall', areaType: 'English County' },
   ];
 
   it('calls the geo endpoint with authorityId+lat+lng and X-Build-Key, then emits the nested page', async () => {

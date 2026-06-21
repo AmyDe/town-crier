@@ -153,6 +153,7 @@ describe('runPrerender — live mode', () => {
       buildKey: 'test-key',
       fetchImpl: stub.fetch,
       loadAuthorities: async () => adurAndWestSussex,
+      loadTowns: async () => [],
       logger: silentLogger,
     });
 
@@ -197,6 +198,7 @@ describe('runPrerender — live mode', () => {
       loadAuthorities: async () => [
         { id: 1, name: 'Adur', areaType: 'English District' },
       ],
+      loadTowns: async () => [],
       logger: silentLogger,
     });
 
@@ -217,6 +219,7 @@ describe('runPrerender — live mode', () => {
       loadAuthorities: async () => [
         { id: 9, name: 'Surrey', areaType: 'English County' },
       ],
+      loadTowns: async () => [],
       logger: silentLogger,
     });
 
