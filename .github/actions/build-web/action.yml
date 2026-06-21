@@ -21,6 +21,10 @@ inputs:
   vite-applicationinsights-connection-string:
     description: VITE_APPLICATIONINSIGHTS_CONNECTION_STRING — App Insights connection string
     required: true
+  site-build-key:
+    description: SITE_BUILD_KEY — build key for the gated SEO prerender endpoint (empty = SPA-only, prerender skips)
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -46,3 +50,4 @@ runs:
         VITE_AUTH0_CLIENT_ID: ${{ inputs.vite-auth0-client-id }}
         VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
         VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
+        SITE_BUILD_KEY: ${{ inputs.site-build-key }}
