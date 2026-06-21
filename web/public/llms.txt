@@ -1,0 +1,26 @@
+# Town Crier
+
+> Town Crier monitors UK local-authority planning applications and sends
+> residents, community groups, and property professionals push and email
+> alerts the moment an application is submitted or decided near them.
+
+The pages linked below are free, publicly accessible summaries of recent
+planning activity for individual UK local authorities and towns. Each page
+shows recent applications, a total count, a status breakdown, and a
+"last updated" date reflecting the most recent data snapshot. The underlying
+data comes from PlanIt (planit.org.uk) and is published under the Open
+Government Licence v3, so it may be freely used with attribution.
+
+## Planning pages
+
+- [All planning pages (sitemap)](https://towncrierapp.uk/sitemap.xml): machine-readable list of every authority and town page on the site.
+
+## About
+
+- [Town Crier](https://towncrierapp.uk/): what the app does, how alerts work, and how to get it.
+
+## Data and licensing
+
+- Source: PlanIt — https://planit.org.uk
+- Licence: Open Government Licence v3 — https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+- Contact: https://towncrierapp.uk/
