@@ -134,12 +134,12 @@ const breakdownByAuthorityQuery = "SELECT c.appState, COUNT(1) AS count FROM c G
 
 // BreakdownByAuthority returns the per-appState distribution over the WHOLE
 // authorityCode partition, ordered count DESC then appState ASC with nil last
-// (sortStateCounts, the same comparator breakdownByState uses). It backs the
+// (sortStateCounts, the same comparator BreakdownNearby uses). It backs the
 // build-time SEO endpoint's status breakdown and total: RecentByAuthority renders
 // the bounded list, this spans the whole partition, and the handler sums these
 // buckets for the exact Total. A row whose appState is absent (Cosmos omits an
 // undefined projection) OR explicit JSON null folds into the single nil-*string
-// bucket, matching breakdownByState's nil semantics. It runs on the
+// bucket, matching BreakdownNearby's nil semantics. It runs on the
 // latency-tolerant build-read budget (QueryItemsLongRead), like the sibling SEO
 // reads, and reads only from Cosmos (GH#395 Invariant 1) — never PlanIt.
 func (s *CosmosStore) BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error) {
@@ -218,44 +218,6 @@ func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, lati
 	return apps, nil
 }
 
-// countNearbyQuery is the exact, single-partition count of applications within
-// radiusMetres of a point. It marries the recentNearbyQuery ST_DISTANCE filter
-// (GeoJSON [longitude, latitude] order, all values bound as named parameters)
-// with a SELECT VALUE COUNT(1) scalar instead of a bounded TOP @cap read, so it
-// returns the EXACT in-radius total for the town SEO page. Cosmos returns a
-// single row that is a bare JSON number.
-const countNearbyQuery = "SELECT VALUE COUNT(1) FROM c WHERE ST_DISTANCE(c.location, " +
-	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
-
-// CountNearby returns the exact number of applications within radiusMetres of
-// (lat, lng) inside the authorityCode partition. It backs the build-time
-// town-level SEO endpoint's total: RecentNearby renders the bounded list, this
-// counts everything in radius. Coordinates and radius are bound as named
-// parameters (not string-concatenated). It runs on the latency-tolerant
-// build-read budget (QueryItemsLongRead) and reads only from Cosmos (GH#395
-// Invariant 1) — never PlanIt.
-func (s *CosmosStore) CountNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error) {
-	params := map[string]any{
-		"@latitude":     lat,
-		"@longitude":    lng,
-		"@radiusMetres": radiusMetres,
-	}
-	// Latency-tolerant build-time read: a LARGE authority partition legitimately
-	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
-	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, countNearbyQuery, params)
-	if err != nil {
-		return 0, fmt.Errorf("count applications near %q: %w", authorityCode, err)
-	}
-	if len(raws) == 0 {
-		return 0, nil
-	}
-	var total int
-	if err := json.Unmarshal(raws[0], &total); err != nil {
-		return 0, fmt.Errorf("decode nearby application count for %q: %w", authorityCode, err)
-	}
-	return total, nil
-}
-
 // breakdownNearbyQuery is the exact, index-served per-appState distribution over
 // the applications within radiusMetres of a point, inside a single authorityCode
 // partition. It marries the recentNearbyQuery ST_DISTANCE filter (GeoJSON
@@ -264,8 +226,8 @@ func (s *CosmosStore) CountNearby(ctx context.Context, authorityCode string, lat
 // COUNT, so the buckets sum to the EXACT in-radius total — unlike the TOP-@cap
 // bounded read, which saturates at the cap. The GROUP BY is served by the
 // appState index over the in-radius set, so it hydrates no documents and stays
-// cheap (on prod ~1.06x–1.18x the CountNearby it replaces, scaling linearly with
-// the in-radius set). Each row is a projection {"appState": "...", "count": N};
+// cheap (on prod ~1.06x–1.18x the scalar ST_DISTANCE count it replaces, scaling
+// linearly with the in-radius set). Each row is a projection {"appState": "...", "count": N};
 // Cosmos OMITS the appState property entirely when the value is undefined, so a
 // missing-appState bucket arrives without that key (decoded as a nil *string),
 // distinct from an explicit JSON null.

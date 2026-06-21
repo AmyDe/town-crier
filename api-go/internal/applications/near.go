@@ -33,12 +33,13 @@ const (
 
 // nearStore is the consumer-side store the recent-nearby SEO handler needs: two
 // bounded, single-partition spatial top-N reads (recency-ordered and
-// distance-ordered) plus an exact in-radius count. The concrete *CosmosStore
-// satisfies it structurally.
+// distance-ordered) plus a whole-in-radius per-appState breakdown (whose buckets
+// sum to the exact in-radius total). The concrete *CosmosStore satisfies it
+// structurally.
 type nearStore interface {
 	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
 	NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
-	CountNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error)
+	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
 }
 
 // near ordering modes for the optional order query param. recency (the default,
@@ -119,13 +120,27 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// total is the EXACT in-radius count (a separate COUNT over the same scoped,
-	// clamped geo window), independent of the bounded read which saturates at
-	// nearReadCap. The render slice must clamp against the bounded read length.
-	total, err := h.store.CountNearby(r.Context(), authorityCode, lat, lng, radius)
+	// breakdown is the per-appState distribution over the WHOLE in-radius set (an
+	// index-served spatial GROUP BY), independent of the bounded read which
+	// saturates at nearReadCap. The render slice must clamp against the bounded
+	// read length, NOT the breakdown total — the total can dwarf len(apps).
+	breakdown, err := h.store.BreakdownNearby(r.Context(), authorityCode, lat, lng, radius)
 	if err != nil {
-		serverError(w, r, h.logger, "count applications near point", err)
+		serverError(w, r, h.logger, "status breakdown near point", err)
 		return
+	}
+
+	// StatusBreakdown is always a non-null array on the wire; nothing in radius
+	// yields an empty (not nil) slice so it marshals to [] rather than null.
+	if breakdown == nil {
+		breakdown = []StateCount{}
+	}
+
+	// total is the EXACT whole-in-radius total: the sum of the breakdown buckets,
+	// so the rendered "tracking N applications" lead line equals the breakdown.
+	total := 0
+	for _, sc := range breakdown {
+		total += sc.Count
 	}
 
 	render := len(apps)
@@ -144,7 +159,7 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		Radius:          radius,
 		Applications:    results,
 		Total:           total,
-		StatusBreakdown: breakdownByState(apps),
+		StatusBreakdown: breakdown,
 	})
 }
 

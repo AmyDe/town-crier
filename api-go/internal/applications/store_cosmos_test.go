@@ -640,7 +640,7 @@ func TestCosmosStore_BreakdownByAuthority_MissingAndNullAppStateFoldIntoOneNilBu
 	items := newFakeItems()
 	// One row omits appState (absent projection); a separate row carries explicit
 	// JSON null. Both must merge into the SINGLE nil bucket, matching
-	// breakdownByState's nil semantics.
+	// BreakdownNearby's nil semantics.
 	items.queryResult = [][]byte{
 		breakdownRow(t, nil, 30),                  // appState absent
 		[]byte(`{"appState": null, "count": 12}`), // appState explicit null

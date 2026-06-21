@@ -102,9 +102,12 @@ type RecentByAuthorityResult struct {
 // GET /v1/applications/near. It mirrors RecentByAuthorityResult but echoes the
 // effective (post-clamp) query point and radius instead of an area name, so the
 // town prerender can label and cache the page by its centroid. Applications is
-// always a non-null array (at most the request's limit); Total is the EXACT
-// in-radius count (a separate COUNT, not the bounded read length); StatusBreakdown
-// is the per-appState distribution over the bounded read, always a non-null array.
+// always a non-null array (at most the request's limit). Total is the EXACT
+// whole-in-radius total: the sum of the StatusBreakdown buckets, so the rendered
+// "tracking N applications" lead line always equals the breakdown. StatusBreakdown
+// is the per-appState distribution over the WHOLE in-radius set (its denominator
+// is the whole in-radius set, not the bounded read), computed by an index-served
+// spatial GROUP BY, always a non-null array.
 type RecentNearbyResult struct {
 	AuthorityID     int                 `json:"authorityId"`
 	Lat             float64             `json:"lat"`
@@ -156,39 +159,11 @@ type StateCount struct {
 	Count    int     `json:"count"`
 }
 
-// breakdownByState computes the per-appState distribution over the GIVEN slice of
-// applications: the denominator is exactly the slice it is handed (e.g. the town
-// page's bounded read), not the whole partition. Keys are the RAW appState
-// values; a nil appState is a distinct bucket. The order is deterministic: count
-// DESC, then appState ASC, with nil sorting last.
-func breakdownByState(apps []PlanningApplication) []StateCount {
-	counts := make(map[string]int)
-	nilCount := 0
-	for _, a := range apps {
-		if a.AppState == nil {
-			nilCount++
-			continue
-		}
-		counts[*a.AppState]++
-	}
-
-	out := make([]StateCount, 0, len(counts)+1)
-	for state, n := range counts {
-		s := state
-		out = append(out, StateCount{AppState: &s, Count: n})
-	}
-	if nilCount > 0 {
-		out = append(out, StateCount{AppState: nil, Count: nilCount})
-	}
-
-	sortStateCounts(out)
-	return out
-}
-
 // sortStateCounts orders a breakdown deterministically in place: count DESC, then
 // raw appState ASC, with the nil-appState bucket sorting last on a count tie. It
-// is the single comparator shared by breakdownByState (over a bounded slice) and
-// CosmosStore.BreakdownByAuthority (over a whole-partition GROUP BY).
+// is the single comparator shared by CosmosStore.BreakdownByAuthority (over a
+// whole-partition GROUP BY) and CosmosStore.BreakdownNearby (over a whole-in-radius
+// spatial GROUP BY).
 func sortStateCounts(out []StateCount) {
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
