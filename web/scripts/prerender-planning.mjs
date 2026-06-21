@@ -35,8 +35,41 @@ import { renderSitemap } from './lib/render-sitemap.mjs';
 
 const DEFAULT_LIMIT = 30;
 
+/**
+ * Default published-population threshold when `SEO_TOWN_MIN_POPULATION` is unset,
+ * empty, or not a positive finite integer. A town ships only if its built-up-area
+ * population is at least this value (the ≥10 in-radius coverage gate applies on
+ * top). The threshold is a build-time config knob so coverage can be ramped by
+ * bumping the variable and rebuilding — no gazetteer regeneration.
+ *
+ * @type {number}
+ */
+export const DEFAULT_MIN_POPULATION = 20000;
+
 /** Directory containing this script (`web/scripts`), independent of cwd. */
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Resolve the build-time town population threshold from the environment.
+ * Reads `SEO_TOWN_MIN_POPULATION` and parses it to a positive finite integer,
+ * falling back to {@link DEFAULT_MIN_POPULATION} when the value is missing,
+ * empty/whitespace, non-numeric, or not strictly positive. A fractional value is
+ * truncated toward zero (so "12345.9" -> 12345).
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {number} the resolved minimum population (always a positive integer)
+ */
+export function resolveMinPopulation(env = {}) {
+  const raw = env.SEO_TOWN_MIN_POPULATION;
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return DEFAULT_MIN_POPULATION;
+  }
+  const parsed = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_MIN_POPULATION;
+  }
+  return parsed;
+}
 
 /**
  * The authority list is static, public, committed data — read it from the repo
@@ -576,6 +609,7 @@ async function runFixtureMode(args) {
  * @param {string} args.apiBase
  * @param {string} args.buildKey
  * @param {number} args.limit
+ * @param {number} args.minPopulation
  * @param {typeof globalThis.fetch} args.fetchImpl
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
  * @param {() => Promise<Town[]>} args.loadTowns
@@ -588,6 +622,7 @@ async function runLiveMode(args) {
     apiBase,
     buildKey,
     limit,
+    minPopulation,
     fetchImpl,
     loadAuthorities,
     loadTowns,
@@ -634,14 +669,33 @@ async function runLiveMode(args) {
   // Town pages: one bounded geo read per town, scoped to its authority partition
   // and centroid. Reuses the same authority list (no extra HTTP) to resolve slugs.
   const towns = await loadTowns();
+
+  // Population threshold gate, applied BEFORE the per-town geo fetch so that
+  // below-threshold towns never even hit the API. The threshold is a build-time
+  // config value (SEO_TOWN_MIN_POPULATION, default 20000); ramping coverage means
+  // bumping the variable and rebuilding — no gazetteer regeneration. The ≥10
+  // in-radius coverage gate (inside `considerTown`) still applies on top.
+  /** @type {Town[]} */
+  const eligibleTowns = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  const populationExcludedTowns = [];
+  for (const town of towns) {
+    if (town.population >= minPopulation) {
+      eligibleTowns.push(town);
+    } else {
+      populationExcludedTowns.push({ name: town.name, reason: 'population' });
+    }
+  }
+
   const { publishedTowns, excludedTowns } = await renderTownPages({
     outDir,
-    towns,
+    towns: eligibleTowns,
     authorities,
     getGeo: (town) => fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
     limit,
     logger,
   });
+  excludedTowns.push(...populationExcludedTowns);
 
   await writeFile(
     join(outDir, 'sitemap.xml'),
@@ -661,6 +715,7 @@ async function runLiveMode(args) {
  * @param {string} [options.fixturePath]           committed authority JSON fixture (fixture mode)
  * @param {string} [options.townFixturePath]       committed town JSON fixture (fixture mode)
  * @param {number} [options.limit]                 applications rendered per page
+ * @param {Record<string, string | undefined>} [options.env]  environment (for SEO_TOWN_MIN_POPULATION)
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
  * @param {() => Promise<Town[]>} [options.loadTowns]
@@ -675,6 +730,7 @@ export async function runPrerender(options) {
     fixturePath,
     townFixturePath,
     limit = DEFAULT_LIMIT,
+    env = process.env,
     fetchImpl = globalThis.fetch,
     loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
     loadTowns = () => loadTownsFromFile(TOWNS_FILE, readFile),
@@ -714,6 +770,7 @@ export async function runPrerender(options) {
     apiBase: trimTrailingSlash(apiBase),
     buildKey,
     limit,
+    minPopulation: resolveMinPopulation(env),
     fetchImpl,
     loadAuthorities,
     loadTowns,

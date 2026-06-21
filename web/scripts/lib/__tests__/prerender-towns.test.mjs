@@ -127,8 +127,17 @@ describe('runPrerender — sitemap with authority and town pages', () => {
 });
 
 describe('runPrerender — town live mode', () => {
+  // population well above the default 20000 threshold so these tests isolate the
+  // geo/coverage pipeline (tc-2avw.3's population gate is exercised separately).
   const cornwallTowns = [
-    { slug: 'truro', name: 'Truro', lat: 50.2632, lng: -5.051, authorityId: 52 },
+    {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    },
   ];
   // areaType is deliberately non-qualifying here so the authority pass is a
   // no-op and these tests isolate the TOWN pipeline. Slug resolution
@@ -626,6 +635,9 @@ describe('runPrerender — per-town integration spine (one authority, end to end
       apiBase: 'https://api-dev.towncrierapp.uk',
       buildKey: 'test-key',
       fetchImpl: stub.fetch,
+      // Admit the pop-18766 spine town past tc-2avw.3's population gate (default
+      // 20000) so this end-to-end test still exercises fetch -> gate -> write.
+      env: { SEO_TOWN_MIN_POPULATION: '5000' },
       loadAuthorities: async () => cornwallAuthorities,
       loadTowns: async () => towns,
       logger: silentLogger,
