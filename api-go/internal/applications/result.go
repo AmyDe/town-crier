@@ -81,6 +81,46 @@ type NearbyResult struct {
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
 }
 
+// RecentByAuthorityResult is the wire shape of the build-time SEO endpoint
+// GET /v1/authorities/{id}/applications. Applications is always a non-null array
+// (at most the request's limit). Total is the count from the single bounded read;
+// TotalCapped reports that the read hit cap (so the prerender can render "200+").
+type RecentByAuthorityResult struct {
+	AuthorityID  int                 `json:"authorityId"`
+	AreaName     string              `json:"areaName"`
+	Applications []RecentApplication `json:"applications"`
+	Total        int                 `json:"total"`
+	TotalCapped  bool                `json:"totalCapped"`
+}
+
+// RecentApplication is the slim, render-only projection of a planning application
+// for an SEO page: just the fields the static page needs. Coordinates, area
+// identity, and the unread-event projection are deliberately omitted.
+type RecentApplication struct {
+	UID         string             `json:"uid"`
+	Name        string             `json:"name"`
+	Address     string             `json:"address"`
+	Description string             `json:"description"`
+	AppState    *string            `json:"appState"`
+	StartDate   *platform.DateOnly `json:"startDate"`
+	Link        *string            `json:"link"`
+	URL         *string            `json:"url"`
+}
+
+// RecentApplicationOf maps a domain snapshot to its slim SEO wire shape.
+func RecentApplicationOf(a PlanningApplication) RecentApplication {
+	return RecentApplication{
+		UID:         a.UID,
+		Name:        a.Name,
+		Address:     a.Address,
+		Description: a.Description,
+		AppState:    a.AppState,
+		StartDate:   platform.DateOnlyPtr(a.StartDate),
+		Link:        a.Link,
+		URL:         a.URL,
+	}
+}
+
 // NearbyResultOf maps a domain snapshot to the raw-domain wire shape.
 func NearbyResultOf(a PlanningApplication) NearbyResult {
 	return NearbyResult{
