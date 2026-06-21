@@ -302,6 +302,30 @@ func TestLoadConfig_AdminAPIKey(t *testing.T) {
 	})
 }
 
+func TestLoadConfig_SiteBuildKey(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("SITE_BUILD_KEY", "s3cret-build-key")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.SiteBuildKey != "s3cret-build-key" {
+			t.Errorf("SiteBuildKey: got %q", cfg.SiteBuildKey)
+		}
+	})
+
+	t.Run("absent defaults empty (SEO build surface disabled)", func(t *testing.T) {
+		t.Setenv("SITE_BUILD_KEY", "")
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.SiteBuildKey != "" {
+			t.Errorf("SiteBuildKey: got %q, want empty", cfg.SiteBuildKey)
+		}
+	})
+}
+
 func TestLoadConfig_OutboundBaseURLs(t *testing.T) {
 	t.Run("defaults to live UK services", func(t *testing.T) {
 		t.Setenv("POSTCODES_IO_BASE_URL", "")
