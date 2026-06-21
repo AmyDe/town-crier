@@ -9352,6 +9352,262 @@
     "population": 97870
   },
   {
+    "slug": "barking-and-dagenham",
+    "name": "Barking and Dagenham",
+    "lat": 51.542,
+    "lng": 0.127,
+    "authorityId": 295,
+    "population": 218236
+  },
+  {
+    "slug": "barnet",
+    "name": "Barnet",
+    "lat": 51.6152,
+    "lng": -0.2091,
+    "authorityId": 296,
+    "population": 388572
+  },
+  {
+    "slug": "bexley",
+    "name": "Bexley",
+    "lat": 51.4687,
+    "lng": 0.1474,
+    "authorityId": 297,
+    "population": 246074
+  },
+  {
+    "slug": "brent",
+    "name": "Brent",
+    "lat": 51.56,
+    "lng": -0.2779,
+    "authorityId": 298,
+    "population": 340611
+  },
+  {
+    "slug": "bromley",
+    "name": "Bromley",
+    "lat": 51.3802,
+    "lng": 0.0445,
+    "authorityId": 299,
+    "population": 325469
+  },
+  {
+    "slug": "camden",
+    "name": "Camden",
+    "lat": 51.5488,
+    "lng": -0.1621,
+    "authorityId": 300,
+    "population": 209342
+  },
+  {
+    "slug": "croydon",
+    "name": "Croydon",
+    "lat": 51.3507,
+    "lng": -0.083,
+    "authorityId": 301,
+    "population": 389242
+  },
+  {
+    "slug": "ealing",
+    "name": "Ealing",
+    "lat": 51.5245,
+    "lng": -0.3503,
+    "authorityId": 302,
+    "population": 367271
+  },
+  {
+    "slug": "enfield",
+    "name": "Enfield",
+    "lat": 51.6482,
+    "lng": -0.095,
+    "authorityId": 303,
+    "population": 329822
+  },
+  {
+    "slug": "greenwich",
+    "name": "Greenwich",
+    "lat": 51.4741,
+    "lng": 0.0472,
+    "authorityId": 304,
+    "population": 288117
+  },
+  {
+    "slug": "hackney",
+    "name": "Hackney",
+    "lat": 51.5513,
+    "lng": -0.0656,
+    "authorityId": 305,
+    "population": 258464
+  },
+  {
+    "slug": "hammersmith-and-fulham",
+    "name": "Hammersmith and Fulham",
+    "lat": 51.4973,
+    "lng": -0.2252,
+    "authorityId": 306,
+    "population": 182187
+  },
+  {
+    "slug": "haringey",
+    "name": "Haringey",
+    "lat": 51.5861,
+    "lng": -0.1031,
+    "authorityId": 307,
+    "population": 264069
+  },
+  {
+    "slug": "harrow",
+    "name": "Harrow",
+    "lat": 51.5944,
+    "lng": -0.3441,
+    "authorityId": 308,
+    "population": 260534
+  },
+  {
+    "slug": "havering",
+    "name": "Havering",
+    "lat": 51.5769,
+    "lng": 0.2164,
+    "authorityId": 309,
+    "population": 259401
+  },
+  {
+    "slug": "hillingdon",
+    "name": "Hillingdon",
+    "lat": 51.536,
+    "lng": -0.4454,
+    "authorityId": 310,
+    "population": 307089
+  },
+  {
+    "slug": "hounslow",
+    "name": "Hounslow",
+    "lat": 51.4679,
+    "lng": -0.3757,
+    "authorityId": 311,
+    "population": 286591
+  },
+  {
+    "slug": "islington",
+    "name": "Islington",
+    "lat": 51.5443,
+    "lng": -0.1035,
+    "authorityId": 312,
+    "population": 216309
+  },
+  {
+    "slug": "kensington-and-chelsea",
+    "name": "Kensington and Chelsea",
+    "lat": 51.4938,
+    "lng": -0.1773,
+    "authorityId": 313,
+    "population": 143348
+  },
+  {
+    "slug": "kingston-upon-thames",
+    "name": "Kingston upon Thames",
+    "lat": 51.3953,
+    "lng": -0.2796,
+    "authorityId": 314,
+    "population": 166333
+  },
+  {
+    "slug": "lambeth",
+    "name": "Lambeth",
+    "lat": 51.4355,
+    "lng": -0.1161,
+    "authorityId": 315,
+    "population": 317108
+  },
+  {
+    "slug": "lewisham",
+    "name": "Lewisham",
+    "lat": 51.4481,
+    "lng": -0.0217,
+    "authorityId": 316,
+    "population": 300764
+  },
+  {
+    "slug": "merton",
+    "name": "Merton",
+    "lat": 51.4113,
+    "lng": -0.2022,
+    "authorityId": 317,
+    "population": 214931
+  },
+  {
+    "slug": "newham",
+    "name": "Newham",
+    "lat": 51.5288,
+    "lng": 0.0376,
+    "authorityId": 318,
+    "population": 351065
+  },
+  {
+    "slug": "redbridge",
+    "name": "Redbridge",
+    "lat": 51.5842,
+    "lng": 0.0752,
+    "authorityId": 319,
+    "population": 309509
+  },
+  {
+    "slug": "richmond-upon-thames",
+    "name": "Richmond upon Thames",
+    "lat": 51.4346,
+    "lng": -0.3404,
+    "authorityId": 320,
+    "population": 192888
+  },
+  {
+    "slug": "southwark",
+    "name": "Southwark",
+    "lat": 51.4858,
+    "lng": -0.0723,
+    "authorityId": 321,
+    "population": 307076
+  },
+  {
+    "slug": "sutton-sutton",
+    "name": "Sutton (Sutton)",
+    "lat": 51.3588,
+    "lng": -0.1754,
+    "authorityId": 322,
+    "population": 208858
+  },
+  {
+    "slug": "tower-hamlets",
+    "name": "Tower Hamlets",
+    "lat": 51.5184,
+    "lng": -0.0375,
+    "authorityId": 323,
+    "population": 311072
+  },
+  {
+    "slug": "waltham-forest",
+    "name": "Waltham Forest",
+    "lat": 51.5808,
+    "lng": -0.0141,
+    "authorityId": 324,
+    "population": 278129
+  },
+  {
+    "slug": "wandsworth",
+    "name": "Wandsworth",
+    "lat": 51.4512,
+    "lng": -0.1773,
+    "authorityId": 325,
+    "population": 326725
+  },
+  {
+    "slug": "city-of-westminster",
+    "name": "City of Westminster",
+    "lat": 51.5127,
+    "lng": -0.1571,
+    "authorityId": 326,
+    "population": 203571
+  },
+  {
     "slug": "amersham",
     "name": "Amersham",
     "lat": 51.6777,
@@ -10790,6 +11046,14 @@
     "lng": -3.3087,
     "authorityId": 419,
     "population": 5045
+  },
+  {
+    "slug": "city-and-county-of-the-city-of-london",
+    "name": "City and County of the City of London",
+    "lat": 51.5154,
+    "lng": -0.0899,
+    "authorityId": 471,
+    "population": 7820
   },
   {
     "slug": "brandon-west-suffolk",

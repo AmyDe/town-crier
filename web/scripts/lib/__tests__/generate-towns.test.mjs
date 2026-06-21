@@ -11,6 +11,7 @@ import {
   parseCentroidRow,
   joinBua,
   buildGazetteer,
+  combineRecords,
   POPULATION_COLUMNS,
   CENTROID_COLUMNS,
 } from '../../generate-towns.mjs';
@@ -421,5 +422,134 @@ describe('buildGazetteer over the on-disk fixture CSVs (documented contract)', (
     expect(byCode['E63004000']).toBe('below-floor');
     expect(byCode['E63007777']).toBe('unmatched-authority');
     expect(byCode['E63009999']).toBe('no-centroid');
+  });
+});
+
+describe('London composition (tc-2avw.7)', () => {
+  // London arrives as a SEPARATE population CSV (the Census 1c/1d tables exclude
+  // London) joined against the SAME GB centroid CSV. These tests prove a
+  // London-borough BUA row flows through buildGazetteer to a record with the
+  // right authorityId + population, and an unmatched one skips — using the real
+  // London-borough spellings/ids from authority-mapping.json.
+  const mapping = { Camden: 300, 'City of London': 471, Westminster: 326 };
+
+  // A GB centroid CSV carries E&W *and* London BUAs (BUA_2022_GB is GB-wide).
+  const centroidCsv = [
+    'bua_code,bua_name,latitude,longitude,bng_easting,bng_northing',
+    'E63004858,Camden,51.5488,-0.1621,529000,183000',
+    'E63004906,City and County of the City of London,51.5154,-0.0899,532500,181200',
+    'E63004916,City of Westminster,51.5127,-0.1571,529300,180600',
+    // Hackney has a centroid in the shared GB file, so a missing authority
+    // mapping skips it as 'unmatched-authority' (not 'no-centroid').
+    'E63004850,Hackney,51.5513,-0.0656,534000,185000',
+    // An E&W centroid present in the same shared file, to prove the join keys on code.
+    'E63001234,Truro,50.2632,-5.0510,182500,44900',
+  ].join('\n');
+
+  it('flows a London-borough BUA to a record with the right authorityId and population', () => {
+    const londonPopCsv = [
+      'bua_code,bua_name,lad_name,population',
+      'E63004858,Camden,Camden,209342',
+    ].join('\n');
+
+    const { records, skipped } = buildGazetteer(londonPopCsv, centroidCsv, mapping);
+
+    expect(skipped).toEqual([]);
+    expect(records).toEqual([
+      {
+        slug: 'camden',
+        name: 'Camden',
+        lat: 51.5488,
+        lng: -0.1621,
+        authorityId: 300,
+        population: 209342,
+      },
+    ]);
+  });
+
+  it('keeps the ONS parenthetical/administrative BUA name verbatim (City of London)', () => {
+    const londonPopCsv = [
+      'bua_code,bua_name,lad_name,population',
+      'E63004906,City and County of the City of London,City of London,7820',
+    ].join('\n');
+
+    const { records } = buildGazetteer(londonPopCsv, centroidCsv, mapping);
+
+    expect(records).toHaveLength(1);
+    expect(records[0].name).toBe('City and County of the City of London');
+    expect(records[0].slug).toBe('city-and-county-of-the-city-of-london');
+    expect(records[0].authorityId).toBe(471);
+  });
+
+  it('skips and logs a London BUA whose borough is not in the mapping (never guessed)', () => {
+    const londonPopCsv = [
+      'bua_code,bua_name,lad_name,population',
+      'E63004858,Camden,Camden,209342',
+      // Hackney is a real London borough but absent from this test mapping.
+      'E63004850,Hackney,Hackney,258464',
+    ].join('\n');
+
+    const { records, skipped } = buildGazetteer(londonPopCsv, centroidCsv, mapping);
+
+    expect(records.map((r) => r.slug)).toEqual(['camden']);
+    expect(skipped).toEqual([
+      { code: 'E63004850', name: 'Hackney', reason: 'unmatched-authority' },
+    ]);
+  });
+});
+
+describe('combineRecords (cross-region dedupe + stable sort)', () => {
+  // The composed E&W + London set is concatenated then deduped+sorted by
+  // authorityId-then-slug. This mirrors the joinBua tail so the committed diff
+  // stays stable regardless of region order.
+  const ew = [
+    { slug: 'truro', name: 'Truro', lat: 50.2632, lng: -5.051, authorityId: 52, population: 18766 },
+  ];
+  const london = [
+    {
+      slug: 'camden',
+      name: 'Camden',
+      lat: 51.5488,
+      lng: -0.1621,
+      authorityId: 300,
+      population: 209342,
+    },
+    {
+      slug: 'barnet',
+      name: 'Barnet',
+      lat: 51.6152,
+      lng: -0.2091,
+      authorityId: 296,
+      population: 388572,
+    },
+  ];
+
+  it('orders the combined set by authorityId then slug regardless of input order', () => {
+    const combined = combineRecords([...london, ...ew]);
+    expect(combined.map((r) => `${r.authorityId}/${r.slug}`)).toEqual([
+      '52/truro',
+      '296/barnet',
+      '300/camden',
+    ]);
+  });
+
+  it('keeps every region record and adds nothing when keys do not collide', () => {
+    const combined = combineRecords([...ew, ...london]);
+    expect(combined).toHaveLength(ew.length + london.length);
+  });
+
+  it('de-duplicates an authorityId/slug collision across regions, keeping the last', () => {
+    const duplicateOfTruro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 99,
+      lng: 99,
+      authorityId: 52,
+      population: 1,
+    };
+    const combined = combineRecords([...ew, duplicateOfTruro]);
+    expect(combined).toHaveLength(1);
+    // Last write wins, matching joinBua's Map-based dedupe.
+    expect(combined[0]).toEqual(duplicateOfTruro);
   });
 });

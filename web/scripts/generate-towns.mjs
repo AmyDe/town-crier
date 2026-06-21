@@ -16,9 +16,9 @@
  * >= 20k selection later. Lowering the published threshold never needs a regen.
  *
  * Scope for THIS generator: England-ex-London + Wales (ONS Census 2021 BUA
- * file). London BUAs (tc-2avw.7) and Scotland settlements (tc-2avw.8) are
- * separate sources composed on top — see the EXTENSION SEAMS note at the foot
- * of this file. They are deliberately NOT implemented here.
+ * file) PLUS London (tc-2avw.7), composed on top via a second population CSV.
+ * Scotland settlements (tc-2avw.8) remain a separate source not yet wired —
+ * see the EXTENSION SEAMS note at the foot of this file.
  *
  * ── Data sources (TWO files, joined on BUA code) ────────────────────────────
  *
@@ -74,18 +74,36 @@
  * source genuinely lacks codes, fall back to an exact name match and justify it
  * at the call site — do NOT silently fuzzy-match.
  *
+ * ── London population (tc-2avw.7) ───────────────────────────────────────────
+ * The Census 2021 BUA workbook (above) explicitly EXCLUDES London: in Greater
+ * London the BUA method follows borough boundaries rather than recognising
+ * individual settlements, so ONS removed the ~33 borough-shaped London BUAs
+ * from Tables 1c/1d. London therefore needs a SEPARATE population CSV, in the
+ * same `bua_code,bua_name,lad_name,population` contract, built from genuine ONS
+ * sources:
+ *   - usual residents per London BUA = SUM of Census 2021 TS001 OA usual
+ *     residents over the OAs the ONS OA21->BUA22->LAD22 lookup assigns to that
+ *     BUA (both sources cover London; sum on BUA22CD).
+ *   - lad_name = the London borough holding the plurality of the BUA's OA
+ *     population (>=98.9% for every one — the BUAs are borough-shaped), which
+ *     resolves the multi-LAD "Part" rows the BUA->LAD lookup carries.
+ * The centroid CSV is GB-wide (BUA_2022_GB already includes London), so the
+ * SAME centroid file feeds both the E&W and the London buildGazetteer calls.
+ *
  * ── How to regenerate (manual) ──────────────────────────────────────────────
  *   1. Download the two ONS files above and produce two CSVs that match the
  *      column contracts (you may need to rename/reorder columns; a spatial
- *      pre-join supplies lad_name if the Census export lacks it).
+ *      pre-join supplies lad_name if the Census export lacks it). Build the
+ *      separate London population CSV per the "London population" note above.
  *   2. Run:
- *        node scripts/generate-towns.mjs <population.csv> <centroid.csv>
- *      It parses both, joins on bua_code, drops BUAs < 5,000, resolves
- *      lad_name -> authorityId against authority-mapping.json, skips+logs any
- *      BUA with no centroid or no resolvable authority, de-duplicates by
- *      authorityId/slug, sorts, and overwrites web/src/data/towns.json.
- *   3. (When tc-2avw.7 / tc-2avw.8 land) append the London and Scotland record
- *      sets before writing — see EXTENSION SEAMS.
+ *        node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> [<london-population.csv>]
+ *      It parses each population CSV, joins on bua_code against the shared
+ *      centroid CSV, drops BUAs < 5,000, resolves lad_name -> authorityId
+ *      against authority-mapping.json, skips+logs any BUA with no centroid or
+ *      no resolvable authority, then de-duplicates the COMBINED E&W+London set
+ *      by authorityId/slug, sorts, and overwrites web/src/data/towns.json.
+ *   3. (When tc-2avw.8 lands) append the Scotland record set before writing —
+ *      see EXTENSION SEAMS.
  *   4. Review the diff, run `npx vitest run`, and commit.
  *
  * ── Coordinate conversion (fallback) ────────────────────────────────────────
@@ -290,6 +308,28 @@ export function joinBua(populations, centroids, mapping) {
   );
 
   return { records, skipped };
+}
+
+/**
+ * De-duplicate and stable-sort a COMBINED set of gazetteer records drawn from
+ * more than one region (E&W + London, later + Scotland). Each region's
+ * `buildGazetteer` already dedupes+sorts within itself, but concatenating two
+ * sets can reintroduce an `authorityId/slug` collision across regions, so the
+ * combine step re-applies the same last-wins dedupe and the same
+ * authorityId-then-slug stable sort `joinBua` uses. Identical key/sort keeps
+ * the committed diff stable regardless of the order regions are passed in.
+ *
+ * @param {Array<{ slug: string, name: string, lat: number, lng: number, authorityId: number, population: number }>} records
+ * @returns {Array<{ slug: string, name: string, lat: number, lng: number, authorityId: number, population: number }>}
+ */
+export function combineRecords(records) {
+  const byKey = new Map();
+  for (const r of records) {
+    byKey.set(`${r.authorityId}/${r.slug}`, r);
+  }
+  return [...byKey.values()].sort(
+    (x, y) => x.authorityId - y.authorityId || x.slug.localeCompare(y.slug),
+  );
 }
 
 /**
@@ -535,16 +575,20 @@ function round4(v) {
 }
 
 /**
- * CLI entry: read the two ONS CSVs, build the gazetteer, write towns.json.
+ * CLI entry: read the ONS CSVs, build the gazetteer (E&W + optional London),
+ * write towns.json.
  *
- * @param {string} populationFile path to the POPULATION CSV
- * @param {string} centroidFile   path to the CENTROID CSV
+ * @param {string} populationFile      path to the E&W POPULATION CSV
+ * @param {string} centroidFile        path to the GB-wide CENTROID CSV
+ * @param {string} [londonPopulationFile] optional path to the London POPULATION
+ *   CSV (same `bua_code,bua_name,lad_name,population` contract). When supplied,
+ *   its records are composed on top of E&W against the SAME centroid CSV.
  * @returns {Promise<void>}
  */
-async function main(populationFile, centroidFile) {
+async function main(populationFile, centroidFile, londonPopulationFile) {
   if (!populationFile || !centroidFile) {
     console.error(
-      'usage: node scripts/generate-towns.mjs <population.csv> <centroid.csv>\n' +
+      'usage: node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> [<london-population.csv>]\n' +
         'See the script header for the full CSV contracts and regeneration steps.',
     );
     process.exitCode = 1;
@@ -552,20 +596,34 @@ async function main(populationFile, centroidFile) {
   }
 
   const mapping = JSON.parse(await readFile(AUTHORITY_MAPPING_FILE, 'utf-8'));
-  const populationCsv = await readFile(populationFile, 'utf-8');
   const centroidCsv = await readFile(centroidFile, 'utf-8');
 
+  // England-excluding-London + Wales (ONS Census 2021 Tables 1c + 1d).
+  const ewPopulationCsv = await readFile(populationFile, 'utf-8');
+  const ew = buildGazetteer(ewPopulationCsv, centroidCsv, mapping);
+
   // EXTENSION SEAMS — compose other regions here before writing:
-  //   * London BUAs (tc-2avw.7): BUA-2022 geometry + a London BUA population
-  //     table. Produce records via buildGazetteer(londonPopCsv, centroidCsv,
-  //     mapping) and concat. London LADs are already in authority-mapping.json.
+  //   * London BUAs (tc-2avw.7): the Census 1c/1d tables EXCLUDE London, so
+  //     London arrives as its own population CSV (see the "London population"
+  //     header note) joined against the same GB centroid CSV. London borough
+  //     LADs are already in authority-mapping.json.
   //   * Scotland settlements (tc-2avw.8): NRS settlement population + NRS
   //     settlement centroids. Different source schema — add a parseNrsRow /
   //     buildScotland helper and concat its records here.
   // Each region must keep emitting { slug, name, lat, lng, authorityId,
   // population } and resolve LAD->authorityId against the same mapping. Skipped
   // BUAs stay skipped+logged, never guessed.
-  const { records, skipped } = buildGazetteer(populationCsv, centroidCsv, mapping);
+  const regions = [ew];
+  if (londonPopulationFile) {
+    const londonPopulationCsv = await readFile(londonPopulationFile, 'utf-8');
+    regions.push(buildGazetteer(londonPopulationCsv, centroidCsv, mapping));
+  }
+
+  // Combine across regions: concat, then re-apply the dedupe-by-authorityId/slug
+  // + stable sort across the whole set (an authorityId/slug can only collide
+  // within a region in practice, but combineRecords keeps the invariant honest).
+  const records = combineRecords(regions.flatMap((r) => r.records));
+  const skipped = regions.flatMap((r) => r.skipped);
 
   await writeFile(TOWNS_OUT, JSON.stringify(records, null, 2) + '\n', 'utf-8');
 
@@ -574,7 +632,10 @@ async function main(populationFile, centroidFile) {
     return acc;
   }, /** @type {Record<string, number>} */ ({}));
   console.log(
-    `[generate-towns] wrote ${records.length} town(s) to ${TOWNS_OUT}`,
+    `[generate-towns] wrote ${records.length} town(s) to ${TOWNS_OUT}` +
+      ` (E&W ${ew.records.length}` +
+      (londonPopulationFile ? `, London ${regions[1].records.length}` : '') +
+      ')',
   );
   console.log(
     `[generate-towns] skipped ${skipped.length} BUA(s): ` +
@@ -590,5 +651,5 @@ async function main(populationFile, centroidFile) {
 
 // Run main() only when invoked directly, not when imported by tests.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main(process.argv[2], process.argv[3]);
+  await main(process.argv[2], process.argv[3], process.argv[4]);
 }
