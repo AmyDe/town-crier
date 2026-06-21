@@ -640,7 +640,7 @@ func TestCosmosStore_BreakdownByAuthority_MissingAndNullAppStateFoldIntoOneNilBu
 	items := newFakeItems()
 	// One row omits appState (absent projection); a separate row carries explicit
 	// JSON null. Both must merge into the SINGLE nil bucket, matching
-	// breakdownByState's nil semantics.
+	// BreakdownNearby's nil semantics.
 	items.queryResult = [][]byte{
 		breakdownRow(t, nil, 30),                  // appState absent
 		[]byte(`{"appState": null, "count": 12}`), // appState explicit null
@@ -703,40 +703,50 @@ func TestCosmosStore_BreakdownByAuthority_PropagatesQueryError(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_CountNearby_DecodesScalarWithSpatialFilterScopedToPartition(t *testing.T) {
+func TestCosmosStore_BreakdownNearby_DecodesGroupByWithSpatialFilterScopedToPartition(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
-	items.queryResult = [][]byte{[]byte("17")}
+	// GROUP BY returns one row per appState over the whole in-radius set:
+	// {"appState": "...", "count": N}.
+	items.queryResult = [][]byte{
+		breakdownRow(t, strPtr("Permitted"), 2100),
+		breakdownRow(t, strPtr("Rejected"), 900),
+	}
 	store := NewCosmosStore(items)
 
-	got, err := store.CountNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
+	got, err := store.BreakdownNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
 	if err != nil {
-		t.Fatalf("CountNearby: %v", err)
+		t.Fatalf("BreakdownNearby: %v", err)
 	}
-	if got != 17 {
-		t.Errorf("count: got %d, want 17", got)
+	want := []StateCount{
+		{AppState: strPtr("Permitted"), Count: 2100},
+		{AppState: strPtr("Rejected"), Count: 900},
 	}
+	assertBreakdownEqual(t, got, want)
+	// Scoped to the authorityCode logical partition (never cross-partition).
 	if items.lastQueryPK != "441" {
 		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
 	}
 	// Same single-partition ST_DISTANCE filter and named-param style as
-	// recentNearbyQuery, but a scalar COUNT instead of a bounded TOP @cap.
-	want := "SELECT VALUE COUNT(1) FROM c WHERE ST_DISTANCE(c.location, " +
-		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
-	if items.lastQuery != want {
-		t.Errorf("count nearby query:\n got %q\nwant %q", items.lastQuery, want)
+	// recentNearbyQuery, married to an index-served GROUP BY over the whole
+	// in-radius set — no TOP @cap (that would saturate the total).
+	wantQuery := "SELECT c.appState, COUNT(1) AS count FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres ` +
+		"GROUP BY c.appState"
+	if items.lastQuery != wantQuery {
+		t.Errorf("breakdown nearby query:\n got %q\nwant %q", items.lastQuery, wantQuery)
 	}
 	if _, ok := items.lastQueryParams["@cap"]; ok {
-		t.Errorf("count query must not bind @cap: %v", items.lastQueryParams)
+		t.Errorf("breakdown query must not bind @cap (it spans the whole in-radius set): %v", items.lastQueryParams)
 	}
 }
 
-func TestCosmosStore_CountNearby_UsesParameterizedQuery(t *testing.T) {
+func TestCosmosStore_BreakdownNearby_UsesParameterizedQuery(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	_, _ = store.CountNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
+	_, _ = store.BreakdownNearby(context.Background(), "441", 51.4975, -0.1357, 5000)
 
 	// No coordinate or radius value may be string-concatenated into the query —
 	// they must all be bound as named parameters.
@@ -765,30 +775,98 @@ func TestCosmosStore_CountNearby_UsesParameterizedQuery(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_CountNearby_EmptyResultIsZero(t *testing.T) {
+func TestCosmosStore_BreakdownNearby_OrdersCountDescStateAscNilLast(t *testing.T) {
 	t.Parallel()
+	items := newFakeItems()
+	// Deliberately unsorted, with a tie (Permitted vs Rejected both 5) and a nil
+	// bucket tying on count too, to prove the deterministic ordering.
+	items.queryResult = [][]byte{
+		breakdownRow(t, strPtr("Rejected"), 5),
+		breakdownRow(t, nil, 5),
+		breakdownRow(t, strPtr("Conditions"), 9),
+		breakdownRow(t, strPtr("Permitted"), 5),
+	}
+	store := NewCosmosStore(items)
+
+	got, err := store.BreakdownNearby(context.Background(), "471", 51.5, -0.1, 5000)
+	if err != nil {
+		t.Fatalf("BreakdownNearby: %v", err)
+	}
+	// count DESC primary; on the 5-way tie, appState ASC then nil last.
+	want := []StateCount{
+		{AppState: strPtr("Conditions"), Count: 9},
+		{AppState: strPtr("Permitted"), Count: 5},
+		{AppState: strPtr("Rejected"), Count: 5},
+		{AppState: nil, Count: 5},
+	}
+	assertBreakdownEqual(t, got, want)
+}
+
+func TestCosmosStore_BreakdownNearby_MissingAndNullAppStateFoldIntoOneNilBucket(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// One row omits appState (absent projection); a separate row carries explicit
+	// JSON null. Both must merge into the SINGLE nil bucket, matching
+	// BreakdownByAuthority's nil semantics.
+	items.queryResult = [][]byte{
+		breakdownRow(t, nil, 30),                  // appState absent
+		[]byte(`{"appState": null, "count": 12}`), // appState explicit null
+		breakdownRow(t, strPtr("Permitted"), 100),
+	}
+	store := NewCosmosStore(items)
+
+	got, err := store.BreakdownNearby(context.Background(), "471", 51.5, -0.1, 5000)
+	if err != nil {
+		t.Fatalf("BreakdownNearby: %v", err)
+	}
+	// 30 + 12 = 42 fold into one nil bucket; Permitted (100) outranks it.
+	want := []StateCount{
+		{AppState: strPtr("Permitted"), Count: 100},
+		{AppState: nil, Count: 42},
+	}
+	assertBreakdownEqual(t, got, want)
+}
+
+func TestCosmosStore_BreakdownNearby_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	// No rows at all (nothing in radius): an empty result set yields an empty
+	// non-nil slice, not an error.
 	store := NewCosmosStore(newFakeItems())
 
-	got, err := store.CountNearby(context.Background(), "471", 51.5, -0.1, 5000)
+	got, err := store.BreakdownNearby(context.Background(), "471", 51.5, -0.1, 5000)
 	if err != nil {
-		t.Fatalf("CountNearby: %v", err)
+		t.Fatalf("BreakdownNearby: %v", err)
 	}
-	if got != 0 {
-		t.Errorf("count: got %d, want 0", got)
+	if got == nil {
+		t.Fatal("BreakdownNearby: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("BreakdownNearby: got %d entries, want 0", len(got))
 	}
 }
 
-func TestCosmosStore_CountNearby_UsesLongReadBudget(t *testing.T) {
+func TestCosmosStore_BreakdownNearby_UsesLongReadBudget(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
-	items.queryResult = [][]byte{[]byte("9")}
+	items.queryResult = [][]byte{breakdownRow(t, strPtr("Permitted"), 3)}
 	store := NewCosmosStore(items)
 
-	if _, err := store.CountNearby(context.Background(), "156", 51.5, -0.1, 5000); err != nil {
-		t.Fatalf("CountNearby: %v", err)
+	if _, err := store.BreakdownNearby(context.Background(), "156", 51.5, -0.1, 5000); err != nil {
+		t.Fatalf("BreakdownNearby: %v", err)
 	}
 	if !items.lastQueryViaLongRead {
-		t.Error("CountNearby must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+		t.Error("BreakdownNearby must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
+func TestCosmosStore_BreakdownNearby_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryErr = context.DeadlineExceeded
+	store := NewCosmosStore(items)
+
+	if _, err := store.BreakdownNearby(context.Background(), "471", 51.5, -0.1, 5000); err == nil {
+		t.Fatal("BreakdownNearby: expected error, got nil")
 	}
 }
 
