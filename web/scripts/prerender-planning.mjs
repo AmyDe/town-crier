@@ -201,7 +201,7 @@ export async function loadTownsFromFile(filePath, readFileImpl) {
  * @param {string} buildKey
  * @param {number} limit
  * @param {typeof globalThis.fetch} fetchImpl
- * @returns {Promise<{ areaName: string, applications: object[], total: number, totalCapped: boolean }>}
+ * @returns {Promise<{ areaName: string, applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentApplications(
   apiBase,
@@ -222,7 +222,7 @@ async function fetchRecentApplications(
     !body ||
     !Array.isArray(body.applications) ||
     typeof body.total !== 'number' ||
-    typeof body.totalCapped !== 'boolean'
+    !Array.isArray(body.statusBreakdown)
   ) {
     throw new Error(
       `GET /v1/authorities/${authorityId}/applications returned an unexpected shape`,
@@ -232,7 +232,7 @@ async function fetchRecentApplications(
     areaName: typeof body.areaName === 'string' ? body.areaName : '',
     applications: body.applications,
     total: body.total,
-    totalCapped: body.totalCapped,
+    statusBreakdown: body.statusBreakdown,
   };
 }
 
@@ -260,7 +260,7 @@ async function writePage(outDir, data) {
  * @param {string} args.areaType
  * @param {string} args.areaName
  * @param {number} args.total
- * @param {boolean} args.totalCapped
+ * @param {object[]} args.statusBreakdown
  * @param {object[]} args.applications
  * @param {number} args.limit
  * @param {string[]} args.published
@@ -275,7 +275,7 @@ async function considerAuthority(args) {
     authorityId,
     name,
     total,
-    totalCapped,
+    statusBreakdown,
     applications,
     areaName,
     limit,
@@ -303,7 +303,7 @@ async function considerAuthority(args) {
     areaName: areaName || name,
     authorityId,
     total,
-    totalCapped,
+    statusBreakdown,
     applications: applications.slice(0, limit),
   });
   published.push(slug);
@@ -320,7 +320,7 @@ async function considerAuthority(args) {
  * @param {string} buildKey
  * @param {number} limit
  * @param {typeof globalThis.fetch} fetchImpl
- * @returns {Promise<{ applications: object[], total: number, totalCapped: boolean }>}
+ * @returns {Promise<{ applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
   const url =
@@ -338,7 +338,7 @@ async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
     !body ||
     !Array.isArray(body.applications) ||
     typeof body.total !== 'number' ||
-    typeof body.totalCapped !== 'boolean'
+    !Array.isArray(body.statusBreakdown)
   ) {
     throw new Error(
       `GET /v1/applications/near (authority ${town.authorityId}, ${town.name}) ` +
@@ -348,7 +348,7 @@ async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
   return {
     applications: body.applications,
     total: body.total,
-    totalCapped: body.totalCapped,
+    statusBreakdown: body.statusBreakdown,
   };
 }
 
@@ -374,7 +374,7 @@ async function writeTownPage(outDir, data) {
  * @param {Town} args.town
  * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities
  * @param {number} args.total
- * @param {boolean} args.totalCapped
+ * @param {object[]} args.statusBreakdown
  * @param {object[]} args.applications
  * @param {number} args.limit
  * @param {string[]} args.publishedTowns
@@ -389,7 +389,7 @@ async function considerTown(args) {
     town,
     authorities,
     total,
-    totalCapped,
+    statusBreakdown,
     applications,
     limit,
     publishedTowns,
@@ -422,7 +422,7 @@ async function considerTown(args) {
     authoritySlug,
     authorityId: town.authorityId,
     total,
-    totalCapped,
+    statusBreakdown,
     applications: applications.slice(0, limit),
   });
   publishedTowns.push(path);
@@ -437,7 +437,7 @@ async function considerTown(args) {
  * @param {string} args.outDir
  * @param {Town[]} args.towns
  * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities
- * @param {(town: Town) => Promise<{ applications: object[], total: number, totalCapped: boolean }>} args.getGeo
+ * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<{ publishedTowns: string[], excludedTowns: Array<{ name: string, reason: string }> }>}
@@ -458,7 +458,9 @@ async function renderTownPages(args) {
       town,
       authorities,
       total: geo.total,
-      totalCapped: geo.totalCapped,
+      statusBreakdown: Array.isArray(geo.statusBreakdown)
+        ? geo.statusBreakdown
+        : [],
       applications: Array.isArray(geo.applications) ? geo.applications : [],
       limit,
       publishedTowns,
@@ -509,7 +511,9 @@ async function runFixtureMode(args) {
         areaType: entry.areaType,
         areaName: entry.areaName ?? entry.name,
         total: entry.total,
-        totalCapped: Boolean(entry.totalCapped),
+        statusBreakdown: Array.isArray(entry.statusBreakdown)
+          ? entry.statusBreakdown
+          : [],
         applications: Array.isArray(entry.applications)
           ? entry.applications
           : [],
@@ -527,7 +531,7 @@ async function runFixtureMode(args) {
   /** @type {Array<{ name: string, reason: string }>} */
   let excludedTowns = [];
 
-  // Town fixture rows carry the geo projection inline (total/totalCapped/
+  // Town fixture rows carry the geo projection inline (total/statusBreakdown/
   // applications), so `getGeo` is a pure lookup — no network in fixture mode.
   if (townFixturePath) {
     const rawTowns = await readFile(townFixturePath, 'utf-8');
@@ -543,7 +547,9 @@ async function runFixtureMode(args) {
       getGeo: async (town) => ({
         applications: Array.isArray(town.applications) ? town.applications : [],
         total: town.total,
-        totalCapped: Boolean(town.totalCapped),
+        statusBreakdown: Array.isArray(town.statusBreakdown)
+          ? town.statusBreakdown
+          : [],
       }),
       limit,
       logger,
@@ -609,7 +615,7 @@ async function runLiveMode(args) {
       areaType: authority.areaType,
       areaName: recent.areaName || authority.name,
       total: recent.total,
-      totalCapped: recent.totalCapped,
+      statusBreakdown: recent.statusBreakdown,
       applications: recent.applications,
       limit,
       published,
