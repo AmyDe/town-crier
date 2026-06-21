@@ -122,6 +122,35 @@ func (s *CosmosStore) RecentByAuthority(ctx context.Context, authorityCode strin
 	return apps, nil
 }
 
+// countByAuthorityQuery is the exact, index-only count of every application in a
+// single authorityCode partition. SELECT VALUE COUNT(1) hydrates no documents, so
+// it stays cheap even for an authority holding tens of thousands of rows, and it
+// returns the EXACT partition total — unlike the TOP-@cap bounded read, which
+// saturates at the cap. Cosmos returns a single row that is a bare JSON number.
+const countByAuthorityQuery = "SELECT VALUE COUNT(1) FROM c"
+
+// CountByAuthority returns the exact number of applications in the authorityCode
+// partition. It backs the build-time SEO endpoint's total: RecentByAuthority
+// renders the bounded list, this counts the whole partition. It runs on the
+// latency-tolerant build-read budget (QueryItemsLongRead), like the sibling SEO
+// reads, and reads only from Cosmos (GH#395 Invariant 1) — never PlanIt.
+func (s *CosmosStore) CountByAuthority(ctx context.Context, authorityCode string) (int, error) {
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, countByAuthorityQuery, nil)
+	if err != nil {
+		return 0, fmt.Errorf("count applications for authority %q: %w", authorityCode, err)
+	}
+	if len(raws) == 0 {
+		return 0, nil
+	}
+	var total int
+	if err := json.Unmarshal(raws[0], &total); err != nil {
+		return 0, fmt.Errorf("decode application count for authority %q: %w", authorityCode, err)
+	}
+	return total, nil
+}
+
 // findNearbyQuery is the single-partition ST_DISTANCE spatial query for nearby
 // applications. Coordinates and radius are bound as named parameters (mirroring
 // findZonesContainingQuery in the watchzones package) — no float literals are
@@ -155,6 +184,44 @@ func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, lati
 		apps = append(apps, doc.toDomain())
 	}
 	return apps, nil
+}
+
+// countNearbyQuery is the exact, single-partition count of applications within
+// radiusMetres of a point. It marries the recentNearbyQuery ST_DISTANCE filter
+// (GeoJSON [longitude, latitude] order, all values bound as named parameters)
+// with a SELECT VALUE COUNT(1) scalar instead of a bounded TOP @cap read, so it
+// returns the EXACT in-radius total for the town SEO page. Cosmos returns a
+// single row that is a bare JSON number.
+const countNearbyQuery = "SELECT VALUE COUNT(1) FROM c WHERE ST_DISTANCE(c.location, " +
+	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
+
+// CountNearby returns the exact number of applications within radiusMetres of
+// (lat, lng) inside the authorityCode partition. It backs the build-time
+// town-level SEO endpoint's total: RecentNearby renders the bounded list, this
+// counts everything in radius. Coordinates and radius are bound as named
+// parameters (not string-concatenated). It runs on the latency-tolerant
+// build-read budget (QueryItemsLongRead) and reads only from Cosmos (GH#395
+// Invariant 1) — never PlanIt.
+func (s *CosmosStore) CountNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error) {
+	params := map[string]any{
+		"@latitude":     lat,
+		"@longitude":    lng,
+		"@radiusMetres": radiusMetres,
+	}
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, countNearbyQuery, params)
+	if err != nil {
+		return 0, fmt.Errorf("count applications near %q: %w", authorityCode, err)
+	}
+	if len(raws) == 0 {
+		return 0, nil
+	}
+	var total int
+	if err := json.Unmarshal(raws[0], &total); err != nil {
+		return 0, fmt.Errorf("decode nearby application count for %q: %w", authorityCode, err)
+	}
+	return total, nil
 }
 
 // recentNearbyQuery is the bounded, single-partition spatial top-N query behind

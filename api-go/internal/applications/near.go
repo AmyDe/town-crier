@@ -32,10 +32,11 @@ const (
 )
 
 // nearStore is the consumer-side store the recent-nearby SEO handler needs: a
-// single bounded, single-partition spatial top-N read. The concrete *CosmosStore
-// satisfies it structurally.
+// bounded, single-partition spatial top-N read plus an exact in-radius count. The
+// concrete *CosmosStore satisfies it structurally.
 type nearStore interface {
 	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
+	CountNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error)
 }
 
 // nearHandler serves the build-time town-level SEO endpoint.
@@ -96,8 +97,16 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	total := len(apps)
-	render := total
+	// total is the EXACT in-radius count (a separate COUNT over the same scoped,
+	// clamped geo window), independent of the bounded read which saturates at
+	// nearReadCap. The render slice must clamp against the bounded read length.
+	total, err := h.store.CountNearby(r.Context(), authorityCode, lat, lng, radius)
+	if err != nil {
+		serverError(w, r, h.logger, "count applications near point", err)
+		return
+	}
+
+	render := len(apps)
 	if render > limit {
 		render = limit
 	}
@@ -107,13 +116,13 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, h.logger, RecentNearbyResult{
-		AuthorityID:  id,
-		Lat:          lat,
-		Lng:          lng,
-		Radius:       radius,
-		Applications: results,
-		Total:        total,
-		TotalCapped:  total >= nearReadCap,
+		AuthorityID:     id,
+		Lat:             lat,
+		Lng:             lng,
+		Radius:          radius,
+		Applications:    results,
+		Total:           total,
+		StatusBreakdown: breakdownByState(apps),
 	})
 }
 
