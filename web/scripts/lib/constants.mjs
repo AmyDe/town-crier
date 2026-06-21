@@ -26,3 +26,19 @@ export const ATTRIBUTION_LINES = [
   'Contains Ordnance Survey data © Crown Copyright and database right.',
   'Map data © OpenStreetMap contributors.',
 ];
+
+/**
+ * Attribution lines for TOWN pages only. Town pages are geolocated from the ONS
+ * Built-Up-Areas (2022) centroid gazetteer and (for Scotland) the NRS settlement
+ * gazetteer — both Open Government Licence sources that the authority pages do
+ * NOT use. So rather than widening the shared {@link ATTRIBUTION_LINES} (which
+ * would over-credit authority pages with sources they don't draw on), town pages
+ * extend the base list with these two extra credits. Both are OGL, mirroring the
+ * existing Crown Copyright line.
+ * @type {readonly string[]}
+ */
+export const TOWN_ATTRIBUTION_LINES = [
+  ...ATTRIBUTION_LINES,
+  'Town locations contain Built-Up Areas (2022) data from the Office for National Statistics, licensed under the Open Government Licence. Crown Copyright.',
+  'Scottish town locations contain data from National Records of Scotland, licensed under the Open Government Licence. Crown Copyright.',
+];
