@@ -10,13 +10,16 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the Applications container the store
-// uses: a single-partition point read, an upsert, and a single-partition
-// spatial query for the nearby lookup. platform.CosmosContainer satisfies it
-// structurally.
+// uses: a single-partition point read, an upsert, and single-partition queries.
+// QueryItems carries the tight 1.5s OLTP per-attempt budget for user-facing
+// reads; QueryItemsLongRead carries a longer per-attempt budget for the
+// latency-tolerant build-time SEO reads over a LARGE authority partition
+// (tc-9tov). platform.CosmosContainer satisfies it structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
+	QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 }
 
 // CosmosStore reads and writes planning applications in the Applications
