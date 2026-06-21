@@ -9,11 +9,16 @@ import {
   parseCsvLine,
   parsePopulationRow,
   parseCentroidRow,
+  parseNrsRow,
+  parseNrsCentroidRow,
   joinBua,
   buildGazetteer,
+  buildScotland,
   combineRecords,
   POPULATION_COLUMNS,
   CENTROID_COLUMNS,
+  NRS_POPULATION_COLUMNS,
+  NRS_CENTROID_COLUMNS,
 } from '../../generate-towns.mjs';
 
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'fixtures');
@@ -551,5 +556,239 @@ describe('combineRecords (cross-region dedupe + stable sort)', () => {
     expect(combined).toHaveLength(1);
     // Last write wins, matching joinBua's Map-based dedupe.
     expect(combined[0]).toEqual(duplicateOfTruro);
+  });
+});
+
+describe('parseNrsRow (NRS Scotland settlement population file)', () => {
+  /** Build a synthetic NRS population CSV row in the documented column order. */
+  function row(values) {
+    const fields = [];
+    for (const [key, index] of Object.entries(NRS_POPULATION_COLUMNS)) {
+      fields[index] = values[key] ?? '';
+    }
+    return fields;
+  }
+
+  it('parses a well-formed row into {code, name, ladName, population}', () => {
+    const parsed = parseNrsRow(
+      row({
+        SETTLEMENT_CODE: 'S20001846',
+        SETTLEMENT_NAME: 'Inverness and Culloden',
+        COUNCIL_AREA: 'Highland',
+        POPULATION: '63730',
+      }),
+    );
+    // The council-area name lands in `ladName` so it resolves against the same
+    // authority mapping the BUA path uses.
+    expect(parsed).toEqual({
+      code: 'S20001846',
+      name: 'Inverness and Culloden',
+      ladName: 'Highland',
+      population: 63730,
+    });
+  });
+
+  it('keeps an NRS settlement name with embedded commas verbatim', () => {
+    const parsed = parseNrsRow(
+      row({
+        SETTLEMENT_CODE: 'S20001539',
+        SETTLEMENT_NAME: 'Aberdeen, Milltimber, and Peterculter',
+        COUNCIL_AREA: 'Aberdeen City',
+        POPULATION: '220690',
+      }),
+    );
+    expect(parsed.name).toBe('Aberdeen, Milltimber, and Peterculter');
+  });
+
+  it('returns null when the settlement code is missing', () => {
+    expect(
+      parseNrsRow(row({ SETTLEMENT_NAME: 'Nameless', COUNCIL_AREA: 'Fife', POPULATION: '9000' })),
+    ).toBeNull();
+  });
+
+  it('returns null when the population is not a finite number', () => {
+    expect(
+      parseNrsRow(
+        row({
+          SETTLEMENT_CODE: 'S20009999',
+          SETTLEMENT_NAME: 'Bad',
+          COUNCIL_AREA: 'Fife',
+          POPULATION: 'N/A',
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('preserves a blank council so it skips as unmatched downstream (never guessed)', () => {
+    // The orchestrator leaves council_area blank only for a genuinely unresolved
+    // settlement; parseNrsRow must keep it blank, not invent one.
+    const parsed = parseNrsRow(
+      row({
+        SETTLEMENT_CODE: 'S20008888',
+        SETTLEMENT_NAME: 'Ambiguous',
+        COUNCIL_AREA: '',
+        POPULATION: '6000',
+      }),
+    );
+    expect(parsed.ladName).toBe('');
+  });
+});
+
+describe('parseNrsCentroidRow (NRS Scotland settlement centroids)', () => {
+  /** Build a synthetic NRS centroid CSV row in the documented column order. */
+  function row(values) {
+    const fields = [];
+    for (const [key, index] of Object.entries(NRS_CENTROID_COLUMNS)) {
+      fields[index] = values[key] ?? '';
+    }
+    return fields;
+  }
+
+  it('parses a well-formed row, using the provided lat/lng directly', () => {
+    const parsed = parseNrsCentroidRow(
+      row({
+        SETTLEMENT_CODE: 'S20001846',
+        SETTLEMENT_NAME: 'Inverness and Culloden',
+        LATITUDE: '57.4700',
+        LONGITUDE: '-4.2080',
+        BNG_EASTING: '266500',
+        BNG_NORTHING: '845200',
+      }),
+    );
+    expect(parsed.code).toBe('S20001846');
+    expect(parsed.lat).toBeCloseTo(57.47, 4);
+    expect(parsed.lng).toBeCloseTo(-4.208, 4);
+  });
+
+  it('falls back to BNG conversion when lat/lng are absent (Edinburgh BNG)', () => {
+    // Edinburgh NT 25731 73721 -> easting 325731, northing 673721 -> ~55.95, -3.19.
+    const parsed = parseNrsCentroidRow(
+      row({
+        SETTLEMENT_CODE: 'S20001714',
+        SETTLEMENT_NAME: 'Edinburgh',
+        LATITUDE: '',
+        LONGITUDE: '',
+        BNG_EASTING: '325731',
+        BNG_NORTHING: '673721',
+      }),
+    );
+    expect(parsed.lat).toBeCloseTo(55.95, 1);
+    expect(parsed.lng).toBeCloseTo(-3.19, 1);
+  });
+
+  it('returns null when neither lat/lng nor BNG coordinates are usable', () => {
+    expect(
+      parseNrsCentroidRow(
+        row({ SETTLEMENT_CODE: 'S20000002', SETTLEMENT_NAME: 'Nowhere' }),
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null when the settlement code is missing', () => {
+    expect(
+      parseNrsCentroidRow(row({ SETTLEMENT_NAME: 'Perth', LATITUDE: '56.3990', LONGITUDE: '-3.4520' })),
+    ).toBeNull();
+  });
+});
+
+describe('buildScotland (NRS population x centroid on settlement code)', () => {
+  // All 32 Scottish council names match authority-mapping.json verbatim, so this
+  // mapping uses the real ids from that file.
+  const mapping = {
+    Highland: 372,
+    'City of Edinburgh': 387,
+    'Glasgow City': 395,
+    Fife: 371,
+    'Perth and Kinross': 378,
+  };
+
+  const populationCsv = [
+    'settlement_code,settlement_name,council_area,population',
+    'S20001846,Inverness and Culloden,Highland,63730',
+    'S20001714,Edinburgh,City of Edinburgh,530990',
+    // Greater Glasgow straddles >1 council; the orchestrator pre-resolves it to
+    // the council containing the settlement centroid (Glasgow City).
+    'S20001766,Greater Glasgow,Glasgow City,1028220',
+    // Below the 5,000 floor.
+    'S20009000,Tiny Clachan,Highland,4200',
+    // Genuinely unresolved council (left blank): must skip, never guessed.
+    'S20008888,Ambiguous,,6000',
+    // Has population but no matching centroid.
+    'S20007777,NoCentroid,Fife,9000',
+  ].join('\n');
+
+  const centroidCsv = [
+    'settlement_code,settlement_name,latitude,longitude,bng_easting,bng_northing',
+    'S20001846,Inverness and Culloden,57.4700,-4.2080,266500,845200',
+    'S20001714,Edinburgh,55.9420,-3.2020,325000,673000',
+    'S20001766,Greater Glasgow,55.8540,-4.2940,256447,664654',
+    'S20009000,Tiny Clachan,57.0000,-5.0000,200000,800000',
+    'S20008888,Ambiguous,56.5000,-3.0000,340000,730000',
+  ].join('\n');
+
+  it('emits a {slug,name,lat,lng,authorityId,population} record for a matched settlement', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    const inverness = records.find((r) => r.slug === 'inverness-and-culloden');
+    expect(inverness).toEqual({
+      slug: 'inverness-and-culloden',
+      name: 'Inverness and Culloden',
+      lat: 57.47,
+      lng: -4.208,
+      authorityId: 372,
+      population: 63730,
+    });
+  });
+
+  it('joins population and centroid on the NRS settlement code (S2000....)', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    const edinburgh = records.find((r) => r.slug === 'edinburgh');
+    expect(edinburgh.population).toBe(530990);
+    expect(edinburgh.authorityId).toBe(387);
+    expect(edinburgh.lat).toBeCloseTo(55.942, 3);
+    expect(edinburgh.lng).toBeCloseTo(-3.202, 3);
+  });
+
+  it('resolves a pre-disambiguated multi-council settlement to its single council', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    const glasgow = records.find((r) => r.slug === 'greater-glasgow');
+    expect(glasgow.authorityId).toBe(395); // Glasgow City
+    expect(glasgow.population).toBe(1028220);
+  });
+
+  it('drops settlements below the 5,000 population floor', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    expect(records.map((r) => r.slug)).not.toContain('tiny-clachan');
+  });
+
+  it('skips and logs a settlement whose council is blank/unresolved (never guessed)', () => {
+    const { records, skipped } = buildScotland(populationCsv, centroidCsv, mapping);
+    expect(records.map((r) => r.slug)).not.toContain('ambiguous');
+    const byCode = Object.fromEntries(skipped.map((s) => [s.code, s.reason]));
+    expect(byCode['S20008888']).toBe('unmatched-authority');
+  });
+
+  it('records the reason for every skipped settlement', () => {
+    const { skipped } = buildScotland(populationCsv, centroidCsv, mapping);
+    const byCode = Object.fromEntries(skipped.map((s) => [s.code, s.reason]));
+    expect(byCode['S20009000']).toBe('below-floor');
+    expect(byCode['S20008888']).toBe('unmatched-authority');
+    expect(byCode['S20007777']).toBe('no-centroid');
+  });
+
+  it('every emitted record carries a finite numeric population', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    for (const r of records) {
+      expect(Number.isFinite(r.population)).toBe(true);
+    }
+  });
+
+  it('places every Scottish record inside the Scotland bounding box', () => {
+    const { records } = buildScotland(populationCsv, centroidCsv, mapping);
+    for (const r of records) {
+      expect(r.lat).toBeGreaterThan(54.5);
+      expect(r.lat).toBeLessThan(61.0);
+      expect(r.lng).toBeGreaterThan(-8.0);
+      expect(r.lng).toBeLessThan(-0.5);
+    }
   });
 });

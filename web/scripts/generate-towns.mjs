@@ -16,9 +16,11 @@
  * >= 20k selection later. Lowering the published threshold never needs a regen.
  *
  * Scope for THIS generator: England-ex-London + Wales (ONS Census 2021 BUA
- * file) PLUS London (tc-2avw.7), composed on top via a second population CSV.
- * Scotland settlements (tc-2avw.8) remain a separate source not yet wired —
- * see the EXTENSION SEAMS note at the foot of this file.
+ * file) PLUS London (tc-2avw.7), composed on top via a second population CSV,
+ * PLUS Scotland (tc-2avw.8) from NRS settlements via parseNrsRow/buildScotland
+ * — a different source schema with its OWN centroid CSV. See the "Scotland
+ * (NRS)" note (next to NRS_POPULATION_COLUMNS) and the EXTENSION SEAMS note at
+ * the foot of main().
  *
  * ── Data sources (TWO files, joined on BUA code) ────────────────────────────
  *
@@ -96,14 +98,24 @@
  *      pre-join supplies lad_name if the Census export lacks it). Build the
  *      separate London population CSV per the "London population" note above.
  *   2. Run:
- *        node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> [<london-population.csv>]
- *      It parses each population CSV, joins on bua_code against the shared
- *      centroid CSV, drops BUAs < 5,000, resolves lad_name -> authorityId
- *      against authority-mapping.json, skips+logs any BUA with no centroid or
- *      no resolvable authority, then de-duplicates the COMBINED E&W+London set
- *      by authorityId/slug, sorts, and overwrites web/src/data/towns.json.
- *   3. (When tc-2avw.8 lands) append the Scotland record set before writing —
- *      see EXTENSION SEAMS.
+ *        node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> \
+ *          [<london-population.csv>] [<scotland-population.csv> <scotland-centroids.csv>]
+ *      It parses each population CSV, joins on the settlement code against the
+ *      matching centroid CSV (the shared GB BUA file for E&W + London; the NRS
+ *      centroid file for Scotland), drops settlements < 5,000, resolves the LAD/
+ *      council name -> authorityId against authority-mapping.json, skips+logs
+ *      any settlement with no centroid or no resolvable authority, then
+ *      de-duplicates the COMBINED set by authorityId/slug, sorts, and overwrites
+ *      web/src/data/towns.json.
+ *   3. Scotland (tc-2avw.8): build the NRS population CSV from the "Population
+ *      estimates for settlements and localities in Scotland, mid-2020" workbook
+ *      (Table 2.1 settlement All-ages population, joined to Table 1.1 for the
+ *      council area); the ~6 settlements that straddle >1 council are resolved
+ *      to the single council containing the settlement centroid (point-in-
+ *      polygon against the ScotGov ScottishLocalAuthorities boundaries). Build
+ *      the NRS centroid CSV from the NRS:SettlementCentroids WFS layer. Both
+ *      key on the NRS settlement code (S2000....). Pass them as the last two
+ *      arguments. See the "Scotland (NRS)" note and EXTENSION SEAMS.
  *   4. Review the diff, run `npx vitest run`, and commit.
  *
  * ── Coordinate conversion (fallback) ────────────────────────────────────────
@@ -160,6 +172,55 @@ export const POPULATION_COLUMNS = {
 export const CENTROID_COLUMNS = {
   BUA_CODE: 0,
   BUA_NAME: 1,
+  LATITUDE: 2,
+  LONGITUDE: 3,
+  BNG_EASTING: 4,
+  BNG_NORTHING: 5,
+};
+
+// ── Scotland (NRS) extension ────────────────────────────────────────────────
+// Scotland is NOT a BUA region — it comes from National Records of Scotland
+// "settlements", a different source schema, so it gets its own parse/build path
+// (`parseNrsRow` + `buildScotland`) rather than reusing the BUA contracts above.
+// Once parsed, an NRS settlement emits the SAME gazetteer record shape and runs
+// through the SAME `joinBua` join/skip/dedupe/sort as the BUA regions.
+//
+// Sources (joined on the NRS settlement code, e.g. `S20001877`):
+//   1. POPULATION + COUNCIL — NRS "Population estimates for settlements and
+//      localities in Scotland, mid-2020", Table 2.1 (settlement populations,
+//      the All-ages row) joined to Table 1.1 (settlement -> council area). The
+//      6 settlements that straddle >1 council are resolved to the single council
+//      containing the settlement centroid (point-in-polygon against the ScotGov
+//      ScottishLocalAuthorities boundaries) before the CSV is produced — the
+//      generator never guesses; an unresolved council is left blank and skipped.
+//   2. CENTROID (lat/lng) — NRS Settlement Centroids (WFS `NRS:SettlementCentroids`),
+//      carrying the settlement code, a WGS84 lat/lng, and a BNG easting/northing.
+
+/**
+ * Zero-based column indices in the NRS POPULATION CSV. Expected header
+ * `settlement_code,settlement_name,council_area,population`. Distinct from the
+ * BUA population contract: the join key is an NRS settlement code (`S2000....`)
+ * and the authority column is a Scottish council-area name (matched verbatim
+ * against authority-mapping.json — all 32 councils are present).
+ * @type {Record<string, number>}
+ */
+export const NRS_POPULATION_COLUMNS = {
+  SETTLEMENT_CODE: 0,
+  SETTLEMENT_NAME: 1,
+  COUNCIL_AREA: 2,
+  POPULATION: 3,
+};
+
+/**
+ * Zero-based column indices in the NRS CENTROID CSV. Expected header
+ * `settlement_code,settlement_name,latitude,longitude,bng_easting,bng_northing`.
+ * The NRS WFS emits a WGS84 lat/lng directly; the BNG easting/northing remain a
+ * fallback (via `bngToLatLon`) for any grid-only export.
+ * @type {Record<string, number>}
+ */
+export const NRS_CENTROID_COLUMNS = {
+  SETTLEMENT_CODE: 0,
+  SETTLEMENT_NAME: 1,
   LATITUDE: 2,
   LONGITUDE: 3,
   BNG_EASTING: 4,
@@ -376,6 +437,109 @@ export function buildGazetteer(populationCsv, centroidCsv, mapping) {
 }
 
 /**
+ * Parse one NRS POPULATION CSV row into the same normalised shape `joinBua`
+ * consumes (`{ code, name, ladName, population }`), or null when the row is
+ * unusable (no settlement code, no name, or a non-finite population). The NRS
+ * `council_area` becomes `ladName` so it resolves against the SAME
+ * authority-mapping.json the BUA path uses; a blank council survives as an
+ * empty `ladName` and is skipped downstream as 'unmatched-authority' (the
+ * orchestrator leaves it blank only for the genuinely unresolved settlements).
+ *
+ * @param {string[]} fields CSV row split on commas
+ * @returns {{ code: string, name: string, ladName: string, population: number } | null}
+ */
+export function parseNrsRow(fields) {
+  const code = (fields[NRS_POPULATION_COLUMNS.SETTLEMENT_CODE] || '').trim();
+  if (!code) {
+    return null;
+  }
+  const name = (fields[NRS_POPULATION_COLUMNS.SETTLEMENT_NAME] || '').trim();
+  if (!name) {
+    return null;
+  }
+  const population = toNumberOrNull(fields[NRS_POPULATION_COLUMNS.POPULATION]);
+  if (population === null) {
+    return null;
+  }
+  const ladName = (fields[NRS_POPULATION_COLUMNS.COUNCIL_AREA] || '').trim();
+  return { code, name, ladName, population };
+}
+
+/**
+ * Parse one NRS CENTROID CSV row into `{ code, lat, lng }`, preferring the
+ * provided WGS84 lat/lng and falling back to BNG conversion when they are blank.
+ * Returns null when the settlement code is missing or no usable coordinate
+ * exists. Mirrors `parseCentroidRow` but reads the NRS column layout.
+ *
+ * @param {string[]} fields CSV row split on commas
+ * @returns {{ code: string, lat: number, lng: number } | null}
+ */
+export function parseNrsCentroidRow(fields) {
+  const code = (fields[NRS_CENTROID_COLUMNS.SETTLEMENT_CODE] || '').trim();
+  if (!code) {
+    return null;
+  }
+  const lat = toNumberOrNull(fields[NRS_CENTROID_COLUMNS.LATITUDE]);
+  const lng = toNumberOrNull(fields[NRS_CENTROID_COLUMNS.LONGITUDE]);
+  if (lat !== null && lng !== null) {
+    return { code, lat: round4(lat), lng: round4(lng) };
+  }
+  const easting = toNumberOrNull(fields[NRS_CENTROID_COLUMNS.BNG_EASTING]);
+  const northing = toNumberOrNull(fields[NRS_CENTROID_COLUMNS.BNG_NORTHING]);
+  if (easting !== null && northing !== null) {
+    const converted = bngToLatLon(easting, northing);
+    return { code, lat: converted.lat, lng: converted.lng };
+  }
+  return null;
+}
+
+/**
+ * End-to-end Scotland build: parse the NRS population + centroid CSV texts, drop
+ * settlements below the population floor, join on settlement code, and resolve
+ * each council-area name to an authority id — the SAME `joinBua` tail the BUA
+ * regions use, so the emitted record shape, skip reasons, dedupe, and sort are
+ * identical. Below-floor settlements are reported distinctly (as in
+ * `buildGazetteer`).
+ *
+ * @param {string} populationCsv raw NRS POPULATION CSV text (with header row)
+ * @param {string} centroidCsv   raw NRS CENTROID CSV text (with header row)
+ * @param {Record<string, number>} mapping council-name -> authority-id
+ * @returns {{
+ *   records: Array<{ slug: string, name: string, lat: number, lng: number, authorityId: number, population: number }>,
+ *   skipped: Array<{ code: string, name: string, reason: string }>
+ * }}
+ */
+export function buildScotland(populationCsv, centroidCsv, mapping) {
+  /** @type {Array<{ code: string, name: string, ladName: string, population: number }>} */
+  const populations = [];
+  /** @type {Array<{ code: string, name: string, reason: string }>} */
+  const belowFloor = [];
+  for (const fields of parseCsvRows(populationCsv)) {
+    const parsed = parseNrsRow(fields);
+    if (!parsed) {
+      continue;
+    }
+    if (parsed.population < POPULATION_FLOOR) {
+      belowFloor.push({ code: parsed.code, name: parsed.name, reason: 'below-floor' });
+      continue;
+    }
+    populations.push(parsed);
+  }
+
+  /** @type {Array<{ code: string, lat: number, lng: number }>} */
+  const centroids = [];
+  for (const fields of parseCsvRows(centroidCsv)) {
+    const parsed = parseNrsCentroidRow(fields);
+    if (parsed) {
+      centroids.push(parsed);
+    }
+  }
+
+  const { records, skipped } = joinBua(populations, centroids, mapping);
+  return { records, skipped: [...belowFloor, ...skipped] };
+}
+
+/**
  * Split CSV text into field arrays, dropping the header row and blank lines.
  * A handful of official ONS names carry embedded commas — both BUA names
  * (`Longfield, New Ash Green and Hartley`) and, more importantly, LAD names
@@ -575,21 +739,41 @@ function round4(v) {
 }
 
 /**
- * CLI entry: read the ONS CSVs, build the gazetteer (E&W + optional London),
- * write towns.json.
+ * CLI entry: read the source CSVs, build the gazetteer (E&W + optional London +
+ * optional Scotland), write towns.json.
  *
- * @param {string} populationFile      path to the E&W POPULATION CSV
- * @param {string} centroidFile        path to the GB-wide CENTROID CSV
+ * @param {string} populationFile      path to the E&W POPULATION CSV (BUA contract)
+ * @param {string} centroidFile        path to the GB-wide BUA CENTROID CSV
  * @param {string} [londonPopulationFile] optional path to the London POPULATION
  *   CSV (same `bua_code,bua_name,lad_name,population` contract). When supplied,
  *   its records are composed on top of E&W against the SAME centroid CSV.
+ * @param {string} [scotlandPopulationFile] optional path to the NRS Scotland
+ *   POPULATION CSV (`settlement_code,settlement_name,council_area,population`).
+ * @param {string} [scotlandCentroidFile] optional path to the NRS Scotland
+ *   CENTROID CSV (`settlement_code,settlement_name,latitude,longitude,
+ *   bng_easting,bng_northing`). Required when a Scotland population CSV is given
+ *   — Scotland centroids come from NRS, not the GB BUA centroid file.
  * @returns {Promise<void>}
  */
-async function main(populationFile, centroidFile, londonPopulationFile) {
+async function main(
+  populationFile,
+  centroidFile,
+  londonPopulationFile,
+  scotlandPopulationFile,
+  scotlandCentroidFile,
+) {
   if (!populationFile || !centroidFile) {
     console.error(
-      'usage: node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> [<london-population.csv>]\n' +
+      'usage: node scripts/generate-towns.mjs <ew-population.csv> <centroid.csv> ' +
+        '[<london-population.csv>] [<scotland-population.csv> <scotland-centroids.csv>]\n' +
         'See the script header for the full CSV contracts and regeneration steps.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (scotlandPopulationFile && !scotlandCentroidFile) {
+    console.error(
+      'A Scotland population CSV requires its NRS centroid CSV as the next argument.',
     );
     process.exitCode = 1;
     return;
@@ -608,15 +792,25 @@ async function main(populationFile, centroidFile, londonPopulationFile) {
   //     header note) joined against the same GB centroid CSV. London borough
   //     LADs are already in authority-mapping.json.
   //   * Scotland settlements (tc-2avw.8): NRS settlement population + NRS
-  //     settlement centroids. Different source schema — add a parseNrsRow /
-  //     buildScotland helper and concat its records here.
+  //     settlement centroids — a DIFFERENT source schema, so it goes through
+  //     parseNrsRow/buildScotland with its OWN centroid CSV (not the GB BUA
+  //     one). Council-area names resolve against the same mapping.
   // Each region must keep emitting { slug, name, lat, lng, authorityId,
-  // population } and resolve LAD->authorityId against the same mapping. Skipped
-  // BUAs stay skipped+logged, never guessed.
+  // population } and resolve LAD/council -> authorityId against the same
+  // mapping. Skipped rows stay skipped+logged, never guessed.
   const regions = [ew];
+  let london = null;
+  let scotland = null;
   if (londonPopulationFile) {
     const londonPopulationCsv = await readFile(londonPopulationFile, 'utf-8');
-    regions.push(buildGazetteer(londonPopulationCsv, centroidCsv, mapping));
+    london = buildGazetteer(londonPopulationCsv, centroidCsv, mapping);
+    regions.push(london);
+  }
+  if (scotlandPopulationFile) {
+    const scotlandPopulationCsv = await readFile(scotlandPopulationFile, 'utf-8');
+    const scotlandCentroidCsv = await readFile(scotlandCentroidFile, 'utf-8');
+    scotland = buildScotland(scotlandPopulationCsv, scotlandCentroidCsv, mapping);
+    regions.push(scotland);
   }
 
   // Combine across regions: concat, then re-apply the dedupe-by-authorityId/slug
@@ -634,11 +828,12 @@ async function main(populationFile, centroidFile, londonPopulationFile) {
   console.log(
     `[generate-towns] wrote ${records.length} town(s) to ${TOWNS_OUT}` +
       ` (E&W ${ew.records.length}` +
-      (londonPopulationFile ? `, London ${regions[1].records.length}` : '') +
+      (london ? `, London ${london.records.length}` : '') +
+      (scotland ? `, Scotland ${scotland.records.length}` : '') +
       ')',
   );
   console.log(
-    `[generate-towns] skipped ${skipped.length} BUA(s): ` +
+    `[generate-towns] skipped ${skipped.length} settlement(s): ` +
       Object.entries(byReason)
         .map(([reason, count]) => `${reason}=${count}`)
         .join(', '),
@@ -651,5 +846,11 @@ async function main(populationFile, centroidFile, londonPopulationFile) {
 
 // Run main() only when invoked directly, not when imported by tests.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await main(process.argv[2], process.argv[3], process.argv[4]);
+  await main(
+    process.argv[2],
+    process.argv[3],
+    process.argv[4],
+    process.argv[5],
+    process.argv[6],
+  );
 }
