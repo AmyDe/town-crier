@@ -10,10 +10,13 @@ import (
 
 // fakeNearStore is a hand-written double for the recent-nearby read. It records
 // the arguments the handler passed (so clamping/defaulting is asserted at the
-// store boundary) and honours cap the way Cosmos TOP @cap does.
+// store boundary), honours cap the way Cosmos TOP @cap does, and serves an exact
+// in-radius count independently of the bounded read.
 type fakeNearStore struct {
-	apps []PlanningApplication
-	err  error
+	apps     []PlanningApplication
+	err      error
+	count    int
+	countErr error
 
 	called            bool
 	lastAuthorityCode string
@@ -21,6 +24,12 @@ type fakeNearStore struct {
 	lastLng           float64
 	lastRadius        float64
 	lastCap           int
+
+	countCalled       bool
+	lastCountAuthCode string
+	lastCountLat      float64
+	lastCountLng      float64
+	lastCountRadius   float64
 }
 
 func (f *fakeNearStore) RecentNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
@@ -39,6 +48,18 @@ func (f *fakeNearStore) RecentNearby(_ context.Context, authorityCode string, la
 	return f.apps, nil
 }
 
+func (f *fakeNearStore) CountNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64) (int, error) {
+	f.countCalled = true
+	f.lastCountAuthCode = authorityCode
+	f.lastCountLat = lat
+	f.lastCountLng = lng
+	f.lastCountRadius = radiusMetres
+	if f.countErr != nil {
+		return 0, f.countErr
+	}
+	return f.count, nil
+}
+
 func serveNear(t *testing.T, store nearStore, buildKey, providedKey, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -54,7 +75,7 @@ func serveNear(t *testing.T, store nearStore, buildKey, providedKey, path string
 
 func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 1234}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5155&lng=-0.0931&radius=4000")
@@ -68,10 +89,16 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	// The handler scopes to the numeric authority id -> partition code, reads the
 	// bounded cap (200), and passes the parsed point + radius through verbatim.
 	if store.lastAuthorityCode != "471" || store.lastCap != 200 {
-		t.Errorf("store call: authorityCode=%q cap=%d, want \"471\" 200", store.lastAuthorityCode, store.lastCap)
+		t.Errorf("store read call: authorityCode=%q cap=%d, want \"471\" 200", store.lastAuthorityCode, store.lastCap)
 	}
 	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
 		t.Errorf("store geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
+	}
+	// The exact count is taken over the same scoped, clamped geo window.
+	if !store.countCalled || store.lastCountAuthCode != "471" ||
+		store.lastCountLat != 51.5155 || store.lastCountLng != -0.0931 || store.lastCountRadius != 4000 {
+		t.Errorf("count call: called=%v auth=%q lat=%v lng=%v radius=%v, want true \"471\" 51.5155 -0.0931 4000",
+			store.countCalled, store.lastCountAuthCode, store.lastCountLat, store.lastCountLng, store.lastCountRadius)
 	}
 	got := recentBody(t, rec)
 	if got["authorityId"].(float64) != 471 {
@@ -87,14 +114,17 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	if len(apps) != 2 {
 		t.Errorf("applications length: got %d, want 2", len(apps))
 	}
-	if got["total"].(float64) != 2 {
-		t.Errorf("total: got %v, want 2", got["total"])
+	if got["total"].(float64) != 1234 {
+		t.Errorf("total: got %v, want 1234 (the exact count)", got["total"])
 	}
-	if got["totalCapped"].(bool) {
-		t.Errorf("totalCapped: got true, want false")
+	if _, present := got["totalCapped"]; present {
+		t.Errorf("totalCapped must be gone from the wire shape, got %v", got["totalCapped"])
+	}
+	if _, present := got["statusBreakdown"]; !present {
+		t.Errorf("statusBreakdown must be present: %v", got)
 	}
 	first := apps[0].(map[string]any)
-	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "link", "url"} {
+	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "lastDifferent", "link", "url"} {
 		if _, present := first[key]; !present {
 			t.Errorf("application missing field %q: %v", key, first)
 		}
@@ -103,7 +133,7 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 
 func TestNearHandler_RejectsMissingKey(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -114,14 +144,14 @@ func TestNearHandler_RejectsMissingKey(t *testing.T) {
 	if rec.Body.Len() != 0 {
 		t.Errorf("401 must be bodyless (backfilled downstream), got %s", rec.Body)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit when the key is missing")
 	}
 }
 
 func TestNearHandler_EmptyConfiguredKeyRejectsAll(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "", "anything",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -129,14 +159,14 @@ func TestNearHandler_EmptyConfiguredKeyRejectsAll(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("empty configured key must reject all: got %d, want 401", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit when the configured key is empty")
 	}
 }
 
 func TestNearHandler_MissingAuthorityIdReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?lat=51.5&lng=-0.1")
@@ -144,14 +174,14 @@ func TestNearHandler_MissingAuthorityIdReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing authorityId: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit without a valid authorityId")
 	}
 }
 
 func TestNearHandler_NonIntAuthorityIdReturns400(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=abc&lat=51.5&lng=-0.1")
@@ -159,14 +189,14 @@ func TestNearHandler_NonIntAuthorityIdReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-int authorityId: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on a malformed authorityId")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=NaN&lng=-0.1")
@@ -174,14 +204,14 @@ func TestNearHandler_RejectsNonFiniteLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("NaN lat: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on a non-finite lat")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteLng(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=Inf")
@@ -189,14 +219,14 @@ func TestNearHandler_RejectsNonFiniteLng(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("Inf lng: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on a non-finite lng")
 	}
 }
 
 func TestNearHandler_RejectsOutOfRangeLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=91&lng=-0.1")
@@ -204,14 +234,14 @@ func TestNearHandler_RejectsOutOfRangeLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("out-of-range lat: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on an out-of-range lat")
 	}
 }
 
 func TestNearHandler_RejectsOutOfRangeLng(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=200")
@@ -219,14 +249,14 @@ func TestNearHandler_RejectsOutOfRangeLng(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("out-of-range lng: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on an out-of-range lng")
 	}
 }
 
 func TestNearHandler_RejectsMissingLat(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lng=-0.1")
@@ -234,14 +264,14 @@ func TestNearHandler_RejectsMissingLat(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing lat: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit without a lat")
 	}
 }
 
 func TestNearHandler_RejectsNonFiniteRadius(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=Inf")
@@ -249,14 +279,14 @@ func TestNearHandler_RejectsNonFiniteRadius(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-finite radius: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on a non-finite radius")
 	}
 }
 
 func TestNearHandler_RejectsNonPositiveRadius(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=0")
@@ -264,14 +294,14 @@ func TestNearHandler_RejectsNonPositiveRadius(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("non-positive radius: got %d, want 400", rec.Code)
 	}
-	if store.called {
+	if store.called || store.countCalled {
 		t.Errorf("store must not be hit on a non-positive radius")
 	}
 }
 
 func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=99999")
@@ -279,9 +309,10 @@ func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	// The clamped 10km radius is what reaches the store and what the response echoes.
-	if store.lastRadius != 10000 {
-		t.Errorf("store radius: got %v, want 10000 (clamped to 10km)", store.lastRadius)
+	// The clamped 10km radius is what reaches both the read and the count, and what
+	// the response echoes.
+	if store.lastRadius != 10000 || store.lastCountRadius != 10000 {
+		t.Errorf("store radius: read=%v count=%v, want 10000 (clamped to 10km)", store.lastRadius, store.lastCountRadius)
 	}
 	got := recentBody(t, rec)
 	if got["radius"].(float64) != 10000 {
@@ -291,7 +322,7 @@ func TestNearHandler_ClampsRadiusToMax(t *testing.T) {
 
 func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
+	store := &fakeNearStore{apps: recentApps(t, 2), count: 2}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -299,8 +330,8 @@ func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	if store.lastRadius != 5000 {
-		t.Errorf("store radius: got %v, want 5000 (default when unset)", store.lastRadius)
+	if store.lastRadius != 5000 || store.lastCountRadius != 5000 {
+		t.Errorf("store radius: read=%v count=%v, want 5000 (default when unset)", store.lastRadius, store.lastCountRadius)
 	}
 	got := recentBody(t, rec)
 	if got["radius"].(float64) != 5000 {
@@ -310,7 +341,7 @@ func TestNearHandler_DefaultRadiusWhenUnset(t *testing.T) {
 
 func TestNearHandler_DefaultLimitIs30(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 50)}
+	store := &fakeNearStore{apps: recentApps(t, 50), count: 73}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -320,14 +351,14 @@ func TestNearHandler_DefaultLimitIs30(t *testing.T) {
 	if len(apps) != 30 {
 		t.Errorf("applications length: got %d, want 30 (default limit)", len(apps))
 	}
-	if got["total"].(float64) != 50 {
-		t.Errorf("total: got %v, want 50 (full bounded read)", got["total"])
+	if got["total"].(float64) != 73 {
+		t.Errorf("total: got %v, want 73 (exact count)", got["total"])
 	}
 }
 
 func TestNearHandler_LimitHardCappedAt100(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 150)}
+	store := &fakeNearStore{apps: recentApps(t, 150), count: 150}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&limit=999")
@@ -339,29 +370,48 @@ func TestNearHandler_LimitHardCappedAt100(t *testing.T) {
 	}
 }
 
-func TestNearHandler_TotalCappedWhenReadHitsCap(t *testing.T) {
+func TestNearHandler_ExactTotalIndependentOfSaturatedRead(t *testing.T) {
 	t.Parallel()
-	// Exactly cap (200) documents available -> the bounded read returns cap.
-	store := &fakeNearStore{apps: recentApps(t, 200)}
+	// The bounded read saturates at cap (200) but the exact count is far larger:
+	// total must be the count, and the render slice clamps to the limit.
+	store := &fakeNearStore{apps: recentApps(t, 200), count: 6502}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
 
 	got := recentBody(t, rec)
-	if got["total"].(float64) != 200 {
-		t.Errorf("total: got %v, want 200", got["total"])
-	}
-	if !got["totalCapped"].(bool) {
-		t.Errorf("totalCapped: got false, want true when the read hits cap")
+	if got["total"].(float64) != 6502 {
+		t.Errorf("total: got %v, want 6502 (exact count)", got["total"])
 	}
 	if apps := got["applications"].([]any); len(apps) != 30 {
-		t.Errorf("applications length: got %d, want 30", len(apps))
+		t.Errorf("applications length: got %d, want 30 (default limit, NOT the count)", len(apps))
+	}
+}
+
+func TestNearHandler_StatusBreakdownSpansBoundedReadNotRenderedSlice(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: appsByState(t, 25, 15), count: 40}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
+
+	got := recentBody(t, rec)
+	breakdown, ok := got["statusBreakdown"].([]any)
+	if !ok {
+		t.Fatalf("statusBreakdown must be an array, got %T", got["statusBreakdown"])
+	}
+	if len(breakdown) != 2 {
+		t.Fatalf("statusBreakdown length: got %d, want 2 (%v)", len(breakdown), breakdown)
+	}
+	first := breakdown[0].(map[string]any)
+	if first["appState"] != "Permitted" || first["count"].(float64) != 25 {
+		t.Errorf("breakdown[0]: got %v, want Permitted/25", first)
 	}
 }
 
 func TestNearHandler_EmptyResultIsNonNullArray(t *testing.T) {
 	t.Parallel()
-	store := &fakeNearStore{apps: nil}
+	store := &fakeNearStore{apps: nil, count: 0}
 
 	rec := serveNear(t, store, "buildkey", "buildkey",
 		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
@@ -380,6 +430,13 @@ func TestNearHandler_EmptyResultIsNonNullArray(t *testing.T) {
 	if got["total"].(float64) != 0 {
 		t.Errorf("total: got %v, want 0", got["total"])
 	}
+	breakdown, ok := got["statusBreakdown"].([]any)
+	if !ok {
+		t.Fatalf("statusBreakdown must be a non-null array even when empty, got %T", got["statusBreakdown"])
+	}
+	if len(breakdown) != 0 {
+		t.Errorf("statusBreakdown length: got %d, want 0", len(breakdown))
+	}
 }
 
 func TestNearHandler_StoreErrorReturns500(t *testing.T) {
@@ -391,5 +448,17 @@ func TestNearHandler_StoreErrorReturns500(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("store error: got %d, want 500", rec.Code)
+	}
+}
+
+func TestNearHandler_CountErrorReturns500(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2), countErr: context.DeadlineExceeded}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("count error: got %d, want 500", rec.Code)
 	}
 }
