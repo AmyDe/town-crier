@@ -54,6 +54,14 @@ func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, pa
 	if f.queryErr != nil {
 		return nil, f.queryErr
 	}
+	// Simulate Cosmos honouring SELECT TOP @cap: a query that binds @cap returns
+	// at most that many rows, so a busy-authority partition is truncated server-
+	// side rather than in the store.
+	if capRaw, ok := params["@cap"]; ok {
+		if capN, ok := capRaw.(int); ok && capN >= 0 && capN < len(f.queryResult) {
+			return f.queryResult[:capN], nil
+		}
+	}
 	return f.queryResult, nil
 }
 
@@ -228,5 +236,89 @@ func TestCosmosStore_FindNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("FindNearby: got %d results, want 0", len(got))
+	}
+}
+
+// recentDocs marshals n application documents whose Name (and so id) is unique,
+// for the busy-authority cap test.
+func recentDocs(t *testing.T, n int) [][]byte {
+	t.Helper()
+	a := testApplication(t)
+	docs := make([][]byte, 0, n)
+	for i := range n {
+		a.Name = "24/" + strconv.Itoa(i) + "/FUL"
+		body, err := json.Marshal(newApplicationDocument(a))
+		if err != nil {
+			t.Fatalf("marshal doc %d: %v", i, err)
+		}
+		docs = append(docs, body)
+	}
+	return docs
+}
+
+func TestCosmosStore_RecentByAuthority_TopNOrderedScopedToPartition(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	body, _ := json.Marshal(newApplicationDocument(a))
+	items := newFakeItems()
+	items.queryResult = [][]byte{body}
+	store := NewCosmosStore(items)
+
+	got, err := store.RecentByAuthority(context.Background(), strconv.Itoa(a.AreaID), 200)
+	if err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != a.Name {
+		t.Fatalf("results: got %+v", got)
+	}
+	// Scoped to the authorityCode logical partition (never cross-partition).
+	if items.lastQueryPK != strconv.Itoa(a.AreaID) {
+		t.Errorf("query partition key: got %q, want %q", items.lastQueryPK, strconv.Itoa(a.AreaID))
+	}
+	// Bounded top-N ordered by the index-backed lastDifferent field, DESC. Must
+	// NOT order by startDate (unindexed -> full-partition scan).
+	want := "SELECT TOP @cap * FROM c ORDER BY c.lastDifferent DESC"
+	if items.lastQuery != want {
+		t.Errorf("recent query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+	if strings.Contains(items.lastQuery, "startDate") {
+		t.Errorf("query must not order by startDate (unindexed): %s", items.lastQuery)
+	}
+	// The cap is bound as a named parameter, not concatenated.
+	if got, ok := items.lastQueryParams["@cap"]; !ok || got != 200 {
+		t.Errorf("@cap param: got %v (present=%v), want 200", got, ok)
+	}
+}
+
+func TestCosmosStore_RecentByAuthority_CapsAtCap(t *testing.T) {
+	t.Parallel()
+	const wantCap = 5
+	items := newFakeItems()
+	// A busy authority with more than wantCap documents in the partition.
+	items.queryResult = recentDocs(t, wantCap+8)
+	store := NewCosmosStore(items)
+
+	got, err := store.RecentByAuthority(context.Background(), "471", wantCap)
+	if err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	if len(got) != wantCap {
+		t.Errorf("busy authority: got %d results, want exactly cap=%d", len(got), wantCap)
+	}
+}
+
+func TestCosmosStore_RecentByAuthority_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.RecentByAuthority(context.Background(), "471", 200)
+	if err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	if got == nil {
+		t.Fatal("RecentByAuthority: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("RecentByAuthority: got %d results, want 0", len(got))
 	}
 }
