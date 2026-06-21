@@ -1,0 +1,71 @@
+[
+  {
+    "id": 100,
+    "name": "Basingstoke and Deane",
+    "areaType": "English District",
+    "areaName": "Basingstoke and Deane",
+    "total": 42,
+    "totalCapped": false,
+    "applications": [
+      {
+        "uid": "BDB/2026/0001",
+        "name": "26/00001/FUL",
+        "address": "12 Mill Road, Basingstoke, RG21 1AA",
+        "description": "Erection of a two-storey rear extension and associated landscaping works to an existing dwelling house.",
+        "appState": "Permitted",
+        "startDate": "2026-01-15",
+        "link": "https://planit.org.uk/planapplic/26-00001-FUL",
+        "url": "https://planning.basingstoke.gov.uk/online-applications/26-00001-FUL"
+      },
+      {
+        "uid": "BDB/2026/0002",
+        "name": "26/00002/HSE",
+        "address": "5 High Street, Basingstoke, RG21 7QN",
+        "description": "Single-storey side extension, replacement boundary wall and new vehicular access.",
+        "appState": "Rejected",
+        "startDate": "2026-02-03",
+        "link": "https://planit.org.uk/planapplic/26-00002-HSE",
+        "url": null
+      },
+      {
+        "uid": "BDB/2026/0003",
+        "name": "26/00003/LBC",
+        "address": "Old Town Hall, Market Place, Basingstoke, RG21 7PA",
+        "description": "Listed building consent for internal alterations and the installation of accessible facilities.",
+        "appState": "Undecided",
+        "startDate": "2026-02-20",
+        "link": "https://planit.org.uk/planapplic/26-00003-LBC",
+        "url": "https://planning.basingstoke.gov.uk/online-applications/26-00003-LBC"
+      }
+    ]
+  },
+  {
+    "id": 200,
+    "name": "West Sussex",
+    "areaType": "English County",
+    "areaName": "West Sussex",
+    "total": 88,
+    "totalCapped": false,
+    "applications": []
+  },
+  {
+    "id": 300,
+    "name": "Sparse Parish",
+    "areaType": "English District",
+    "areaName": "Sparse Parish",
+    "total": 4,
+    "totalCapped": false,
+    "applications": [
+      {
+        "uid": "SP/2026/0001",
+        "name": "26/0001",
+        "address": "1 The Green, Sparse Parish",
+        "description": "Single dwelling.",
+        "appState": "Undecided",
+        "startDate": "2026-01-01",
+        "link": "https://planit.org.uk/planapplic/SP-26-0001",
+        "url": null
+      }
+    ]
+  }
+]
