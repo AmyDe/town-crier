@@ -205,10 +205,20 @@ export function pageStyles() {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--tc-space-sm);
       padding: var(--tc-space-md) 0;
       border-bottom: 1px solid var(--tc-border);
     }
     .siteHeader a { color: var(--tc-text-primary); text-decoration: none; font-weight: 700; }
+    .siteHeader__nav { display: flex; align-items: center; gap: var(--tc-space-md); }
+    .siteHeader a.siteHeader__cta {
+      padding: var(--tc-space-sm) var(--tc-space-md);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-md);
+    }
+    .siteHeader a.siteHeader__cta:hover { background: var(--tc-amber-hover); }
     .breadcrumb { margin: var(--tc-space-md) 0 0; font-size: 0.875rem; color: var(--tc-text-secondary); }
     .breadcrumb ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
     .breadcrumb li::after { content: '/'; margin-left: var(--tc-space-sm); color: var(--tc-text-secondary); }

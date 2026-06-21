@@ -137,7 +137,10 @@ ${pageStyles()}
     <div class="wrap">
       <header class="siteHeader">
         <a href="/">Town Crier</a>
-        <a href="/">Home</a>
+        <nav class="siteHeader__nav">
+          <a href="/">Home</a>
+          <a class="siteHeader__cta" href="${APP_DOWNLOAD_URL}" rel="noopener" target="_blank">Get the app</a>
+        </nav>
       </header>
       <nav class="breadcrumb" aria-label="Breadcrumb">
         <ol>
