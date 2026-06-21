@@ -140,6 +140,7 @@ export async function loadAuthoritiesFromFile(filePath, readFileImpl) {
  * @property {number} lat           WGS84 latitude (centroid)
  * @property {number} lng           WGS84 longitude (centroid)
  * @property {number} authorityId   parent authority id (resolves to its slug)
+ * @property {number} population    built-up-area population (gates which towns ship)
  */
 
 /**
@@ -184,7 +185,8 @@ export async function loadTownsFromFile(filePath, readFileImpl) {
       t.name.length === 0 ||
       !Number.isFinite(t?.lat) ||
       !Number.isFinite(t?.lng) ||
-      !Number.isFinite(t?.authorityId)
+      !Number.isFinite(t?.authorityId) ||
+      !Number.isFinite(t?.population)
     ) {
       throw new Error(`town gazetteer at ${filePath} has a malformed town row`);
     }
