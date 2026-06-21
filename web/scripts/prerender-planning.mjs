@@ -325,9 +325,13 @@ async function considerAuthority(args) {
  * @returns {Promise<{ applications: object[], total: number, statusBreakdown: object[] }>}
  */
 async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
+  // `order=distance` (tc-2avw.1) makes the server return the nearest-N in the
+  // radius by ST_DISTANCE, so adjacent town pages in a conurbation overlap less.
+  // The returned set is left in the API's order here; recency-display re-sorting
+  // is the renderer's job.
   const url =
     `${apiBase}/v1/applications/near?authorityId=${town.authorityId}` +
-    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}`;
+    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}&order=distance`;
   const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
   if (!res.ok) {
     throw new Error(
