@@ -124,6 +124,21 @@ describe('runPrerender — sitemap with authority and town pages', () => {
       '<loc>https://towncrierapp.uk/planning/cornwall/truro</loc>',
     );
   });
+
+  it('stamps the town sitemap <lastmod> with the max lastDifferent of its shown applications', async () => {
+    await runPrerender({
+      outDir,
+      townFixturePath: TOWN_FIXTURE,
+      logger: silentLogger,
+    });
+
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
+    // Truro's shown apps last-change on 14 Jun and 11 Jun 2026; the page's
+    // lastmod is the freshest of those (14 Jun), not the build clock.
+    expect(sitemap).toContain('<lastmod>2026-06-14</lastmod>');
+    expect(sitemap).not.toContain('<lastmod>2026-06-11</lastmod>');
+    expect(sitemap).not.toContain('<lastmod></lastmod>');
+  });
 });
 
 describe('runPrerender — town live mode', () => {
@@ -205,6 +220,131 @@ describe('runPrerender — town live mode', () => {
       'utf-8',
     );
     expect(html).toContain('<h1>Planning applications in Truro</h1>');
+  });
+
+  it('displays the distance-ordered set newest-first, regardless of the order the API returned', async () => {
+    // The build requests order=distance, so the API returns the nearest-N — NOT
+    // recency-ordered. Here the nearest app (CW-NEAR) is the OLDEST and a farther
+    // app (CW-FAR) is the NEWEST, so a recency display MUST reorder them.
+    const stub = new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: 52,
+            lat: 50.2632,
+            lng: -5.051,
+            radius: 5000,
+            applications: [
+              {
+                uid: 'CW-NEAR',
+                name: 'PA26/NEAR',
+                address: 'Nearest, Truro',
+                description: 'Closest by distance but oldest change',
+                appState: 'Permitted',
+                startDate: '2026-01-01',
+                lastDifferent: '2026-06-01T08:00:00+00:00',
+                link: 'https://planit.org.uk/planapplic/CW-NEAR',
+                url: null,
+              },
+              {
+                uid: 'CW-FAR',
+                name: 'PA26/FAR',
+                address: 'Farther, Truro',
+                description: 'Farther by distance but freshest change',
+                appState: 'Rejected',
+                startDate: '2026-02-02',
+                lastDifferent: '2026-06-20T09:00:00+00:00',
+                link: 'https://planit.org.uk/planapplic/CW-FAR',
+                url: null,
+              },
+            ],
+            total: 14,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => cornwallTowns,
+      logger: silentLogger,
+    });
+
+    const html = await readFile(
+      join(outDir, 'planning', 'cornwall', 'truro', 'index.html'),
+      'utf-8',
+    );
+    // The freshest card (20 Jun) appears BEFORE the oldest (1 Jun) — recency DESC,
+    // even though the API fed them distance-order (oldest first).
+    expect(html).toContain('Last updated 20 Jun 2026');
+    expect(html).toContain('Last updated 1 Jun 2026');
+    expect(html.indexOf('Last updated 20 Jun 2026')).toBeLessThan(
+      html.indexOf('Last updated 1 Jun 2026'),
+    );
+
+    // The page's sitemap lastmod is the freshest shown app (20 Jun), proving the
+    // lastmod is derived AFTER the recency sort and matches what the cards show.
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
+    expect(sitemap).toContain('<lastmod>2026-06-20</lastmod>');
+  });
+
+  it('omits the town sitemap <lastmod> when no shown application carries a lastDifferent date', async () => {
+    const stub = new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: 52,
+            lat: 50.2632,
+            lng: -5.051,
+            radius: 5000,
+            // 12 undated apps: clears the >=10 gate but has no date to stamp.
+            applications: Array.from({ length: 12 }, (_, i) => ({
+              uid: `U${i}`,
+              name: `PA26/${i}`,
+              address: `Addr ${i}, Truro`,
+              description: 'Undated',
+              appState: 'Permitted',
+              startDate: null,
+              lastDifferent: null,
+              link: null,
+              url: null,
+            })),
+            total: 12,
+            statusBreakdown: [{ appState: 'Permitted', count: 12 }],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    const result = await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => cornwallTowns,
+      logger: silentLogger,
+    });
+
+    // The page IS published (cleared the gate) ...
+    expect(result.publishedTowns).toEqual(['cornwall/truro']);
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
+    expect(sitemap).toContain(
+      '<loc>https://towncrierapp.uk/planning/cornwall/truro</loc>',
+    );
+    // ... but carries no lastmod — better than an invalid/empty one.
+    expect(sitemap).not.toContain('<lastmod>');
   });
 
   it('excludes a town that fails the coverage gate', async () => {

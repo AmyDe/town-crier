@@ -13,7 +13,11 @@
  * build key never reaches this output.
  */
 
-import { SITE_ORIGIN, APP_DOWNLOAD_URL } from './constants.mjs';
+import {
+  SITE_ORIGIN,
+  APP_DOWNLOAD_URL,
+  TOWN_ATTRIBUTION_LINES,
+} from './constants.mjs';
 import { escapeHtml, leadLine } from './format.mjs';
 import {
   pageStyles,
@@ -111,7 +115,10 @@ export function renderTownPage(data) {
   const year = new Date().getFullYear();
 
   const applicationsList = renderApplicationsList(data.applications);
-  const attribution = renderAttributionList();
+  // Town pages credit the ONS Built-Up-Area + NRS gazetteers (their centroid
+  // sources) on top of the base PlanIt/OGL/OS/OSM lines; authority pages keep the
+  // base list since they don't use the gazetteer.
+  const attribution = renderAttributionList(TOWN_ATTRIBUTION_LINES);
 
   return `<!doctype html>
 <html lang="en">
