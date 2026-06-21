@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   bngToLatLon,
-  localTypeQualifies,
   resolveAuthorityId,
-  townRecordFromRow,
-  OS_OPEN_NAMES_COLUMNS,
+  parsePopulationRow,
+  parseCentroidRow,
+  joinBua,
+  buildGazetteer,
+  POPULATION_COLUMNS,
+  CENTROID_COLUMNS,
 } from '../../generate-towns.mjs';
 
 describe('bngToLatLon (OSGB36 British National Grid -> WGS84)', () => {
@@ -25,83 +28,289 @@ describe('bngToLatLon (OSGB36 British National Grid -> WGS84)', () => {
   });
 });
 
-describe('localTypeQualifies', () => {
-  it('accepts only City and Town LOCAL_TYPE values', () => {
-    expect(localTypeQualifies('City')).toBe(true);
-    expect(localTypeQualifies('Town')).toBe(true);
-    expect(localTypeQualifies('Village')).toBe(false);
-    expect(localTypeQualifies('Hamlet')).toBe(false);
-    expect(localTypeQualifies('Other Settlement')).toBe(false);
-    expect(localTypeQualifies('Suburban Area')).toBe(false);
+describe('resolveAuthorityId (LAD name -> authority id)', () => {
+  const mapping = { Cornwall: 52, Stockport: 320, 'Staffordshire Moorlands': 81 };
+
+  it('resolves an exact LAD name to its authority id', () => {
+    expect(resolveAuthorityId('Cornwall', mapping)).toBe(52);
+  });
+
+  it('trims surrounding whitespace before matching', () => {
+    expect(resolveAuthorityId('  Stockport  ', mapping)).toBe(320);
+  });
+
+  it('returns null when the LAD name is not in the authority mapping', () => {
+    expect(resolveAuthorityId('Neverland', mapping)).toBeNull();
+  });
+
+  it('returns null for an empty LAD name', () => {
+    expect(resolveAuthorityId('', mapping)).toBeNull();
   });
 });
 
-describe('resolveAuthorityId', () => {
-  const mapping = { Cornwall: 52, Croydon: 301, Brent: 298 };
-
-  it('resolves via the district/borough name', () => {
-    expect(resolveAuthorityId('Croydon', '', mapping)).toBe(301);
-  });
-
-  it('falls back to the county/unitary name when no district match', () => {
-    expect(resolveAuthorityId('', 'Cornwall', mapping)).toBe(52);
-  });
-
-  it('returns null when neither name is in the authority mapping', () => {
-    expect(resolveAuthorityId('Nowhere', 'Neverland', mapping)).toBeNull();
-  });
-});
-
-describe('townRecordFromRow', () => {
-  const mapping = { Croydon: 301 };
-
-  /** Build a synthetic OS Open Names field array from a partial map. */
+describe('parsePopulationRow (ONS Census 2021 BUA population file)', () => {
+  /** Build a synthetic population CSV row in the documented column order. */
   function row(values) {
     const fields = [];
-    for (const [name, index] of Object.entries(OS_OPEN_NAMES_COLUMNS)) {
-      fields[index] = values[name] ?? '';
+    for (const [key, index] of Object.entries(POPULATION_COLUMNS)) {
+      fields[index] = values[key] ?? '';
     }
     return fields;
   }
 
-  it('builds a {slug,name,lat,lng,authorityId} record for a qualifying town', () => {
-    const fields = row({
-      NAME1: 'Croydon',
-      LOCAL_TYPE: 'Town',
-      GEOMETRY_X: '532504',
-      GEOMETRY_Y: '165522',
-      DISTRICT_BOROUGH: 'Croydon',
+  it('parses a well-formed row into {code, name, ladName, population}', () => {
+    const parsed = parsePopulationRow(
+      row({ BUA_CODE: 'E63001234', BUA_NAME: 'Truro', LAD_NAME: 'Cornwall', POPULATION: '18766' }),
+    );
+    expect(parsed).toEqual({
+      code: 'E63001234',
+      name: 'Truro',
+      ladName: 'Cornwall',
+      population: 18766,
     });
-    const record = townRecordFromRow(fields, mapping);
-    expect(record).not.toBeNull();
-    expect(record.slug).toBe('croydon');
-    expect(record.name).toBe('Croydon');
-    expect(record.authorityId).toBe(301);
-    expect(Number.isFinite(record.lat)).toBe(true);
-    expect(Number.isFinite(record.lng)).toBe(true);
-    // coordinates are rounded to 4 decimal places
-    expect(String(record.lat).split('.')[1]?.length ?? 0).toBeLessThanOrEqual(4);
   });
 
-  it('skips a non-qualifying LOCAL_TYPE', () => {
-    const fields = row({
-      NAME1: 'Tiny',
-      LOCAL_TYPE: 'Village',
-      GEOMETRY_X: '530000',
-      GEOMETRY_Y: '180000',
-      DISTRICT_BOROUGH: 'Croydon',
-    });
-    expect(townRecordFromRow(fields, mapping)).toBeNull();
+  it('preserves a parenthetical-LAD disambiguated name verbatim', () => {
+    const parsed = parsePopulationRow(
+      row({
+        BUA_CODE: 'E63005678',
+        BUA_NAME: 'Cheadle (Stockport)',
+        LAD_NAME: 'Stockport',
+        POPULATION: '14000',
+      }),
+    );
+    expect(parsed.name).toBe('Cheadle (Stockport)');
   });
 
-  it('skips a town whose authority cannot be resolved', () => {
-    const fields = row({
-      NAME1: 'Orphan',
-      LOCAL_TYPE: 'Town',
-      GEOMETRY_X: '530000',
-      GEOMETRY_Y: '180000',
-      DISTRICT_BOROUGH: 'Unmapped District',
-    });
-    expect(townRecordFromRow(fields, mapping)).toBeNull();
+  it('returns null when the BUA code is missing', () => {
+    expect(
+      parsePopulationRow(row({ BUA_NAME: 'Nameless', LAD_NAME: 'Cornwall', POPULATION: '9000' })),
+    ).toBeNull();
+  });
+
+  it('returns null when the population is not a finite number', () => {
+    expect(
+      parsePopulationRow(
+        row({ BUA_CODE: 'E63009999', BUA_NAME: 'Bad', LAD_NAME: 'Cornwall', POPULATION: 'N/A' }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('parseCentroidRow (ONS Open Geography BUA 2022 GB BGG file)', () => {
+  /** Build a synthetic centroid CSV row in the documented column order. */
+  function row(values) {
+    const fields = [];
+    for (const [key, index] of Object.entries(CENTROID_COLUMNS)) {
+      fields[index] = values[key] ?? '';
+    }
+    return fields;
+  }
+
+  it('parses a well-formed row, using the provided lat/lng directly', () => {
+    const parsed = parseCentroidRow(
+      row({
+        BUA_CODE: 'E63001234',
+        BUA_NAME: 'Truro',
+        LATITUDE: '50.2632',
+        LONGITUDE: '-5.0510',
+        BNG_EASTING: '182500',
+        BNG_NORTHING: '44900',
+      }),
+    );
+    expect(parsed.code).toBe('E63001234');
+    expect(parsed.lat).toBeCloseTo(50.2632, 4);
+    expect(parsed.lng).toBeCloseTo(-5.051, 4);
+  });
+
+  it('falls back to BNG conversion when lat/lng are absent but easting/northing are present', () => {
+    // Trafalgar Square BNG -> WGS84 ~ 51.508, -0.128.
+    const parsed = parseCentroidRow(
+      row({
+        BUA_CODE: 'E63000001',
+        BUA_NAME: 'Somewhere',
+        LATITUDE: '',
+        LONGITUDE: '',
+        BNG_EASTING: '530034',
+        BNG_NORTHING: '180381',
+      }),
+    );
+    expect(parsed.lat).toBeCloseTo(51.508, 2);
+    expect(parsed.lng).toBeCloseTo(-0.128, 2);
+  });
+
+  it('returns null when neither lat/lng nor BNG coordinates are usable', () => {
+    expect(
+      parseCentroidRow(
+        row({
+          BUA_CODE: 'E63000002',
+          BUA_NAME: 'Nowhere',
+          LATITUDE: '',
+          LONGITUDE: '',
+          BNG_EASTING: '',
+          BNG_NORTHING: '',
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null when the BUA code is missing', () => {
+    expect(
+      parseCentroidRow(
+        row({ BUA_NAME: 'Truro', LATITUDE: '50.2632', LONGITUDE: '-5.051' }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('joinBua (population x centroid on BUA code)', () => {
+  const mapping = { Cornwall: 52, Stockport: 320 };
+
+  it('emits a {slug,name,lat,lng,authorityId,population} record when both sources match', () => {
+    const populations = [
+      { code: 'E63001234', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+    ];
+    const centroids = [{ code: 'E63001234', lat: 50.2632, lng: -5.051 }];
+
+    const { records, skipped } = joinBua(populations, centroids, mapping);
+
+    expect(skipped).toEqual([]);
+    expect(records).toEqual([
+      { slug: 'truro', name: 'Truro', lat: 50.2632, lng: -5.051, authorityId: 52, population: 18766 },
+    ]);
+  });
+
+  it('derives a unique slug from a parenthetical-LAD name', () => {
+    const populations = [
+      { code: 'E63005678', name: 'Cheadle (Stockport)', ladName: 'Stockport', population: 14000 },
+    ];
+    const centroids = [{ code: 'E63005678', lat: 53.39, lng: -2.21 }];
+
+    const { records } = joinBua(populations, centroids, mapping);
+
+    expect(records).toHaveLength(1);
+    expect(records[0].slug).toBe('cheadle-stockport');
+    expect(records[0].name).toBe('Cheadle (Stockport)');
+  });
+
+  it('emits population as a finite number on every record', () => {
+    const populations = [
+      { code: 'E63001234', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+    ];
+    const centroids = [{ code: 'E63001234', lat: 50.2632, lng: -5.051 }];
+
+    const { records } = joinBua(populations, centroids, mapping);
+
+    expect(Number.isFinite(records[0].population)).toBe(true);
+  });
+
+  it('skips and records a BUA with no matching centroid', () => {
+    const populations = [
+      { code: 'E63001234', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+      { code: 'E63009999', name: 'Lonely', ladName: 'Cornwall', population: 9000 },
+    ];
+    const centroids = [{ code: 'E63001234', lat: 50.2632, lng: -5.051 }];
+
+    const { records, skipped } = joinBua(populations, centroids, mapping);
+
+    expect(records).toHaveLength(1);
+    expect(skipped).toEqual([{ code: 'E63009999', name: 'Lonely', reason: 'no-centroid' }]);
+  });
+
+  it('skips and records a BUA whose LAD does not resolve to an authority', () => {
+    const populations = [
+      { code: 'E63007777', name: 'Orphan', ladName: 'Unmapped District', population: 30000 },
+    ];
+    const centroids = [{ code: 'E63007777', lat: 52.0, lng: -1.0 }];
+
+    const { records, skipped } = joinBua(populations, centroids, mapping);
+
+    expect(records).toEqual([]);
+    expect(skipped).toEqual([{ code: 'E63007777', name: 'Orphan', reason: 'unmatched-authority' }]);
+  });
+
+  it('sorts records by authorityId then slug for a stable diff', () => {
+    const populations = [
+      { code: 'B', name: 'Stockport Town', ladName: 'Stockport', population: 20000 },
+      { code: 'A', name: 'Cheadle (Stockport)', ladName: 'Stockport', population: 14000 },
+      { code: 'C', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+    ];
+    const centroids = [
+      { code: 'A', lat: 53.39, lng: -2.21 },
+      { code: 'B', lat: 53.41, lng: -2.16 },
+      { code: 'C', lat: 50.2632, lng: -5.051 },
+    ];
+
+    const { records } = joinBua(populations, centroids, mapping);
+
+    expect(records.map((r) => `${r.authorityId}/${r.slug}`)).toEqual([
+      '52/truro',
+      '320/cheadle-stockport',
+      '320/stockport-town',
+    ]);
+  });
+
+  it('de-duplicates on authorityId/slug, keeping a stable single record', () => {
+    const populations = [
+      { code: 'X1', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+      { code: 'X2', name: 'Truro', ladName: 'Cornwall', population: 18766 },
+    ];
+    const centroids = [
+      { code: 'X1', lat: 50.2632, lng: -5.051 },
+      { code: 'X2', lat: 50.2632, lng: -5.051 },
+    ];
+
+    const { records } = joinBua(populations, centroids, mapping);
+
+    expect(records).toHaveLength(1);
+  });
+});
+
+describe('buildGazetteer (end-to-end CSV text -> records)', () => {
+  const mapping = { Cornwall: 52, Stockport: 320 };
+
+  const populationCsv = [
+    'bua_code,bua_name,lad_name,population',
+    'E63001234,Truro,Cornwall,18766',
+    'E63005678,Cheadle (Stockport),Stockport,14000',
+    'E63007777,Orphan,Unmapped District,30000',
+    'E63004000,Tiny,Cornwall,4200',
+    'E63009999,NoCentroid,Cornwall,9000',
+  ].join('\n');
+
+  const centroidCsv = [
+    'bua_code,bua_name,latitude,longitude,bng_easting,bng_northing',
+    'E63001234,Truro,50.2632,-5.0510,182500,44900',
+    'E63005678,Cheadle (Stockport),53.3900,-2.2100,387000,388000',
+    'E63007777,Orphan,52.0000,-1.0000,440000,250000',
+    'E63004000,Tiny,50.1000,-5.1000,177000,33000',
+  ].join('\n');
+
+  it('emits every BUA >= 5,000 that joins and resolves, dropping the sub-5k floor', () => {
+    const { records } = buildGazetteer(populationCsv, centroidCsv, mapping);
+    const slugs = records.map((r) => r.slug);
+    expect(slugs).toContain('truro');
+    expect(slugs).toContain('cheadle-stockport');
+    // Tiny is below the 5k floor.
+    expect(slugs).not.toContain('tiny');
+    // Orphan has no resolvable authority.
+    expect(slugs).not.toContain('orphan');
+    // NoCentroid has no centroid match.
+    expect(slugs).not.toContain('nocentroid');
+  });
+
+  it('records the reason for every skipped BUA', () => {
+    const { skipped } = buildGazetteer(populationCsv, centroidCsv, mapping);
+    const byCode = Object.fromEntries(skipped.map((s) => [s.code, s.reason]));
+    expect(byCode['E63004000']).toBe('below-floor');
+    expect(byCode['E63007777']).toBe('unmatched-authority');
+    expect(byCode['E63009999']).toBe('no-centroid');
+  });
+
+  it('every emitted record carries a finite numeric population', () => {
+    const { records } = buildGazetteer(populationCsv, centroidCsv, mapping);
+    for (const r of records) {
+      expect(Number.isFinite(r.population)).toBe(true);
+    }
   });
 });
