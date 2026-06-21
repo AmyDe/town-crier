@@ -30,7 +30,7 @@ import {
  * @property {string} authoritySlug   parent authority slug, e.g. "cornwall"
  * @property {number} authorityId
  * @property {number} total
- * @property {boolean} totalCapped
+ * @property {Array<{ appState: string | null, count: number }>} statusBreakdown
  * @property {import('./render-shared.mjs').PlanningApplicationItem[]} applications
  */
 
@@ -102,7 +102,7 @@ export function renderTownPage(data) {
   const authority = escapeHtml(data.authorityName);
   const canonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}/${data.townSlug}`;
   const authorityCanonical = `${SITE_ORIGIN}/planning/${data.authoritySlug}`;
-  const lead = escapeHtml(leadLine(data.townName, data.total, data.totalCapped));
+  const lead = escapeHtml(leadLine(data.townName, data.total));
   const title = `Planning applications in ${town} | Town Crier`;
   const metaDescription = escapeHtml(
     `Recent planning applications in ${data.townName}, ${data.authorityName}. See what is being built nearby and get push alerts the moment an application is submitted or decided near you.`,
@@ -153,7 +153,7 @@ ${pageStyles()}
         <h1>Planning applications in ${town}</h1>
         <p class="lead">${lead}</p>
 
-${renderStats(data.applications)}
+${renderStats(data.statusBreakdown)}
 
         <h2>Recent applications</h2>
         <ul class="appList">
