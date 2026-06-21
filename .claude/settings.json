@@ -21,9 +21,9 @@
             "type": "command"
           },
           {
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */api/*.cs ]] || exit 0; root=$(git rev-parse --show-toplevel); output=$(cd \"$root/api\" \u0026\u0026 dotnet build --no-restore -q 2\u003e\u00261 | head -10); echo \"$output\" | grep -qi \"error\" || exit 0; jq -n --arg ctx \"dotnet build errors — fix before continuing:\\n$output\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2\u003e/dev/null || true",
-            "statusMessage": "Running dotnet build...",
-            "timeout": 60,
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; [[ \"$f\" == */api-go/*.go ]] || [[ \"$f\" == */cli/*.go ]] || [[ \"$f\" == */infra/*.go ]] || exit 0; gofmt -w \"$f\"; dir=$(dirname \"$f\"); vet=$(cd \"$dir\" && go vet . 2>&1 | grep -E '\\.go:[0-9]+:' | head -20); [ -z \"$vet\" ] && exit 0; jq -n --arg ctx \"go vet issues — fix before continuing:\\n$vet\" '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":$ctx}}'; } 2>/dev/null || true",
+            "statusMessage": "Running gofmt + go vet...",
+            "timeout": 30,
             "type": "command"
           }
         ],
