@@ -56,6 +56,15 @@ export const AUTHORITIES_FILE = join(
 );
 
 /**
+ * The town gazetteer is a slim, committed JSON file in the web app's source
+ * tree (`web/src/data/towns.json`). It is regenerated occasionally by
+ * `scripts/generate-towns.mjs` from OS Open Names — never downloaded at build
+ * time. Each row is `{ slug, name, lat, lng, authorityId }`.
+ * @type {string}
+ */
+export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
+
+/**
  * @typedef {Object} PrerenderResult
  * @property {boolean} skipped
  * @property {string} [reason]
@@ -115,6 +124,65 @@ export async function loadAuthoritiesFromFile(filePath, readFileImpl) {
       throw new Error(
         `authority list at ${filePath} has a malformed authority row`,
       );
+    }
+  }
+  return list;
+}
+
+/**
+ * @typedef {Object} Town
+ * @property {string} slug          lowercase-hyphenated, e.g. "truro"
+ * @property {string} name          display name, e.g. "Truro"
+ * @property {number} lat           WGS84 latitude (centroid)
+ * @property {number} lng           WGS84 longitude (centroid)
+ * @property {number} authorityId   parent authority id (resolves to its slug)
+ */
+
+/**
+ * Load and validate the slim committed town gazetteer. An empty array is valid
+ * (sparse data -> zero town pages is a legitimate build), but the file must be
+ * present, parse as JSON, be an array, and every row must be well-formed —
+ * never a silent malformed gazetteer.
+ *
+ * @param {string} filePath
+ * @param {(path: string, encoding: string) => Promise<string>} readFileImpl
+ * @returns {Promise<Town[]>}
+ */
+export async function loadTownsFromFile(filePath, readFileImpl) {
+  let raw;
+  try {
+    raw = await readFileImpl(filePath, 'utf-8');
+  } catch (err) {
+    throw new Error(
+      `town gazetteer not found at ${filePath}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  let list;
+  try {
+    list = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `town gazetteer at ${filePath} is not valid JSON: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  if (!Array.isArray(list)) {
+    throw new Error(`town gazetteer at ${filePath} must be a JSON array`);
+  }
+  for (const t of list) {
+    if (
+      typeof t?.slug !== 'string' ||
+      t.slug.length === 0 ||
+      typeof t?.name !== 'string' ||
+      t.name.length === 0 ||
+      !Number.isFinite(t?.lat) ||
+      !Number.isFinite(t?.lng) ||
+      !Number.isFinite(t?.authorityId)
+    ) {
+      throw new Error(`town gazetteer at ${filePath} has a malformed town row`);
     }
   }
   return list;
