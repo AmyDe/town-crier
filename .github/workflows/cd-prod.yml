@@ -200,6 +200,7 @@ jobs:
           vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          site-build-key: ${{ secrets.SITE_BUILD_KEY }}
 
       - uses: ./.github/actions/azure-login
         with:
