@@ -84,6 +84,13 @@ func (f *fakeItems) QueryItems(_ context.Context, _, _ string, _ map[string]any)
 	return nil, nil
 }
 
+// QueryItemsLongRead lets fakeItems satisfy applications.CosmosItems, whose
+// build-time SEO reads run on the longer per-attempt budget (tc-9tov). The
+// wiring tests only need the empty-list path.
+func (f *fakeItems) QueryItemsLongRead(_ context.Context, _, _ string, _ map[string]any) ([][]byte, error) {
+	return nil, nil
+}
+
 // QueryItemsCrossPartition / QueryPageCrossPartition let fakeItems back a
 // profiles.AdminStore; the wiring tests only need the empty result path.
 func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, _ string, _ map[string]any) ([][]byte, error) {
