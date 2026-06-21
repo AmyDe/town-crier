@@ -10,6 +10,9 @@ inputs:
   admin-api-key:
     description: API key for admin endpoints
     required: true
+  site-build-key:
+    description: Build key for the gated SEO prerender endpoint
+    required: true
   auto-grant-pro-domains:
     description: Comma-separated email domains for automatic Pro tier
     required: true
@@ -32,6 +35,7 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         pulumi config set --secret adminApiKey "${{ inputs.admin-api-key }}"
+        pulumi config set --secret siteBuildKey "${{ inputs.site-build-key }}"
         pulumi config set --secret autoGrantProDomains "${{ inputs.auto-grant-pro-domains }}"
         pulumi config set --secret auth0M2mClientId "${{ inputs.auth0-m2m-client-id }}"
         pulumi config set --secret auth0M2mClientSecret "${{ inputs.auth0-m2m-client-secret }}"
