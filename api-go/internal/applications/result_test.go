@@ -71,7 +71,26 @@ func TestBreakdownByState_OrdersByCountDescThenStateAsc(t *testing.T) {
 	assertBreakdownEqual(t, got, want)
 }
 
-func TestBreakdownByState_NilStateSortsLast(t *testing.T) {
+func TestBreakdownByState_NilStateSortsLastOnCountTie(t *testing.T) {
+	t.Parallel()
+	apps := []PlanningApplication{
+		appWithState(t, nil),
+		appWithState(t, nil),
+		appWithState(t, strPtr("Permitted")),
+		appWithState(t, strPtr("Permitted")),
+	}
+
+	got := breakdownByState(apps)
+
+	// nil is a distinct bucket; on a count tie the deterministic rule sorts it last.
+	want := []StateCount{
+		{AppState: strPtr("Permitted"), Count: 2},
+		{AppState: nil, Count: 2},
+	}
+	assertBreakdownEqual(t, got, want)
+}
+
+func TestBreakdownByState_NilStateRanksByCountDesc(t *testing.T) {
 	t.Parallel()
 	apps := []PlanningApplication{
 		appWithState(t, nil),
@@ -82,11 +101,10 @@ func TestBreakdownByState_NilStateSortsLast(t *testing.T) {
 
 	got := breakdownByState(apps)
 
-	// A nil appState is a distinct bucket and, despite the higher count, sorts last
-	// by the deterministic tie-break rule.
+	// count DESC is the primary key: nil's higher count outranks Permitted here.
 	want := []StateCount{
-		{AppState: strPtr("Permitted"), Count: 1},
 		{AppState: nil, Count: 3},
+		{AppState: strPtr("Permitted"), Count: 1},
 	}
 	assertBreakdownEqual(t, got, want)
 }
