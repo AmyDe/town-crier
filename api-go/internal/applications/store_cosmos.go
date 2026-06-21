@@ -300,3 +300,52 @@ func (s *CosmosStore) RecentNearby(ctx context.Context, authorityCode string, la
 	}
 	return apps, nil
 }
+
+// nearestNearbyQuery is the bounded, single-partition spatial top-N query behind
+// the build-time town-level SEO endpoint's distance-ordered variant: the @cap
+// applications NEAREST to a point, inside one authorityCode partition. It marries
+// the recentNearbyQuery ST_DISTANCE filter (GeoJSON [longitude, latitude] order,
+// all values bound as named parameters) with a SELECT TOP @cap ... ORDER BY
+// ST_DISTANCE ASC ordering — so the read stays bounded by @cap and returns the
+// nearest-first set, minimising overlap between adjacent town pages in
+// conurbations. The ORDER BY repeats the same parameterized ST_DISTANCE
+// expression as the WHERE filter; no coordinate is concatenated into the text.
+// This is a sibling of recentNearbyQuery: that path (ordered by lastDifferent
+// DESC) is the default and is deliberately left unchanged.
+const nearestNearbyQuery = "SELECT TOP @cap * FROM c WHERE ST_DISTANCE(c.location, " +
+	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres ` +
+	"ORDER BY ST_DISTANCE(c.location, " +
+	`{"type": "Point", "coordinates": [@longitude, @latitude]})`
+
+// NearestNearby returns up to cap applications NEAREST to (lat, lng) within
+// radiusMetres inside the authorityCode partition, ordered by ST_DISTANCE ASC
+// (nearest first). It backs the distance-ordered variant of the build-time
+// town-level SEO endpoint: a single bounded single-partition spatial query, never
+// a cross-partition fan-out and never an unbounded scan. Coordinates, radius, and
+// cap are bound as named parameters (not string-concatenated). It runs on the
+// latency-tolerant build-read budget (QueryItemsLongRead), like its RecentNearby
+// sibling. There is no PlanIt fallback (GH#395 Invariant 1) — it reads only from
+// Cosmos.
+func (s *CosmosStore) NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
+	params := map[string]any{
+		"@latitude":     lat,
+		"@longitude":    lng,
+		"@radiusMetres": radiusMetres,
+		"@cap":          cap,
+	}
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, nearestNearbyQuery, params)
+	if err != nil {
+		return nil, fmt.Errorf("nearest applications near %q: %w", authorityCode, err)
+	}
+	apps := make([]PlanningApplication, 0, len(raws))
+	for _, raw := range raws {
+		var doc applicationDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode nearest nearby application in %q: %w", authorityCode, err)
+		}
+		apps = append(apps, doc.toDomain())
+	}
+	return apps, nil
+}

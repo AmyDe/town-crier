@@ -440,6 +440,123 @@ func TestCosmosStore_RecentNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 }
 
+func TestCosmosStore_NearestNearby_BoundedSpatialDistanceOrderedScopedToPartition(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	body, _ := json.Marshal(newApplicationDocument(a))
+	items := newFakeItems()
+	items.queryResult = [][]byte{body}
+	store := NewCosmosStore(items)
+
+	got, err := store.NearestNearby(context.Background(), "441", 51.4975, -0.1357, 5000, 200)
+	if err != nil {
+		t.Fatalf("NearestNearby: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != a.Name {
+		t.Fatalf("NearestNearby results: got %+v", got)
+	}
+	// Scoped to the authorityCode logical partition (never cross-partition).
+	if items.lastQueryPK != "441" {
+		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
+	}
+	// Bounded TOP @cap, single-partition spatial filter, ordered by ST_DISTANCE
+	// ASC (nearest first) — NOT by lastDifferent. The GeoJSON point carries
+	// [longitude, latitude] (GeoJSON order), mirroring recentNearbyQuery. The
+	// ORDER BY repeats the same parameterized ST_DISTANCE expression as the
+	// WHERE filter.
+	want := "SELECT TOP @cap * FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres ` +
+		"ORDER BY ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]})`
+	if items.lastQuery != want {
+		t.Errorf("nearest nearby query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+	if strings.Contains(items.lastQuery, "lastDifferent") {
+		t.Errorf("distance-ordered query must not order by lastDifferent: %s", items.lastQuery)
+	}
+}
+
+func TestCosmosStore_NearestNearby_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _ = store.NearestNearby(context.Background(), "441", 51.4975, -0.1357, 5000, 200)
+
+	// No coordinate, radius, or cap value may be string-concatenated into the
+	// query text — they must all be bound as named parameters.
+	if items.lastQuery == "" {
+		t.Fatal("no query was issued")
+	}
+	for _, literal := range []string{"51.4975", "-0.1357", "5000", "200"} {
+		if strings.Contains(items.lastQuery, literal) {
+			t.Errorf("query contains literal %q — should be a named parameter; query: %s", literal, items.lastQuery)
+		}
+	}
+	wantParams := map[string]any{
+		"@latitude":     51.4975,
+		"@longitude":    -0.1357,
+		"@radiusMetres": 5000.0,
+		"@cap":          200,
+	}
+	for k, wantVal := range wantParams {
+		gotVal, ok := items.lastQueryParams[k]
+		if !ok {
+			t.Errorf("param %q not found in query params %v", k, items.lastQueryParams)
+			continue
+		}
+		if gotVal != wantVal {
+			t.Errorf("param %q: got %v, want %v", k, gotVal, wantVal)
+		}
+	}
+}
+
+func TestCosmosStore_NearestNearby_CapsAtCap(t *testing.T) {
+	t.Parallel()
+	const wantCap = 5
+	items := newFakeItems()
+	// A busy authority with more than wantCap documents within the radius.
+	items.queryResult = recentDocs(t, wantCap+8)
+	store := NewCosmosStore(items)
+
+	got, err := store.NearestNearby(context.Background(), "471", 51.5, -0.1, 5000, wantCap)
+	if err != nil {
+		t.Fatalf("NearestNearby: %v", err)
+	}
+	if len(got) != wantCap {
+		t.Errorf("busy authority: got %d results, want exactly cap=%d", len(got), wantCap)
+	}
+}
+
+func TestCosmosStore_NearestNearby_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.NearestNearby(context.Background(), "471", 51.5, -0.1, 5000, 200)
+	if err != nil {
+		t.Fatalf("NearestNearby: %v", err)
+	}
+	if got == nil {
+		t.Fatal("NearestNearby: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("NearestNearby: got %d results, want 0", len(got))
+	}
+}
+
+func TestCosmosStore_NearestNearby_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.NearestNearby(context.Background(), "156", 51.5, -0.1, 5000, 200); err != nil {
+		t.Fatalf("NearestNearby: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("NearestNearby must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
 // breakdownRow marshals a single GROUP BY projection row. A nil state omits the
 // appState property entirely (Cosmos omits an undefined projection), modelling
 // the "missing" case; a non-nil state emits an explicit string. The explicit

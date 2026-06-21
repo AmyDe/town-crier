@@ -1,4 +1,59 @@
+# Town Crier robots policy.
+#
+# Everything served here is public, open-licensed UK planning data
+# (Open Government Licence v3) — not user data. We therefore deliberately
+# welcome AI / LLM crawlers (for both model training and live retrieval)
+# alongside classic search engines, so Town Crier can be discovered and
+# cited by AI answer engines.
+#
+# The blanket "User-agent: *  Allow: /" below already permits every bot.
+# The explicit per-crawler stanzas that follow are documentary: they
+# record the intent and guard against a future blanket change silently
+# locking these crawlers out. See web/public/llms.txt for an LLM-oriented
+# map of the site.
+
 User-agent: *
+Allow: /
+
+# --- AI / LLM crawlers: explicitly welcomed ---
+
+# OpenAI (ChatGPT)
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+# Google (Gemini / Vertex AI training — separate from Googlebot search)
+User-agent: Google-Extended
+Allow: /
+
+# Anthropic (Claude)
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+# Common Crawl (feeds many open training corpora)
+User-agent: CCBot
+Allow: /
+
+# Apple Intelligence training
+User-agent: Applebot-Extended
 Allow: /
 
 Sitemap: https://towncrierapp.uk/sitemap.xml
