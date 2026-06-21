@@ -9,6 +9,7 @@ import (
 	"github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3"
+	"github.com/pulumi/pulumi-azure-native-sdk/storage/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/web/v3"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
@@ -122,6 +123,10 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	frontendDomain := conf.Require("frontendDomain")
 	apiDomain := conf.Require("apiDomain")
 	auth0Domain := conf.Require("auth0Domain")
+	// CI OIDC identity (the town-crier-github-actions service principal) object ID. Granted
+	// Storage Blob Data Contributor on the SEO snapshot account below. Same principal the
+	// shared stack grants AcrPush; supplied via config because it's an external app reg.
+	ciServicePrincipalID := conf.Require("ciServicePrincipalId")
 	auth0Audience := conf.Require("auth0Audience")
 	customDomainPhase := 2
 	if v, err := conf.TryInt("customDomainPhase"); err == nil {
@@ -496,9 +501,19 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
+	// SEO snapshot storage (epic tc-w5w9 / GH #598): a per-environment Storage Account +
+	// seo-snapshot blob container, with the CI OIDC identity granted Storage Blob Data
+	// Contributor (weekly seo-refresh writes the snapshot; every build reads it).
+	seoSnapshotAccountName, seoSnapshotContainerName, err := createSeoSnapshotStorage(ctx, env, resourceGroup.Name, ciServicePrincipalID, tags)
+	if err != nil {
+		return err
+	}
+
 	ctx.Export("resourceGroupName", resourceGroup.Name)
 	ctx.Export("cosmosAccountEndpoint", cosmosAccountEndpoint)
 	ctx.Export("staticWebAppName", staticWebApp.Name)
+	ctx.Export("seoSnapshotStorageAccountName", seoSnapshotAccountName)
+	ctx.Export("seoSnapshotContainerName", seoSnapshotContainerName)
 
 	return nil
 }
@@ -738,4 +753,64 @@ func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroup
 		namespaceFqdn:      fqdn,
 		queueName:          queue.Name,
 	}, nil
+}
+
+// createSeoSnapshotStorage provisions the per-environment Storage Account + seo-snapshot blob
+// container that holds the weekly SEO prerender snapshot (seo-snapshot.json), and grants the CI
+// OIDC identity Storage Blob Data Contributor so the weekly seo-refresh job can write it and
+// every build can read it (epic tc-w5w9 / GH #598). Returns the account + container names so the
+// caller can export them for the workflows to reference.
+//
+// This is the project's first Storage Account. It uses the smallest/cheapest profile:
+// StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
+// AAD/RBAC only — CI authenticates via OIDC and must use `--auth-mode login` for blob I/O.
+func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, tags pulumi.StringMap) (accountName, containerName pulumi.StringOutput, err error) {
+	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
+	// follows the resource-type naming convention; the hyphens from the usual "-town-crier-"
+	// pattern are dropped because they are invalid in a storage account name.
+	account, err := storage.NewStorageAccount(ctx, fmt.Sprintf("sttowncrier%s", env), &storage.StorageAccountArgs{
+		AccountName:       pulumi.String(fmt.Sprintf("sttowncrier%s", env)),
+		ResourceGroupName: resourceGroupName,
+		Kind:              pulumi.String(string(storage.KindStorageV2)),
+		Sku: &storage.SkuArgs{
+			Name: pulumi.String(string(storage.SkuName_Standard_LRS)),
+		},
+		AccessTier:             storage.AccessTierHot,
+		AllowBlobPublicAccess:  pulumi.Bool(false),
+		AllowSharedKeyAccess:   pulumi.Bool(false),
+		EnableHttpsTrafficOnly: pulumi.Bool(true),
+		MinimumTlsVersion:      pulumi.String(string(storage.MinimumTlsVersion_TLS1_2)),
+		Tags:                   tags,
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+	}
+
+	container, err := storage.NewBlobContainer(ctx, fmt.Sprintf("seo-snapshot-%s", env), &storage.BlobContainerArgs{
+		AccountName:       account.Name,
+		ResourceGroupName: resourceGroupName,
+		ContainerName:     pulumi.String("seo-snapshot"),
+		PublicAccess:      storage.PublicAccessNone,
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+	}
+
+	// Built-in role: Storage Blob Data Contributor — data-plane read+write of blobs. Scoped to
+	// the account (it holds only this one container). PrincipalId is the CI service principal
+	// (town-crier-github-actions) object ID.
+	const storageBlobDataContributorRoleID = "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+	subscriptionID := subscriptionFromID(account.ID())
+	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("seo-snapshot-blob-contributor-%s", env), &authorization.RoleAssignmentArgs{
+		Scope: account.ID(),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, storageBlobDataContributorRoleID),
+		PrincipalId:   pulumi.String(ciServicePrincipalID),
+		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+	}
+
+	return account.Name, container.Name, nil
 }

@@ -211,6 +211,8 @@ github.com/pulumi/pulumi-azure-native-sdk/resources/v3 v3.16.0 h1:AP62GJ3I5a5tY3
 github.com/pulumi/pulumi-azure-native-sdk/resources/v3 v3.16.0/go.mod h1:aAh6uR3aOX3DqWcTYRxyxotIW5RT3S4iDJfpmjRtEdg=
 github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3 v3.16.0 h1:ay6WfwvoaItMI8pBvK+h9tmQ8Yhz6YRM6rNRmP0eYqI=
 github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3 v3.16.0/go.mod h1:Apf04i1oQ0RFpzdwgW0bdcqW+OLgLgMPdz8eCGfegSQ=
+github.com/pulumi/pulumi-azure-native-sdk/storage/v3 v3.16.0 h1:tmlSwkOo4OWs7hng1t7FilAIBFXKoP8G/02vctWxfK4=
+github.com/pulumi/pulumi-azure-native-sdk/storage/v3 v3.16.0/go.mod h1:5gKQtDYwh4PDVlUov31bM5lhXHnVJYZ+kkacp+LUebw=
 github.com/pulumi/pulumi-azure-native-sdk/v3 v3.16.0 h1:ezB7f2RIiKbwDybpi4uEFqnaku66GZ+6o6a+rAOpsfI=
 github.com/pulumi/pulumi-azure-native-sdk/v3 v3.16.0/go.mod h1:++PhnDe7L0yTTumzmWEyjgmRQhlGYJExPesZfHJV0o0=
 github.com/pulumi/pulumi-azure-native-sdk/web/v3 v3.16.0 h1:kl4QC2LXkntKUcRt3vfWJz8+eADo3Iz2XriyejJHi00=
