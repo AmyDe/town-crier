@@ -1,0 +1,126 @@
+# Nightly refresh of the baked SEO pages for BOTH dev and prod web.
+#
+# The programmatic authority-level SEO pages are statically prerendered at build
+# time (the prerender step is wired into `npm run build` via build-web, pulling
+# fresh applications from the gated API using SITE_BUILD_KEY). A normal CD deploy
+# only happens on push (dev) or tag (prod), so without this job the baked data
+# would go stale. This workflow redeploys the web as a *data-only* refresh — no
+# code change — for both environments.
+#
+# Deploying prod on a schedule is a deliberate exception to the tag-triggered
+# prod convention (see GH #570, tc-nnte.6), accepted so prod SEO pages stay fresh.
+#
+# Requires secrets:
+#   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
+#   AZURE_TENANT_ID        — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  — Azure subscription
+#   SITE_BUILD_KEY         — build-key that gates the recent-applications API used by the prerender
+#   GITHUB_TOKEN           — provided automatically; used by static-web-apps-deploy
+#
+# Requires per-environment GitHub variables (vars.*):
+#   VITE_API_BASE_URL, VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID,
+#   VITE_AUTH0_AUDIENCE, VITE_APPLICATIONINSIGHTS_CONNECTION_STRING
+#
+# Requires GitHub Environments:
+#   development, production  — each with an OIDC federated credential. The
+#   `environment:` block on each job selects that environment's vars.* values
+#   (dev → api-dev, prod → api).
+
+name: SEO Refresh
+
+on:
+  schedule:
+    # 04:00 UTC daily — low UK traffic window.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: seo-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # ── Web: refresh dev ────────────────────────────────────
+  web-dev:
+    name: "Web: Refresh dev"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/build-web
+        with:
+          vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
+          vite-auth0-domain: ${{ vars.VITE_AUTH0_DOMAIN }}
+          vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get SWA deployment token
+        id: swa-token
+        uses: ./.github/actions/get-swa-token
+        with:
+          swa-name: swa-town-crier-dev
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: web/dist
+          skip_app_build: true
+          skip_api_build: true
+
+  # ── Web: refresh prod ───────────────────────────────────
+  # No infra job here, so swa-name is hardcoded (cd-prod reads it from a
+  # Pulumi output; this data-only refresh has no Pulumi step).
+  web-prod:
+    name: "Web: Refresh prod"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/build-web
+        with:
+          vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
+          vite-auth0-domain: ${{ vars.VITE_AUTH0_DOMAIN }}
+          vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
+          vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
+          vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
+          site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get SWA deployment token
+        id: swa-token
+        uses: ./.github/actions/get-swa-token
+        with:
+          swa-name: swa-town-crier-prod
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: web/dist
+          skip_app_build: true
+          skip_api_build: true
