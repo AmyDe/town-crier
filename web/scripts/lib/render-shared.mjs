@@ -126,14 +126,17 @@ ${rows}
 
 /**
  * Render the mandatory data-attribution `<li>` items (ADR 0006). Required on
- * every public page — authority and town alike.
+ * every public page. Defaults to the base {@link ATTRIBUTION_LINES}; callers can
+ * supply an extended list (e.g. town pages add the ONS/NRS gazetteer credits)
+ * without the authority page picking up sources it doesn't use.
  *
+ * @param {readonly string[]} [lines]
  * @returns {string}
  */
-export function renderAttributionList() {
-  return ATTRIBUTION_LINES.map(
-    (line) => `        <li>${escapeHtml(line)}</li>`,
-  ).join('\n');
+export function renderAttributionList(lines = ATTRIBUTION_LINES) {
+  return lines
+    .map((line) => `        <li>${escapeHtml(line)}</li>`)
+    .join('\n');
 }
 
 /**

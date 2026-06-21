@@ -98,6 +98,17 @@ describe('runPrerender — fixture mode', () => {
     );
     expect(sitemap).not.toContain('west-sussex');
   });
+
+  it('stamps the authority sitemap <lastmod> with the max lastDifferent of its shown applications', async () => {
+    await runPrerender({ outDir, fixturePath: FIXTURE, logger: silentLogger });
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
+    // Basingstoke's three shown apps last-change on 15/12/09 Jun 2026; the page's
+    // lastmod is the freshest of those (15 Jun), not the build clock.
+    expect(sitemap).toContain('<lastmod>2026-06-15</lastmod>');
+    // Never the older two dates and never an empty tag.
+    expect(sitemap).not.toContain('<lastmod>2026-06-12</lastmod>');
+    expect(sitemap).not.toContain('<lastmod></lastmod>');
+  });
 });
 
 describe('runPrerender — no key, no fixture', () => {

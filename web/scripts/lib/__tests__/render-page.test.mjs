@@ -166,6 +166,14 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('OpenStreetMap');
   });
 
+  it('does NOT carry the town-only ONS Built-Up-Area / NRS gazetteer credit', () => {
+    // Authority pages are not positioned from the BUA/NRS centroid gazetteer, so
+    // they keep the base attribution and must not pick up the town-only lines.
+    const html = renderPlanningPage(pageData());
+    expect(html).not.toContain('Built-Up Areas');
+    expect(html).not.toContain('National Records of Scotland');
+  });
+
   it('escapes HTML in application fields to prevent markup injection', () => {
     const html = renderPlanningPage(
       pageData({

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { renderApplicationsList } from '../render-shared.mjs';
+import {
+  renderApplicationsList,
+  renderAttributionList,
+} from '../render-shared.mjs';
+import { ATTRIBUTION_LINES } from '../constants.mjs';
 
 const PLANIT_CAPTION = 'View full record on PlanIt';
 const COUNCIL_CAPTION = 'View on the council website';
@@ -89,5 +93,26 @@ describe('renderApplicationsList per-application links', () => {
       expect(anchor).toContain('rel="nofollow noopener"');
       expect(anchor).toContain('target="_blank"');
     }
+  });
+});
+
+describe('renderAttributionList', () => {
+  it('defaults to the base ATTRIBUTION_LINES (one escaped <li> per line)', () => {
+    const html = renderAttributionList();
+    for (const line of ATTRIBUTION_LINES) {
+      expect(html).toContain(`<li>${line}</li>`);
+    }
+    expect((html.match(/<li>/g) ?? []).length).toBe(ATTRIBUTION_LINES.length);
+  });
+
+  it('renders a caller-supplied list of lines, so a page can extend the base set', () => {
+    const html = renderAttributionList([
+      'Line one',
+      'Line two & <b>bold</b>',
+    ]);
+    expect(html).toContain('<li>Line one</li>');
+    // HTML in a line is escaped so data can never inject markup.
+    expect(html).toContain('<li>Line two &amp; &lt;b&gt;bold&lt;/b&gt;</li>');
+    expect((html.match(/<li>/g) ?? []).length).toBe(2);
   });
 });

@@ -36,6 +36,58 @@ import { renderSitemap } from './lib/render-sitemap.mjs';
 const DEFAULT_LIMIT = 30;
 
 /**
+ * Derive a page's content `lastmod` from the applications it actually shows: the
+ * maximum (freshest) `lastDifferent` of the rendered set. This is the honest
+ * freshness signal for the sitemap — NOT the build clock, which would falsely
+ * bump every unchanged page on every rebuild. Returns `undefined` when no shown
+ * application carries a parseable date, so the caller can omit `<lastmod>` rather
+ * than stamp an invalid/empty one.
+ *
+ * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications the
+ *   rendered (sliced) application set
+ * @returns {string | undefined} the max ISO `lastDifferent`, or undefined
+ */
+function maxLastmod(applications) {
+  let max;
+  let maxMs = -Infinity;
+  for (const app of applications) {
+    const iso = app?.lastDifferent;
+    if (typeof iso !== 'string' || iso === '') {
+      continue;
+    }
+    const ms = new Date(iso).getTime();
+    if (!Number.isNaN(ms) && ms > maxMs) {
+      maxMs = ms;
+      max = iso;
+    }
+  }
+  return max;
+}
+
+/**
+ * Sort applications by `lastDifferent` DESC (freshest first) for DISPLAY. Town
+ * nearby data arrives distance-ordered (the build requests `order=distance` to
+ * minimise overlap between adjacent town pages), so the renderer must re-sort it
+ * by recency to read newest-first and match the "Last updated" date order.
+ * Authority data already arrives recency-ordered, so this is only applied on the
+ * town path. Returns a new array; undated rows sort last, original order is kept
+ * among equal dates (stable).
+ *
+ * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications
+ * @returns {Array<{ lastDifferent?: string | null }>}
+ */
+function sortByRecencyDesc(applications) {
+  const keyed = applications.map((app, index) => {
+    const iso = app?.lastDifferent;
+    const ms =
+      typeof iso === 'string' && iso !== '' ? new Date(iso).getTime() : NaN;
+    return { app, index, ms: Number.isNaN(ms) ? -Infinity : ms };
+  });
+  keyed.sort((a, b) => b.ms - a.ms || a.index - b.index);
+  return keyed.map((k) => k.app);
+}
+
+/**
  * Default published-population threshold when `SEO_TOWN_MIN_POPULATION` is unset,
  * empty, or not a positive finite integer. A town ships only if its built-up-area
  * population is at least this value (the ≥10 in-radius coverage gate applies on
@@ -98,6 +150,10 @@ export const AUTHORITIES_FILE = join(
  * @type {string}
  */
 export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
+
+/**
+ * @typedef {import('./lib/render-sitemap.mjs').SitemapEntry} SitemapEntry
+ */
 
 /**
  * @typedef {Object} PrerenderResult
@@ -299,6 +355,7 @@ async function writePage(outDir, data) {
  * @param {object[]} args.applications
  * @param {number} args.limit
  * @param {string[]} args.published
+ * @param {SitemapEntry[]} args.sitemapEntries           parallel { path, lastmod } records
  * @param {Array<{ name: string, reason: string }>} args.excluded
  * @param {Set<string>} args.seenSlugs
  * @param {{ warn: (msg: string) => void }} args.logger
@@ -315,6 +372,7 @@ async function considerAuthority(args) {
     areaName,
     limit,
     published,
+    sitemapEntries,
     excluded,
     seenSlugs,
     logger,
@@ -333,15 +391,19 @@ async function considerAuthority(args) {
   }
   seenSlugs.add(slug);
 
+  // Authority data already arrives recency-ordered (the bounded read sorts by
+  // lastDifferent DESC), so no re-sort here — only the town path needs that.
+  const shown = applications.slice(0, limit);
   await writePage(outDir, {
     slug,
     areaName: areaName || name,
     authorityId,
     total,
     statusBreakdown,
-    applications: applications.slice(0, limit),
+    applications: shown,
   });
   published.push(slug);
+  sitemapEntries.push({ path: slug, lastmod: maxLastmod(shown) });
 }
 
 /**
@@ -417,6 +479,7 @@ async function writeTownPage(outDir, data) {
  * @param {object[]} args.applications
  * @param {number} args.limit
  * @param {string[]} args.publishedTowns
+ * @param {SitemapEntry[]} args.sitemapEntries           parallel { path, lastmod } records
  * @param {Array<{ name: string, reason: string }>} args.excludedTowns
  * @param {Set<string>} args.seenPaths
  * @param {{ warn: (msg: string) => void }} args.logger
@@ -432,6 +495,7 @@ async function considerTown(args) {
     applications,
     limit,
     publishedTowns,
+    sitemapEntries,
     excludedTowns,
     seenPaths,
     logger,
@@ -454,6 +518,10 @@ async function considerTown(args) {
   }
   seenPaths.add(path);
 
+  // Town nearby data arrives distance-ordered (order=distance, tc-2avw.2). Re-sort
+  // by lastDifferent DESC for display so the cards read newest-first and the
+  // page's lastmod (derived below) is consistent with what is shown.
+  const shown = sortByRecencyDesc(applications).slice(0, limit);
   await writeTownPage(outDir, {
     townName: town.name,
     townSlug: town.slug,
@@ -462,9 +530,10 @@ async function considerTown(args) {
     authorityId: town.authorityId,
     total,
     statusBreakdown,
-    applications: applications.slice(0, limit),
+    applications: shown,
   });
   publishedTowns.push(path);
+  sitemapEntries.push({ path, lastmod: maxLastmod(shown) });
 }
 
 /**
@@ -479,13 +548,15 @@ async function considerTown(args) {
  * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
- * @returns {Promise<{ publishedTowns: string[], excludedTowns: Array<{ name: string, reason: string }> }>}
+ * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }> }>}
  */
 async function renderTownPages(args) {
   const { outDir, towns, authorities, getGeo, limit, logger } = args;
 
   /** @type {string[]} */
   const publishedTowns = [];
+  /** @type {SitemapEntry[]} */
+  const townSitemapEntries = [];
   /** @type {Array<{ name: string, reason: string }>} */
   const excludedTowns = [];
   const seenPaths = new Set();
@@ -503,13 +574,14 @@ async function renderTownPages(args) {
       applications: Array.isArray(geo.applications) ? geo.applications : [],
       limit,
       publishedTowns,
+      sitemapEntries: townSitemapEntries,
       excludedTowns,
       seenPaths,
       logger,
     });
   }
 
-  return { publishedTowns, excludedTowns };
+  return { publishedTowns, townSitemapEntries, excludedTowns };
 }
 
 /**
@@ -528,6 +600,8 @@ async function runFixtureMode(args) {
 
   /** @type {string[]} */
   const published = [];
+  /** @type {SitemapEntry[]} */
+  const authoritySitemapEntries = [];
   /** @type {Array<{ name: string, reason: string }>} */
   const excluded = [];
   const seenSlugs = new Set();
@@ -558,6 +632,7 @@ async function runFixtureMode(args) {
           : [],
         limit,
         published,
+        sitemapEntries: authoritySitemapEntries,
         excluded,
         seenSlugs,
         logger,
@@ -567,6 +642,8 @@ async function runFixtureMode(args) {
 
   /** @type {string[]} */
   let publishedTowns = [];
+  /** @type {SitemapEntry[]} */
+  let townSitemapEntries = [];
   /** @type {Array<{ name: string, reason: string }>} */
   let excludedTowns = [];
 
@@ -579,25 +656,28 @@ async function runFixtureMode(args) {
       throw new Error(`town fixture ${townFixturePath} must be a JSON array`);
     }
     const authorities = await loadAuthorities();
-    ({ publishedTowns, excludedTowns } = await renderTownPages({
-      outDir,
-      towns: townEntries,
-      authorities,
-      getGeo: async (town) => ({
-        applications: Array.isArray(town.applications) ? town.applications : [],
-        total: town.total,
-        statusBreakdown: Array.isArray(town.statusBreakdown)
-          ? town.statusBreakdown
-          : [],
-      }),
-      limit,
-      logger,
-    }));
+    ({ publishedTowns, townSitemapEntries, excludedTowns } =
+      await renderTownPages({
+        outDir,
+        towns: townEntries,
+        authorities,
+        getGeo: async (town) => ({
+          applications: Array.isArray(town.applications)
+            ? town.applications
+            : [],
+          total: town.total,
+          statusBreakdown: Array.isArray(town.statusBreakdown)
+            ? town.statusBreakdown
+            : [],
+        }),
+        limit,
+        logger,
+      }));
   }
 
   await writeFile(
     join(outDir, 'sitemap.xml'),
-    renderSitemap([...published, ...publishedTowns]),
+    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
     'utf-8',
   );
   return { skipped: false, published, excluded, publishedTowns, excludedTowns };
@@ -633,6 +713,8 @@ async function runLiveMode(args) {
 
   /** @type {string[]} */
   const published = [];
+  /** @type {SitemapEntry[]} */
+  const authoritySitemapEntries = [];
   /** @type {Array<{ name: string, reason: string }>} */
   const excluded = [];
   const seenSlugs = new Set();
@@ -660,6 +742,7 @@ async function runLiveMode(args) {
       applications: recent.applications,
       limit,
       published,
+      sitemapEntries: authoritySitemapEntries,
       excluded,
       seenSlugs,
       logger,
@@ -687,19 +770,21 @@ async function runLiveMode(args) {
     }
   }
 
-  const { publishedTowns, excludedTowns } = await renderTownPages({
-    outDir,
-    towns: eligibleTowns,
-    authorities,
-    getGeo: (town) => fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
-    limit,
-    logger,
-  });
+  const { publishedTowns, townSitemapEntries, excludedTowns } =
+    await renderTownPages({
+      outDir,
+      towns: eligibleTowns,
+      authorities,
+      getGeo: (town) =>
+        fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
+      limit,
+      logger,
+    });
   excludedTowns.push(...populationExcludedTowns);
 
   await writeFile(
     join(outDir, 'sitemap.xml'),
-    renderSitemap([...published, ...publishedTowns]),
+    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
     'utf-8',
   );
   return { skipped: false, published, excluded, publishedTowns, excludedTowns };
