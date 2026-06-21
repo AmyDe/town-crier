@@ -110,6 +110,32 @@ func cosmosRetryOptions() policy.RetryOptions {
 	}
 }
 
+// cosmosBuildReadTryTimeout bounds one attempt of a latency-tolerant build-time
+// read. The SEO prerender's bounded top-N queries (RecentByAuthority /
+// RecentNearby, up to ~200 full documents) legitimately exceed the 1.5s OLTP
+// cosmosTryTimeout on a LARGE authority partition (e.g. a big-city authority),
+// so under that tight budget every retry times out and the request 500s
+// (tc-9tov). 9s gives a single generous attempt that covers the slow
+// large-partition read while staying comfortably under the 15s server
+// WriteTimeout (NewServer in server.go). Only the build-key-gated SEO reads opt
+// in, via QueryItemsLongRead — user-facing OLTP endpoints keep the 1.5s budget.
+const cosmosBuildReadTryTimeout = 9 * time.Second
+
+// cosmosBuildReadRetryOptions returns the per-call retry override for
+// latency-tolerant build-time reads: a single generous attempt, no retries.
+// MaxRetries is -1 because azcore's setDefaults normalises 0 to its default of 3
+// retries; -1 normalises to 0, i.e. one attempt. A second attempt at the 9s
+// per-try budget would risk ~18s total and breach the 15s server WriteTimeout,
+// so a retry is deliberately omitted — and a retry does not cure a
+// consistently-slow large-partition read anyway (the root cause is the
+// per-attempt budget, not transient failure).
+func cosmosBuildReadRetryOptions() policy.RetryOptions {
+	return policy.RetryOptions{
+		MaxRetries: -1, // -1 => 0 retries (single attempt); 0 would mean azcore's default of 3
+		TryTimeout: cosmosBuildReadTryTimeout,
+	}
+}
+
 // cosmosTokenAcquireTimeout bounds a managed-identity token fetch independently
 // of cosmosTryTimeout. The 1.5s per-Cosmos-try timeout (cosmosTryTimeout) wraps
 // the bearer-token auth policy, so it would otherwise cancel a COLD token fetch
@@ -317,6 +343,19 @@ func (c *CosmosContainer) QueryItems(ctx context.Context, partitionKey, query st
 		return nil, err
 	}
 	return items, nil
+}
+
+// QueryItemsLongRead is QueryItems with a longer per-attempt Cosmos budget for
+// latency-tolerant build-time reads (the SEO prerender's bounded top-N queries
+// over a LARGE authority partition). It overrides the tight 1.5s OLTP TryTimeout
+// for this single call only — via policy.WithRetryOptions on the request
+// context, which the azcore retry policy reads per call (req.Raw().Context()) —
+// so the user-facing endpoints sharing this client keep their 1.5s budget. The
+// override flows through traceCosmosOp's span context into the SDK pager. See
+// cosmosBuildReadRetryOptions for the budget and tc-9tov for the motivation.
+func (c *CosmosContainer) QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
+	ctx = policy.WithRetryOptions(ctx, cosmosBuildReadRetryOptions())
+	return c.QueryItems(ctx, partitionKey, query, params)
 }
 
 // CountItems runs a SELECT VALUE COUNT(1) scalar query in a single partition and

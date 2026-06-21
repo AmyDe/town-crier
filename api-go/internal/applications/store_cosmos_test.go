@@ -24,6 +24,11 @@ type fakeItems struct {
 	lastQueryPK     string
 	lastQuery       string
 	lastQueryParams map[string]any
+	// lastQueryViaLongRead records whether the most recent query went through the
+	// longer-budget build-read accessor (QueryItemsLongRead) rather than the tight
+	// OLTP QueryItems. The build-time SEO reads must use the long-read path; the
+	// user-facing reads must not (tc-9tov).
+	lastQueryViaLongRead bool
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{stored: map[string][]byte{}} }
@@ -48,6 +53,16 @@ func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []by
 }
 
 func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
+	f.lastQueryViaLongRead = false
+	return f.recordQuery(partitionKey, query, params)
+}
+
+func (f *fakeItems) QueryItemsLongRead(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
+	f.lastQueryViaLongRead = true
+	return f.recordQuery(partitionKey, query, params)
+}
+
+func (f *fakeItems) recordQuery(partitionKey, query string, params map[string]any) ([][]byte, error) {
 	f.lastQueryPK = partitionKey
 	f.lastQuery = query
 	f.lastQueryParams = params
@@ -422,5 +437,67 @@ func TestCosmosStore_RecentNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("RecentNearby: got %d results, want 0", len(got))
+	}
+}
+
+// The build-time SEO reads run over a LARGE authority partition and legitimately
+// exceed the tight 1.5s OLTP budget, so they must route through the longer-budget
+// QueryItemsLongRead accessor — never the OLTP QueryItems (tc-9tov).
+
+func TestCosmosStore_RecentByAuthority_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.RecentByAuthority(context.Background(), "156", 200); err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("RecentByAuthority must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
+func TestCosmosStore_RecentNearby_UsesLongReadBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.RecentNearby(context.Background(), "156", 51.5, -0.1, 5000, 200); err != nil {
+		t.Fatalf("RecentNearby: %v", err)
+	}
+	if !items.lastQueryViaLongRead {
+		t.Error("RecentNearby must use the long-read budget (QueryItemsLongRead), not the 1.5s OLTP QueryItems")
+	}
+}
+
+// The user-facing reads must keep the tight OLTP budget — only the build-time SEO
+// reads get the longer one, so widening must never leak onto the OLTP path.
+
+func TestCosmosStore_FindNearby_KeepsOLTPBudget(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000); err != nil {
+		t.Fatalf("FindNearby: %v", err)
+	}
+	if items.lastQueryViaLongRead {
+		t.Error("FindNearby is a user-facing read and must keep the 1.5s OLTP QueryItems budget")
+	}
+}
+
+func TestCosmosStore_GetByUID_KeepsOLTPBudget(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	body, _ := json.Marshal(newApplicationDocument(a))
+	items := newFakeItems()
+	items.queryResult = [][]byte{body}
+	store := NewCosmosStore(items)
+
+	if _, _, err := store.GetByUID(context.Background(), a.UID, strconv.Itoa(a.AreaID)); err != nil {
+		t.Fatalf("GetByUID: %v", err)
+	}
+	if items.lastQueryViaLongRead {
+		t.Error("GetByUID is a user-facing read and must keep the 1.5s OLTP QueryItems budget")
 	}
 }

@@ -10,13 +10,16 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the Applications container the store
-// uses: a single-partition point read, an upsert, and a single-partition
-// spatial query for the nearby lookup. platform.CosmosContainer satisfies it
-// structurally.
+// uses: a single-partition point read, an upsert, and single-partition queries.
+// QueryItems carries the tight 1.5s OLTP per-attempt budget for user-facing
+// reads; QueryItemsLongRead carries a longer per-attempt budget for the
+// latency-tolerant build-time SEO reads over a LARGE authority partition
+// (tc-9tov). platform.CosmosContainer satisfies it structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
+	QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 }
 
 // CosmosStore reads and writes planning applications in the Applications
@@ -102,7 +105,9 @@ const recentByAuthorityQuery = "SELECT TOP @cap * FROM c ORDER BY c.lastDifferen
 // fallback (GH#395 Invariant 1) — it reads only from Cosmos.
 func (s *CosmosStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
 	params := map[string]any{"@cap": cap}
-	raws, err := s.items.QueryItems(ctx, authorityCode, recentByAuthorityQuery, params)
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, recentByAuthorityQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications for authority %q: %w", authorityCode, err)
 	}
@@ -180,7 +185,9 @@ func (s *CosmosStore) RecentNearby(ctx context.Context, authorityCode string, la
 		"@radiusMetres": radiusMetres,
 		"@cap":          cap,
 	}
-	raws, err := s.items.QueryItems(ctx, authorityCode, recentNearbyQuery, params)
+	// Latency-tolerant build-time read: a LARGE authority partition legitimately
+	// exceeds the 1.5s OLTP budget, so use the longer per-attempt budget (tc-9tov).
+	raws, err := s.items.QueryItemsLongRead(ctx, authorityCode, recentNearbyQuery, params)
 	if err != nil {
 		return nil, fmt.Errorf("recent applications near %q: %w", authorityCode, err)
 	}
