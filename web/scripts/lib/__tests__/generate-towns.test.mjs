@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, it, expect } from 'vitest';
 import {
   bngToLatLon,
@@ -9,6 +13,8 @@ import {
   POPULATION_COLUMNS,
   CENTROID_COLUMNS,
 } from '../../generate-towns.mjs';
+
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'fixtures');
 
 describe('bngToLatLon (OSGB36 British National Grid -> WGS84)', () => {
   it('converts a known central-London point to within ~100m', () => {
@@ -312,5 +318,47 @@ describe('buildGazetteer (end-to-end CSV text -> records)', () => {
     for (const r of records) {
       expect(Number.isFinite(r.population)).toBe(true);
     }
+  });
+});
+
+describe('buildGazetteer over the on-disk fixture CSVs (documented contract)', () => {
+  // Proves the documented column contract round-trips from real files matching
+  // the layout the orchestrator will produce for the real ONS regen.
+  const mapping = { Cornwall: 52, Stockport: 320, 'Staffordshire Moorlands': 81 };
+  const populationCsv = readFileSync(join(FIXTURES_DIR, 'sample-bua-population.csv'), 'utf-8');
+  const centroidCsv = readFileSync(join(FIXTURES_DIR, 'sample-bua-centroids.csv'), 'utf-8');
+
+  const { records, skipped } = buildGazetteer(populationCsv, centroidCsv, mapping);
+  const bySlug = Object.fromEntries(records.map((r) => [`${r.authorityId}/${r.slug}`, r]));
+
+  it('joins both fixture files on BUA code into {slug,name,lat,lng,authorityId,population}', () => {
+    expect(bySlug['52/truro']).toEqual({
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 18766,
+    });
+  });
+
+  it('keeps both parenthetical-LAD Cheadles as distinct unique-slug records', () => {
+    expect(bySlug['320/cheadle-stockport']).toBeDefined();
+    expect(bySlug['81/cheadle-staffordshire-moorlands']).toBeDefined();
+    expect(bySlug['320/cheadle-stockport'].name).toBe('Cheadle (Stockport)');
+  });
+
+  it('uses the BNG fallback for a fixture row with blank lat/lng (Newquay)', () => {
+    const newquay = bySlug['52/newquay'];
+    expect(newquay).toBeDefined();
+    expect(newquay.lat).toBeCloseTo(50.41, 1);
+    expect(newquay.lng).toBeCloseTo(-5.07, 1);
+  });
+
+  it('skips and logs the sub-5k, unmatched-authority, and no-centroid fixtures', () => {
+    const byCode = Object.fromEntries(skipped.map((s) => [s.code, s.reason]));
+    expect(byCode['E63004000']).toBe('below-floor');
+    expect(byCode['E63007777']).toBe('unmatched-authority');
+    expect(byCode['E63009999']).toBe('no-centroid');
   });
 });
