@@ -10,22 +10,24 @@ import (
 
 // recentReadCap is the hard upper bound on documents read per authority in one
 // SEO build request. The query is bounded by it (SELECT TOP @cap), so the RU cost
-// and response size stay flat regardless of how busy the authority is.
+// and response size stay flat regardless of how busy the authority is. It also
+// bounds the denominator of the status breakdown.
 const recentReadCap = 200
 
 // recentDefaultLimit and recentMaxLimit bound how many applications the response
 // renders. limit defaults to recentDefaultLimit and is hard-capped at
-// recentMaxLimit; the full bounded read still backs total/totalCapped.
+// recentMaxLimit; the rendered slice is clamped against the bounded read.
 const (
 	recentDefaultLimit = 30
 	recentMaxLimit     = 100
 )
 
-// recentStore is the consumer-side store the SEO read handler needs: a single
-// bounded, single-partition top-N read by authority. The concrete *CosmosStore
-// satisfies it structurally.
+// recentStore is the consumer-side store the SEO read handler needs: a bounded,
+// single-partition top-N read by authority plus an exact partition count. The
+// concrete *CosmosStore satisfies it structurally.
 type recentStore interface {
 	RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error)
+	CountByAuthority(ctx context.Context, authorityCode string) (int, error)
 }
 
 // recentHandler serves the build-time SEO endpoint.
@@ -64,8 +66,16 @@ func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	total := len(apps)
-	render := total
+	// total is the EXACT partition count (index-only COUNT), independent of the
+	// bounded read which saturates at recentReadCap. The render slice must clamp
+	// against the bounded read length, NOT total — total can dwarf len(apps).
+	total, err := h.store.CountByAuthority(r.Context(), authorityCode)
+	if err != nil {
+		serverError(w, r, h.logger, "count applications by authority", err)
+		return
+	}
+
+	render := len(apps)
 	if render > limit {
 		render = limit
 	}
@@ -78,16 +88,16 @@ func (h *recentHandler) recentByAuthority(w http.ResponseWriter, r *http.Request
 	// present. With zero applications it is empty (the prerender gate skips such
 	// authorities, so an empty page title never ships).
 	areaName := ""
-	if total > 0 {
+	if len(apps) > 0 {
 		areaName = apps[0].AreaName
 	}
 
 	writeJSON(w, r, h.logger, RecentByAuthorityResult{
-		AuthorityID:  id,
-		AreaName:     areaName,
-		Applications: results,
-		Total:        total,
-		TotalCapped:  total >= recentReadCap,
+		AuthorityID:     id,
+		AreaName:        areaName,
+		Applications:    results,
+		Total:           total,
+		StatusBreakdown: breakdownByState(apps),
 	})
 }
 

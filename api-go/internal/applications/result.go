@@ -84,30 +84,33 @@ type NearbyResult struct {
 
 // RecentByAuthorityResult is the wire shape of the build-time SEO endpoint
 // GET /v1/authorities/{id}/applications. Applications is always a non-null array
-// (at most the request's limit). Total is the count from the single bounded read;
-// TotalCapped reports that the read hit cap (so the prerender can render "200+").
+// (at most the request's limit). Total is the EXACT count of applications in the
+// authority partition (a separate index-only COUNT, not the bounded read length).
+// StatusBreakdown is the per-appState distribution over the bounded read (its
+// denominator is that read, not the whole partition), always a non-null array.
 type RecentByAuthorityResult struct {
-	AuthorityID  int                 `json:"authorityId"`
-	AreaName     string              `json:"areaName"`
-	Applications []RecentApplication `json:"applications"`
-	Total        int                 `json:"total"`
-	TotalCapped  bool                `json:"totalCapped"`
+	AuthorityID     int                 `json:"authorityId"`
+	AreaName        string              `json:"areaName"`
+	Applications    []RecentApplication `json:"applications"`
+	Total           int                 `json:"total"`
+	StatusBreakdown []StateCount        `json:"statusBreakdown"`
 }
 
 // RecentNearbyResult is the wire shape of the build-time town-level SEO endpoint
 // GET /v1/applications/near. It mirrors RecentByAuthorityResult but echoes the
 // effective (post-clamp) query point and radius instead of an area name, so the
 // town prerender can label and cache the page by its centroid. Applications is
-// always a non-null array (at most the request's limit); Total is the count from
-// the single bounded read; TotalCapped reports that the read hit cap.
+// always a non-null array (at most the request's limit); Total is the EXACT
+// in-radius count (a separate COUNT, not the bounded read length); StatusBreakdown
+// is the per-appState distribution over the bounded read, always a non-null array.
 type RecentNearbyResult struct {
-	AuthorityID  int                 `json:"authorityId"`
-	Lat          float64             `json:"lat"`
-	Lng          float64             `json:"lng"`
-	Radius       float64             `json:"radius"`
-	Applications []RecentApplication `json:"applications"`
-	Total        int                 `json:"total"`
-	TotalCapped  bool                `json:"totalCapped"`
+	AuthorityID     int                 `json:"authorityId"`
+	Lat             float64             `json:"lat"`
+	Lng             float64             `json:"lng"`
+	Radius          float64             `json:"radius"`
+	Applications    []RecentApplication `json:"applications"`
+	Total           int                 `json:"total"`
+	StatusBreakdown []StateCount        `json:"statusBreakdown"`
 }
 
 // RecentApplication is the slim, render-only projection of a planning application
