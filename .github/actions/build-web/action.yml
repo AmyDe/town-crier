@@ -25,6 +25,10 @@ inputs:
     description: SITE_BUILD_KEY — build key for the gated SEO prerender endpoint (empty = SPA-only, prerender skips)
     required: false
     default: ""
+  seo-town-min-population:
+    description: SEO_TOWN_MIN_POPULATION — population floor for published town SEO pages (towns below this are not published)
+    required: false
+    default: "20000"
 
 runs:
   using: composite
@@ -51,3 +55,4 @@ runs:
         VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
         VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
         SITE_BUILD_KEY: ${{ inputs.site-build-key }}
+        SEO_TOWN_MIN_POPULATION: ${{ inputs.seo-town-min-population }}

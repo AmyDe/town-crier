@@ -225,6 +225,7 @@ jobs:
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
 
       - uses: ./.github/actions/azure-login
         with:
