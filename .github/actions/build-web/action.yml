@@ -2,6 +2,26 @@
 # environment-specific VITE_ variables baked in at build time.
 #
 # Produces the production bundle in web/dist, ready for deployment.
+#
+# Render-mode (epic tc-w5w9 / GH #598, Phase 4):
+#   - render-mode is OFF by default ("false") — the action behaves EXACTLY as it
+#     does today: a single `npm run build` runs the env-driven build-time
+#     prerender (live when site-build-key is set, SPA-only/skip when empty).
+#   - When render-mode is "true" the build STOPS calling the Go API at build
+#     time. Instead it builds the SPA only (forces SITE_BUILD_KEY empty so the
+#     build-time prerender skips), downloads the weekly seo-snapshot.json from
+#     Azure Blob, and renders /planning/* + sitemap.xml OFFLINE from it. This is
+#     the per-release path that removes the ~1,900 serial Go API calls this epic
+#     targets.
+#   - In render-mode the CALLER must run azure-login BEFORE this action and pass
+#     storage-account-name (the account holding the `seo-snapshot` container).
+#     Shared-key access is disabled on that account, so blob I/O uses
+#     `--auth-mode login` (AAD/RBAC); the CI OIDC identity holds Storage Blob
+#     Data Reader.
+#   - The snapshot download FAILS THE BUILD if the blob is missing. There is
+#     deliberately NO live-fetch fallback — falling back would re-introduce the
+#     per-release Go API / Cosmos load this epic removes (GH #598 acceptance:
+#     "fails loudly if the snapshot is missing").
 name: Build Web
 description: Install dependencies and build the Vite web app with VITE_ env vars
 
@@ -29,6 +49,20 @@ inputs:
     description: SEO_TOWN_MIN_POPULATION — population floor for published town SEO pages (towns below this are not published)
     required: false
     default: "20000"
+  render-mode:
+    description: >-
+      When "true", build the SPA only and render /planning/* + sitemap.xml from a
+      downloaded seo-snapshot.json (offline, zero Go API calls) instead of the
+      live build-time prerender. Requires the caller to azure-login first and to
+      pass storage-account-name. Default "false" preserves today's behaviour.
+    required: false
+    default: "false"
+  storage-account-name:
+    description: >-
+      Azure Storage account holding the `seo-snapshot` blob container. Only used
+      when render-mode is "true".
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -44,7 +78,11 @@ runs:
       run: npm ci
       working-directory: web
 
+    # Default path (render-mode != "true"): byte-identical to the original single
+    # Build step — same command, same env block (incl. SITE_BUILD_KEY), so the
+    # env-driven build-time prerender runs live or skips exactly as before.
     - name: Build
+      if: inputs.render-mode != 'true'
       shell: bash
       run: npm run build
       working-directory: web
@@ -56,3 +94,42 @@ runs:
         VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
         SITE_BUILD_KEY: ${{ inputs.site-build-key }}
         SEO_TOWN_MIN_POPULATION: ${{ inputs.seo-town-min-population }}
+
+    # Render-mode path: build the SPA only. SITE_BUILD_KEY is forced empty so the
+    # build-time prerender SKIPS (no Go API calls here) — pages come from the
+    # snapshot instead. Same VITE_* + SEO_TOWN_MIN_POPULATION as the default path.
+    - name: Build SPA only (render-mode)
+      if: inputs.render-mode == 'true'
+      shell: bash
+      run: npm run build
+      working-directory: web
+      env:
+        VITE_API_BASE_URL: ${{ inputs.vite-api-base-url }}
+        VITE_AUTH0_DOMAIN: ${{ inputs.vite-auth0-domain }}
+        VITE_AUTH0_CLIENT_ID: ${{ inputs.vite-auth0-client-id }}
+        VITE_AUTH0_AUDIENCE: ${{ inputs.vite-auth0-audience }}
+        VITE_APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ inputs.vite-applicationinsights-connection-string }}
+        SITE_BUILD_KEY: ""
+        SEO_TOWN_MIN_POPULATION: ${{ inputs.seo-town-min-population }}
+
+    # Download the weekly snapshot. Requires the caller to have run azure-login
+    # already. Shared-key access is disabled, so --auth-mode login is mandatory.
+    # No `|| true` / fallback: a missing blob MUST fail the build (GH #598).
+    - name: Download SEO snapshot from Azure Blob (render-mode)
+      if: inputs.render-mode == 'true'
+      shell: bash
+      run: |
+        az storage blob download \
+          --auth-mode login \
+          --account-name ${{ inputs.storage-account-name }} \
+          --container-name seo-snapshot \
+          --name seo-snapshot.json \
+          --file web/seo-snapshot.json
+
+    # Offline render of /planning/* + sitemap.xml into web/dist from the snapshot
+    # (PRERENDER_SNAPSHOT default web/seo-snapshot.json). Zero network calls.
+    - name: Render SEO pages from the snapshot (render-mode)
+      if: inputs.render-mode == 'true'
+      shell: bash
+      run: node scripts/prerender-planning.mjs --render
+      working-directory: web
