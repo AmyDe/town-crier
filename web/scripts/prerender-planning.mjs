@@ -4,7 +4,8 @@
  * hydration-free HTML into `web/dist/planning/<slug>/index.html` plus a
  * `web/dist/sitemap.xml`.
  *
- * Three run modes, selected by environment:
+ * Default (no-flag) run modes, selected by environment — UNCHANGED, this is what
+ * `npm run build` invokes:
  *   - SITE_BUILD_KEY set        -> live: read the committed authority list from
  *                                  the repo, then fetch each authority's recent
  *                                  applications from our build-key-gated API.
@@ -14,6 +15,18 @@
  *                                  no network (used by the tracer + tests).
  *   - neither set               -> skip: leave the SPA build untouched so
  *                                  `npm run build` still succeeds without a key.
+ *
+ * Two opt-in, argv-selected modes split data-fetching from rendering so the
+ * large SEO corpus can be refreshed weekly (one API hit) and rebuilt every
+ * release offline (zero API hits) — see GH #598 / ADR for the blob-snapshot
+ * decision:
+ *   - `--fetch`   -> snapshot: same live data-gathering as the live mode above,
+ *                    but serialise every render input into a single
+ *                    `seo-snapshot.json` (path: PRERENDER_SNAPSHOT, default
+ *                    web/seo-snapshot.json). Emits NO HTML. The ONLY API caller.
+ *   - `--render`  -> offline: read `seo-snapshot.json` and rebuild every
+ *                    `/planning/*` page + the sitemap with ZERO network calls.
+ * Both reuse the exact page-generation pipeline; only the data source differs.
  *
  * The authority list itself is static, public, committed data (read from disk,
  * not over HTTP — the live `/v1/authorities` endpoint needs an Auth0 token). The
@@ -34,6 +47,13 @@ import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 
 const DEFAULT_LIMIT = 30;
+
+/**
+ * Current on-disk schema version of `seo-snapshot.json`. Bump when the snapshot
+ * shape changes incompatibly so a stale snapshot can be detected/rejected.
+ * @type {number}
+ */
+const SNAPSHOT_VERSION = 1;
 
 /**
  * Derive a page's content `lastmod` from the applications it actually shows: the
@@ -585,6 +605,89 @@ async function renderTownPages(args) {
 }
 
 /**
+ * Render an authority-entry set and a town-entry set into static pages plus a
+ * sitemap, sharing the EXACT page-generation pipeline every mode uses
+ * (`considerAuthority`, `renderTownPages`, `renderSitemap` — the coverage gate,
+ * slug/path dedup, recency sort and lastmod all live inside those helpers). The
+ * entries carry their projection data inline, so this is pure: it performs NO
+ * network I/O. Both fixture mode and offline `--render` mode feed it; the only
+ * thing that differs upstream is where the entries came from (a committed
+ * fixture vs. a fetched snapshot).
+ *
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {ReadonlyArray<{ id: number, name: string, areaType: string, areaName?: string, total: number, statusBreakdown?: object[], applications?: object[] }>} args.authorityEntries
+ * @param {ReadonlyArray<Town & { total: number, statusBreakdown?: object[], applications?: object[] }>} args.townEntries
+ * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities  resolves a town's parent-authority slug
+ * @param {number} args.limit
+ * @param {{ warn: (msg: string) => void }} args.logger
+ * @returns {Promise<PrerenderResult>}
+ */
+async function renderEntries(args) {
+  const { outDir, authorityEntries, townEntries, authorities, limit, logger } =
+    args;
+
+  /** @type {string[]} */
+  const published = [];
+  /** @type {SitemapEntry[]} */
+  const authoritySitemapEntries = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  const excluded = [];
+  const seenSlugs = new Set();
+
+  for (const entry of authorityEntries) {
+    if (!isQualifyingAreaType(entry.areaType)) {
+      excluded.push({ name: entry.name, reason: 'areaType' });
+      continue;
+    }
+    await considerAuthority({
+      outDir,
+      authorityId: entry.id,
+      name: entry.name,
+      areaType: entry.areaType,
+      areaName: entry.areaName ?? entry.name,
+      total: entry.total,
+      statusBreakdown: Array.isArray(entry.statusBreakdown)
+        ? entry.statusBreakdown
+        : [],
+      applications: Array.isArray(entry.applications) ? entry.applications : [],
+      limit,
+      published,
+      sitemapEntries: authoritySitemapEntries,
+      excluded,
+      seenSlugs,
+      logger,
+    });
+  }
+
+  // Town entries carry the geo projection inline (total/statusBreakdown/
+  // applications), so `getGeo` is a pure lookup — no network. With zero town
+  // entries the loop is a no-op and `authorities` is never consulted.
+  const { publishedTowns, townSitemapEntries, excludedTowns } =
+    await renderTownPages({
+      outDir,
+      towns: townEntries,
+      authorities,
+      getGeo: async (town) => ({
+        applications: Array.isArray(town.applications) ? town.applications : [],
+        total: town.total,
+        statusBreakdown: Array.isArray(town.statusBreakdown)
+          ? town.statusBreakdown
+          : [],
+      }),
+      limit,
+      logger,
+    });
+
+  await writeFile(
+    join(outDir, 'sitemap.xml'),
+    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
+    'utf-8',
+  );
+  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
+}
+
+/**
  * @param {Object} args
  * @param {string} args.outDir
  * @param {string} args.fixturePath               authority fixture (optional)
@@ -598,89 +701,39 @@ async function runFixtureMode(args) {
   const { outDir, fixturePath, townFixturePath, limit, loadAuthorities, logger } =
     args;
 
-  /** @type {string[]} */
-  const published = [];
-  /** @type {SitemapEntry[]} */
-  const authoritySitemapEntries = [];
-  /** @type {Array<{ name: string, reason: string }>} */
-  const excluded = [];
-  const seenSlugs = new Set();
-
+  /** @type {Array<{ id: number, name: string, areaType: string }>} */
+  let authorityEntries = [];
   if (fixturePath) {
     const raw = await readFile(fixturePath, 'utf-8');
-    const entries = JSON.parse(raw);
-    if (!Array.isArray(entries)) {
+    authorityEntries = JSON.parse(raw);
+    if (!Array.isArray(authorityEntries)) {
       throw new Error(`fixture ${fixturePath} must be a JSON array`);
-    }
-    for (const entry of entries) {
-      if (!isQualifyingAreaType(entry.areaType)) {
-        excluded.push({ name: entry.name, reason: 'areaType' });
-        continue;
-      }
-      await considerAuthority({
-        outDir,
-        authorityId: entry.id,
-        name: entry.name,
-        areaType: entry.areaType,
-        areaName: entry.areaName ?? entry.name,
-        total: entry.total,
-        statusBreakdown: Array.isArray(entry.statusBreakdown)
-          ? entry.statusBreakdown
-          : [],
-        applications: Array.isArray(entry.applications)
-          ? entry.applications
-          : [],
-        limit,
-        published,
-        sitemapEntries: authoritySitemapEntries,
-        excluded,
-        seenSlugs,
-        logger,
-      });
     }
   }
 
-  /** @type {string[]} */
-  let publishedTowns = [];
-  /** @type {SitemapEntry[]} */
-  let townSitemapEntries = [];
-  /** @type {Array<{ name: string, reason: string }>} */
-  let excludedTowns = [];
-
-  // Town fixture rows carry the geo projection inline (total/statusBreakdown/
-  // applications), so `getGeo` is a pure lookup — no network in fixture mode.
+  /** @type {Town[]} */
+  let townEntries = [];
+  /** @type {Array<{ id: number, name: string }>} */
+  let authorities = [];
+  // The authority list is only needed to resolve town slugs, so it's loaded only
+  // when there is a town fixture — preserving the original behaviour exactly.
   if (townFixturePath) {
     const rawTowns = await readFile(townFixturePath, 'utf-8');
-    const townEntries = JSON.parse(rawTowns);
+    townEntries = JSON.parse(rawTowns);
     if (!Array.isArray(townEntries)) {
       throw new Error(`town fixture ${townFixturePath} must be a JSON array`);
     }
-    const authorities = await loadAuthorities();
-    ({ publishedTowns, townSitemapEntries, excludedTowns } =
-      await renderTownPages({
-        outDir,
-        towns: townEntries,
-        authorities,
-        getGeo: async (town) => ({
-          applications: Array.isArray(town.applications)
-            ? town.applications
-            : [],
-          total: town.total,
-          statusBreakdown: Array.isArray(town.statusBreakdown)
-            ? town.statusBreakdown
-            : [],
-        }),
-        limit,
-        logger,
-      }));
+    authorities = await loadAuthorities();
   }
 
-  await writeFile(
-    join(outDir, 'sitemap.xml'),
-    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
-    'utf-8',
-  );
-  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
+  return renderEntries({
+    outDir,
+    authorityEntries,
+    townEntries,
+    authorities,
+    limit,
+    logger,
+  });
 }
 
 /**
@@ -791,6 +844,123 @@ async function runLiveMode(args) {
 }
 
 /**
+ * @typedef {Object} SeoSnapshot
+ * @property {number} version
+ * @property {string} generatedAt                          ISO timestamp the snapshot was gathered
+ * @property {number} minPopulation                        the town population cut applied at fetch
+ * @property {number} limit                                applications fetched/rendered per page
+ * @property {Array<{ id: number, name: string }>} authorities           FULL list (id+name), for offline slug resolution
+ * @property {Array<{ id: number, name: string, areaType: string, areaName: string, total: number, statusBreakdown: object[], applications: object[] }>} authorityPages   one per qualifying authority
+ * @property {Array<Town & { total: number, statusBreakdown: object[], applications: object[] }>} townPages                one per population-eligible town
+ */
+
+/**
+ * Gather every authority/town render input from the live API into a single
+ * self-contained snapshot — the SAME data-gathering as {@link runLiveMode}
+ * (qualifying authorities + population-eligible towns via the build-key-gated
+ * endpoints, with the same areaType and population pre-filters), but collecting
+ * the projections instead of writing pages. The coverage gate and slug/path
+ * dedup are deliberately NOT applied here: they are page-generation decisions
+ * re-applied at render time, so the snapshot carries the full fetched set and a
+ * `--render` reproduces today's exact page set. Fails LOUD on any
+ * transport/shape error (the per-endpoint fetch helpers throw).
+ *
+ * @param {Object} args
+ * @param {string} args.apiBase
+ * @param {string} args.buildKey
+ * @param {number} args.limit
+ * @param {number} args.minPopulation
+ * @param {typeof globalThis.fetch} args.fetchImpl
+ * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
+ * @param {() => Promise<Town[]>} args.loadTowns
+ * @param {() => string} args.now
+ * @returns {Promise<SeoSnapshot>}
+ */
+async function gatherSnapshot(args) {
+  const {
+    apiBase,
+    buildKey,
+    limit,
+    minPopulation,
+    fetchImpl,
+    loadAuthorities,
+    loadTowns,
+    now,
+  } = args;
+
+  const authorities = await loadAuthorities();
+
+  /** @type {SeoSnapshot['authorityPages']} */
+  const authorityPages = [];
+  for (const authority of authorities) {
+    // areaType pre-filter: non-qualifying authorities are never fetched (same as
+    // live mode), so they never enter the snapshot.
+    if (!isQualifyingAreaType(authority.areaType)) {
+      continue;
+    }
+    const recent = await fetchRecentApplications(
+      apiBase,
+      authority.id,
+      buildKey,
+      limit,
+      fetchImpl,
+    );
+    authorityPages.push({
+      id: authority.id,
+      name: authority.name,
+      areaType: authority.areaType,
+      areaName: recent.areaName || authority.name,
+      total: recent.total,
+      statusBreakdown: recent.statusBreakdown,
+      applications: recent.applications,
+    });
+  }
+
+  const towns = await loadTowns();
+
+  /** @type {SeoSnapshot['townPages']} */
+  const townPages = [];
+  for (const town of towns) {
+    // population pre-filter, applied BEFORE the geo fetch (same as live mode), so
+    // below-threshold towns never hit the API and never enter the snapshot.
+    if (town.population < minPopulation) {
+      continue;
+    }
+    const geo = await fetchRecentNearby(
+      apiBase,
+      town,
+      buildKey,
+      limit,
+      fetchImpl,
+    );
+    townPages.push({
+      slug: town.slug,
+      name: town.name,
+      lat: town.lat,
+      lng: town.lng,
+      authorityId: town.authorityId,
+      population: town.population,
+      total: geo.total,
+      statusBreakdown: geo.statusBreakdown,
+      applications: geo.applications,
+    });
+  }
+
+  return {
+    version: SNAPSHOT_VERSION,
+    generatedAt: now(),
+    minPopulation,
+    limit,
+    // The FULL authority list (id+name only) — town pages resolve their parent
+    // authority slug from this offline, including non-qualifying parents that
+    // never get an authority page of their own.
+    authorities: authorities.map((a) => ({ id: a.id, name: a.name })),
+    authorityPages,
+    townPages,
+  };
+}
+
+/**
  * Orchestrate the prerender. Dependency-injected for testing.
  *
  * @param {Object} options
@@ -864,12 +1034,215 @@ export async function runPrerender(options) {
 }
 
 /**
- * CLI entry point. Reads configuration from the environment and writes into
- * web/dist (resolved relative to this script, independent of cwd).
+ * Snapshot mode (`--fetch`). Gathers the live render inputs for every qualifying
+ * authority and population-eligible town and writes a single self-contained
+ * `seo-snapshot.json`. Emits NO HTML. This is the ONLY mode that touches the Go
+ * API; `--render` then rebuilds the pages offline from the snapshot. Because it
+ * is always invoked deliberately (the weekly job), a missing key or base is a
+ * hard error — never a silent skip.
+ *
+ * @param {Object} options
+ * @param {string} options.snapshotPath              file to write the snapshot to
+ * @param {string} [options.apiBase]                 API base URL (PRERENDER_API_BASE / VITE_API_BASE_URL)
+ * @param {string} [options.buildKey]                SITE_BUILD_KEY
+ * @param {number} [options.limit]                   applications fetched per page
+ * @param {Record<string, string | undefined>} [options.env]  environment (for SEO_TOWN_MIN_POPULATION)
+ * @param {typeof globalThis.fetch} [options.fetchImpl]
+ * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
+ * @param {() => Promise<Town[]>} [options.loadTowns]
+ * @param {() => string} [options.now]               clock seam for `generatedAt`
+ * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
+ * @returns {Promise<SeoSnapshot>}
+ */
+export async function runFetch(options) {
+  const {
+    snapshotPath,
+    apiBase,
+    buildKey,
+    limit = DEFAULT_LIMIT,
+    env = process.env,
+    fetchImpl = globalThis.fetch,
+    loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
+    loadTowns = () => loadTownsFromFile(TOWNS_FILE, readFile),
+    now = () => new Date().toISOString(),
+    logger = console,
+  } = options;
+
+  if (!buildKey) {
+    throw new Error('--fetch requires SITE_BUILD_KEY to be set');
+  }
+  if (!apiBase) {
+    throw new Error(
+      '--fetch requires an API base URL (PRERENDER_API_BASE / VITE_API_BASE_URL)',
+    );
+  }
+
+  const snapshot = await gatherSnapshot({
+    apiBase: trimTrailingSlash(apiBase),
+    buildKey,
+    limit,
+    minPopulation: resolveMinPopulation(env),
+    fetchImpl,
+    loadAuthorities,
+    loadTowns,
+    now,
+  });
+
+  await mkdir(dirname(snapshotPath), { recursive: true });
+  await writeFile(snapshotPath, JSON.stringify(snapshot), 'utf-8');
+  logger.log?.(
+    `[prerender] --fetch wrote ${snapshot.authorityPages.length} authority + ` +
+      `${snapshot.townPages.length} town render input(s) to ${snapshotPath}`,
+  );
+  return snapshot;
+}
+
+/**
+ * Validate a parsed snapshot loudly. A render must never silently emit an empty
+ * or partial page set from a malformed snapshot, so anything that is not a
+ * well-formed snapshot (the three required arrays) throws.
+ *
+ * @param {unknown} snapshot
+ * @param {string} snapshotPath
+ * @returns {asserts snapshot is SeoSnapshot}
+ */
+function assertValidSnapshot(snapshot, snapshotPath) {
+  if (
+    !snapshot ||
+    typeof snapshot !== 'object' ||
+    !Array.isArray(snapshot.authorities) ||
+    !Array.isArray(snapshot.authorityPages) ||
+    !Array.isArray(snapshot.townPages)
+  ) {
+    throw new Error(
+      `SEO snapshot at ${snapshotPath} is missing one of the required arrays ` +
+        `(authorities, authorityPages, townPages)`,
+    );
+  }
+}
+
+/**
+ * Offline render mode (`--render`). Reads `seo-snapshot.json` from disk and
+ * rebuilds every `/planning/*` page and the sitemap with ZERO network calls,
+ * sharing the exact page-generation pipeline ({@link renderEntries}). Fails LOUD
+ * if the snapshot is missing or malformed — no silent fallback to a live fetch,
+ * which would re-introduce the per-release API load this split removes.
+ *
+ * @param {Object} options
+ * @param {string} options.outDir
+ * @param {string} options.snapshotPath
+ * @param {number} [options.limit]                  override; defaults to the snapshot's own
+ * @param {(path: string, encoding: string) => Promise<string>} [options.readFileImpl]
+ * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
+ * @returns {Promise<PrerenderResult>}
+ */
+export async function runRender(options) {
+  const {
+    outDir,
+    snapshotPath,
+    limit,
+    readFileImpl = readFile,
+    logger = console,
+  } = options;
+
+  let raw;
+  try {
+    raw = await readFileImpl(snapshotPath, 'utf-8');
+  } catch (err) {
+    throw new Error(
+      `SEO snapshot not found at ${snapshotPath}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  let snapshot;
+  try {
+    snapshot = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `SEO snapshot at ${snapshotPath} is not valid JSON: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  assertValidSnapshot(snapshot, snapshotPath);
+
+  // The snapshot is self-contained: prefer its own limit so the rendered page
+  // set matches exactly what was fetched; allow an explicit override.
+  const renderLimit =
+    typeof limit === 'number'
+      ? limit
+      : Number.isFinite(snapshot.limit)
+        ? snapshot.limit
+        : DEFAULT_LIMIT;
+
+  return renderEntries({
+    outDir,
+    authorityEntries: snapshot.authorityPages,
+    townEntries: snapshot.townPages,
+    authorities: snapshot.authorities,
+    limit: renderLimit,
+    logger,
+  });
+}
+
+/**
+ * CLI entry point. Selects a mode from argv (`--fetch` / `--render`) or, with no
+ * flags, falls back to the UNCHANGED env-driven behaviour that `npm run build`
+ * relies on. Reads configuration from the environment and writes into web/dist
+ * (resolved relative to this script, independent of cwd).
  *
  * @returns {Promise<void>}
  */
 async function main() {
+  const flags = process.argv.slice(2);
+  const wantFetch = flags.includes('--fetch');
+  const wantRender = flags.includes('--render');
+
+  if (wantFetch && wantRender) {
+    console.error('[prerender] FAILED: pass only one of --fetch / --render');
+    process.exitCode = 1;
+    return;
+  }
+
+  const snapshotPath =
+    process.env.PRERENDER_SNAPSHOT || join(SCRIPT_DIR, '..', 'seo-snapshot.json');
+
+  if (wantFetch) {
+    const apiBase =
+      process.env.PRERENDER_API_BASE || process.env.VITE_API_BASE_URL;
+    const buildKey = process.env.SITE_BUILD_KEY;
+    try {
+      await runFetch({ snapshotPath, apiBase, buildKey });
+    } catch (err) {
+      console.error(
+        `[prerender] --fetch FAILED: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (wantRender) {
+    const outDir =
+      process.env.PRERENDER_OUT_DIR || join(SCRIPT_DIR, '..', 'dist');
+    try {
+      const result = await runRender({ outDir, snapshotPath });
+      console.log(
+        `[prerender] --render wrote ${result.published.length} authority page(s) ` +
+          `and ${result.publishedTowns.length} town page(s) from ${snapshotPath} ` +
+          `(zero network)`,
+      );
+    } catch (err) {
+      console.error(
+        `[prerender] --render FAILED: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  // Default (no flags): the existing env-driven behaviour, UNCHANGED.
   const outDir = process.env.PRERENDER_OUT_DIR || join(SCRIPT_DIR, '..', 'dist');
   const apiBase =
     process.env.PRERENDER_API_BASE || process.env.VITE_API_BASE_URL;

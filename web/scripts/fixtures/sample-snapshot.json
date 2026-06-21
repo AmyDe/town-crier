@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-21T00:00:00.000Z",
+  "minPopulation": 20000,
+  "limit": 30,
+  "authorities": [
+    { "id": 100, "name": "Basingstoke and Deane" },
+    { "id": 52, "name": "Cornwall" }
+  ],
+  "authorityPages": [
+    {
+      "id": 100,
+      "name": "Basingstoke and Deane",
+      "areaType": "English District",
+      "areaName": "Basingstoke and Deane",
+      "total": 42,
+      "statusBreakdown": [
+        { "appState": "Permitted", "count": 20 },
+        { "appState": "Rejected", "count": 12 },
+        { "appState": "Undecided", "count": 8 },
+        { "appState": null, "count": 2 }
+      ],
+      "applications": [
+        {
+          "uid": "BDB/2026/0001",
+          "name": "26/00001/FUL",
+          "address": "12 Mill Road, Basingstoke, RG21 1AA",
+          "description": "Erection of a two-storey rear extension and associated landscaping works to an existing dwelling house.",
+          "appState": "Permitted",
+          "startDate": "2026-01-15",
+          "lastDifferent": "2026-06-15T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/26-00001-FUL",
+          "url": "https://planning.basingstoke.gov.uk/online-applications/26-00001-FUL"
+        },
+        {
+          "uid": "BDB/2026/0002",
+          "name": "26/00002/HSE",
+          "address": "5 High Street, Basingstoke, RG21 7QN",
+          "description": "Single-storey side extension, replacement boundary wall and new vehicular access.",
+          "appState": "Rejected",
+          "startDate": "2026-02-03",
+          "lastDifferent": "2026-06-12T09:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/26-00002-HSE",
+          "url": null
+        },
+        {
+          "uid": "BDB/2026/0003",
+          "name": "26/00003/LBC",
+          "address": "Old Town Hall, Market Place, Basingstoke, RG21 7PA",
+          "description": "Listed building consent for internal alterations and the installation of accessible facilities.",
+          "appState": "Undecided",
+          "startDate": "2026-02-20",
+          "lastDifferent": "2026-06-09T08:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/26-00003-LBC",
+          "url": "https://planning.basingstoke.gov.uk/online-applications/26-00003-LBC"
+        }
+      ]
+    }
+  ],
+  "townPages": [
+    {
+      "slug": "truro",
+      "name": "Truro",
+      "lat": 50.2632,
+      "lng": -5.051,
+      "authorityId": 52,
+      "population": 25000,
+      "total": 18,
+      "statusBreakdown": [
+        { "appState": "Permitted", "count": 10 },
+        { "appState": "Rejected", "count": 6 },
+        { "appState": null, "count": 2 }
+      ],
+      "applications": [
+        {
+          "uid": "CW/2026/0001",
+          "name": "PA26/00001",
+          "address": "Lemon Quay, Truro, TR1 2LW",
+          "description": "Change of use of ground floor from retail (Class E) to a café with associated shopfront alterations.",
+          "appState": "Permitted",
+          "startDate": "2026-01-12",
+          "lastDifferent": "2026-06-14T10:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/PA26-00001",
+          "url": "https://planning.cornwall.gov.uk/online-applications/PA26-00001"
+        },
+        {
+          "uid": "CW/2026/0002",
+          "name": "PA26/00002",
+          "address": "Boscawen Street, Truro, TR1 2QU",
+          "description": "Listed building consent for internal alterations and a two-storey rear extension.",
+          "appState": "Rejected",
+          "startDate": "2026-02-01",
+          "lastDifferent": "2026-06-11T09:00:00+00:00",
+          "link": "https://planit.org.uk/planapplic/PA26-00002",
+          "url": null
+        }
+      ]
+    }
+  ]
+}
