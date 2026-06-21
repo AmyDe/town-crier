@@ -1,0 +1,54 @@
+[
+  {
+    "slug": "truro",
+    "name": "Truro",
+    "lat": 50.2632,
+    "lng": -5.051,
+    "authorityId": 52,
+    "total": 18,
+    "totalCapped": false,
+    "applications": [
+      {
+        "uid": "CW/2026/0001",
+        "name": "PA26/00001",
+        "address": "Lemon Quay, Truro, TR1 2LW",
+        "description": "Change of use of ground floor from retail (Class E) to a café with associated shopfront alterations.",
+        "appState": "Permitted",
+        "startDate": "2026-01-12",
+        "link": "https://planit.org.uk/planapplic/PA26-00001",
+        "url": "https://planning.cornwall.gov.uk/online-applications/PA26-00001"
+      },
+      {
+        "uid": "CW/2026/0002",
+        "name": "PA26/00002",
+        "address": "Boscawen Street, Truro, TR1 2QU",
+        "description": "Listed building consent for internal alterations and a two-storey rear extension.",
+        "appState": "Rejected",
+        "startDate": "2026-02-01",
+        "link": "https://planit.org.uk/planapplic/PA26-00002",
+        "url": null
+      }
+    ]
+  },
+  {
+    "slug": "sparse-village",
+    "name": "Sparse Village",
+    "lat": 50.1,
+    "lng": -5.1,
+    "authorityId": 52,
+    "total": 4,
+    "totalCapped": false,
+    "applications": [
+      {
+        "uid": "CW/2026/0099",
+        "name": "PA26/00099",
+        "address": "1 The Green, Sparse Village",
+        "description": "Single dwelling.",
+        "appState": "Undecided",
+        "startDate": "2026-01-03",
+        "link": "https://planit.org.uk/planapplic/PA26-00099",
+        "url": null
+      }
+    ]
+  }
+]
