@@ -3,7 +3,10 @@ import { mkdtemp, rm, readFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runPrerender } from '../../prerender-planning.mjs';
+import {
+  runPrerender,
+  loadTownsFromFile,
+} from '../../prerender-planning.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const AUTHORITY_FIXTURE = join(
@@ -304,5 +307,113 @@ describe('runPrerender — town live mode', () => {
         logger: silentLogger,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// The integration spine for the per-town SEO pipeline (tc-2avw.2): drives ONE
+// authority end-to-end through the two NEW pieces wired in this bead — the
+// `population` field in the gazetteer schema and the `order=distance` near param —
+// from gazetteer load → near fetch → coverage gate → page write → sitemap.
+describe('runPrerender — per-town integration spine (one authority, end to end)', () => {
+  const cornwallAuthorities = [
+    { id: 52, name: 'Cornwall', areaType: 'English County' },
+  ];
+
+  it('refuses a gazetteer whose town row has a malformed population', async () => {
+    const readImpl = async () =>
+      JSON.stringify([
+        {
+          slug: 'truro',
+          name: 'Truro',
+          lat: 50.2632,
+          lng: -5.051,
+          authorityId: 52,
+          population: 'lots',
+        },
+      ]);
+    await expect(loadTownsFromFile('/fake/towns.json', readImpl)).rejects.toThrow();
+  });
+
+  it('loads a population-bearing gazetteer, requests order=distance, gates, writes the page, and lists it in the sitemap', async () => {
+    // 1) Gazetteer load: a real loadTownsFromFile round-trip carrying `population`.
+    const gazetteer = async () =>
+      JSON.stringify([
+        {
+          slug: 'truro',
+          name: 'Truro',
+          lat: 50.2632,
+          lng: -5.051,
+          authorityId: 52,
+          population: 18766,
+        },
+      ]);
+    const towns = await loadTownsFromFile('/fake/towns.json', gazetteer);
+    expect(towns[0].population).toBe(18766);
+
+    // 2) Near fetch: hand-written fake fetch, total=14 (clears the >=10 gate).
+    const stub = new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: 52,
+            lat: 50.2632,
+            lng: -5.051,
+            radius: 5000,
+            applications: [
+              {
+                uid: 'CW1',
+                name: 'PA26/0001',
+                address: 'Lemon Quay, Truro',
+                description: 'Café conversion',
+                appState: 'Permitted',
+                startDate: '2026-01-12',
+                lastDifferent: '2026-06-12T10:00:00+00:00',
+                link: 'https://planit.org.uk/planapplic/CW1',
+                url: null,
+              },
+            ],
+            total: 14,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    const result = await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => towns,
+      logger: silentLogger,
+    });
+
+    // 3) order=distance: the near request consumes the tc-2avw.1 param.
+    const nearCalls = stub.calls.filter((c) =>
+      c.url.includes('/v1/applications/near'),
+    );
+    expect(nearCalls).toHaveLength(1);
+    expect(nearCalls[0].url).toContain('order=distance');
+
+    // No PlanIt at build time — only our own build-key-gated API.
+    expect(stub.calls.every((c) => !c.url.includes('planit.org.uk'))).toBe(true);
+
+    // 4) Coverage gate cleared -> the nested town page is published and written.
+    expect(result.publishedTowns).toEqual(['cornwall/truro']);
+    const html = await readFile(
+      join(outDir, 'planning', 'cornwall', 'truro', 'index.html'),
+      'utf-8',
+    );
+    expect(html).toContain('<h1>Planning applications in Truro</h1>');
+
+    // 5) Sitemap carries the published town path.
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
+    expect(sitemap).toContain(
+      '<loc>https://towncrierapp.uk/planning/cornwall/truro</loc>',
+    );
   });
 });
