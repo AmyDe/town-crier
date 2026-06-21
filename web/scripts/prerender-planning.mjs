@@ -61,7 +61,7 @@ export const AUTHORITIES_FILE = join(
  * The town gazetteer is a slim, committed JSON file in the web app's source
  * tree (`web/src/data/towns.json`). It is regenerated occasionally by
  * `scripts/generate-towns.mjs` from OS Open Names — never downloaded at build
- * time. Each row is `{ slug, name, lat, lng, authorityId }`.
+ * time. Each row is `{ slug, name, lat, lng, authorityId, population }`.
  * @type {string}
  */
 export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
