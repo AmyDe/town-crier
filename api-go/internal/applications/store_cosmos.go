@@ -151,3 +151,46 @@ func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, lati
 	}
 	return apps, nil
 }
+
+// recentNearbyQuery is the bounded, single-partition spatial top-N query behind
+// the build-time town-level SEO endpoint: the most recently active applications
+// within radiusMetres of a point, inside one authorityCode partition. It marries
+// the findNearbyQuery ST_DISTANCE filter (GeoJSON [longitude, latitude] order,
+// all values bound as named parameters) with the recentByAuthorityQuery
+// SELECT TOP @cap ... ORDER BY c.lastDifferent DESC discipline, so the read stays
+// bounded by @cap and ordered by the index-backed lastDifferent field. Ordering
+// is NOT by startDate: it is excluded from the indexing policy, so ordering by it
+// would force a full-partition scan. This is a distinct query from FindNearby —
+// the authed nearby path is deliberately left unchanged.
+const recentNearbyQuery = "SELECT TOP @cap * FROM c WHERE ST_DISTANCE(c.location, " +
+	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres ` +
+	"ORDER BY c.lastDifferent DESC"
+
+// RecentNearby returns up to cap most-recently-active applications within
+// radiusMetres of (lat, lng) inside the authorityCode partition, ordered by
+// lastDifferent DESC. It backs the build-time town-level SEO endpoint: a single
+// bounded single-partition spatial query, never a cross-partition fan-out and
+// never an unbounded scan. Coordinates, radius, and cap are bound as named
+// parameters (not string-concatenated). There is no PlanIt fallback (GH#395
+// Invariant 1) — it reads only from Cosmos.
+func (s *CosmosStore) RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
+	params := map[string]any{
+		"@latitude":     lat,
+		"@longitude":    lng,
+		"@radiusMetres": radiusMetres,
+		"@cap":          cap,
+	}
+	raws, err := s.items.QueryItems(ctx, authorityCode, recentNearbyQuery, params)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications near %q: %w", authorityCode, err)
+	}
+	apps := make([]PlanningApplication, 0, len(raws))
+	for _, raw := range raws {
+		var doc applicationDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode recent nearby application in %q: %w", authorityCode, err)
+		}
+		apps = append(apps, doc.toDomain())
+	}
+	return apps, nil
+}

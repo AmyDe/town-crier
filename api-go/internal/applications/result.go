@@ -93,6 +93,22 @@ type RecentByAuthorityResult struct {
 	TotalCapped  bool                `json:"totalCapped"`
 }
 
+// RecentNearbyResult is the wire shape of the build-time town-level SEO endpoint
+// GET /v1/applications/near. It mirrors RecentByAuthorityResult but echoes the
+// effective (post-clamp) query point and radius instead of an area name, so the
+// town prerender can label and cache the page by its centroid. Applications is
+// always a non-null array (at most the request's limit); Total is the count from
+// the single bounded read; TotalCapped reports that the read hit cap.
+type RecentNearbyResult struct {
+	AuthorityID  int                 `json:"authorityId"`
+	Lat          float64             `json:"lat"`
+	Lng          float64             `json:"lng"`
+	Radius       float64             `json:"radius"`
+	Applications []RecentApplication `json:"applications"`
+	Total        int                 `json:"total"`
+	TotalCapped  bool                `json:"totalCapped"`
+}
+
 // RecentApplication is the slim, render-only projection of a planning application
 // for an SEO page: just the fields the static page needs. Coordinates, area
 // identity, and the unread-event projection are deliberately omitted.

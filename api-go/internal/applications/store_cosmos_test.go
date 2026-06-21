@@ -322,3 +322,105 @@ func TestCosmosStore_RecentByAuthority_EmptyResultIsEmptySlice(t *testing.T) {
 		t.Errorf("RecentByAuthority: got %d results, want 0", len(got))
 	}
 }
+
+func TestCosmosStore_RecentNearby_BoundedSpatialOrderedScopedToPartition(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	body, _ := json.Marshal(newApplicationDocument(a))
+	items := newFakeItems()
+	items.queryResult = [][]byte{body}
+	store := NewCosmosStore(items)
+
+	got, err := store.RecentNearby(context.Background(), "441", 51.4975, -0.1357, 5000, 200)
+	if err != nil {
+		t.Fatalf("RecentNearby: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != a.Name {
+		t.Fatalf("RecentNearby results: got %+v", got)
+	}
+	// Scoped to the authorityCode logical partition (never cross-partition).
+	if items.lastQueryPK != "441" {
+		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
+	}
+	// Bounded TOP @cap, single-partition spatial filter, ordered by the
+	// index-backed lastDifferent field DESC. The GeoJSON point carries
+	// [longitude, latitude] (GeoJSON order), mirroring findNearbyQuery. Must NOT
+	// order by startDate (unindexed -> full-partition scan).
+	want := "SELECT TOP @cap * FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres ` +
+		"ORDER BY c.lastDifferent DESC"
+	if items.lastQuery != want {
+		t.Errorf("recent nearby query:\n got %q\nwant %q", items.lastQuery, want)
+	}
+	if strings.Contains(items.lastQuery, "startDate") {
+		t.Errorf("query must not order by startDate (unindexed): %s", items.lastQuery)
+	}
+}
+
+func TestCosmosStore_RecentNearby_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _ = store.RecentNearby(context.Background(), "441", 51.4975, -0.1357, 5000, 200)
+
+	// No coordinate, radius, or cap value may be string-concatenated into the
+	// query text — they must all be bound as named parameters.
+	if items.lastQuery == "" {
+		t.Fatal("no query was issued")
+	}
+	for _, literal := range []string{"51.4975", "-0.1357", "5000", "200"} {
+		if strings.Contains(items.lastQuery, literal) {
+			t.Errorf("query contains literal %q — should be a named parameter; query: %s", literal, items.lastQuery)
+		}
+	}
+	wantParams := map[string]any{
+		"@latitude":     51.4975,
+		"@longitude":    -0.1357,
+		"@radiusMetres": 5000.0,
+		"@cap":          200,
+	}
+	for k, wantVal := range wantParams {
+		gotVal, ok := items.lastQueryParams[k]
+		if !ok {
+			t.Errorf("param %q not found in query params %v", k, items.lastQueryParams)
+			continue
+		}
+		if gotVal != wantVal {
+			t.Errorf("param %q: got %v, want %v", k, gotVal, wantVal)
+		}
+	}
+}
+
+func TestCosmosStore_RecentNearby_CapsAtCap(t *testing.T) {
+	t.Parallel()
+	const wantCap = 5
+	items := newFakeItems()
+	// A busy authority with more than wantCap documents within the radius.
+	items.queryResult = recentDocs(t, wantCap+8)
+	store := NewCosmosStore(items)
+
+	got, err := store.RecentNearby(context.Background(), "471", 51.5, -0.1, 5000, wantCap)
+	if err != nil {
+		t.Fatalf("RecentNearby: %v", err)
+	}
+	if len(got) != wantCap {
+		t.Errorf("busy authority: got %d results, want exactly cap=%d", len(got), wantCap)
+	}
+}
+
+func TestCosmosStore_RecentNearby_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	got, err := store.RecentNearby(context.Background(), "471", 51.5, -0.1, 5000, 200)
+	if err != nil {
+		t.Fatalf("RecentNearby: %v", err)
+	}
+	if got == nil {
+		t.Fatal("RecentNearby: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("RecentNearby: got %d results, want 0", len(got))
+	}
+}
