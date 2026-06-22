@@ -211,7 +211,16 @@ A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit o
 
 ### Cleanup Discipline
 
-Keep the working set under ~200 issues. Run `bd cleanup` regularly and compact closed issues with `bd compact`.
+Keep the working set (open + in-progress) under ~200 issues.
+
+**The Dolt DB is the source of truth.** `.beads/issues.jsonl` is a derived export for git/viewers — **never hand-edit it**; `bd` regenerates it from the DB and your edits get clobbered. Backups are `bd dolt push` / `bd backup`, not jsonl. (There is no `bd cleanup` command.)
+
+Server mode writes one Dolt commit per write (`dolt.auto-commit: on`), so history bloats over time. Maintenance:
+
+- **`bd flatten --force`** — squash Dolt commit history when `bd` commands get sluggish or the commit count is high. Main speed lever (took us 5405 commits → 1, ~3.5s → 0.15s per command). Prefer it over `bd compact`, whose commit-squash can fail with a Dolt constraint violation on a churned DB. Both run Dolt GC.
+- **`bd admin compact`** — semantic "memory decay" of old closed issues. Agent-driven, no API key: `bd compact --analyze --json` → write summaries → `bd compact --apply --id <id> --summary -`. Run ~quarterly at our size (≈900+ closed).
+
+Stay on **stable** bd releases (1.0.4); do not upgrade to pre-releases (1.0.5's schema migration corrupts this DB).
 
 ## CLI-First Policy
 

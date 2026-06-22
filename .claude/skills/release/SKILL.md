@@ -111,6 +111,13 @@ After creation, report the release URL to the user.
 
 If there are any open beads that were completed by the released commits, offer to close them. Then run `bd dolt push` to sync beads state.
 
+**Bead DB cleanup (a release is a natural checkpoint).** Check size with `bd stats`. If **total issues exceed ~1000** (or `bd` commands feel sluggish), compact the DB before finishing:
+
+- **`bd flatten --force`** — squash Dolt commit history (server mode writes one commit per write via `dolt.auto-commit: on`). Main speed lever + reclaims disk + runs Dolt GC. Prefer over `bd compact`, whose commit-squash can fail with a Dolt constraint violation on a churned DB. After flatten, the next `bd dolt push` may need `--force` (rewritten history).
+- **`bd admin compact`** — semantic decay of old closed issues, run ~quarterly. Agent-driven, no API key: `bd compact --analyze --json` → write summaries → `bd compact --apply --id <id> --summary -`.
+
+The Dolt DB is the source of truth — never hand-edit `.beads/issues.jsonl` to "clean up"; `bd` regenerates it and the edits get clobbered.
+
 ### Step 7: Close resolved GitHub issues
 
 Sweep open GitHub issues whose linked beads are all closed, and close them with a pointer to the release. The `bead-created` label (added by the `triage-inbox` skill) marks issues that have been converted into beads; the linkage lives in a triage comment of the form `Triaged → bead **tc-xxxx**` (and optionally `, child tasks: tc-aaaa, tc-bbbb`).
