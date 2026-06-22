@@ -193,6 +193,18 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # azure-login MUST run before build-web: in render-mode, build-web
+      # downloads the weekly seo-snapshot.json from Azure Blob via `az storage
+      # blob download --auth-mode login`, which needs the OIDC session.
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # render-mode: build the SPA, download the weekly snapshot, render
+      # /planning/* + sitemap.xml offline — zero Go API / Cosmos calls.
+      # Fails loud if the snapshot blob is missing (no live-fetch fallback).
       - uses: ./.github/actions/build-web
         with:
           vite-api-base-url: ${{ vars.VITE_API_BASE_URL }}
@@ -200,14 +212,9 @@ jobs:
           vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
-          site-build-key: ${{ secrets.SITE_BUILD_KEY }}
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
-
-      - uses: ./.github/actions/azure-login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          render-mode: 'true'
+          storage-account-name: sttowncrierprod
 
       - name: Get SWA deployment token
         id: swa-token
