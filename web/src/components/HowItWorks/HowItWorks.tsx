@@ -11,7 +11,7 @@ const STEPS: Step[] = [
     icon: '📍',
     title: 'Enter your postcode',
     description:
-      'Tell us where you live or work. We use your postcode to find the local authority that handles planning in your area.',
+      "Pick any postcode you care about. It doesn't have to be where you live or work, and we never use your phone's location. We use it to find the local authority that handles planning in that area.",
   },
   {
     icon: '🔭',

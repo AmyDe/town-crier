@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-06-15",
+  "lastUpdated": "2026-06-18",
   "sections": [
     {
       "heading": "Who We Are",
@@ -9,7 +9,7 @@
     },
     {
       "heading": "What We Collect",
-      "body": "We keep the collection small. We store your email address (from sign-in), a unique user ID, and the notification preferences you choose. For each area you want to watch we store a label, coordinates, and a radius, not your exact address. We keep a short-lived history of the alerts we've sent you (new applications and decisions), and a list of the applications you've saved for later. If you subscribe we store an Apple App Store transaction ID so we know your tier; we never see your payment details. If you redeem an offer code, we record which code you redeemed and when. On iOS we store a push token so we can deliver notifications to your device."
+      "body": "We keep the collection small. We store a unique user ID and the notification preferences you choose. If your sign-in shares an email address, we store it so we can send you email alerts and digests. Sign in with Apple lets you hide your email; if you do, we never store your real email address. For each area you want to watch we store a label, coordinates, and a radius, not your exact address. We keep a short-lived history of the alerts we've sent you (new applications and decisions), and a list of the applications you've saved for later. If you subscribe we store an Apple App Store transaction ID so we know your tier; we never see your payment details. If you redeem an offer code, we record which code you redeemed and when. On iOS we store a push token so we can deliver notifications to your device."
     },
     {
       "heading": "Why We Collect It",
