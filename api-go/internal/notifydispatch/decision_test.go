@@ -170,6 +170,30 @@ func TestDecisionDispatcher_FreeTier_RecordNoPush(t *testing.T) {
 	}
 }
 
+func TestDecisionDispatcher_ExpiredPaidTier_RecordNoPush(t *testing.T) {
+	t.Parallel()
+	// A Pro user opted into decision push, but whose subscription has lapsed (past
+	// expiry, no grace), reads as Free: the record is written but no push fires.
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	lapsed := proWithZonePrefs(t, true)
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the harness clock
+	lapsed.SubscriptionExpiry = &past
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": lapsed}}
+	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("lapsed paid tier must still get the decision record, got %d", len(notifs.created))
+	}
+	if push.calls != 0 {
+		t.Errorf("lapsed paid tier must NOT push, got %d", push.calls)
+	}
+}
+
 func TestDecisionDispatcher_SavedOnly_NilZoneSourcesSaved(t *testing.T) {
 	t.Parallel()
 	zones := &fakeZones{}
