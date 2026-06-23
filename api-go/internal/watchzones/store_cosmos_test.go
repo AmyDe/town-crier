@@ -347,6 +347,36 @@ func TestCosmosStore_FindZonesContaining_FiltersByAuthorityBeforeDistance(t *tes
 	}
 }
 
+func TestCosmosStore_FindZonesContaining_HybridIndexServedWithLegacyFallback(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	// The primary clause distances against the persisted GeoJSON c.location path so
+	// the spatial index on /location (tc-quqe) serves it — this is the perf win.
+	if !strings.Contains(items.lastQuery, "ST_DISTANCE(c.location,") {
+		t.Errorf("query must distance against the indexed c.location path: %q", items.lastQuery)
+	}
+	// Any zone written before the location backfill (tc-xj48) has no c.location, so
+	// the index-served clause cannot match it. The legacy fallback keeps it matching
+	// via the inline [c.longitude, c.latitude] point, guarded by NOT IS_DEFINED so
+	// the two clauses never double-count and the switch is correct regardless of
+	// backfill state (mirrors the dormant-sweep guard, profiles/admin_store.go).
+	if !strings.Contains(items.lastQuery, "NOT IS_DEFINED(c.location)") {
+		t.Errorf("query must guard the legacy fallback with NOT IS_DEFINED(c.location): %q", items.lastQuery)
+	}
+	if !strings.Contains(items.lastQuery, "[c.longitude, c.latitude]") {
+		t.Errorf("legacy fallback must distance against the inline [c.longitude, c.latitude] point: %q", items.lastQuery)
+	}
+	// The authority pre-filter (tc-8dud) survives the hybrid rewrite.
+	if !strings.Contains(items.lastQuery, "c.authorityId = @authorityId") {
+		t.Errorf("hybrid query must keep the authority pre-filter: %q", items.lastQuery)
+	}
+}
+
 func TestCosmosStore_FindZonesContaining_ProjectsNeededFieldsNotSelectStar(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
