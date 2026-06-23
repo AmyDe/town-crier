@@ -181,18 +181,14 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 // app.AreaID scoping (notifydispatch/decision.go). The candidate authority and
 // point are bound as parameters.
 //
-// The distance test is a hybrid of two clauses, ORed inside the authority filter:
-//   - Primary: ST_DISTANCE(c.location, @point) is served by the spatial index on
-//     the persisted GeoJSON /location path (tc-quqe), so the common (backfilled)
-//     case is index-accelerated rather than a full scan.
-//   - Fallback: any zone written before the location backfill (tc-xj48) has no
-//     c.location field, so the index-served clause cannot match it. The NOT
-//     IS_DEFINED(c.location) guard restores those legacy zones via the inline
-//     [c.longitude, c.latitude] point, computed from the document's latitude /
-//     longitude columns. The guard means the two clauses are mutually exclusive
-//     (a doc either has c.location or it doesn't), so nothing double-counts and
-//     the switch is correct regardless of backfill state — mirroring the
-//     dormant-sweep NOT IS_DEFINED guard (profiles/admin_store.go dormantQuery).
+// The distance test is a single index-served clause: ST_DISTANCE(c.location,
+// @point) <= c.radiusMetres, served by the spatial index on the persisted GeoJSON
+// /location path (tc-quqe), so Cosmos fully uses the index rather than a full
+// scan. The legacy NOT IS_DEFINED(c.location) fallback — which distanced against
+// an inline [c.longitude, c.latitude] point for zones written before the location
+// backfill — was removed (tc-ltlw / Phase 2d) once both environments were fully
+// backfilled (tc-xj48) and the write path (#618) guaranteed every new zone
+// carries c.location, so no zone can lack it and the fallback was dead weight.
 //
 // All coordinates are GeoJSON order: [longitude, latitude], not [lat, lng].
 //
@@ -203,14 +199,11 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 // (not dropped) because they are nullable *bool that coalesce to true when
 // absent, so omitting them would silently re-enable a user's disabled
 // notifications if a future caller read them. latitude/longitude are omitted from
-// the projection — no caller reads zone coordinates after the match (the fallback
-// clause reads them server-side during the distance test, not in the result).
+// the projection — no caller reads zone coordinates after the match, and the
+// distance test now reads only the indexed c.location, not the raw columns.
 const findZonesContainingQuery = "SELECT c.id, c.userId, c.name, c.radiusMetres, c.authorityId, c.createdAt, c.pushEnabled, c.emailInstantEnabled " +
-	"FROM c WHERE c.authorityId = @authorityId AND (" +
-	"ST_DISTANCE(c.location, {'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres " +
-	"OR (NOT IS_DEFINED(c.location) AND ST_DISTANCE(" +
-	"{'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
-	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres))"
+	"FROM c WHERE c.authorityId = @authorityId AND " +
+	"ST_DISTANCE(c.location, {'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
 
 // FindZonesContaining returns every watch zone (across all users) scoped to the
 // given authority whose circle contains the point (latitude, longitude), via a
