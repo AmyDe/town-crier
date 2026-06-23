@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ type fakeItems struct {
 	lastReadID   string
 	lastUpsertPK string
 	lastUpsert   []byte
+	upserts      [][]byte // every upserted document body, in call order, for backfill assertions
 	lastDeletePK string
 	lastDeleteID string
 	deletedIDs   []string // every (pk,id) deleted, in call order, for cascade assertions
@@ -55,7 +57,15 @@ func (f *fakeItems) ReadItem(_ context.Context, partitionKey, id string) ([]byte
 func (f *fakeItems) UpsertItem(_ context.Context, partitionKey string, item []byte) error {
 	f.lastUpsertPK = partitionKey
 	f.lastUpsert = item
-	return f.upsertErr
+	if f.upsertErr != nil {
+		return f.upsertErr
+	}
+	// Copy the body: azcosmos owns the slice after the call, and the store reuses
+	// no buffer, but copying keeps each recorded upsert independent regardless.
+	saved := make([]byte, len(item))
+	copy(saved, item)
+	f.upserts = append(f.upserts, saved)
+	return nil
 }
 
 func (f *fakeItems) DeleteItem(_ context.Context, partitionKey, id string) error {
@@ -456,5 +466,113 @@ func TestCosmosStore_DistinctAuthorityIDs_EmptyQueryYieldsEmpty(t *testing.T) {
 	}
 	if len(ids) != 0 {
 		t.Errorf("expected empty, got %v", ids)
+	}
+}
+
+// legacyDocWithoutLocation is a raw WatchZones document written before the
+// GeoJSON write path (tc-x8w9) existed: it carries the authoritative latitude /
+// longitude floats and every other field, but no "location" field at all (so
+// watchZoneDocument.Location unmarshals to nil). The backfill must rewrite it
+// with a derived location while preserving every other column.
+func legacyDocWithoutLocation(id, userID string, lat, lon float64, radius float64, authorityID int) []byte {
+	return []byte(fmt.Sprintf(
+		`{"id":%q,"userId":%q,"name":"Legacy","latitude":%g,"longitude":%g,"radiusMetres":%g,"authorityId":%d,"createdAt":"2026-06-01T09:00:00+00:00","pushEnabled":true,"emailInstantEnabled":true}`,
+		id, userID, lat, lon, radius, authorityID))
+}
+
+func TestCosmosStore_BackfillLocation_RewritesOnlyDocsMissingLocation(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// One legacy doc lacks location; two modern docs already carry it (written via
+	// newWatchZoneDocument, which always sets location). The scan is cross-partition.
+	modernA := testZone(t)
+	modernA.ID, modernA.UserID = "modern-a", "auth0|a"
+	modernB := testZone(t)
+	modernB.ID, modernB.UserID = "modern-b", "auth0|b"
+	items.crossPartitionResult = [][]byte{
+		mustDocBytes(t, modernA),
+		legacyDocWithoutLocation("legacy-1", "auth0|legacy", 53.4808, -2.2426, 750, 471),
+		mustDocBytes(t, modernB),
+	}
+	store := NewCosmosStore(items)
+
+	res, err := store.BackfillLocation(context.Background())
+	if err != nil {
+		t.Fatalf("BackfillLocation: %v", err)
+	}
+
+	if res.Total != 3 || res.AlreadyHad != 2 || res.Backfilled != 1 {
+		t.Fatalf("result = %+v, want {Total:3 Backfilled:1 AlreadyHad:2}", res)
+	}
+	// Exactly one upsert: the legacy doc only. The two modern docs are skipped.
+	if len(items.upserts) != 1 {
+		t.Fatalf("upserts = %d, want exactly 1 (the legacy doc)", len(items.upserts))
+	}
+	if items.lastUpsertPK != "auth0|legacy" {
+		t.Errorf("upsert partition key = %q, want auth0|legacy", items.lastUpsertPK)
+	}
+
+	var doc watchZoneDocument
+	if err := json.Unmarshal(items.upserts[0], &doc); err != nil {
+		t.Fatalf("unmarshal upserted doc: %v", err)
+	}
+	// The rewritten doc now carries a GeoJSON location derived from the floats, in
+	// [longitude, latitude] order, never recomputed.
+	if doc.Location == nil {
+		t.Fatal("upserted doc must carry a location")
+	}
+	if doc.Location.Type != "Point" || len(doc.Location.Coordinates) != 2 ||
+		doc.Location.Coordinates[0] != -2.2426 || doc.Location.Coordinates[1] != 53.4808 {
+		t.Errorf("location = %+v, want Point[-2.2426, 53.4808]", doc.Location)
+	}
+	// The legacy doc's other fields survive the rewrite.
+	if doc.ID != "legacy-1" || doc.UserID != "auth0|legacy" || doc.RadiusMetres != 750 || doc.AuthorityID != 471 {
+		t.Errorf("legacy fields not preserved: %+v", doc)
+	}
+}
+
+func TestCosmosStore_BackfillLocation_Idempotent(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// Every doc already carries a location (the steady state after a first run).
+	a := testZone(t)
+	a.ID, a.UserID = "z-a", "auth0|a"
+	b := testZone(t)
+	b.ID, b.UserID = "z-b", "auth0|b"
+	items.crossPartitionResult = [][]byte{mustDocBytes(t, a), mustDocBytes(t, b)}
+	store := NewCosmosStore(items)
+
+	res, err := store.BackfillLocation(context.Background())
+	if err != nil {
+		t.Fatalf("BackfillLocation: %v", err)
+	}
+	if res.Total != 2 || res.AlreadyHad != 2 || res.Backfilled != 0 {
+		t.Fatalf("result = %+v, want {Total:2 Backfilled:0 AlreadyHad:2}", res)
+	}
+	if len(items.upserts) != 0 {
+		t.Errorf("a re-run must write nothing, got %d upserts", len(items.upserts))
+	}
+}
+
+func TestCosmosStore_BackfillLocation_QueryError(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.queryErr = errors.New("gateway boom")
+	store := NewCosmosStore(items)
+
+	if _, err := store.BackfillLocation(context.Background()); err == nil {
+		t.Fatal("expected an error when the cross-partition scan fails")
+	}
+}
+
+func TestCosmosStore_BackfillLocation_EmptyContainerIsZeroResult(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+	res, err := store.BackfillLocation(context.Background())
+	if err != nil {
+		t.Fatalf("BackfillLocation: %v", err)
+	}
+	if res.Total != 0 || res.Backfilled != 0 || res.AlreadyHad != 0 {
+		t.Errorf("result = %+v, want zero", res)
 	}
 }
