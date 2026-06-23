@@ -187,7 +187,9 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "quota gate", errProfileCASNotWired)
 		return
 	}
-	ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, profile.Tier.WatchZoneLimit())
+	// Quota is keyed on the effective tier: a lapsed paid subscription
+	// (EffectiveTier) falls back to the Free limit.
+	ok, casErr := h.atomicQuotaIncrement(r.Context(), userID, profile.EffectiveTier(h.now()).WatchZoneLimit())
 	if casErr != nil {
 		h.serverError(w, r, "atomic quota check", casErr)
 		return
