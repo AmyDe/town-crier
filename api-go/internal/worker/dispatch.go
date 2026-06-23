@@ -51,6 +51,16 @@ type DormantRunner interface {
 	Run(ctx context.Context) (int, error)
 }
 
+// SweepRunner is the consumer-side slice of the subscription-sweep handler the
+// dispatcher invokes. *subscriptionsweep.Handler satisfies it; Run returns the
+// number of profiles downgraded so the dispatcher can record it as a telemetry
+// tag. It is exported so main() can hold a genuinely nil interface value when the
+// job has no Cosmos config — passing a typed-nil *subscriptionsweep.Handler would
+// defeat the nil guard.
+type SweepRunner interface {
+	Run(ctx context.Context) (int, error)
+}
+
 // PollRunResult is the dispatcher-facing summary of one poll-sb cycle. It mirrors
 // the orchestrator's run result plus the ingestion counts the dispatch span tags
 // and the exit-code logic need, decoupling the worker package from the polling
@@ -90,7 +100,7 @@ type PollOrchestrator interface {
 // then refuses to run rather than nil-panicking. Likewise digester / dormant may
 // be nil when the job has no Cosmos config; those modes then refuse to run rather
 // than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, logger *slog.Logger) int {
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment

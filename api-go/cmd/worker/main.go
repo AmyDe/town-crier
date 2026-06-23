@@ -170,7 +170,7 @@ func run() int {
 		poller = pollAdapter
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, logger)
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, nil, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
