@@ -285,6 +285,61 @@ func TestHandler_GetProfile_OkAndNotFound(t *testing.T) {
 	}
 }
 
+func TestHandler_GetProfile_ReportsEffectiveTierForLapsedPaid(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the handler clock (2026-06-11)
+	store.byID["auth0|lapsed"] = &UserProfile{
+		UserID:             "auth0|lapsed",
+		Preferences:        DefaultPreferences(),
+		Tier:               TierPro,
+		SubscriptionExpiry: &past,
+		LastActiveAt:       time.Now(),
+	}
+	h := newTestHandler(store, newFakeAuth0(), "")
+
+	rec := httptest.NewRecorder()
+	h.get(rec, withSubject(http.MethodGet, "/v1/me", "auth0|lapsed", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// GET /v1/me must report the EFFECTIVE tier so the iOS app (which re-resolves
+	// tier from this endpoint) sees the lapsed Pro grant as Free.
+	if got["tier"] != "Free" {
+		t.Errorf("tier: got %v, want Free (lapsed Pro reads as effective Free)", got["tier"])
+	}
+}
+
+func TestHandler_CreateProfile_ReportsEffectiveTierForLapsedPaid(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	existing, _ := NewProfile("auth0|lapsed", "user@example.com", time.Now())
+	existing.Tier = TierPro
+	existing.SubscriptionExpiry = &past
+	store.byID["auth0|lapsed"] = existing
+	h := newTestHandler(store, newFakeAuth0(), "")
+
+	rec := httptest.NewRecorder()
+	h.create(rec, withSubject(http.MethodPost, "/v1/me", "auth0|lapsed", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got["tier"] != "Free" {
+		t.Errorf("tier: got %v, want Free (lapsed Pro reads as effective Free)", got["tier"])
+	}
+}
+
 func TestHandler_PatchProfile_UpdatesAndDefaults(t *testing.T) {
 	t.Parallel()
 
