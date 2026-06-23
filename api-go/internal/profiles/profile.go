@@ -22,7 +22,7 @@ const (
 	TierFree SubscriptionTier = iota
 	// TierPersonal is the £1.99/mo tier.
 	TierPersonal
-	// TierPro is the £5.99/mo tier (also the auto-grant target for pro domains).
+	// TierPro is the £5.99/mo tier.
 	TierPro
 )
 
@@ -193,8 +193,8 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 // applying ADR 0010's lazy expiry rule: a paid tier whose SubscriptionExpiry has
 // passed — with no grace period, or a grace period that has also passed —
 // collapses to Free regardless of the stored Tier. Free and any paid tier still
-// within its window (including a live grace period and the far-future pro-domain
-// auto-grant) are returned unchanged.
+// within its window (including a live grace period and the far-future admin
+// grant) are returned unchanged.
 //
 // Every entitlement gate reads this, never the raw stored Tier, so an offer-code
 // grant that has run out — or an App Store sub past expiry whose webhook never
@@ -206,7 +206,7 @@ func (p *UserProfile) EffectiveTier(now time.Time) SubscriptionTier {
 	}
 	if p.SubscriptionExpiry == nil {
 		// Invariant: every paid grant sets an expiry (ActivateSubscription /
-		// pro-domain auto-grant). A paid tier with no expiry is malformed; treat
+		// admin grant). A paid tier with no expiry is malformed; treat
 		// as still-entitled rather than silently downgrade (no proof of expiry).
 		return p.Tier
 	}

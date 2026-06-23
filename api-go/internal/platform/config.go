@@ -65,11 +65,6 @@ type Config struct {
 	ServiceBusNamespace string
 	ServiceBusQueueName string
 
-	// ProDomains is the comma-separated allow-list of email domains that
-	// auto-grant the Pro tier on a verified-email registration. Empty disables
-	// auto-grant.
-	ProDomains string
-
 	// PostcodesIoBaseURL and GovUkBaseURL address the outbound geocode and
 	// designation upstreams. They default to the live UK services, so the clients
 	// work without any env wiring; an override points them at a stub.
@@ -197,8 +192,6 @@ func LoadConfig() (Config, error) {
 
 		Auth0M2MClientID:     os.Getenv("AUTH0_M2M_CLIENT_ID"),
 		Auth0M2MClientSecret: NewSecret(os.Getenv("AUTH0_M2M_CLIENT_SECRET")),
-
-		ProDomains: os.Getenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS"),
 
 		PostcodesIoBaseURL: getenv("POSTCODES_IO_BASE_URL", defaultPostcodesIoBaseURL),
 		GovUkBaseURL:       getenv("GOVUK_PLANNING_DATA_BASE_URL", defaultGovUkBaseURL),

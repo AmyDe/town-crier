@@ -266,18 +266,6 @@ func TestLoadConfig_ACSConnectionString(t *testing.T) {
 	})
 }
 
-func TestLoadConfig_ProDomains(t *testing.T) {
-	t.Setenv("SUBSCRIPTION_AUTOGRANT_PRODOMAINS", "towncrier.test, example.org")
-
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
-	if cfg.ProDomains != "towncrier.test, example.org" {
-		t.Errorf("ProDomains: got %q", cfg.ProDomains)
-	}
-}
-
 func TestLoadConfig_AdminAPIKey(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
 		t.Setenv("ADMIN_API_KEY", "s3cret-admin-key")
