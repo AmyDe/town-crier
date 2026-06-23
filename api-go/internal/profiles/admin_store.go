@@ -101,16 +101,27 @@ func (s *AdminStore) ByDigestDay(ctx context.Context, day time.Weekday) ([]*User
 	return profiles, nil
 }
 
+// dormantQuery selects the dormant candidate set server-side on the numeric
+// lastActiveAtEpoch mirror (Unix millis), which sorts unambiguously — unlike the
+// lastActiveAt string, persisted in two wire formats ("+00:00" and RFC 3339 "Z")
+// that do not sort lexicographically. The NOT IS_DEFINED clause also returns any
+// legacy doc written before the mirror existed, so no dormant account is silently
+// dropped during rollout; those un-backfilled docs (and only those) are then
+// classified by the Go-side cutoff gate below. The cross-partition fan-out is
+// inherent ("find dormant users across all partitions") and kept; only the full
+// client-side hydration is removed.
+const dormantQuery = "SELECT * FROM c WHERE c.lastActiveAtEpoch < @cutoffEpoch OR NOT IS_DEFINED(c.lastActiveAtEpoch)"
+
 // Dormant returns every profile last active strictly before cutoff — the
 // dormant-account set the cleanup worker erases (UK GDPR Art. 5(1)(e), ADR 0023).
-// The cutoff comparison is done in Go on the parsed LastActiveAt rather than as a
-// Cosmos string comparison: production documents carry lastActiveAt in two wire
-// formats ("+00:00" and RFC 3339 "Z"), and "Z" sorts after "+", so a
-// lexicographic SQL "<" would silently miss "Z"-stored dormant accounts. The
-// scan is a once-a-day batch over a small user base, so hydrating all profiles
-// and filtering in Go is both correct and cheap.
+// The server-side filter (see dormantQuery) shrinks the hydrated set from "all
+// users" to "dormant users plus any not-yet-backfilled legacy docs". The Go-side
+// LastActiveAt.Before(cutoff) check below remains the final authority: it is what
+// keeps a legacy (epoch-less) doc belonging to an active user from being erased,
+// and it preserves the strictly-before semantics the deletion path depends on.
 func (s *AdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*UserProfile, error) {
-	rows, err := s.items.QueryItemsCrossPartition(ctx, "SELECT * FROM c", nil)
+	rows, err := s.items.QueryItemsCrossPartition(ctx, dormantQuery,
+		map[string]any{"@cutoffEpoch": cutoff.UnixMilli()})
 	if err != nil {
 		return nil, fmt.Errorf("query dormant profiles: %w", err)
 	}
