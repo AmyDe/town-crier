@@ -22,7 +22,7 @@ const (
 	TierFree SubscriptionTier = iota
 	// TierPersonal is the £1.99/mo tier.
 	TierPersonal
-	// TierPro is the £5.99/mo tier (also the auto-grant target for pro domains).
+	// TierPro is the £5.99/mo tier.
 	TierPro
 )
 

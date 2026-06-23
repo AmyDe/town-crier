@@ -19,9 +19,6 @@ import (
 // maxBodyBytes caps the request body the /v1/me write handlers read.
 const maxBodyBytes = 1 << 20
 
-// farFutureExpiry is the auto-grant subscription expiry (2099-12-31).
-var farFutureExpiry = time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC)
-
 // profileStore is the consumer-side store the handlers use. *CosmosStore
 // satisfies it; tests substitute a hand-written fake.
 type profileStore interface {
@@ -32,26 +29,24 @@ type profileStore interface {
 
 // handler serves the /v1/me lifecycle. It depends on the profile store, the
 // Auth0 management client (real or no-op), the per-container cascade deleters
-// account erasure runs, the per-collection readers GET /v1/me/data exports, the
-// auto-grant pro-domain list, a clock, and a logger — all injected, no globals.
+// account erasure runs, the per-collection readers GET /v1/me/data exports, a
+// clock, and a logger — all injected, no globals.
 type handler struct {
 	store         profileStore
 	auth0         Auth0Manager
 	cascade       CascadeDeleters
 	exportReaders ExportReaders
-	proDomains    proDomainSet
 	now           func() time.Time
 	logger        *slog.Logger
 }
 
 // newHandler builds the /v1/me handler.
-func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) *handler {
+func newHandler(store profileStore, auth0 Auth0Manager, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) *handler {
 	return &handler{
 		store:         store,
 		auth0:         auth0,
 		cascade:       cascade,
 		exportReaders: exportReaders,
-		proDomains:    newProDomainSet(proDomains),
 		now:           now,
 		logger:        logger,
 	}
@@ -59,8 +54,8 @@ func newHandler(store profileStore, auth0 Auth0Manager, proDomains string, casca
 
 // Routes registers the /v1/me endpoints on mux. All are authenticated: the auth
 // middleware guarantees a subject in context before these handlers run.
-func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, proDomains string, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) {
-	h := newHandler(store, auth0, proDomains, cascade, exportReaders, now, logger)
+func Routes(mux *http.ServeMux, store profileStore, auth0 Auth0Manager, cascade CascadeDeleters, exportReaders ExportReaders, now func() time.Time, logger *slog.Logger) {
+	h := newHandler(store, auth0, cascade, exportReaders, now, logger)
 	mux.HandleFunc("POST /v1/me", h.create)
 	mux.HandleFunc("GET /v1/me", h.get)
 	mux.HandleFunc("PATCH /v1/me", h.patch)
@@ -94,8 +89,8 @@ type profileResult struct {
 
 // create implements POST /v1/me. It is idempotent: an existing profile is
 // returned unchanged (with an email backfill when newly available), and a fresh
-// profile is registered with the Free tier — or Pro when a verified pro-domain
-// email auto-grants. Auth0 tier drift is backfilled best-effort.
+// profile is registered with the Free tier. Auth0 tier drift is backfilled
+// best-effort.
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFrom(r.Context())
 
@@ -127,9 +122,6 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.serverError(w, r, "register profile", err)
 		return
-	}
-	if claims.EmailVerified && h.proDomains.contains(claims.Email) {
-		profile.ActivateSubscription(TierPro, farFutureExpiry)
 	}
 	if err := h.store.Save(r.Context(), profile); err != nil {
 		h.serverError(w, r, "save profile", err)
@@ -325,30 +317,6 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, v any) {
 func (h *handler) serverError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	h.logger.ErrorContext(r.Context(), "profile request failed", "op", op, "error", err)
 	w.WriteHeader(http.StatusInternalServerError)
-}
-
-// proDomainSet is the parsed, case-insensitive set of auto-grant pro domains.
-type proDomainSet map[string]struct{}
-
-func newProDomainSet(raw string) proDomainSet {
-	set := proDomainSet{}
-	for _, part := range strings.Split(raw, ",") {
-		if d := strings.TrimSpace(part); d != "" {
-			set[strings.ToLower(d)] = struct{}{}
-		}
-	}
-	return set
-}
-
-// contains reports whether the email's domain is an auto-grant pro domain
-// (case-insensitive domain match).
-func (s proDomainSet) contains(email string) bool {
-	at := strings.LastIndex(email, "@")
-	if at < 0 || at == len(email)-1 {
-		return false
-	}
-	_, ok := s[strings.ToLower(email[at+1:])]
-	return ok
 }
 
 // weekdayName serialises a time.Weekday as its English name (e.g. "Wednesday"),

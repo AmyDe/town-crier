@@ -128,20 +128,20 @@ func recordingCascade(calls *[]string) CascadeDeleters {
 	}
 }
 
-func newTestHandler(store profileStore, a0 Auth0Manager, proDomains string) *handler {
-	return newTestHandlerCascade(store, a0, proDomains, recordingCascade(nil))
+func newTestHandler(store profileStore, a0 Auth0Manager) *handler {
+	return newTestHandlerCascade(store, a0, recordingCascade(nil))
 }
 
-func newTestHandlerCascade(store profileStore, a0 Auth0Manager, proDomains string, cascade CascadeDeleters) *handler {
+func newTestHandlerCascade(store profileStore, a0 Auth0Manager, cascade CascadeDeleters) *handler {
 	now := func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) }
-	return newHandler(store, a0, proDomains, cascade, ExportReaders{}, now, slog.New(slog.DiscardHandler))
+	return newHandler(store, a0, cascade, ExportReaders{}, now, slog.New(slog.DiscardHandler))
 }
 
 // newTestHandlerExport builds a handler with the export readers wired, for the
 // GDPR-export tests.
 func newTestHandlerExport(store profileStore, a0 Auth0Manager, readers ExportReaders) *handler {
 	now := func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) }
-	return newHandler(store, a0, "", CascadeDeleters{}, readers, now, slog.New(slog.DiscardHandler))
+	return newHandler(store, a0, CascadeDeleters{}, readers, now, slog.New(slog.DiscardHandler))
 }
 
 // withSubject builds a request carrying an authenticated subject in context, as
@@ -159,7 +159,7 @@ func TestHandler_CreateProfile_ReturnsOkCamelCase(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStore()
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.create(rec, withSubject(http.MethodPost, "/v1/me", "auth0|new", ""))
@@ -196,7 +196,7 @@ func TestHandler_CreateProfile_Idempotent(t *testing.T) {
 	store := newFakeStore()
 	existing, _ := NewProfile("auth0|abc", "user@example.com", time.Now())
 	store.byID["auth0|abc"] = existing
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.create(rec, withSubject(http.MethodPost, "/v1/me", "auth0|abc", ""))
@@ -214,35 +214,6 @@ func TestHandler_CreateProfile_Idempotent(t *testing.T) {
 	}
 }
 
-func TestHandler_CreateProfile_AutoGrantsProForVerifiedProDomain(t *testing.T) {
-	t.Parallel()
-
-	store := newFakeStore()
-	h := newTestHandler(store, newFakeAuth0(), "towncrier.test")
-
-	r := withSubject(http.MethodPost, "/v1/me", "auth0|staff", "")
-	r.Header.Set("X-Test-Email", "person@towncrier.test")
-	r.Header.Set("X-Test-Email-Verified", "true")
-	// Emails arrive via JWT claims, threaded through context by the auth layer.
-	r = r.WithContext(auth.WithClaims(r.Context(), auth.Claims{
-		Subject:       "auth0|staff",
-		Email:         "person@towncrier.test",
-		EmailVerified: true,
-	}))
-
-	rec := httptest.NewRecorder()
-	h.create(rec, r)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status: got %d, want 200", rec.Code)
-	}
-	var got map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &got)
-	if got["tier"] != "Pro" {
-		t.Errorf("tier: got %v, want Pro (auto-grant)", got["tier"])
-	}
-}
-
 func TestHandler_GetProfile_OkAndNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -254,7 +225,7 @@ func TestHandler_GetProfile_OkAndNotFound(t *testing.T) {
 		LastActiveAt: time.Now(),
 	}
 	store.byID["auth0|abc"] = p
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.get(rec, withSubject(http.MethodGet, "/v1/me", "auth0|abc", ""))
@@ -291,7 +262,7 @@ func TestHandler_PatchProfile_UpdatesAndDefaults(t *testing.T) {
 	store := newFakeStore()
 	existing, _ := NewProfile("auth0|abc", "", time.Now())
 	store.byID["auth0|abc"] = existing
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	// iOS-style body: omits digestDay and emailDigestEnabled, which must take the
 	// command defaults (Monday / true).
@@ -324,7 +295,7 @@ func TestHandler_PatchProfile_AcceptsDigestDayAsString(t *testing.T) {
 	store := newFakeStore()
 	existing, _ := NewProfile("auth0|abc", "", time.Now())
 	store.byID["auth0|abc"] = existing
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	body := `{"pushEnabled":true,"digestDay":"Wednesday","emailDigestEnabled":true,"savedDecisionPush":true,"savedDecisionEmail":true}`
 	rec := httptest.NewRecorder()
@@ -346,7 +317,7 @@ func TestHandler_PatchProfile_AcceptsDigestDayAsInt(t *testing.T) {
 	store := newFakeStore()
 	existing, _ := NewProfile("auth0|abc", "", time.Now())
 	store.byID["auth0|abc"] = existing
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	// The API accepts digestDay as an integer in addition to the weekday name;
 	// the handler must accept both.
@@ -367,7 +338,7 @@ func TestHandler_PatchProfile_AcceptsDigestDayAsInt(t *testing.T) {
 func TestHandler_PatchProfile_NotFound(t *testing.T) {
 	t.Parallel()
 
-	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
+	h := newTestHandler(newFakeStore(), newFakeAuth0())
 	rec := httptest.NewRecorder()
 	h.patch(rec, withSubject(http.MethodPatch, "/v1/me", "auth0|missing", `{"pushEnabled":true}`))
 	if rec.Code != http.StatusNotFound {
@@ -383,7 +354,7 @@ func TestHandler_DeleteProfile_CascadesEveryContainerThenProfileThenAuth0(t *tes
 	store.byID["auth0|abc"] = existing
 	a0 := newFakeAuth0()
 	var calls []string
-	h := newTestHandlerCascade(store, a0, "", recordingCascade(&calls))
+	h := newTestHandlerCascade(store, a0, recordingCascade(&calls))
 
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
@@ -427,7 +398,7 @@ func TestHandler_DeleteProfile_ChildCascadeFailureLeavesProfileAndAuth0Intact(t 
 	a0 := newFakeAuth0()
 	cascade := recordingCascade(nil)
 	cascade.WatchZones = fakeChildDeleter{label: "watchZones", err: errors.New("cosmos down")}
-	h := newTestHandlerCascade(store, a0, "", cascade)
+	h := newTestHandlerCascade(store, a0, cascade)
 
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
@@ -455,7 +426,7 @@ func TestHandler_DeleteProfile_OfferCodeAnonymiseFailureLeavesProfileAndAuth0Int
 	a0 := newFakeAuth0()
 	cascade := recordingCascade(nil)
 	cascade.OfferCodes = fakeRedemptionAnonymiser{err: errors.New("cosmos down")}
-	h := newTestHandlerCascade(store, a0, "", cascade)
+	h := newTestHandlerCascade(store, a0, cascade)
 
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
@@ -483,7 +454,7 @@ func TestHandler_DeleteProfile_Auth0DeletedAfterAllCosmosData(t *testing.T) {
 	a0 := newFakeAuth0()
 	a0.deleteErr = errors.New("auth0 m2m down")
 	var calls []string
-	h := newTestHandlerCascade(store, a0, "", recordingCascade(&calls))
+	h := newTestHandlerCascade(store, a0, recordingCascade(&calls))
 
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|abc", ""))
@@ -504,7 +475,7 @@ func TestHandler_DeleteProfile_NotFound(t *testing.T) {
 
 	a0 := newFakeAuth0()
 	var calls []string
-	h := newTestHandlerCascade(newFakeStore(), a0, "", recordingCascade(&calls))
+	h := newTestHandlerCascade(newFakeStore(), a0, recordingCascade(&calls))
 	rec := httptest.NewRecorder()
 	h.delete(rec, withSubject(http.MethodDelete, "/v1/me", "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
@@ -535,7 +506,7 @@ func TestHandler_ExportData_NestedContract(t *testing.T) {
 		LastActiveAt:       time.Now(),
 	}
 	store.byID["auth0|abc"] = p
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.exportData(rec, withSubject(http.MethodGet, "/v1/me/data", "auth0|abc", ""))
@@ -632,7 +603,7 @@ func TestHandler_ExportData_PopulatedChildCollections(t *testing.T) {
 func TestHandler_ExportData_NotFound(t *testing.T) {
 	t.Parallel()
 
-	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
+	h := newTestHandler(newFakeStore(), newFakeAuth0())
 	rec := httptest.NewRecorder()
 	h.exportData(rec, withSubject(http.MethodGet, "/v1/me/data", "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
