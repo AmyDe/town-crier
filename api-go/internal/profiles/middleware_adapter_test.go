@@ -64,7 +64,7 @@ func TestTierLookup_PaidFromCosmosProfile(t *testing.T) {
 	pro.Tier = TierPro
 	store.byID["auth0|pro"] = pro
 
-	lookup := NewTierLookup(store)
+	lookup := NewTierLookup(store, time.Now)
 
 	paid, err := lookup.IsPaidUser(context.Background(), "auth0|pro")
 	if err != nil || !paid {
@@ -76,10 +76,43 @@ func TestTierLookup_PaidFromCosmosProfile(t *testing.T) {
 	}
 }
 
+func TestTierLookup_ExpiredPaidIsFree(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+
+	// A paid tier whose subscription expiry has passed (no grace) is no longer
+	// entitled — the rate limiter must treat it as free.
+	expired, _ := NewProfile("auth0|lapsed", "", now)
+	expired.Tier = TierPro
+	past := now.Add(-time.Hour)
+	expired.SubscriptionExpiry = &past
+	store.byID["auth0|lapsed"] = expired
+
+	// A paid tier still within its window stays paid.
+	active, _ := NewProfile("auth0|active", "", now)
+	active.Tier = TierPersonal
+	future := now.Add(time.Hour)
+	active.SubscriptionExpiry = &future
+	store.byID["auth0|active"] = active
+
+	lookup := NewTierLookup(store, func() time.Time { return now })
+
+	paid, err := lookup.IsPaidUser(context.Background(), "auth0|lapsed")
+	if err != nil || paid {
+		t.Errorf("lapsed paid user: paid=%v err=%v, want paid=false", paid, err)
+	}
+	paid, err = lookup.IsPaidUser(context.Background(), "auth0|active")
+	if err != nil || !paid {
+		t.Errorf("active paid user: paid=%v err=%v, want paid=true", paid, err)
+	}
+}
+
 func TestTierLookup_MissingProfileIsFree(t *testing.T) {
 	t.Parallel()
 
-	lookup := NewTierLookup(newFakeStore())
+	lookup := NewTierLookup(newFakeStore(), time.Now)
 	paid, err := lookup.IsPaidUser(context.Background(), "auth0|missing")
 	// A user with no profile is treated as free, not an error — they simply have
 	// not registered yet, so the lower limit applies.

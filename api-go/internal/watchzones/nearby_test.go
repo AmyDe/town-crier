@@ -261,6 +261,40 @@ func TestCreate_ProTierBypassesQuota(t *testing.T) {
 	}
 }
 
+func TestCreate_ExpiredProTierQuotaIs403(t *testing.T) {
+	t.Parallel()
+	// A Pro tier whose subscription has lapsed (past expiry, no grace) reads as
+	// Free via EffectiveTier, so the Free limit of 1 applies — a user already over
+	// that limit is forbidden a new zone.
+	lapsed := proProfile(t)
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before nearbyNow (2026-06-14)
+	lapsed.SubscriptionExpiry = &past
+
+	manyZones := make([]WatchZone, 10)
+	for i := range manyZones {
+		manyZones[i] = authorityZone(t, 471)
+	}
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: manyZones},
+		profiles: &fakeProfileReader{profile: lapsed},
+		resolver: &fakeResolver{},
+		apps:     &fakeAppFinder{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	body := `{"name":"My Zone","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
+	rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("lapsed Pro tier should fall back to the Free quota: got %d, want 403", rec.Code)
+	}
+	if d.store.saved != nil {
+		t.Error("must not save a zone when the effective quota is exceeded")
+	}
+}
+
 func TestCreate_InvalidPayloadIs400(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

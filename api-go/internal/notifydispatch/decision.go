@@ -190,7 +190,9 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 // canPush OR-merges the per-channel decision-push toggles across the matching
 // sources, gated on the paid tier and the global push preference.
 func (d *DecisionDispatcher) canPush(profile *profiles.UserProfile, m *userMatch) bool {
-	if !profile.Tier.IsPaid() || !profile.Preferences.PushEnabled {
+	// A paid tier whose subscription has lapsed (EffectiveTier) reads as Free and
+	// is not entitled to an instant push.
+	if !profile.EffectiveTier(d.now()).IsPaid() || !profile.Preferences.PushEnabled {
 		return false
 	}
 	zonePushOptIn := m.zone && m.watchZoneID != nil && profile.ZonePreferences[*m.watchZoneID].DecisionPush

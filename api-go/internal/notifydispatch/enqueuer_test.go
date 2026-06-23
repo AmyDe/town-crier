@@ -312,6 +312,37 @@ func TestEnqueuer_FreeTier_CreatesRecordNoPush(t *testing.T) {
 	}
 }
 
+func TestEnqueuer_ExpiredPaidTier_CreatesRecordNoPush(t *testing.T) {
+	t.Parallel()
+	// A paid tier whose subscription has lapsed (past expiry, no grace) is treated
+	// as Free: the digest record is still written, but no instant push fires.
+	notifs := newFakeNotifications()
+	profile := profileWithTier(t, "auth0|alice", profiles.TierPro)
+	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the harness clock
+	profile.SubscriptionExpiry = &past
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
+	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"auth0|alice": {{Token: "tok-1"}},
+	}}
+	push := &fakePush{}
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, &fakeState{}, push,
+		func() string { return "n-1" },
+		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
+		testLogger(t))
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+
+	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("lapsed paid tier must still create the digest record, got %d", len(notifs.created))
+	}
+	if push.calls != 0 {
+		t.Errorf("lapsed paid tier must NOT push, got %d calls", push.calls)
+	}
+}
+
 func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 	t.Parallel()
 	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)

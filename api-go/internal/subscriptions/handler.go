@@ -276,11 +276,17 @@ func (h *handler) runVerify(ctx context.Context, userID string, signedTransactio
 		return verifyResponse{}, fmt.Errorf("sync auth0 tier %q: %w", userID, err)
 	}
 
+	// Report the effective tier so entitlements never outlive the subscription
+	// window. In the verify path the profile was just activated (future expiry) or
+	// expired in this same request, so this equals the stored tier today; routing
+	// it through EffectiveTier keeps the contract that no entitlement read trusts
+	// the raw stored Tier.
+	effective := profile.EffectiveTier(now)
 	return verifyResponse{
-		Tier:               profile.Tier.String(),
+		Tier:               effective.String(),
 		SubscriptionExpiry: platform.DotNetTimePtr(profile.SubscriptionExpiry),
-		Entitlements:       profile.Tier.Entitlements(),
-		WatchZoneLimit:     profile.Tier.WatchZoneLimit(),
+		Entitlements:       effective.Entitlements(),
+		WatchZoneLimit:     effective.WatchZoneLimit(),
 	}, nil
 }
 

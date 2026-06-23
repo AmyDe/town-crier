@@ -112,7 +112,7 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 	var dispatch http.Handler = mux
 	if store != nil {
 		profiles.Routes(mux, store, auth0, proDomains, cascade, exportReaders, time.Now, logger)
-		dispatch = middleware.RateLimit(middleware.NewRateLimitStore(), profiles.NewTierLookup(store), logger)(
+		dispatch = middleware.RateLimit(middleware.NewRateLimitStore(), profiles.NewTierLookup(store, time.Now), logger)(
 			middleware.RecordActivity(profiles.NewActivityRecorder(store), time.Now, logger)(mux),
 		)
 	}
