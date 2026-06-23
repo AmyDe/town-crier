@@ -131,6 +131,39 @@ func (s *AdminStore) Dormant(ctx context.Context, cutoff time.Time) ([]*UserProf
 	return dormant, nil
 }
 
+// LapsedPaid returns every profile whose stored tier is paid but whose
+// entitlement has lapsed at now — i.e. EffectiveTier(now) has collapsed to Free.
+// These are the profiles the daily subscription sweep (WORKER_MODE=subscription-
+// sweep) reverts to the Free tier in Cosmos and syncs to Auth0. Like Dormant it
+// does a full cross-partition scan and filters in Go: the lapsed test is the
+// domain EffectiveTier rule (expiry-vs-grace comparison, across the two
+// production timestamp wire formats), not a Cosmos predicate, and the scan is a
+// once-a-day batch over a small user base. Far-future paid grants (pro-domain
+// auto-grants, admin 2099 grants) keep their stored tier under EffectiveTier and
+// are never selected; Free profiles and paid profiles still within their window
+// (including a live grace period) are likewise skipped.
+func (s *AdminStore) LapsedPaid(ctx context.Context, now time.Time) ([]*UserProfile, error) {
+	rows, err := s.items.QueryItemsCrossPartition(ctx, "SELECT * FROM c", nil)
+	if err != nil {
+		return nil, fmt.Errorf("query lapsed paid profiles: %w", err)
+	}
+	lapsed := make([]*UserProfile, 0)
+	for _, raw := range rows {
+		var doc profileDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, fmt.Errorf("decode profile: %w", err)
+		}
+		p, err := doc.toDomain()
+		if err != nil {
+			return nil, fmt.Errorf("hydrate profile: %w", err)
+		}
+		if p.Tier.IsPaid() && p.EffectiveTier(now) == TierFree {
+			lapsed = append(lapsed, p)
+		}
+	}
+	return lapsed, nil
+}
+
 // Save upserts the profile (id == user id == partition key).
 func (s *AdminStore) Save(ctx context.Context, p *UserProfile) error {
 	body, err := json.Marshal(newProfileDocument(p))
