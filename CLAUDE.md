@@ -213,7 +213,7 @@ A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit o
 
 Keep the working set (open + in-progress) under ~200 issues.
 
-**The Dolt DB is the source of truth.** `.beads/issues.jsonl` is a derived export for git/viewers — **never hand-edit it**; `bd` regenerates it from the DB and your edits get clobbered. Backups are `bd dolt push` / `bd backup`, not jsonl. (There is no `bd cleanup` command.)
+**The Dolt server DB + the DoltHub remote are the sole source of truth.** `.beads/issues.jsonl` has been **removed from the `.beads/` hot path** and `export.auto`/`export.git-add` are **off** — this is deliberate, see the "Beads: Dolt is the sole source of truth" section below. Do NOT re-create `issues.jsonl`, re-enable export, or run `bd export` to the default path. Backups are `bd dolt push` (to DoltHub) / `bd backup`, never jsonl. (There is no `bd cleanup` command.)
 
 Server mode writes one Dolt commit per write (`dolt.auto-commit: on`), so history bloats over time. Maintenance:
 
@@ -242,16 +242,19 @@ When a task involves any of these services, use the corresponding CLI directly. 
 
 NEVER deploy code directly using `az`, `pulumi`, or any other CLI tool. ALL code changes MUST be shipped via pull requests and deployed through CI/CD (GitHub Actions). Direct deployments bypass review, testing, and audit trails.
 
-## Beads JSONL Merge Driver (one-time setup)
+## Beads: Dolt is the sole source of truth (DO NOT re-add issues.jsonl)
 
-`.beads/issues.jsonl` is a derived Dolt snapshot rewritten on every bead mutation, so any two branches that touched beads will conflict on merge/rebase. `.gitattributes` marks the file with `merge=theirs`. The driver itself is per-clone — register it once:
+**Background — the write-thrash bug (fixed 2026-06-23).** We pin **bd 1.0.4** (server mode, with a DoltHub remote). bd 1.0.4 has an upstream bug (gastownhall/beads #3849, fix #4170 not in the 1.0.4 tag): in server mode it re-imports `.beads/issues.jsonl` into the DB on **every** command (the "auto-importing N issues into empty database" line) because the server-mode guard is missing and `GetStatistics` misreads the DB as empty. When the jsonl matches the DB the import is a harmless no-op; when it diverges from a just-made write it **clobbers (reverts) that write**. `issues.jsonl` was untracked here on 2026-05-17 (#391, to stop git merge conflicts), which made it worse: `export.git-add` then fails silently, so the jsonl never updates and every write reverts permanently. The `BD_IMPORT_AUTO`/`BEADS_NO_AUTO_IMPORT` toggles do not work on the write path in 1.0.4 (#4304).
 
-```bash
-git config --local merge.theirs.driver 'cp -f "%B" "%A"'
-git config --local merge.theirs.name 'always take incoming version'
-```
+**The fix in place (do not undo any of these):**
+- `.beads/issues.jsonl` is **removed** from the hot path (archived at `~/.beads-archive/town-crier/`). With no jsonl present, the per-command import is a no-op.
+- `export.auto = false` and `export.git-add = false` (in `.beads/config.yaml`), so nothing regenerates the jsonl.
+- The brew `bd` 1.0.5 binary was uninstalled; only the pinned `~/.local/bin/bd` 1.0.4 remains (a stray newer/older bd on `PATH` clobbers — #3948). Never `brew install beads`.
+- Sync is **Dolt only**: `bd dolt push` / `bd dolt pull` against the DoltHub remote (`amyde/town-crier`). A fresh clone hydrates via `bd dolt pull`, never a jsonl import.
 
-After squash-merge, never `git pull --rebase` local main onto origin/main — the local auto-export commits will conflict with the squashed version. Use `git fetch origin && git reset --hard origin/main` instead.
+**Rules:** never re-create `.beads/issues.jsonl`, never set `export.auto`/`export.git-add` back to `true`, never run `bd export` to the default path, never re-track the jsonl, never upgrade off 1.0.4 (1.0.5 corrupts this DB; 1.1.0-rc.1 migration 0050 can make multi-clone histories un-mergeable). Full root cause + recovery recipe is in the auto-memory `project_bd_thrash_and_105_breakage`.
+
+After a squash-merge, never `git pull --rebase` local main onto origin/main. Use `git fetch origin && git reset --hard origin/main` instead.
 
 ## Shell Commands — Non-Interactive Mode
 
