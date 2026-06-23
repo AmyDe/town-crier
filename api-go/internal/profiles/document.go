@@ -33,6 +33,16 @@ type profileDocument struct {
 	OriginalTransactionID *string    `json:"originalTransactionId"`
 	GracePeriodExpiry     *time.Time `json:"gracePeriodExpiry"`
 	LastActiveAt          time.Time  `json:"lastActiveAt"`
+	// LastActiveAtEpoch is LastActiveAt as Unix epoch milliseconds — a numeric
+	// mirror written on every upsert so the dormant scan filters server-side on a
+	// value that sorts unambiguously. lastActiveAt itself is persisted in two wire
+	// formats ("+00:00" and "Z") that do not sort lexicographically, so a SQL
+	// string comparison on it would silently miss "Z"-stored accounts. It is a
+	// derived query-acceleration field: LastActiveAt remains the source of truth,
+	// so toDomain reads the timestamp, not this mirror. No omitempty — the key must
+	// always be present so a server-side IS_DEFINED check can tell a freshly
+	// written doc from a legacy, un-backfilled one.
+	LastActiveAtEpoch int64 `json:"lastActiveAtEpoch"`
 	// watchZoneCount is the CAS quota counter. omitempty so legacy documents
 	// (written before this field existed) remain unchanged on re-read.
 	WatchZoneCount *int `json:"watchZoneCount,omitempty"`
@@ -71,6 +81,7 @@ func newProfileDocument(p *UserProfile) profileDocument {
 		OriginalTransactionID: p.OriginalTransactionID,
 		GracePeriodExpiry:     p.GracePeriodExpiry,
 		LastActiveAt:          p.LastActiveAt,
+		LastActiveAtEpoch:     p.LastActiveAt.UnixMilli(),
 		WatchZoneCount:        p.WatchZoneCount,
 	}
 }
