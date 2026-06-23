@@ -231,8 +231,33 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		},
 		// Users — partitioned by id
 		{name: "Users", partitionKeyPath: "/id"},
-		// WatchZones — partitioned by userId, unique on (userId, name)
-		{name: "WatchZones", partitionKeyPath: "/userId", uniqueKeyPaths: [][]string{{"/userId", "/name"}}},
+		// WatchZones — partitioned by userId, unique on (userId, name).
+		// Keeps Cosmos default full indexing (IncludedPaths "/*") so the Phase 1
+		// authority pre-filter (WHERE c.authorityId = @authorityId, tc-8dud) stays
+		// index-served; ADDS a GeoJSON Point spatial index on /location so the
+		// Phase 2c index-served FindZonesContaining query (tc-qbq4) can bind to it.
+		// Inert until that query switches to reference c.location.
+		{
+			name:             "WatchZones",
+			partitionKeyPath: "/userId",
+			uniqueKeyPaths:   [][]string{{"/userId", "/name"}},
+			indexingPolicy: &cosmosdb.IndexingPolicyArgs{
+				Automatic:    pulumi.Bool(true),
+				IndexingMode: cosmosdb.IndexingModeConsistent,
+				IncludedPaths: cosmosdb.IncludedPathArray{
+					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/*")},
+				},
+				ExcludedPaths: cosmosdb.ExcludedPathArray{
+					&cosmosdb.ExcludedPathArgs{Path: pulumi.String("/\"_etag\"/?")},
+				},
+				SpatialIndexes: cosmosdb.SpatialSpecArray{
+					&cosmosdb.SpatialSpecArgs{
+						Path:  pulumi.String("/location/?"),
+						Types: pulumi.StringArray{pulumi.String(string(cosmosdb.SpatialTypePoint))},
+					},
+				},
+			},
+		},
 		// Notifications — partitioned by userId, 90-day TTL
 		{name: "Notifications", partitionKeyPath: "/userId", defaultTTL: intPtr(90 * 24 * 60 * 60)},
 		// NotificationState — one watermark document per user (read-state cutoff)
