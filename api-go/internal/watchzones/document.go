@@ -6,6 +6,15 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
+// geoJSONPoint is the Cosmos GeoJSON projection of a watch zone's centre: a
+// Point with [longitude, latitude] order (GeoJSON convention), matching what
+// Cosmos expects for ST_DISTANCE spatial queries and what a spatial index on
+// /location binds to. It mirrors the same shape in the applications package.
+type geoJSONPoint struct {
+	Type        string    `json:"type"`
+	Coordinates []float64 `json:"coordinates"`
+}
+
 // watchZoneDocument is the Cosmos persistence shape for a WatchZone. The JSON
 // tags use camelCase so a document written here is byte-compatible with the
 // existing WatchZones container and an existing document hydrates unchanged.
@@ -22,6 +31,14 @@ type watchZoneDocument struct {
 	Longitude    float64 `json:"longitude"`
 	RadiusMetres float64 `json:"radiusMetres"`
 	AuthorityID  int     `json:"authorityId"`
+
+	// location is the GeoJSON Point form of latitude/longitude, persisted purely
+	// so a spatial index (added later in the infra child tc-quqe) can serve
+	// FindZonesContaining. It is ADDITIVE: latitude/longitude remain the
+	// authoritative columns that toDomain hydrates from and the current query
+	// reads, so a legacy document without location hydrates unchanged. Pointer
+	// so an absent location stays nil rather than serialising an empty Point.
+	Location *geoJSONPoint `json:"location"`
 
 	// createdAt must serialise with a numeric UTC offset ("+00:00"), never Go's
 	// RFC 3339 "Z" — platform.DotNetTime handles that. Nullable so a legacy
@@ -50,10 +67,18 @@ func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 		Longitude:           z.Longitude,
 		RadiusMetres:        z.RadiusMetres,
 		AuthorityID:         z.AuthorityID,
+		Location:            newGeoPoint(z.Longitude, z.Latitude),
 		CreatedAt:           &createdAt,
 		PushEnabled:         &push,
 		EmailInstantEnabled: &email,
 	}
+}
+
+// newGeoPoint builds the GeoJSON Point form of a zone centre. A WatchZone always
+// has coordinates (stored as plain floats), so a point is always written; the
+// [longitude, latitude] order is the GeoJSON convention Cosmos expects.
+func newGeoPoint(lon, lat float64) *geoJSONPoint {
+	return &geoJSONPoint{Type: "Point", Coordinates: []float64{lon, lat}}
 }
 
 // toDomain reconstitutes a domain zone from its stored document, coalescing the
