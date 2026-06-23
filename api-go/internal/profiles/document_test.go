@@ -78,6 +78,45 @@ func TestProfileDocument_JSONShapeMatchesNET(t *testing.T) {
 	}
 }
 
+func TestProfileDocument_EmitsLastActiveAtEpoch(t *testing.T) {
+	t.Parallel()
+
+	// lastActiveAtEpoch is a numeric (epoch-millis) mirror of lastActiveAt,
+	// written on every profile upsert so the dormant scan can filter server-side
+	// on a value that sorts unambiguously (lastActiveAt itself is persisted in two
+	// wire formats, "+00:00" and "Z", that do not sort lexicographically).
+	now := time.Date(2026, 6, 11, 9, 30, 0, 0, time.UTC)
+	p, err := NewProfile("auth0|abc", "", now)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.LastActiveAt = now
+
+	b, err := json.Marshal(newProfileDocument(p))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	// The numeric mirror must be present and equal to LastActiveAt.UnixMilli().
+	var doc profileDocument
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if doc.LastActiveAtEpoch != now.UnixMilli() {
+		t.Errorf("lastActiveAtEpoch = %d, want %d", doc.LastActiveAtEpoch, now.UnixMilli())
+	}
+
+	// The JSON key must actually be present so a server-side IS_DEFINED check
+	// distinguishes a freshly written doc from a legacy un-backfilled one.
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	if _, present := raw["lastActiveAtEpoch"]; !present {
+		t.Error("lastActiveAtEpoch key should be present on every written document")
+	}
+}
+
 func TestProfileDocument_RoundTrip(t *testing.T) {
 	t.Parallel()
 
