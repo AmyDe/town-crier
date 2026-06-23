@@ -283,3 +283,81 @@ func TestAdminStore_Dormant_WrapsQueryError(t *testing.T) {
 		t.Fatal("expected error when the dormant scan fails")
 	}
 }
+
+// paidProfileDoc builds a stored profile document with a specific tier, expiry,
+// and grace period so the lapsed-paid scan's Go-side EffectiveTier filter can be
+// exercised across the window/grace/far-future combinations.
+func paidProfileDoc(t *testing.T, userID string, tier SubscriptionTier, expiry, grace *time.Time) []byte {
+	t.Helper()
+	p, err := NewProfile(userID, "", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.Tier = tier
+	p.SubscriptionExpiry = expiry
+	p.GracePeriodExpiry = grace
+	raw, err := json.Marshal(newProfileDocument(p))
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return raw
+}
+
+func TestAdminStore_LapsedPaid_SelectsExpiredPaidProfiles(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 23, 12, 0, 0, 0, time.UTC)
+	past := now.AddDate(0, 0, -1)
+	future := now.AddDate(0, 0, 1)
+	farFuture := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	items := newFakeAdminItems()
+	items.queryResult = [][]byte{
+		paidProfileDoc(t, "lapsed-personal", TierPersonal, &past, nil),        // selected: expired, no grace
+		paidProfileDoc(t, "lapsed-pro", TierPro, &past, nil),                  // selected: expired, no grace
+		paidProfileDoc(t, "expired-grace-past", TierPersonal, &past, &past),   // selected: expired, grace also past
+		paidProfileDoc(t, "within-window", TierPro, &future, nil),             // kept: still within window
+		paidProfileDoc(t, "expired-grace-live", TierPersonal, &past, &future), // kept: live grace period
+		paidProfileDoc(t, "far-future-pro", TierPro, &farFuture, nil),         // kept: 2099 pro-domain/admin grant
+		paidProfileDoc(t, "nil-expiry-paid", TierPro, nil, nil),               // kept: malformed paid, treated as entitled
+		profileDoc(t, "free-user", "f@example.com", TierFree),                 // kept: free is never paid
+	}
+	store := NewAdminStore(items)
+
+	got, err := store.LapsedPaid(context.Background(), now)
+	if err != nil {
+		t.Fatalf("LapsedPaid: %v", err)
+	}
+
+	selected := map[string]bool{}
+	for _, p := range got {
+		selected[p.UserID] = true
+	}
+	for _, id := range []string{"lapsed-personal", "lapsed-pro", "expired-grace-past"} {
+		if !selected[id] {
+			t.Errorf("%s should be selected as lapsed-paid", id)
+		}
+	}
+	for _, id := range []string{"within-window", "expired-grace-live", "far-future-pro", "nil-expiry-paid", "free-user"} {
+		if selected[id] {
+			t.Errorf("%s must NOT be selected (still entitled or free)", id)
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("lapsed count: got %d, want 3", len(got))
+	}
+	// A full cross-partition scan, filtered in Go — mirrors Dormant's RU profile.
+	if items.gotQuery != "SELECT * FROM c" {
+		t.Errorf("query = %q, want full scan", items.gotQuery)
+	}
+}
+
+func TestAdminStore_LapsedPaid_WrapsQueryError(t *testing.T) {
+	t.Parallel()
+	items := newFakeAdminItems()
+	items.queryErr = errors.New("cosmos down")
+	store := NewAdminStore(items)
+
+	if _, err := store.LapsedPaid(context.Background(), time.Now()); err == nil {
+		t.Fatal("expected error when the lapsed-paid scan fails")
+	}
+}

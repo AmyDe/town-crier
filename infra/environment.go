@@ -468,6 +468,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if err = createWorkerJob(ctx, ec, "dormant-cleanup", "30 3 * * *", 600, "dormant-cleanup", nil); err != nil {
 		return err
 	}
+	// Subscription sweep — daily at 04:30 UTC (offset an hour from dormant-cleanup so the two
+	// full-scan jobs don't contend). Reverts lapsed offer-code/App Store paid tiers to Free in
+	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation; epic tc-rlja / GH #608).
+	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep", nil); err != nil {
+		return err
+	}
 
 	// Static Web App (Landing Page)
 	staticWebApp, err := web.NewStaticSite(ctx, fmt.Sprintf("swa-town-crier-%s", env), &web.StaticSiteArgs{
@@ -540,12 +546,12 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 	}
 
 	// The acs-connection-string and apns-auth-key secrets exist on every job; dormant-cleanup
-	// also needs the Auth0 Management (M2M) credentials.
+	// and subscription-sweep also need the Auth0 Management (M2M) credentials.
 	secrets := app.SecretArray{
 		&app.SecretArgs{Name: pulumi.String("acs-connection-string"), Value: ec.acsConnectionString},
 		&app.SecretArgs{Name: pulumi.String("apns-auth-key"), Value: ec.apnsAuthKey},
 	}
-	if workerMode == "dormant-cleanup" {
+	if workerMode == "dormant-cleanup" || workerMode == "subscription-sweep" {
 		secrets = append(secrets,
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: ec.auth0M2mClientID},
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: ec.auth0M2mClientSecret},
@@ -673,7 +679,8 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	}
 
 	// dormant-cleanup: Auth0 Management (M2M) for the Auth0 user delete in the cascade.
-	if workerMode == "dormant-cleanup" {
+	// subscription-sweep: same Auth0 M2M creds to sync subscription_tier back to Free.
+	if workerMode == "dormant-cleanup" || workerMode == "subscription-sweep" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(ec.auth0Domain)},
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
