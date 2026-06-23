@@ -14,11 +14,12 @@ const helpText = `tc — Town Crier admin CLI
 Usage: tc <command> [options]
 
 Commands:
-  generate-offer-codes Bulk-generate single-use offer codes
-  grant-subscription   Grant or change a user's subscription tier
-  list-users           List users with email, ID, and subscription tier
-  help                 Show this help message
-  version              Print version
+  generate-offer-codes        Bulk-generate single-use offer codes
+  grant-subscription          Grant or change a user's subscription tier
+  list-users                  List users with email, ID, and subscription tier
+  backfill-watchzone-location One-shot: add a GeoJSON location to legacy watch zones
+  help                        Show this help message
+  version                     Print version
 
 generate-offer-codes options:
   --count <n>           Number of codes to generate (1-1000, required)
@@ -73,6 +74,8 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 		return runGrantSubscription(ctx, client, env, args)
 	case "list-users":
 		return runListUsers(ctx, client, env, args)
+	case "backfill-watchzone-location":
+		return runBackfillWatchZoneLocation(ctx, client, env, args)
 	default:
 		fmt.Fprintf(env.Err, "Unknown command: %s\n", args.Command)
 		fmt.Fprintln(env.Err, "Run 'tc help' for a list of commands.")
