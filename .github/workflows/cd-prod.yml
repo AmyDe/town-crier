@@ -7,7 +7,6 @@
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
 #   ADMIN_API_KEY          — API key for admin endpoints
-#   AUTO_GRANT_PRO_DOMAINS — Comma-separated email domains for automatic Pro tier
 #
 # Requires GitHub Environment:
 #   production             — with OIDC federated credential (environment:production)
@@ -61,7 +60,6 @@ jobs:
         with:
           admin-api-key: ${{ secrets.ADMIN_API_KEY }}
           site-build-key: ${{ secrets.SITE_BUILD_KEY }}
-          auto-grant-pro-domains: ${{ secrets.AUTO_GRANT_PRO_DOMAINS }}
           auth0-m2m-client-id: ${{ secrets.AUTH0_M2M_CLIENT_ID }}
           auth0-m2m-client-secret: ${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
 
