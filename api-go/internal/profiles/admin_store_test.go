@@ -273,6 +273,90 @@ func TestAdminStore_Dormant_KeepsAccountsActiveAtOrAfterCutoff(t *testing.T) {
 	}
 }
 
+// legacyProfileDocAt builds a stored profile document WITHOUT the
+// lastActiveAtEpoch field, simulating an un-backfilled document written before
+// the numeric mirror existed. Such docs are returned by the server-side
+// NOT IS_DEFINED fallback and must still be classified correctly by the Go gate.
+func legacyProfileDocAt(t *testing.T, userID string, lastActive time.Time) []byte {
+	t.Helper()
+	p, err := NewProfile(userID, "", lastActive)
+	if err != nil {
+		t.Fatalf("NewProfile: %v", err)
+	}
+	p.LastActiveAt = lastActive
+	var doc map[string]any
+	if err := json.Unmarshal(profileDocAt(t, userID, lastActive), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	delete(doc, "lastActiveAtEpoch")
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return raw
+}
+
+func TestAdminStore_Dormant_FiltersServerSide(t *testing.T) {
+	t.Parallel()
+	cutoff := time.Date(2025, 6, 14, 0, 0, 0, 0, time.UTC)
+
+	items := newFakeAdminItems()
+	store := NewAdminStore(items)
+
+	if _, err := store.Dormant(context.Background(), cutoff); err != nil {
+		t.Fatalf("Dormant: %v", err)
+	}
+
+	// The scan filters server-side on the numeric epoch mirror, shrinking the
+	// hydrated set from "all users" to "dormant users" — while the NOT IS_DEFINED
+	// fallback keeps any un-backfilled (legacy) doc in the result set so it is
+	// never silently dropped during rollout.
+	const want = "SELECT * FROM c WHERE c.lastActiveAtEpoch < @cutoffEpoch OR NOT IS_DEFINED(c.lastActiveAtEpoch)"
+	if items.gotQuery != want {
+		t.Errorf("query = %q, want %q", items.gotQuery, want)
+	}
+	// The cutoff binds as epoch milliseconds so it sorts against the numeric field.
+	if epoch, ok := items.gotParams["@cutoffEpoch"].(int64); !ok || epoch != cutoff.UnixMilli() {
+		t.Errorf("@cutoffEpoch = %v, want int64 %d", items.gotParams["@cutoffEpoch"], cutoff.UnixMilli())
+	}
+}
+
+func TestAdminStore_Dormant_ClassifiesLegacyDocsInGo(t *testing.T) {
+	t.Parallel()
+	cutoff := time.Date(2025, 6, 14, 0, 0, 0, 0, time.UTC)
+
+	// Legacy docs lack lastActiveAtEpoch, so the server returns them via the
+	// NOT IS_DEFINED fallback regardless of activity. The Go-side cutoff gate is
+	// the final authority: a legacy-but-active account must NOT be erased, and a
+	// legacy-and-dormant account must still be caught.
+	items := newFakeAdminItems()
+	items.queryResult = [][]byte{
+		legacyProfileDocAt(t, "legacy-dormant", cutoff.AddDate(0, -1, 0)), // before cutoff -> dormant
+		legacyProfileDocAt(t, "legacy-active", cutoff.AddDate(0, 1, 0)),   // after cutoff -> kept
+		profileDocAt(t, "backfilled-dormant", cutoff.AddDate(-1, 0, 0)),   // backfilled, dormant
+	}
+	store := NewAdminStore(items)
+
+	got, err := store.Dormant(context.Background(), cutoff)
+	if err != nil {
+		t.Fatalf("Dormant: %v", err)
+	}
+
+	ids := map[string]bool{}
+	for _, p := range got {
+		ids[p.UserID] = true
+	}
+	if !ids["legacy-dormant"] || !ids["backfilled-dormant"] {
+		t.Errorf("dormant accounts missing from result: %v", ids)
+	}
+	if ids["legacy-active"] {
+		t.Error("a legacy doc active after the cutoff must not be erased (Go gate is the final authority)")
+	}
+	if len(got) != 2 {
+		t.Errorf("dormant count: got %d, want 2", len(got))
+	}
+}
+
 func TestAdminStore_Dormant_WrapsQueryError(t *testing.T) {
 	t.Parallel()
 	items := newFakeAdminItems()
