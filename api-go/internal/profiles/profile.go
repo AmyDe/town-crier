@@ -189,6 +189,37 @@ func (p *UserProfile) UpdatePreferences(prefs NotificationPreferences) {
 	p.Preferences = prefs
 }
 
+// EffectiveTier returns the tier the user is actually entitled to at now,
+// applying ADR 0010's lazy expiry rule: a paid tier whose SubscriptionExpiry has
+// passed — with no grace period, or a grace period that has also passed —
+// collapses to Free regardless of the stored Tier. Free and any paid tier still
+// within its window (including a live grace period and the far-future pro-domain
+// auto-grant) are returned unchanged.
+//
+// Every entitlement gate reads this, never the raw stored Tier, so an offer-code
+// grant that has run out — or an App Store sub past expiry whose webhook never
+// arrived — is treated as Free everywhere without mutating the stored document
+// (the daily sweep, Phase 2, reverts the stored state separately).
+func (p *UserProfile) EffectiveTier(now time.Time) SubscriptionTier {
+	if p.Tier == TierFree {
+		return TierFree
+	}
+	if p.SubscriptionExpiry == nil {
+		// Invariant: every paid grant sets an expiry (ActivateSubscription /
+		// pro-domain auto-grant). A paid tier with no expiry is malformed; treat
+		// as still-entitled rather than silently downgrade (no proof of expiry).
+		return p.Tier
+	}
+	// "expired" mirrors the lapsed-txn filter on the verify path: expired when
+	// SubscriptionExpiry is NOT strictly after now (so expiry == now is expired).
+	if !p.SubscriptionExpiry.After(now) {
+		if p.GracePeriodExpiry == nil || !p.GracePeriodExpiry.After(now) {
+			return TierFree
+		}
+	}
+	return p.Tier
+}
+
 // ActivateSubscription moves the profile to a paid tier with the given expiry
 // and clears any grace period.
 func (p *UserProfile) ActivateSubscription(tier SubscriptionTier, expiry time.Time) {
