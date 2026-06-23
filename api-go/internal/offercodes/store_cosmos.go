@@ -30,7 +30,7 @@ type cosmosItems interface {
 
 // CosmosStore reads and writes offer codes in the OfferCodes container.
 //
-// Partition strategy: the OfferCodes container is partitioned by /id == the
+// Partition strategy: the OfferCodes container is partitioned by /code == the
 // canonical code, so every operation is a single-partition point operation.
 type CosmosStore struct {
 	items cosmosItems
@@ -55,7 +55,7 @@ func (s *CosmosStore) Get(ctx context.Context, canonical string) (OfferCode, err
 	return doc.toDomain()
 }
 
-// Save upserts the code document (id == code == partition key), covering both
+// Save upserts the code document (id == code, partition key /code), covering both
 // create and update.
 func (s *CosmosStore) Save(ctx context.Context, c OfferCode) error {
 	body, err := json.Marshal(newOfferCodeDocument(c))
@@ -113,14 +113,14 @@ func (s *CosmosStore) RedeemWithCAS(ctx context.Context, canonical, userID strin
 }
 
 // redeemedByUserIDQuery selects every code a user redeemed. The OfferCodes
-// container is partitioned by /id == the canonical code, not by redeemer, so
+// container is partitioned by /code == the canonical code, not by redeemer, so
 // this is a deliberate cross-partition scan.
 const redeemedByUserIDQuery = "SELECT * FROM c WHERE c.redeemedByUserId = @userId"
 
 // RedeemedByUserID returns every code the user redeemed, hydrated to the domain
 // model, for the GDPR data export (GET /v1/me/data). It reuses the same
 // cross-partition redeemedByUserId scan as the anonymise path (the OfferCodes
-// container is partitioned by /id == the canonical code, not by redeemer, so
+// container is partitioned by /code == the canonical code, not by redeemer, so
 // finding a user's redemptions must fan out across partitions). The common case
 // (the user never redeemed a code) matches nothing and returns an empty, non-nil
 // slice. The export sorts the result, so no ORDER BY is needed here.
