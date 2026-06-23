@@ -265,7 +265,7 @@ const (
 	// partition key /userId, document id == "{userId}:{applicationUid}".
 	CosmosSavedApplicationsContainer = "SavedApplications"
 	// CosmosOfferCodesContainer holds one document per offer code; partition key
-	// /id == the canonical code, document id == the canonical code.
+	// /code == the canonical code, document id == the canonical code.
 	CosmosOfferCodesContainer = "OfferCodes"
 	// CosmosAppleNotificationsContainer holds one document per processed App Store
 	// Server Notification; partition key /id == the notificationUUID, document id

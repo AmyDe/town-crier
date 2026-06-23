@@ -8,7 +8,7 @@ import (
 )
 
 // offerCodeDocument is the Cosmos persistence shape (camelCase keys, DateTimeOffset
-// "+00:00" format for timestamps). id == code == partition key.
+// "+00:00" format for timestamps). id == code, partition key /code.
 //
 // Redeemed is the consumed tombstone (GDPR Art. 17): it stays true after a
 // redeemer is scrubbed from RedeemedByUserId / RedeemedAt, so the code can never
