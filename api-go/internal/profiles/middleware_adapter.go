@@ -42,18 +42,22 @@ func (r *ActivityRecorder) RecordActivity(ctx context.Context, userID string, no
 
 // TierLookup answers the rate-limiter's paid/free question from the Cosmos
 // profile tier — the authoritative entitlement source per ADR 0010, never the
-// JWT claim. A user with no profile is treated as free.
+// JWT claim. A user with no profile is treated as free. The injected clock lets
+// the lazy expiry check (EffectiveTier) collapse a lapsed paid tier to free.
 type TierLookup struct {
 	store profileStore
+	now   func() time.Time
 }
 
-// NewTierLookup builds the lookup over the given profile store.
-func NewTierLookup(store profileStore) *TierLookup {
-	return &TierLookup{store: store}
+// NewTierLookup builds the lookup over the given profile store and clock.
+func NewTierLookup(store profileStore, now func() time.Time) *TierLookup {
+	return &TierLookup{store: store, now: now}
 }
 
-// IsPaidUser reports whether the user's stored tier is paid (anything but Free).
-// A missing profile yields false (free) without error.
+// IsPaidUser reports whether the user's effective tier is paid (anything but
+// Free) at the current instant — a paid tier whose subscription has lapsed (with
+// no live grace period) reads as free. A missing profile yields false (free)
+// without error.
 func (l *TierLookup) IsPaidUser(ctx context.Context, userID string) (bool, error) {
 	profile, err := l.store.Get(ctx, userID)
 	if err != nil {
@@ -62,5 +66,5 @@ func (l *TierLookup) IsPaidUser(ctx context.Context, userID string) (bool, error
 		}
 		return false, err
 	}
-	return profile.Tier.IsPaid(), nil
+	return profile.EffectiveTier(l.now()).IsPaid(), nil
 }

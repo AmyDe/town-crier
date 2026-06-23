@@ -166,3 +166,70 @@ func TestSubscriptionTier_IsPaid(t *testing.T) {
 		t.Error("Personal and Pro should be paid")
 	}
 }
+
+func TestUserProfile_EffectiveTier(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	ptr := func(tm time.Time) *time.Time { return &tm }
+	past := now.Add(-time.Hour)
+	future := now.Add(time.Hour)
+	farFuture := time.Date(2099, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name   string
+		tier   SubscriptionTier
+		expiry *time.Time
+		grace  *time.Time
+		want   SubscriptionTier
+	}{
+		{
+			// Free always stays Free regardless of any stale expiry/grace fields.
+			name: "free", tier: TierFree, expiry: ptr(past), grace: ptr(past), want: TierFree,
+		},
+		{
+			// Paid tier still inside its window is returned unchanged.
+			name: "paid within window", tier: TierPro, expiry: ptr(future), grace: nil, want: TierPro,
+		},
+		{
+			// Lapsed paid tier with no grace collapses to Free (the offer-code gap).
+			name: "paid expired no grace", tier: TierPro, expiry: ptr(past), grace: nil, want: TierFree,
+		},
+		{
+			// Lapsed paid tier whose grace period is still live keeps the tier.
+			name: "paid expired grace live", tier: TierPersonal, expiry: ptr(past), grace: ptr(future), want: TierPersonal,
+		},
+		{
+			// Lapsed paid tier whose grace period has also passed collapses to Free.
+			name: "paid expired grace past", tier: TierPersonal, expiry: ptr(past), grace: ptr(past), want: TierFree,
+		},
+		{
+			// A paid tier with no expiry is malformed; treated as entitled rather
+			// than silently downgraded (no proof of expiry).
+			name: "nil expiry paid", tier: TierPro, expiry: nil, grace: nil, want: TierPro,
+		},
+		{
+			// Pro-domain auto-grants use a far-future expiry, so they are naturally
+			// exempt — no special-casing needed.
+			name: "far future pro-domain grant", tier: TierPro, expiry: ptr(farFuture), grace: nil, want: TierPro,
+		},
+		{
+			// Boundary: expiry exactly at now counts as expired (mirrors the
+			// lapsed-txn filter: expired when NOT strictly after now).
+			name: "boundary expiry equals now", tier: TierPro, expiry: ptr(now), grace: nil, want: TierFree,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := &UserProfile{
+				Tier:               tc.tier,
+				SubscriptionExpiry: tc.expiry,
+				GracePeriodExpiry:  tc.grace,
+			}
+			if got := p.EffectiveTier(now); got != tc.want {
+				t.Errorf("EffectiveTier() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

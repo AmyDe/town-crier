@@ -108,7 +108,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.writeJSON(w, r, createResult{
 			UserID:      existing.UserID,
 			PushEnabled: existing.Preferences.PushEnabled,
-			Tier:        existing.Tier.String(),
+			Tier:        existing.EffectiveTier(h.now()).String(),
 		})
 		return
 	case errors.Is(err, ErrNotFound):
@@ -131,7 +131,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, createResult{
 		UserID:      profile.UserID,
 		PushEnabled: profile.Preferences.PushEnabled,
-		Tier:        profile.Tier.String(),
+		Tier:        profile.EffectiveTier(h.now()).String(),
 	})
 }
 
@@ -148,7 +148,7 @@ func (h *handler) get(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "load profile", err)
 		return
 	}
-	h.writeJSON(w, r, profileResultFrom(profile))
+	h.writeJSON(w, r, profileResultFrom(profile, h.now()))
 }
 
 // updateRequest is the PATCH /v1/me body. DigestDay accepts either the weekday
@@ -190,7 +190,7 @@ func (h *handler) patch(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "save profile", err)
 		return
 	}
-	h.writeJSON(w, r, profileResultFrom(profile))
+	h.writeJSON(w, r, profileResultFrom(profile, h.now()))
 }
 
 // delete implements DELETE /v1/me as a complete UK GDPR Art. 17 erasure. It reads
@@ -281,7 +281,7 @@ func (h *handler) tryBackfillAuth0Tier(ctx context.Context, p *UserProfile, jwtT
 	}
 }
 
-func profileResultFrom(p *UserProfile) profileResult {
+func profileResultFrom(p *UserProfile, now time.Time) profileResult {
 	return profileResult{
 		UserID:             p.UserID,
 		PushEnabled:        p.Preferences.PushEnabled,
@@ -289,7 +289,7 @@ func profileResultFrom(p *UserProfile) profileResult {
 		EmailDigestEnabled: p.Preferences.EmailDigestEnabled,
 		SavedDecisionPush:  p.Preferences.SavedDecisionPush,
 		SavedDecisionEmail: p.Preferences.SavedDecisionEmail,
-		Tier:               p.Tier.String(),
+		Tier:               p.EffectiveTier(now).String(),
 	}
 }
 

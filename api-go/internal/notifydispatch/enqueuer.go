@@ -188,9 +188,10 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 		now:         e.now().UTC(),
 	})
 
-	// Instant push is a paid-tier entitlement. Free-tier users still get the
+	// Instant push is a paid-tier entitlement. Free-tier users — including a paid
+	// tier whose subscription has lapsed (EffectiveTier) — still get the
 	// notification record (picked up by the weekly digest) but no push.
-	if profile.Tier.IsPaid() && profile.Preferences.PushEnabled {
+	if profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled {
 		n.PushSent = sendInstantPush(ctx, instantPushDeps{
 			devices: e.devices,
 			state:   e.state,

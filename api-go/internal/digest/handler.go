@@ -130,7 +130,9 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 	}
 
 	for _, profile := range users {
-		wantsPush := profile.Tier.IsPaidPro() && profile.Preferences.PushEnabled
+		// The weekly push is Pro-only; a lapsed paid tier (EffectiveTier) reads as
+		// Free and gets the email but no push.
+		wantsPush := profile.EffectiveTier(now).IsPaidPro() && profile.Preferences.PushEnabled
 		wantsEmail := profile.Preferences.EmailDigestEnabled && profile.Email != nil && *profile.Email != ""
 		if !wantsPush && !wantsEmail {
 			continue
@@ -218,6 +220,7 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 // disabled) notifications are left unsent so the weekly digest can still pick them
 // up.
 func (h *Handler) RunHourly(ctx context.Context) error {
+	now := h.now()
 	userIDs, err := h.notifications.UserIDsWithUnsentEmails(ctx)
 	if err != nil {
 		return err
@@ -233,8 +236,9 @@ func (h *Handler) RunHourly(ctx context.Context) error {
 			continue
 		}
 		// Hourly digest emails are a paid entitlement (server-enforced) — Free tier
-		// is excluded even when email digests are enabled.
-		if !profile.Tier.HasHourlyDigestEntitlement() {
+		// is excluded even when email digests are enabled. A lapsed paid tier reads
+		// as Free via EffectiveTier and is excluded too.
+		if !profile.EffectiveTier(now).HasHourlyDigestEntitlement() {
 			continue
 		}
 		if profile.Email == nil || *profile.Email == "" {
