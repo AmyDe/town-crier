@@ -44,9 +44,10 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/demo-account": {},
 	// Admin routes are anonymous to Auth0 (no bearer token); they are
 	// authenticated solely by the X-Admin-Key gate inside the handlers.
-	"PUT /v1/admin/subscriptions": {},
-	"GET /v1/admin/users":         {},
-	"POST /v1/admin/offer-codes":  {},
+	"PUT /v1/admin/subscriptions":                 {},
+	"GET /v1/admin/users":                         {},
+	"POST /v1/admin/offer-codes":                  {},
+	"POST /v1/admin/watchzones/backfill-location": {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
@@ -186,11 +187,13 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
 		offercodes.Routes(mux, offerStore, store, auth0, time.Now, logger)
 	}
-	if adminStore != nil && offerStore != nil {
+	if adminStore != nil && offerStore != nil && watchZoneStore != nil {
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
 		// cross-partition admin store backs grant/list; the offer-code store backs
-		// generate.
-		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+		// generate; the watch-zone store backs the one-shot location backfill. All
+		// three are Cosmos-gated, so the added guard never disables admin in a real
+		// deployment (Cosmos configures every store together).
+		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), watchZoneStore, time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

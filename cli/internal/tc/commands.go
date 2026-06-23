@@ -40,6 +40,15 @@ type listUsersItem struct {
 	Tier   string  `json:"tier"`
 }
 
+// backfillWatchZoneLocationResponse is the POST
+// /v1/admin/watchzones/backfill-location response body: how many documents were
+// scanned, rewritten with a derived GeoJSON location, and already had one.
+type backfillWatchZoneLocationResponse struct {
+	Total      int `json:"total"`
+	Backfilled int `json:"backfilled"`
+	AlreadyHad int `json:"alreadyHad"`
+}
+
 // parseStrictInt parses s as a non-negative base-10 integer, accepting only
 // ASCII digits. It rejects signs, whitespace, and decimals. Overflow is
 // reported as invalid.

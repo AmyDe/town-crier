@@ -175,12 +175,26 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 // findZonesContainingQuery selects every watch zone scoped to the candidate
 // application's authority whose circle (centre + radius) contains the candidate
 // point, across all partitions. The authority equality predicate is evaluated by
-// Cosmos's default range index, pruning rows before the unindexed ST_DISTANCE
-// test runs — a WatchZone is authority-scoped (see zone.go), so a zone only ever
-// matches applications in its own authority, mirroring the saved-bookmark path's
+// Cosmos's default range index, pruning rows before the ST_DISTANCE test runs —
+// a WatchZone is authority-scoped (see zone.go), so a zone only ever matches
+// applications in its own authority, mirroring the saved-bookmark path's
 // app.AreaID scoping (notifydispatch/decision.go). The candidate authority and
-// point are bound as parameters; the zone centre is read from each document's
-// latitude/longitude columns.
+// point are bound as parameters.
+//
+// The distance test is a hybrid of two clauses, ORed inside the authority filter:
+//   - Primary: ST_DISTANCE(c.location, @point) is served by the spatial index on
+//     the persisted GeoJSON /location path (tc-quqe), so the common (backfilled)
+//     case is index-accelerated rather than a full scan.
+//   - Fallback: any zone written before the location backfill (tc-xj48) has no
+//     c.location field, so the index-served clause cannot match it. The NOT
+//     IS_DEFINED(c.location) guard restores those legacy zones via the inline
+//     [c.longitude, c.latitude] point, computed from the document's latitude /
+//     longitude columns. The guard means the two clauses are mutually exclusive
+//     (a doc either has c.location or it doesn't), so nothing double-counts and
+//     the switch is correct regardless of backfill state — mirroring the
+//     dormant-sweep NOT IS_DEFINED guard (profiles/admin_store.go dormantQuery).
+//
+// All coordinates are GeoJSON order: [longitude, latitude], not [lat, lng].
 //
 // The projection is deliberate, not SELECT *: only the columns this hot path
 // needs are hydrated. id/userId/createdAt are consumed by the callers;
@@ -188,12 +202,15 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 // the hydrated zone stays valid; pushEnabled/emailInstantEnabled are projected
 // (not dropped) because they are nullable *bool that coalesce to true when
 // absent, so omitting them would silently re-enable a user's disabled
-// notifications if a future caller read them. latitude/longitude are omitted —
-// no caller reads zone coordinates after the match.
+// notifications if a future caller read them. latitude/longitude are omitted from
+// the projection — no caller reads zone coordinates after the match (the fallback
+// clause reads them server-side during the distance test, not in the result).
 const findZonesContainingQuery = "SELECT c.id, c.userId, c.name, c.radiusMetres, c.authorityId, c.createdAt, c.pushEnabled, c.emailInstantEnabled " +
-	"FROM c WHERE c.authorityId = @authorityId AND ST_DISTANCE(" +
+	"FROM c WHERE c.authorityId = @authorityId AND (" +
+	"ST_DISTANCE(c.location, {'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres " +
+	"OR (NOT IS_DEFINED(c.location) AND ST_DISTANCE(" +
 	"{'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
-	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
+	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres))"
 
 // FindZonesContaining returns every watch zone (across all users) scoped to the
 // given authority whose circle contains the point (latitude, longitude), via a

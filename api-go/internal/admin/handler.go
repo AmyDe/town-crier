@@ -41,22 +41,24 @@ type codeGenerator interface {
 }
 
 type handler struct {
-	profiles  profileAdminStore
-	auth0     tierSync
-	codes     offerCodeStore
-	generator codeGenerator
-	now       func() time.Time
-	logger    *slog.Logger
+	profiles   profileAdminStore
+	auth0      tierSync
+	codes      offerCodeStore
+	generator  codeGenerator
+	watchZones watchZoneBackfiller
+	now        func() time.Time
+	logger     *slog.Logger
 }
 
 // Routes registers the admin endpoints on mux, each gated by the shared admin
 // key. The routes are anonymous to Auth0 (the caller carries no bearer token),
 // so the key gate is their only authentication.
-func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore, auth0 tierSync, codes offerCodeStore, generator codeGenerator, now func() time.Time, logger *slog.Logger) {
-	h := &handler{profiles: profileStore, auth0: auth0, codes: codes, generator: generator, now: now, logger: logger}
+func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore, auth0 tierSync, codes offerCodeStore, generator codeGenerator, watchZones watchZoneBackfiller, now func() time.Time, logger *slog.Logger) {
+	h := &handler{profiles: profileStore, auth0: auth0, codes: codes, generator: generator, watchZones: watchZones, now: now, logger: logger}
 	mux.HandleFunc("PUT /v1/admin/subscriptions", requireAdminKey(adminKey, h.grantSubscription))
 	mux.HandleFunc("GET /v1/admin/users", requireAdminKey(adminKey, h.listUsers))
 	mux.HandleFunc("POST /v1/admin/offer-codes", requireAdminKey(adminKey, h.generateOfferCodes))
+	mux.HandleFunc("POST /v1/admin/watchzones/backfill-location", requireAdminKey(adminKey, h.backfillWatchZoneLocation))
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {

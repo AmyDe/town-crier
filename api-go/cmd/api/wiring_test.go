@@ -452,7 +452,11 @@ func TestRouter_AdminGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := offercodes.NewCosmosStore(newFakeItems())
 	adminStore := profiles.NewAdminStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
+	// The admin block now also requires the watch-zone store (it backs the
+	// location-backfill endpoint), so supply one — all admin stores are Cosmos-gated
+	// together in a real deployment.
+	watchZoneStore := watchzones.NewCosmosStore(newFakeItems())
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).

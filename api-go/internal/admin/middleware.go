@@ -1,7 +1,8 @@
 // Package admin owns the admin surface: the X-Admin-Key gate and the
 // PUT /v1/admin/subscriptions, GET /v1/admin/users, POST /v1/admin/offer-codes
-// handlers. The admin routes are anonymous to Auth0 (absent from the
-// fallback-deny set) and authenticated solely by the shared admin key.
+// and POST /v1/admin/watchzones/backfill-location handlers. The admin routes are
+// anonymous to Auth0 (absent from the fallback-deny set) and authenticated
+// solely by the shared admin key.
 package admin
 
 import (
