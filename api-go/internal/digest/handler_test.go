@@ -320,6 +320,37 @@ func TestRunWeekly_ProTierGetsPushWithBadgeAndPrunesInvalidTokens(t *testing.T) 
 	}
 }
 
+func TestRunWeekly_ExpiredProTierGetsNoPush(t *testing.T) {
+	t.Parallel()
+	// A Pro tier whose subscription has lapsed (past expiry, no grace) reads as
+	// Free: the weekly digest PUSH is Pro-only, so no push fires even though push
+	// is enabled and there are notifications.
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = false
+	prefs.PushEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // before the harness clock (2026-02-04)
+	p.SubscriptionExpiry = &past
+
+	fp := &fakeProfiles{byDay: map[time.Weekday][]*profiles.UserProfile{time.Wednesday: {p}}}
+	fn := &fakeNotifications{sinceByUser: map[string][]notifications.DigestNotification{
+		"user-1": {zoneNotif("uid-A", "zone-1")},
+	}}
+	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
+		"user-1": {{UserID: "user-1", Token: "tok-1", Platform: devicetokens.PlatformIos}},
+	}}
+	email := &spyEmail{}
+	push := &spyPush{}
+	h := newHandler(fp, fn, &fakeZones{}, &fakeState{}, devices, email, push)
+
+	if err := h.RunWeekly(context.Background()); err != nil {
+		t.Fatalf("RunWeekly: %v", err)
+	}
+	if push.calls != 0 {
+		t.Errorf("lapsed Pro tier must NOT get a digest push: got %d push calls", push.calls)
+	}
+}
+
 func TestRunWeekly_SkipsUsersWithNoNotifications(t *testing.T) {
 	t.Parallel()
 	prefs := profiles.DefaultPreferences()
@@ -437,6 +468,38 @@ func TestRunHourly_FreeTierSkipped(t *testing.T) {
 	}
 	if len(fn.marked) != 0 {
 		t.Errorf("free tier skip must not mark anything sent: got %v", fn.marked)
+	}
+}
+
+func TestRunHourly_ExpiredPaidTierSkipped(t *testing.T) {
+	t.Parallel()
+	// A paid tier whose subscription has lapsed (past expiry, no grace) reads as
+	// Free, so it has no HourlyDigestEmails entitlement — hourly is paid-only.
+	prefs := profiles.DefaultPreferences()
+	prefs.EmailDigestEnabled = true
+	p := mkProfile(t, profiles.TierPro, prefs)
+	past := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // before the harness clock (2026-02-04)
+	p.SubscriptionExpiry = &past
+
+	fp := &fakeProfiles{byID: map[string]*profiles.UserProfile{"user-1": p}}
+	fn := &fakeNotifications{
+		unsentUserIDs: []string{"user-1"},
+		unsentByUser:  map[string][]notifications.DigestNotification{"user-1": {zoneNotif("uid-A", "zone-1")}},
+	}
+	fz := &fakeZones{byUser: map[string][]watchzones.WatchZone{
+		"user-1": {mkZone(t, "zone-1", "Home", true)},
+	}}
+	email := &spyEmail{}
+	h := newHandler(fp, fn, fz, &fakeState{}, &fakeDevices{}, email, &spyPush{})
+
+	if err := h.RunHourly(context.Background()); err != nil {
+		t.Fatalf("RunHourly: %v", err)
+	}
+	if len(email.sent) != 0 {
+		t.Errorf("lapsed paid tier must NOT get an hourly email: got %d", len(email.sent))
+	}
+	if len(fn.marked) != 0 {
+		t.Errorf("lapsed paid tier skip must not mark anything sent: got %v", fn.marked)
 	}
 }
 
