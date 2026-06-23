@@ -36,7 +36,7 @@ func TestHandler_GetZonePreferences_DefaultsForNewZone(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	seededProfile(t, store)
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.getZonePreferences(rec, withZonePath(http.MethodGet, prefsUser, ""))
@@ -66,7 +66,7 @@ func TestHandler_GetZonePreferences_ReflectsStored(t *testing.T) {
 	store := newFakeStore()
 	p := seededProfile(t, store)
 	p.SetZonePreferences("z1", ZonePreferences{NewApplicationPush: false, NewApplicationEmail: true, DecisionPush: false, DecisionEmail: true})
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	rec := httptest.NewRecorder()
 	h.getZonePreferences(rec, withZonePath(http.MethodGet, prefsUser, ""))
@@ -85,7 +85,7 @@ func TestHandler_GetZonePreferences_ReflectsStored(t *testing.T) {
 
 func TestHandler_GetZonePreferences_ProfileNotFound(t *testing.T) {
 	t.Parallel()
-	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
+	h := newTestHandler(newFakeStore(), newFakeAuth0())
 	rec := httptest.NewRecorder()
 	h.getZonePreferences(rec, withZonePath(http.MethodGet, "auth0|missing", ""))
 	if rec.Code != http.StatusNotFound {
@@ -100,7 +100,7 @@ func TestHandler_PutZonePreferences_PersistsAndReturns(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	seededProfile(t, store)
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	body := `{"newApplicationPush":false,"newApplicationEmail":true,"decisionPush":false,"decisionEmail":true}`
 	rec := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestHandler_PutZonePreferences_MissingFieldsDefaultFalse(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	seededProfile(t, store)
-	h := newTestHandler(store, newFakeAuth0(), "")
+	h := newTestHandler(store, newFakeAuth0())
 
 	// Only one field present; the rest default to false (JSON zero-value
 	// decoding for non-nullable bool fields).
@@ -153,7 +153,7 @@ func TestHandler_PutZonePreferences_MissingFieldsDefaultFalse(t *testing.T) {
 
 func TestHandler_PutZonePreferences_ProfileNotFound(t *testing.T) {
 	t.Parallel()
-	h := newTestHandler(newFakeStore(), newFakeAuth0(), "")
+	h := newTestHandler(newFakeStore(), newFakeAuth0())
 	rec := httptest.NewRecorder()
 	h.putZonePreferences(rec, withZonePath(http.MethodPut, "auth0|missing", `{"decisionPush":true}`))
 	if rec.Code != http.StatusNotFound {

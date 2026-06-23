@@ -135,7 +135,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	adminAPIKey := conf.RequireSecret("adminApiKey")
 	// Build key the Go endpoint validates for the gated SEO prerender route (tc-nnte).
 	siteBuildKey := conf.RequireSecret("siteBuildKey")
-	autoGrantProDomains := conf.RequireSecret("autoGrantProDomains")
 	auth0M2mClientID := conf.RequireSecret("auth0M2mClientId")
 	auth0M2mClientSecret := conf.RequireSecret("auth0M2mClientSecret")
 
@@ -364,7 +363,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		Secrets: app.SecretArray{
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
 			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
-			&app.SecretArgs{Name: pulumi.String("auto-grant-pro-domains"), Value: autoGrantProDomains},
 			// Admin key the Go X-Admin-Key gate validates for /v1/admin requests (tc-52t6).
 			&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
 			// Build key the Go gate validates for the SEO prerender endpoint (tc-nnte).
@@ -414,7 +412,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 						app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
 						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
 						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
-						app.EnvironmentVarArgs{Name: pulumi.String("SUBSCRIPTION_AUTOGRANT_PRODOMAINS"), SecretRef: pulumi.String("auto-grant-pro-domains")},
 						app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
 						app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
 					},
