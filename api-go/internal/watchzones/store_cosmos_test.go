@@ -299,7 +299,7 @@ func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T
 	items.crossPartitionResult = [][]byte{mustDocBytes(t, z)}
 	store := NewCosmosStore(items)
 
-	zones, err := store.FindZonesContaining(context.Background(), 51.5155, -0.0931)
+	zones, err := store.FindZonesContaining(context.Background(), z.AuthorityID, 51.5155, -0.0931)
 	if err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
@@ -319,10 +319,95 @@ func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T
 	}
 }
 
+func TestCosmosStore_FindZonesContaining_FiltersByAuthorityBeforeDistance(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	// An application in authority 99 must match ONLY zones scoped to authority 99.
+	// The store sends Cosmos an equality predicate on c.authorityId bound to the
+	// application's authority alongside the ST_DISTANCE test, so a zone scoped to a
+	// different authority is never returned even when the application falls
+	// geographically within the zone's radius. This is the documented
+	// authority-scoped zone model (zone.go) and mirrors the saved-bookmark path's
+	// existing app.AreaID scoping. Cosmos evaluates the predicate; this test locks
+	// that the predicate is present and bound to the passed authority.
+	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	if !strings.Contains(items.lastQuery, "c.authorityId = @authorityId") {
+		t.Errorf("query must filter on c.authorityId = @authorityId: %q", items.lastQuery)
+	}
+	if items.lastParams["@authorityId"] != 99 {
+		t.Errorf("@authorityId param: got %v, want 99", items.lastParams["@authorityId"])
+	}
+	// The authority equality must be ANDed with the distance test, not replace it.
+	if !strings.Contains(items.lastQuery, "ST_DISTANCE") || !strings.Contains(items.lastQuery, "c.radiusMetres") {
+		t.Errorf("query must keep the ST_DISTANCE radius test alongside the authority filter: %q", items.lastQuery)
+	}
+}
+
+func TestCosmosStore_FindZonesContaining_ProjectsNeededFieldsNotSelectStar(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	// SELECT * hydrates whole docs on every cross-partition fan-out row. The query
+	// instead projects only the columns this path needs: id/userId/createdAt are
+	// consumed by the callers; name/radiusMetres/authorityId are required by the
+	// NewWatchZone constructor so the hydrated zone stays valid; pushEnabled and
+	// emailInstantEnabled are KEPT (not dropped) because they are nullable *bool
+	// that coalesce to true when absent — projecting them away would silently
+	// re-enable a user's disabled notifications if a future caller read them.
+	// latitude/longitude are dropped: no caller reads zone coordinates after the
+	// match (the distance test already ran server-side).
+	if strings.Contains(items.lastQuery, "SELECT *") {
+		t.Errorf("query must not SELECT * on the poll hot path: %q", items.lastQuery)
+	}
+	for _, field := range []string{"c.id", "c.userId", "c.name", "c.radiusMetres", "c.authorityId", "c.createdAt", "c.pushEnabled", "c.emailInstantEnabled"} {
+		if !strings.Contains(items.lastQuery, field) {
+			t.Errorf("projection missing %q: %q", field, items.lastQuery)
+		}
+	}
+}
+
+func TestCosmosStore_FindZonesContaining_HydratesProjectedDocument(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	// A projected row carries no latitude/longitude (those columns are dropped from
+	// the projection). The store must still hydrate it: coordinates coalesce to the
+	// zero value (unused post-match) while the validated fields and the consumed
+	// fields (id, userId, createdAt) survive intact, and the stored push/email
+	// flags are preserved rather than coalescing to true.
+	items.crossPartitionResult = [][]byte{[]byte(`{"id":"zone-9","userId":"auth0|carol","name":"Z","radiusMetres":500,"authorityId":99,"createdAt":"2026-06-01T09:00:00+00:00","pushEnabled":false,"emailInstantEnabled":false}`)}
+	store := NewCosmosStore(items)
+
+	zones, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1)
+	if err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	if len(zones) != 1 {
+		t.Fatalf("zones: got %d, want 1", len(zones))
+	}
+	got := zones[0]
+	if got.ID != "zone-9" || got.UserID != "auth0|carol" {
+		t.Errorf("identity: got id=%q user=%q", got.ID, got.UserID)
+	}
+	if got.CreatedAt.IsZero() {
+		t.Error("createdAt must hydrate from the projection, got zero")
+	}
+	if got.PushEnabled || got.EmailInstantEnabled {
+		t.Errorf("stored-false flags must survive the projection: push=%v email=%v", got.PushEnabled, got.EmailInstantEnabled)
+	}
+}
+
 func TestCosmosStore_FindZonesContaining_EmptyResultIsEmptySlice(t *testing.T) {
 	t.Parallel()
 	store := NewCosmosStore(newFakeItems())
-	zones, err := store.FindZonesContaining(context.Background(), 51.5, -0.1)
+	zones, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1)
 	if err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
