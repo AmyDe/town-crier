@@ -204,6 +204,23 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 	}
 }
 
+func TestEnqueuer_EnqueueForApplication_PassesApplicationAuthorityToZoneMatcher(t *testing.T) {
+	t.Parallel()
+	// The new-application zone fan-out must scope to the polled application's
+	// authority: a WatchZone is authority-scoped, so the matcher is asked only for
+	// zones in the application's authority (app.AreaID), mirroring the
+	// saved-bookmark path's existing app.AreaID scoping.
+	enq, _, _, fz := newEnqueuerHarnessWithZones(t, profiles.TierPro, &fakeZones{})
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if fz.lastAuthorityID != app.AreaID {
+		t.Errorf("zone matcher authority: got %d, want %d (app.AreaID)", fz.lastAuthorityID, app.AreaID)
+	}
+}
+
 func TestEnqueuer_EnqueueForApplication_OneUserTwoZonesDedupsToOneRecord(t *testing.T) {
 	t.Parallel()
 	// A single user with two containing zones must still get ONE NewApplication

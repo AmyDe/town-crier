@@ -14,13 +14,15 @@ import (
 
 // fakeZones serves the cross-partition zone-containment lookup.
 type fakeZones struct {
-	zones    []watchzones.WatchZone
-	queryErr error
-	lastLat  float64
-	lastLng  float64
+	zones           []watchzones.WatchZone
+	queryErr        error
+	lastAuthorityID int
+	lastLat         float64
+	lastLng         float64
 }
 
-func (f *fakeZones) FindZonesContaining(_ context.Context, lat, lng float64) ([]watchzones.WatchZone, error) {
+func (f *fakeZones) FindZonesContaining(_ context.Context, authorityID int, lat, lng float64) ([]watchzones.WatchZone, error) {
+	f.lastAuthorityID = authorityID
 	f.lastLat = lat
 	f.lastLng = lng
 	if f.queryErr != nil {
@@ -125,6 +127,24 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.
 	}
 	if push.calls != 1 {
 		t.Errorf("paid tier with decision push opted in should push, got %d", push.calls)
+	}
+}
+
+func TestDecisionDispatcher_Dispatch_PassesApplicationAuthorityToZoneMatcher(t *testing.T) {
+	t.Parallel()
+	// The decision zone fan-out must scope to the polled application's authority,
+	// matching the saved-bookmark path's existing app.AreaID scoping. No zones or
+	// saved holders are configured, so this isolates the authority threading.
+	zones := &fakeZones{}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{}}
+	d, _, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+
+	if err := d.Dispatch(context.Background(), app); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if zones.lastAuthorityID != app.AreaID {
+		t.Errorf("zone matcher authority: got %d, want %d (app.AreaID)", zones.lastAuthorityID, app.AreaID)
 	}
 }
 
