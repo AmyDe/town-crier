@@ -172,24 +172,42 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 	return ids, nil
 }
 
-// findZonesContainingQuery selects every watch zone whose circle (centre +
-// radius) contains the candidate point, across all partitions. The candidate
-// point is bound as parameters; the zone centre is read from each document's
+// findZonesContainingQuery selects every watch zone scoped to the candidate
+// application's authority whose circle (centre + radius) contains the candidate
+// point, across all partitions. The authority equality predicate is evaluated by
+// Cosmos's default range index, pruning rows before the unindexed ST_DISTANCE
+// test runs — a WatchZone is authority-scoped (see zone.go), so a zone only ever
+// matches applications in its own authority, mirroring the saved-bookmark path's
+// app.AreaID scoping (notifydispatch/decision.go). The candidate authority and
+// point are bound as parameters; the zone centre is read from each document's
 // latitude/longitude columns.
-const findZonesContainingQuery = "SELECT * FROM c WHERE ST_DISTANCE(" +
+//
+// The projection is deliberate, not SELECT *: only the columns this hot path
+// needs are hydrated. id/userId/createdAt are consumed by the callers;
+// name/radiusMetres/authorityId are required by the NewWatchZone constructor so
+// the hydrated zone stays valid; pushEnabled/emailInstantEnabled are projected
+// (not dropped) because they are nullable *bool that coalesce to true when
+// absent, so omitting them would silently re-enable a user's disabled
+// notifications if a future caller read them. latitude/longitude are omitted —
+// no caller reads zone coordinates after the match.
+const findZonesContainingQuery = "SELECT c.id, c.userId, c.name, c.radiusMetres, c.authorityId, c.createdAt, c.pushEnabled, c.emailInstantEnabled " +
+	"FROM c WHERE c.authorityId = @authorityId AND ST_DISTANCE(" +
 	"{'type': 'Point', 'coordinates': [c.longitude, c.latitude]}, " +
 	"{'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
 
-// FindZonesContaining returns every watch zone (across all users) whose circle
-// contains the point (latitude, longitude), via a cross-partition ST_DISTANCE
-// query against each zone's centre and radius. It backs the poll-path
-// notification fan-out and decision-event dispatch (epic tc-wad3, bead tc-uc2p).
-// This is a deliberate cross-partition scan — a polled application's coordinates
-// must be matched against every user's zones.
-func (s *CosmosStore) FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error) {
+// FindZonesContaining returns every watch zone (across all users) scoped to the
+// given authority whose circle contains the point (latitude, longitude), via a
+// cross-partition query that pre-filters on the authority (index-served) before
+// the ST_DISTANCE test against each zone's centre and radius. It backs the
+// poll-path notification fan-out and decision-event dispatch (epic tc-wad3, bead
+// tc-uc2p); authorityID is the polled application's authority (app.AreaID). This
+// is a deliberate cross-partition scan — a polled application's coordinates must
+// be matched against every user's zones in that authority.
+func (s *CosmosStore) FindZonesContaining(ctx context.Context, authorityID int, latitude, longitude float64) ([]WatchZone, error) {
 	raws, err := s.items.QueryItemsCrossPartition(ctx, findZonesContainingQuery, map[string]any{
-		"@latitude":  latitude,
-		"@longitude": longitude,
+		"@authorityId": authorityID,
+		"@latitude":    latitude,
+		"@longitude":   longitude,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("find zones containing point: %w", err)
