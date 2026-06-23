@@ -32,6 +32,13 @@ const digestBudget = 10 * time.Minute
 // flushes telemetry.
 const dormantBudget = 10 * time.Minute
 
+// sweepBudget is the soft self-cancel for a single subscription-sweep run. The
+// cycle scans all profiles cross-partition then downgrades the (small) lapsed-paid
+// set with a Cosmos upsert and an Auth0 PATCH each; 10 minutes is generous while
+// still bounded well under the Container Apps replicaTimeout so the process exits
+// cleanly and flushes telemetry.
+const sweepBudget = 10 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -90,11 +97,11 @@ type PollOrchestrator interface {
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
 // code.
 //
-// poll-bootstrap, digest, hourly-digest, and dormant-cleanup are implemented;
-// poll-sb remains a loud stub that exits 1 until its own bead (tc-yng2) lands.
-// The Go worker image is not deployed to any job until the final cutover bead, so
-// a stub can never run in production. An unset or unknown mode is a deployment
-// accident and also fails fast.
+// poll-bootstrap, digest, hourly-digest, dormant-cleanup, and subscription-sweep
+// are implemented; poll-sb remains a loud stub that exits 1 until its own bead
+// (tc-yng2) lands. The Go worker image is not deployed to any job until the final
+// cutover bead, so a stub can never run in production. An unset or unknown mode is
+// a deployment accident and also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
 // then refuses to run rather than nil-panicking. Likewise digester / dormant may
@@ -119,6 +126,9 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 
 	case "dormant-cleanup":
 		return runDormant(ctx, dormant, logger)
+
+	case "subscription-sweep":
+		return runSweep(ctx, sweeper, logger)
 
 	case "poll-sb":
 		return runPollSB(ctx, poller, logger)
@@ -233,6 +243,35 @@ func runDormant(ctx context.Context, runner DormantRunner, logger *slog.Logger) 
 		return 1
 	}
 	span.SetAttributes(attribute.Int("dormant_cleanup.deleted_count", deleted))
+	return 0
+}
+
+// runSweep executes one subscription-sweep cycle under a soft self-cancel budget,
+// inside a telemetry span named "Subscription Sweep Cycle". It records the number
+// of downgraded profiles as the subscription_sweep.downgraded_count tag. A nil
+// runner (job missing Cosmos config) is an exit-1 condition; a cycle error is
+// recorded on the span and also exits 1 so the job surfaces the failure.
+func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Subscription Sweep Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "subscription-sweep requires Cosmos config (COSMOS_ENDPOINT et al.); refusing to run")
+		return 1
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, sweepBudget)
+	defer cancel()
+
+	downgraded, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "subscription sweep cycle failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(attribute.Int("subscription_sweep.downgraded_count", downgraded))
 	return 0
 }
 

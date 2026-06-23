@@ -2,10 +2,10 @@
 // Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
-// poll-bootstrap, digest, hourly-digest, and dormant-cleanup are implemented;
-// poll-sb remains a loud stub that exits 1 until its own bead (tc-yng2) lands.
-// The Go image is not deployed to any job until the final cutover, so a stub can
-// never strand a real job.
+// poll-bootstrap, digest, hourly-digest, dormant-cleanup, and subscription-sweep
+// are implemented; poll-sb remains a loud stub that exits 1 until its own bead
+// (tc-yng2) lands. The Go image is not deployed to any job until the final
+// cutover, so a stub can never strand a real job.
 package main
 
 import (
@@ -38,6 +38,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/servicebus"
+	"github.com/AmyDe/town-crier/api-go/internal/subscriptionsweep"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"github.com/AmyDe/town-crier/api-go/internal/worker"
 	"go.opentelemetry.io/otel"
@@ -170,7 +171,23 @@ func run() int {
 		poller = pollAdapter
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, nil, logger)
+	// The subscription-sweep handler is built only when the job carries Cosmos
+	// config. Like dormantRunner it is declared as the interface so the "no Cosmos"
+	// case leaves it a genuinely nil interface value (a typed-nil
+	// *subscriptionsweep.Handler would defeat worker.Run's nil guard). The Auth0
+	// syncer falls back to a no-op when the M2M credentials are absent, so a
+	// Cosmos-only job still boots cleanly.
+	var sweepRunner worker.SweepRunner
+	sweepHandler, err := buildSweep(cfg, registry, logger)
+	if err != nil {
+		logger.Error("build subscription sweep handler", "error", err)
+		return 1
+	}
+	if sweepHandler != nil {
+		sweepRunner = sweepHandler
+	}
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
@@ -590,6 +607,57 @@ func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0De
 		return profiles.NoOpAuth0Client{}
 	}
 	// Wrap the transport so Auth0 token/DELETE calls emit OTel client spans
+	// (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands in
+	// server.address.
+	auth0HTTP := platform.WrapHTTPClient(
+		&http.Client{Timeout: 30 * time.Second},
+		func(string, *http.Request) string { return "Auth0 token" },
+	)
+	return profiles.NewAuth0Client(
+		auth0HTTP,
+		"https://"+cfg.Auth0Domain,
+		cfg.Auth0M2MClientID,
+		cfg.Auth0M2MClientSecret,
+	)
+}
+
+// buildSweep constructs the subscription-sweep handler when Cosmos is configured,
+// wiring the lapsed-paid finder and profile saver (both the AdminStore over the
+// Users container) and the Auth0 M2M syncer (real when its credentials are
+// present, NoOp otherwise so a job without Auth0 M2M config still reverts the
+// stored Cosmos tier). It returns (nil, nil) when Cosmos is unconfigured — the
+// subscription-sweep mode then refuses to run rather than nil-panicking.
+// Returning the concrete *subscriptionsweep.Handler lets worker.Run accept it via
+// its exported SweepRunner interface.
+func buildSweep(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*subscriptionsweep.Handler, error) {
+	if cfg.CosmosEndpoint == "" {
+		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no sweep handler" state, not an error
+	}
+
+	users, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
+	if err != nil {
+		return nil, err
+	}
+	users.WithMetrics(registry)
+
+	// The AdminStore satisfies both the sweep's Finder (LapsedPaid) and Saver
+	// (Save) — the lapsed scan and the downgrade upsert both span / key on the
+	// Users container, so one store serves both roles.
+	store := profiles.NewAdminStore(users)
+	return subscriptionsweep.New(store, store, buildAuth0Syncer(cfg, logger), logger, time.Now), nil
+}
+
+// buildAuth0Syncer returns the real Auth0 Management (M2M) client when the M2M
+// credentials are configured, else a no-op so a job without Auth0 M2M config still
+// reverts the stored Cosmos tier. The read path (EffectiveTier) already treats a
+// lapsed user as Free everywhere, so the Auth0 subscription_tier metadata the
+// sweep keeps in step is informational, not load-bearing.
+func buildAuth0Syncer(cfg platform.Config, logger *slog.Logger) subscriptionsweep.Auth0Syncer {
+	if !cfg.Auth0M2MConfigured() {
+		logger.Info("auth0 m2m unconfigured; subscription sweep will skip Auth0 tier sync (NoOp)")
+		return profiles.NoOpAuth0Client{}
+	}
+	// Wrap the transport so Auth0 token/PATCH calls emit OTel client spans
 	// (Type=HTTP in AppDependencies) named "Auth0 token"; the host lands in
 	// server.address.
 	auth0HTTP := platform.WrapHTTPClient(
