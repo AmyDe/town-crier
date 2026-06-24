@@ -21,9 +21,18 @@ struct LargeRadiusWarningTests {
 
   @Test func warningIsShown_atThreshold_inEditor() {
     let vm = makeEditorViewModel()
-    vm.selectedRadiusMetres = 2000
+    vm.selectedRadiusMetres = 2100
 
     #expect(vm.showsLargeRadiusWarning == true)
+  }
+
+  @Test func warningIsHidden_atFreeTierMaxRadius_inEditor() {
+    // The free tier caps the radius at 2 km. The threshold sits just above that
+    // cap so a free user pinned at their maximum never sees the warning (tc-3ygm).
+    let vm = makeEditorViewModel(tier: .free)
+    vm.selectedRadiusMetres = 2000
+
+    #expect(vm.showsLargeRadiusWarning == false)
   }
 
   @Test func warningIsShown_aboveThreshold_inEditor() {
@@ -50,9 +59,18 @@ struct LargeRadiusWarningTests {
 
   @Test func warningIsShown_atThreshold_inOnboarding() {
     let vm = makeOnboardingViewModel()
-    vm.selectedRadiusMetres = 2000
+    vm.selectedRadiusMetres = 2100
 
     #expect(vm.showsLargeRadiusWarning == true)
+  }
+
+  @Test func warningIsHidden_atFreeTierMaxRadius_inOnboarding() {
+    // Onboarding defaults to the free tier, whose slider caps at 2 km — so a free
+    // user pinned at their maximum never sees the warning (tc-3ygm).
+    let vm = makeOnboardingViewModel()
+    vm.selectedRadiusMetres = 2000
+
+    #expect(vm.showsLargeRadiusWarning == false)
   }
 
   @Test func warningIsShown_atLargestOnboardingOption_inOnboarding() {

@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// Threshold (in metres) at or above which `LargeRadiusWarningView` is shown.
-/// The bead (tc-1zb7) recommends "100–500 m in cities, under 2 km elsewhere",
-/// so any selection at or above 2 km warrants the heads-up.
+/// The bead (tc-1zb7) recommends "100–500 m in cities, under 2 km elsewhere".
+/// Set just above the free tier's 2 km radius cap (see ``WatchZoneLimits``) so a
+/// free user pinned at their maximum never trips the warning — only paid tiers,
+/// which can exceed 2 km, see it (tc-3ygm).
 public enum LargeRadiusWarning {
-  public static let thresholdMetres: Double = 2000
+  public static let thresholdMetres: Double = 2100
 }
 
 /// Callout warning that a watch zone with a large radius may generate a high
