@@ -32,9 +32,8 @@ struct PushNudgeViewModelTests {
     let openSettings = OpenSettingsSpy()
     let sut = PushNudgeViewModel(
       tier: tier,
-      notificationService: notificationSpy,
-      onOpenSettings: { openSettings.record() }
-    )
+      notificationService: notificationSpy
+    ) { openSettings.record() }
     return (sut, notificationSpy, openSettings)
   }
 
@@ -49,7 +48,10 @@ struct PushNudgeViewModelTests {
   @Test(
     "isVisible matrix: paid + unauthorized shows; authorized or free hides",
     arguments: [
-      (tier: SubscriptionTier.personal, status: NotificationAuthorizationStatus.notDetermined, expected: true),
+      (
+        tier: SubscriptionTier.personal, status: NotificationAuthorizationStatus.notDetermined,
+        expected: true
+      ),
       (tier: .personal, status: .denied, expected: true),
       (tier: .personal, status: .authorized, expected: false),
       (tier: .pro, status: .notDetermined, expected: true),

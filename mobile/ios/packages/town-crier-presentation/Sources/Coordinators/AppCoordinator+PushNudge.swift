@@ -13,10 +13,9 @@ extension AppCoordinator {
   public func makePushNudgeViewModel() -> PushNudgeViewModel {
     PushNudgeViewModel(
       tier: subscriptionTier,
-      notificationService: notificationService,
-      onOpenSettings: { [weak self] in
-        self?.showSystemNotificationSettings()
-      }
-    )
+      notificationService: notificationService
+    ) { [weak self] in
+      self?.showSystemNotificationSettings()
+    }
   }
 }
