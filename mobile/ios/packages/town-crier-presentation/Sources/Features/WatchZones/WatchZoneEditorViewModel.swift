@@ -107,8 +107,8 @@ public final class WatchZoneEditorViewModel: ObservableObject, EntitlementGating
   }
 
   /// Whether to surface the "this zone may produce lots of notifications" callout
-  /// (tc-1zb7). Triggered at or above 2 km, the upper edge of the recommended
-  /// "small zone" range — see `LargeRadiusWarningView`.
+  /// (tc-1zb7). Triggered just above the free tier's 2 km cap so only paid tiers
+  /// see it — see `LargeRadiusWarningView` for the threshold rationale.
   public var showsLargeRadiusWarning: Bool {
     selectedRadiusMetres >= LargeRadiusWarning.thresholdMetres
   }
