@@ -233,9 +233,17 @@ struct TownCrierApp: App {
     TabView(selection: $coordinator.selectedTab) {
       // 1. Applications
       NavigationStack {
-        ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
-          .id(coordinator.subscriptionTier)
-          .settingsToolbar { coordinator.showSettings() }
+        VStack(spacing: 0) {
+          // Paid-user push-permission nudge (issue #624, Prong 2). Hidden
+          // unless the user is on a paid tier and notifications are not
+          // authorized. The `.id` is hoisted onto the VStack so both the
+          // banner and the list rebuild when the resolved tier changes (e.g.
+          // straight after a purchase).
+          PushNudgeBanner(viewModel: coordinator.makePushNudgeViewModel())
+          ApplicationListView(viewModel: coordinator.makeApplicationListViewModel())
+        }
+        .id(coordinator.subscriptionTier)
+        .settingsToolbar { coordinator.showSettings() }
       }
       .tabItem {
         Label("Applications", systemImage: "doc.text.magnifyingglass")

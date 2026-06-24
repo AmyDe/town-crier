@@ -79,6 +79,9 @@ public final class AppCoordinator: ObservableObject {
   var pendingWatermarkAdvance: Task<Void, Never>?
   // Foreground badge sync (tc-1nsa.9).
   var pendingBadgeSync: Task<Void, Never>?
+  // Post-purchase push-permission prompt — fire-and-forget but stored so
+  // tests can await deterministically (issue #624, Prong 1).
+  var pendingPostPurchasePermissionPrompt: Task<Void, Never>?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -276,6 +279,27 @@ public final class AppCoordinator: ObservableObject {
     // unlock the paid range the moment a purchase resolves, without rebuilding
     // the wizard and losing the user's in-progress postcode (tc-w3cb.1/.3).
     onboardingViewModel?.subscriptionTier = result.tier
+
+    // Post-purchase push prompt (issue #624, Prong 1): a freshly upgraded user
+    // is now paying for instant alerts. If they have never been asked
+    // (`.notDetermined`), trigger the system prompt at this peak-intent moment.
+    // The `.notDetermined` gate self-limits this to one prompt — once the user
+    // responds, the status leaves `.notDetermined` and never returns. A
+    // `.denied` user is intentionally NOT re-prompted (iOS cannot re-show the
+    // dialog); Prong 2's home banner deep-links them to iOS Settings instead.
+    // Fired into a stored `Task` so tests can await it deterministically.
+    if result.tier > .free,
+      await notificationService.authorizationStatus() == .notDetermined {
+      pendingPostPurchasePermissionPrompt = Task { [weak self] in
+        _ = try? await self?.notificationService.requestPermission()
+      }
+    }
+  }
+
+  /// Test-only synchronisation: await the most recent post-purchase
+  /// push-permission prompt. Replaces flaky `Task.sleep` waits.
+  public func waitForPendingPostPurchasePrompt() async {
+    await pendingPostPurchasePermissionPrompt?.value
   }
 
   // MARK: - Settings Navigation
