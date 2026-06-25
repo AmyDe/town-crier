@@ -113,20 +113,40 @@ func TestAuthorityMapping_LoadedAndNonEmpty(t *testing.T) {
 func TestAuthorityMapping_CombinedPlanningAuthorities(t *testing.T) {
 	t.Parallel()
 	combined := map[string]int{
-		"Adur":      449, // Adur and Worthing
-		"Worthing":  449, // Adur and Worthing
-		"Maidstone": 508, // Mid Kent
-		"Swale":     508, // Mid Kent
+		"Adur":          449, // Adur and Worthing
+		"Worthing":      449, // Adur and Worthing
+		"Maidstone":     508, // Mid Kent
+		"Swale":         508, // Mid Kent
+		"South Hams":    510, // South West Devon
+		"West Devon":    510, // South West Devon
+		"Babergh":       511, // Babergh Mid Suffolk
+		"Mid Suffolk":   511, // Babergh Mid Suffolk
+		"Bromsgrove":    512, // Bromsgrove Redditch
+		"Redditch":      512, // Bromsgrove Redditch
+		"South Norfolk": 521, // South Norfolk Broadland
+		"Broadland":     521, // South Norfolk Broadland
+		// Unitary reorganisation: the BCP unitary files under its own area (516),
+		// not the empty pre-2019 legacy districts (Bournemouth 28 / Christchurch
+		// 88 / Poole 29, all empty on PlanIt).
+		"Bournemouth, Christchurch and Poole": 516,
 	}
 	for district, want := range combined {
 		if got := authorityMapping[district]; got != want {
 			t.Errorf("%s: got authority %d, want %d (combined planning authority)", district, got, want)
 		}
 	}
-	// Tunbridge Wells shares the Mid Kent support service but still files under
-	// its own area_id (verified: 1073 applications), so it must NOT be remapped
-	// to the combined authority.
-	if got := authorityMapping["Tunbridge Wells"]; got != 149 {
-		t.Errorf("Tunbridge Wells: got %d, want 149 (files standalone, not under Mid Kent 508)", got)
+	// Exceptions: these districts share a combined support service but still file
+	// applications under their OWN area_id (verified populated on PlanIt), so they
+	// must NOT be remapped to the combined authority. Each was confirmed
+	// individually rather than remapped wholesale.
+	standalone := map[string]int{
+		"Tunbridge Wells":      149, // shares Mid Kent (508) but files standalone (1073 apps)
+		"Cambridge":            61,  // shares Greater Cambridge (515) but files standalone (1130 apps)
+		"South Cambridgeshire": 65,  // shares Greater Cambridge (515) but files standalone (1750 apps)
+	}
+	for district, want := range standalone {
+		if got := authorityMapping[district]; got != want {
+			t.Errorf("%s: got %d, want %d (files standalone, must not be remapped to combined)", district, got, want)
+		}
 	}
 }
