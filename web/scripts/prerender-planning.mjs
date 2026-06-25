@@ -378,6 +378,9 @@ async function writePage(outDir, data) {
  * @param {SitemapEntry[]} args.sitemapEntries           parallel { path, lastmod } records
  * @param {Array<{ name: string, reason: string }>} args.excluded
  * @param {Set<string>} args.seenSlugs
+ * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
+ *   published towns keyed by parent authorityId, accumulated by the (earlier)
+ *   town pass; the authority page links down to its own entry (sorted by name).
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
@@ -395,6 +398,7 @@ async function considerAuthority(args) {
     sitemapEntries,
     excluded,
     seenSlugs,
+    townsByAuthority,
     logger,
   } = args;
 
@@ -414,6 +418,11 @@ async function considerAuthority(args) {
   // Authority data already arrives recency-ordered (the bounded read sorts by
   // lastDifferent DESC), so no re-sort here — only the town path needs that.
   const shown = applications.slice(0, limit);
+  // Only this authority's PUBLISHED towns (gated-in by the earlier town pass) are
+  // linked, sorted by display name, so the page never links to a 404.
+  const towns = [...(townsByAuthority?.get(authorityId) ?? [])].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
   await writePage(outDir, {
     slug,
     areaName: areaName || name,
@@ -421,6 +430,7 @@ async function considerAuthority(args) {
     total,
     statusBreakdown,
     applications: shown,
+    towns,
   });
   published.push(slug);
   sitemapEntries.push({ path: slug, lastmod: maxLastmod(shown) });
@@ -502,6 +512,9 @@ async function writeTownPage(outDir, data) {
  * @param {SitemapEntry[]} args.sitemapEntries           parallel { path, lastmod } records
  * @param {Array<{ name: string, reason: string }>} args.excludedTowns
  * @param {Set<string>} args.seenPaths
+ * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
+ *   accumulates each published town under its parent authorityId so the (later)
+ *   authority pass can link down to its town children.
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
@@ -518,6 +531,7 @@ async function considerTown(args) {
     sitemapEntries,
     excludedTowns,
     seenPaths,
+    townsByAuthority,
     logger,
   } = args;
 
@@ -554,6 +568,19 @@ async function considerTown(args) {
   });
   publishedTowns.push(path);
   sitemapEntries.push({ path, lastmod: maxLastmod(shown) });
+  // Record this published town under its parent authority so the authority page
+  // can link down to it. Only reached after the coverage gate + dedup pass, so a
+  // gated-out or duplicate town is never linked.
+  if (townsByAuthority) {
+    const siblings = townsByAuthority.get(town.authorityId);
+    if (siblings) {
+      siblings.push({ name: town.name, slug: town.slug });
+    } else {
+      townsByAuthority.set(town.authorityId, [
+        { name: town.name, slug: town.slug },
+      ]);
+    }
+  }
 }
 
 /**
@@ -568,7 +595,7 @@ async function considerTown(args) {
  * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
- * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }> }>}
+ * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>> }>}
  */
 async function renderTownPages(args) {
   const { outDir, towns, authorities, getGeo, limit, logger } = args;
@@ -580,6 +607,10 @@ async function renderTownPages(args) {
   /** @type {Array<{ name: string, reason: string }>} */
   const excludedTowns = [];
   const seenPaths = new Set();
+  // Published towns keyed by parent authorityId — handed to the authority pass so
+  // each authority page can link down to its own (gated-in) town children.
+  /** @type {Map<number, Array<{ name: string, slug: string }>>} */
+  const townsByAuthority = new Map();
 
   for (const town of towns) {
     const geo = await getGeo(town);
@@ -597,11 +628,12 @@ async function renderTownPages(args) {
       sitemapEntries: townSitemapEntries,
       excludedTowns,
       seenPaths,
+      townsByAuthority,
       logger,
     });
   }
 
-  return { publishedTowns, townSitemapEntries, excludedTowns };
+  return { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority };
 }
 
 /**
@@ -626,6 +658,28 @@ async function renderTownPages(args) {
 async function renderEntries(args) {
   const { outDir, authorityEntries, townEntries, authorities, limit, logger } =
     args;
+
+  // Town pass FIRST: an authority page must link only to towns that actually
+  // published (cleared the coverage gate), so the per-authority town map has to
+  // be built before authority pages render. Both passes are independent; sitemap
+  // order is immaterial. Town entries carry the geo projection inline, so
+  // `getGeo` is a pure lookup — no network. With zero town entries the loop is a
+  // no-op and `authorities` is never consulted.
+  const { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority } =
+    await renderTownPages({
+      outDir,
+      towns: townEntries,
+      authorities,
+      getGeo: async (town) => ({
+        applications: Array.isArray(town.applications) ? town.applications : [],
+        total: town.total,
+        statusBreakdown: Array.isArray(town.statusBreakdown)
+          ? town.statusBreakdown
+          : [],
+      }),
+      limit,
+      logger,
+    });
 
   /** @type {string[]} */
   const published = [];
@@ -656,28 +710,10 @@ async function renderEntries(args) {
       sitemapEntries: authoritySitemapEntries,
       excluded,
       seenSlugs,
+      townsByAuthority,
       logger,
     });
   }
-
-  // Town entries carry the geo projection inline (total/statusBreakdown/
-  // applications), so `getGeo` is a pure lookup — no network. With zero town
-  // entries the loop is a no-op and `authorities` is never consulted.
-  const { publishedTowns, townSitemapEntries, excludedTowns } =
-    await renderTownPages({
-      outDir,
-      towns: townEntries,
-      authorities,
-      getGeo: async (town) => ({
-        applications: Array.isArray(town.applications) ? town.applications : [],
-        total: town.total,
-        statusBreakdown: Array.isArray(town.statusBreakdown)
-          ? town.statusBreakdown
-          : [],
-      }),
-      limit,
-      logger,
-    });
 
   await writeFile(
     join(outDir, 'sitemap.xml'),
@@ -764,6 +800,41 @@ async function runLiveMode(args) {
 
   const authorities = await loadAuthorities();
 
+  // Town pass FIRST: the authority pages link down to their PUBLISHED towns, so
+  // the per-authority town map must be built before authority pages render.
+  // One bounded geo read per town, scoped to its authority partition and
+  // centroid. Reuses the same authority list (no extra HTTP) to resolve slugs.
+  const towns = await loadTowns();
+
+  // Population threshold gate, applied BEFORE the per-town geo fetch so that
+  // below-threshold towns never even hit the API. The threshold is a build-time
+  // config value (SEO_TOWN_MIN_POPULATION, default 20000); ramping coverage means
+  // bumping the variable and rebuilding — no gazetteer regeneration. The ≥10
+  // in-radius coverage gate (inside `considerTown`) still applies on top.
+  /** @type {Town[]} */
+  const eligibleTowns = [];
+  /** @type {Array<{ name: string, reason: string }>} */
+  const populationExcludedTowns = [];
+  for (const town of towns) {
+    if (town.population >= minPopulation) {
+      eligibleTowns.push(town);
+    } else {
+      populationExcludedTowns.push({ name: town.name, reason: 'population' });
+    }
+  }
+
+  const { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority } =
+    await renderTownPages({
+      outDir,
+      towns: eligibleTowns,
+      authorities,
+      getGeo: (town) =>
+        fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
+      limit,
+      logger,
+    });
+  excludedTowns.push(...populationExcludedTowns);
+
   /** @type {string[]} */
   const published = [];
   /** @type {SitemapEntry[]} */
@@ -798,42 +869,10 @@ async function runLiveMode(args) {
       sitemapEntries: authoritySitemapEntries,
       excluded,
       seenSlugs,
+      townsByAuthority,
       logger,
     });
   }
-
-  // Town pages: one bounded geo read per town, scoped to its authority partition
-  // and centroid. Reuses the same authority list (no extra HTTP) to resolve slugs.
-  const towns = await loadTowns();
-
-  // Population threshold gate, applied BEFORE the per-town geo fetch so that
-  // below-threshold towns never even hit the API. The threshold is a build-time
-  // config value (SEO_TOWN_MIN_POPULATION, default 20000); ramping coverage means
-  // bumping the variable and rebuilding — no gazetteer regeneration. The ≥10
-  // in-radius coverage gate (inside `considerTown`) still applies on top.
-  /** @type {Town[]} */
-  const eligibleTowns = [];
-  /** @type {Array<{ name: string, reason: string }>} */
-  const populationExcludedTowns = [];
-  for (const town of towns) {
-    if (town.population >= minPopulation) {
-      eligibleTowns.push(town);
-    } else {
-      populationExcludedTowns.push({ name: town.name, reason: 'population' });
-    }
-  }
-
-  const { publishedTowns, townSitemapEntries, excludedTowns } =
-    await renderTownPages({
-      outDir,
-      towns: eligibleTowns,
-      authorities,
-      getGeo: (town) =>
-        fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
-      limit,
-      logger,
-    });
-  excludedTowns.push(...populationExcludedTowns);
 
   await writeFile(
     join(outDir, 'sitemap.xml'),
