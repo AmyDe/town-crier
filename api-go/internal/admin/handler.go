@@ -59,6 +59,7 @@ func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore,
 	mux.HandleFunc("GET /v1/admin/users", requireAdminKey(adminKey, h.listUsers))
 	mux.HandleFunc("POST /v1/admin/offer-codes", requireAdminKey(adminKey, h.generateOfferCodes))
 	mux.HandleFunc("POST /v1/admin/watchzones/backfill-location", requireAdminKey(adminKey, h.backfillWatchZoneLocation))
+	mux.HandleFunc("POST /v1/admin/watchzones/backfill-bbox", requireAdminKey(adminKey, h.backfillWatchZoneBoundingBox))
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {

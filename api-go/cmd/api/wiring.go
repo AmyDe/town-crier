@@ -48,6 +48,7 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/admin/users":                         {},
 	"POST /v1/admin/offer-codes":                  {},
 	"POST /v1/admin/watchzones/backfill-location": {},
+	"POST /v1/admin/watchzones/backfill-bbox":     {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
