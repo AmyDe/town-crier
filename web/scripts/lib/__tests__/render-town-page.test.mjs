@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { renderTownPage } from '../render-town-page.mjs';
-import { APP_DOWNLOAD_URL, SITE_ORIGIN } from '../constants.mjs';
+import {
+  APP_DOWNLOAD_URL,
+  APPLE_APP_ID,
+  SITE_ORIGIN,
+  appStoreUrl,
+} from '../constants.mjs';
 
 /**
  * @param {Partial<import('../render-town-page.mjs').TownPageData>} [overrides]
@@ -137,6 +142,32 @@ describe('renderTownPage', () => {
     );
   });
 
+  it('emits the Apple Smart App Banner meta tag in <head> after the viewport meta', () => {
+    const html = renderTownPage(townData());
+    const head = html.match(/<head>[\s\S]*?<\/head>/);
+    expect(head).not.toBeNull();
+    const [headHtml] = head;
+    expect(headHtml).toContain(
+      `<meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}" />`,
+    );
+    expect(headHtml).toContain('app-id=6764095657');
+    // Sits immediately after the viewport meta.
+    expect(headHtml.indexOf('name="viewport"')).toBeLessThan(
+      headHtml.indexOf('name="apple-itunes-app"'),
+    );
+  });
+
+  it('tags every download CTA with the ct=seo-town campaign token', () => {
+    const html = renderTownPage(townData());
+    const tagged = appStoreUrl('seo-town');
+    // Both CTAs (header "Get the app" + bottom "Download on the App Store").
+    const occurrences = html.split(`href="${tagged}"`).length - 1;
+    expect(occurrences).toBe(2);
+    expect(html).toContain('ct=seo-town');
+    // Never the bare, campaign-free URL in a CTA href.
+    expect(html).not.toContain(`href="${APP_DOWNLOAD_URL}"`);
+  });
+
   it('includes a CTA to the App Store for the town', () => {
     const html = renderTownPage(townData());
     expect(html).toContain('Get push alerts for Truro');
@@ -149,7 +180,7 @@ describe('renderTownPage', () => {
     expect(header).not.toBeNull();
     const [headerHtml] = header;
     expect(headerHtml).toContain('siteHeader__cta');
-    expect(headerHtml).toContain(`href="${APP_DOWNLOAD_URL}"`);
+    expect(headerHtml).toContain(`href="${appStoreUrl('seo-town')}"`);
     expect(headerHtml).toContain('Get the app');
     // Match the bottom CTA's link safety exactly.
     expect(headerHtml).toContain('rel="noopener"');
