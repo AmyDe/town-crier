@@ -29,6 +29,13 @@ type fakeItems struct {
 	// OLTP QueryItems. The build-time SEO reads must use the long-read path; the
 	// user-facing reads must not (tc-9tov).
 	lastQueryViaLongRead bool
+	// crossPartitionResult, lastCrossPartitionQuery, lastCrossPartitionParams and
+	// crossPartitionErr back QueryItemsCrossPartition, the authority-agnostic
+	// spatial fan-out FindNearby now uses (tc-zldl).
+	crossPartitionResult     [][]byte
+	lastCrossPartitionQuery  string
+	lastCrossPartitionParams map[string]any
+	crossPartitionErr        error
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{stored: map[string][]byte{}} }
@@ -60,6 +67,15 @@ func (f *fakeItems) QueryItems(_ context.Context, partitionKey, query string, pa
 func (f *fakeItems) QueryItemsLongRead(_ context.Context, partitionKey, query string, params map[string]any) ([][]byte, error) {
 	f.lastQueryViaLongRead = true
 	return f.recordQuery(partitionKey, query, params)
+}
+
+func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, query string, params map[string]any) ([][]byte, error) {
+	f.lastCrossPartitionQuery = query
+	f.lastCrossPartitionParams = params
+	if f.crossPartitionErr != nil {
+		return nil, f.crossPartitionErr
+	}
+	return f.crossPartitionResult, nil
 }
 
 func (f *fakeItems) recordQuery(partitionKey, query string, params map[string]any) ([][]byte, error) {
@@ -176,30 +192,46 @@ func TestCosmosStore_GetByUID_NotFound(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_FindNearby_ScopesToAuthorityPartitionWithSpatialQuery(t *testing.T) {
+func TestCosmosStore_FindNearby_QueriesCrossPartitionAcrossAuthorities(t *testing.T) {
 	t.Parallel()
-	a := testApplication(t)
-	body, _ := json.Marshal(newApplicationDocument(a))
+	// A border-spanning circle: two in-radius applications tagged to different
+	// authority partitions (449 + 246). The cross-partition fan-out must surface
+	// BOTH, not just the home authority's side (tc-zldl / tc-w11n).
+	app449 := testApplication(t)
+	app449.AreaID = 449
+	app449.Name = "449/24/001"
+	app246 := testApplication(t)
+	app246.AreaID = 246
+	app246.Name = "246/24/002"
+	body449, _ := json.Marshal(newApplicationDocument(app449))
+	body246, _ := json.Marshal(newApplicationDocument(app246))
 	items := newFakeItems()
-	items.queryResult = [][]byte{body}
+	items.crossPartitionResult = [][]byte{body449, body246}
 	store := NewCosmosStore(items)
 
-	got, err := store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000)
+	got, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
 	if err != nil {
 		t.Fatalf("FindNearby: %v", err)
 	}
-	if len(got) != 1 || got[0].Name != a.Name {
-		t.Fatalf("FindNearby results: got %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("FindNearby results: got %d, want 2 (both authorities); %+v", len(got), got)
 	}
-	if items.lastQueryPK != "441" {
-		t.Errorf("query partition key: got %q, want \"441\"", items.lastQueryPK)
+	gotAreas := map[int]bool{got[0].AreaID: true, got[1].AreaID: true}
+	if !gotAreas[449] || !gotAreas[246] {
+		t.Errorf("FindNearby must surface both authorities 449 and 246; got %+v", gotAreas)
 	}
-	// The GeoJSON point carries [longitude, latitude] (GeoJSON order) and the
-	// radius is a named parameter, mirroring findZonesContainingQuery style.
+	// The fan-out must run cross-partition, NOT through the partition-scoped
+	// QueryItems (which would re-impose single-authority scoping).
+	if items.lastQueryPK != "" {
+		t.Errorf("FindNearby must not run a partition-scoped query; got partition key %q", items.lastQueryPK)
+	}
+	// The constant-radius residual is preserved: ST_DISTANCE(...) <= @radiusMetres
+	// serves the exact circle, with the radius bound as the query's constant. The
+	// GeoJSON point carries [longitude, latitude] order.
 	want := "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
 		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
-	if items.lastQuery != want {
-		t.Errorf("spatial query:\n got %q\nwant %q", items.lastQuery, want)
+	if items.lastCrossPartitionQuery != want {
+		t.Errorf("cross-partition spatial query:\n got %q\nwant %q", items.lastCrossPartitionQuery, want)
 	}
 }
 
@@ -208,16 +240,16 @@ func TestFindNearby_UsesParameterizedQuery(t *testing.T) {
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	_, _ = store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000)
+	_, _ = store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
 
 	// The query text must not contain any float literal — values must be bound
 	// as named parameters, not string-concatenated.
-	if items.lastQuery == "" {
+	if items.lastCrossPartitionQuery == "" {
 		t.Fatal("no query was issued")
 	}
 	for _, literal := range []string{"51.4975", "-0.1357", "2000"} {
-		if strings.Contains(items.lastQuery, literal) {
-			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastQuery)
+		if strings.Contains(items.lastCrossPartitionQuery, literal) {
+			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastCrossPartitionQuery)
 		}
 	}
 	// Verify the three expected params are bound with correct values.
@@ -227,9 +259,9 @@ func TestFindNearby_UsesParameterizedQuery(t *testing.T) {
 		"@radiusMetres": 2000.0,
 	}
 	for k, wantVal := range wantParams {
-		gotVal, ok := items.lastQueryParams[k]
+		gotVal, ok := items.lastCrossPartitionParams[k]
 		if !ok {
-			t.Errorf("param %q not found in query params %v", k, items.lastQueryParams)
+			t.Errorf("param %q not found in query params %v", k, items.lastCrossPartitionParams)
 			continue
 		}
 		if gotVal != wantVal {
@@ -242,7 +274,7 @@ func TestCosmosStore_FindNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	t.Parallel()
 	store := NewCosmosStore(newFakeItems())
 
-	got, err := store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000)
+	got, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
 	if err != nil {
 		t.Fatalf("FindNearby: %v", err)
 	}

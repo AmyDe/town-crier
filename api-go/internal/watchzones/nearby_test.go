@@ -42,11 +42,11 @@ func (f *fakeResolver) ResolveAuthority(_ context.Context, _, _ float64) (int, e
 type fakeAppFinder struct {
 	apps   []applications.PlanningApplication
 	err    error
-	lastPK string
+	called bool
 }
 
-func (f *fakeAppFinder) FindNearby(_ context.Context, authorityCode string, _, _, _ float64) ([]applications.PlanningApplication, error) {
-	f.lastPK = authorityCode
+func (f *fakeAppFinder) FindNearby(_ context.Context, _, _, _ float64) ([]applications.PlanningApplication, error) {
+	f.called = true
 	return f.apps, f.err
 }
 
@@ -129,15 +129,31 @@ func testApp(uid, name string) applications.PlanningApplication {
 	}
 }
 
+// testAppInAuthority builds a nearby application tagged to a specific authority,
+// for asserting the browse path surfaces neighbour-authority apps across a
+// border (tc-zldl).
+func testAppInAuthority(uid, name string, areaID int) applications.PlanningApplication {
+	a := testApp(uid, name)
+	a.AreaID = areaID
+	a.AreaName = fmt.Sprintf("Authority %d", areaID)
+	return a
+}
+
 func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	t.Parallel()
+	// A border-spanning zone (pinned to authority 471) whose circle also covers a
+	// neighbour authority (246). The browse path is now authority-agnostic, so the
+	// create response must surface the neighbour's app too (tc-zldl).
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
 		resolver: &fakeResolver{},
-		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}},
-		state:    &fakeWatermark{},
-		unread:   &fakeUnread{},
+		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
+			testAppInAuthority("uid-1", "24/001", 471),
+			testAppInAuthority("uid-2", "24/002", 246),
+		}},
+		state:  &fakeWatermark{},
+		unread: &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 
@@ -159,8 +175,8 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	if d.resolver.called {
 		t.Error("resolver must not run when authorityId is supplied")
 	}
-	if d.apps.lastPK != "471" {
-		t.Errorf("FindNearby authority partition: got %q", d.apps.lastPK)
+	if !d.apps.called {
+		t.Error("FindNearby must run to populate the create response")
 	}
 	var got struct {
 		NearbyApplications []struct {
@@ -171,8 +187,12 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v; raw=%s", err, rec.Body.String())
 	}
-	if len(got.NearbyApplications) != 1 || got.NearbyApplications[0].UID != "uid-1" {
-		t.Fatalf("nearbyApplications: got %+v", got.NearbyApplications)
+	gotUIDs := map[string]bool{}
+	for _, a := range got.NearbyApplications {
+		gotUIDs[a.UID] = true
+	}
+	if len(got.NearbyApplications) != 2 || !gotUIDs["uid-1"] || !gotUIDs["uid-2"] {
+		t.Fatalf("nearbyApplications must surface both home and neighbour authority apps: got %+v", got.NearbyApplications)
 	}
 	// The create response carries the raw-domain shape — no latestUnreadEvent key.
 	if got.NearbyApplications[0].LatestUnreadEvent != nil {
@@ -402,6 +422,43 @@ func TestApplications_AugmentsUnreadAndNullsTheRest(t *testing.T) {
 	}
 	if rows[byUID["uid-2"]].LatestUnreadEvent != nil {
 		t.Errorf("uid-2 should have null latestUnreadEvent")
+	}
+}
+
+func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
+	t.Parallel()
+	// A zone pinned to authority 471 whose circle crosses into authority 246. The
+	// applications list is now authority-agnostic, so both sides must appear
+	// (tc-zldl / tc-w11n).
+	d := nearbyDeps{
+		store: &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps: &fakeAppFinder{apps: []applications.PlanningApplication{
+			testAppInAuthority("uid-1", "24/001", 471),
+			testAppInAuthority("uid-2", "24/002", 246),
+		}},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var rows []struct {
+		UID string `json:"uid"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+		t.Fatalf("decode rows: %v; raw=%s", err, rec.Body.String())
+	}
+	gotUIDs := map[string]bool{}
+	for _, r := range rows {
+		gotUIDs[r.UID] = true
+	}
+	if len(rows) != 2 || !gotUIDs["uid-1"] || !gotUIDs["uid-2"] {
+		t.Fatalf("applications list must surface both home and neighbour authority apps: got %+v", rows)
 	}
 }
 

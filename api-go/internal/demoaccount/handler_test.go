@@ -57,11 +57,11 @@ func (f *fakeZoneStore) Save(_ context.Context, z watchzones.WatchZone) error {
 }
 
 type fakeAppStore struct {
-	upserted  []applications.PlanningApplication
-	nearby    []applications.PlanningApplication
-	upsertErr error
-	findErr   error
-	findPK    string
+	upserted   []applications.PlanningApplication
+	nearby     []applications.PlanningApplication
+	upsertErr  error
+	findErr    error
+	findCalled bool
 }
 
 func (f *fakeAppStore) Upsert(_ context.Context, a applications.PlanningApplication) error {
@@ -72,8 +72,8 @@ func (f *fakeAppStore) Upsert(_ context.Context, a applications.PlanningApplicat
 	return nil
 }
 
-func (f *fakeAppStore) FindNearby(_ context.Context, authorityCode string, _, _, _ float64) ([]applications.PlanningApplication, error) {
-	f.findPK = authorityCode
+func (f *fakeAppStore) FindNearby(_ context.Context, _, _, _ float64) ([]applications.PlanningApplication, error) {
+	f.findCalled = true
 	if f.findErr != nil {
 		return nil, f.findErr
 	}
@@ -121,8 +121,10 @@ func TestGetDemoAccount_FirstCall_SeedsAndReturnsDemoAccount(t *testing.T) {
 	if len(a.upserted) != 5 {
 		t.Errorf("seeded applications: got %d, want 5", len(a.upserted))
 	}
-	if a.findPK != "441" {
-		t.Errorf("FindNearby authority partition: got %q, want \"441\"", a.findPK)
+	// FindNearby now runs cross-partition (no authority partition key), so we
+	// assert it ran and returned the seeded apps rather than a partition key.
+	if !a.findCalled {
+		t.Error("FindNearby must run to populate the demo applications")
 	}
 
 	var got demoAccountResult
@@ -173,8 +175,8 @@ func TestGetDemoAccount_SecondCall_DoesNotReseed(t *testing.T) {
 	if len(a.upserted) != 0 {
 		t.Errorf("expected no application re-seed, got %d", len(a.upserted))
 	}
-	if a.findPK != "441" {
-		t.Errorf("FindNearby still runs: authority got %q, want \"441\"", a.findPK)
+	if !a.findCalled {
+		t.Error("FindNearby must still run on a repeat call")
 	}
 }
 
