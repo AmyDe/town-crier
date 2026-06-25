@@ -61,6 +61,9 @@ public final class ApplicationDetailViewModel: ObservableObject {
 
   public var onOpenPortal: ((URL) -> Void)?
   public var onDismiss: (() -> Void)?
+  /// Fired only on a successful false→true save (never on unsave or failure).
+  /// Drives the review-prompt `savedApplication` signal (GH #628).
+  public var onSaved: (() -> Void)?
 
   /// Whether the save/unsave action is available (repository was provided).
   public var canSave: Bool {
@@ -171,6 +174,7 @@ public final class ApplicationDetailViewModel: ObservableObject {
       do {
         try await repository.save(application: application)
         isSaved = true
+        onSaved?()
       } catch {
         // Preserve current state on failure
       }

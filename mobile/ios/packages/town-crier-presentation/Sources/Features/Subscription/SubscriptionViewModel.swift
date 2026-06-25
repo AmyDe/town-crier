@@ -21,6 +21,10 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
   /// routing through the root coordinator (which already owns the paywall sheet).
   @Published public var presentedLegalDocument: LegalDocumentType?
 
+  /// Fired when a purchase fails (not when cancelled or successful). A failed
+  /// purchase is a friction moment that suppresses the review prompt (GH #628).
+  public var onPurchaseFailed: (() -> Void)?
+
   private let subscriptionService: SubscriptionService
   private let authenticationService: AuthenticationService
 
@@ -63,6 +67,7 @@ public final class SubscriptionViewModel: ObservableObject, ErrorHandlingViewMod
       // User cancelled — not an error
     } catch {
       handleError(error) { .purchaseFailed($0) }
+      onPurchaseFailed?()
     }
     isPurchasing = false
   }
