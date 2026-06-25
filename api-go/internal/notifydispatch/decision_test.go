@@ -12,17 +12,17 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// fakeZones serves the cross-partition zone-containment lookup.
+// fakeZones serves the cross-partition zone-containment lookup. Matching is
+// purely geographic (tc-b179): the lookup no longer takes an authority, so the
+// fake returns its zones regardless of which authority the app is tagged with.
 type fakeZones struct {
-	zones           []watchzones.WatchZone
-	queryErr        error
-	lastAuthorityID int
-	lastLat         float64
-	lastLng         float64
+	zones    []watchzones.WatchZone
+	queryErr error
+	lastLat  float64
+	lastLng  float64
 }
 
-func (f *fakeZones) FindZonesContaining(_ context.Context, authorityID int, lat, lng float64) ([]watchzones.WatchZone, error) {
-	f.lastAuthorityID = authorityID
+func (f *fakeZones) FindZonesContaining(_ context.Context, lat, lng float64) ([]watchzones.WatchZone, error) {
 	f.lastLat = lat
 	f.lastLng = lng
 	if f.queryErr != nil {
@@ -130,21 +130,33 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.
 	}
 }
 
-func TestDecisionDispatcher_Dispatch_PassesApplicationAuthorityToZoneMatcher(t *testing.T) {
+func TestDecisionDispatcher_Dispatch_MatchesZoneRegardlessOfAuthority(t *testing.T) {
 	t.Parallel()
-	// The decision zone fan-out must scope to the polled application's authority,
-	// matching the saved-bookmark path's existing app.AreaID scoping. No zones or
-	// saved holders are configured, so this isolates the authority threading.
-	zones := &fakeZones{}
-	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{}}
-	d, _, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	// Decision fan-out is now boundary-agnostic (tc-b179): the zone lookup is purely
+	// geographic, so a zone whose circle contains the application is matched even
+	// when the application is tagged a neighbouring authority. The fake returns the
+	// zone for the app's coordinates; the dispatcher must dispatch to its owner.
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
+		"auth0|alice": proWithZonePrefs(t, true),
+	}}
+	d, notifs, _ := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	// App tagged a different authority (246) than the zone (99), inside the circle.
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
+	app.AreaID = 246
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if zones.lastAuthorityID != app.AreaID {
-		t.Errorf("zone matcher authority: got %d, want %d (app.AreaID)", zones.lastAuthorityID, app.AreaID)
+	if zones.lastLat != 51.5 || zones.lastLng != -0.1 {
+		t.Errorf("zone lookup point: got lat=%v lng=%v", zones.lastLat, zones.lastLng)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("cross-authority zone must still receive a decision record, got %d", len(notifs.created))
+	}
+	if notifs.created[0].WatchZoneID == nil || *notifs.created[0].WatchZoneID != "zone-1" {
+		t.Errorf("wrong zone fanned out: %+v", notifs.created[0].WatchZoneID)
 	}
 }
 
