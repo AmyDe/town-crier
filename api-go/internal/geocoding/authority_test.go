@@ -102,3 +102,31 @@ func TestAuthorityMapping_LoadedAndNonEmpty(t *testing.T) {
 		t.Errorf("Westminster mapping: got %d, want 326", authorityMapping["Westminster"])
 	}
 }
+
+// TestAuthorityMapping_CombinedPlanningAuthorities guards tc-zuxq: PlanIt files
+// planning applications for districts that share a Combined Planning Authority
+// under the COMBINED area_id, not the standalone English District id. A watch
+// zone resolved to the empty standalone partition returns zero applications, so
+// these districts must map to their combined area. Verified against PlanIt: the
+// standalone district areas hold no applications while the combined area holds
+// them all (e.g. Worthing 251 empty, Adur and Worthing 449 populated).
+func TestAuthorityMapping_CombinedPlanningAuthorities(t *testing.T) {
+	t.Parallel()
+	combined := map[string]int{
+		"Adur":      449, // Adur and Worthing
+		"Worthing":  449, // Adur and Worthing
+		"Maidstone": 508, // Mid Kent
+		"Swale":     508, // Mid Kent
+	}
+	for district, want := range combined {
+		if got := authorityMapping[district]; got != want {
+			t.Errorf("%s: got authority %d, want %d (combined planning authority)", district, got, want)
+		}
+	}
+	// Tunbridge Wells shares the Mid Kent support service but still files under
+	// its own area_id (verified: 1073 applications), so it must NOT be remapped
+	// to the combined authority.
+	if got := authorityMapping["Tunbridge Wells"]; got != 149 {
+		t.Errorf("Tunbridge Wells: got %d, want 149 (files standalone, not under Mid Kent 508)", got)
+	}
+}
