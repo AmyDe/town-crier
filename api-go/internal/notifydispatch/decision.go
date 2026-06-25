@@ -11,10 +11,12 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// zoneMatcher runs the cross-partition point-in-zone lookup, scoped to the
-// polled application's authority. *watchzones.CosmosStore satisfies it.
+// zoneMatcher runs the cross-partition point-in-zone lookup. It is purely
+// geographic — boundary-agnostic, with no authority scoping (tc-b179), so a zone
+// matches a containing application regardless of either's authority.
+// *watchzones.CosmosStore satisfies it.
 type zoneMatcher interface {
-	FindZonesContaining(ctx context.Context, authorityID int, latitude, longitude float64) ([]watchzones.WatchZone, error)
+	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]watchzones.WatchZone, error)
 }
 
 // savedMatcher runs the cross-partition saved-bookmark lookup.
@@ -96,7 +98,7 @@ func (d *DecisionDispatcher) Dispatch(ctx context.Context, app applications.Plan
 
 	// Zone matchers — only meaningful when the application has coordinates.
 	if app.Latitude != nil && app.Longitude != nil {
-		zones, err := d.zones.FindZonesContaining(ctx, app.AreaID, *app.Latitude, *app.Longitude)
+		zones, err := d.zones.FindZonesContaining(ctx, *app.Latitude, *app.Longitude)
 		if err != nil {
 			return err
 		}
