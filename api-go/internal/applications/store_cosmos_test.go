@@ -940,11 +940,16 @@ func TestCosmosStore_FindNearby_KeepsOLTPBudget(t *testing.T) {
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	if _, err := store.FindNearby(context.Background(), "441", 51.4975, -0.1357, 2000); err != nil {
+	if _, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000); err != nil {
 		t.Fatalf("FindNearby: %v", err)
 	}
+	// FindNearby is a user-facing read: it fans out cross-partition but must never
+	// route through the latency-tolerant build-time SEO budget (QueryItemsLongRead).
+	if items.lastCrossPartitionQuery == "" {
+		t.Error("FindNearby must run the cross-partition spatial query")
+	}
 	if items.lastQueryViaLongRead {
-		t.Error("FindNearby is a user-facing read and must keep the 1.5s OLTP QueryItems budget")
+		t.Error("FindNearby is a user-facing read and must not use the build-time long-read budget")
 	}
 }
 
