@@ -276,11 +276,15 @@ describe('renderPlanningPage', () => {
     });
 
     it('omits the section entirely when there are no published towns', () => {
+      // The stylesheet always carries the .townLinks rules, so assert on the
+      // section element, not the bare substring.
       expect(renderPlanningPage(pageData({ towns: [] }))).not.toContain(
-        'townLinks',
+        '<section class="townLinks">',
       );
       // Undefined towns (the default) also omit the section — backwards compatible.
-      expect(renderPlanningPage(pageData())).not.toContain('townLinks');
+      expect(renderPlanningPage(pageData())).not.toContain(
+        '<section class="townLinks">',
+      );
     });
 
     it('HTML-escapes town names in the link list', () => {

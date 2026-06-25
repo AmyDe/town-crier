@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, access } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -305,6 +305,169 @@ describe('runPrerender — live mode', () => {
         logger: silentLogger,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('runPrerender — authority links down to its published towns', () => {
+  /**
+   * One qualifying authority (Adur, id 1) plus three of its towns: two clear the
+   * coverage gate, one is gated out. Written to temp fixtures so the test is
+   * self-contained.
+   */
+  async function writeWiringFixtures() {
+    const authorityFixture = join(outDir, 'authorities-fixture.json');
+    const townFixture = join(outDir, 'towns-fixture.json');
+
+    const app = (uid) => ({
+      uid,
+      name: uid,
+      address: `${uid} address`,
+      description: 'desc',
+      appState: 'Permitted',
+      startDate: '2026-01-10',
+      lastDifferent: '2026-06-10T10:00:00+00:00',
+      link: null,
+      url: null,
+    });
+
+    await writeFile(
+      authorityFixture,
+      JSON.stringify([
+        {
+          id: 1,
+          name: 'Adur',
+          areaType: 'English District',
+          areaName: 'Adur',
+          total: 12,
+          statusBreakdown: [{ appState: 'Permitted', count: 12 }],
+          applications: [app('A1')],
+        },
+      ]),
+      'utf-8',
+    );
+
+    await writeFile(
+      townFixture,
+      JSON.stringify([
+        {
+          slug: 'shoreham-by-sea',
+          name: 'Shoreham-by-Sea',
+          lat: 50.83,
+          lng: -0.27,
+          authorityId: 1,
+          total: 14,
+          statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+          applications: [app('S1')],
+        },
+        {
+          slug: 'lancing',
+          name: 'Lancing',
+          lat: 50.83,
+          lng: -0.32,
+          authorityId: 1,
+          total: 11,
+          statusBreakdown: [{ appState: 'Permitted', count: 11 }],
+          applications: [app('L1')],
+        },
+        {
+          slug: 'tiny',
+          name: 'Tiny',
+          lat: 50.8,
+          lng: -0.3,
+          authorityId: 1,
+          total: 4, // below the coverage gate -> gated out, must never be linked
+          statusBreakdown: [{ appState: 'Permitted', count: 4 }],
+          applications: [],
+        },
+      ]),
+      'utf-8',
+    );
+
+    return { authorityFixture, townFixture };
+  }
+
+  it('renders a .townLinks section linking only to its published (gated-in) towns, sorted by name', async () => {
+    const { authorityFixture, townFixture } = await writeWiringFixtures();
+
+    const result = await runPrerender({
+      outDir,
+      fixturePath: authorityFixture,
+      townFixturePath: townFixture,
+      loadAuthorities: async () => [{ id: 1, name: 'Adur' }],
+      logger: silentLogger,
+    });
+
+    expect(result.published).toEqual(['adur']);
+    expect(result.publishedTowns.sort()).toEqual([
+      'adur/lancing',
+      'adur/shoreham-by-sea',
+    ]);
+
+    const html = await readFile(
+      join(outDir, 'planning', 'adur', 'index.html'),
+      'utf-8',
+    );
+
+    expect(html).toContain('<section class="townLinks">');
+    // Links to both published towns, at the canonical nested path.
+    expect(html).toContain('<a href="/planning/adur/lancing">Lancing</a>');
+    expect(html).toContain(
+      '<a href="/planning/adur/shoreham-by-sea">Shoreham-by-Sea</a>',
+    );
+    // Sorted by name.localeCompare: Lancing before Shoreham-by-Sea.
+    expect(html.indexOf('>Lancing<')).toBeLessThan(
+      html.indexOf('>Shoreham-by-Sea<'),
+    );
+    // The gated-out town is NEVER linked (would be a link to a 404).
+    expect(html).not.toContain('/planning/adur/tiny');
+    expect(html).not.toContain('>Tiny<');
+  });
+
+  it('omits the town-links section for an authority with no published towns', async () => {
+    // Authority fixture only (no town fixture) -> no towns map -> no section.
+    const authorityFixture = join(outDir, 'authorities-only.json');
+    await writeFile(
+      authorityFixture,
+      JSON.stringify([
+        {
+          id: 1,
+          name: 'Adur',
+          areaType: 'English District',
+          areaName: 'Adur',
+          total: 12,
+          statusBreakdown: [{ appState: 'Permitted', count: 12 }],
+          applications: [
+            {
+              uid: 'A1',
+              name: 'A1',
+              address: 'x',
+              description: 'd',
+              appState: 'Permitted',
+              startDate: null,
+              lastDifferent: '2026-06-10T10:00:00+00:00',
+              link: null,
+              url: null,
+            },
+          ],
+        },
+      ]),
+      'utf-8',
+    );
+
+    await runPrerender({
+      outDir,
+      fixturePath: authorityFixture,
+      loadAuthorities: async () => [{ id: 1, name: 'Adur' }],
+      logger: silentLogger,
+    });
+
+    const html = await readFile(
+      join(outDir, 'planning', 'adur', 'index.html'),
+      'utf-8',
+    );
+    // The stylesheet always carries the .townLinks rules, so assert on the
+    // section element, not the bare substring.
+    expect(html).not.toContain('<section class="townLinks">');
   });
 });
 
