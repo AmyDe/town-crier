@@ -52,6 +52,9 @@ extension AppCoordinator {
       self?.isAddingWatchZone = false
       self?.editingWatchZone = nil
       self?.isSubscriptionPresented = true
+      // Hitting a quota wall is a friction moment — never ask for a review in
+      // the same session (GH #628).
+      self?.reviewPromptTracker?.suppressThisSession()
     }
     viewModel.onSave = { [weak self] saved in
       self?.isAddingWatchZone = false

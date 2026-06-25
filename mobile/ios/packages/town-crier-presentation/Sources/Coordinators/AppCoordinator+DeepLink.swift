@@ -15,6 +15,10 @@ extension AppCoordinator {
       // the app on the previous tab and the sheet would never present
       // (tc-dt3x).
       selectedTab = .applications
+      // Opening an application from a push/deep link is the instant-alert payoff
+      // moment — a fire-eligible review signal (GH #628). This is deliberately
+      // distinct from browsing the in-app list.
+      reviewPromptTracker?.record(.openedAlert)
       showApplicationDetail(id)
     case .applicationsList:
       selectedTab = .applications

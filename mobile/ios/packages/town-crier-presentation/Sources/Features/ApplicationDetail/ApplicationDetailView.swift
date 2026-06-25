@@ -114,6 +114,9 @@ public struct ApplicationDetailView: View {
 
   private var portalButton: some View {
     PrimaryButton {
+      // Notify the view model so the coordinator can record the portal-tap
+      // review signal (GH #628); the in-app Safari sheet still presents below.
+      viewModel.openPortal()
       showingSafari = true
     } label: {
       HStack {

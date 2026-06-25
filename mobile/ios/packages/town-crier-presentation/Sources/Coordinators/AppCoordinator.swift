@@ -65,6 +65,9 @@ public final class AppCoordinator: ObservableObject {
   private let tierCache: UserDefaults
   let notificationStateRepository: NotificationStateRepository?
   let badgeSetter: BadgeSetting?
+  // Drives the App Store review prompt at engagement peaks (GH #628). Optional
+  // so existing call sites and tests that don't exercise it inject nothing.
+  let reviewPromptTracker: ReviewPromptTracker?
   // Cached strongly so SwiftUI's factory re-evaluation doesn't leave the
   // coordinator with a dangling reference; editor `onSave` needs a live VM.
   // Internal (not private) so the AppCoordinator+WatchZones extension owns it.
@@ -106,7 +109,8 @@ public final class AppCoordinator: ObservableObject {
     offerCodeService: OfferCodeService? = nil,
     tierCache: UserDefaults? = nil,
     notificationStateRepository: NotificationStateRepository? = nil,
-    badgeSetter: BadgeSetting? = nil
+    badgeSetter: BadgeSetting? = nil,
+    reviewPromptTracker: ReviewPromptTracker? = nil
   ) {
     self.repository = repository
     self.authService = authService
@@ -133,6 +137,7 @@ public final class AppCoordinator: ObservableObject {
     self.tierCache = tierCache ?? .standard
     self.notificationStateRepository = notificationStateRepository
     self.badgeSetter = badgeSetter
+    self.reviewPromptTracker = reviewPromptTracker
 
     // Restore the last successfully resolved tier so that paying users
     // retain feature access immediately, even before the live resolution
@@ -263,6 +268,15 @@ public final class AppCoordinator: ObservableObject {
     viewModel.onDismiss = { [weak self] in
       self?.detailApplication = nil
     }
+    // Review-prompt value moments (GH #628): a portal tap-through and a save are
+    // both genuine engagement peaks. The save callback fires only on a
+    // successful false→true save (the view model guarantees this).
+    viewModel.onOpenPortal = { [weak self] _ in
+      self?.reviewPromptTracker?.record(.tappedPortal)
+    }
+    viewModel.onSaved = { [weak self] in
+      self?.reviewPromptTracker?.record(.savedApplication)
+    }
     return viewModel
   }
 
@@ -273,6 +287,7 @@ public final class AppCoordinator: ObservableObject {
   /// (third recurrence after tc-aza5; original bug tc-exg6).
   public func resolveSubscriptionTier() async {
     let session = await authService.currentSession()
+    let previousTier = subscriptionTier
     let result = await tierResolver.resolve(
       jwtTier: session?.subscriptionTier ?? .free,
       previousTier: subscriptionTier,
@@ -280,6 +295,14 @@ public final class AppCoordinator: ObservableObject {
     )
     subscriptionTier = result.tier
     tierCache.set(result.tier.rawValue, forKey: Self.tierCacheKey)
+
+    // Review-prompt upgrade signal (GH #628): record a free→paid transition so
+    // upgrading nudges a borderline user toward a prompt. The tracker latches
+    // it, and the weight sits strictly below the threshold, so the act of
+    // paying can never on its own trigger the ask.
+    if previousTier == .free, result.tier > .free {
+      reviewPromptTracker?.record(.upgraded)
+    }
     // Keep an in-flight onboarding wizard's tier live so the radius step can
     // unlock the paid range the moment a purchase resolves, without rebuilding
     // the wizard and losing the user's in-progress postcode (tc-w3cb.1/.3).
@@ -295,10 +318,20 @@ public final class AppCoordinator: ObservableObject {
     // Fired into a stored `Task` so tests can await it deterministically.
     if result.tier > .free,
       await notificationService.authorizationStatus() == .notDetermined {
+      // The review prompt must never stack with the post-purchase push prompt
+      // nor appear right after a purchase (value isn't delivered yet) — suppress
+      // it for the rest of this session (GH #628).
+      reviewPromptTracker?.suppressThisSession()
       pendingPostPurchasePermissionPrompt = Task { [weak self] in
         _ = try? await self?.notificationService.requestPermission()
       }
     }
+  }
+
+  /// Records that the app was foregrounded, feeding the review-prompt loyalty
+  /// signal. `isReactivation` is `true` only for a background→active re-entry.
+  public func recordAppForegrounded(isReactivation: Bool) {
+    reviewPromptTracker?.recordAppForegrounded(isReactivation: isReactivation)
   }
 
   /// Test-only synchronisation: await the most recent post-purchase
