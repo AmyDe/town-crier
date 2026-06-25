@@ -13,6 +13,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var isLoading = false
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
+  /// The application whose full detail card should open once the summary
+  /// sheet has finished dismissing. Set by ``requestFullDetail()`` and
+  /// consumed by ``presentPendingDetailIfNeeded()`` from the sheet's
+  /// `onDismiss`, which serialises the dismiss-then-present transition and
+  /// avoids SwiftUI's two-sheets-at-once race.
+  @Published private(set) var pendingDetailApplication: PlanningApplication?
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -54,6 +60,12 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   }
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
+
+  /// Fired when the user asks to open the full application detail card from the
+  /// summary sheet. The coordinator wires this to its synchronous
+  /// `showApplicationDetail(_ application:)` — we already hold the full
+  /// `PlanningApplication`, so there is no re-fetch.
+  var onShowApplicationDetail: ((PlanningApplication) -> Void)?
 
   public init(
     repository: PlanningApplicationRepository,
@@ -157,6 +169,28 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
 
   public func clearSelection() {
     selectedApplication = nil
+  }
+
+  /// Requests the full detail card for the currently selected application.
+  /// Stashes the selection as `pendingDetailApplication` and clears
+  /// `selectedApplication`, which dismisses the summary sheet. The MapView's
+  /// sheet `onDismiss` then calls ``presentPendingDetailIfNeeded()`` so the
+  /// detail card opens only after the summary has gone — never two sheets at
+  /// once. No-op when nothing is selected.
+  public func requestFullDetail() {
+    guard let selected = selectedApplication else { return }
+    pendingDetailApplication = selected
+    selectedApplication = nil
+  }
+
+  /// Presents any pending detail application via ``onShowApplicationDetail``,
+  /// clearing the pending slot first so it fires exactly once. Invoked from the
+  /// summary sheet's `onDismiss`. No-op when nothing is pending (e.g. the user
+  /// swiped the summary away instead of tapping "View full details").
+  public func presentPendingDetailIfNeeded() {
+    guard let pending = pendingDetailApplication else { return }
+    pendingDetailApplication = nil
+    onShowApplicationDetail?(pending)
   }
 
   /// Toggles the saved state of the currently selected application.
