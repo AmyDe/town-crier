@@ -9,7 +9,6 @@ import UserNotifications
 @main
 struct TownCrierApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-  @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
   @StateObject private var coordinator: AppCoordinator
   @StateObject private var loginViewModel: LoginViewModel
@@ -354,7 +353,7 @@ struct TownCrierApp: App {
         onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
           ? { coordinator.showRedeemOfferCode() }
           : nil,
-        onRateApp: { coordinator.rateApp() }
+        onRateApp: coordinator.rateApp
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
         NotificationPreferencesView(
@@ -390,21 +389,10 @@ struct TownCrierApp: App {
         isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
       )
     #endif
-    .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
-      guard requested else { return }
-      if let url = URL(string: AppCoordinator.systemNotificationSettingsURLString) {
-        openURL(url)
-      }
-      coordinator.isOpeningSystemNotificationSettings = false
-    }
-    // "Rate the App" row (GH #629): open the App Store write-review composer
-    // then reset the flag, mirroring the system-settings handler above.
-    .onChange(of: coordinator.isOpeningAppStoreReview) { _, requested in
-      guard requested else { return }
-      if let url = URL(string: AppCoordinator.appStoreWriteReviewURLString) {
-        openURL(url)
-      }
-      coordinator.isOpeningAppStoreReview = false
-    }
+    // App-layer edge for coordinator-driven deep links: open the URL and reset
+    // the flag. Extracted into a shared modifier (mirrors ReviewPromptRequest-
+    // Modifier) so the file stays UIKit-free and within length limits.
+    .openingSystemNotificationSettings(when: coordinator)
+    .openingAppStoreReview(when: coordinator)
   }
 }

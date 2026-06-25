@@ -360,14 +360,9 @@ struct AppCoordinatorTests {
 
   // MARK: - Settings Navigation (App Store Review)
 
-  @Test func isOpeningAppStoreReview_isFalseByDefault() {
+  @Test func rateApp_flipsFlagFromFalseToTrue() {
     let (sut, _) = makeSUT()
-
     #expect(!sut.isOpeningAppStoreReview)
-  }
-
-  @Test func rateApp_setsFlagToTrue() {
-    let (sut, _) = makeSUT()
 
     sut.rateApp()
 

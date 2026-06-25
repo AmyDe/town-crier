@@ -10,4 +10,11 @@ extension AppCoordinator {
   /// silently suppress (that path belongs to the automatic prompt, GH #628).
   public static let appStoreWriteReviewURLString =
     "https://apps.apple.com/app/id6764095657?action=write-review"
+
+  /// Requests the App Store write-review composer from the "Rate the App" row
+  /// in Settings. Coordinator stays UIKit-free; `TownCrierApp` observes
+  /// ``isOpeningAppStoreReview`` and opens ``appStoreWriteReviewURLString``.
+  public func rateApp() {
+    isOpeningAppStoreReview = true
+  }
 }
