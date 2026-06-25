@@ -386,6 +386,89 @@ describe('runRender — offline mode', () => {
     expect(sitemap).toContain('<lastmod>2026-06-14</lastmod>');
   });
 
+  it('links an authority page down to its published town children, sorted by name', async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const snapshotPath = join(outDir, 'wiring-snapshot.json');
+    const app = (uid) => ({
+      uid,
+      name: uid,
+      address: `${uid} address`,
+      description: 'desc',
+      appState: 'Permitted',
+      startDate: '2026-01-10',
+      lastDifferent: '2026-06-10T10:00:00+00:00',
+      link: null,
+      url: null,
+    });
+    await writeFile(
+      snapshotPath,
+      JSON.stringify({
+        version: 1,
+        generatedAt: '2026-06-25T00:00:00.000Z',
+        minPopulation: 20000,
+        limit: 30,
+        authorities: [{ id: 1, name: 'Adur' }],
+        authorityPages: [
+          {
+            id: 1,
+            name: 'Adur',
+            areaType: 'English District',
+            areaName: 'Adur',
+            total: 12,
+            statusBreakdown: [{ appState: 'Permitted', count: 12 }],
+            applications: [app('A1')],
+          },
+        ],
+        townPages: [
+          {
+            slug: 'shoreham-by-sea',
+            name: 'Shoreham-by-Sea',
+            lat: 50.83,
+            lng: -0.27,
+            authorityId: 1,
+            population: 25000,
+            total: 14,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+            applications: [app('S1')],
+          },
+          {
+            slug: 'lancing',
+            name: 'Lancing',
+            lat: 50.83,
+            lng: -0.32,
+            authorityId: 1,
+            population: 30000,
+            total: 11,
+            statusBreakdown: [{ appState: 'Permitted', count: 11 }],
+            applications: [app('L1')],
+          },
+        ],
+      }),
+      'utf-8',
+    );
+
+    const result = await runRender({
+      outDir,
+      snapshotPath,
+      logger: silentLogger,
+    });
+
+    expect(result.published).toEqual(['adur']);
+
+    const html = await readFile(
+      join(outDir, 'planning', 'adur', 'index.html'),
+      'utf-8',
+    );
+    expect(html).toContain('<section class="townLinks">');
+    expect(html).toContain('<a href="/planning/adur/lancing">Lancing</a>');
+    expect(html).toContain(
+      '<a href="/planning/adur/shoreham-by-sea">Shoreham-by-Sea</a>',
+    );
+    expect(html.indexOf('>Lancing<')).toBeLessThan(
+      html.indexOf('>Shoreham-by-Sea<'),
+    );
+  });
+
   it('fails loud when the snapshot file is missing', async () => {
     await expect(
       runRender({

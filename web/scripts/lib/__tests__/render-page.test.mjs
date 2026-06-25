@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { renderPlanningPage } from '../render-page.mjs';
-import { APP_DOWNLOAD_URL, SITE_ORIGIN } from '../constants.mjs';
+import {
+  APP_DOWNLOAD_URL,
+  APPLE_APP_ID,
+  SITE_ORIGIN,
+  appStoreUrl,
+} from '../constants.mjs';
 
 /**
  * @param {Partial<import('../render-page.mjs').PlanningPageData>} [overrides]
@@ -130,6 +135,32 @@ describe('renderPlanningPage', () => {
     );
   });
 
+  it('emits the Apple Smart App Banner meta tag in <head> after the viewport meta', () => {
+    const html = renderPlanningPage(pageData());
+    const head = html.match(/<head>[\s\S]*?<\/head>/);
+    expect(head).not.toBeNull();
+    const [headHtml] = head;
+    expect(headHtml).toContain(
+      `<meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}" />`,
+    );
+    expect(headHtml).toContain('app-id=6764095657');
+    // Sits immediately after the viewport meta.
+    expect(headHtml.indexOf('name="viewport"')).toBeLessThan(
+      headHtml.indexOf('name="apple-itunes-app"'),
+    );
+  });
+
+  it('tags every download CTA with the ct=seo-lpa campaign token', () => {
+    const html = renderPlanningPage(pageData());
+    const tagged = appStoreUrl('seo-lpa');
+    // Both CTAs (header "Get the app" + bottom "Download on the App Store").
+    const occurrences = html.split(`href="${tagged}"`).length - 1;
+    expect(occurrences).toBe(2);
+    expect(html).toContain('ct=seo-lpa');
+    // Never the bare, campaign-free URL in a CTA href.
+    expect(html).not.toContain(`href="${APP_DOWNLOAD_URL}"`);
+  });
+
   it('includes a CTA to the App Store for the area', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain('Get push alerts for Basingstoke and Deane');
@@ -142,7 +173,7 @@ describe('renderPlanningPage', () => {
     expect(header).not.toBeNull();
     const [headerHtml] = header;
     expect(headerHtml).toContain('siteHeader__cta');
-    expect(headerHtml).toContain(`href="${APP_DOWNLOAD_URL}"`);
+    expect(headerHtml).toContain(`href="${appStoreUrl('seo-lpa')}"`);
     expect(headerHtml).toContain('Get the app');
     // Match the bottom CTA's link safety exactly.
     expect(headerHtml).toContain('rel="noopener"');
@@ -195,5 +226,75 @@ describe('renderPlanningPage', () => {
     );
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  describe('town links section', () => {
+    it('renders a .townLinks section when the authority has published towns', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [
+            { name: 'Basingstoke', slug: 'basingstoke' },
+            { name: 'Tadley', slug: 'tadley' },
+          ],
+        }),
+      );
+      expect(html).toContain('<section class="townLinks">');
+      expect(html).toContain(
+        '<h2>Planning applications by town in Basingstoke and Deane</h2>',
+      );
+      expect(html).toContain('<ul class="townLinks__list">');
+    });
+
+    it('links to the canonical nested /planning/<authority>/<town> path for each town', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [
+            { name: 'Basingstoke', slug: 'basingstoke' },
+            { name: 'Tadley', slug: 'tadley' },
+          ],
+        }),
+      );
+      expect(html).toContain(
+        '<a href="/planning/basingstoke-and-deane/basingstoke">Basingstoke</a>',
+      );
+      expect(html).toContain(
+        '<a href="/planning/basingstoke-and-deane/tadley">Tadley</a>',
+      );
+    });
+
+    it('places the town-links section immediately after the Recent applications list', () => {
+      const html = renderPlanningPage(
+        pageData({ towns: [{ name: 'Basingstoke', slug: 'basingstoke' }] }),
+      );
+      // After the recent-applications <ul>, before the how-to-comment explainer.
+      expect(html.indexOf('class="appList"')).toBeLessThan(
+        html.indexOf('class="townLinks"'),
+      );
+      expect(html.indexOf('class="townLinks"')).toBeLessThan(
+        html.indexOf('class="explainer"'),
+      );
+    });
+
+    it('omits the section entirely when there are no published towns', () => {
+      // The stylesheet always carries the .townLinks rules, so assert on the
+      // section element, not the bare substring.
+      expect(renderPlanningPage(pageData({ towns: [] }))).not.toContain(
+        '<section class="townLinks">',
+      );
+      // Undefined towns (the default) also omit the section — backwards compatible.
+      expect(renderPlanningPage(pageData())).not.toContain(
+        '<section class="townLinks">',
+      );
+    });
+
+    it('HTML-escapes town names in the link list', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [{ name: 'Stoke & <b>Bramley</b>', slug: 'stoke-bramley' }],
+        }),
+      );
+      expect(html).not.toContain('<b>Bramley</b>');
+      expect(html).toContain('Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;');
+    });
   });
 });

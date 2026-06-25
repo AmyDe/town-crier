@@ -1,4 +1,4 @@
-import { APP_DOWNLOAD_URL } from '../../config/links';
+import { appStoreUrl } from '../../config/links';
 import styles from './Footer.module.css';
 
 export function Footer() {
@@ -12,7 +12,7 @@ export function Footer() {
             Your neighbourhood is changing. Stay informed.
           </h2>
           <a
-            href={APP_DOWNLOAD_URL}
+            href={appStoreUrl('web-home')}
             className={styles.downloadButton}
             aria-label="Download on the App Store"
             target="_blank"

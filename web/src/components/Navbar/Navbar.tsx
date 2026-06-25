@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { APP_DOWNLOAD_URL } from '../../config/links';
+import { appStoreUrl } from '../../config/links';
 import { useTheme } from '../../hooks/useTheme';
 import { useNavbarAuth } from './useNavbarAuth';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
@@ -56,7 +56,7 @@ export function Navbar() {
           )}
 
           <a
-            href={APP_DOWNLOAD_URL}
+            href={appStoreUrl('web-home')}
             className={styles.cta}
             target="_blank"
             rel="noopener noreferrer"

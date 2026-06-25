@@ -272,6 +272,18 @@ export function pageStyles() {
     .status--appealed { color: var(--tc-status-appealed); }
     .statRow { display: flex; justify-content: space-between; background: var(--tc-surface); border: 1px solid var(--tc-border); border-radius: var(--tc-radius-md); padding: var(--tc-space-sm) var(--tc-space-md); }
     .statRow__count { font-weight: 700; }
+    .townLinks__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
+    .townLinks__list a {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-md);
+      background: var(--tc-surface);
+      border: 1px solid var(--tc-border);
+      border-radius: var(--tc-radius-full);
+      color: var(--tc-amber);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
     .explainer p { color: var(--tc-text-secondary); }
     .cta {
       margin: var(--tc-space-xl) 0;

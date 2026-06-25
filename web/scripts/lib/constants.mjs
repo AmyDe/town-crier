@@ -16,6 +16,32 @@ export const APP_DOWNLOAD_URL =
   'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657';
 
 /**
+ * Numeric App Store id for the iOS app — the tail of {@link APP_DOWNLOAD_URL}.
+ * Sourced once here (and mirrored in `src/config/links.ts`, kept in lockstep by
+ * the drift-guard test) so the Apple Smart App Banner meta tag never hardcodes
+ * it per template.
+ * @type {string}
+ */
+export const APPLE_APP_ID = '6764095657';
+
+/**
+ * Build a campaign-tagged App Store link from the campaign-free
+ * {@link APP_DOWNLOAD_URL}. The `ct` token surfaces under App Store Connect →
+ * App Analytics → Acquisition so installs can be attributed to the surface that
+ * sent them (e.g. `seo-lpa`, `seo-town`, `web-home`); `mt=8` is Apple's
+ * software-app media type. Cookieless and aggregate — sets nothing on-device.
+ *
+ * `APP_DOWNLOAD_URL` is deliberately left campaign-free so the byte-equal
+ * lockstep guard between this file and `src/config/links.ts` still holds.
+ *
+ * @param {string} campaign
+ * @returns {string}
+ */
+export function appStoreUrl(campaign) {
+  return `${APP_DOWNLOAD_URL}?ct=${encodeURIComponent(campaign)}&mt=8`;
+}
+
+/**
  * Mandatory data attribution lines (ADR 0006). Byte-for-byte the same copy the
  * app shows on its Settings → Attribution panel. Required on every public page.
  * @type {readonly string[]}

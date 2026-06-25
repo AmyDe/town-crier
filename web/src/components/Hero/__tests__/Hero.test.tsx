@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
+import { appStoreUrl } from '../../../config/links';
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
 import { Hero } from '../Hero';
@@ -39,10 +40,7 @@ describe('Hero', () => {
 
     const cta = screen.getByRole('link', { name: /app store/i });
     expect(cta).toBeInTheDocument();
-    expect(cta).toHaveAttribute(
-      'href',
-      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657',
-    );
+    expect(cta).toHaveAttribute('href', appStoreUrl('web-home'));
     expect(cta).toHaveAttribute('target', '_blank');
     expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
   });

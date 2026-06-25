@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   renderApplicationsList,
   renderAttributionList,
+  pageStyles,
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
 
@@ -114,5 +115,15 @@ describe('renderAttributionList', () => {
     // HTML in a line is escaped so data can never inject markup.
     expect(html).toContain('<li>Line two &amp; &lt;b&gt;bold&lt;/b&gt;</li>');
     expect((html.match(/<li>/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('pageStyles townLinks', () => {
+  it('styles the .townLinks__list and its anchors with design tokens', () => {
+    const css = pageStyles();
+    expect(css).toContain('.townLinks__list');
+    expect(css).toContain('.townLinks__list a');
+    // Uses design tokens (var(--tc-*)), never hard-coded colours/spacing.
+    expect(css).toMatch(/\.townLinks__list a \{[^}]*var\(--tc-/);
   });
 });
