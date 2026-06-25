@@ -73,6 +73,10 @@ extension AppCoordinator {
     do {
       let zones = try await watchZoneRepository.loadAll()
       onboardingPresentation = zones.isEmpty ? .required : .notRequired
+      // Never ask for a review during a first-run onboarding session (GH #628).
+      if zones.isEmpty {
+        reviewPromptTracker?.suppressThisSession()
+      }
     } catch {
       onboardingPresentation = .notRequired
     }
