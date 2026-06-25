@@ -18,6 +18,46 @@ func testZone(t *testing.T) WatchZone {
 	return z
 }
 
+func TestWatchZone_BoundingBox(t *testing.T) {
+	t.Parallel()
+	// A 1 km zone centred on central London. The bounding box is the centre offset
+	// by the radius converted to degrees: latitude is a constant scale, longitude
+	// is scaled by cos(latitude), so at 51.5° the east-west span is wider than the
+	// north-south span. Expected values precomputed from the documented formula:
+	//   dLat = 1000 / 111320                      = 0.0089831
+	//   dLon = 1000 / (111320 * cos(51.5074°))    = 0.0144328
+	z, err := NewWatchZone("z1", "u1", "Home", 51.5074, -0.1278, 1000, 471,
+		time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC), true, true)
+	if err != nil {
+		t.Fatalf("NewWatchZone: %v", err)
+	}
+	minLat, maxLat, minLon, maxLon := z.boundingBox()
+
+	const tol = 1e-4
+	for _, c := range []struct {
+		name string
+		got  float64
+		want float64
+	}{
+		{"minLat", minLat, 51.4984169},
+		{"maxLat", maxLat, 51.5163831},
+		{"minLon", minLon, -0.1422328},
+		{"maxLon", maxLon, -0.1133672},
+	} {
+		if diff := c.got - c.want; diff > tol || diff < -tol {
+			t.Errorf("%s: got %v, want %v (±%v)", c.name, c.got, c.want, tol)
+		}
+	}
+	// The box must be symmetric about the centre and the longitude span wider than
+	// the latitude span at UK latitudes (cos(lat) < 1).
+	if maxLat-z.Latitude <= 0 || (maxLat-z.Latitude)-(z.Latitude-minLat) > tol {
+		t.Errorf("latitude box not symmetric about centre: [%v,%v] centre %v", minLat, maxLat, z.Latitude)
+	}
+	if (maxLon - minLon) <= (maxLat - minLat) {
+		t.Errorf("longitude span must exceed latitude span at UK latitudes: lon=%v lat=%v", maxLon-minLon, maxLat-minLat)
+	}
+}
+
 func TestNewWatchZone_Validation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
