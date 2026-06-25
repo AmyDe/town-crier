@@ -227,4 +227,70 @@ describe('renderPlanningPage', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
+
+  describe('town links section', () => {
+    it('renders a .townLinks section when the authority has published towns', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [
+            { name: 'Basingstoke', slug: 'basingstoke' },
+            { name: 'Tadley', slug: 'tadley' },
+          ],
+        }),
+      );
+      expect(html).toContain('<section class="townLinks">');
+      expect(html).toContain(
+        '<h2>Planning applications by town in Basingstoke and Deane</h2>',
+      );
+      expect(html).toContain('<ul class="townLinks__list">');
+    });
+
+    it('links to the canonical nested /planning/<authority>/<town> path for each town', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [
+            { name: 'Basingstoke', slug: 'basingstoke' },
+            { name: 'Tadley', slug: 'tadley' },
+          ],
+        }),
+      );
+      expect(html).toContain(
+        '<a href="/planning/basingstoke-and-deane/basingstoke">Basingstoke</a>',
+      );
+      expect(html).toContain(
+        '<a href="/planning/basingstoke-and-deane/tadley">Tadley</a>',
+      );
+    });
+
+    it('places the town-links section immediately after the Recent applications list', () => {
+      const html = renderPlanningPage(
+        pageData({ towns: [{ name: 'Basingstoke', slug: 'basingstoke' }] }),
+      );
+      // After the recent-applications <ul>, before the how-to-comment explainer.
+      expect(html.indexOf('class="appList"')).toBeLessThan(
+        html.indexOf('class="townLinks"'),
+      );
+      expect(html.indexOf('class="townLinks"')).toBeLessThan(
+        html.indexOf('class="explainer"'),
+      );
+    });
+
+    it('omits the section entirely when there are no published towns', () => {
+      expect(renderPlanningPage(pageData({ towns: [] }))).not.toContain(
+        'townLinks',
+      );
+      // Undefined towns (the default) also omit the section — backwards compatible.
+      expect(renderPlanningPage(pageData())).not.toContain('townLinks');
+    });
+
+    it('HTML-escapes town names in the link list', () => {
+      const html = renderPlanningPage(
+        pageData({
+          towns: [{ name: 'Stoke & <b>Bramley</b>', slug: 'stoke-bramley' }],
+        }),
+      );
+      expect(html).not.toContain('<b>Bramley</b>');
+      expect(html).toContain('Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;');
+    });
+  });
 });
