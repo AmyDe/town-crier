@@ -41,6 +41,16 @@ struct ApplicationSummarySheet: View {
       Text("Received \(application.receivedDate.formatted(date: .abbreviated, time: .omitted))")
         .font(.system(.caption))
         .foregroundStyle(Color.tcTextTertiary)
+
+      PrimaryButton {
+        viewModel.requestFullDetail()
+      } label: {
+        HStack {
+          Image(systemName: "doc.text.magnifyingglass")
+          Text("View full details")
+        }
+      }
+      .accessibilityLabel("View full details")
     }
     .padding(TCSpacing.medium)
     .frame(maxWidth: .infinity, alignment: .leading)
