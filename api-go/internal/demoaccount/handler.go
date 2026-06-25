@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -41,10 +40,10 @@ type zoneStore interface {
 }
 
 // appStore seeds the demo applications and runs the spatial lookup that backs
-// the response.
+// the response. FindNearby is authority-agnostic and cross-partition (tc-zldl).
 type appStore interface {
 	Upsert(ctx context.Context, a applications.PlanningApplication) error
-	FindNearby(ctx context.Context, authorityCode string, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
+	FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
 }
 
 // handler serves GET /v1/demo-account.
@@ -82,8 +81,7 @@ func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authorityCode := strconv.Itoa(seedAuthorityID)
-	apps, err := h.apps.FindNearby(ctx, authorityCode, demoLatitude, demoLongitude, demoRadiusMetres)
+	apps, err := h.apps.FindNearby(ctx, demoLatitude, demoLongitude, demoRadiusMetres)
 	if err != nil {
 		serverError(w, r, h.logger, "find nearby demo applications", err)
 		return

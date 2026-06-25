@@ -309,15 +309,15 @@ func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T
 	items.crossPartitionResult = [][]byte{mustDocBytes(t, z)}
 	store := NewCosmosStore(items)
 
-	zones, err := store.FindZonesContaining(context.Background(), z.AuthorityID, 51.5155, -0.0931)
+	zones, err := store.FindZonesContaining(context.Background(), 51.5155, -0.0931)
 	if err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
 	if len(zones) != 1 || zones[0].ID != z.ID {
 		t.Fatalf("zones: got %+v", zones)
 	}
-	// The point-in-circle predicate is an ST_DISTANCE against the zone radius,
-	// run cross-partition (every user's zones).
+	// The point-in-circle predicate keeps an exact ST_DISTANCE against the zone
+	// radius, run cross-partition (every user's zones) regardless of authority.
 	if !strings.Contains(items.lastQuery, "ST_DISTANCE") {
 		t.Errorf("query missing ST_DISTANCE: %q", items.lastQuery)
 	}
@@ -327,64 +327,80 @@ func TestCosmosStore_FindZonesContaining_CrossPartitionSpatialQuery(t *testing.T
 	if items.lastParams["@latitude"] != 51.5155 || items.lastParams["@longitude"] != -0.0931 {
 		t.Errorf("spatial params: got lat=%v lng=%v", items.lastParams["@latitude"], items.lastParams["@longitude"])
 	}
+	// Authority is no longer bound — matching is purely geographic (tc-b179).
+	if _, ok := items.lastParams["@authorityId"]; ok {
+		t.Errorf("authority must not be a query param any more: %v", items.lastParams)
+	}
 }
 
-func TestCosmosStore_FindZonesContaining_FiltersByAuthorityBeforeDistance(t *testing.T) {
+func TestCosmosStore_FindZonesContaining_DropsAuthorityScopeBboxPrunes(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	// An application in authority 99 must match ONLY zones scoped to authority 99.
-	// The store sends Cosmos an equality predicate on c.authorityId bound to the
-	// application's authority alongside the ST_DISTANCE test, so a zone scoped to a
-	// different authority is never returned even when the application falls
-	// geographically within the zone's radius. This is the documented
-	// authority-scoped zone model (zone.go) and mirrors the saved-bookmark path's
-	// existing app.AreaID scoping. Cosmos evaluates the predicate; this test locks
-	// that the predicate is present and bound to the passed authority.
-	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+	// Matching is now boundary-agnostic (tc-b179 / tc-w11n): the authority equality
+	// prune is gone and replaced by an index-served bounding-box BETWEEN prune
+	// (minLat/maxLat, minLon/maxLon), so a zone pinned to authority B matches an app
+	// tagged authority A when the app falls inside the zone's circle. The bbox is
+	// range-indexed for free under the WatchZones /* indexing policy, so the
+	// candidate prune stays index-served — no full-container scan.
+	if _, err := store.FindZonesContaining(context.Background(), 51.5, -0.1); err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
-	if !strings.Contains(items.lastQuery, "c.authorityId = @authorityId") {
-		t.Errorf("query must filter on c.authorityId = @authorityId: %q", items.lastQuery)
+	if strings.Contains(items.lastQuery, "c.authorityId = @authorityId") {
+		t.Errorf("query must NOT scope by authority any more: %q", items.lastQuery)
 	}
-	if items.lastParams["@authorityId"] != 99 {
-		t.Errorf("@authorityId param: got %v, want 99", items.lastParams["@authorityId"])
-	}
-	// The authority equality must be ANDed with the distance test, not replace it.
-	if !strings.Contains(items.lastQuery, "ST_DISTANCE") || !strings.Contains(items.lastQuery, "c.radiusMetres") {
-		t.Errorf("query must keep the ST_DISTANCE radius test alongside the authority filter: %q", items.lastQuery)
+	for _, pred := range []string{
+		"@latitude BETWEEN c.minLat AND c.maxLat",
+		"@longitude BETWEEN c.minLon AND c.maxLon",
+	} {
+		if !strings.Contains(items.lastQuery, pred) {
+			t.Errorf("query missing bbox prune %q: %q", pred, items.lastQuery)
+		}
 	}
 }
 
-func TestCosmosStore_FindZonesContaining_PureIndexServedQuery(t *testing.T) {
+func TestCosmosStore_FindZonesContaining_TransitionalLegacyFallback(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+	if _, err := store.FindZonesContaining(context.Background(), 51.5, -0.1); err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
-	// The distance test is now a single index-served clause: ST_DISTANCE against
-	// the persisted GeoJSON c.location path, served by the spatial index on
-	// /location (tc-quqe). This is the perf win — Cosmos fully uses the index.
+	// Transitional fallback: a legacy zone written before the bbox existed has no
+	// minLat, so the BETWEEN prune cannot match it. NOT IS_DEFINED(c.minLat) keeps
+	// such a zone in the candidate set so the exact ST_DISTANCE residual still
+	// matches it, instead of silently dropping ALL its matches in the window between
+	// deploy and the slice-3 backfill. Removable in a follow-up once both envs are
+	// bbox-backfilled — mirrors the tc-qbq4 → tc-ltlw NOT IS_DEFINED(c.location)
+	// fallback.
+	if !strings.Contains(items.lastQuery, "NOT IS_DEFINED(c.minLat)") {
+		t.Errorf("query must keep the transitional NOT IS_DEFINED(c.minLat) fallback: %q", items.lastQuery)
+	}
+}
+
+func TestCosmosStore_FindZonesContaining_KeepsExactDistanceResidual(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, err := store.FindZonesContaining(context.Background(), 51.5, -0.1); err != nil {
+		t.Fatalf("FindZonesContaining: %v", err)
+	}
+	// The bbox is only a coarse prune — a square circumscribing the circle, so a
+	// point in a box corner can be outside the circle. The exact ST_DISTANCE
+	// residual, ANDed after the prune, preserves precise circle semantics: a 2.0 km
+	// zone still excludes a point at 2.1 km that slips inside the box corner. The
+	// residual distances against the indexed c.location GeoJSON path (tc-quqe).
 	if !strings.Contains(items.lastQuery, "ST_DISTANCE(c.location,") {
 		t.Errorf("query must distance against the indexed c.location path: %q", items.lastQuery)
 	}
-	// The legacy fallback is gone (tc-ltlw / Phase 2d): both environments are fully
-	// backfilled (tc-xj48) and the write path (#618) guarantees every new zone
-	// carries c.location, so no zone can lack it. The NOT IS_DEFINED guard and the
-	// inline [c.longitude, c.latitude] read are removed so the query is pure and the
-	// index serves it without a residual full-scan clause.
-	if strings.Contains(items.lastQuery, "NOT IS_DEFINED") {
-		t.Errorf("query must not retain the removed NOT IS_DEFINED fallback: %q", items.lastQuery)
+	if !strings.Contains(items.lastQuery, "<= c.radiusMetres") {
+		t.Errorf("query must keep the exact radius residual: %q", items.lastQuery)
 	}
-	if strings.Contains(items.lastQuery, "[c.longitude, c.latitude]") {
-		t.Errorf("query must not retain the removed inline [c.longitude, c.latitude] legacy point: %q", items.lastQuery)
-	}
-	// The authority pre-filter (tc-8dud) survives the simplification.
-	if !strings.Contains(items.lastQuery, "c.authorityId = @authorityId") {
-		t.Errorf("query must keep the authority pre-filter: %q", items.lastQuery)
+	if !strings.Contains(items.lastQuery, "AND ST_DISTANCE") {
+		t.Errorf("residual must be ANDed after the bbox prune: %q", items.lastQuery)
 	}
 }
 
@@ -393,18 +409,19 @@ func TestCosmosStore_FindZonesContaining_ProjectsNeededFieldsNotSelectStar(t *te
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	if _, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1); err != nil {
+	if _, err := store.FindZonesContaining(context.Background(), 51.5, -0.1); err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
 	// SELECT * hydrates whole docs on every cross-partition fan-out row. The query
 	// instead projects only the columns this path needs: id/userId/createdAt are
-	// consumed by the callers; name/radiusMetres/authorityId are required by the
-	// NewWatchZone constructor so the hydrated zone stays valid; pushEnabled and
+	// consumed by the callers; name/radiusMetres are required by the NewWatchZone
+	// constructor so the hydrated zone stays valid; pushEnabled and
 	// emailInstantEnabled are KEPT (not dropped) because they are nullable *bool
 	// that coalesce to true when absent — projecting them away would silently
 	// re-enable a user's disabled notifications if a future caller read them.
-	// latitude/longitude are dropped: no caller reads zone coordinates after the
-	// match (the distance test already ran server-side).
+	// authorityId STAYS in the projection as metadata (the constructor still reads
+	// it) even though it is gone from the WHERE clause. latitude/longitude are
+	// dropped: no caller reads zone coordinates after the match.
 	if strings.Contains(items.lastQuery, "SELECT *") {
 		t.Errorf("query must not SELECT * on the poll hot path: %q", items.lastQuery)
 	}
@@ -426,7 +443,7 @@ func TestCosmosStore_FindZonesContaining_HydratesProjectedDocument(t *testing.T)
 	items.crossPartitionResult = [][]byte{[]byte(`{"id":"zone-9","userId":"auth0|carol","name":"Z","radiusMetres":500,"authorityId":99,"createdAt":"2026-06-01T09:00:00+00:00","pushEnabled":false,"emailInstantEnabled":false}`)}
 	store := NewCosmosStore(items)
 
-	zones, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1)
+	zones, err := store.FindZonesContaining(context.Background(), 51.5, -0.1)
 	if err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}
@@ -448,7 +465,7 @@ func TestCosmosStore_FindZonesContaining_HydratesProjectedDocument(t *testing.T)
 func TestCosmosStore_FindZonesContaining_EmptyResultIsEmptySlice(t *testing.T) {
 	t.Parallel()
 	store := NewCosmosStore(newFakeItems())
-	zones, err := store.FindZonesContaining(context.Background(), 99, 51.5, -0.1)
+	zones, err := store.FindZonesContaining(context.Background(), 51.5, -0.1)
 	if err != nil {
 		t.Fatalf("FindZonesContaining: %v", err)
 	}

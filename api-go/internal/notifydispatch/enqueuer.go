@@ -139,7 +139,7 @@ func (e *Enqueuer) EnqueueForApplication(ctx context.Context, app applications.P
 	if app.Latitude == nil || app.Longitude == nil {
 		return nil
 	}
-	zones, err := e.zones.FindZonesContaining(ctx, app.AreaID, *app.Latitude, *app.Longitude)
+	zones, err := e.zones.FindZonesContaining(ctx, *app.Latitude, *app.Longitude)
 	if err != nil {
 		return err
 	}

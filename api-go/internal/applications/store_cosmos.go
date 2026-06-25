@@ -10,16 +10,19 @@ import (
 )
 
 // CosmosItems is the consumer-side slice of the Applications container the store
-// uses: a single-partition point read, an upsert, and single-partition queries.
-// QueryItems carries the tight 1.5s OLTP per-attempt budget for user-facing
-// reads; QueryItemsLongRead carries a longer per-attempt budget for the
-// latency-tolerant build-time SEO reads over a LARGE authority partition
-// (tc-9tov). platform.CosmosContainer satisfies it structurally.
+// uses: a single-partition point read, an upsert, single-partition queries, and
+// a cross-partition spatial fan-out. QueryItems carries the tight 1.5s OLTP
+// per-attempt budget for user-facing reads; QueryItemsLongRead carries a longer
+// per-attempt budget for the latency-tolerant build-time SEO reads over a LARGE
+// authority partition (tc-9tov); QueryItemsCrossPartition backs the
+// authority-agnostic nearby fan-out (tc-zldl). platform.CosmosContainer
+// satisfies it structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 	QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
+	QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error)
 }
 
 // CosmosStore reads and writes planning applications in the Applications
@@ -183,35 +186,44 @@ func (s *CosmosStore) BreakdownByAuthority(ctx context.Context, authorityCode st
 	return out, nil
 }
 
-// findNearbyQuery is the single-partition ST_DISTANCE spatial query for nearby
-// applications. Coordinates and radius are bound as named parameters (mirroring
+// findNearbyQuery is the constant-radius ST_DISTANCE spatial query for nearby
+// applications. The radius is the query's constant, so the Applications
+// /location spatial index serves it directly — cross-partition included.
+// Coordinates and radius are bound as named parameters (mirroring
 // findZonesContainingQuery in the watchzones package) — no float literals are
 // concatenated into the query text.
 const findNearbyQuery = "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
 	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
 
 // FindNearby returns every application within radiusMetres of (latitude,
-// longitude) inside the authorityCode partition, via a single-partition
-// ST_DISTANCE spatial query against the GeoJSON location. Coordinates and
-// radius are bound as named parameters (not string-concatenated) to eliminate
-// float-formatting edge cases and to mirror the parameterized style of the
-// sibling watchzones.FindZonesContaining query. The query is scoped to the
-// authorityCode logical partition, so it never fans out cross-partition.
-func (s *CosmosStore) FindNearby(ctx context.Context, authorityCode string, latitude, longitude, radiusMetres float64) ([]PlanningApplication, error) {
+// longitude) via a constant-radius ST_DISTANCE spatial query against the GeoJSON
+// location. Coordinates and radius are bound as named parameters (not
+// string-concatenated) to eliminate float-formatting edge cases and to mirror
+// the parameterized style of the sibling watchzones.FindZonesContaining query.
+//
+// This is a deliberate CROSS-PARTITION spatial fan-out: it is no longer scoped
+// to one authorityCode partition, so a watch zone whose circle crosses an
+// authority boundary surfaces in-circle applications on BOTH sides (tc-zldl /
+// tc-w11n). It is user-initiated and low-frequency (zone create / zone open),
+// strictly colder than the already-cross-partition notify path, so the fan-out
+// RU is acceptable at current scale. The constant radius lets the /location
+// spatial index serve the ST_DISTANCE residual exactly, so circle semantics
+// stay exact even across partitions.
+func (s *CosmosStore) FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]PlanningApplication, error) {
 	params := map[string]any{
 		"@latitude":     latitude,
 		"@longitude":    longitude,
 		"@radiusMetres": radiusMetres,
 	}
-	raws, err := s.items.QueryItems(ctx, authorityCode, findNearbyQuery, params)
+	raws, err := s.items.QueryItemsCrossPartition(ctx, findNearbyQuery, params)
 	if err != nil {
-		return nil, fmt.Errorf("find applications near %q: %w", authorityCode, err)
+		return nil, fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
 	}
 	apps := make([]PlanningApplication, 0, len(raws))
 	for _, raw := range raws {
 		var doc applicationDocument
 		if err := json.Unmarshal(raw, &doc); err != nil {
-			return nil, fmt.Errorf("decode nearby application in %q: %w", authorityCode, err)
+			return nil, fmt.Errorf("decode nearby application near (%v, %v): %w", latitude, longitude, err)
 		}
 		apps = append(apps, doc.toDomain())
 	}

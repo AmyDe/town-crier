@@ -172,52 +172,68 @@ func (s *CosmosStore) DistinctAuthorityIDs(ctx context.Context) ([]int, error) {
 	return ids, nil
 }
 
-// findZonesContainingQuery selects every watch zone scoped to the candidate
-// application's authority whose circle (centre + radius) contains the candidate
-// point, across all partitions. The authority equality predicate is evaluated by
-// Cosmos's default range index, pruning rows before the ST_DISTANCE test runs —
-// a WatchZone is authority-scoped (see zone.go), so a zone only ever matches
-// applications in its own authority, mirroring the saved-bookmark path's
-// app.AreaID scoping (notifydispatch/decision.go). The candidate authority and
-// point are bound as parameters.
+// findZonesContainingQuery selects every watch zone (across all users) whose
+// circle (centre + radius) contains the candidate point, across all partitions.
+// Matching is purely geographic — there is NO authority scoping (tc-b179 /
+// tc-w11n): a WatchZone's circle can straddle a local-authority boundary, so a
+// zone pinned to one authority must match an application tagged a neighbouring
+// authority when the application falls inside the circle. The dropped authority
+// equality (which silently lost the neighbour's side) is replaced by an
+// index-served bounding-box prune.
 //
-// The distance test is a single index-served clause: ST_DISTANCE(c.location,
-// @point) <= c.radiusMetres, served by the spatial index on the persisted GeoJSON
-// /location path (tc-quqe), so Cosmos fully uses the index rather than a full
-// scan. The legacy NOT IS_DEFINED(c.location) fallback — which distanced against
-// an inline [c.longitude, c.latitude] point for zones written before the location
-// backfill — was removed (tc-ltlw / Phase 2d) once both environments were fully
-// backfilled (tc-xj48) and the write path (#618) guaranteed every new zone
-// carries c.location, so no zone can lack it and the fallback was dead weight.
+// The candidate prune is the bounding-box BETWEEN test on minLat/maxLat,
+// minLon/maxLon — the axis-aligned box that circumscribes the circle, stored per
+// zone (document.go) and range-indexed for free under the WatchZones /* indexing
+// policy. It replaces the authority equality as the cheap predicate that thins
+// the candidate set before the spatial residual, so the per-app candidate set
+// stays as small as the authority prune kept it (no RU regression).
+//
+// The exact circle test stays as the ST_DISTANCE residual:
+// ST_DISTANCE(c.location, @point) <= c.radiusMetres, served by the spatial index
+// on the persisted GeoJSON /location path (tc-quqe). The bbox is only a coarse
+// prune (a box corner can lie outside the circle), so the residual, ANDed after
+// the prune, preserves exact circle semantics — a 2.0 km zone still excludes a
+// point at 2.1 km that slips inside a box corner.
+//
+// NOT IS_DEFINED(c.minLat) is a TRANSITIONAL fallback: a legacy zone written
+// before the bbox existed has no minLat, so the BETWEEN prune cannot match it.
+// Keeping such a zone in the candidate set lets the exact ST_DISTANCE residual
+// still match it, instead of silently dropping ALL its matches in the window
+// between this deploy and the slice-3 one-shot backfill. It mirrors how tc-qbq4
+// kept a NOT IS_DEFINED(c.location) fallback that tc-ltlw later removed; this
+// branch is likewise removable in a follow-up once both environments are
+// bbox-backfilled.
 //
 // All coordinates are GeoJSON order: [longitude, latitude], not [lat, lng].
 //
 // The projection is deliberate, not SELECT *: only the columns this hot path
 // needs are hydrated. id/userId/createdAt are consumed by the callers;
-// name/radiusMetres/authorityId are required by the NewWatchZone constructor so
-// the hydrated zone stays valid; pushEnabled/emailInstantEnabled are projected
-// (not dropped) because they are nullable *bool that coalesce to true when
-// absent, so omitting them would silently re-enable a user's disabled
-// notifications if a future caller read them. latitude/longitude are omitted from
-// the projection — no caller reads zone coordinates after the match, and the
-// distance test now reads only the indexed c.location, not the raw columns.
+// name/radiusMetres are required by the NewWatchZone constructor so the hydrated
+// zone stays valid; authorityId stays in the projection as metadata (the
+// constructor still reads it) even though it is gone from the WHERE clause;
+// pushEnabled/emailInstantEnabled are projected (not dropped) because they are
+// nullable *bool that coalesce to true when absent, so omitting them would
+// silently re-enable a user's disabled notifications if a future caller read
+// them. latitude/longitude are omitted — no caller reads zone coordinates after
+// the match, and the distance test reads only the indexed c.location.
 const findZonesContainingQuery = "SELECT c.id, c.userId, c.name, c.radiusMetres, c.authorityId, c.createdAt, c.pushEnabled, c.emailInstantEnabled " +
-	"FROM c WHERE c.authorityId = @authorityId AND " +
-	"ST_DISTANCE(c.location, {'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
+	"FROM c WHERE (NOT IS_DEFINED(c.minLat) " +
+	"OR (@latitude BETWEEN c.minLat AND c.maxLat AND @longitude BETWEEN c.minLon AND c.maxLon)) " +
+	"AND ST_DISTANCE(c.location, {'type': 'Point', 'coordinates': [@longitude, @latitude]}) <= c.radiusMetres"
 
-// FindZonesContaining returns every watch zone (across all users) scoped to the
-// given authority whose circle contains the point (latitude, longitude), via a
-// cross-partition query that pre-filters on the authority (index-served) before
-// the ST_DISTANCE test against each zone's centre and radius. It backs the
-// poll-path notification fan-out and decision-event dispatch (epic tc-wad3, bead
-// tc-uc2p); authorityID is the polled application's authority (app.AreaID). This
-// is a deliberate cross-partition scan — a polled application's coordinates must
-// be matched against every user's zones in that authority.
-func (s *CosmosStore) FindZonesContaining(ctx context.Context, authorityID int, latitude, longitude float64) ([]WatchZone, error) {
+// FindZonesContaining returns every watch zone (across all users) whose circle
+// contains the point (latitude, longitude), via a cross-partition query that
+// prunes candidates on the index-served bounding box before the exact
+// ST_DISTANCE test against each zone's centre and radius. It backs the poll-path
+// notification fan-out and decision-event dispatch (epic tc-wad3, bead tc-uc2p).
+// Matching is purely geographic across all partitions — it is NOT scoped to an
+// authority (tc-b179), so a polled application's coordinates are matched against
+// every user's zones regardless of which authority either is tagged with. This
+// is a deliberate cross-partition scan.
+func (s *CosmosStore) FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]WatchZone, error) {
 	raws, err := s.items.QueryItemsCrossPartition(ctx, findZonesContainingQuery, map[string]any{
-		"@authorityId": authorityID,
-		"@latitude":    latitude,
-		"@longitude":   longitude,
+		"@latitude":  latitude,
+		"@longitude": longitude,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("find zones containing point: %w", err)

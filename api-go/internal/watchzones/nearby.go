@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,10 +46,11 @@ type authorityResolver interface {
 }
 
 // appFinder runs the spatial lookup that backs both the create response's nearby
-// applications and the per-zone applications list. *applications.CosmosStore
-// satisfies it.
+// applications and the per-zone applications list. It is authority-agnostic and
+// cross-partition, so a border-spanning zone surfaces neighbour-authority apps
+// (tc-zldl). *applications.CosmosStore satisfies it.
 type appFinder interface {
-	FindNearby(ctx context.Context, authorityCode string, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
+	FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -228,7 +228,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nearby, err := h.apps.FindNearby(
-		r.Context(), strconv.Itoa(authorityID), req.Latitude, req.Longitude, req.RadiusMetres)
+		r.Context(), req.Latitude, req.Longitude, req.RadiusMetres)
 	if err != nil {
 		h.serverError(w, r, "find nearby applications", err)
 		return
@@ -269,7 +269,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apps, err := h.apps.FindNearby(
-		r.Context(), strconv.Itoa(zone.AuthorityID), zone.Latitude, zone.Longitude, zone.RadiusMetres)
+		r.Context(), zone.Latitude, zone.Longitude, zone.RadiusMetres)
 	if err != nil {
 		h.serverError(w, r, "find applications in zone", err)
 		return

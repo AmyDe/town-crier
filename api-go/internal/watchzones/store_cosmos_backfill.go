@@ -63,3 +63,49 @@ func (s *CosmosStore) BackfillLocation(ctx context.Context) (BackfillResult, err
 	}
 	return res, nil
 }
+
+// BackfillBoundingBox rewrites every WatchZone document that predates the
+// bounding-box write path (tc-b179 / #637) so it carries minLat/maxLat/minLon/
+// maxLon, the index-served prune the notify-path containment query runs before
+// its exact ST_DISTANCE residual (replacing the dropped authority equality so
+// matching is boundary-agnostic). It is a guarded, idempotent one-shot: a
+// document that already has a bounding box is skipped, so a second run rewrites
+// nothing. The four bbox fields are written together by newWatchZoneDocument, so
+// checking minLat alone is sufficient to detect a backfilled document. The box is
+// never carried over — Save re-encodes the document via newWatchZoneDocument,
+// which recomputes the box from the zone's persisted centre + radius via
+// WatchZone.boundingBox.
+//
+// It runs independently of the location backfill (BackfillLocation): a document
+// may already carry a /location yet still lack a bounding box, so this can run
+// after, and is safe to run after, the location backfill.
+func (s *CosmosStore) BackfillBoundingBox(ctx context.Context) (BackfillResult, error) {
+	raws, err := s.items.QueryItemsCrossPartition(ctx, backfillScanQuery, nil)
+	if err != nil {
+		return BackfillResult{}, fmt.Errorf("scan watch zones for backfill: %w", err)
+	}
+
+	var res BackfillResult
+	for _, raw := range raws {
+		res.Total++
+
+		var doc watchZoneDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return BackfillResult{}, fmt.Errorf("decode watch zone for backfill: %w", err)
+		}
+		if doc.MinLat != nil {
+			res.AlreadyHad++
+			continue
+		}
+
+		zone, err := doc.toDomain()
+		if err != nil {
+			return BackfillResult{}, fmt.Errorf("hydrate watch zone %q for backfill: %w", doc.ID, err)
+		}
+		if err := s.Save(ctx, zone); err != nil {
+			return BackfillResult{}, fmt.Errorf("rewrite watch zone %q with bounding box: %w", doc.ID, err)
+		}
+		res.Backfilled++
+	}
+	return res, nil
+}

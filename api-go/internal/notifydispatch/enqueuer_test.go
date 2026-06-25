@@ -204,20 +204,64 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 	}
 }
 
-func TestEnqueuer_EnqueueForApplication_PassesApplicationAuthorityToZoneMatcher(t *testing.T) {
+func TestEnqueuer_EnqueueForApplication_MatchesCrossBorderNeighbourAuthorityZone(t *testing.T) {
 	t.Parallel()
-	// The new-application zone fan-out must scope to the polled application's
-	// authority: a WatchZone is authority-scoped, so the matcher is asked only for
-	// zones in the application's authority (app.AreaID), mirroring the
-	// saved-bookmark path's existing app.AreaID scoping.
-	enq, _, _, fz := newEnqueuerHarnessWithZones(t, profiles.TierPro, &fakeZones{})
-	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
+	// Boundary-agnostic matching (tc-b179 / tc-w11n): a zone pinned to authority 449
+	// (Adur & Worthing) must receive a NewApplication for an in-circle application
+	// tagged authority 246 (Arun) on the other side of the border. The store no
+	// longer scopes the lookup by authority, so the fake returns the 449 zone for
+	// the 246 app. The CreatedAt.After(LastDifferent) skip rule is UNCHANGED: a
+	// second 449 zone created after the application last changed is still skipped.
+	lastDifferent := time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)
+	eligible, err := watchzones.NewWatchZone("zone-449", "auth0|alice", "Border", 50.81, -0.42, 2000, 449,
+		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), true, true)
+	if err != nil {
+		t.Fatalf("NewWatchZone eligible: %v", err)
+	}
+	tooNew, err := watchzones.NewWatchZone("zone-449-new", "auth0|alice", "Border New", 50.81, -0.42, 2000, 449,
+		time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC), true, true)
+	if err != nil {
+		t.Fatalf("NewWatchZone tooNew: %v", err)
+	}
+	zones := &fakeZones{zones: []watchzones.WatchZone{eligible, tooNew}}
+	enq, notifs, _, fz := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+
+	// The application is tagged the NEIGHBOUR authority (246), not the zone's (449).
+	la, lo := 50.815, -0.41
+	state := "Pending"
+	app := applications.PlanningApplication{
+		Name: "AR/0007", UID: "AR/0007", AreaName: "Arun", AreaID: 246,
+		AppState: &state, Latitude: &la, Longitude: &lo, LastDifferent: lastDifferent,
+	}
 
 	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
 		t.Fatalf("EnqueueForApplication: %v", err)
 	}
-	if fz.lastAuthorityID != app.AreaID {
-		t.Errorf("zone matcher authority: got %d, want %d (app.AreaID)", fz.lastAuthorityID, app.AreaID)
+	if fz.lastLat != la || fz.lastLng != lo {
+		t.Errorf("zone lookup point: got lat=%v lng=%v, want %v %v", fz.lastLat, fz.lastLng, la, lo)
+	}
+	if len(notifs.created) != 1 {
+		t.Fatalf("border-spanning app must enqueue for the neighbour-authority zone exactly once, got %d", len(notifs.created))
+	}
+	if notifs.created[0].WatchZoneID == nil || *notifs.created[0].WatchZoneID != "zone-449" {
+		t.Errorf("wrong zone fanned out (the post-LastDifferent zone must be skipped): %+v", notifs.created[0].WatchZoneID)
+	}
+}
+
+func TestEnqueuer_EnqueueForApplication_NonBorderZoneMatchesUnchanged(t *testing.T) {
+	t.Parallel()
+	// Regression: a zone that does NOT cross a boundary (same authority as the app)
+	// still matches exactly as before the authority prune was removed — one record.
+	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) // authority 99
+	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
+	enq, notifs, _, _ := newEnqueuerHarnessWithZones(t, profiles.TierPro, zones)
+	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC)) // authority 99
+
+	if err := enq.EnqueueForApplication(context.Background(), app); err != nil {
+		t.Fatalf("EnqueueForApplication: %v", err)
+	}
+	if len(notifs.created) != 1 {
+		t.Errorf("same-authority zone must still match exactly once, got %d", len(notifs.created))
 	}
 }
 
