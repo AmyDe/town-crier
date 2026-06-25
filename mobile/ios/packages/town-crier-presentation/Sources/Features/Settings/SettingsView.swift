@@ -9,6 +9,7 @@ public struct SettingsView: View {
   private var onPrivacyPolicy: (() -> Void)?
   private var onTermsOfService: (() -> Void)?
   private var onRedeemOfferCode: (() -> Void)?
+  private var onRateApp: (() -> Void)?
 
   public init(
     viewModel: SettingsViewModel,
@@ -16,7 +17,8 @@ public struct SettingsView: View {
     onManageSubscription: (() -> Void)? = nil,
     onPrivacyPolicy: (() -> Void)? = nil,
     onTermsOfService: (() -> Void)? = nil,
-    onRedeemOfferCode: (() -> Void)? = nil
+    onRedeemOfferCode: (() -> Void)? = nil,
+    onRateApp: (() -> Void)? = nil
   ) {
     _viewModel = StateObject(wrappedValue: viewModel)
     self.onNotificationPreferences = onNotificationPreferences
@@ -24,6 +26,7 @@ public struct SettingsView: View {
     self.onPrivacyPolicy = onPrivacyPolicy
     self.onTermsOfService = onTermsOfService
     self.onRedeemOfferCode = onRedeemOfferCode
+    self.onRateApp = onRateApp
   }
 
   /// Test-only seam: invoke the redeem-offer-code callback as if the user had
@@ -46,6 +49,13 @@ public struct SettingsView: View {
   /// verifiable without UI-level automation.
   public func requestExportData() async {
     await viewModel.exportData()
+  }
+
+  /// Test-only seam: invoke the rate-app callback as if the user had tapped the
+  /// "Rate the App" row in Settings. Mirrors `requestRedeemOfferCode` so the
+  /// wiring is verifiable without UI-level automation (GH #629).
+  public func requestRateApp() {
+    onRateApp?()
   }
 
   public var body: some View {
@@ -321,11 +331,18 @@ public struct SettingsView: View {
 
   private var appInfoSection: some View {
     Section {
+      navigationRow("Rate the App", systemImage: "star") {
+        onRateApp?()
+      }
+
       HStack {
         settingLabel("Version")
         Spacer()
         settingCaption(viewModel.appVersion)
       }
+    } header: {
+      Text("About")
+        .font(TCTypography.captionEmphasis)
     }
   }
 }
