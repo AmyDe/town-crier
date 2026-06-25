@@ -1,4 +1,4 @@
-import { SITE_ORIGIN, APP_DOWNLOAD_URL } from './constants.mjs';
+import { SITE_ORIGIN, APPLE_APP_ID, appStoreUrl } from './constants.mjs';
 import { escapeHtml, leadLine } from './format.mjs';
 import {
   pageStyles,
@@ -84,6 +84,7 @@ export function renderPlanningPage(data) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="apple-itunes-app" content="app-id=${APPLE_APP_ID}" />
     <title>${title}</title>
     <meta name="description" content="${metaDescription}" />
     <meta name="robots" content="index,follow" />
@@ -105,7 +106,7 @@ ${pageStyles()}
         <a href="/">Town Crier</a>
         <nav class="siteHeader__nav">
           <a href="/">Home</a>
-          <a class="siteHeader__cta" href="${APP_DOWNLOAD_URL}" rel="noopener" target="_blank">Get the app</a>
+          <a class="siteHeader__cta" href="${appStoreUrl('seo-lpa')}" rel="noopener" target="_blank">Get the app</a>
         </nav>
       </header>
       <main>
@@ -142,7 +143,7 @@ ${applicationsList}
             Draw a circle on the map and Town Crier will notify you the moment a new
             planning application is submitted or decided inside it.
           </p>
-          <a class="cta__button" href="${APP_DOWNLOAD_URL}" rel="noopener" target="_blank">Download on the App Store</a>
+          <a class="cta__button" href="${appStoreUrl('seo-lpa')}" rel="noopener" target="_blank">Download on the App Store</a>
         </section>
       </main>
 
