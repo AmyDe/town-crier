@@ -40,6 +40,23 @@ type watchZoneDocument struct {
 	// so an absent location stays nil rather than serialising an empty Point.
 	Location *geoJSONPoint `json:"location"`
 
+	// minLat/maxLat/minLon/maxLon are the axis-aligned bounding box of the zone's
+	// circle (centre offset by radius, longitude scaled by cos(latitude)). They are
+	// the index-served prune the notify-path containment query (store_cosmos.go)
+	// runs before the exact ST_DISTANCE residual, replacing the dropped authority
+	// equality so matching is boundary-agnostic (tc-b179 / tc-w11n). Like Location
+	// they are ADDITIVE and *float64: a legacy document written before this field
+	// decodes them as nil — that nil is the "needs backfill" signal the one-shot
+	// CLI backfill (slice 3) keys on, and the transitional query's
+	// NOT IS_DEFINED(c.minLat) fallback matches such zones via the residual alone
+	// until the backfill runs. toDomain does NOT read them (the domain recomputes
+	// the box); newWatchZoneDocument recomputes them wholesale on every write, so a
+	// radius/centre change is covered for free (Save always re-encodes here).
+	MinLat *float64 `json:"minLat"`
+	MaxLat *float64 `json:"maxLat"`
+	MinLon *float64 `json:"minLon"`
+	MaxLon *float64 `json:"maxLon"`
+
 	// createdAt must serialise with a numeric UTC offset ("+00:00"), never Go's
 	// RFC 3339 "Z" — platform.DotNetTime handles that. Nullable so a legacy
 	// document missing it hydrates to the zero instant (time.Time{}).
@@ -59,6 +76,7 @@ func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 	createdAt := platform.DotNetTime(z.CreatedAt)
 	push := z.PushEnabled
 	email := z.EmailInstantEnabled
+	minLat, maxLat, minLon, maxLon := z.boundingBox()
 	return watchZoneDocument{
 		ID:                  z.ID,
 		UserID:              z.UserID,
@@ -68,6 +86,10 @@ func newWatchZoneDocument(z WatchZone) watchZoneDocument {
 		RadiusMetres:        z.RadiusMetres,
 		AuthorityID:         z.AuthorityID,
 		Location:            newGeoPoint(z.Longitude, z.Latitude),
+		MinLat:              &minLat,
+		MaxLat:              &maxLat,
+		MinLon:              &minLon,
+		MaxLon:              &maxLon,
 		CreatedAt:           &createdAt,
 		PushEnabled:         &push,
 		EmailInstantEnabled: &email,
