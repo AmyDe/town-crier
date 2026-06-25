@@ -61,6 +61,12 @@ struct TownCrierApp: App {
     // Injecting the service unhides the "Redeem Offer Code" row in Settings.
     let offerCodeService = HttpOfferCodeService(apiClient: apiClient)
 
+    // App Store review prompt (GH #628): device-local gating only, no server/PII.
+    let reviewRequester = CoordinatorReviewRequester()
+    let reviewPromptTracker = ReviewPromptTracker(
+      store: UserDefaultsReviewPromptStore(),
+      requester: reviewRequester
+    )
     let appCoordinator = AppCoordinator(
       repository: repository,
       authService: authService,
@@ -77,8 +83,10 @@ struct TownCrierApp: App {
       savedApplicationRepository: savedApplicationRepository,
       offerCodeService: offerCodeService,
       notificationStateRepository: notificationStateRepository,
-      badgeSetter: UIApplicationBadgeSetter()
+      badgeSetter: UIApplicationBadgeSetter(),
+      reviewPromptTracker: reviewPromptTracker
     )
+    reviewRequester.coordinator = appCoordinator  // weak; coordinator owns the tracker
     _coordinator = StateObject(wrappedValue: appCoordinator)
 
     let registrar = PushNotificationRegistrar(
@@ -161,16 +169,17 @@ struct TownCrierApp: App {
         }
         await forceUpdateViewModel.checkVersion()
       }
-      .onChange(of: scenePhase) { _, newPhase in
-        // Reconcile the app icon badge with the server-side unread watermark
-        // whenever the scene becomes active — both on first launch and on
-        // every foreground entry. We deliberately pull rather than rely on
-        // silent push so cross-device read-state changes propagate without
-        // server-side push fan-out (spec
-        // docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push).
+      .onChange(of: scenePhase) { oldPhase, newPhase in
+        // Reconcile the app icon badge with the server-side unread watermark on
+        // every foreground entry — we pull rather than rely on silent push so
+        // cross-device read-state changes propagate without server-side fan-out
+        // (docs/specs/notifications-unread-watermark.md#ios-badge-foreground-push).
         guard newPhase == .active else { return }
+        // Loyalty review signal: only a background→active re-entry counts (#628).
+        coordinator.recordAppForegrounded(isReactivation: oldPhase == .background)
         Task { await coordinator.syncBadge() }
       }
+      .requestingReview(when: coordinator)
       .preferredColorScheme(settingsViewModel.appearanceMode.preferredColorScheme)
       .alert(
         coordinator.deepLinkError?.userTitle ?? "Error",

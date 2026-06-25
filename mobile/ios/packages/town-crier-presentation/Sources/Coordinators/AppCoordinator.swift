@@ -296,10 +296,8 @@ public final class AppCoordinator: ObservableObject {
     subscriptionTier = result.tier
     tierCache.set(result.tier.rawValue, forKey: Self.tierCacheKey)
 
-    // Review-prompt upgrade signal (GH #628): record a free→paid transition so
-    // upgrading nudges a borderline user toward a prompt. The tracker latches
-    // it, and the weight sits strictly below the threshold, so the act of
-    // paying can never on its own trigger the ask.
+    // Review-prompt upgrade signal (GH #628): a latched free→paid nudge weighted
+    // below the threshold, so paying alone can never trigger the ask.
     if previousTier == .free, result.tier > .free {
       reviewPromptTracker?.record(.upgraded)
     }
@@ -318,20 +316,12 @@ public final class AppCoordinator: ObservableObject {
     // Fired into a stored `Task` so tests can await it deterministically.
     if result.tier > .free,
       await notificationService.authorizationStatus() == .notDetermined {
-      // The review prompt must never stack with the post-purchase push prompt
-      // nor appear right after a purchase (value isn't delivered yet) — suppress
-      // it for the rest of this session (GH #628).
+      // Never stack the review prompt on the post-purchase push prompt (GH #628).
       reviewPromptTracker?.suppressThisSession()
       pendingPostPurchasePermissionPrompt = Task { [weak self] in
         _ = try? await self?.notificationService.requestPermission()
       }
     }
-  }
-
-  /// Records that the app was foregrounded, feeding the review-prompt loyalty
-  /// signal. `isReactivation` is `true` only for a background→active re-entry.
-  public func recordAppForegrounded(isReactivation: Bool) {
-    reviewPromptTracker?.recordAppForegrounded(isReactivation: isReactivation)
   }
 
   /// Test-only synchronisation: await the most recent post-purchase
