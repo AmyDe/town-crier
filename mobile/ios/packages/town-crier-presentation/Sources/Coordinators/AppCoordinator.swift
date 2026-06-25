@@ -18,6 +18,11 @@ public final class AppCoordinator: ObservableObject {
   @Published public var isOpeningSystemNotificationSettings = false
   /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
   @Published public var isNotificationPreferencesPresented = false
+  /// Set to `true` by the review-prompt requester at an engagement peak; the app
+  /// layer observes it, calls SwiftUI's `requestReview`, then resets it
+  /// (mirroring ``isOpeningSystemNotificationSettings``). The OS call is never
+  /// guaranteed to show — Apple caps and may silently suppress it (GH #628).
+  @Published public var isRequestingReview = false
   /// Selected main tab; bound to the root `TabView` for coordinator-driven tab switches.
   @Published public var selectedTab: MainTab = .applications
   @Published public var isAddingWatchZone = false
