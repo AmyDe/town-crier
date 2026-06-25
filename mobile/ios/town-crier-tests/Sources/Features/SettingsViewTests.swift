@@ -66,6 +66,18 @@ struct SettingsViewTests {
     #expect(tapped)
   }
 
+  @Test("SettingsView forwards the rate-app tap to the callback")
+  func rateAppCallback_isInvokedOnRequest() {
+    let vm = makeViewModel()
+    var tapped = false
+    let handler: () -> Void = { tapped = true }
+    let view = SettingsView(viewModel: vm, onRateApp: handler)
+
+    view.requestRateApp()
+
+    #expect(tapped)
+  }
+
   @Test("SettingsView export-data tap drives the ViewModel export flow")
   func exportDataTap_invokesViewModelExport() async {
     let profileSpy = SpyUserProfileRepository()
