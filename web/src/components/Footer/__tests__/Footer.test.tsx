@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+import { appStoreUrl } from '../../../config/links';
 import { Footer } from '../Footer';
 
 describe('Footer', () => {
@@ -26,10 +27,7 @@ describe('Footer', () => {
 
     const link = screen.getByRole('link', { name: /download on the app store/i });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute(
-      'href',
-      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657',
-    );
+    expect(link).toHaveAttribute('href', appStoreUrl('web-home'));
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });

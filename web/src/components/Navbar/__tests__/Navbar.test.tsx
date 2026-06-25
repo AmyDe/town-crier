@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
+import { appStoreUrl } from '../../../config/links';
 import { AuthProvider } from '../../../auth/auth-context';
 import { SpyAuthPort } from '../../../auth/__tests__/spies/spy-auth-port';
 import { Navbar } from '../Navbar';
@@ -69,10 +70,7 @@ describe('Navbar', () => {
 
     const cta = screen.getByRole('link', { name: /download/i });
     expect(cta).toBeInTheDocument();
-    expect(cta).toHaveAttribute(
-      'href',
-      'https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657',
-    );
+    expect(cta).toHaveAttribute('href', appStoreUrl('web-home'));
     expect(cta).toHaveAttribute('target', '_blank');
     expect(cta).toHaveAttribute('rel', 'noopener noreferrer');
   });
