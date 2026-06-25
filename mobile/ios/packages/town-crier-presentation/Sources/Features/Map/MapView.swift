@@ -35,10 +35,12 @@ public struct MapView: View {
       item: Binding(
         get: { viewModel.selectedApplication },
         set: { _ in viewModel.clearSelection() }
-      )
-    ) { application in
-      ApplicationSummarySheet(application: application, viewModel: viewModel)
-    }
+      ),
+      onDismiss: { viewModel.presentPendingDetailIfNeeded() },
+      content: { application in
+        ApplicationSummarySheet(application: application, viewModel: viewModel)
+      }
+    )
   }
 
   @ViewBuilder

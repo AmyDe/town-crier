@@ -45,7 +45,8 @@ public final class AppCoordinator: ObservableObject {
 
   private static let tierCacheKey = "cachedSubscriptionTier"
 
-  private let repository: PlanningApplicationRepository
+  // Internal (not private) so the AppCoordinator+Detail extension can read it.
+  let repository: PlanningApplicationRepository
   let authService: AuthenticationService
   private let subscriptionService: SubscriptionService
   let userProfileRepository: UserProfileRepository
@@ -162,11 +163,18 @@ public final class AppCoordinator: ObservableObject {
   }
 
   public func makeMapViewModel() -> MapViewModel {
-    MapViewModel(
+    let viewModel = MapViewModel(
       repository: repository,
       watchZoneRepository: watchZoneRepository,
       savedApplicationRepository: savedApplicationRepository
     )
+    // Open the full detail card from the summary sheet's "View full details"
+    // button. Uses the synchronous overload — we already hold the full
+    // `PlanningApplication`, so the sheet presents instantly with no re-fetch.
+    viewModel.onShowApplicationDetail = { [weak self] application in
+      self?.showApplicationDetail(application)
+    }
+    return viewModel
   }
 
   public func makeApplicationListViewModel(
@@ -355,46 +363,5 @@ public final class AppCoordinator: ObservableObject {
   /// UIKit-free; `TownCrierApp` observes the flag and opens the settings URL.
   public func showSystemNotificationSettings() {
     isOpeningSystemNotificationSettings = true
-  }
-
-  /// Presents the detail sheet synchronously from a row payload — bypasses the
-  /// per-id fetch so the sheet appears instantly. The detail view model still
-  /// runs `refresh()` in `.task` to keep saved-row snapshots fresh on the
-  /// server (bd tc-sslz, tc-udby).
-  func showApplicationDetail(_ application: PlanningApplication) {
-    detailApplication = application
-  }
-
-  func showApplicationDetail(_ id: PlanningApplicationId) {
-    // Cancel any in-flight detail load so rapid 4× taps from a digest
-    // email card collapse to a single presentation. Without this, multiple
-    // overlapping tasks could each mutate `detailApplication` after their
-    // `await` resumed, causing the sheet to flicker or fail to present
-    // (tc-dt3x).
-    pendingDetailLoad?.cancel()
-    pendingDetailLoad = Task { [weak self] in
-      guard let self else { return }
-      do {
-        let application = try await repository.fetchApplication(by: id)
-        // The cancellation above only cancels the prior `Task`, which has
-        // no effect on `try await` calls that don't check cooperatively.
-        // After the await resumes we must check `Task.isCancelled` so a
-        // superseded fetch does not stomp the latest tap's mutation.
-        guard !Task.isCancelled else { return }
-        detailApplication = application
-      } catch let domainError as DomainError {
-        guard !Task.isCancelled else { return }
-        deepLinkError = domainError
-      } catch {
-        guard !Task.isCancelled else { return }
-        deepLinkError = .unexpected(error.localizedDescription)
-      }
-    }
-  }
-
-  /// Test-only synchronisation: await the most recent
-  /// `showApplicationDetail` fetch. Replaces flaky `Task.sleep` waits.
-  public func waitForPendingDetailLoad() async {
-    await pendingDetailLoad?.value
   }
 }
