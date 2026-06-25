@@ -1,5 +1,6 @@
 import { SITE_ORIGIN, APPLE_APP_ID, appStoreUrl } from './constants.mjs';
 import { escapeHtml, leadLine } from './format.mjs';
+import { townPagePath } from './town-path.mjs';
 import {
   pageStyles,
   renderApplicationsList,
@@ -12,6 +13,12 @@ import {
  */
 
 /**
+ * @typedef {Object} TownLink
+ * @property {string} name display name of the published town
+ * @property {string} slug the town's URL slug (joined under this authority)
+ */
+
+/**
  * @typedef {Object} PlanningPageData
  * @property {string} slug
  * @property {string} areaName
@@ -19,7 +26,40 @@ import {
  * @property {number} total
  * @property {Array<{ appState: string | null, count: number }>} statusBreakdown
  * @property {PlanningApplicationItem[]} applications
+ * @property {TownLink[]} [towns] published town children, for the internal link
+ *   list. Omitted/empty for authorities with no published towns.
  */
+
+/**
+ * Render the internal link list down to this authority's published town pages.
+ * Only published (coverage-gated) towns are passed in, so these links never
+ * point at a 404. Returns '' when there are no towns, so the section is omitted
+ * entirely. Town display names are HTML-escaped; slugs are already URL-safe.
+ *
+ * @param {PlanningPageData} data
+ * @returns {string}
+ */
+function renderTownLinks(data) {
+  if (!Array.isArray(data.towns) || data.towns.length === 0) {
+    return '';
+  }
+  const area = escapeHtml(data.areaName);
+  const items = data.towns
+    .map(
+      (town) =>
+        `          <li><a href="/planning/${townPagePath(data.slug, town.slug)}">${escapeHtml(town.name)}</a></li>`,
+    )
+    .join('\n');
+  return `
+        <section class="townLinks">
+          <h2>Planning applications by town in ${area}</h2>
+          <p>Browse recent applications for individual towns and villages in ${area}.</p>
+          <ul class="townLinks__list">
+${items}
+          </ul>
+        </section>
+`;
+}
 
 /**
  * @param {PlanningPageData} data
@@ -77,6 +117,7 @@ export function renderPlanningPage(data) {
   const year = new Date().getFullYear();
 
   const applicationsList = renderApplicationsList(data.applications);
+  const townLinks = renderTownLinks(data);
   const attribution = renderAttributionList();
 
   return `<!doctype html>
@@ -119,7 +160,7 @@ ${renderStats(data.statusBreakdown)}
         <ul class="appList">
 ${applicationsList}
         </ul>
-
+${townLinks}
         <section class="explainer">
           <h2>How to comment on a planning application in ${area}</h2>
           <p>
