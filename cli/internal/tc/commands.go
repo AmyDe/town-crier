@@ -49,6 +49,13 @@ type backfillWatchZoneLocationResponse struct {
 	AlreadyHad int `json:"alreadyHad"`
 }
 
+// backfillWatchZoneBoundingBoxResponse is the POST
+// /v1/admin/watchzones/backfill-bbox response body. It is byte-identical to the
+// location backfill response ({total, backfilled, alreadyHad}), so it aliases that
+// type rather than redeclaring the shape — the alias keeps the bbox command's call
+// site self-documenting while staying DRY.
+type backfillWatchZoneBoundingBoxResponse = backfillWatchZoneLocationResponse
+
 // parseStrictInt parses s as a non-negative base-10 integer, accepting only
 // ASCII digits. It rejects signs, whitespace, and decimals. Overflow is
 // reported as invalid.

@@ -35,3 +35,33 @@ func runBackfillWatchZoneLocation(ctx context.Context, client *Client, env Env, 
 		result.Backfilled, result.Total, result.AlreadyHad)
 	return exitOK
 }
+
+// runBackfillWatchZoneBoundingBox implements `tc backfill-watchzone-bbox`: a
+// guarded, idempotent one-shot that POSTs to /v1/admin/watchzones/backfill-bbox
+// (no body) and prints the reconciled counts. The endpoint recomputes the bounding
+// box (minLat/maxLat/minLon/maxLon) on every legacy WatchZone document that lacks
+// one; re-running it is safe.
+func runBackfillWatchZoneBoundingBox(ctx context.Context, client *Client, env Env, _ *ParsedArgs) int {
+	resp, err := client.Post(ctx, "/v1/admin/watchzones/backfill-bbox", nil)
+	if err != nil {
+		fmt.Fprintf(env.Err, "API error: %s\n", err)
+		return exitRuntime
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes))
+		fmt.Fprintf(env.Err, "API error (%d): %s\n", resp.StatusCode, string(body))
+		return exitRuntime
+	}
+
+	var result backfillWatchZoneBoundingBoxResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRespBytes)).Decode(&result); err != nil {
+		fmt.Fprintf(env.Err, "API error: %s\n", err)
+		return exitRuntime
+	}
+
+	fmt.Fprintf(env.Out, "Backfilled bounding box on %d of %d watch zones (%d already had it)\n",
+		result.Backfilled, result.Total, result.AlreadyHad)
+	return exitOK
+}
