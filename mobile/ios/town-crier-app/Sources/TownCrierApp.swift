@@ -353,7 +353,8 @@ struct TownCrierApp: App {
         // was injected — SettingsView hides the row when this callback is nil.
         onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
           ? { coordinator.showRedeemOfferCode() }
-          : nil
+          : nil,
+        onRateApp: { coordinator.rateApp() }
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
         NotificationPreferencesView(
@@ -395,6 +396,15 @@ struct TownCrierApp: App {
         openURL(url)
       }
       coordinator.isOpeningSystemNotificationSettings = false
+    }
+    // "Rate the App" row (GH #629): open the App Store write-review composer
+    // then reset the flag, mirroring the system-settings handler above.
+    .onChange(of: coordinator.isOpeningAppStoreReview) { _, requested in
+      guard requested else { return }
+      if let url = URL(string: AppCoordinator.appStoreWriteReviewURLString) {
+        openURL(url)
+      }
+      coordinator.isOpeningAppStoreReview = false
     }
   }
 }
