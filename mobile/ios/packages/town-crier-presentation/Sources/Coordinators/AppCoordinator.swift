@@ -16,6 +16,10 @@ public final class AppCoordinator: ObservableObject {
   /// Set to `true` from the in-app preferences screen footer; the view layer
   /// opens ``AppCoordinator/systemNotificationSettingsURLString`` and resets it.
   @Published public var isOpeningSystemNotificationSettings = false
+  /// Set to `true` by the "Rate the App" row in Settings; the view layer opens
+  /// ``AppCoordinator/appStoreWriteReviewURLString`` and resets it (GH #629,
+  /// mirroring ``isOpeningSystemNotificationSettings``).
+  @Published public var isOpeningAppStoreReview = false
   /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
   @Published public var isNotificationPreferencesPresented = false
   /// Set to `true` by the review-prompt requester at an engagement peak; the app
@@ -354,6 +358,13 @@ public final class AppCoordinator: ObservableObject {
   /// UIKit-free; `TownCrierApp` observes the flag and opens the settings URL.
   public func showSystemNotificationSettings() {
     isOpeningSystemNotificationSettings = true
+  }
+
+  /// Requests the App Store write-review composer from the "Rate the App" row
+  /// in Settings. Coordinator stays UIKit-free; `TownCrierApp` observes the
+  /// flag and opens ``appStoreWriteReviewURLString`` (GH #629).
+  public func rateApp() {
+    isOpeningAppStoreReview = true
   }
 
   /// Presents the detail sheet synchronously from a row payload — bypasses the
