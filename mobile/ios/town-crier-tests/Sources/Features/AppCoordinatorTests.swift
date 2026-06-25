@@ -358,6 +358,26 @@ struct AppCoordinatorTests {
     #expect(AppCoordinator.systemNotificationSettingsURLString == "app-settings:notification")
   }
 
+  // MARK: - Settings Navigation (App Store Review)
+
+  @Test func rateApp_flipsFlagFromFalseToTrue() {
+    let (sut, _) = makeSUT()
+    #expect(!sut.isOpeningAppStoreReview)
+
+    sut.rateApp()
+
+    #expect(sut.isOpeningAppStoreReview)
+  }
+
+  /// The "Rate the App" row opens the App Store straight on Town Crier's
+  /// write-review composer via the `?action=write-review` deep link (GH #629).
+  @Test func appStoreWriteReviewURLString_deepLinksToWriteReviewComposer() {
+    #expect(
+      AppCoordinator.appStoreWriteReviewURLString
+        == "https://apps.apple.com/app/id6764095657?action=write-review"
+    )
+  }
+
   // MARK: - Deterministic detail-load synchronisation
 
   /// Regression guard for tc-nsrh (CI flakes on `Task.sleep(...)` waits in

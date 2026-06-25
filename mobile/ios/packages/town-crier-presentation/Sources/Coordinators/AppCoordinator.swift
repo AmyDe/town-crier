@@ -16,6 +16,7 @@ public final class AppCoordinator: ObservableObject {
   /// Set to `true` from the in-app preferences screen footer; the view layer
   /// opens ``AppCoordinator/systemNotificationSettingsURLString`` and resets it.
   @Published public var isOpeningSystemNotificationSettings = false
+  @Published public var isOpeningAppStoreReview = false  // see rateApp() (GH #629)
   /// In-app preferences: `true` pushes `NotificationPreferencesView` via `.navigationDestination`.
   @Published public var isNotificationPreferencesPresented = false
   /// Set to `true` by the review-prompt requester at an engagement peak; the app

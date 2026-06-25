@@ -9,7 +9,6 @@ import UserNotifications
 @main
 struct TownCrierApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-  @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var scenePhase
   @StateObject private var coordinator: AppCoordinator
   @StateObject private var loginViewModel: LoginViewModel
@@ -353,7 +352,8 @@ struct TownCrierApp: App {
         // was injected — SettingsView hides the row when this callback is nil.
         onRedeemOfferCode: coordinator.isOfferCodeRedemptionAvailable
           ? { coordinator.showRedeemOfferCode() }
-          : nil
+          : nil,
+        onRateApp: coordinator.rateApp
       )
       .navigationDestination(isPresented: $coordinator.isNotificationPreferencesPresented) {
         NotificationPreferencesView(
@@ -389,12 +389,10 @@ struct TownCrierApp: App {
         isPresented: $coordinator.isManageSubscriptionPresented.dispatchingSetOnMain()
       )
     #endif
-    .onChange(of: coordinator.isOpeningSystemNotificationSettings) { _, requested in
-      guard requested else { return }
-      if let url = URL(string: AppCoordinator.systemNotificationSettingsURLString) {
-        openURL(url)
-      }
-      coordinator.isOpeningSystemNotificationSettings = false
-    }
+    // App-layer edge for coordinator-driven deep links: open the URL and reset
+    // the flag. Extracted into a shared modifier (mirrors ReviewPromptRequest-
+    // Modifier) so the file stays UIKit-free and within length limits.
+    .openingSystemNotificationSettings(when: coordinator)
+    .openingAppStoreReview(when: coordinator)
   }
 }
