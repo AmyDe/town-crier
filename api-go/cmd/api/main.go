@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
@@ -64,6 +66,16 @@ func main() {
 	// to it below so towncrier.cosmos.request_charge_ru flows, and it is passed to
 	// newRouter for the watch-zone lifecycle counters (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
+
+	// Strictly non-fatal passwordless-connectivity probe (tc-vnna / #653). When
+	// the API is configured for Azure managed-identity Postgres auth, prove from
+	// the logs that we can connect with an Entra token and no stored password —
+	// the migration milestone (epic #645). It runs in its own short-lived,
+	// self-terminating goroutine so it never blocks boot, wires no route or store,
+	// and only logs (Info on success, Warn on any failure). Cosmos stays live.
+	if os.Getenv("POSTGRES_AUTH") == "azure-managed-identity" {
+		go probePostgresManagedIdentity(logger)
+	}
 
 	validator, err := auth.NewAuth0Validator(cfg.Auth0Domain, cfg.Auth0Audience, logger)
 	if err != nil {
@@ -275,4 +287,29 @@ func main() {
 		logger.Error("shutdown", "error", err)
 	}
 	logger.Info("api stopped")
+}
+
+// probePostgresManagedIdentity opens the managed-identity Postgres pool, runs a
+// single SELECT current_user, and logs who we connected as. It exists solely to
+// make the "dev API connects passwordless" milestone (#653) provable from logs
+// and is strictly non-fatal: every failure is a Warn and never affects the
+// running API. The goroutine self-terminates within its own bounded timeout, so
+// it owns its lifetime and leaks nothing.
+func probePostgresManagedIdentity(logger *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := postgres.NewPoolFromEnv(ctx)
+	if err != nil {
+		logger.Warn("postgres managed-identity probe: build pool", "error", err)
+		return
+	}
+	defer pool.Close()
+
+	var currentUser string
+	if err := pool.QueryRow(ctx, "SELECT current_user").Scan(&currentUser); err != nil {
+		logger.Warn("postgres managed-identity probe: query", "error", err)
+		return
+	}
+	logger.Info("postgres managed-identity probe: connected passwordless", "currentUser", currentUser)
 }
