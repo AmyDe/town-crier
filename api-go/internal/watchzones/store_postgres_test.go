@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
@@ -32,11 +30,11 @@ func uuidN(n int) string {
 
 // newZonePGStore returns a Postgres-backed watch-zone store over a truncated
 // database. Integration tests are NOT parallel: they share the docker-compose DB.
-func newZonePGStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
+func newZonePGStore(t *testing.T) *PostgresStore {
 	t.Helper()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "applications", "watch_zones")
-	return NewPostgresStore(pool), pool
+	return NewPostgresStore(pool)
 }
 
 // pgZone constructs a validated watch zone. authorityID must be positive so
@@ -82,7 +80,7 @@ func assertStrings(t *testing.T, got, want []string) {
 // reads it back unchanged via both Get and GetByUserID.
 func TestWatchZonePostgresStore_SaveGetRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	want := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500, 33)
 	want.PushEnabled = true
@@ -111,7 +109,7 @@ func TestWatchZonePostgresStore_SaveGetRoundTrip(t *testing.T) {
 // TestWatchZonePostgresStore_Get_Miss returns the ErrNotFound sentinel.
 func TestWatchZonePostgresStore_Get_Miss(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	_, err := store.Get(ctx, "user-1", uuidN(404))
 	if !errors.Is(err, ErrNotFound) {
@@ -123,7 +121,7 @@ func TestWatchZonePostgresStore_Get_Miss(t *testing.T) {
 // same id is saved again, rather than inserting a second.
 func TestWatchZonePostgresStore_Save_UpsertOnID(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	first := pgZone(t, uuidN(1), "user-1", "Old name", 51.5, -0.12, 500, 10)
 	if err := store.Save(ctx, first); err != nil {
@@ -153,7 +151,7 @@ func TestWatchZonePostgresStore_Save_UpsertOnID(t *testing.T) {
 // id order and excludes other users' zones.
 func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
 		pgZone(t, uuidN(3), "user-1", "third", 51.5, -0.12, 500, 10),
@@ -176,7 +174,7 @@ func TestWatchZonePostgresStore_GetByUserID_OrderedAndScoped(t *testing.T) {
 // TestWatchZonePostgresStore_Delete removes a zone; a miss returns ErrNotFound.
 func TestWatchZonePostgresStore_Delete(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	z := pgZone(t, uuidN(1), "user-1", "Home", 51.5, -0.12, 500, 10)
 	if err := store.Save(ctx, z); err != nil {
@@ -197,7 +195,7 @@ func TestWatchZonePostgresStore_Delete(t *testing.T) {
 // other users untouched.
 func TestWatchZonePostgresStore_DeleteAllByUserID(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
 		pgZone(t, uuidN(1), "user-1", "a", 51.5, -0.12, 500, 10),
@@ -232,7 +230,7 @@ func TestWatchZonePostgresStore_DeleteAllByUserID(t *testing.T) {
 // authority ids across every user's zones.
 func TestWatchZonePostgresStore_DistinctAuthorityIDs(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	for _, z := range []WatchZone{
 		pgZone(t, uuidN(1), "user-1", "a", 51.5, -0.12, 500, 10),
@@ -260,7 +258,7 @@ func TestWatchZonePostgresStore_DistinctAuthorityIDs(t *testing.T) {
 // authorities (one GiST index, authority-agnostic).
 func TestWatchZonePostgresStore_FindZonesContaining(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newZonePGStore(t)
+	store := newZonePGStore(t)
 
 	// Two zones centred 2 km north of the query point: the wide one's 3 km radius
 	// reaches back to the point, the narrow one's 1 km does not.

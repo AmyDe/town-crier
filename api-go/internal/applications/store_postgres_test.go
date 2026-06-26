@@ -8,8 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
@@ -32,11 +30,11 @@ func pgPtr[T any](v T) *T { return &v }
 // newAppPGStore returns a Postgres-backed applications store over a truncated
 // database. Integration tests are NOT run in parallel: they share the single
 // docker-compose database and TRUNCATE it per test for isolation.
-func newAppPGStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
+func newAppPGStore(t *testing.T) *PostgresStore {
 	t.Helper()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "applications", "watch_zones")
-	return NewPostgresStore(pool), pool
+	return NewPostgresStore(pool)
 }
 
 // pgApp builds a baseline application in the given authority with all nullable
@@ -112,7 +110,7 @@ func assertNames(t *testing.T, got, want []string) {
 // every nullable field set, coordinates present — and reads it back unchanged.
 func TestPostgresStore_Upsert_RoundTripFull(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	start := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	decided := time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)
@@ -156,7 +154,7 @@ func TestPostgresStore_Upsert_RoundTripFull(t *testing.T) {
 // NULL-location case PostGIS must preserve.
 func TestPostgresStore_Upsert_RoundTripNullable(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	want := pgApp("24/0002/FUL", 100) // all pointers nil, no coords
 	if err := store.Upsert(ctx, want); err != nil {
@@ -179,7 +177,7 @@ func TestPostgresStore_Upsert_RoundTripNullable(t *testing.T) {
 // planit_name) updates the existing row rather than inserting a second.
 func TestPostgresStore_Upsert_UpdatesInPlace(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	first := pgApp("24/0003/FUL", 100)
 	first.AppState = pgPtr("Pending")
@@ -218,7 +216,7 @@ func TestPostgresStore_Upsert_UpdatesInPlace(t *testing.T) {
 // distinct rows. A global planit_name PRIMARY KEY would silently overwrite one.
 func TestPostgresStore_Upsert_CompositeKeyAllowsSameNameAcrossAuthorities(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	a := pgApp("24/SAME/FUL", 100)
 	a.UID = "uid-authority-100"
@@ -253,7 +251,7 @@ func TestPostgresStore_Upsert_CompositeKeyAllowsSameNameAcrossAuthorities(t *tes
 // TestPostgresStore_GetByAuthorityAndName_Miss returns found=false, no error.
 func TestPostgresStore_GetByAuthorityAndName_Miss(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	_, found, err := store.GetByAuthorityAndName(ctx, "100", "does-not-exist")
 	if err != nil {
@@ -269,7 +267,7 @@ func TestPostgresStore_GetByAuthorityAndName_Miss(t *testing.T) {
 // found=false and no error.
 func TestPostgresStore_GetByUID(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	a := pgApp("24/0004/FUL", 100)
 	a.UID = "the-uid"
@@ -297,7 +295,7 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 // cap, and scopes to the authority.
 func TestPostgresStore_RecentByAuthority(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	older := pgApp("OLD", 100)
 	older.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -330,7 +328,7 @@ func TestPostgresStore_RecentByAuthority(t *testing.T) {
 // authority and summing to the true total.
 func TestPostgresStore_BreakdownByAuthority(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	apps := []PlanningApplication{
 		withState(pgApp("P1", 100), pgPtr("Permitted")),
@@ -394,7 +392,7 @@ func assertBreakdown(t *testing.T, got, want []StateCount) {
 // next-cursor at exhaustion.
 func TestPostgresStore_FindNearbyPage(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	for _, a := range []PlanningApplication{
 		at(pgApp("APP-100", 100), 100),
@@ -432,7 +430,7 @@ func TestPostgresStore_FindNearbyPage(t *testing.T) {
 // keeps keyset pagination correct when two applications share an exact distance.
 func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	for _, a := range []PlanningApplication{
 		at(pgApp("APP-1-100", 100), 100),
@@ -466,7 +464,7 @@ func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {
 // radius filter and authority scope.
 func TestPostgresStore_RecentNearby_And_NearestNearby(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	near := at(pgApp("NEAR", 100), 100)
 	near.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // oldest
@@ -503,7 +501,7 @@ func TestPostgresStore_RecentNearby_And_NearestNearby(t *testing.T) {
 // the in-radius, authority-scoped set, including the NULL bucket.
 func TestPostgresStore_BreakdownNearby(t *testing.T) {
 	ctx := context.Background()
-	store, _ := newAppPGStore(t)
+	store := newAppPGStore(t)
 
 	apps := []PlanningApplication{
 		withState(at(pgApp("P1", 100), 100), pgPtr("Permitted")),
