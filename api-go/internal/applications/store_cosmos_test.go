@@ -3,6 +3,7 @@ package applications
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,6 +37,16 @@ type fakeItems struct {
 	lastCrossPartitionQuery  string
 	lastCrossPartitionParams map[string]any
 	crossPartitionErr        error
+	// pageResult, pageNext, pageErr and the lastPage* fields back
+	// QueryPageCrossPartition, the bounded single-page fan-out FindNearbyPage uses
+	// (tc-fm8f). A non-empty pageNext models "more pages remain".
+	pageResult           [][]byte
+	pageNext             string
+	pageErr              error
+	lastPageQuery        string
+	lastPageParams       map[string]any
+	lastPageSize         int
+	lastPageContinuation string
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{stored: map[string][]byte{}} }
@@ -76,6 +87,17 @@ func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, query string, pa
 		return nil, f.crossPartitionErr
 	}
 	return f.crossPartitionResult, nil
+}
+
+func (f *fakeItems) QueryPageCrossPartition(_ context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error) {
+	f.lastPageQuery = query
+	f.lastPageParams = params
+	f.lastPageSize = pageSize
+	f.lastPageContinuation = continuationToken
+	if f.pageErr != nil {
+		return nil, "", f.pageErr
+	}
+	return f.pageResult, f.pageNext, nil
 }
 
 func (f *fakeItems) recordQuery(partitionKey, query string, params map[string]any) ([][]byte, error) {
@@ -283,6 +305,144 @@ func TestCosmosStore_FindNearby_EmptyResultIsEmptySlice(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("FindNearby: got %d results, want 0", len(got))
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_FetchesOneBoundedPageWithCursor(t *testing.T) {
+	t.Parallel()
+	// A border-spanning circle: two in-radius applications tagged to different
+	// authority partitions (449 + 246). The bounded fan-out must surface BOTH and
+	// must run via the single-page QueryPageCrossPartition, NOT the unbounded
+	// QueryItemsCrossPartition drain (tc-fm8f).
+	app449 := testApplication(t)
+	app449.AreaID = 449
+	app449.Name = "449/24/001"
+	app246 := testApplication(t)
+	app246.AreaID = 246
+	app246.Name = "246/24/002"
+	body449, _ := json.Marshal(newApplicationDocument(app449))
+	body246, _ := json.Marshal(newApplicationDocument(app246))
+	items := newFakeItems()
+	items.pageResult = [][]byte{body449, body246}
+	items.pageNext = "continuation-token-xyz"
+	store := NewCosmosStore(items)
+
+	got, next, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+	if err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("FindNearbyPage results: got %d, want 2 (both authorities); %+v", len(got), got)
+	}
+	gotAreas := map[int]bool{got[0].AreaID: true, got[1].AreaID: true}
+	if !gotAreas[449] || !gotAreas[246] {
+		t.Errorf("FindNearbyPage must surface both authorities 449 and 246; got %+v", gotAreas)
+	}
+	// The continuation token is passed straight back to the caller.
+	if next != "continuation-token-xyz" {
+		t.Errorf("next cursor: got %q, want %q", next, "continuation-token-xyz")
+	}
+	// The page size hint must be the requested limit so Cosmos caps the page at the
+	// query layer — never an unbounded drain.
+	if items.lastPageSize != 500 {
+		t.Errorf("page size: got %d, want 500", items.lastPageSize)
+	}
+	// First page: no continuation token sent in.
+	if items.lastPageContinuation != "" {
+		t.Errorf("first page must not send a continuation token; got %q", items.lastPageContinuation)
+	}
+	// It must use the single-page method, never the unbounded drain.
+	if items.lastCrossPartitionQuery != "" {
+		t.Error("FindNearbyPage must not call the unbounded QueryItemsCrossPartition drain")
+	}
+	// The constant-radius residual is preserved (same query as the unbounded form):
+	// ST_DISTANCE(...) <= @radiusMetres, GeoJSON [longitude, latitude] order. No
+	// ORDER BY — the Gateway rejects cross-partition ordering.
+	want := "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
+		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
+	if items.lastPageQuery != want {
+		t.Errorf("bounded spatial query:\n got %q\nwant %q", items.lastPageQuery, want)
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_ResumesFromCursor(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	if _, _, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 250, "resume-here"); err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
+	}
+	if items.lastPageContinuation != "resume-here" {
+		t.Errorf("continuation token: got %q, want %q", items.lastPageContinuation, "resume-here")
+	}
+	if items.lastPageSize != 250 {
+		t.Errorf("page size: got %d, want 250", items.lastPageSize)
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _, _ = store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+
+	if items.lastPageQuery == "" {
+		t.Fatal("no query was issued")
+	}
+	// The query text must not contain any float literal — values must be bound as
+	// named parameters, not string-concatenated.
+	for _, literal := range []string{"51.4975", "-0.1357", "2000"} {
+		if strings.Contains(items.lastPageQuery, literal) {
+			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastPageQuery)
+		}
+	}
+	wantParams := map[string]any{
+		"@latitude":     51.4975,
+		"@longitude":    -0.1357,
+		"@radiusMetres": 2000.0,
+	}
+	for k, wantVal := range wantParams {
+		gotVal, ok := items.lastPageParams[k]
+		if !ok {
+			t.Errorf("param %q not found in query params %v", k, items.lastPageParams)
+			continue
+		}
+		if gotVal != wantVal {
+			t.Errorf("param %q: got %v, want %v", k, gotVal, wantVal)
+		}
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_EmptyResultIsEmptySlice(t *testing.T) {
+	t.Parallel()
+	store := NewCosmosStore(newFakeItems())
+
+	got, next, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+	if err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
+	}
+	if got == nil {
+		t.Fatal("FindNearbyPage: got nil slice, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("FindNearbyPage: got %d results, want 0", len(got))
+	}
+	if next != "" {
+		t.Errorf("exhausted query must return an empty cursor; got %q", next)
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_PropagatesError(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.pageErr = errors.New("gateway boom")
+	store := NewCosmosStore(items)
+
+	_, _, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+	if err == nil {
+		t.Fatal("FindNearbyPage: want error, got nil")
 	}
 }
 
