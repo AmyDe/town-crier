@@ -73,10 +73,14 @@ When fixing CI failures, always check for ALL root causes before declaring the f
 ```bash
 # Run from api-go/
 go build ./...                      # Build
-go test ./...                       # Run all tests
+go test ./...                       # Run all tests (unit; hand-written fakes; no Docker)
 go vet ./...                        # Static analysis
 gofmt -l .                          # List files needing formatting (empty = clean)
+make test-integration               # Real Postgres + PostGIS tests — boots a local Docker DB (build tag `integration`)
+go test -tags=integration ./...     # Same, against an already-running DB (TEST_DATABASE_URL); skips cleanly if none
 ```
+
+The default `go test ./...` excludes the `integration`-tagged real-DB suite, so it needs no Docker. The integration suite (Cosmos → Postgres + PostGIS migration; see memo 0010 / epic #645) runs against local PostGIS via the `internal/platform/postgres/pgtest` harness; `go-coding-standards` has the details.
 
 ### iOS (`/mobile/ios`)
 
@@ -122,6 +126,7 @@ No ORM — read and write Cosmos DB through the SDK directly. Business logic liv
 - TDD workflow: Red-Green-Refactor.
 - Primary unit of test by stack: HTTP handlers and stores (Go); ViewModels and Use Cases (iOS); hooks (web).
 - Hand-written fakes/spies — no reflection-based mocking libraries.
+- **Real-DB integration tests (Go).** As the Cosmos → Postgres + PostGIS migration proceeds (memo 0010, epic #645), Postgres store ports also get real-database tests against a local PostGIS in Docker — behind the `//go:build integration` tag, using the `internal/platform/postgres/pgtest` harness. Run them with `make -C api-go test-integration` (boots the DB) or `go test -tags=integration ./...` against a running DB; they `t.Skip` cleanly when no DB is reachable, so the default `go test ./...` fakes-only loop stays Docker-free. These are additive to the unit fakes, not a replacement — they cover spatial/SQL behaviour (`ST_DWithin`, KNN `ORDER BY <->`, accurate `COUNT`) that fakes cannot honestly model. The `go-coding-standards` skill documents the harness API.
 
 ## Naming Conventions
 
