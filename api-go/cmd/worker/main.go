@@ -34,6 +34,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
+	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres"
 	"github.com/AmyDe/town-crier/api-go/internal/polling"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
@@ -97,6 +98,32 @@ func run() int {
 	// emit their towncrier.* metrics (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
+	// APPS_ZONES_BACKEND gates the Applications + WatchZones stores onto Postgres
+	// (dev only; prod and every other store stay Cosmos — issue #657 / #664 Phase
+	// B), mirroring cmd/api. When it selects Postgres we build ONE pool for the
+	// whole process — MI-token auth from the container's POSTGRES_*/AZURE_CLIENT_ID
+	// via NewPoolFromEnv — and reuse it across the poll, digest and dormant builders
+	// below. The worker explicitly wants Postgres here, so a pool that can't be built
+	// is fatal rather than a silent Cosmos fallback. The pool closes on shutdown.
+	// When the flag is unset (prod, local) these stay nil and every existing Cosmos
+	// construction is byte-for-byte unchanged.
+	appsZonesBackend := resolveBackend(cfg.AppsZonesBackend)
+	var (
+		pgAppStore       *applications.PostgresStore
+		pgWatchZoneStore *watchzones.PostgresStore
+	)
+	if appsZonesBackend == backendPostgres {
+		pool, perr := postgres.NewPoolFromEnv(context.Background())
+		if perr != nil {
+			logger.Error("apps/zones backend=postgres: build postgres pool", "error", perr)
+			return 1
+		}
+		defer pool.Close()
+		pgAppStore = applications.NewPostgresStore(pool)
+		pgWatchZoneStore = watchzones.NewPostgresStore(pool)
+		logger.Info("apps/zones backend selected", "backend", "postgres")
+	}
+
 	// The Service Bus client (and thus the bootstrapper and the poll-sb
 	// orchestrator) is built only when the job carries Service Bus config. Jobs
 	// that don't touch Service Bus (digest, hourly-digest, dormant-cleanup) leave
@@ -132,7 +159,7 @@ func run() int {
 	// the "no Cosmos" case leaves it nil — assigning a typed-nil *digest.Handler
 	// would make the interface non-nil and defeat worker.Run's nil guard.
 	var digester worker.DigestRunner
-	handler, err := buildDigester(cfg, registry, logger)
+	handler, err := buildDigester(cfg, registry, appsZonesBackend, pgWatchZoneStore, logger)
 	if err != nil {
 		logger.Error("build digest handler", "error", err)
 		return 1
@@ -147,7 +174,7 @@ func run() int {
 	// worker.Run's nil guard). The Auth0 deleter falls back to a no-op when the M2M
 	// credentials are absent, so a Cosmos-only job still boots cleanly.
 	var dormantRunner worker.DormantRunner
-	dormantHandler, err := buildDormant(cfg, registry, logger)
+	dormantHandler, err := buildDormant(cfg, registry, appsZonesBackend, pgWatchZoneStore, logger)
 	if err != nil {
 		logger.Error("build dormant cleanup handler", "error", err)
 		return 1
@@ -162,7 +189,7 @@ func run() int {
 	// run rather than crashing. Declared as the interface so the "unconfigured"
 	// case stays a nil interface value (a typed-nil adapter would defeat the guard).
 	var poller worker.PollOrchestrator
-	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, logger)
+	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, appsZonesBackend, pgAppStore, pgWatchZoneStore, logger)
 	if err != nil {
 		logger.Error("build poll-sb orchestrator", "error", err)
 		return 1
@@ -197,7 +224,7 @@ func run() int {
 // (nil, nil) when Service Bus or Cosmos config is absent, so poll-sb refuses to
 // run rather than nil-panicking. The cycle budget (replicaTimeout − grace) and
 // the handler/lease budgets all come from config.
-func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
+func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, backend storeBackend, pgAppStore *applications.PostgresStore, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
 	if sbClient == nil || cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent SB/Cosmos config is a valid "no poller" state, not an error
 	}
@@ -241,8 +268,12 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 
 	stateStore := polling.NewPollStateStore(stateContainer)
 	leaseStore := polling.NewLeaseStore(leaseItemsAdapter{leasesContainer}, time.Now)
-	appStore := applications.NewCosmosStore(appsContainer)
-	zoneStore := watchzones.NewCosmosStore(zonesContainer)
+	// appStore and zoneStore are the flag-selected consumer-side interfaces the
+	// poll handler (Upsert + change dedup) and the watch-zone notify fan-out
+	// (FindZonesContaining) consume — Postgres when APPS_ZONES_BACKEND=postgres,
+	// Cosmos otherwise. The poll-state and lease stores always stay Cosmos.
+	appStore := chooseAppStore(backend, pgAppStore, applications.NewCosmosStore(appsContainer))
+	zoneStore := chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer))
 
 	cycleSelector := polling.NewMinuteCycleSelector(time.Now)
 	authorityProvider := polling.NewCycleAlternatingProvider(
@@ -311,13 +342,16 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // wirePollFanOut builds the poll-path notification fan-out collaborators — the
 // decision-event dispatcher and the watch-zone enqueuer — and attaches them to
 // the ingestion handler. They share the WatchZones store with the poll's
-// authority provider (the same *watchzones.CosmosStore satisfies the
-// zone-containment lookup) and open their own Notifications / Users /
-// NotificationState / DeviceRegistrations / SavedApplications containers. The
-// APNs push sender is real when its credentials are present, NoOp otherwise so
-// the poll job boots even without APNs config (the record is still written, so
-// the digest pipeline keeps working).
-func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore *watchzones.CosmosStore, registry *metrics.Registry, logger *slog.Logger) error {
+// authority provider (the same watchzones.Store satisfies the zone-containment
+// lookup) and open their own Notifications / Users / NotificationState /
+// DeviceRegistrations / SavedApplications containers. zoneStore is the
+// flag-selected watchzones.Store interface — not the concrete Cosmos store — so
+// the notify FindZonesContaining hot path runs against Postgres when
+// APPS_ZONES_BACKEND=postgres (issue #664 Phase B). The APNs push sender is real
+// when its credentials are present, NoOp otherwise so the poll job boots even
+// without APNs config (the record is still written, so the digest pipeline keeps
+// working).
+func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore watchzones.Store, registry *metrics.Registry, logger *slog.Logger) error {
 	notifsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		return err
@@ -456,7 +490,7 @@ func maxInt(a, b int) int {
 // then refuse to run rather than nil-panicking. Returning the concrete
 // *digest.Handler lets worker.Run accept it via its unexported digestRunner
 // interface (structural satisfaction).
-func buildDigester(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*digest.Handler, error) {
+func buildDigester(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*digest.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no digester" state, not an error
 	}
@@ -492,7 +526,9 @@ func buildDigester(cfg platform.Config, registry *metrics.Registry, logger *slog
 		point: profiles.NewCosmosStore(users),
 	}
 	notificationStore := notifications.NewDigestStore(notifs)
-	zoneStore := watchzones.NewCosmosStore(zonesContainer)
+	// zoneStore is the flag-selected watch-zone reader the weekly digest fans out
+	// over — Postgres when APPS_ZONES_BACKEND=postgres, Cosmos otherwise.
+	zoneStore := chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer))
 	stateStore := notificationstate.NewCosmosStore(stateContainer, notifs)
 	deviceStore := devicetokens.NewCosmosStore(devicesContainer)
 
@@ -536,7 +572,7 @@ func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserP
 // when Cosmos is unconfigured — the dormant-cleanup mode then refuses to run
 // rather than nil-panicking. Returning the concrete *dormant.Handler lets
 // worker.Run accept it via its exported DormantRunner interface.
-func buildDormant(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*dormant.Handler, error) {
+func buildDormant(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*dormant.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no dormant handler" state, not an error
 	}
@@ -584,8 +620,13 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, logger *slog.
 	// offer-code store anonymises the redeemer back-reference (redeemedByUserId +
 	// redeemedAt) without deleting the admin-issued code (bead tc-5jyh).
 	deleters := erasure.Deleters{
-		Notifications:       notifications.NewDeleteStore(notifs),
-		WatchZones:          watchzones.NewCosmosStore(zonesContainer),
+		Notifications: notifications.NewDeleteStore(notifs),
+		// WatchZones is the flag-selected store the dormant-account GDPR erasure
+		// cascade deletes a user's watch zones from — Postgres when
+		// APPS_ZONES_BACKEND=postgres, Cosmos otherwise — so a Postgres watch zone is
+		// never missed by erasure (issue #664 Phase B). chooseZoneStore returns a
+		// genuine watchzones.Store (DeleteAllByUserID satisfies erasure.ChildDeleter).
+		WatchZones:          chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer)),
 		SavedApplications:   savedapplications.NewCosmosStore(savedContainer),
 		DeviceRegistrations: devicetokens.NewCosmosStore(devicesContainer),
 		NotificationState:   erasure.NotificationStateChild(notificationstate.NewCosmosStore(stateContainer, notifs)),
