@@ -108,6 +108,7 @@ type envContext struct {
 	cosmosAccountEndpoint       pulumi.StringOutput
 	cosmosDatabaseName          pulumi.StringOutput
 	cosmosDataIdentityClientID  pulumi.StringOutput
+	postgresServerFqdn          pulumi.StringOutput
 	appInsightsConnectionString pulumi.StringOutput
 	acsConnectionString         pulumi.StringOutput
 	apnsAuthKey                 pulumi.StringOutput
@@ -346,15 +347,19 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 
 	ec := envContext{
-		env:                         env,
-		resourceGroupName:           resourceGroup.Name,
-		environmentID:               containerAppsEnvironmentID,
-		acrLoginServer:              acrLoginServer,
-		acrPullIdentityID:           acrPullIdentityID,
-		cosmosDataIdentityID:        cosmosDataIdentityID,
-		cosmosAccountEndpoint:       cosmosAccountEndpoint,
-		cosmosDatabaseName:          cosmosDatabase.Name,
-		cosmosDataIdentityClientID:  cosmosDataIdentityClientID,
+		env:                        env,
+		resourceGroupName:          resourceGroup.Name,
+		environmentID:              containerAppsEnvironmentID,
+		acrLoginServer:             acrLoginServer,
+		acrPullIdentityID:          acrPullIdentityID,
+		cosmosDataIdentityID:       cosmosDataIdentityID,
+		cosmosAccountEndpoint:      cosmosAccountEndpoint,
+		cosmosDatabaseName:         cosmosDatabase.Name,
+		cosmosDataIdentityClientID: cosmosDataIdentityClientID,
+		// Postgres FQDN threaded through so the worker-job path (createWorkerJob /
+		// addGoWorkerEnv, which only receives ec) can build the prod Postgres connection
+		// env. The API container reaches `shared` directly, so it doesn't need this.
+		postgresServerFqdn:          shared.GetStringOutput(pulumi.String("postgresServerFqdn")),
 		appInsightsConnectionString: appInsightsConnectionString,
 		acsConnectionString:         acsConnectionString,
 		apnsAuthKey:                 apnsAuthKey,
@@ -369,6 +374,11 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// Part of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645).
 	// The password-based connection-string secret is retired; the dev API authenticates via
 	// Entra managed identity using a runtime token (no stored password). See GH #653.
+	//
+	// town_crier_prod is intentionally NOT declared here: it was provisioned data-plane
+	// (CREATE DATABASE + role + goose schema; GH #664 Phase C, bead tc-hpd2.3). Bringing it
+	// under Pulumi management (a prod NewDatabase + `pulumi import`) is deferred to the gated
+	// flip release so this merge-only change can't try to (re)create the live prod DB.
 	if env == "dev" {
 		postgresServerName := shared.GetStringOutput(pulumi.String("postgresServerName"))
 
@@ -422,6 +432,22 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			// only (GH #657, companion to API bead tc-2skw). Deliberately a dedicated flag,
 			// not inferred from POSTGRES_AUTH, so prod stays Cosmos until its own gated cutover.
 			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
+		)
+	} else if env == "prod" {
+		// Pre-stage the prod Postgres connection config so prod is "ready to cut over" from
+		// Cosmos (GH #664 Phase C, bead tc-hpd2.3). Mirrors the dev vars but targets
+		// town_crier_prod with the same least-priv, cluster-global towncrier_api role and Entra
+		// managed-identity auth (AZURE_CLIENT_ID above is reused for the token fetch).
+		apiEnvVars = append(apiEnvVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+			// Prod stays on Cosmos: the connection config is pre-staged, but the backend is
+			// deliberately left on cosmos. The gated flip release (GH #664 Phase E) is what
+			// changes this single value to "postgres". Do NOT set this to "postgres" here.
+			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("cosmos")},
 		)
 	}
 
@@ -700,6 +726,24 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: ec.cosmosAccountEndpoint},
 		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: ec.cosmosDatabaseName},
 	)
+
+	// prod only: pre-stage the Postgres connection config on every worker job, mirroring the
+	// prod API container (GH #664 Phase C, bead tc-hpd2.3). The dev worker is intentionally
+	// excluded — it stays on Cosmos (out of scope here). AZURE_CLIENT_ID is already set on
+	// every worker job (createWorkerJob) and reused for the Entra MI token fetch, so it is not
+	// duplicated. APPS_ZONES_BACKEND stays "cosmos": the prod worker keeps writing/reading
+	// Apps + WatchZones from Cosmos until the gated flip release (GH #664 Phase E) changes this
+	// single value to "postgres".
+	if ec.env == "prod" {
+		envVars = append(envVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: ec.postgresServerFqdn},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("cosmos")},
+		)
+	}
 
 	// poll / poll-bootstrap: Service Bus namespace + queue.
 	if pollingBus != nil {
