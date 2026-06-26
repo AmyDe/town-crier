@@ -207,11 +207,18 @@ func main() {
 	// the dormant-cleanup worker (bead tc-gf0g). The offer-code anonymiser scrubs the
 	// redeemer back-reference (redeemedByUserId + redeemedAt) without deleting the
 	// admin-issued code (bead tc-5jyh).
+	// cascadeWatchZoneDeleter and exportWatchZoneReader bind both GDPR paths to
+	// the flag-selected watch-zone store (watchZoneStore) — Postgres on dev, Cosmos
+	// elsewhere — so account erasure and the data export cover a Postgres-resident
+	// user's zones, not just Cosmos ones (bead tc-s8g1). The admin location/bbox
+	// backfill still uses cosmosWatchZoneStore directly (a Cosmos-only migrator).
+	cascadeWatchZoneDeleter, exportWatchZoneReader := gdprWatchZoneWiring(watchZoneStore)
+
 	var cascade profiles.CascadeDeleters
-	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil && offerStore != nil {
+	if notificationsContainer != nil && watchZoneStore != nil && savedContainer != nil && devices != nil && stateContainer != nil && offerStore != nil {
 		cascade = profiles.CascadeDeleters{
 			Notifications:       notifications.NewDeleteStore(notificationsContainer),
-			WatchZones:          cosmosWatchZoneStore,
+			WatchZones:          cascadeWatchZoneDeleter,
 			SavedApplications:   savedStore,
 			DeviceRegistrations: deviceStore,
 			NotificationState:   erasure.NotificationStateChild(stateStore),
@@ -231,9 +238,9 @@ func main() {
 	// notifications reader uses the digest store's full-document AllByUser read so
 	// every exported field is carried, not the latest-unread projection.
 	var exportReaders profiles.ExportReaders
-	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && offerStore != nil {
+	if notificationsContainer != nil && watchZoneStore != nil && savedContainer != nil && devices != nil && offerStore != nil {
 		exportReaders = profiles.ExportReaders{
-			WatchZones:           watchZoneExportReader{store: cosmosWatchZoneStore},
+			WatchZones:           exportWatchZoneReader,
 			Notifications:        notificationExportReader{store: notifications.NewDigestStore(notificationsContainer)},
 			SavedApplications:    savedApplicationExportReader{store: savedStore},
 			DeviceRegistrations:  deviceRegistrationExportReader{store: deviceStore},

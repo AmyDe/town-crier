@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/erasure"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -11,6 +12,24 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
+
+// gdprWatchZoneWiring binds the GDPR erasure cascade (DELETE /v1/me) and the data
+// export (GET /v1/me/data) to the SAME flag-selected watch-zone store the routes
+// use, so a Postgres-resident user's watch zones are erased and exported in both
+// Cosmos and Postgres modes — not silently missed by the always-Cosmos store
+// (bead tc-s8g1). watchzones.Store satisfies erasure.ChildDeleter directly (it
+// exposes DeleteAllByUserID), so the cascade needs no adapter; only the export
+// needs the watchZoneExportReader row mapping.
+//
+// A nil store (no backing configured) yields genuine nil wiring so the caller's
+// atomic cascade/export guards leave the GDPR paths unbuilt rather than holding a
+// nil deleter the cascade would dereference.
+func gdprWatchZoneWiring(store watchzones.Store) (erasure.ChildDeleter, profiles.WatchZoneReader) {
+	if store == nil {
+		return nil, nil
+	}
+	return store, watchZoneExportReader{store: store}
+}
 
 // The GDPR export (GET /v1/me/data) sources its child collections from the
 // per-feature stores. profiles must not import those packages (offercodes already
