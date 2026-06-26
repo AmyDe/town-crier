@@ -418,6 +418,10 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+			// Explicit backend switch: serve Applications + WatchZones from Postgres on dev
+			// only (GH #657, companion to API bead tc-2skw). Deliberately a dedicated flag,
+			// not inferred from POSTGRES_AUTH, so prod stays Cosmos until its own gated cutover.
+			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	}
 
