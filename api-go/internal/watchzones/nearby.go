@@ -2,6 +2,7 @@ package watchzones
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,9 +50,11 @@ type authorityResolver interface {
 // appFinder runs the spatial lookup that backs both the create response's nearby
 // applications and the per-zone applications list. It is authority-agnostic and
 // cross-partition, so a border-spanning zone surfaces neighbour-authority apps
-// (tc-zldl). *applications.CosmosStore satisfies it.
+// (tc-zldl). The fetch is bounded: it returns at most `limit` rows for the given
+// cursor plus an opaque continuation token for the next page (tc-fm8f).
+// *applications.CosmosStore satisfies it.
 type appFinder interface {
-	FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
+	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -116,6 +120,20 @@ type createRequest struct {
 // the top-tier iOS UI ceiling (10 km). If a larger radius tier is ever offered,
 // bump this value server-side first before shipping the iOS change.
 const maxRadiusMetres = 10_000
+
+// defaultNearbyLimit and maxNearbyLimit bound the per-request page of nearby
+// applications. The browse path fetches a SINGLE bounded page so a dense urban
+// zone can no longer drain tens of thousands of documents and blow the server
+// write timeout (tc-fm8f). Default and max are equal at 500: ~0.5 MB of full
+// Result rows, sub-second, low RU. The create + demo paths fetch page one only.
+const (
+	defaultNearbyLimit = 500
+	maxNearbyLimit     = 500
+)
+
+// invalidCursorMessage is the 400 body when ?cursor= is not a valid base64url
+// continuation token previously handed out via the X-Next-Cursor header.
+const invalidCursorMessage = "Invalid cursor."
 
 // valid reports whether the create request passes the pre-handler guard:
 // non-blank name, positive radius within the server ceiling, in-range
@@ -227,8 +245,10 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.metrics.WatchZoneCreated(r.Context())
 	}
 
-	nearby, err := h.apps.FindNearby(
-		r.Context(), req.Latitude, req.Longitude, req.RadiusMetres)
+	// The create response carries page one of the bounded fetch; the continuation
+	// token is irrelevant here (no "load more" on create), so it is discarded.
+	nearby, _, err := h.apps.FindNearbyPage(
+		r.Context(), req.Latitude, req.Longitude, req.RadiusMetres, maxNearbyLimit, "")
 	if err != nil {
 		h.serverError(w, r, "find nearby applications", err)
 		return
@@ -268,8 +288,15 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, err := h.apps.FindNearby(
-		r.Context(), zone.Latitude, zone.Longitude, zone.RadiusMetres)
+	limit := parseNearbyLimit(r.URL.Query().Get("limit"))
+	cursor, ok := decodeCursor(r.URL.Query().Get("cursor"))
+	if !ok {
+		h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)
+		return
+	}
+
+	apps, nextCursor, err := h.apps.FindNearbyPage(
+		r.Context(), zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
 	if err != nil {
 		h.serverError(w, r, "find applications in zone", err)
 		return
@@ -314,7 +341,52 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		}
 		results = append(results, row)
 	}
+	// Hand the opaque continuation token back via the response header (not the
+	// body, which stays a bare []Result so existing clients are untouched). Set it
+	// before writeJSON, which calls WriteHeader. Omitted when the page is the last.
+	if nextCursor != "" {
+		w.Header().Set("X-Next-Cursor", encodeCursor(nextCursor))
+	}
 	h.writeJSON(w, r, http.StatusOK, results)
+}
+
+// parseNearbyLimit resolves ?limit= to a bounded page size: absent, non-numeric,
+// or non-positive falls back to the default; anything above the max clamps down.
+// It never rejects — an existing client that omits or fat-fingers the parameter
+// still gets a sane bounded page.
+func parseNearbyLimit(raw string) int {
+	if raw == "" {
+		return defaultNearbyLimit
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return defaultNearbyLimit
+	}
+	if n > maxNearbyLimit {
+		return maxNearbyLimit
+	}
+	return n
+}
+
+// decodeCursor base64url-decodes an opaque ?cursor= value into the raw Cosmos
+// continuation token. An empty value means the first page (ok). A malformed value
+// is rejected (ok == false) so a garbage cursor is a clean 400, not a silent
+// reset to the first page.
+func decodeCursor(raw string) (string, bool) {
+	if raw == "" {
+		return "", true
+	}
+	b, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
+// encodeCursor base64url-encodes a raw Cosmos continuation token for the
+// X-Next-Cursor response header — header- and URL-safe, unpadded.
+func encodeCursor(token string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(token))
 }
 
 // atomicQuotaIncrement tries to atomically claim one slot in the user's
