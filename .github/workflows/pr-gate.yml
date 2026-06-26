@@ -111,6 +111,41 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  go-integration:
+    name: "Go API: Integration tests"
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: towncrier
+          POSTGRES_PASSWORD: towncrier
+          POSTGRES_DB: towncrier_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U towncrier -d towncrier_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: api-go/go.mod
+          cache: false
+      # Real Postgres + PostGIS (the `integration` build tag); the harness reads
+      # TEST_DATABASE_URL and would otherwise skip. Proves the spatial reads the
+      # Cosmos Gateway cannot serve cross-partition (memo 0010).
+      - name: Run integration tests (real Postgres + PostGIS)
+        run: go test -tags=integration ./...
+        working-directory: api-go
+        env:
+          TEST_DATABASE_URL: postgres://towncrier:towncrier@localhost:5432/towncrier_test?sslmode=disable
+
   # ── CLI (Go) ─────────────────────────────────────────
 
   cli-lint:
@@ -370,7 +405,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [go-lint, go-test, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
+    needs: [go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -380,6 +415,7 @@ jobs:
           results=(
             "${{ needs.go-lint.result }}"
             "${{ needs.go-test.result }}"
+            "${{ needs.go-integration.result }}"
             "${{ needs.cli-lint.result }}"
             "${{ needs.cli-build-test.result }}"
             "${{ needs.ios-lint.result }}"
