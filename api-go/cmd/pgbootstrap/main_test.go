@@ -15,11 +15,13 @@ func validParams() bootstrapParams {
 	}
 }
 
-func TestBuildBootstrapSQL_GrantsLeastPrivilege(t *testing.T) {
+// --- Phase 1 (admin DB: postgres) ---
+
+func TestBuildPrincipalSQL_ContainsPrincipalCreateAndConnectGrant(t *testing.T) {
 	t.Parallel()
-	sql, err := buildBootstrapSQL(validParams())
+	sql, err := buildPrincipalSQL(validParams())
 	if err != nil {
-		t.Fatalf("buildBootstrapSQL() error = %v", err)
+		t.Fatalf("buildPrincipalSQL() error = %v", err)
 	}
 
 	wantSubstrings := []string{
@@ -27,7 +29,63 @@ func TestBuildBootstrapSQL_GrantsLeastPrivilege(t *testing.T) {
 		"'towncrier_api'",
 		"'" + testMIObjectID + "'",
 		"'service'",
+		"pg_roles", // idempotency guard
 		"GRANT CONNECT ON DATABASE town_crier_dev TO towncrier_api",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(sql, want) {
+			t.Errorf("Phase 1 SQL missing %q\n---\n%s", want, sql)
+		}
+	}
+}
+
+func TestBuildPrincipalSQL_DoesNotContainSchemaGrants(t *testing.T) {
+	t.Parallel()
+	sql, err := buildPrincipalSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildPrincipalSQL() error = %v", err)
+	}
+	// Schema and sequence grants belong in Phase 2 (the app DB). Phase 1 is
+	// principal-create + CONNECT only.
+	absent := []string{
+		"GRANT USAGE ON SCHEMA",
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES",
+		"ALTER DEFAULT PRIVILEGES",
+	}
+	for _, bad := range absent {
+		if strings.Contains(sql, bad) {
+			t.Errorf("Phase 1 SQL must not contain %q (schema grants belong in Phase 2)\n---\n%s", bad, sql)
+		}
+	}
+}
+
+func TestBuildPrincipalSQL_GrantsNoElevatedPrivilege(t *testing.T) {
+	t.Parallel()
+	sql, err := buildPrincipalSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildPrincipalSQL() error = %v", err)
+	}
+	// Scan executable SQL only: -- comment lines document withheld privileges and
+	// must not trip the guard.
+	upper := strings.ToUpper(stripSQLComments(sql))
+	forbidden := []string{"SUPERUSER", "CREATEDB", "CREATEROLE", "OWNER", "DROP", "CREATE EXTENSION"}
+	for _, bad := range forbidden {
+		if strings.Contains(upper, bad) {
+			t.Errorf("Phase 1 SQL must not contain %q (least-privilege only)\n---\n%s", bad, sql)
+		}
+	}
+}
+
+// --- Phase 2 (app DB: town_crier_dev) ---
+
+func TestBuildGrantsSQL_ContainsDMLGrants(t *testing.T) {
+	t.Parallel()
+	sql, err := buildGrantsSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildGrantsSQL() error = %v", err)
+	}
+
+	wantSubstrings := []string{
 		"GRANT USAGE ON SCHEMA public TO towncrier_api",
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO towncrier_api",
 		"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO towncrier_api",
@@ -36,27 +94,60 @@ func TestBuildBootstrapSQL_GrantsLeastPrivilege(t *testing.T) {
 	}
 	for _, want := range wantSubstrings {
 		if !strings.Contains(sql, want) {
-			t.Errorf("generated SQL missing %q\n---\n%s", want, sql)
+			t.Errorf("Phase 2 SQL missing %q\n---\n%s", want, sql)
 		}
 	}
 }
 
-func TestBuildBootstrapSQL_GrantsNoElevatedPrivilege(t *testing.T) {
+func TestBuildGrantsSQL_DoesNotContainPrincipalCreate(t *testing.T) {
 	t.Parallel()
-	sql, err := buildBootstrapSQL(validParams())
+	sql, err := buildGrantsSQL(validParams())
 	if err != nil {
-		t.Fatalf("buildBootstrapSQL() error = %v", err)
+		t.Fatalf("buildGrantsSQL() error = %v", err)
 	}
+	// Principal create belongs in Phase 1 (the admin DB). Phase 2 is grants only.
+	if strings.Contains(sql, "pgaadauth_create_principal_with_oid") {
+		t.Errorf("Phase 2 SQL must not contain pgaadauth_create_principal_with_oid (belongs in Phase 1)\n---\n%s", sql)
+	}
+}
 
-	// Scan the executable SQL only: -- comment lines deliberately name the
-	// privileges this bootstrap withholds, and that documentation must not trip
-	// the guard. What matters is that nothing elevated is actually granted.
+func TestBuildGrantsSQL_GrantsNoElevatedPrivilege(t *testing.T) {
+	t.Parallel()
+	sql, err := buildGrantsSQL(validParams())
+	if err != nil {
+		t.Fatalf("buildGrantsSQL() error = %v", err)
+	}
+	// Scan executable SQL only: -- comment lines document withheld privileges and
+	// must not trip the guard.
 	upper := strings.ToUpper(stripSQLComments(sql))
-	forbidden := []string{"SUPERUSER", "CREATEDB", "CREATEROLE", "OWNER", "DROP", "ALTER TABLE", "CREATE TABLE"}
+	forbidden := []string{"SUPERUSER", "CREATEDB", "CREATEROLE", "OWNER", "DROP", "CREATE EXTENSION"}
 	for _, bad := range forbidden {
 		if strings.Contains(upper, bad) {
-			t.Errorf("generated SQL must not contain %q (least-privilege only)\n---\n%s", bad, sql)
+			t.Errorf("Phase 2 SQL must not contain %q (least-privilege only)\n---\n%s", bad, sql)
 		}
+	}
+}
+
+// --- Shared: identifier/UUID validation ---
+
+func TestBuildPrincipalSQL_RejectsInvalidIdentifiers(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		params bootstrapParams
+	}{
+		{"role injection", bootstrapParams{Role: "api; DROP DATABASE town_crier_dev", DB: "town_crier_dev", OID: testMIObjectID}},
+		{"db injection", bootstrapParams{Role: "towncrier_api", DB: "town_crier_dev; --", OID: testMIObjectID}},
+		{"oid not a uuid", bootstrapParams{Role: "towncrier_api", DB: "town_crier_dev", OID: "not-a-uuid"}},
+		{"empty role", bootstrapParams{Role: "", DB: "town_crier_dev", OID: testMIObjectID}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := buildPrincipalSQL(tc.params); err == nil {
+				t.Fatalf("buildPrincipalSQL(%+v) returned nil error, want rejection", tc.params)
+			}
+		})
 	}
 }
 
@@ -72,38 +163,4 @@ func stripSQLComments(sql string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
-}
-
-func TestBuildBootstrapSQL_RejectsInvalidIdentifiers(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name   string
-		params bootstrapParams
-	}{
-		{"role injection", bootstrapParams{Role: "api; DROP DATABASE town_crier_dev", DB: "town_crier_dev", OID: testMIObjectID}},
-		{"db injection", bootstrapParams{Role: "towncrier_api", DB: "town_crier_dev; --", OID: testMIObjectID}},
-		{"oid not a uuid", bootstrapParams{Role: "towncrier_api", DB: "town_crier_dev", OID: "not-a-uuid"}},
-		{"empty role", bootstrapParams{Role: "", DB: "town_crier_dev", OID: testMIObjectID}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if _, err := buildBootstrapSQL(tc.params); err == nil {
-				t.Fatalf("buildBootstrapSQL(%+v) returned nil error, want rejection", tc.params)
-			}
-		})
-	}
-}
-
-func TestBuildBootstrapSQL_GuardsPrincipalCreationForIdempotency(t *testing.T) {
-	t.Parallel()
-	sql, err := buildBootstrapSQL(validParams())
-	if err != nil {
-		t.Fatalf("buildBootstrapSQL() error = %v", err)
-	}
-	// The principal-create must be guarded so a re-run is a no-op rather than an
-	// "already exists" failure.
-	if !strings.Contains(sql, "pg_roles") {
-		t.Errorf("generated SQL must guard creation against pg_roles for idempotency\n---\n%s", sql)
-	}
 }
