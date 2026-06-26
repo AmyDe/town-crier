@@ -48,6 +48,8 @@ For each cycle:
 - **Green code** uses consumer-side interfaces (defined where used), concrete struct constructors, sentinel errors with `%w` wrapping, and `ctx context.Context` as the first parameter on every I/O-touching function.
 - **Refactors** preserve behaviour; if test names start lying, rename them before changing code.
 
+**Postgres store ports (Cosmos → Postgres + PostGIS migration, epic #645).** When the bead ports a store to Postgres, the untagged `go test ./...` loop is not enough — you MUST also write real-DB integration tests behind `//go:build integration` using the `internal/platform/postgres/pgtest` harness (`pgtest.New(t)` + `Truncate`; see `/go-coding-standards`). Boot the local DB once with `make -C api-go db-up` (Docker must be running), drive the cycle with `cd api-go && go test -tags=integration ./...`, and add that command to pre-flight. Real-DB tests cover the spatial/SQL behaviour fakes cannot model; a port that only passes the untagged suite is incomplete.
+
 ## Pre-flight
 
 ```bash
