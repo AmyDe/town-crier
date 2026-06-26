@@ -26,4 +26,19 @@ struct APIEnvironmentTests {
       #expect(current == .production)
     #endif
   }
+
+  @Test func environment_sandboxReceipt_routesToDevelopment() {
+    // TestFlight builds ship a sandbox App Store receipt.
+    #expect(APIEnvironment.environment(forReceiptLastPathComponent: "sandboxReceipt") == .development)
+  }
+
+  @Test func environment_productionReceipt_routesToProduction() {
+    // App Store builds ship a production receipt named "receipt".
+    #expect(APIEnvironment.environment(forReceiptLastPathComponent: "receipt") == .production)
+  }
+
+  @Test func environment_missingReceipt_routesToProduction() {
+    // Ad-hoc / local Release runs have no receipt; default to the safe prod choice.
+    #expect(APIEnvironment.environment(forReceiptLastPathComponent: nil) == .production)
+  }
 }
