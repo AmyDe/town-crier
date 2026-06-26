@@ -121,11 +121,11 @@ func TestPostgresNotificationStore_MarkProcessed(t *testing.T) {
 	}
 }
 
-// TestPostgresNotificationStore_MarkProcessed_Idempotent proves MarkProcessed
+// TestPostgresNotificationStore_MarkProcessed_CallsTwice proves MarkProcessed
 // can be called twice without error at the code level. The ON CONFLICT DO UPDATE
 // idempotency against a real unique constraint is exercised in the integration
-// test.
-func TestPostgresNotificationStore_MarkProcessed_Idempotent(t *testing.T) {
+// test (TestPostgresNotificationStore_MarkProcessed_Idempotent).
+func TestPostgresNotificationStore_MarkProcessed_CallsTwice(t *testing.T) {
 	t.Parallel()
 	q := &fakeQuerier{}
 	store := NewPostgresNotificationStore(q, time.Now)
