@@ -7,6 +7,7 @@ import (
 	"github.com/pulumi/pulumi-azure-native-sdk/app/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3"
+	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/storage/v3"
@@ -364,6 +365,57 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		tags:                        tags,
 	}
 
+	// Dev-only: the Postgres database + a connection-string secret on the dev Container App.
+	// First step of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH
+	// #645). The shared stack owns the Flexible Server; the per-env database lives on it. The
+	// prod database/role and the wiring.go swap that actually consumes this secret are deferred
+	// to later phases — here the secret only needs to exist on ca-town-crier-api-go-dev.
+	var postgresConnectionStringSecret pulumi.StringOutput
+	hasPostgresSecret := false
+	if env == "dev" {
+		postgresServerName := shared.GetStringOutput(pulumi.String("postgresServerName"))
+		postgresServerFqdn := shared.GetStringOutput(pulumi.String("postgresServerFqdn"))
+		postgresAdminLogin := shared.GetStringOutput(pulumi.String("postgresAdminLogin"))
+		postgresAdminPassword := shared.GetStringOutput(pulumi.String("postgresAdminPassword"))
+
+		_, err = dbforpostgresql.NewDatabase(ctx, fmt.Sprintf("psql-db-town-crier-%s", env), &dbforpostgresql.DatabaseArgs{
+			DatabaseName:      pulumi.String("town_crier_dev"),
+			ResourceGroupName: sharedResourceGroupName,
+			ServerName:        postgresServerName,
+			Charset:           pulumi.String("UTF8"),
+			Collation:         pulumi.String("en_US.utf8"),
+		})
+		if err != nil {
+			return err
+		}
+
+		// sslmode=require — the Flexible Server enforces TLS. The admin password is already a
+		// secret output; ToSecret makes the whole connection string secret explicitly.
+		postgresConnectionStringSecret = pulumi.ToSecret(pulumi.Sprintf(
+			"postgres://%s:%s@%s:5432/town_crier_dev?sslmode=require",
+			postgresAdminLogin, postgresAdminPassword, postgresServerFqdn,
+		)).(pulumi.StringOutput)
+		hasPostgresSecret = true
+	}
+
+	secrets := app.SecretArray{
+		&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
+		&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
+		// Admin key the Go X-Admin-Key gate validates for /v1/admin requests (tc-52t6).
+		&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
+		// Build key the Go gate validates for the SEO prerender endpoint (tc-nnte).
+		&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
+	}
+	// Dev-only: attach the Postgres connection-string secret. No Env/SecretRef yet — the app
+	// does not consume it until the wiring swap in a later migration phase; the secret just
+	// needs to exist on the dev Container App. Prod's secret set is unchanged.
+	if hasPostgresSecret {
+		secrets = append(secrets, &app.SecretArgs{
+			Name:  pulumi.String("postgres-connection-string"),
+			Value: postgresConnectionStringSecret,
+		})
+	}
+
 	// Container App (Go API), created for both dev and prod — the only environment stacks
 	// (shared is handled separately). The placeholder quickstart image listens on 80, so the
 	// first revision stays unhealthy until CD pushes the real town-crier-api-go image.
@@ -385,14 +437,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 				Identity: acrPullIdentityID,
 			},
 		},
-		Secrets: app.SecretArray{
-			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-id"), Value: auth0M2mClientID},
-			&app.SecretArgs{Name: pulumi.String("auth0-m2m-client-secret"), Value: auth0M2mClientSecret},
-			// Admin key the Go X-Admin-Key gate validates for /v1/admin requests (tc-52t6).
-			&app.SecretArgs{Name: pulumi.String("admin-api-key"), Value: adminAPIKey},
-			// Build key the Go gate validates for the SEO prerender endpoint (tc-nnte).
-			&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
-		},
+		Secrets: secrets,
 	}
 	minReplicas := 0
 	if env == "prod" {
