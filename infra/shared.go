@@ -321,41 +321,37 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Allowlist the PostGIS extension via the azure.extensions server parameter. Without it,
-	// `CREATE EXTENSION postgis` is rejected. Source must be "user-override" or Azure ignores
-	// the assigned value.
-	_, err = dbforpostgresql.NewConfiguration(ctx, "psql-town-crier-shared-azure-extensions", &dbforpostgresql.ConfigurationArgs{
-		ConfigurationName: pulumi.String("azure.extensions"),
-		ResourceGroupName: resourceGroup.Name,
-		ServerName:        postgresServer.Name,
-		Source:            pulumi.String("user-override"),
-		Value:             pulumi.String("POSTGIS"),
-	})
-	if err != nil {
-		return err
-	}
-
-	// Enable the server's built-in PgBouncer connection pooler.
-	_, err = dbforpostgresql.NewConfiguration(ctx, "psql-town-crier-shared-pgbouncer", &dbforpostgresql.ConfigurationArgs{
-		ConfigurationName: pulumi.String("pgbouncer.enabled"),
-		ResourceGroupName: resourceGroup.Name,
-		ServerName:        postgresServer.Name,
-		Source:            pulumi.String("user-override"),
-		Value:             pulumi.String("true"),
-	})
-	if err != nil {
-		return err
-	}
-
 	// "Allow Azure services" firewall rule — the all-zeros (0.0.0.0/0.0.0.0) special rule lets
 	// Azure-hosted resources (the dev Container App) reach the server over its public endpoint.
-	_, err = dbforpostgresql.NewFirewallRule(ctx, "psql-town-crier-shared-allow-azure", &dbforpostgresql.FirewallRuleArgs{
+	postgresFirewall, err := dbforpostgresql.NewFirewallRule(ctx, "psql-town-crier-shared-allow-azure", &dbforpostgresql.FirewallRuleArgs{
 		FirewallRuleName:  pulumi.String("allow-azure-services"),
 		ResourceGroupName: resourceGroup.Name,
 		ServerName:        postgresServer.Name,
 		StartIpAddress:    pulumi.String("0.0.0.0"),
 		EndIpAddress:      pulumi.String("0.0.0.0"),
 	})
+	if err != nil {
+		return err
+	}
+
+	// Allowlist the PostGIS extension via the azure.extensions server parameter. Without it,
+	// `CREATE EXTENSION postgis` is rejected. Source must be "user-override" or Azure ignores
+	// the assigned value. A server parameter change is a server-level operation that cannot run
+	// while the server is busy with another operation, so this is serialised after the firewall
+	// rule (DependsOn) — applying both concurrently right after server creation trips
+	// "ServerIsBusy".
+	//
+	// Note: built-in PgBouncer (the `pgbouncer.enabled` parameter) is deliberately not set — it
+	// is unsupported on the Burstable tier (B1ms) and Azure rejects it with
+	// ServerConfigurationNotAllowed. The Go data layer uses pgx, which pools connections
+	// client-side; revisit built-in PgBouncer only if this server is moved to General Purpose.
+	_, err = dbforpostgresql.NewConfiguration(ctx, "psql-town-crier-shared-azure-extensions", &dbforpostgresql.ConfigurationArgs{
+		ConfigurationName: pulumi.String("azure.extensions"),
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		Source:            pulumi.String("user-override"),
+		Value:             pulumi.String("POSTGIS"),
+	}, pulumi.DependsOn([]pulumi.Resource{postgresFirewall}))
 	if err != nil {
 		return err
 	}
