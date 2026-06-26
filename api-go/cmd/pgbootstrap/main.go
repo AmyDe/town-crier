@@ -3,20 +3,30 @@
 // DML only. It is a one-time, idempotent data-plane operation run by the Entra
 // admin (a locally `az login`-ed human), not part of any deploy.
 //
-// It connects as the admin using the admin's own Entra token as the connection
-// password (the same pgx BeforeConnect trick the API uses), via
-// DefaultAzureCredential. The bootstrap SQL lives in the checked-in, reviewable
-// bootstrap.sql and is rendered with validated identifiers. The command runs no
-// destructive statement.
+// The bootstrap runs in two ordered phases, each on its own connection:
+//
+//  1. Phase 1 — admin DB (default: postgres): create the Entra-mapped role and
+//     grant it CONNECT on the app database. The pgaadauth_create_principal_with_oid
+//     function is provided per-database by the pgaadauth extension, which Azure
+//     enables only in the postgres admin database. Postgres roles are
+//     cluster-global, so the role is immediately usable by the app database.
+//
+//  2. Phase 2 — app DB (default: town_crier_dev): grant DML on the app
+//     database's schema, tables, and sequences. ALTER DEFAULT PRIVILEGES ensures
+//     future tables created by goose migrations are also covered.
+//
+// Both phases are idempotent: the principal create is guarded by a pg_roles
+// existence check, and every GRANT is idempotent by design.
 //
 // Usage:
 //
-//	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> -db town_crier_dev \
+//	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> \
+//	    [-admin-db postgres] [-db town_crier_dev] \
 //	    -mi-oid <managed-identity-object-id> [-role towncrier_api]
 //	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> -db town_crier_dev -verify
 //
-// -verify connects (as the admin) and prints SELECT current_user so the operator
-// can confirm Entra auth to the server works.
+// -verify connects to the app DB (as the admin) and prints SELECT current_user so
+// the operator can confirm Entra auth to the server works.
 package main
 
 import (
@@ -36,14 +46,21 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres"
 )
 
-// bootstrapSQLTemplate is the reviewable, checked-in least-privilege bootstrap.
+// principalSQLTemplate is the Phase 1 SQL (admin DB): create the Entra-mapped
+// role and grant it CONNECT on the app database.
 //
-//go:embed bootstrap.sql
-var bootstrapSQLTemplate string
+//go:embed principal.sql
+var principalSQLTemplate string
+
+// grantsSQLTemplate is the Phase 2 SQL (app DB): DML and sequence grants for
+// the role created in Phase 1.
+//
+//go:embed grants.sql
+var grantsSQLTemplate string
 
 // identifierPattern matches a safe, unquoted SQL identifier (role / database
 // name). OID values must be a UUID. Both are validated before being templated
-// into SQL, so bootstrap.sql is not a SQL-injection surface.
+// into SQL, so neither principal.sql nor grants.sql is a SQL-injection surface.
 var (
 	identifierPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -69,20 +86,35 @@ func (p bootstrapParams) validate() error {
 	return nil
 }
 
-// buildBootstrapSQL validates the identifiers and renders the embedded template.
-// Returning the SQL (rather than executing it) keeps the assembly fully
-// unit-testable.
-func buildBootstrapSQL(p bootstrapParams) (string, error) {
+// buildPrincipalSQL validates identifiers and renders the Phase 1 template.
+// Phase 1 must run against the admin database (default: postgres) where the
+// pgaadauth extension is available. Returning the SQL keeps rendering fully
+// unit-testable without a live database.
+func buildPrincipalSQL(p bootstrapParams) (string, error) {
+	return renderTemplate("principal", principalSQLTemplate, p)
+}
+
+// buildGrantsSQL validates identifiers and renders the Phase 2 template.
+// Phase 2 must run against the app database (default: town_crier_dev).
+// Returning the SQL keeps rendering fully unit-testable without a live database.
+func buildGrantsSQL(p bootstrapParams) (string, error) {
+	return renderTemplate("grants", grantsSQLTemplate, p)
+}
+
+// renderTemplate validates p and renders the named SQL template. It is the
+// shared implementation for buildPrincipalSQL and buildGrantsSQL so that
+// validation and rendering are never accidentally skipped in one phase.
+func renderTemplate(name, tmplText string, p bootstrapParams) (string, error) {
 	if err := p.validate(); err != nil {
 		return "", err
 	}
-	tmpl, err := template.New("bootstrap").Option("missingkey=error").Parse(bootstrapSQLTemplate)
+	tmpl, err := template.New(name).Option("missingkey=error").Parse(tmplText)
 	if err != nil {
-		return "", fmt.Errorf("parse bootstrap template: %w", err)
+		return "", fmt.Errorf("parse %s template: %w", name, err)
 	}
 	var buf strings.Builder
 	if err := tmpl.Execute(&buf, p); err != nil {
-		return "", fmt.Errorf("render bootstrap template: %w", err)
+		return "", fmt.Errorf("render %s template: %w", name, err)
 	}
 	return buf.String(), nil
 }
@@ -96,12 +128,13 @@ func run(args []string) int {
 	var (
 		host      = fs.String("host", os.Getenv("POSTGRES_HOST"), "Postgres server FQDN")
 		adminUser = fs.String("admin-user", os.Getenv("POSTGRES_ADMIN_USER"), "Entra admin principal name (UPN) to connect as")
-		db        = fs.String("db", envOr("POSTGRES_DB", "town_crier_dev"), "target database")
+		adminDB   = fs.String("admin-db", envOr("POSTGRES_ADMIN_DB", "postgres"), "admin database where pgaadauth functions live (Phase 1)")
+		db        = fs.String("db", envOr("POSTGRES_DB", "town_crier_dev"), "app database to grant on (Phase 2)")
 		miOID     = fs.String("mi-oid", os.Getenv("POSTGRES_MI_OBJECT_ID"), "managed-identity object id to map the role to")
 		role      = fs.String("role", envOr("POSTGRES_ROLE", "towncrier_api"), "Postgres role name to create/grant")
 		sslMode   = fs.String("sslmode", envOr("POSTGRES_SSLMODE", "require"), "sslmode")
 		timeout   = fs.Duration("timeout", 30*time.Second, "overall timeout")
-		verify    = fs.Bool("verify", false, "connect and print SELECT current_user, then exit (no bootstrap)")
+		verify    = fs.Bool("verify", false, "connect to the app DB and print SELECT current_user, then exit (no bootstrap)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -121,38 +154,66 @@ func run(args []string) int {
 		return 1
 	}
 
-	pool, err := postgres.NewTokenCredentialPool(ctx, postgres.ConnParams{
+	// Phase 1 pool — admin database (postgres): pgaadauth extension lives here.
+	adminPool, err := postgres.NewTokenCredentialPool(ctx, postgres.ConnParams{
+		Host:    *host,
+		DB:      *adminDB,
+		User:    *adminUser,
+		SSLMode: *sslMode,
+	}, cred)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pgbootstrap: build admin pool: %v\n", err)
+		return 1
+	}
+	defer adminPool.Close()
+
+	// Phase 2 pool — app database: DML grants are scoped per-database.
+	appPool, err := postgres.NewTokenCredentialPool(ctx, postgres.ConnParams{
 		Host:    *host,
 		DB:      *db,
 		User:    *adminUser,
 		SSLMode: *sslMode,
 	}, cred)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "pgbootstrap: build pool: %v\n", err)
+		fmt.Fprintf(os.Stderr, "pgbootstrap: build app pool: %v\n", err)
 		return 1
 	}
-	defer pool.Close()
+	defer appPool.Close()
 
 	if *verify {
-		return verifyConnection(ctx, pool)
+		return verifyConnection(ctx, appPool)
 	}
 
-	sql, err := buildBootstrapSQL(bootstrapParams{Role: *role, DB: *db, OID: *miOID})
+	params := bootstrapParams{Role: *role, DB: *db, OID: *miOID}
+
+	// Phase 1: create the Entra-mapped role in the admin DB where pgaadauth lives.
+	principalSQL, err := buildPrincipalSQL(params)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgbootstrap: %v\n", err)
 		return 2
 	}
-
-	// The rendered SQL carries no parameters, so pgx runs it via the simple
-	// protocol, executing all statements (including the guarded DO block) in one
-	// round trip. Identifiers were validated before rendering.
-	if _, err := pool.Exec(ctx, sql); err != nil {
-		fmt.Fprintf(os.Stderr, "pgbootstrap: run bootstrap: %v\n", err)
+	// The rendered SQL carries no parameters so pgx uses the simple protocol,
+	// executing all statements (including the guarded DO block) in one round trip.
+	if _, err := adminPool.Exec(ctx, principalSQL); err != nil {
+		fmt.Fprintf(os.Stderr, "pgbootstrap: phase 1 (principal create): %v\n", err)
 		return 1
 	}
+	fmt.Printf("pgbootstrap: phase 1 complete — role %q mapped to OID %s\n", *role, *miOID)
 
-	fmt.Printf("pgbootstrap: bootstrapped role %q on database %q\n", *role, *db)
-	return verifyConnection(ctx, pool)
+	// Phase 2: grant DML on the app database. Roles are cluster-global, so the
+	// role created in Phase 1 is visible here immediately.
+	grantsSQL, err := buildGrantsSQL(params)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pgbootstrap: %v\n", err)
+		return 2
+	}
+	if _, err := appPool.Exec(ctx, grantsSQL); err != nil {
+		fmt.Fprintf(os.Stderr, "pgbootstrap: phase 2 (grants): %v\n", err)
+		return 1
+	}
+	fmt.Printf("pgbootstrap: phase 2 complete — DML grants applied on %q\n", *db)
+
+	return verifyConnection(ctx, appPool)
 }
 
 func verifyConnection(ctx context.Context, pool *pgxpool.Pool) int {
