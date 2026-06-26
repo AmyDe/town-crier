@@ -88,8 +88,6 @@ func (r *fakeRows) Scan(dest ...any) error {
 		case *string:
 			if v, ok := src[i].(string); ok {
 				*p = v
-			} else if src[i] == nil {
-				// leave as zero
 			}
 		case **string:
 			switch v := src[i].(type) {
