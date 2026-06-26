@@ -22,13 +22,17 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// storeSurface is the full method set the Applications store exposes to its
-// consumers across packages (handler's appStore, recent.go's recentStore,
-// near.go's nearStore, watchzones.appFinder's FindNearbyPage, the savedapplications
-// snapshot backfill's GetByUID, and the poll Upsert). It exists only as a
-// compile-time parity check: both *CosmosStore and *PostgresStore must satisfy it,
-// so a Postgres port can never silently diverge from the Cosmos surface.
-type storeSurface interface {
+// Store is the full method set the Applications store exposes to its consumers
+// across packages (handler's appStore, recent.go's recentStore, near.go's
+// nearStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
+// backfill's GetByUID, demoaccount's Upsert + FindNearbyPage, and the poll
+// Upsert). It serves two purposes: a compile-time parity check (both *CosmosStore
+// and *PostgresStore must satisfy it, so a Postgres port can never silently
+// diverge from the Cosmos surface) and the exported consumer-side interface
+// cmd/api's newRouter accepts, so the Applications routes can be served from
+// either backend behind the APPS_ZONES_BACKEND flag (issue #657 Slice 2). Every
+// narrower per-handler interface is a subset of this set.
+type Store interface {
 	Upsert(ctx context.Context, a PlanningApplication) error
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error)
 	GetByUID(ctx context.Context, uid, authorityCode string) (PlanningApplication, bool, error)
@@ -41,13 +45,13 @@ type storeSurface interface {
 }
 
 // Compile-time parity: the Postgres store satisfies the same consumer-side
-// interfaces the Cosmos store does, and both satisfy the full storeSurface.
+// interfaces the Cosmos store does, and both satisfy the full Store surface.
 var (
-	_ appStore     = (*PostgresStore)(nil)
-	_ recentStore  = (*PostgresStore)(nil)
-	_ nearStore    = (*PostgresStore)(nil)
-	_ storeSurface = (*PostgresStore)(nil)
-	_ storeSurface = (*CosmosStore)(nil)
+	_ appStore    = (*PostgresStore)(nil)
+	_ recentStore = (*PostgresStore)(nil)
+	_ nearStore   = (*PostgresStore)(nil)
+	_ Store       = (*PostgresStore)(nil)
+	_ Store       = (*CosmosStore)(nil)
 )
 
 // PostgresStore reads and writes planning applications in the Postgres
