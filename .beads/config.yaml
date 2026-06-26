@@ -54,3 +54,16 @@
 # - github.repo
 
 sync.remote: "https://doltremoteapi.dolthub.com/amyde/town-crier"
+
+# Anti-thrash (DO NOT set back to true). bd 1.0.4 in server mode re-imports
+# .beads/issues.jsonl into the running DB on every command (upstream
+# gastownhall/beads #3849/#4170 — fix not in the 1.0.4 tag), which reverts
+# ("clobbers") just-made writes whenever the on-disk jsonl diverges. With
+# export.auto=false bd never regenerates the jsonl, so the hot path stays
+# empty and there is nothing to import. These keys are COMMITTED so that
+# `git reset --hard origin/main` and fresh clones cannot fall back to bd's
+# `true` defaults and silently re-arm the thrash. See docs/memo/0011 and
+# CLAUDE.md "Beads: Dolt is the sole source of truth".
+export.auto: false
+
+export.git-add: false
