@@ -29,7 +29,8 @@ struct APIEnvironmentTests {
 
   @Test func environment_sandboxReceipt_routesToDevelopment() {
     // TestFlight builds ship a sandbox App Store receipt.
-    #expect(APIEnvironment.environment(forReceiptLastPathComponent: "sandboxReceipt") == .development)
+    #expect(
+      APIEnvironment.environment(forReceiptLastPathComponent: "sandboxReceipt") == .development)
   }
 
   @Test func environment_productionReceipt_routesToProduction() {

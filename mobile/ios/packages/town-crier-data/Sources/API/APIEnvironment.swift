@@ -26,7 +26,8 @@ public enum APIEnvironment: Equatable, Sendable {
       // production receipt. Routing TestFlight to dev lets us exercise the dev backend
       // on-device without affecting the public App Store build. `Bundle.main` is thin,
       // untested glue; the decision lives in the pure seam below.
-      return environment(forReceiptLastPathComponent: Bundle.main.appStoreReceiptURL?.lastPathComponent)
+      return environment(
+        forReceiptLastPathComponent: Bundle.main.appStoreReceiptURL?.lastPathComponent)
     #endif
   }
 
