@@ -10,6 +10,7 @@ require (
 	github.com/pulumi/pulumi-azure-native-sdk/consumption/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/containerregistry/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3 v3.16.0
+	github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/managedidentity/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/monitor/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/operationalinsights/v3 v3.16.0
@@ -18,7 +19,8 @@ require (
 	github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/storage/v3 v3.16.0
 	github.com/pulumi/pulumi-azure-native-sdk/web/v3 v3.16.0
-	github.com/pulumi/pulumi/sdk/v3 v3.227.0
+	github.com/pulumi/pulumi-random/sdk/v4 v4.21.0
+	github.com/pulumi/pulumi/sdk/v3 v3.242.0
 )
 
 require (
@@ -84,11 +86,12 @@ require (
 	github.com/opentracing/basictracer-go v1.1.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pgavlin/fx v0.1.6 // indirect
+	github.com/pgavlin/fx/v2 v2.0.12 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
-	github.com/pulumi/esc v0.17.0 // indirect
+	github.com/pulumi/esc v0.24.0 // indirect
 	github.com/pulumi/pulumi-azure-native-sdk/v3 v3.16.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
@@ -127,7 +130,7 @@ require (
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

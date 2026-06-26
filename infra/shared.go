@@ -12,11 +12,13 @@ import (
 	"github.com/pulumi/pulumi-azure-native-sdk/consumption/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/containerregistry/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3"
+	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/managedidentity/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/monitor/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/operationalinsights/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/portal/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
+	"github.com/pulumi/pulumi-random/sdk/v4/go/random"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
@@ -264,6 +266,100 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// Azure Database for PostgreSQL — Flexible Server (shared across environments; this single
+	// server hosts both the dev and prod databases long-term). First infra step of the Cosmos →
+	// Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645). Pre-revenue profile:
+	// Burstable B1ms, single-AZ (HA disabled), public network access (no VNet/delegated subnet),
+	// 7-day non-geo-redundant backups. The dev database, prod database, and the app wiring swap
+	// are handled in later phases — this block provisions only the server itself.
+	//
+	// Admin password is generated and held as a Pulumi secret. OverrideSpecial restricts the
+	// special characters to a URL-safe set so the value drops into a postgres:// connection
+	// string without percent-encoding; the Min* constraints guarantee Azure's password
+	// complexity rule (at least three of upper/lower/numeric/special).
+	postgresAdminPassword, err := random.NewRandomPassword(ctx, "psql-town-crier-shared-admin", &random.RandomPasswordArgs{
+		Length:          pulumi.Int(32),
+		Special:         pulumi.Bool(true),
+		OverrideSpecial: pulumi.String("-_.~"),
+		MinUpper:        pulumi.Int(1),
+		MinLower:        pulumi.Int(1),
+		MinNumeric:      pulumi.Int(1),
+		MinSpecial:      pulumi.Int(1),
+	})
+	if err != nil {
+		return err
+	}
+
+	postgresServer, err := dbforpostgresql.NewServer(ctx, "psql-town-crier-shared", &dbforpostgresql.ServerArgs{
+		ServerName:                 pulumi.String("psql-town-crier-shared"),
+		ResourceGroupName:          resourceGroup.Name,
+		Location:                   resourceGroup.Location,
+		Version:                    pulumi.String("16"),
+		CreateMode:                 dbforpostgresql.CreateModeDefault,
+		AdministratorLogin:         pulumi.String("tcadmin"),
+		AdministratorLoginPassword: postgresAdminPassword.Result,
+		Sku: &dbforpostgresql.SkuArgs{
+			Name: pulumi.String("Standard_B1ms"),
+			Tier: dbforpostgresql.SkuTierBurstable,
+		},
+		Storage: &dbforpostgresql.StorageArgs{
+			StorageSizeGB: pulumi.Int(32),
+		},
+		HighAvailability: &dbforpostgresql.HighAvailabilityArgs{
+			Mode: dbforpostgresql.PostgreSqlFlexibleServerHighAvailabilityModeDisabled,
+		},
+		Backup: &dbforpostgresql.BackupTypeArgs{
+			BackupRetentionDays: pulumi.Int(7),
+			GeoRedundantBackup:  dbforpostgresql.GeoRedundantBackupDisabled,
+		},
+		Network: &dbforpostgresql.NetworkArgs{
+			PublicNetworkAccess: dbforpostgresql.PublicNetworkAccessEnumEnabled,
+		},
+		Tags: tags,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Allowlist the PostGIS extension via the azure.extensions server parameter. Without it,
+	// `CREATE EXTENSION postgis` is rejected. Source must be "user-override" or Azure ignores
+	// the assigned value.
+	_, err = dbforpostgresql.NewConfiguration(ctx, "psql-town-crier-shared-azure-extensions", &dbforpostgresql.ConfigurationArgs{
+		ConfigurationName: pulumi.String("azure.extensions"),
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		Source:            pulumi.String("user-override"),
+		Value:             pulumi.String("POSTGIS"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// Enable the server's built-in PgBouncer connection pooler.
+	_, err = dbforpostgresql.NewConfiguration(ctx, "psql-town-crier-shared-pgbouncer", &dbforpostgresql.ConfigurationArgs{
+		ConfigurationName: pulumi.String("pgbouncer.enabled"),
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		Source:            pulumi.String("user-override"),
+		Value:             pulumi.String("true"),
+	})
+	if err != nil {
+		return err
+	}
+
+	// "Allow Azure services" firewall rule — the all-zeros (0.0.0.0/0.0.0.0) special rule lets
+	// Azure-hosted resources (the dev Container App) reach the server over its public endpoint.
+	_, err = dbforpostgresql.NewFirewallRule(ctx, "psql-town-crier-shared-allow-azure", &dbforpostgresql.FirewallRuleArgs{
+		FirewallRuleName:  pulumi.String("allow-azure-services"),
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		StartIpAddress:    pulumi.String("0.0.0.0"),
+		EndIpAddress:      pulumi.String("0.0.0.0"),
+	})
+	if err != nil {
+		return err
+	}
+
 	// Cost Management budget alert — fires at £25 cumulative monthly spend on the shared
 	// Cosmos account. See tc-guwt and docs/cost-forecast/2026-05-02.md.
 	alertEmail := conf.Require("alertEmail")
@@ -459,6 +555,13 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
 	ctx.Export("cosmosAccountName", cosmosAccount.Name)
 	ctx.Export("cosmosAccountEndpoint", cosmosAccount.DocumentEndpoint)
+	// Postgres Flexible Server (Cosmos → Postgres migration, epic tc-hpd2). The admin password
+	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
+	// database connection strings.
+	ctx.Export("postgresServerName", postgresServer.Name)
+	ctx.Export("postgresServerFqdn", postgresServer.FullyQualifiedDomainName)
+	ctx.Export("postgresAdminLogin", pulumi.String("tcadmin"))
+	ctx.Export("postgresAdminPassword", postgresAdminPassword.Result)
 	ctx.Export("appInsightsId", appInsights.ID())
 	ctx.Export("appInsightsConnectionString", appInsights.ConnectionString)
 	ctx.Export("acsConnectionString", communication.ListCommunicationServiceKeysOutput(ctx, communication.ListCommunicationServiceKeysOutputArgs{
