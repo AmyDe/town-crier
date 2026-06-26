@@ -48,13 +48,30 @@ func TestBuildBootstrapSQL_GrantsNoElevatedPrivilege(t *testing.T) {
 		t.Fatalf("buildBootstrapSQL() error = %v", err)
 	}
 
-	upper := strings.ToUpper(sql)
+	// Scan the executable SQL only: -- comment lines deliberately name the
+	// privileges this bootstrap withholds, and that documentation must not trip
+	// the guard. What matters is that nothing elevated is actually granted.
+	upper := strings.ToUpper(stripSQLComments(sql))
 	forbidden := []string{"SUPERUSER", "CREATEDB", "CREATEROLE", "OWNER", "DROP", "ALTER TABLE", "CREATE TABLE"}
 	for _, bad := range forbidden {
 		if strings.Contains(upper, bad) {
 			t.Errorf("generated SQL must not contain %q (least-privilege only)\n---\n%s", bad, sql)
 		}
 	}
+}
+
+// stripSQLComments removes -- line comments so privilege assertions inspect only
+// executable statements.
+func stripSQLComments(sql string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(sql, "\n") {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			line = line[:idx]
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func TestBuildBootstrapSQL_RejectsInvalidIdentifiers(t *testing.T) {
