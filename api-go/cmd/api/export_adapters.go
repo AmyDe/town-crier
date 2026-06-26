@@ -22,7 +22,11 @@ import (
 // both the stores and the profiles row types.
 
 // watchZoneExportReader adapts the watch-zone store to profiles.WatchZoneReader.
-type watchZoneExportReader struct{ store *watchzones.CosmosStore }
+// It holds the consumer-side watchzones.Store interface — not the concrete Cosmos
+// store — so GET /v1/me/data exports a user's watch zones from whichever backend
+// the APPS_ZONES_BACKEND flag selects (Postgres on dev), never silently missing a
+// Postgres-resident user's zones (bead tc-s8g1).
+type watchZoneExportReader struct{ store watchzones.Store }
 
 func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID string) ([]profiles.ExportedWatchZone, error) {
 	zones, err := r.store.GetByUserID(ctx, userID)
