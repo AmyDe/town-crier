@@ -119,7 +119,7 @@ func backfill(ctx context.Context, pager docPager, store appUpserter, opts backf
 			app, derr := applications.DecodeDocument(raw)
 			if derr != nil {
 				s.errors++
-				logger.Warn("skip undecodable application", "error", derr)
+				logger.WarnContext(ctx, "skip undecodable application", "error", derr)
 				continue
 			}
 			if uerr := store.Upsert(ctx, app); uerr != nil {
@@ -127,12 +127,12 @@ func backfill(ctx context.Context, pager docPager, store appUpserter, opts backf
 					return s, fmt.Errorf("backfill cancelled upserting %q after %d records: %w", app.Name, s.read, uerr)
 				}
 				s.errors++
-				logger.Warn("upsert failed", "application", app.Name, "authority", app.AreaID, "error", uerr)
+				logger.WarnContext(ctx, "upsert failed", "application", app.Name, "authority", app.AreaID, "error", uerr)
 				continue
 			}
 			s.upserted++
 			if opts.logEvery > 0 && s.read%opts.logEvery == 0 {
-				logger.Info("backfill progress", "read", s.read, "upserted", s.upserted, "errors", s.errors)
+				logger.InfoContext(ctx, "backfill progress", "read", s.read, "upserted", s.upserted, "errors", s.errors)
 			}
 		}
 	}
@@ -205,13 +205,13 @@ func run(args []string, logger *slog.Logger) int {
 
 	store := applications.NewPostgresStore(pool)
 
-	logger.Info("backfill starting",
-		"cosmosEndpoint", *cosmosEndpoint, "cosmosDB", *cosmosDB, "cosmosContainer", *cosmosContainer,
-		"pgHost", *pgHost, "pgDB", *pgDB, "batchSize", *batchSize, "limit", *limit)
+	logger.InfoContext(ctx, "backfill starting",
+		"cosmosEndpoint", *cosmosEndpoint, "cosmosDb", *cosmosDB, "cosmosContainer", *cosmosContainer,
+		"pgHost", *pgHost, "pgDb", *pgDB, "batchSize", *batchSize, "limit", *limit)
 
 	started := time.Now()
 	s, err := backfill(ctx, pager, store, backfillOptions{limit: *limit, logEvery: *batchSize}, logger)
-	logger.Info("backfill complete",
+	logger.InfoContext(ctx, "backfill complete",
 		"read", s.read, "upserted", s.upserted, "errors", s.errors, "elapsed", time.Since(started).String())
 
 	if err != nil {
@@ -221,7 +221,7 @@ func run(args []string, logger *slog.Logger) int {
 	if s.errors > 0 {
 		// Per-record errors do not fail the run (re-running reconciles), but make
 		// the count loud so the operator can decide whether to re-run.
-		logger.Warn("backfill finished with per-record errors; re-run to reconcile", "errors", s.errors)
+		logger.WarnContext(ctx, "backfill finished with per-record errors; re-run to reconcile", "errors", s.errors)
 	}
 	return 0
 }

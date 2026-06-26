@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -12,7 +11,7 @@ import (
 
 // discardLogger is a no-op logger so tests stay quiet.
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // rawDoc builds a minimal valid Applications-container document body for name,
