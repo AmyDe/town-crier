@@ -37,7 +37,9 @@ const (
 const defaultSSLMode = "require"
 
 // azurePostgresTokenScope is the fixed OSS RDBMS AAD resource for Azure Database
-// for PostgreSQL. It is not environment-specific.
+// for PostgreSQL. It is a public OAuth scope identifier, not a secret.
+//
+//nolint:gosec // G101: public AAD resource scope URL, not a credential
 const azurePostgresTokenScope = "https://ossrdbms-aad.database.windows.net/.default"
 
 // defaultDSN points at the docker-compose Postgres on host port 5433. It is used

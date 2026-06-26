@@ -311,5 +311,5 @@ func probePostgresManagedIdentity(logger *slog.Logger) {
 		logger.Warn("postgres managed-identity probe: query", "error", err)
 		return
 	}
-	logger.Info("postgres managed-identity probe: connected passwordless", "current_user", currentUser)
+	logger.Info("postgres managed-identity probe: connected passwordless", "currentUser", currentUser)
 }
