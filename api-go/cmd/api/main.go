@@ -77,6 +77,30 @@ func main() {
 		go probePostgresManagedIdentity(logger)
 	}
 
+	// APPS_ZONES_BACKEND gates the Applications + WatchZones route stores onto
+	// Postgres (dev only; prod and every other store stay Cosmos — issue #657
+	// Slice 2). When it selects Postgres we build ONE pool — MI-token auth from
+	// the dev container's POSTGRES_*/AZURE_CLIENT_ID via NewPoolFromEnv — and back
+	// both Postgres stores with it. Dev explicitly wants Postgres, so a pool that
+	// can't be built is fatal rather than a silent Cosmos fallback. The pool closes
+	// on shutdown. When the flag is unset (prod, local) these stay nil and the
+	// existing Cosmos construction is byte-for-byte unchanged.
+	appsZonesBackend := resolveBackend(cfg.AppsZonesBackend)
+	var (
+		pgAppStore       *applications.PostgresStore
+		pgWatchZoneStore *watchzones.PostgresStore
+	)
+	if appsZonesBackend == backendPostgres {
+		pool, perr := postgres.NewPoolFromEnv(context.Background())
+		if perr != nil {
+			log.Fatalf("apps/zones backend=postgres: build postgres pool: %v", perr)
+		}
+		defer pool.Close()
+		pgAppStore = applications.NewPostgresStore(pool)
+		pgWatchZoneStore = watchzones.NewPostgresStore(pool)
+		logger.Info("apps/zones backend selected", "backend", "postgres")
+	}
+
 	validator, err := auth.NewAuth0Validator(cfg.Auth0Domain, cfg.Auth0Audience, logger)
 	if err != nil {
 		log.Fatal(err)
@@ -128,20 +152,31 @@ func main() {
 		log.Fatal(err)
 	}
 	watchZones.WithMetrics(registry)
-	var watchZoneStore *watchzones.CosmosStore
+	// cosmosWatchZoneStore is always the concrete Cosmos store: it backs the GDPR
+	// erasure cascade, the data export, and the admin location/bbox backfill — all
+	// Cosmos-era paths that stay on Cosmos regardless of the route backend.
+	// watchZoneStore is the flag-selected consumer-side interface the route wiring
+	// uses (Postgres on dev, Cosmos elsewhere); chooseZoneStore returns a genuine
+	// nil interface when neither backing is configured.
+	var cosmosWatchZoneStore *watchzones.CosmosStore
 	if watchZones != nil {
-		watchZoneStore = watchzones.NewCosmosStore(watchZones)
+		cosmosWatchZoneStore = watchzones.NewCosmosStore(watchZones)
 	}
+	watchZoneStore := chooseZoneStore(appsZonesBackend, pgWatchZoneStore, cosmosWatchZoneStore)
 
 	appsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosApplicationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	appsContainer.WithMetrics(registry)
-	var appStore *applications.CosmosStore
+	var cosmosAppStore *applications.CosmosStore
 	if appsContainer != nil {
-		appStore = applications.NewCosmosStore(appsContainer)
+		cosmosAppStore = applications.NewCosmosStore(appsContainer)
 	}
+	// appStore is the flag-selected consumer-side interface the application routes
+	// use (Postgres on dev, Cosmos elsewhere); a genuine nil interface leaves the
+	// routes unwired on a store-less boot.
+	appStore := chooseAppStore(appsZonesBackend, pgAppStore, cosmosAppStore)
 
 	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
 	if err != nil {
@@ -176,7 +211,7 @@ func main() {
 	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && stateContainer != nil && offerStore != nil {
 		cascade = profiles.CascadeDeleters{
 			Notifications:       notifications.NewDeleteStore(notificationsContainer),
-			WatchZones:          watchZoneStore,
+			WatchZones:          cosmosWatchZoneStore,
 			SavedApplications:   savedStore,
 			DeviceRegistrations: deviceStore,
 			NotificationState:   erasure.NotificationStateChild(stateStore),
@@ -198,7 +233,7 @@ func main() {
 	var exportReaders profiles.ExportReaders
 	if notificationsContainer != nil && watchZones != nil && savedContainer != nil && devices != nil && offerStore != nil {
 		exportReaders = profiles.ExportReaders{
-			WatchZones:           watchZoneExportReader{store: watchZoneStore},
+			WatchZones:           watchZoneExportReader{store: cosmosWatchZoneStore},
 			Notifications:        notificationExportReader{store: notifications.NewDigestStore(notificationsContainer)},
 			SavedApplications:    savedApplicationExportReader{store: savedStore},
 			DeviceRegistrations:  deviceRegistrationExportReader{store: deviceStore},
@@ -266,7 +301,7 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, cosmosWatchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

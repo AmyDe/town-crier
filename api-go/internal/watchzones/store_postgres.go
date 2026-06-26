@@ -19,10 +19,18 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// storeSurface is the full watch-zone store method set its consumers rely on. It
-// exists only as a compile-time parity check: both *CosmosStore and *PostgresStore
-// must satisfy it, so the Postgres port can never silently diverge.
-type storeSurface interface {
+// Store is the full watch-zone store method set its consumers rely on. It serves
+// two purposes: a compile-time parity check (both *CosmosStore and *PostgresStore
+// must satisfy it, so the Postgres port can never silently diverge) and the
+// exported consumer-side interface cmd/api's newRouter accepts, so the watch-zone
+// routes can be served from either backend behind the APPS_ZONES_BACKEND flag
+// (issue #657 Slice 2). The narrower per-handler interfaces (zoneStore,
+// zoneAuthorityLister, demoaccount.zoneStore) are all subsets of this set.
+//
+// The Cosmos-era BackfillLocation / BackfillBoundingBox one-shot migrators are
+// deliberately NOT here: they exist only on *CosmosStore and the admin backfill
+// route binds to it directly, so the Postgres port stays honest (no no-op stubs).
+type Store interface {
 	GetByUserID(ctx context.Context, userID string) ([]WatchZone, error)
 	Get(ctx context.Context, userID, zoneID string) (WatchZone, error)
 	Save(ctx context.Context, z WatchZone) error
@@ -33,8 +41,8 @@ type storeSurface interface {
 }
 
 var (
-	_ storeSurface = (*PostgresStore)(nil)
-	_ storeSurface = (*CosmosStore)(nil)
+	_ Store = (*PostgresStore)(nil)
+	_ Store = (*CosmosStore)(nil)
 )
 
 // PostgresStore reads and writes watch zones in the Postgres `watch_zones` table

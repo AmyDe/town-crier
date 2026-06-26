@@ -98,7 +98,18 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // nil-means-unwired convention. (The watch-zone preferences endpoints are
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore *watchzones.CosmosStore, appStore *applications.CosmosStore, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, siteBuildKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
+//
+// watchZoneStore and appStore are consumer-side interfaces (watchzones.Store /
+// applications.Store), not concrete *CosmosStore pointers, so cmd/api can serve
+// these two from either Cosmos or Postgres per the APPS_ZONES_BACKEND flag
+// (issue #657 Slice 2). They MUST be passed as genuine nil interfaces (not a
+// typed-nil *CosmosStore boxed in an interface) when unconfigured, or the
+// nil-means-unwired guards below would wire dead routes — main.go's chooseAppStore
+// / chooseZoneStore enforce this. adminWatchZones stays the concrete Cosmos
+// *watchzones.CosmosStore because the admin location/bbox backfill it feeds is a
+// Cosmos-era migrator absent from the Postgres port; it is constructed regardless
+// of the flag so the admin surface is unaffected by the backend swap.
+func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore watchzones.Store, adminWatchZones *watchzones.CosmosStore, appStore applications.Store, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, siteBuildKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)
@@ -188,13 +199,15 @@ func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profi
 		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
 		offercodes.Routes(mux, offerStore, store, auth0, time.Now, logger)
 	}
-	if adminStore != nil && offerStore != nil && watchZoneStore != nil {
+	if adminStore != nil && offerStore != nil && adminWatchZones != nil {
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
 		// cross-partition admin store backs grant/list; the offer-code store backs
-		// generate; the watch-zone store backs the one-shot location backfill. All
-		// three are Cosmos-gated, so the added guard never disables admin in a real
-		// deployment (Cosmos configures every store together).
-		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), watchZoneStore, time.Now, logger)
+		// generate; the Cosmos watch-zone store backs the one-shot location/bbox
+		// backfill (a Cosmos-era migrator, hence adminWatchZones not the flag-selected
+		// store). All three are Cosmos-gated, so the guard never disables admin in a
+		// real deployment (Cosmos configures every store together, even when the
+		// Applications/WatchZones routes are served from Postgres).
+		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), adminWatchZones, time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

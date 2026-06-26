@@ -45,6 +45,15 @@ type Config struct {
 	CosmosDatabase string
 	AzureClientID  string
 
+	// AppsZonesBackend selects the datastore for the Applications and WatchZones
+	// route stores. The only value that selects Postgres + PostGIS is the exact
+	// string "postgres"; every other value (including unset) keeps Cosmos. It is a
+	// dedicated, explicit flag (read from APPS_ZONES_BACKEND) set on the dev
+	// container only (epic #645, issue #657 Slice 2), never inferred from
+	// POSTGRES_AUTH, so a future prod POSTGRES_AUTH can never flip prod's stores
+	// off Cosmos. The other nine stores stay Cosmos regardless.
+	AppsZonesBackend string
+
 	// Auth0M2MClientID / Auth0M2MClientSecret are the machine-to-machine
 	// client-credentials used to sync subscription tier and delete users in the
 	// Auth0 Management API. When any of these (or Auth0Domain) is absent, the
@@ -186,6 +195,8 @@ func LoadConfig() (Config, error) {
 		CosmosEndpoint: os.Getenv("COSMOS_ENDPOINT"),
 		CosmosDatabase: os.Getenv("COSMOS_DATABASE"),
 		AzureClientID:  os.Getenv("AZURE_CLIENT_ID"),
+
+		AppsZonesBackend: os.Getenv("APPS_ZONES_BACKEND"),
 
 		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
 		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),
