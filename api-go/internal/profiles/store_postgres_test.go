@@ -38,6 +38,11 @@ func newFakePGStore(tag pgconn.CommandTag, err error) *PostgresStore {
 }
 
 // testProfile builds a minimal valid UserProfile for use in store tests.
+// The userID parameter is intentionally parameterised for readability even
+// though unit tests call it with the same argument — it is also used by the
+// integration test suite in the same package.
+//
+//nolint:unparam
 func testProfile(userID string) *UserProfile {
 	p, _ := NewProfile(userID, "test@example.com", time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC))
 	return p

@@ -225,8 +225,8 @@ func TestBackfill_LogProgressEveryN(t *testing.T) {
 	t.Parallel()
 
 	// 5 records, log every 2.
-	var docs [][]byte
-	for i := 0; i < 5; i++ {
+	docs := make([][]byte, 0, 5)
+	for i := range 5 {
 		docs = append(docs, rawProfileDoc("auth0|p"+string(rune('0'+i))))
 	}
 	pager := &fakeProfilePager{pages: [][][]byte{docs}}

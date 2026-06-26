@@ -138,7 +138,7 @@ func backfill(ctx context.Context, pager docPager, store profileUpserter, opts b
 					return s, fmt.Errorf("backfill cancelled saving profile %q after %d records: %w", p.UserID, s.read, uerr)
 				}
 				s.errors++
-				logger.WarnContext(ctx, "save failed", "userID", p.UserID, "error", uerr)
+				logger.WarnContext(ctx, "save failed", "userId", p.UserID, "error", uerr)
 				continue
 			}
 			s.upserted++
