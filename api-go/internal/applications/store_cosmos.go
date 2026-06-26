@@ -11,18 +11,20 @@ import (
 
 // CosmosItems is the consumer-side slice of the Applications container the store
 // uses: a single-partition point read, an upsert, single-partition queries, and
-// a cross-partition spatial fan-out. QueryItems carries the tight 1.5s OLTP
-// per-attempt budget for user-facing reads; QueryItemsLongRead carries a longer
-// per-attempt budget for the latency-tolerant build-time SEO reads over a LARGE
-// authority partition (tc-9tov); QueryItemsCrossPartition backs the
-// authority-agnostic nearby fan-out (tc-zldl). platform.CosmosContainer
-// satisfies it structurally.
+// a bounded cross-partition spatial fan-out. QueryItems carries the tight 1.5s
+// OLTP per-attempt budget for user-facing reads; QueryItemsLongRead carries a
+// longer per-attempt budget for the latency-tolerant build-time SEO reads over a
+// LARGE authority partition (tc-9tov); QueryPageCrossPartition backs the bounded,
+// cursor-paged authority-agnostic nearby fan-out (tc-fm8f, replacing the
+// unbounded drain from tc-zldl). platform.CosmosContainer satisfies it
+// structurally.
 type CosmosItems interface {
 	ReadItem(ctx context.Context, partitionKey, id string) ([]byte, error)
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 	QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 	QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error)
+	QueryPageCrossPartition(ctx context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error)
 }
 
 // CosmosStore reads and writes planning applications in the Applications
@@ -228,6 +230,43 @@ func (s *CosmosStore) FindNearby(ctx context.Context, latitude, longitude, radiu
 		apps = append(apps, doc.toDomain())
 	}
 	return apps, nil
+}
+
+// FindNearbyPage returns ONE bounded page of up to limit applications within
+// radiusMetres of (latitude, longitude), plus an opaque continuation token for
+// the next page (empty when the query is exhausted). It runs the same
+// constant-radius ST_DISTANCE spatial query as FindNearby, served by the
+// /location spatial index, and fans out cross-partition so a circle that crosses
+// an authority boundary surfaces in-circle applications on BOTH sides (tc-zldl /
+// tc-w11n). There is NO ORDER BY: the Cosmos Gateway rejects cross-partition
+// ordering/aggregates, so a paged cross-partition result is in arbitrary
+// (partition) order.
+//
+// The cap is applied AT THE QUERY LAYER via the page-size hint, so this issues
+// exactly one gateway round-trip and never drains all pages — the fix for the
+// unbounded fan-out that blew the server write timeout on dense urban zones
+// (tc-fm8f). cursor resumes a prior page; "" starts at the first page.
+// Coordinates and radius are bound as named parameters (not string-concatenated),
+// mirroring the parameterized style of watchzones.FindZonesContaining.
+func (s *CosmosStore) FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error) {
+	params := map[string]any{
+		"@latitude":     latitude,
+		"@longitude":    longitude,
+		"@radiusMetres": radiusMetres,
+	}
+	raws, next, err := s.items.QueryPageCrossPartition(ctx, findNearbyQuery, params, limit, cursor)
+	if err != nil {
+		return nil, "", fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
+	}
+	apps := make([]PlanningApplication, 0, len(raws))
+	for _, raw := range raws {
+		var doc applicationDocument
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, "", fmt.Errorf("decode nearby application near (%v, %v): %w", latitude, longitude, err)
+		}
+		apps = append(apps, doc.toDomain())
+	}
+	return apps, next, nil
 }
 
 // breakdownNearbyQuery is the exact, index-served per-appState distribution over
