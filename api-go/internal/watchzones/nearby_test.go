@@ -2,12 +2,14 @@ package watchzones
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -40,14 +42,30 @@ func (f *fakeResolver) ResolveAuthority(_ context.Context, _, _ float64) (int, e
 }
 
 type fakeAppFinder struct {
-	apps   []applications.PlanningApplication
-	err    error
-	called bool
+	apps       []applications.PlanningApplication
+	next       string
+	err        error
+	called     bool
+	lastLimit  int
+	lastCursor string
 }
 
-func (f *fakeAppFinder) FindNearby(_ context.Context, _, _, _ float64) ([]applications.PlanningApplication, error) {
+func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
 	f.called = true
-	return f.apps, f.err
+	f.lastLimit = limit
+	f.lastCursor = cursor
+	if f.err != nil {
+		return nil, "", f.err
+	}
+	// Mirror the bounded store contract: never hand back more than `limit` rows.
+	// The production store caps at the query layer (the page-size hint); the fake
+	// caps here so handler tests can prove the downstream unread lookup receives a
+	// bounded UID set (tc-fm8f).
+	apps := f.apps
+	if limit > 0 && len(apps) > limit {
+		apps = apps[:limit]
+	}
+	return apps, f.next, nil
 }
 
 type fakeWatermark struct {
@@ -60,13 +78,15 @@ func (f *fakeWatermark) Get(_ context.Context, _ string) (*notificationstate.Sta
 }
 
 type fakeUnread struct {
-	result map[string]notifications.LatestUnread
-	err    error
-	called bool
+	result   map[string]notifications.LatestUnread
+	err      error
+	called   bool
+	lastUIDs []string
 }
 
-func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, _ []string, _ time.Time) (map[string]notifications.LatestUnread, error) {
+func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, uids []string, _ time.Time) (map[string]notifications.LatestUnread, error) {
 	f.called = true
+	f.lastUIDs = uids
 	return f.result, f.err
 }
 
@@ -425,6 +445,182 @@ func TestApplications_AugmentsUnreadAndNullsTheRest(t *testing.T) {
 	}
 }
 
+func TestApplications_DefaultsLimitTo500(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if d.apps.lastLimit != 500 {
+		t.Errorf("default limit: got %d, want 500", d.apps.lastLimit)
+	}
+}
+
+func TestApplications_LimitParsing(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		query     string
+		wantLimit int
+	}{
+		{"valid below max", "?limit=50", 50},
+		{"exactly max", "?limit=500", 500},
+		{"above max clamps down", "?limit=10000", 500},
+		{"zero falls back to default", "?limit=0", 500},
+		{"negative falls back to default", "?limit=-5", 500},
+		{"non-numeric falls back to default", "?limit=abc", 500},
+		{"absent falls back to default", "", 500},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := nearbyDeps{
+				store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+				apps:     &fakeAppFinder{},
+				profiles: &fakeProfileReader{},
+				resolver: &fakeResolver{},
+				state:    &fakeWatermark{},
+				unread:   &fakeUnread{},
+			}
+			mux := newNearbyMux(t, d)
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications"+tc.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want 200", rec.Code)
+			}
+			if d.apps.lastLimit != tc.wantLimit {
+				t.Errorf("limit: got %d, want %d", d.apps.lastLimit, tc.wantLimit)
+			}
+		})
+	}
+}
+
+func TestApplications_SetsNextCursorHeaderWhenMorePagesExist(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}, next: "raw-token-123"},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	got := rec.Header().Get("X-Next-Cursor")
+	want := base64.RawURLEncoding.EncodeToString([]byte("raw-token-123"))
+	if got != want {
+		t.Errorf("X-Next-Cursor: got %q, want %q (base64url of the raw token)", got, want)
+	}
+}
+
+func TestApplications_OmitsNextCursorHeaderWhenExhausted(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}}, // next == ""
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get("X-Next-Cursor"); got != "" {
+		t.Errorf("X-Next-Cursor must be absent when the query is exhausted; got %q", got)
+	}
+}
+
+func TestApplications_ResumesFromCursorParam(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("resume-token-9"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?cursor="+cursor, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	// The handler must base64url-decode the cursor before handing it to the store.
+	if d.apps.lastCursor != "resume-token-9" {
+		t.Errorf("decoded cursor: got %q, want %q", d.apps.lastCursor, "resume-token-9")
+	}
+}
+
+func TestApplications_RejectsUndecodableCursorWith400(t *testing.T) {
+	t.Parallel()
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	// "!!!" is not valid base64url — a garbage cursor must be a clean 400, not a
+	// silent reset to the first page.
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?cursor=%21%21%21", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+	if d.apps.called {
+		t.Error("must not run the spatial query when the cursor is malformed")
+	}
+}
+
+func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
+	t.Parallel()
+	// The finder has more than a page worth of apps available; the bounded fetch
+	// returns only `limit` (default 500), so the unread lookup must receive a
+	// bounded UID set — never every app in a dense zone (tc-fm8f).
+	d := nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     &fakeAppFinder{apps: manyApps(600)},
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{state: &notificationstate.State{UserID: testUser, LastReadAt: time.Unix(0, 0), Version: 1}},
+		unread:   &fakeUnread{},
+	}
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !d.unread.called {
+		t.Fatal("unread lookup must run when the user has a watermark")
+	}
+	if got := len(d.unread.lastUIDs); got != 500 {
+		t.Errorf("unread lookup UID set: got %d, want 500 (bounded to the returned page)", got)
+	}
+}
+
 func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
 	t.Parallel()
 	// A zone pinned to authority 471 whose circle crosses into authority 246. The
@@ -575,6 +771,17 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 			}
 		})
 	}
+}
+
+// manyApps builds n distinct nearby applications, for asserting the bounded page
+// caps the downstream unread UID set.
+func manyApps(n int) []applications.PlanningApplication {
+	apps := make([]applications.PlanningApplication, n)
+	for i := range apps {
+		id := strconv.Itoa(i)
+		apps[i] = testApp("uid-"+id, "24/"+id)
+	}
+	return apps
 }
 
 func mustZone(t *testing.T, id string, authorityID int) WatchZone {

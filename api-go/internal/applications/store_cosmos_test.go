@@ -3,6 +3,7 @@ package applications
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -29,13 +30,16 @@ type fakeItems struct {
 	// OLTP QueryItems. The build-time SEO reads must use the long-read path; the
 	// user-facing reads must not (tc-9tov).
 	lastQueryViaLongRead bool
-	// crossPartitionResult, lastCrossPartitionQuery, lastCrossPartitionParams and
-	// crossPartitionErr back QueryItemsCrossPartition, the authority-agnostic
-	// spatial fan-out FindNearby now uses (tc-zldl).
-	crossPartitionResult     [][]byte
-	lastCrossPartitionQuery  string
-	lastCrossPartitionParams map[string]any
-	crossPartitionErr        error
+	// pageResult, pageNext, pageErr and the lastPage* fields back
+	// QueryPageCrossPartition, the bounded single-page fan-out FindNearbyPage uses
+	// (tc-fm8f). A non-empty pageNext models "more pages remain".
+	pageResult           [][]byte
+	pageNext             string
+	pageErr              error
+	lastPageQuery        string
+	lastPageParams       map[string]any
+	lastPageSize         int
+	lastPageContinuation string
 }
 
 func newFakeItems() *fakeItems { return &fakeItems{stored: map[string][]byte{}} }
@@ -69,13 +73,15 @@ func (f *fakeItems) QueryItemsLongRead(_ context.Context, partitionKey, query st
 	return f.recordQuery(partitionKey, query, params)
 }
 
-func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, query string, params map[string]any) ([][]byte, error) {
-	f.lastCrossPartitionQuery = query
-	f.lastCrossPartitionParams = params
-	if f.crossPartitionErr != nil {
-		return nil, f.crossPartitionErr
+func (f *fakeItems) QueryPageCrossPartition(_ context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error) {
+	f.lastPageQuery = query
+	f.lastPageParams = params
+	f.lastPageSize = pageSize
+	f.lastPageContinuation = continuationToken
+	if f.pageErr != nil {
+		return nil, "", f.pageErr
 	}
-	return f.crossPartitionResult, nil
+	return f.pageResult, f.pageNext, nil
 }
 
 func (f *fakeItems) recordQuery(partitionKey, query string, params map[string]any) ([][]byte, error) {
@@ -192,11 +198,12 @@ func TestCosmosStore_GetByUID_NotFound(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_FindNearby_QueriesCrossPartitionAcrossAuthorities(t *testing.T) {
+func TestCosmosStore_FindNearbyPage_FetchesOneBoundedPageWithCursor(t *testing.T) {
 	t.Parallel()
 	// A border-spanning circle: two in-radius applications tagged to different
-	// authority partitions (449 + 246). The cross-partition fan-out must surface
-	// BOTH, not just the home authority's side (tc-zldl / tc-w11n).
+	// authority partitions (449 + 246). The bounded fan-out must surface BOTH and
+	// must run via the single-page QueryPageCrossPartition, NOT the unbounded
+	// QueryItemsCrossPartition drain (tc-fm8f).
 	app449 := testApplication(t)
 	app449.AreaID = 449
 	app449.Name = "449/24/001"
@@ -206,62 +213,86 @@ func TestCosmosStore_FindNearby_QueriesCrossPartitionAcrossAuthorities(t *testin
 	body449, _ := json.Marshal(newApplicationDocument(app449))
 	body246, _ := json.Marshal(newApplicationDocument(app246))
 	items := newFakeItems()
-	items.crossPartitionResult = [][]byte{body449, body246}
+	items.pageResult = [][]byte{body449, body246}
+	items.pageNext = "continuation-token-xyz"
 	store := NewCosmosStore(items)
 
-	got, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
+	got, next, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
 	if err != nil {
-		t.Fatalf("FindNearby: %v", err)
+		t.Fatalf("FindNearbyPage: %v", err)
 	}
 	if len(got) != 2 {
-		t.Fatalf("FindNearby results: got %d, want 2 (both authorities); %+v", len(got), got)
+		t.Fatalf("FindNearbyPage results: got %d, want 2 (both authorities); %+v", len(got), got)
 	}
 	gotAreas := map[int]bool{got[0].AreaID: true, got[1].AreaID: true}
 	if !gotAreas[449] || !gotAreas[246] {
-		t.Errorf("FindNearby must surface both authorities 449 and 246; got %+v", gotAreas)
+		t.Errorf("FindNearbyPage must surface both authorities 449 and 246; got %+v", gotAreas)
 	}
-	// The fan-out must run cross-partition, NOT through the partition-scoped
-	// QueryItems (which would re-impose single-authority scoping).
-	if items.lastQueryPK != "" {
-		t.Errorf("FindNearby must not run a partition-scoped query; got partition key %q", items.lastQueryPK)
+	// The continuation token is passed straight back to the caller.
+	if next != "continuation-token-xyz" {
+		t.Errorf("next cursor: got %q, want %q", next, "continuation-token-xyz")
 	}
-	// The constant-radius residual is preserved: ST_DISTANCE(...) <= @radiusMetres
-	// serves the exact circle, with the radius bound as the query's constant. The
-	// GeoJSON point carries [longitude, latitude] order.
+	// The page size hint must be the requested limit so Cosmos caps the page at the
+	// query layer — never an unbounded drain.
+	if items.lastPageSize != 500 {
+		t.Errorf("page size: got %d, want 500", items.lastPageSize)
+	}
+	// First page: no continuation token sent in.
+	if items.lastPageContinuation != "" {
+		t.Errorf("first page must not send a continuation token; got %q", items.lastPageContinuation)
+	}
+	// The constant-radius residual is preserved (same query as the unbounded form):
+	// ST_DISTANCE(...) <= @radiusMetres, GeoJSON [longitude, latitude] order. No
+	// ORDER BY — the Gateway rejects cross-partition ordering.
 	want := "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
 		`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
-	if items.lastCrossPartitionQuery != want {
-		t.Errorf("cross-partition spatial query:\n got %q\nwant %q", items.lastCrossPartitionQuery, want)
+	if items.lastPageQuery != want {
+		t.Errorf("bounded spatial query:\n got %q\nwant %q", items.lastPageQuery, want)
 	}
 }
 
-func TestFindNearby_UsesParameterizedQuery(t *testing.T) {
+func TestCosmosStore_FindNearbyPage_ResumesFromCursor(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	_, _ = store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
+	if _, _, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 250, "resume-here"); err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
+	}
+	if items.lastPageContinuation != "resume-here" {
+		t.Errorf("continuation token: got %q, want %q", items.lastPageContinuation, "resume-here")
+	}
+	if items.lastPageSize != 250 {
+		t.Errorf("page size: got %d, want 250", items.lastPageSize)
+	}
+}
 
-	// The query text must not contain any float literal — values must be bound
-	// as named parameters, not string-concatenated.
-	if items.lastCrossPartitionQuery == "" {
+func TestCosmosStore_FindNearbyPage_UsesParameterizedQuery(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	store := NewCosmosStore(items)
+
+	_, _, _ = store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+
+	if items.lastPageQuery == "" {
 		t.Fatal("no query was issued")
 	}
+	// The query text must not contain any float literal — values must be bound as
+	// named parameters, not string-concatenated.
 	for _, literal := range []string{"51.4975", "-0.1357", "2000"} {
-		if strings.Contains(items.lastCrossPartitionQuery, literal) {
-			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastCrossPartitionQuery)
+		if strings.Contains(items.lastPageQuery, literal) {
+			t.Errorf("query contains float literal %q — should be a named parameter; query: %s", literal, items.lastPageQuery)
 		}
 	}
-	// Verify the three expected params are bound with correct values.
 	wantParams := map[string]any{
 		"@latitude":     51.4975,
 		"@longitude":    -0.1357,
 		"@radiusMetres": 2000.0,
 	}
 	for k, wantVal := range wantParams {
-		gotVal, ok := items.lastCrossPartitionParams[k]
+		gotVal, ok := items.lastPageParams[k]
 		if !ok {
-			t.Errorf("param %q not found in query params %v", k, items.lastCrossPartitionParams)
+			t.Errorf("param %q not found in query params %v", k, items.lastPageParams)
 			continue
 		}
 		if gotVal != wantVal {
@@ -270,19 +301,34 @@ func TestFindNearby_UsesParameterizedQuery(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_FindNearby_EmptyResultIsEmptySlice(t *testing.T) {
+func TestCosmosStore_FindNearbyPage_EmptyResultIsEmptySlice(t *testing.T) {
 	t.Parallel()
 	store := NewCosmosStore(newFakeItems())
 
-	got, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000)
+	got, next, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
 	if err != nil {
-		t.Fatalf("FindNearby: %v", err)
+		t.Fatalf("FindNearbyPage: %v", err)
 	}
 	if got == nil {
-		t.Fatal("FindNearby: got nil slice, want empty non-nil slice")
+		t.Fatal("FindNearbyPage: got nil slice, want empty non-nil slice")
 	}
 	if len(got) != 0 {
-		t.Errorf("FindNearby: got %d results, want 0", len(got))
+		t.Errorf("FindNearbyPage: got %d results, want 0", len(got))
+	}
+	if next != "" {
+		t.Errorf("exhausted query must return an empty cursor; got %q", next)
+	}
+}
+
+func TestCosmosStore_FindNearbyPage_PropagatesError(t *testing.T) {
+	t.Parallel()
+	items := newFakeItems()
+	items.pageErr = errors.New("gateway boom")
+	store := NewCosmosStore(items)
+
+	_, _, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, "")
+	if err == nil {
+		t.Fatal("FindNearbyPage: want error, got nil")
 	}
 }
 
@@ -935,21 +981,22 @@ func TestCosmosStore_RecentNearby_UsesLongReadBudget(t *testing.T) {
 // The user-facing reads must keep the tight OLTP budget — only the build-time SEO
 // reads get the longer one, so widening must never leak onto the OLTP path.
 
-func TestCosmosStore_FindNearby_KeepsOLTPBudget(t *testing.T) {
+func TestCosmosStore_FindNearbyPage_KeepsOLTPBudget(t *testing.T) {
 	t.Parallel()
 	items := newFakeItems()
 	store := NewCosmosStore(items)
 
-	if _, err := store.FindNearby(context.Background(), 51.4975, -0.1357, 2000); err != nil {
-		t.Fatalf("FindNearby: %v", err)
+	if _, _, err := store.FindNearbyPage(context.Background(), 51.4975, -0.1357, 2000, 500, ""); err != nil {
+		t.Fatalf("FindNearbyPage: %v", err)
 	}
-	// FindNearby is a user-facing read: it fans out cross-partition but must never
-	// route through the latency-tolerant build-time SEO budget (QueryItemsLongRead).
-	if items.lastCrossPartitionQuery == "" {
-		t.Error("FindNearby must run the cross-partition spatial query")
+	// FindNearbyPage is a user-facing read: it fans out cross-partition but must
+	// never route through the latency-tolerant build-time SEO budget
+	// (QueryItemsLongRead).
+	if items.lastPageQuery == "" {
+		t.Error("FindNearbyPage must run the bounded cross-partition spatial query")
 	}
 	if items.lastQueryViaLongRead {
-		t.Error("FindNearby is a user-facing read and must not use the build-time long-read budget")
+		t.Error("FindNearbyPage is a user-facing read and must not use the build-time long-read budget")
 	}
 }
 

@@ -323,7 +323,12 @@ func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	if _, err := w.Write(body); err != nil {
+	// G705 (gosec taint analysis) flags this since the nearby browse handler reads
+	// ?limit=/?cursor= query params, but reflected XSS is not applicable: writeJSON
+	// always emits application/json and body is server-encoded JSON of structured
+	// data — the query params never reach the body (the cursor returns via a
+	// base64url-encoded response header, not here).
+	if _, err := w.Write(body); err != nil { //nolint:gosec // G705 false positive: JSON-only response, query params never reach the body
 		h.logger.ErrorContext(r.Context(), "write response", "error", err)
 	}
 }

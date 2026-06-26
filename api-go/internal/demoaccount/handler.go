@@ -25,6 +25,10 @@ const (
 	// demoSubscriptionYears is how far ahead the demo Pro subscription is set to
 	// expire (10 years from the seed call time).
 	demoSubscriptionYears = 10
+	// demoNearbyLimit bounds the demo applications page. The demo zone holds five
+	// seeded apps, well under the cap; the bound just keeps the demo on the same
+	// bounded fetch as the real browse path (tc-fm8f).
+	demoNearbyLimit = 500
 )
 
 // profileStore is the consumer-side slice of the profile store the demo handler
@@ -40,10 +44,11 @@ type zoneStore interface {
 }
 
 // appStore seeds the demo applications and runs the spatial lookup that backs
-// the response. FindNearby is authority-agnostic and cross-partition (tc-zldl).
+// the response. FindNearbyPage is authority-agnostic and cross-partition
+// (tc-zldl), and bounded to a single page (tc-fm8f).
 type appStore interface {
 	Upsert(ctx context.Context, a applications.PlanningApplication) error
-	FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]applications.PlanningApplication, error)
+	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 }
 
 // handler serves GET /v1/demo-account.
@@ -81,7 +86,9 @@ func (h *handler) getDemoAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, err := h.apps.FindNearby(ctx, demoLatitude, demoLongitude, demoRadiusMetres)
+	// Page one of the bounded fetch; the demo never needs "load more", so the
+	// continuation token is discarded (tc-fm8f).
+	apps, _, err := h.apps.FindNearbyPage(ctx, demoLatitude, demoLongitude, demoRadiusMetres, demoNearbyLimit, "")
 	if err != nil {
 		serverError(w, r, h.logger, "find nearby demo applications", err)
 		return

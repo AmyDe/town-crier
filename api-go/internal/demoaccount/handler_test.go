@@ -62,6 +62,8 @@ type fakeAppStore struct {
 	upsertErr  error
 	findErr    error
 	findCalled bool
+	lastLimit  int
+	lastCursor string
 }
 
 func (f *fakeAppStore) Upsert(_ context.Context, a applications.PlanningApplication) error {
@@ -72,12 +74,14 @@ func (f *fakeAppStore) Upsert(_ context.Context, a applications.PlanningApplicat
 	return nil
 }
 
-func (f *fakeAppStore) FindNearby(_ context.Context, _, _, _ float64) ([]applications.PlanningApplication, error) {
+func (f *fakeAppStore) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
 	f.findCalled = true
+	f.lastLimit = limit
+	f.lastCursor = cursor
 	if f.findErr != nil {
-		return nil, f.findErr
+		return nil, "", f.findErr
 	}
-	return f.nearby, nil
+	return f.nearby, "", nil
 }
 
 // serve wires the route and issues GET /v1/demo-account, returning the recorder.
@@ -177,6 +181,26 @@ func TestGetDemoAccount_SecondCall_DoesNotReseed(t *testing.T) {
 	}
 	if !a.findCalled {
 		t.Error("FindNearby must still run on a repeat call")
+	}
+}
+
+func TestGetDemoAccount_UsesBoundedFetch(t *testing.T) {
+	t.Parallel()
+	p := &fakeProfileStore{}
+	a := &fakeAppStore{nearby: seedApplications(fixedNow)}
+
+	rec := serve(t, p, &fakeZoneStore{}, a)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	// The demo path must use the bounded page-one fetch (limit 500, no cursor),
+	// never the removed unbounded drain (tc-fm8f).
+	if a.lastLimit != 500 {
+		t.Errorf("demo fetch limit: got %d, want 500", a.lastLimit)
+	}
+	if a.lastCursor != "" {
+		t.Errorf("demo fetch cursor: got %q, want empty (page one)", a.lastCursor)
 	}
 }
 
