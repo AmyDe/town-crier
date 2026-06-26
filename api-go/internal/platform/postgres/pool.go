@@ -16,6 +16,10 @@ import (
 // defaultDSN points at the docker-compose Postgres on host port 5433. It is used
 // when TEST_DATABASE_URL is unset so a developer with the compose stack up can
 // run the integration tests with no extra configuration.
+// G101 is a false positive here: these are throwaway local docker-compose
+// credentials for the test database, not a real secret.
+//
+//nolint:gosec // G101: local test credentials, not a production secret
 const defaultDSN = "postgres://towncrier:towncrier@localhost:5433/towncrier_test?sslmode=disable"
 
 // DSNFromEnv returns the test database DSN from TEST_DATABASE_URL, falling back

@@ -25,24 +25,28 @@ var migrateMu sync.Mutex
 // database/sql interface), runs goose.Up, and closes it. Migrations are
 // idempotent, so calling Migrate repeatedly against an up-to-date database is a
 // no-op.
-func Migrate(ctx context.Context, dsn string) error {
+func Migrate(ctx context.Context, dsn string) (err error) {
 	migrateMu.Lock()
 	defer migrateMu.Unlock()
 
-	connConfig, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		return fmt.Errorf("parse dsn: %w", err)
+	connConfig, parseErr := pgx.ParseConfig(dsn)
+	if parseErr != nil {
+		return fmt.Errorf("parse dsn: %w", parseErr)
 	}
 
 	db := stdlib.OpenDB(*connConfig)
-	defer func() { _ = db.Close() }()
+	defer func() {
+		if cerr := db.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close migration db: %w", cerr)
+		}
+	}()
 
 	goose.SetBaseFS(migrationsFS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return fmt.Errorf("set goose dialect: %w", err)
+	if dialectErr := goose.SetDialect("postgres"); dialectErr != nil {
+		return fmt.Errorf("set goose dialect: %w", dialectErr)
 	}
-	if err := goose.UpContext(ctx, db, "migrations"); err != nil {
-		return fmt.Errorf("goose up: %w", err)
+	if upErr := goose.UpContext(ctx, db, "migrations"); upErr != nil {
+		return fmt.Errorf("goose up: %w", upErr)
 	}
 	return nil
 }
