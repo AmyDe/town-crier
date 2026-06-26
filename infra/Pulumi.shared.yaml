@@ -3,3 +3,6 @@ config:
   town-crier:environment: shared
   town-crier:ciServicePrincipalId: 8efcb7cf-f17e-4a93-aab5-df7bc3c2c2cc
   town-crier:alertEmail: christy@salter.uk
+  town-crier:azureTenantId: 947ab4d8-734a-4d97-8bd7-b5ddf3caa5ab
+  town-crier:postgresAadAdminObjectId: 397680e0-c5f9-40a9-b667-0659f64cad00
+  town-crier:postgresAadAdminPrincipalName: amy_salter.uk#EXT#@amysalter.onmicrosoft.com

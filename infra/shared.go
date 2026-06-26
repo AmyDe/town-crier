@@ -183,6 +183,14 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return fmt.Errorf("ARM_SUBSCRIPTION_ID must be set for the subscription budget scope")
 	}
 
+	// ARM_TENANT_ID is set by CI and local Pulumi runs via the Azure login step.
+	// A config key (azureTenantId) takes precedence so the value can be pinned per stack
+	// without relying on the environment — mirrors how armSubscriptionID is read above.
+	tenantID := conf.Get("azureTenantId")
+	if tenantID == "" {
+		tenantID = os.Getenv("ARM_TENANT_ID")
+	}
+
 	// Set the native ContainerAppConsoleLogs table to the Basic plan.
 	_, err = operationalinsights.NewTable(ctx, "table-containerappconsolelogs-basic", &operationalinsights.TableArgs{
 		ResourceGroupName: resourceGroup.Name,
@@ -315,6 +323,14 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Network: &dbforpostgresql.NetworkArgs{
 			PublicNetworkAccess: dbforpostgresql.PublicNetworkAccessEnumEnabled,
 		},
+		// Enable Entra (AAD) authentication alongside password auth. PasswordAuth stays
+		// Enabled to preserve tcadmin break-glass access through the migration; password-only
+		// mode will be disabled in a later hardening step. See GH #653.
+		AuthConfig: &dbforpostgresql.AuthConfigArgs{
+			ActiveDirectoryAuth: pulumi.String("Enabled"),
+			PasswordAuth:        pulumi.String("Enabled"),
+			TenantId:            pulumi.String(tenantID),
+		},
 		Tags: tags,
 	})
 	if err != nil {
@@ -352,6 +368,22 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		Source:            pulumi.String("user-override"),
 		Value:             pulumi.String("POSTGIS"),
 	}, pulumi.DependsOn([]pulumi.Resource{postgresFirewall}))
+	if err != nil {
+		return err
+	}
+
+	// Entra administrator on the shared Postgres server. The repo owner's account is used
+	// so `cmd/pgbootstrap` (Slice B of GH #653) can run locally under `az login` credentials
+	// to create the towncrier_api role and grant least-privilege DML rights. The CI service
+	// principal can be added as a second Administrator later if CI bootstrap is needed.
+	_, err = dbforpostgresql.NewAdministrator(ctx, "psql-town-crier-shared-aad-admin", &dbforpostgresql.AdministratorArgs{
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		ObjectId:          pulumi.String(conf.Require("postgresAadAdminObjectId")),
+		PrincipalName:     pulumi.String(conf.Require("postgresAadAdminPrincipalName")),
+		PrincipalType:     pulumi.String("User"),
+		TenantId:          pulumi.String(tenantID),
+	}, pulumi.DependsOn([]pulumi.Resource{postgresServer}))
 	if err != nil {
 		return err
 	}
