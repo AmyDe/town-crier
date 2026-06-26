@@ -365,18 +365,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		tags:                        tags,
 	}
 
-	// Dev-only: the Postgres database + a connection-string secret on the dev Container App.
-	// First step of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH
-	// #645). The shared stack owns the Flexible Server; the per-env database lives on it. The
-	// prod database/role and the wiring.go swap that actually consumes this secret are deferred
-	// to later phases — here the secret only needs to exist on ca-town-crier-api-go-dev.
-	var postgresConnectionStringSecret pulumi.StringOutput
-	hasPostgresSecret := false
+	// Dev-only: Postgres database for town_crier_dev on the shared Flexible Server.
+	// Part of the Cosmos → Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645).
+	// The password-based connection-string secret is retired; the dev API authenticates via
+	// Entra managed identity using a runtime token (no stored password). See GH #653.
 	if env == "dev" {
 		postgresServerName := shared.GetStringOutput(pulumi.String("postgresServerName"))
-		postgresServerFqdn := shared.GetStringOutput(pulumi.String("postgresServerFqdn"))
-		postgresAdminLogin := shared.GetStringOutput(pulumi.String("postgresAdminLogin"))
-		postgresAdminPassword := shared.GetStringOutput(pulumi.String("postgresAdminPassword"))
 
 		_, err = dbforpostgresql.NewDatabase(ctx, fmt.Sprintf("psql-db-town-crier-%s", env), &dbforpostgresql.DatabaseArgs{
 			DatabaseName:      pulumi.String("town_crier_dev"),
@@ -388,14 +382,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		if err != nil {
 			return err
 		}
-
-		// sslmode=require — the Flexible Server enforces TLS. The admin password is already a
-		// secret output; ToSecret makes the whole connection string secret explicitly.
-		postgresConnectionStringSecret = pulumi.ToSecret(pulumi.Sprintf(
-			"postgres://%s:%s@%s:5432/town_crier_dev?sslmode=require",
-			postgresAdminLogin, postgresAdminPassword, postgresServerFqdn,
-		)).(pulumi.StringOutput)
-		hasPostgresSecret = true
 	}
 
 	secrets := app.SecretArray{
@@ -406,14 +392,33 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		// Build key the Go gate validates for the SEO prerender endpoint (tc-nnte).
 		&app.SecretArgs{Name: pulumi.String("site-build-key"), Value: siteBuildKey},
 	}
-	// Dev-only: attach the Postgres connection-string secret. No Env/SecretRef yet — the app
-	// does not consume it until the wiring swap in a later migration phase; the secret just
-	// needs to exist on the dev Container App. Prod's secret set is unchanged.
-	if hasPostgresSecret {
-		secrets = append(secrets, &app.SecretArgs{
-			Name:  pulumi.String("postgres-connection-string"),
-			Value: postgresConnectionStringSecret,
-		})
+
+	// Build the API container env-var array. Postgres connection vars are dev-only: the dev
+	// API authenticates to town_crier_dev via Entra managed identity (GH #653). AZURE_CLIENT_ID
+	// is already present and reused for the token fetch — no duplication.
+	apiEnvVars := app.EnvironmentVarArray{
+		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
+		// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
+		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
+		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: cosmosAccountEndpoint},
+		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: cosmosDatabase.Name},
+		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
+		app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
+		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
+		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
+	}
+	if env == "dev" {
+		apiEnvVars = append(apiEnvVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_dev")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
+			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+		)
 	}
 
 	// Container App (Go API), created for both dev and prod — the only environment stacks
@@ -470,21 +475,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 						Cpu:    pulumi.Float64(containerCpu),
 						Memory: pulumi.String(containerMemory),
 					},
-					Env: app.EnvironmentVarArray{
-						app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
-						// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
-						app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
-						app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: cosmosAccountEndpoint},
-						app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: cosmosDatabase.Name},
-						app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
-						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
-						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
-						app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
-						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
-						app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
-						app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
-						app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
-					},
+					Env: apiEnvVars,
 				},
 			},
 			Scale: &app.ScaleArgs{
