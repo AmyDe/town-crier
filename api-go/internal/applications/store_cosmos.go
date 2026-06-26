@@ -23,7 +23,6 @@ type CosmosItems interface {
 	UpsertItem(ctx context.Context, partitionKey string, item []byte) error
 	QueryItems(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
 	QueryItemsLongRead(ctx context.Context, partitionKey, query string, params map[string]any) ([][]byte, error)
-	QueryItemsCrossPartition(ctx context.Context, query string, params map[string]any) ([][]byte, error)
 	QueryPageCrossPartition(ctx context.Context, query string, params map[string]any, pageSize int, continuationToken string) ([][]byte, string, error)
 }
 
@@ -193,44 +192,11 @@ func (s *CosmosStore) BreakdownByAuthority(ctx context.Context, authorityCode st
 // /location spatial index serves it directly — cross-partition included.
 // Coordinates and radius are bound as named parameters (mirroring
 // findZonesContainingQuery in the watchzones package) — no float literals are
-// concatenated into the query text.
+// concatenated into the query text. There is deliberately NO ORDER BY: the
+// Cosmos Gateway rejects cross-partition ordering/aggregates, so the paged
+// result is in arbitrary (partition) order.
 const findNearbyQuery = "SELECT * FROM c WHERE ST_DISTANCE(c.location, " +
 	`{"type": "Point", "coordinates": [@longitude, @latitude]}) <= @radiusMetres`
-
-// FindNearby returns every application within radiusMetres of (latitude,
-// longitude) via a constant-radius ST_DISTANCE spatial query against the GeoJSON
-// location. Coordinates and radius are bound as named parameters (not
-// string-concatenated) to eliminate float-formatting edge cases and to mirror
-// the parameterized style of the sibling watchzones.FindZonesContaining query.
-//
-// This is a deliberate CROSS-PARTITION spatial fan-out: it is no longer scoped
-// to one authorityCode partition, so a watch zone whose circle crosses an
-// authority boundary surfaces in-circle applications on BOTH sides (tc-zldl /
-// tc-w11n). It is user-initiated and low-frequency (zone create / zone open),
-// strictly colder than the already-cross-partition notify path, so the fan-out
-// RU is acceptable at current scale. The constant radius lets the /location
-// spatial index serve the ST_DISTANCE residual exactly, so circle semantics
-// stay exact even across partitions.
-func (s *CosmosStore) FindNearby(ctx context.Context, latitude, longitude, radiusMetres float64) ([]PlanningApplication, error) {
-	params := map[string]any{
-		"@latitude":     latitude,
-		"@longitude":    longitude,
-		"@radiusMetres": radiusMetres,
-	}
-	raws, err := s.items.QueryItemsCrossPartition(ctx, findNearbyQuery, params)
-	if err != nil {
-		return nil, fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
-	}
-	apps := make([]PlanningApplication, 0, len(raws))
-	for _, raw := range raws {
-		var doc applicationDocument
-		if err := json.Unmarshal(raw, &doc); err != nil {
-			return nil, fmt.Errorf("decode nearby application near (%v, %v): %w", latitude, longitude, err)
-		}
-		apps = append(apps, doc.toDomain())
-	}
-	return apps, nil
-}
 
 // FindNearbyPage returns ONE bounded page of up to limit applications within
 // radiusMetres of (latitude, longitude), plus an opaque continuation token for
