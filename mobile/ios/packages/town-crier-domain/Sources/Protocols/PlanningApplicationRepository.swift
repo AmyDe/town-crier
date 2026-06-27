@@ -16,4 +16,17 @@ public protocol PlanningApplicationRepository: Sendable {
     cursor: String?,
     limit: Int
   ) async throws -> ApplicationPage
+
+  /// Fetches the server-computed cluster aggregates for the visible map rect of a
+  /// zone at a given slippy zoom (GH#698). The map renders these tens of
+  /// aggregates instead of eager-draining every application, refetching on
+  /// debounced region change. `filter` restricts the aggregation server-side —
+  /// only `.status(_)` is meaningful here (it sends `status=`); `.all` and
+  /// `.unread` send no status param, as the map has no unread filter.
+  func fetchClusters(
+    for zone: WatchZone,
+    viewport: MapViewport,
+    zoom: Int,
+    filter: ApplicationFilter
+  ) async throws -> [MapCluster]
 }

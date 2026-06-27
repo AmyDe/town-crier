@@ -112,4 +112,30 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
     await waitForGateIfNeeded()
     return try fetchApplicationResult.get()
   }
+
+  // MARK: - Cluster fetch (GH#698)
+
+  /// A recorded `fetchClusters` invocation — lets tests assert the exact
+  /// viewport, zoom, and filter the map drove for the current map rect.
+  struct RecordedClusterRequest: Sendable {
+    let zone: WatchZone
+    let viewport: MapViewport
+    let zoom: Int
+    let filter: ApplicationFilter
+  }
+
+  private(set) var fetchClustersCalls: [RecordedClusterRequest] = []
+  var fetchClustersResult: Result<[MapCluster], Error> = .success([])
+
+  func fetchClusters(
+    for zone: WatchZone,
+    viewport: MapViewport,
+    zoom: Int,
+    filter: ApplicationFilter
+  ) async throws -> [MapCluster] {
+    fetchClustersCalls.append(
+      RecordedClusterRequest(zone: zone, viewport: viewport, zoom: zoom, filter: filter))
+    await waitForGateIfNeeded()
+    return try fetchClustersResult.get()
+  }
 }
