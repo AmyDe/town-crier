@@ -1188,6 +1188,38 @@ func TestApplications_InvalidUnreadIs400(t *testing.T) {
 	}
 }
 
+// TestApplications_StatusAndUnreadTogetherIs400 proves a status filter and the
+// unread filter together are rejected with 400 before any spatial query — they
+// are mutually exclusive. "All" is not a real status filter, so All + unread is
+// allowed.
+func TestApplications_StatusAndUnreadTogetherIs400(t *testing.T) {
+	t.Parallel()
+	t.Run("real status + unread is 400", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=Permitted&unread=true", "")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status=Permitted&unread=true: got %d, want 400", rec.Code)
+		}
+		if apps.called || apps.inZoneCalled {
+			t.Error("must not run any spatial query when status and unread conflict")
+		}
+	})
+	t.Run("All + unread is allowed", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=All&unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=All&unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread || apps.lastStatus != "" {
+			t.Errorf("All+unread must filter on unread only: inZone=%v unread=%v status=%q", apps.inZoneCalled, apps.lastUnread, apps.lastStatus)
+		}
+	})
+}
+
 // manyApps builds n distinct nearby applications, for asserting the bounded page
 // caps the downstream unread UID set.
 func manyApps(n int) []applications.PlanningApplication {
