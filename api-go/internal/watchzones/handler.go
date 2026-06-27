@@ -314,7 +314,11 @@ type apiErrorResponse struct {
 
 // writeJSON encodes v as an application/json; charset=utf-8 response with HTML
 // escaping off and no trailing newline (the same approach the profiles handler
-// uses).
+// uses). status is kept explicit at every call site (mirroring writeCreated's 201
+// and writeError) so the success code is visible where the response is written,
+// even though every JSON success body is a 200 today.
+//
+//nolint:unparam // status is intentionally explicit at call sites; 200-only today.
 func (h *handler) writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	body, err := httputil.EncodeJSON(v)
 	if err != nil {
