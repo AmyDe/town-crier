@@ -8,7 +8,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 |-----------|-----------|
 | Backend API | Go (`net/http`, `log/slog`), Azure Container Apps |
 | Web Frontend | React 19, TypeScript, Vite |
-| Database | Azure Cosmos DB (Serverless) |
+| Database | Azure Database for PostgreSQL Flexible Server + PostGIS |
 | iOS App | Swift, SwiftUI, SwiftData |
 | Infrastructure | Pulumi (Go), Azure Container Apps |
 | CI/CD | GitHub Actions |
@@ -69,7 +69,7 @@ swift test
 
 ## Architecture
 
-The backend is a **Go** service — an HTTP API plus a background worker — with a flat, feature-sliced layout under `internal/`, built on the standard library (`net/http`, `log/slog`) and the official Azure SDKs for Cosmos DB and Service Bus. The web frontend uses **React** with **Leaflet** for interactive maps, **Auth0** for authentication, and **React Query** for server state. The iOS app uses **MVVM-C** (Model-View-ViewModel-Coordinator) with Swift Concurrency. Infrastructure is defined with **Pulumi** in Go.
+The backend is a **Go** service — an HTTP API plus a background worker — with a flat, feature-sliced layout under `internal/`, built on the standard library (`net/http`, `log/slog`), the `pgx` driver for Postgres + PostGIS, and the official Azure SDK for Service Bus. The web frontend uses **React** with **Leaflet** for interactive maps, **Auth0** for authentication, and **React Query** for server state. The iOS app uses **MVVM-C** (Model-View-ViewModel-Coordinator) with Swift Concurrency. Infrastructure is defined with **Pulumi** in Go.
 
 Data is ingested from [PlanIt](https://www.planit.org.uk/) via a polling-based model. See the [Architecture Decision Records](docs/adr/) for detailed design rationale.
 
