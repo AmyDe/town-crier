@@ -253,7 +253,10 @@ func scanDatePageRow(row pgx.CollectableRow) (datePageRow, error) {
 // cursor embeds the sort mode: replaying it under a different sort returns
 // ErrCursorSortMismatch, and a malformed cursor returns ErrCursorInvalid, so the
 // caller can return 400 rather than a mis-ordered page. It is authority-agnostic.
-func (s *PostgresStore) FindInZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort Sort, limit int, cursor string) ([]PlanningApplication, string, error) {
+//
+// userID scopes the per-user data the recent-activity sort joins (the caller's
+// latest unread notification per application). The other sorts ignore it.
+func (s *PostgresStore) FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort Sort, limit int, cursor string) ([]PlanningApplication, string, error) {
 	if !sort.Supported() {
 		return nil, "", fmt.Errorf("sort %q: %w", sort, ErrUnsupportedSort)
 	}

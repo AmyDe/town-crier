@@ -55,11 +55,12 @@ type authorityResolver interface {
 //
 // FindNearbyPage is the legacy default-distance path (byte-identical param-less
 // contract). FindInZonePage adds the server-side ?sort= surface (epic #682 slices
-// 1-2: distance/newest/oldest/status) with a sort-aware keyset cursor.
-// *applications.PostgresStore satisfies both.
+// 1-3: distance/newest/oldest/status/recent-activity) with a sort-aware keyset
+// cursor; userID scopes the per-user notification join the recent-activity sort
+// needs. *applications.PostgresStore satisfies both.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
-	FindInZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
+	FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -323,7 +324,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, nextCursor, err := h.findZonePage(r.Context(), zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
+	apps, nextCursor, err := h.findZonePage(r.Context(), "", zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
 		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
 		// keyset cursor is only valid for the sort it was minted under.
@@ -386,15 +387,16 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 // findZonePage runs the bounded spatial page for the zone. With no ?sort= it
 // keeps the legacy nearest-first finder at the 500 default (byte-identical
 // param-less contract); with ?sort= it uses the sort-aware finder at the 150
-// default and a sort-aware keyset cursor. rawLimit is the unparsed ?limit= value;
-// cursor is the transport-unwrapped continuation token.
-func (h *handler) findZonePage(ctx context.Context, zone WatchZone, sort applications.Sort, sortPresent bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
+// default and a sort-aware keyset cursor. userID scopes the per-user notification
+// join the recent-activity sort needs (ignored by the other sorts). rawLimit is
+// the unparsed ?limit= value; cursor is the transport-unwrapped continuation token.
+func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
 	if !sortPresent {
 		limit := parseLimit(rawLimit, defaultNearbyLimit)
 		return h.apps.FindNearbyPage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
 	}
 	limit := parseLimit(rawLimit, defaultSortedLimit)
-	return h.apps.FindInZonePage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, sort, limit, cursor)
+	return h.apps.FindInZonePage(ctx, userID, zone.Latitude, zone.Longitude, zone.RadiusMetres, sort, limit, cursor)
 }
 
 // parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
