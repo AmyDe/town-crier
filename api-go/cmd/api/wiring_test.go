@@ -121,6 +121,9 @@ func (fakeAppStore) FindNearbyPage(context.Context, float64, float64, float64, i
 func (fakeAppStore) FindInZonePage(context.Context, applications.InZoneQuery) ([]applications.PlanningApplication, string, error) {
 	return nil, "", nil
 }
+func (fakeAppStore) FindClustersInZone(context.Context, applications.ClusterQuery) ([]applications.Cluster, error) {
+	return nil, nil
+}
 func (fakeAppStore) RecentNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
 	return nil, nil
 }
