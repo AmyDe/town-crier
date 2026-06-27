@@ -16,9 +16,8 @@ import (
 // cursor are both this type, so a cursor minted under one sort can be rejected
 // when replayed under another (see FindInZonePage and ErrCursorSortMismatch).
 //
-// Slices 1-2 (epic #682) implement {distance, newest, oldest, status}. The
-// remaining UI sort (recent-activity) arrives in a later slice; until then it is
-// rejected as unsupported.
+// Slices 1-3 (epic #682) implement {distance, newest, oldest, status,
+// recent-activity} — the full UI sort set.
 type Sort string
 
 const (
@@ -37,12 +36,21 @@ const (
 	// directions (app_state ASC / start_date DESC) make the keyset predicate
 	// per-key (see findStatusZonePage).
 	SortStatus Sort = "status"
+	// SortRecentActivity orders by GREATEST(start_date::timestamptz, the caller's
+	// latest unread notification for the application) DESC NULLS LAST, then the
+	// unique tiebreak (authority_code, planit_name). It is per-user: the unread
+	// timestamp comes from a LEFT JOIN of the caller's notifications, so an app
+	// with a fresh unread floats above an app with a newer start_date but no
+	// unread (see findRecentActivityZonePage).
+	SortRecentActivity Sort = "recent-activity"
 )
 
-// Supported reports whether s is a sort this slice implements server-side.
+// Supported reports whether s is a server-side sort. The set is the five UI
+// sorts; anything else is rejected so the handler returns 400 rather than
+// running an arbitrary order.
 func (s Sort) Supported() bool {
 	switch s {
-	case SortDistance, SortNewest, SortOldest, SortStatus:
+	case SortDistance, SortNewest, SortOldest, SortStatus, SortRecentActivity:
 		return true
 	default:
 		return false
@@ -71,16 +79,20 @@ var (
 //     (authority_code) + N (planit_name).
 //   - status: AS (app_state, nil for a NULL-app_state tail row) + SD (start_date,
 //     nil for a NULL-start_date tail row) + AC (authority_code) + N (planit_name).
+//   - recent-activity: TS (the activity timestamp, nil for a NULL-activity tail
+//     row) + AC (authority_code) + N (planit_name).
 //
-// It is base64url-encoded JSON. AS and SD use a nil pointer (omitted field) to
-// mean a NULL key value, so the next page's predicate can pick the matching
+// It is base64url-encoded JSON. AS, SD and TS use a nil pointer (omitted field)
+// to mean a NULL key value, so the next page's predicate can pick the matching
 // NULLS-LAST tail branch. SD is a "2006-01-02" date string so the predicate
-// compares against an unambiguous ::date, not a timezone-laden timestamp.
+// compares against an unambiguous ::date, not a timezone-laden timestamp; TS is
+// an RFC3339Nano timestamp string compared against a ::timestamptz.
 type pageCursor struct {
 	M  Sort    `json:"m"`
 	D  string  `json:"d,omitempty"`
 	AS *string `json:"as,omitempty"`
 	SD *string `json:"sd,omitempty"`
+	TS *string `json:"ts,omitempty"`
 	AC string  `json:"ac,omitempty"`
 	N  string  `json:"n"`
 }
