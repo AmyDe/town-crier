@@ -159,6 +159,11 @@ const invalidStatusMessage = "Invalid status filter."
 // nor absent.
 const invalidUnreadMessage = "Invalid unread filter."
 
+// filterConflictMessage is the 400 body when a real ?status= filter and
+// ?unread=true are sent together: they are mutually exclusive (mirroring the
+// client rule). "All" is not a real status filter, so it does not conflict.
+const filterConflictMessage = "status and unread filters are mutually exclusive."
+
 // valid reports whether the create request passes the pre-handler guard:
 // non-blank name, positive radius within the server ceiling, in-range
 // coordinates, and a positive authority id when one is supplied.
@@ -337,6 +342,13 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	unreadFilter, unreadOK := parseUnread(r.URL.Query().Get("unread"))
 	if !unreadOK {
 		h.writeError(w, r, http.StatusBadRequest, invalidUnreadMessage)
+		return
+	}
+
+	// Status and unread are mutually exclusive; reject both together before any
+	// query (a status="" means no real filter, so it never conflicts).
+	if status != "" && unreadFilter {
+		h.writeError(w, r, http.StatusBadRequest, filterConflictMessage)
 		return
 	}
 
