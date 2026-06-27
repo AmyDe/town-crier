@@ -54,6 +54,11 @@ type fakeAppFinder struct {
 	lastUserID   string
 	lastStatus   string
 	lastUnread   bool
+
+	clusters         []applications.Cluster
+	clusterErr       error
+	clustersCalled   bool
+	lastClusterQuery applications.ClusterQuery
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -90,6 +95,15 @@ func (f *fakeAppFinder) FindInZonePage(_ context.Context, q applications.InZoneQ
 		apps = apps[:q.Limit]
 	}
 	return apps, f.next, nil
+}
+
+func (f *fakeAppFinder) FindClustersInZone(_ context.Context, q applications.ClusterQuery) ([]applications.Cluster, error) {
+	f.clustersCalled = true
+	f.lastClusterQuery = q
+	if f.clusterErr != nil {
+		return nil, f.clusterErr
+	}
+	return f.clusters, nil
 }
 
 type fakeWatermark struct {
@@ -1253,4 +1267,288 @@ func mustZone(t *testing.T, id string, authorityID int) WatchZone {
 		t.Fatalf("NewWatchZone: %v", err)
 	}
 	return z
+}
+
+// clusterDeps builds a standard dependency set for the clusters-endpoint tests:
+// one seeded zone (lat 51.5, lng -0.12, radius 1000) and a configurable finder.
+func clusterDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
+	t.Helper()
+	return nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+}
+
+// validClusterQuery is a well-formed bbox+zoom query string for the clusters
+// endpoint. bbox=west,south,east,north (WGS84 degrees) around the fixture zone.
+const validClusterQuery = "?bbox=-0.2,51.4,-0.05,51.6&zoom=12"
+
+// TestClusters_ZoneNotFoundIs404 proves an unowned (absent) zone is a 404, like
+// the sibling applications route, before any spatial query runs.
+func TestClusters_ZoneNotFoundIs404(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	d := clusterDeps(t, apps)
+	d.store = &fakeZoneStore{} // no zones
+	mux := newNearbyMux(t, d)
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/missing/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", rec.Code)
+	}
+	if apps.clustersCalled {
+		t.Error("must not run the cluster query for an unowned zone")
+	}
+}
+
+// TestClusters_PassesZoneAndParamsToStore proves the handler loads the zone and
+// threads its centre+radius, the parsed bbox, the zoom-derived grid size, and the
+// status filter into the store query.
+func TestClusters_PassesZoneAndParamsToStore(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom=12&status=Permitted", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if !apps.clustersCalled {
+		t.Fatal("the cluster query must run for an owned zone")
+	}
+	q := apps.lastClusterQuery
+	if q.Latitude != 51.5 || q.Longitude != -0.12 || q.RadiusMetres != 1000 {
+		t.Errorf("zone centre/radius: got (%v,%v,%v), want (51.5,-0.12,1000)", q.Latitude, q.Longitude, q.RadiusMetres)
+	}
+	if q.West != -0.2 || q.South != 51.4 || q.East != -0.05 || q.North != 51.6 {
+		t.Errorf("bbox: got (%v,%v,%v,%v), want (-0.2,51.4,-0.05,51.6)", q.West, q.South, q.East, q.North)
+	}
+	if q.Status != "Permitted" {
+		t.Errorf("status: got %q, want %q", q.Status, "Permitted")
+	}
+	wantGrid := 45.0 / float64(uint64(1)<<12) // 360/2^(12+3)
+	if q.GridSizeDegrees != wantGrid {
+		t.Errorf("grid size for zoom 12: got %v, want %v", q.GridSizeDegrees, wantGrid)
+	}
+}
+
+// TestClusters_ZoomToGridSizeLookup proves the server-owned zoom -> grid-cell-size
+// table: each cell is 1/8 of a slippy tile (360/2^z), so the size halves per zoom
+// level, and the size passed to the store matches the table for the request zoom.
+func TestClusters_ZoomToGridSizeLookup(t *testing.T) {
+	t.Parallel()
+	for _, zoom := range []int{0, 1, 8, 12, 16, 20} {
+		t.Run(strconv.Itoa(zoom), func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, clusterDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom="+strconv.Itoa(zoom), "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("zoom=%d: got %d, want 200", zoom, rec.Code)
+			}
+			want := 45.0 / float64(uint64(1)<<uint(zoom)) // 360/2^(z+3)
+			if apps.lastClusterQuery.GridSizeDegrees != want {
+				t.Errorf("zoom=%d grid size: got %v, want %v", zoom, apps.lastClusterQuery.GridSizeDegrees, want)
+			}
+		})
+	}
+}
+
+// TestClusters_RequiresBBox proves an absent bbox is a clean 400 before any query.
+func TestClusters_RequiresBBox(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?zoom=12", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+	if apps.clustersCalled {
+		t.Error("must not run the cluster query when bbox is absent")
+	}
+}
+
+// TestClusters_MalformedBBoxIs400 proves a bbox that is not four in-range,
+// well-ordered finite degrees is a clean 400 before any query.
+func TestClusters_MalformedBBoxIs400(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"too few values":    "bbox=-0.2,51.4,-0.05&zoom=12",
+		"too many values":   "bbox=-0.2,51.4,-0.05,51.6,1&zoom=12",
+		"non-numeric":       "bbox=-0.2,abc,-0.05,51.6&zoom=12",
+		"west >= east":      "bbox=-0.05,51.4,-0.2,51.6&zoom=12",
+		"south >= north":    "bbox=-0.2,51.6,-0.05,51.4&zoom=12",
+		"lng out of range":  "bbox=-181,51.4,-0.05,51.6&zoom=12",
+		"lat out of range":  "bbox=-0.2,51.4,-0.05,91&zoom=12",
+		"empty value":       "bbox=&zoom=12",
+		"non-finite (NaN)":  "bbox=-0.2,NaN,-0.05,51.6&zoom=12",
+		"non-finite (+Inf)": "bbox=-0.2,51.4,Inf,51.6&zoom=12",
+	}
+	for name, query := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, clusterDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?"+query, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("%s: got %d, want 400", name, rec.Code)
+			}
+			if apps.clustersCalled {
+				t.Errorf("%s: must not run the cluster query for a malformed bbox", name)
+			}
+		})
+	}
+}
+
+// TestClusters_RequiresZoom proves an absent zoom is a clean 400 before any query.
+func TestClusters_RequiresZoom(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+	if apps.clustersCalled {
+		t.Error("must not run the cluster query when zoom is absent")
+	}
+}
+
+// TestClusters_ZoomOutOfRangeIs400 proves a zoom outside the slippy range 0..20
+// (or non-integer) is a clean 400 before any query.
+func TestClusters_ZoomOutOfRangeIs400(t *testing.T) {
+	t.Parallel()
+	for _, zoom := range []string{"-1", "21", "100", "abc", "1.5", ""} {
+		t.Run("zoom="+zoom, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, clusterDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom="+zoom, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("zoom=%q: got %d, want 400", zoom, rec.Code)
+			}
+			if apps.clustersCalled {
+				t.Errorf("zoom=%q: must not run the cluster query for an out-of-range zoom", zoom)
+			}
+		})
+	}
+}
+
+// TestClusters_UnknownStatusIs400 proves a status outside the app_state vocabulary
+// (and not "All"/absent) is a clean 400 before any query, reusing the same
+// vocabulary as the list endpoint.
+func TestClusters_UnknownStatusIs400(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"nonsense", "permitted", "REJECTED", "all"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, clusterDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom=12&status="+status, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status=%q: got %d, want 400", status, rec.Code)
+			}
+			if apps.clustersCalled {
+				t.Errorf("status=%q: must not run the cluster query for an unrecognised status", status)
+			}
+		})
+	}
+}
+
+// TestClusters_StatusAllIsNoFilter proves ?status=All threads an empty status
+// filter (no filter), like the list endpoint.
+func TestClusters_StatusAllIsNoFilter(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom=12&status=All", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if !apps.clustersCalled || apps.lastClusterQuery.Status != "" {
+		t.Errorf("status=All must thread an empty status filter: called=%v status=%q", apps.clustersCalled, apps.lastClusterQuery.Status)
+	}
+}
+
+// TestClusters_WireShape pins the response contract: an array of cluster objects
+// with latitude/longitude/count/statusCounts, a null applicationId for a
+// multi-member cell, and a {authority,name} applicationId for a single-member cell.
+func TestClusters_WireShape(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{clusters: []applications.Cluster{
+		{
+			Latitude: 51.51, Longitude: -0.12, Count: 194,
+			StatusCounts: map[string]int{"Permitted": 120, "Undecided": 60, "Rejected": 14},
+			Member:       nil,
+		},
+		{
+			Latitude: 51.52, Longitude: -0.13, Count: 1,
+			StatusCounts: map[string]int{"Permitted": 1},
+			Member:       &applications.PlanningApplicationID{Authority: "471", Name: "24/001"},
+		},
+	}}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got []struct {
+		Latitude      float64        `json:"latitude"`
+		Longitude     float64        `json:"longitude"`
+		Count         int            `json:"count"`
+		StatusCounts  map[string]int `json:"statusCounts"`
+		ApplicationID *struct {
+			Authority string `json:"authority"`
+			Name      string `json:"name"`
+		} `json:"applicationId"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v; raw=%s", err, rec.Body.String())
+	}
+	if len(got) != 2 {
+		t.Fatalf("clusters: got %d, want 2", len(got))
+	}
+	if got[0].Count != 194 || got[0].ApplicationID != nil {
+		t.Errorf("multi-member cell: got count=%d applicationId=%+v, want count=194 applicationId=null", got[0].Count, got[0].ApplicationID)
+	}
+	if got[0].StatusCounts["Permitted"] != 120 || got[0].StatusCounts["Undecided"] != 60 || got[0].StatusCounts["Rejected"] != 14 {
+		t.Errorf("multi-member statusCounts: got %v", got[0].StatusCounts)
+	}
+	if got[1].Count != 1 || got[1].ApplicationID == nil {
+		t.Fatalf("single-member cell: got count=%d applicationId=%+v, want count=1 with a non-null id", got[1].Count, got[1].ApplicationID)
+	}
+	if got[1].ApplicationID.Authority != "471" || got[1].ApplicationID.Name != "24/001" {
+		t.Errorf("single-member id: got %+v, want {authority:471, name:24/001}", *got[1].ApplicationID)
+	}
+}
+
+// TestClusters_EmptyReturnsEmptyArray proves an empty result encodes as a bare
+// JSON array, never null.
+func TestClusters_EmptyReturnsEmptyArray(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{} // nil clusters
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if got := rec.Body.String(); got != "[]" {
+		t.Errorf("empty clusters: got %s, want []", got)
+	}
+}
+
+// TestClusters_StoreErrorIs500 proves a store failure surfaces as a 500.
+func TestClusters_StoreErrorIs500(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{clusterErr: errors.New("postgis down")}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d, want 500", rec.Code)
+	}
 }

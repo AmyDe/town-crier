@@ -37,6 +37,7 @@ type Store interface {
 	BreakdownByAuthority(ctx context.Context, authorityCode string) ([]StateCount, error)
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q InZoneQuery) ([]PlanningApplication, string, error)
+	FindClustersInZone(ctx context.Context, q ClusterQuery) ([]Cluster, error)
 	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
 	NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
 	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)

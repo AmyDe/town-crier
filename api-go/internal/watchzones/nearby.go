@@ -58,9 +58,16 @@ type authorityResolver interface {
 // 1-3: distance/newest/oldest/status/recent-activity) with a sort-aware keyset
 // cursor; userID scopes the per-user notification join the recent-activity sort
 // needs. *applications.PostgresStore satisfies both.
+//
+// FindClustersInZone (issue #698) backs the server-side map clustering endpoint:
+// it returns PostGIS grid-aggregated cluster bubbles (centroid + count + status
+// breakdown) for a viewport, so the map renders a handful of aggregates instead
+// of eager-draining every application. *applications.PostgresStore satisfies all
+// three.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
+	FindClustersInZone(ctx context.Context, q applications.ClusterQuery) ([]applications.Cluster, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
