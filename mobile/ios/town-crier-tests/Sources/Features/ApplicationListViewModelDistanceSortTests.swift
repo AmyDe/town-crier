@@ -57,51 +57,22 @@ struct ApplicationListViewModelDistanceSortTests {
     #expect(ApplicationsSort.distance.displayLabel == "Distance")
   }
 
-  // MARK: - Sort behaviour
+  // MARK: - Sort behaviour (server-driven since GH#682 slice 1)
 
-  @Test("distance sort orders by haversine distance from active zone centre, ascending")
-  func sort_distance_ordersByHaversineFromZoneCentre() async throws {
-    // Cambridge centre: 52.2053, 0.1218.
-    // permitted     location 52.2053, 0.1218 — exactly at centre (~0m)
-    // pendingReview location 52.2043, 0.1243 — close
-    // rejected      location 52.2010, 0.1300 — further
-    // (See PlanningApplication+Fixtures for source-of-truth coords.)
-    let (sut, _, _) = try makeSUT(
-      applications: [.rejected, .pendingReview, .permitted]
-    )
-
-    await sut.loadApplications()
-    sut.sort = .distance
-
-    #expect(
-      sut.filteredApplications.map(\.id) == [
-        PlanningApplication.permitted.id,
-        PlanningApplication.pendingReview.id,
-        PlanningApplication.rejected.id,
-      ]
-    )
-  }
-
-  @Test("distance sort places apps without a location last")
-  func sort_distance_appsWithoutLocationLast() async throws {
-    let withoutLocation = PlanningApplication(
-      id: PlanningApplicationId(authority: "CAM", name: "APP-NO-LOC"),
-      reference: ApplicationReference("2026/9999"),
-      authority: .cambridge,
-      status: .undecided,
-      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
-      description: "Application missing coordinates",
-      address: "Unknown",
-      location: nil
-    )
-    let (sut, _, _) = try makeSUT(
-      applications: [withoutLocation, .permitted, .pendingReview]
-    )
+  @Test("distance sort preserves the server order — no local haversine re-sort")
+  func sort_distance_preservesServerOrder() async throws {
+    // Distance is now server-driven (KNN nearest-first) and paged via infinite
+    // scroll, so the client must not re-order locally — that would only sort the
+    // pages already loaded. The ordering and NULLS-LAST behaviour are proven by
+    // the Go pgtest suite (#688); the client just renders what it receives. The
+    // deliberately non-distance order below proves the client leaves it intact.
+    let serverOrdered: [PlanningApplication] = [.rejected, .permitted, .pendingReview]
+    let (sut, _, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
     sut.sort = .distance
 
-    #expect(sut.filteredApplications.last?.id == withoutLocation.id)
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
   // MARK: - Persistence

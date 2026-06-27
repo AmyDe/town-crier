@@ -63,6 +63,27 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// request firing 3-6 times within seconds, all cancelled (HTTP 499). While
   /// one load is in flight, further calls short-circuit (bd tc-eum5).
   private var isLoadInFlight = false
+  /// Continuation token for the next server page, or `nil` when no more pages
+  /// exist (the last page omits `X-Next-Cursor`) or the active sort is
+  /// client-side. Reset to `nil` on every fresh first-page load and on any sort
+  /// change so a stale cursor can never page a differently-ordered set
+  /// (GH#682 slice 1).
+  private var nextCursor: String?
+  /// The sort the currently-loaded `applications` were fetched under. Lets a
+  /// sort change decide whether a refetch is needed (server sorts and any
+  /// transition away from one reload; a client→client switch only re-sorts in
+  /// memory, as before).
+  private var loadedSort: ApplicationsSort?
+  /// Re-entrancy guard for next-page fetches — independent of `isLoadInFlight`
+  /// so an in-flight first-page load never blocks (or is blocked by) appends.
+  private var isPageLoadInFlight = false
+  /// Server page size requested for the infinite-scroll path. Matches the API's
+  /// sorted-path default (GH#682); the server clamps anything larger.
+  static let pageSize = 150
+  /// Trigger the next-page fetch once the appearing row is within this many rows
+  /// of the end of the loaded set, so the next page lands before the user hits
+  /// the bottom.
+  private static let prefetchThreshold = 10
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
   private let sortKey: String
@@ -212,10 +233,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       }
       guard let activeZone = selectedZone ?? zone else {
         applications = []
+        nextCursor = nil
         isLoading = false
         return
       }
-      applications = try await fetchApplications(for: activeZone)
+      try await loadActiveZone(activeZone)
     } catch {
       handleError(error)
     }
@@ -230,11 +252,100 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = true
     error = nil
     do {
-      applications = try await fetchApplications(for: zone)
+      try await loadActiveZone(zone)
     } catch {
       handleError(error)
     }
     isLoading = false
+  }
+
+  /// Loads the active zone's first page via the path appropriate to the current
+  /// sort. The three server-supported sorts (distance/newest/oldest) fetch a
+  /// server-ordered page and capture the next-page cursor; the client-side sorts
+  /// (recent-activity/status) keep the legacy param-less first-page fetch. Either
+  /// way the cursor resets, so pagination always restarts cleanly (GH#682).
+  private func loadActiveZone(_ zone: WatchZone) async throws {
+    if let order = sort.serverOrder {
+      let page = try await fetchPage(for: zone, sort: order, cursor: nil)
+      applications = page.applications
+      nextCursor = page.nextCursor
+    } else {
+      applications = try await fetchApplications(for: zone)
+      nextCursor = nil
+    }
+    loadedSort = sort
+  }
+
+  /// Fetches and appends the next server page when one exists. No-op unless the
+  /// active sort is server-driven, a cursor is held, and no append is already in
+  /// flight. Following `X-Next-Cursor` until it is absent walks the whole set;
+  /// the last page (no cursor) ends the loop. A fetch error surfaces to `error`.
+  public func loadNextPage() async {
+    guard let order = sort.serverOrder,
+      let cursor = nextCursor,
+      !isPageLoadInFlight,
+      let activeZone = selectedZone ?? zone
+    else { return }
+    isPageLoadInFlight = true
+    defer { isPageLoadInFlight = false }
+    do {
+      let page = try await fetchPage(for: activeZone, sort: order, cursor: cursor)
+      appendPage(page)
+    } catch {
+      handleError(error)
+    }
+  }
+
+  /// Called by the list as each row appears. Kicks off the next-page fetch when
+  /// a server sort is active, more pages remain, and the appearing row is within
+  /// ``prefetchThreshold`` of the end of the loaded set. A no-op for client-side
+  /// sorts, which hold the whole (first-page) set already.
+  public func onRowAppear(_ application: PlanningApplication) async {
+    guard sort.isServerSorted, nextCursor != nil, !isPageLoadInFlight else { return }
+    guard let index = applications.firstIndex(where: { $0.id == application.id }) else { return }
+    guard index >= applications.count - Self.prefetchThreshold else { return }
+    await loadNextPage()
+  }
+
+  /// Reacts to a sort change from the toolbar. A server sort — or any transition
+  /// away from one — reloads from page 1 with a fresh cursor so the list re-pages
+  /// in the new order. A switch between the two client-side sorts only changes
+  /// the in-memory ordering, so it skips the refetch (unchanged from the
+  /// pre-pagination behaviour). The cursor and `loadedSort` reset happen inside
+  /// the reload.
+  public func handleSortChanged() async {
+    guard sort != loadedSort else { return }
+    let newIsServer = sort.isServerSorted
+    let oldWasServer = loadedSort?.isServerSorted ?? false
+    if !newIsServer && !oldWasServer {
+      loadedSort = sort
+      return
+    }
+    await loadApplications()
+  }
+
+  /// Appends a server page, dropping any rows already loaded so a keyset overlap
+  /// at a page boundary never duplicates a row. Captures the new cursor.
+  private func appendPage(_ page: ApplicationPage) {
+    let existingIds = Set(applications.map(\.id))
+    applications.append(contentsOf: page.applications.filter { !existingIds.contains($0.id) })
+    nextCursor = page.nextCursor
+  }
+
+  private func fetchPage(
+    for zone: WatchZone,
+    sort order: ApplicationSortOrder,
+    cursor: String?
+  ) async throws -> ApplicationPage {
+    if let offlineRepository {
+      return try await offlineRepository.fetchApplicationsPage(
+        for: zone, sort: order, cursor: cursor, limit: Self.pageSize)
+    }
+    if let repository {
+      return try await repository.fetchApplicationsPage(
+        for: zone, sort: order, cursor: cursor, limit: Self.pageSize)
+    }
+    return ApplicationPage(applications: [], nextCursor: nil)
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {
@@ -262,7 +373,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     await offlineRepository?.invalidateAllCaches()
     guard let activeZone = selectedZone ?? zone else { return }
     do {
-      applications = try await fetchApplications(for: activeZone)
+      try await loadActiveZone(activeZone)
     } catch {
       // Refetch failure is non-fatal — the existing rows stay rendered.
     }
@@ -311,45 +422,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.sorted { lhs, rhs in
         recentActivityScore(lhs) > recentActivityScore(rhs)
       }
-    case .newest:
-      return applications.sorted { $0.receivedDate > $1.receivedDate }
-    case .oldest:
-      return applications.sorted { $0.receivedDate < $1.receivedDate }
     case .status:
       return applications.sorted { $0.status.rawValue < $1.status.rawValue }
-    case .distance:
-      return sortByDistance(applications)
-    }
-  }
-
-  /// Ascending haversine distance from the active zone's centre. Apps
-  /// without a `location` sort last (preserving their incoming relative
-  /// order via the stable-pair tiebreaker so we don't surface arbitrary
-  /// noise). Falls back to identity when no zone is selected — the sort
-  /// option is hidden in that state, but defensive coding keeps the
-  /// switch total. Spec: tc-mso6 (mirrors the web sibling tc-ge7j).
-  private func sortByDistance(
-    _ applications: [PlanningApplication]
-  ) -> [PlanningApplication] {
-    guard let activeZone = selectedZone ?? zone else {
+    case .distance, .newest, .oldest:
+      // Server-ordered sorts arrive pre-sorted from the API and are paged via
+      // infinite scroll, so they are never re-sorted client-side — that would
+      // only ever order the pages already loaded (GH#682 slice 1). Identity
+      // preserves the server order and keeps the switch total.
       return applications
     }
-    let scored = applications.enumerated().map { index, app in
-      (index: index, app: app, distance: app.location.map { activeZone.distance(to: $0) })
-    }
-    let sorted = scored.sorted { lhs, rhs in
-      switch (lhs.distance, rhs.distance) {
-      case let (.some(left), .some(right)):
-        return left < right
-      case (.some, .none):
-        return true
-      case (.none, .some):
-        return false
-      case (.none, .none):
-        return lhs.index < rhs.index
-      }
-    }
-    return sorted.map(\.app)
   }
 
   /// `max(receivedDate, latestUnreadEvent.createdAt)` per spec decision #9 —

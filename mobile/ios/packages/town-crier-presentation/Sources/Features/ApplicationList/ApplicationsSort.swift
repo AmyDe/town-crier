@@ -1,4 +1,5 @@
 import Foundation
+import TownCrierDomain
 
 /// Sort modes for the Applications screen — persisted under
 /// `applicationsListSort` in `UserDefaults` so the user's choice survives
@@ -25,6 +26,29 @@ public enum ApplicationsSort: String, CaseIterable, Sendable {
   /// last. Only meaningful when a single zone is selected — the picker
   /// hides this option in multi-zone "all" views (tc-mso6).
   case distance = "distance"
+
+  /// The server-side sort order the API can page in, or `nil` for the
+  /// client-only sorts (recent-activity, status) which this slice keeps
+  /// computing locally over the fetched page (GH#682 slice 1). Distance, newest,
+  /// and oldest are server-driven and paged via infinite scroll.
+  public var serverOrder: ApplicationSortOrder? {
+    switch self {
+    case .distance:
+      return .distance
+    case .newest:
+      return .newest
+    case .oldest:
+      return .oldest
+    case .recentActivity, .status:
+      return nil
+    }
+  }
+
+  /// Whether the server owns the ordering (and therefore drives the paged
+  /// infinite-scroll path) for this sort.
+  public var isServerSorted: Bool {
+    serverOrder != nil
+  }
 
   /// User-facing label rendered in the sort menu.
   public var displayLabel: String {
