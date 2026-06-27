@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -16,9 +17,8 @@ import (
 // cursor are both this type, so a cursor minted under one sort can be rejected
 // when replayed under another (see FindInZonePage and ErrCursorSortMismatch).
 //
-// Slices 1-2 (epic #682) implement {distance, newest, oldest, status}. The
-// remaining UI sort (recent-activity) arrives in a later slice; until then it is
-// rejected as unsupported.
+// Slices 1-3 (epic #682) implement {distance, newest, oldest, status,
+// recent-activity} — the full UI sort set.
 type Sort string
 
 const (
@@ -37,12 +37,21 @@ const (
 	// directions (app_state ASC / start_date DESC) make the keyset predicate
 	// per-key (see findStatusZonePage).
 	SortStatus Sort = "status"
+	// SortRecentActivity orders by GREATEST(start_date::timestamptz, the caller's
+	// latest unread notification for the application) DESC NULLS LAST, then the
+	// unique tiebreak (authority_code, planit_name). It is per-user: the unread
+	// timestamp comes from a LEFT JOIN of the caller's notifications, so an app
+	// with a fresh unread floats above an app with a newer start_date but no
+	// unread (see findRecentActivityZonePage).
+	SortRecentActivity Sort = "recent-activity"
 )
 
-// Supported reports whether s is a sort this slice implements server-side.
+// Supported reports whether s is a server-side sort. The set is the five UI
+// sorts; anything else is rejected so the handler returns 400 rather than
+// running an arbitrary order.
 func (s Sort) Supported() bool {
 	switch s {
-	case SortDistance, SortNewest, SortOldest, SortStatus:
+	case SortDistance, SortNewest, SortOldest, SortStatus, SortRecentActivity:
 		return true
 	default:
 		return false
@@ -71,16 +80,20 @@ var (
 //     (authority_code) + N (planit_name).
 //   - status: AS (app_state, nil for a NULL-app_state tail row) + SD (start_date,
 //     nil for a NULL-start_date tail row) + AC (authority_code) + N (planit_name).
+//   - recent-activity: TS (the activity timestamp, nil for a NULL-activity tail
+//     row) + AC (authority_code) + N (planit_name).
 //
-// It is base64url-encoded JSON. AS and SD use a nil pointer (omitted field) to
-// mean a NULL key value, so the next page's predicate can pick the matching
+// It is base64url-encoded JSON. AS, SD and TS use a nil pointer (omitted field)
+// to mean a NULL key value, so the next page's predicate can pick the matching
 // NULLS-LAST tail branch. SD is a "2006-01-02" date string so the predicate
-// compares against an unambiguous ::date, not a timezone-laden timestamp.
+// compares against an unambiguous ::date, not a timezone-laden timestamp; TS is
+// an RFC3339Nano timestamp string compared against a ::timestamptz.
 type pageCursor struct {
 	M  Sort    `json:"m"`
 	D  string  `json:"d,omitempty"`
 	AS *string `json:"as,omitempty"`
 	SD *string `json:"sd,omitempty"`
+	TS *string `json:"ts,omitempty"`
 	AC string  `json:"ac,omitempty"`
 	N  string  `json:"n"`
 }
@@ -241,7 +254,10 @@ func scanDatePageRow(row pgx.CollectableRow) (datePageRow, error) {
 // cursor embeds the sort mode: replaying it under a different sort returns
 // ErrCursorSortMismatch, and a malformed cursor returns ErrCursorInvalid, so the
 // caller can return 400 rather than a mis-ordered page. It is authority-agnostic.
-func (s *PostgresStore) FindInZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort Sort, limit int, cursor string) ([]PlanningApplication, string, error) {
+//
+// userID scopes the per-user data the recent-activity sort joins (the caller's
+// latest unread notification per application). The other sorts ignore it.
+func (s *PostgresStore) FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort Sort, limit int, cursor string) ([]PlanningApplication, string, error) {
 	if !sort.Supported() {
 		return nil, "", fmt.Errorf("sort %q: %w", sort, ErrUnsupportedSort)
 	}
@@ -261,6 +277,9 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, latitude, longitude,
 	}
 	if sort == SortStatus {
 		return s.findStatusZonePage(ctx, latitude, longitude, radiusMetres, limit, c)
+	}
+	if sort == SortRecentActivity {
+		return s.findRecentActivityZonePage(ctx, userID, latitude, longitude, radiusMetres, limit, c)
 	}
 	return s.findDateZonePage(ctx, latitude, longitude, radiusMetres, sort, limit, c)
 }
@@ -428,6 +447,144 @@ func statusCursorOf(last datePageRow) pageCursor {
 	if last.app.StartDate != nil {
 		sd := last.app.StartDate.Format("2006-01-02")
 		c.SD = &sd
+	}
+	return c
+}
+
+// activityUnreadSubquery computes, per application, the caller's latest UNREAD
+// notification timestamp. $5 is the caller's userID. The INNER JOIN to
+// notification_state is load-bearing: a user with no watermark row produces no
+// rows here, so "no notification_state ⇒ no unread anywhere" falls out naturally,
+// matching GetLatestUnreadByApplications and the handler's first-touch rule.
+// Unread is the strict created_at > last_read_at. It groups on (application_uid,
+// authority_id) — the same keys the outer LEFT JOIN matches against the
+// application's (uid, area_id) — so the integer authority_id (NOT the text
+// authority_code) is what reconciles a notification to its application.
+const activityUnreadSubquery = "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
+	" FROM notifications n" +
+	" JOIN notification_state ns ON ns.user_id = n.user_id" +
+	" WHERE n.user_id = $5 AND n.created_at > ns.last_read_at" +
+	" GROUP BY n.application_uid, n.authority_id"
+
+// activityExpr is the recent-activity sort key: the later of the application's
+// start_date (cast to timestamptz) and the caller's latest unread for it. Postgres
+// GREATEST ignores NULL inputs, so an app with no unread orders by start_date
+// alone, an app with a newer unread floats up, and an app with neither is NULL
+// (sorted last under NULLS LAST). u.created_at is the subquery's per-app unread
+// timestamp; start_date resolves to applications (no name collision with u).
+const activityExpr = "GREATEST(start_date::timestamptz, u.created_at)"
+
+// activityFromWhere is the shared SELECT + LEFT JOIN + spatial predicate for the
+// recent-activity sort. The projection is dateColumns (appColumns + authority_code,
+// matching scanActivityPageRow's app+ac scan) plus the computed activity_ts. $1 is
+// longitude and $2 latitude (via nearbyPoint), $3 the radius, $4 the limit, $5 the
+// userID (in the join subquery). The LEFT JOIN keeps apps with no unread (their
+// activity is start_date alone, or NULL).
+const activityFromWhere = "SELECT " + dateColumns + ", " + activityExpr + " AS activity_ts" +
+	" FROM applications" +
+	" LEFT JOIN (" + activityUnreadSubquery + ") u" +
+	" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id" +
+	" WHERE ST_DWithin(location, " + nearbyPoint + ", $3)"
+
+// activityOrderBy is the ORDER BY + LIMIT suffix for SortRecentActivity. NULLS LAST
+// keeps NULL-activity rows after every active row; (authority_code, planit_name) is
+// the unique tiebreak.
+const activityOrderBy = " ORDER BY " + activityExpr + " DESC NULLS LAST, authority_code, planit_name LIMIT $4"
+
+// recentActivityFirstQuery is the recent-activity first page: join + spatial
+// predicate, ordered, limited.
+const recentActivityFirstQuery = activityFromWhere + activityOrderBy
+
+// Keyset queries resuming after a cursor. The predicate exactly mirrors the DESC
+// NULLS LAST order so pages never overlap or gap: rows further along the activity
+// order, OR all NULL-activity rows (they trail in NULLS LAST), OR an equal-activity
+// row past the (authority_code, planit_name) tiebreak. The GREATEST expression is
+// repeated inline because Postgres cannot reference the SELECT alias in WHERE.
+const (
+	// $6 the cursor's activity_ts (::timestamptz), $7 authority_code, $8 planit_name.
+	recentActivityKeysetQuery = activityFromWhere +
+		" AND (" + activityExpr + " < $6::timestamptz OR " + activityExpr + " IS NULL" +
+		" OR (" + activityExpr + " = $6::timestamptz AND (authority_code, planit_name) > ($7, $8)))" +
+		activityOrderBy
+	// $6 authority_code, $7 planit_name. Cursor in the NULL-activity tail, where the
+	// only remaining order is the (authority_code, planit_name) tiebreak.
+	recentActivityKeysetNullQuery = activityFromWhere +
+		" AND " + activityExpr + " IS NULL AND (authority_code, planit_name) > ($6, $7)" +
+		activityOrderBy
+)
+
+// activityPageRow carries a hydrated application plus its authority_code and the
+// computed recent-activity timestamp (NULL when the app has neither a start_date
+// nor an unread), so the last row of a full page can be encoded into the next-page
+// keyset cursor.
+type activityPageRow struct {
+	app      PlanningApplication
+	ac       string
+	activity *time.Time
+}
+
+func scanActivityPageRow(row pgx.CollectableRow) (activityPageRow, error) {
+	var r activityPageRow
+	dest := append(appScanDest(&r.app), &r.ac, &r.activity)
+	if err := row.Scan(dest...); err != nil {
+		return activityPageRow{}, err
+	}
+	return r, nil
+}
+
+// findRecentActivityZonePage serves SortRecentActivity: the GREATEST(start_date,
+// unread.created_at) DESC NULLS LAST query with a keyset cursor on (activity_ts,
+// authority_code, planit_name). userID scopes the joined unread notifications.
+func (s *PostgresStore) findRecentActivityZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
+	query, args := recentActivityZoneQuery(userID, latitude, longitude, radiusMetres, limit, c)
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
+	}
+	collected, err := pgx.CollectRows(rows, scanActivityPageRow)
+	if err != nil {
+		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
+	}
+	apps := make([]PlanningApplication, len(collected))
+	for i := range collected {
+		apps[i] = collected[i].app
+	}
+	next := ""
+	if limit > 0 && len(collected) == limit {
+		next, err = encodePageCursor(activityCursorOf(collected[len(collected)-1]))
+		if err != nil {
+			return nil, "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
+		}
+	}
+	return apps, next, nil
+}
+
+// recentActivityZoneQuery selects the first-page, non-null-keyset, or
+// NULL-tail-keyset query and assembles its positional args. The base args ($1..$5)
+// are longitude, latitude, radius, limit, userID; the keyset args extend them.
+func recentActivityZoneQuery(userID string, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) (string, []any) {
+	base := []any{longitude, latitude, radiusMetres, limit, userID}
+	switch {
+	case c == nil:
+		return recentActivityFirstQuery, base
+	case c.TS == nil:
+		// Cursor sits in the NULL-activity tail: keyset on the tiebreak only.
+		return recentActivityKeysetNullQuery, append(base, c.AC, c.N)
+	default:
+		return recentActivityKeysetQuery, append(base, *c.TS, c.AC, c.N)
+	}
+}
+
+// activityCursorOf builds the next-page keyset cursor from the last row of a full
+// recent-activity page: its activity timestamp (nil for a NULL-activity tail row),
+// authority_code, and planit_name. The timestamp is formatted as RFC3339Nano in
+// UTC so the next predicate compares against an unambiguous ::timestamptz at the
+// same instant the database produced.
+func activityCursorOf(last activityPageRow) pageCursor {
+	c := pageCursor{M: SortRecentActivity, AC: last.ac, N: last.app.Name}
+	if last.activity != nil {
+		ts := last.activity.UTC().Format(time.RFC3339Nano)
+		c.TS = &ts
 	}
 	return c
 }

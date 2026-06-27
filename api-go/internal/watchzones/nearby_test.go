@@ -51,6 +51,7 @@ type fakeAppFinder struct {
 	lastSort     applications.Sort
 	lastLimit    int
 	lastCursor   string
+	lastUserID   string
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -71,8 +72,9 @@ func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit
 	return apps, f.next, nil
 }
 
-func (f *fakeAppFinder) FindInZonePage(_ context.Context, _, _, _ float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+func (f *fakeAppFinder) FindInZonePage(_ context.Context, userID string, _, _, _ float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
 	f.inZoneCalled = true
+	f.lastUserID = userID
 	f.lastSort = sort
 	f.lastLimit = limit
 	f.lastCursor = cursor
@@ -840,6 +842,7 @@ func TestApplications_SortRoutesToSortAwarePath(t *testing.T) {
 		{"?sort=newest", applications.SortNewest},
 		{"?sort=oldest", applications.SortOldest},
 		{"?sort=status", applications.SortStatus},
+		{"?sort=recent-activity", applications.SortRecentActivity},
 	}
 	for _, tc := range tests {
 		t.Run(tc.query, func(t *testing.T) {
@@ -864,6 +867,45 @@ func TestApplications_SortRoutesToSortAwarePath(t *testing.T) {
 				t.Errorf("sort-aware default limit: got %d, want 150", apps.lastLimit)
 			}
 		})
+	}
+}
+
+// TestApplications_RecentActivityThreadsUserID proves a ?sort=recent-activity
+// request is accepted (200), routes to the sort-aware finder, and threads the
+// authenticated subject through to the store — recent-activity joins the caller's
+// own notifications, so the wrong userID would surface another user's unread data.
+func TestApplications_RecentActivityThreadsUserID(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=recent-activity", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if !apps.inZoneCalled {
+		t.Fatal("recent-activity must use the sort-aware FindInZonePage path")
+	}
+	if apps.lastSort != applications.SortRecentActivity {
+		t.Errorf("sort: got %q, want recent-activity", apps.lastSort)
+	}
+	if apps.lastUserID != testUser {
+		t.Errorf("userID threaded to store: got %q, want %q", apps.lastUserID, testUser)
+	}
+}
+
+// TestApplications_RecentActivityCursorMismatchIs400 proves a recent-activity
+// cursor replayed under another sort (store reports ErrCursorSortMismatch)
+// surfaces as 400, never a mis-ordered page.
+func TestApplications_RecentActivityCursorMismatchIs400(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{inZoneErr: applications.ErrCursorSortMismatch}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("recent-activity-cursor"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&cursor="+cursor, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
 	}
 }
 
@@ -898,12 +940,12 @@ func TestApplications_SortAwareLimitParsing(t *testing.T) {
 	}
 }
 
-// TestApplications_UnknownSortIs400 proves any sort outside this slice's set —
-// including the valid-future value recent-activity — is rejected with 400 before
-// any spatial query runs.
+// TestApplications_UnknownSortIs400 proves any sort outside the supported set is
+// rejected with 400 before any spatial query runs. recent-activity is now
+// supported (slice 3), so it is not in this set.
 func TestApplications_UnknownSortIs400(t *testing.T) {
 	t.Parallel()
-	for _, sortVal := range []string{"recent-activity", "nonsense", "DISTANCE", "Newest"} {
+	for _, sortVal := range []string{"nonsense", "DISTANCE", "Newest", "recentactivity"} {
 		t.Run(sortVal, func(t *testing.T) {
 			t.Parallel()
 			apps := &fakeAppFinder{}
