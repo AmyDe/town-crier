@@ -139,3 +139,38 @@ extension WatchZone {
     authorityId: 456
   )
 }
+
+extension MapCluster {
+  /// A multi-member amber bubble cell (no carried member; a tap zooms in).
+  static func bubble(
+    count: Int = 3,
+    latitude: Double = 51.5,
+    longitude: Double = -0.12
+  ) -> MapCluster {
+    MapCluster(
+      coordinate: try! Coordinate(latitude: latitude, longitude: longitude),
+      count: count,
+      statusCounts: [.permitted: count],
+      member: nil)
+  }
+
+  /// A single-member status-pin cell carrying the member's identity (a tap
+  /// point-reads the full application).
+  static func single(
+    member: PlanningApplicationId,
+    status: ApplicationStatus = .permitted,
+    latitude: Double = 51.5,
+    longitude: Double = -0.12
+  ) -> MapCluster {
+    MapCluster(
+      coordinate: try! Coordinate(latitude: latitude, longitude: longitude),
+      count: 1,
+      statusCounts: [status: 1],
+      member: member)
+  }
+}
+
+extension MapViewport {
+  static let test = MapViewport(west: -0.2, south: 51.4, east: 0.0, north: 51.6)
+  static let test2 = MapViewport(west: -0.3, south: 51.3, east: 0.1, north: 51.7)
+}

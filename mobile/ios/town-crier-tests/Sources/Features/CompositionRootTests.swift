@@ -144,7 +144,7 @@ struct CompositionRootTests {
     )
 
     let vm = coordinator.makeMapViewModel()
-    #expect(vm.annotations.isEmpty)
+    #expect(vm.clusters.isEmpty)
   }
 
   @Test func coordinatorCreatesApplicationListViewModelWithPlaceholderZone() async {

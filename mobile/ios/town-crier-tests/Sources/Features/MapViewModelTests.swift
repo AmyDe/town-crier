@@ -8,26 +8,36 @@ import TownCrierDomain
 @MainActor
 struct MapViewModelTests {
   private func makeSUT(
-    applications: [PlanningApplication] = [],
+    clusters: [MapCluster] = [],
     watchZones: [WatchZone] = [.cambridge]
   ) -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository) {
     let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsResult = .success(applications)
+    spy.fetchClustersResult = .success(clusters)
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success(watchZones)
     let vm = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     return (vm, spy, watchZoneSpy)
   }
 
-  // MARK: - Loading
+  // MARK: - Loading clusters
 
-  @Test func loadApplications_populatesAnnotations() async {
-    let apps = [PlanningApplication.pendingReview, .permitted, .rejected, .withdrawn]
-    let (sut, _, _) = makeSUT(applications: apps)
+  @Test func loadApplications_loadsClustersForSelectedZone() async {
+    let (sut, _, _) = makeSUT(clusters: [.bubble(count: 50), .single(member: .init(authority: "1", name: "A"))])
 
     await sut.loadApplications()
 
-    #expect(sut.annotations.count == 4)
+    #expect(sut.clusters.count == 2)
+  }
+
+  /// The headline of GH#698: the map path no longer eager-drains every page —
+  /// it fetches clusters for the viewport instead.
+  @Test func loadApplications_doesNotDrainPages() async {
+    let (sut, spy, _) = makeSUT(clusters: [.bubble(count: 10)])
+
+    await sut.loadApplications()
+
+    #expect(spy.fetchApplicationsPageCalls.isEmpty)
+    #expect(spy.fetchClustersCalls.count == 1)
   }
 
   @Test func loadApplications_setsIsLoadingDuringFetch() async {
@@ -40,51 +50,39 @@ struct MapViewModelTests {
 
   @Test func loadApplications_setsErrorOnFailure() async {
     let (sut, spy, _) = makeSUT()
-    // drainAllPages calls fetchApplicationsPage; set the paged error path.
-    spy.fetchApplicationsPageError = DomainError.networkUnavailable
+    spy.fetchClustersResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
 
     #expect(sut.error == .networkUnavailable)
-    #expect(sut.annotations.isEmpty)
+    #expect(sut.clusters.isEmpty)
   }
 
-  // MARK: - Annotations
+  // MARK: - Viewport refetch
 
-  @Test func annotations_haveCorrectStatus() async {
-    let apps: [PlanningApplication] = [.pendingReview, .permitted, .rejected, .withdrawn]
-    let (sut, _, _) = makeSUT(applications: apps)
-
+  @Test func loadClusters_refetchesForTheGivenViewportAndZoom() async {
+    let (sut, spy, _) = makeSUT(clusters: [.bubble(count: 5)])
     await sut.loadApplications()
 
-    let pending = sut.annotations.first { $0.applicationId == PlanningApplication.pendingReview.id }
-    let permitted = sut.annotations.first { $0.applicationId == PlanningApplication.permitted.id }
-    let rejected = sut.annotations.first { $0.applicationId == PlanningApplication.rejected.id }
-    let withdrawn = sut.annotations.first { $0.applicationId == PlanningApplication.withdrawn.id }
+    await sut.loadClusters(viewport: .test2, zoom: 17)
 
-    #expect(pending?.status == .undecided)
-    #expect(permitted?.status == .permitted)
-    #expect(rejected?.status == .rejected)
-    #expect(withdrawn?.status == .withdrawn)
+    let last = spy.fetchClustersCalls.last
+    #expect(last?.viewport == .test2)
+    #expect(last?.zoom == 17)
   }
 
-  @Test func annotations_onlyIncludeApplicationsWithLocations() async {
-    let noLocation = PlanningApplication(
-      id: PlanningApplicationId(authority: "CAM", name: "APP-NO-LOC"),
-      reference: ApplicationReference("2026/0300"),
-      authority: .cambridge,
-      status: .undecided,
-      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
-      description: "No location",
-      address: "Unknown",
-      location: nil
-    )
-    let (sut, _, _) = makeSUT(applications: [.pendingReview, noLocation])
-
+  @Test func loadClusters_keepsStaleClustersOnRefetchFailure() async {
+    let (sut, spy, _) = makeSUT(clusters: [.bubble(count: 5)])
     await sut.loadApplications()
+    #expect(sut.clusters.count == 1)
 
-    #expect(sut.annotations.count == 1)
-    #expect(sut.annotations.first?.applicationId == PlanningApplication.pendingReview.id)
+    spy.fetchClustersResult = .failure(DomainError.networkUnavailable)
+    await sut.loadClusters(viewport: .test2, zoom: 17)
+
+    // A transient pan/zoom failure leaves the last good clusters in place and
+    // does not nuke the map with a screen-level error.
+    #expect(sut.clusters.count == 1)
+    #expect(sut.error == nil)
   }
 
   // MARK: - Watch zone
@@ -111,7 +109,6 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.error == .networkUnavailable)
-    // Keeps London defaults when zone fetch fails
     #expect(sut.centreLat == 51.5074)
     #expect(sut.centreLon == -0.1278)
     #expect(sut.radiusMetres == 2000)
@@ -125,24 +122,47 @@ struct MapViewModelTests {
     #expect(watchZoneSpy.loadAllCallCount == 1)
   }
 
-  // MARK: - Selection
+  // MARK: - Single-member tap selection
 
-  @Test func selectAnnotation_setsSelectedApplication() async {
-    let apps = [PlanningApplication.pendingReview]
-    let (sut, _, _) = makeSUT(applications: apps)
-
+  @Test func selectCluster_singleMember_pointReadsAndSelectsTheApplication() async {
+    let (sut, spy, _) = makeSUT()
+    spy.fetchApplicationResult = .success(.pendingReview)
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplication.pendingReview.id)
+
+    await sut.selectCluster(.single(member: PlanningApplication.pendingReview.id))
 
     #expect(sut.selectedApplication?.id == PlanningApplication.pendingReview.id)
+    // Exactly one point read, keyed by the cluster's member id — no held set,
+    // no O(n) scan, no full-zone re-drain.
+    #expect(spy.fetchApplicationCalls == [PlanningApplication.pendingReview.id])
   }
 
-  @Test func selectAnnotation_nilClearsSelection() async {
-    let apps = [PlanningApplication.pendingReview]
-    let (sut, _, _) = makeSUT(applications: apps)
-
+  @Test func selectCluster_multiMember_doesNotFetchOrSelect() async {
+    let (sut, spy, _) = makeSUT()
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplication.pendingReview.id)
+
+    await sut.selectCluster(.bubble(count: 42))
+
+    #expect(sut.selectedApplication == nil)
+    #expect(spy.fetchApplicationCalls.isEmpty)
+  }
+
+  @Test func selectCluster_singleMember_leavesSelectionNil_whenPointReadFails() async {
+    let (sut, spy, _) = makeSUT()
+    spy.fetchApplicationResult = .failure(DomainError.networkUnavailable)
+    await sut.loadApplications()
+
+    await sut.selectCluster(.single(member: PlanningApplication.pendingReview.id))
+
+    #expect(sut.selectedApplication == nil)
+  }
+
+  @Test func clearSelection_clearsSelectedApplication() async {
+    let (sut, spy, _) = makeSUT()
+    spy.fetchApplicationResult = .success(.pendingReview)
+    await sut.loadApplications()
+    await sut.selectCluster(.single(member: PlanningApplication.pendingReview.id))
+
     sut.clearSelection()
 
     #expect(sut.selectedApplication == nil)
@@ -150,16 +170,16 @@ struct MapViewModelTests {
 
   // MARK: - Empty State
 
-  @Test func isEmpty_trueWhenNoAnnotationsAfterLoad() async {
-    let (sut, _, _) = makeSUT(applications: [])
+  @Test func isEmpty_trueWhenNoClustersAfterLoad() async {
+    let (sut, _, _) = makeSUT(clusters: [])
 
     await sut.loadApplications()
 
     #expect(sut.isEmpty)
   }
 
-  @Test func isEmpty_falseWhenAnnotationsExist() async {
-    let (sut, _, _) = makeSUT(applications: [.pendingReview])
+  @Test func isEmpty_falseWhenClustersExist() async {
+    let (sut, _, _) = makeSUT(clusters: [.bubble(count: 3)])
 
     await sut.loadApplications()
 
@@ -174,8 +194,7 @@ struct MapViewModelTests {
 
   @Test func isEmpty_falseWhenErrorOccurred() async {
     let (sut, spy, _) = makeSUT()
-    // drainAllPages calls fetchApplicationsPage; set the paged error path.
-    spy.fetchApplicationsPageError = DomainError.networkUnavailable
+    spy.fetchClustersResult = .failure(DomainError.networkUnavailable)
 
     await sut.loadApplications()
 
@@ -184,7 +203,7 @@ struct MapViewModelTests {
 
   // MARK: - Zone-based loading
 
-  @Test func loadApplications_fetchesBySelectedZone() async throws {
+  @Test func loadApplications_fetchesClustersBySelectedZone() async throws {
     let zone = try WatchZone(
       id: WatchZoneId("zone-1"),
       name: "Camden",
@@ -193,16 +212,16 @@ struct MapViewModelTests {
       authorityId: 42
     )
     let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsByZone = ["zone-1": [.pendingReview]]
+    spy.fetchClustersResult = .success([.bubble(count: 9)])
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success([zone])
 
     let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(spy.fetchApplicationsPageCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls[0].zone.id == zone.id)
-    #expect(sut.annotations.count == 1)
+    #expect(spy.fetchClustersCalls.count == 1)
+    #expect(spy.fetchClustersCalls[0].zone.id == zone.id)
+    #expect(sut.clusters.count == 1)
   }
 
   @Test func loadApplications_returnsEmpty_whenNoZones() async {
@@ -213,8 +232,8 @@ struct MapViewModelTests {
     let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(spy.fetchApplicationsPageCalls.isEmpty)
-    #expect(sut.annotations.isEmpty)
+    #expect(spy.fetchClustersCalls.isEmpty)
+    #expect(sut.clusters.isEmpty)
     #expect(sut.isEmpty)
   }
 
@@ -222,11 +241,11 @@ struct MapViewModelTests {
 
   private func makeSUTWithZones(
     zones: [WatchZone] = [.cambridge, .london],
-    applications: [PlanningApplication] = [.pendingReview],
+    clusters: [MapCluster] = [.bubble(count: 3)],
     persistedZoneId: String? = nil
   ) throws -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository, UserDefaults) {
     let appSpy = SpyPlanningApplicationRepository()
-    appSpy.fetchApplicationsResult = .success(applications)
+    appSpy.fetchClustersResult = .success(clusters)
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success(zones)
     let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
@@ -258,7 +277,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchClustersCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func loadApplications_restoresPersistedZoneSelection() async throws {
@@ -267,7 +286,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.london.id)
+    #expect(appSpy.fetchClustersCalls.first?.zone.id == WatchZone.london.id)
     #expect(sut.centreLat == WatchZone.london.centre.latitude)
     #expect(sut.centreLon == WatchZone.london.centre.longitude)
   }
@@ -278,19 +297,19 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchClustersCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
-  @Test func selectZone_fetchesApplicationsAndUpdatesCentre() async throws {
+  @Test func selectZone_fetchesClustersAndUpdatesCentre() async throws {
     let (sut, appSpy, _, _) = try makeSUTWithZones()
     await sut.loadApplications()
-    let initialCallCount = appSpy.fetchApplicationsPageCalls.count
+    let initialCallCount = appSpy.fetchClustersCalls.count
 
     await sut.selectZone(.london)
 
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsPageCalls.count == initialCallCount + 1)
-    #expect(appSpy.fetchApplicationsPageCalls.last?.zone.id == WatchZone.london.id)
+    #expect(appSpy.fetchClustersCalls.count == initialCallCount + 1)
+    #expect(appSpy.fetchClustersCalls.last?.zone.id == WatchZone.london.id)
     #expect(sut.centreLat == WatchZone.london.centre.latitude)
     #expect(sut.centreLon == WatchZone.london.centre.longitude)
     #expect(sut.radiusMetres == WatchZone.london.radiusMetres)
@@ -317,73 +336,5 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(!sut.showZonePicker)
-  }
-
-  // MARK: - Eager page drain (GH#682 slice 5)
-
-  @Test func loadApplications_drainsAllPages_followingCursorToExhaustion() async {
-    let (sut, spy, _) = makeSUT()
-    spy.pagedResponses = [
-      ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1"),
-      ApplicationPage(applications: [.permitted], nextCursor: "cursor-2"),
-      ApplicationPage(applications: [.rejected], nextCursor: nil),
-    ]
-
-    await sut.loadApplications()
-
-    // Every page's applications are merged into the published annotations.
-    #expect(sut.annotations.count == 3)
-    // The cursor threads through: first page sends none, then each prior page's
-    // next-cursor drives the following request.
-    #expect(spy.fetchApplicationsPageCalls.count == 3)
-    #expect(spy.fetchApplicationsPageCalls[0].cursor == nil)
-    #expect(spy.fetchApplicationsPageCalls[1].cursor == "cursor-1")
-    #expect(spy.fetchApplicationsPageCalls[2].cursor == "cursor-2")
-    // The map drains the cheapest (distance) plan, unfiltered.
-    #expect(spy.fetchApplicationsPageCalls.allSatisfy { $0.sort == .distance })
-    #expect(spy.fetchApplicationsPageCalls.allSatisfy { $0.filter == .all })
-  }
-
-  @Test func loadApplications_stopsDraining_onLastPageWithNoCursor() async {
-    let (sut, spy, _) = makeSUT()
-    spy.pagedResponses = [
-      ApplicationPage(applications: [.pendingReview, .permitted], nextCursor: nil)
-    ]
-
-    await sut.loadApplications()
-
-    #expect(spy.fetchApplicationsPageCalls.count == 1)
-    #expect(sut.annotations.count == 2)
-  }
-
-  @Test func loadApplications_discardsPartialResults_whenAPageFails() async {
-    let (sut, spy, _) = makeSUT()
-    // Page 1 succeeds, page 2 throws: the drain aborts and the half-fetched set
-    // is discarded rather than published as a partial map.
-    spy.pagedResults = [
-      .success(ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1")),
-      .failure(DomainError.networkUnavailable),
-    ]
-
-    await sut.loadApplications()
-
-    #expect(sut.error == .networkUnavailable)
-    #expect(sut.annotations.isEmpty)
-    #expect(spy.fetchApplicationsPageCalls.count == 2)
-  }
-
-  @Test func selectZone_drainsAllPages() async throws {
-    let (sut, spy, _, _) = try makeSUTWithZones()
-    await sut.loadApplications()
-    spy.pagedResponses = [
-      ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1"),
-      ApplicationPage(applications: [.permitted], nextCursor: nil),
-    ]
-
-    await sut.selectZone(.london)
-
-    let londonCalls = spy.fetchApplicationsPageCalls.filter { $0.zone.id == WatchZone.london.id }
-    #expect(londonCalls.count == 2)
-    #expect(sut.annotations.count == 2)
   }
 }

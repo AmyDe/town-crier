@@ -5,65 +5,59 @@ import TownCrierDomain
 @testable import TownCrierPresentation
 
 /// Status filtering on MapViewModel. Free for all subscription tiers as of
-/// tc-acf0 — `canFilter` and the Saved filter on Map were removed when the
-/// dedicated Saved tab landed.
+/// tc-acf0. With server-side clustering (GH#698) a chip change refetches the
+/// clusters for the current viewport with `status=` rather than filtering an
+/// in-memory set client-side.
 @Suite("MapViewModel — Status Filtering")
 @MainActor
 struct MapViewModelStatusFilterTests {
-  private static let allApps: [PlanningApplication] = [
-    .pendingReview, .permitted, .rejected, .withdrawn,
-  ]
-
   private func makeSUT(
-    applications: [PlanningApplication] = [],
+    clusters: [MapCluster] = [.bubble(count: 5)],
     watchZones: [WatchZone] = [.cambridge]
   ) -> (MapViewModel, SpyPlanningApplicationRepository, SpyWatchZoneRepository) {
     let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsResult = .success(applications)
+    spy.fetchClustersResult = .success(clusters)
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success(watchZones)
-    let vm = MapViewModel(
-      repository: spy,
-      watchZoneRepository: watchZoneSpy
-    )
+    let vm = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     return (vm, spy, watchZoneSpy)
   }
 
-  // MARK: - filteredAnnotations
-
-  @Test func filteredAnnotations_filtersByPermitted() async {
-    let (sut, _, _) = makeSUT(applications: Self.allApps)
+  @Test func applyStatusFilter_refetchesClustersWithStatus() async {
+    let (sut, spy, _) = makeSUT()
     await sut.loadApplications()
 
-    sut.selectedStatusFilter = .permitted
+    await sut.applyStatusFilter(.permitted)
 
-    #expect(sut.filteredAnnotations.count == 1)
-    #expect(sut.filteredAnnotations.first?.status == .permitted)
+    #expect(sut.selectedStatusFilter == .permitted)
+    #expect(spy.fetchClustersCalls.last?.filter == .status(.permitted))
   }
 
-  @Test func filteredAnnotations_nilFilter_showsAll() async {
-    let (sut, _, _) = makeSUT(applications: Self.allApps)
+  @Test func applyStatusFilter_nil_refetchesWithoutStatus() async {
+    let (sut, spy, _) = makeSUT()
     await sut.loadApplications()
+    await sut.applyStatusFilter(.permitted)
 
-    sut.selectedStatusFilter = nil
+    await sut.applyStatusFilter(nil)
 
-    #expect(sut.filteredAnnotations.count == 4)
+    #expect(sut.selectedStatusFilter == nil)
+    #expect(spy.fetchClustersCalls.last?.filter == .all)
   }
 
-  @Test func filteredAnnotations_noMatches_returnsEmpty() async {
-    let (sut, _, _) = makeSUT(applications: [.pendingReview])
+  @Test func applyStatusFilter_refetchesForTheCurrentViewport() async {
+    let (sut, spy, _) = makeSUT()
     await sut.loadApplications()
+    await sut.loadClusters(viewport: .test2, zoom: 16)
 
-    sut.selectedStatusFilter = .permitted
+    await sut.applyStatusFilter(.rejected)
 
-    #expect(sut.filteredAnnotations.isEmpty)
+    #expect(spy.fetchClustersCalls.last?.viewport == .test2)
+    #expect(spy.fetchClustersCalls.last?.zoom == 16)
   }
-
-  // MARK: - Zone change resets filter
 
   @Test func selectZone_resetsStatusFilter() async throws {
     let appSpy = SpyPlanningApplicationRepository()
-    appSpy.fetchApplicationsResult = .success(Self.allApps)
+    appSpy.fetchClustersResult = .success([.bubble(count: 2)])
     let zoneSpy = SpyWatchZoneRepository()
     zoneSpy.loadAllResult = .success([.cambridge, .london])
     let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
@@ -74,7 +68,7 @@ struct MapViewModelStatusFilterTests {
       zoneSelectionKey: "test.zone"
     )
     await sut.loadApplications()
-    sut.selectedStatusFilter = .permitted
+    await sut.applyStatusFilter(.permitted)
 
     await sut.selectZone(.london)
 
