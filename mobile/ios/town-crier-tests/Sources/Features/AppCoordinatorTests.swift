@@ -210,8 +210,8 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(appSpy.fetchApplicationsCalls.count == 1)
-    #expect(appSpy.fetchApplicationsCalls.first?.id.value == "zone-001")
+    #expect(appSpy.fetchApplicationsPageCalls.count == 1)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id.value == "zone-001")
     #expect(vm.annotations.count == 1)
   }
 

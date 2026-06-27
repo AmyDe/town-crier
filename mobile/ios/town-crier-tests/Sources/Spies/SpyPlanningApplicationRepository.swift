@@ -67,6 +67,12 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
   /// from `fetchApplicationsByZone`/`fetchApplicationsResult` with no cursor.
   var pagedResponses: [ApplicationPage] = []
 
+  /// Per-call results for `fetchApplicationsPage`, dequeued one at a time. When
+  /// non-empty this takes precedence over `pagedResponses` and lets a test
+  /// sequence a mid-stream failure — e.g. page 1 succeeds, page 2 throws — to
+  /// prove the map's eager drain discards partial results (GH#682 slice 5).
+  var pagedResults: [Result<ApplicationPage, Error>] = []
+
   /// When set, every paged fetch throws this error after recording the call —
   /// drives the "fetch error surfaces to the ViewModel" path.
   var fetchApplicationsPageError: Error?
@@ -81,6 +87,9 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
     fetchApplicationsPageCalls.append(
       RecordedPageRequest(zone: zone, sort: sort, filter: filter, cursor: cursor, limit: limit))
     await waitForGateIfNeeded()
+    if !pagedResults.isEmpty {
+      return try pagedResults.removeFirst().get()
+    }
     if let fetchApplicationsPageError {
       throw fetchApplicationsPageError
     }
@@ -90,7 +99,8 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
     if !pagedResponses.isEmpty {
       return pagedResponses.removeFirst()
     }
-    let apps = fetchApplicationsByZone[zone.id.value] ?? ((try? fetchApplicationsResult.get()) ?? [])
+    let apps =
+      fetchApplicationsByZone[zone.id.value] ?? ((try? fetchApplicationsResult.get()) ?? [])
     return ApplicationPage(applications: apps, nextCursor: nil)
   }
 

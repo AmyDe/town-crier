@@ -36,6 +36,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
 
+  /// Page size for the eager map drain. Matches the server's default page size
+  /// and the list's `pageSize`; the loop simply pulls as many of these as the
+  /// zone holds.
+  private static let pageSize = 150
+
   public var canSave: Bool {
     savedApplicationRepository != nil
   }
@@ -107,17 +112,47 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
       centreLon = zone.centre.longitude
       radiusMetres = zone.radiusMetres
 
-      let fetched = try await repository.fetchApplications(for: zone)
+      let fetched = try await drainAllPages(for: zone)
       applications = fetched
-      annotations = fetched.compactMap { app in
-        guard let location = app.location else { return nil }
-        return MapAnnotationItem(application: app, coordinate: location)
-      }
+      annotations = makeAnnotations(from: fetched)
     } catch {
       handleError(error)
     }
     isLoading = false
     hasLoaded = true
+  }
+
+  /// Eager-drains every page of a zone's applications for the map (GH#682
+  /// slice 5). The list lazily pages on scroll, but a map needs every pin to be
+  /// spatially meaningful, so we follow `X-Next-Cursor` to exhaustion here.
+  /// Sort is irrelevant for pins, so we take the cheapest server plan
+  /// (`distance`, the param-less default) with no filter. The accumulated set is
+  /// returned whole — the caller publishes `annotations` atomically only after a
+  /// clean drain, so a mid-stream failure discards the partial pages rather than
+  /// flashing a half-populated map. Clustering (``ClusteredMapView``) keeps the
+  /// rendered marker count bounded regardless of how many pins this returns.
+  private func drainAllPages(for zone: WatchZone) async throws -> [PlanningApplication] {
+    var allApplications: [PlanningApplication] = []
+    var cursor: String?
+    repeat {
+      let page = try await repository.fetchApplicationsPage(
+        for: zone,
+        sort: .distance,
+        filter: .all,
+        cursor: cursor,
+        limit: Self.pageSize
+      )
+      allApplications.append(contentsOf: page.applications)
+      cursor = page.nextCursor
+    } while cursor != nil
+    return allApplications
+  }
+
+  private func makeAnnotations(from applications: [PlanningApplication]) -> [MapAnnotationItem] {
+    applications.compactMap { app in
+      guard let location = app.location else { return nil }
+      return MapAnnotationItem(application: app, coordinate: location)
+    }
   }
 
   /// Loads the set of saved application UIDs so `isSelectedApplicationSaved`
@@ -142,12 +177,9 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     isLoading = true
     error = nil
     do {
-      let fetched = try await repository.fetchApplications(for: zone)
+      let fetched = try await drainAllPages(for: zone)
       applications = fetched
-      annotations = fetched.compactMap { app in
-        guard let location = app.location else { return nil }
-        return MapAnnotationItem(application: app, coordinate: location)
-      }
+      annotations = makeAnnotations(from: fetched)
     } catch {
       handleError(error)
     }

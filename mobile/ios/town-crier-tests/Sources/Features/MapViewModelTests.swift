@@ -40,7 +40,8 @@ struct MapViewModelTests {
 
   @Test func loadApplications_setsErrorOnFailure() async {
     let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+    // drainAllPages calls fetchApplicationsPage; set the paged error path.
+    spy.fetchApplicationsPageError = DomainError.networkUnavailable
 
     await sut.loadApplications()
 
@@ -173,7 +174,8 @@ struct MapViewModelTests {
 
   @Test func isEmpty_falseWhenErrorOccurred() async {
     let (sut, spy, _) = makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+    // drainAllPages calls fetchApplicationsPage; set the paged error path.
+    spy.fetchApplicationsPageError = DomainError.networkUnavailable
 
     await sut.loadApplications()
 
@@ -198,8 +200,8 @@ struct MapViewModelTests {
     let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsCalls[0].id == zone.id)
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
+    #expect(spy.fetchApplicationsPageCalls[0].zone.id == zone.id)
     #expect(sut.annotations.count == 1)
   }
 
@@ -211,7 +213,7 @@ struct MapViewModelTests {
     let sut = MapViewModel(repository: spy, watchZoneRepository: watchZoneSpy)
     await sut.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.isEmpty)
+    #expect(spy.fetchApplicationsPageCalls.isEmpty)
     #expect(sut.annotations.isEmpty)
     #expect(sut.isEmpty)
   }
@@ -256,7 +258,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func loadApplications_restoresPersistedZoneSelection() async throws {
@@ -265,7 +267,7 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.london.id)
     #expect(sut.centreLat == WatchZone.london.centre.latitude)
     #expect(sut.centreLon == WatchZone.london.centre.longitude)
   }
@@ -276,19 +278,19 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func selectZone_fetchesApplicationsAndUpdatesCentre() async throws {
     let (sut, appSpy, _, _) = try makeSUTWithZones()
     await sut.loadApplications()
-    let initialCallCount = appSpy.fetchApplicationsCalls.count
+    let initialCallCount = appSpy.fetchApplicationsPageCalls.count
 
     await sut.selectZone(.london)
 
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsCalls.count == initialCallCount + 1)
-    #expect(appSpy.fetchApplicationsCalls.last?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsPageCalls.count == initialCallCount + 1)
+    #expect(appSpy.fetchApplicationsPageCalls.last?.zone.id == WatchZone.london.id)
     #expect(sut.centreLat == WatchZone.london.centre.latitude)
     #expect(sut.centreLon == WatchZone.london.centre.longitude)
     #expect(sut.radiusMetres == WatchZone.london.radiusMetres)
@@ -315,5 +317,73 @@ struct MapViewModelTests {
     await sut.loadApplications()
 
     #expect(!sut.showZonePicker)
+  }
+
+  // MARK: - Eager page drain (GH#682 slice 5)
+
+  @Test func loadApplications_drainsAllPages_followingCursorToExhaustion() async {
+    let (sut, spy, _) = makeSUT()
+    spy.pagedResponses = [
+      ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1"),
+      ApplicationPage(applications: [.permitted], nextCursor: "cursor-2"),
+      ApplicationPage(applications: [.rejected], nextCursor: nil),
+    ]
+
+    await sut.loadApplications()
+
+    // Every page's applications are merged into the published annotations.
+    #expect(sut.annotations.count == 3)
+    // The cursor threads through: first page sends none, then each prior page's
+    // next-cursor drives the following request.
+    #expect(spy.fetchApplicationsPageCalls.count == 3)
+    #expect(spy.fetchApplicationsPageCalls[0].cursor == nil)
+    #expect(spy.fetchApplicationsPageCalls[1].cursor == "cursor-1")
+    #expect(spy.fetchApplicationsPageCalls[2].cursor == "cursor-2")
+    // The map drains the cheapest (distance) plan, unfiltered.
+    #expect(spy.fetchApplicationsPageCalls.allSatisfy { $0.sort == .distance })
+    #expect(spy.fetchApplicationsPageCalls.allSatisfy { $0.filter == .all })
+  }
+
+  @Test func loadApplications_stopsDraining_onLastPageWithNoCursor() async {
+    let (sut, spy, _) = makeSUT()
+    spy.pagedResponses = [
+      ApplicationPage(applications: [.pendingReview, .permitted], nextCursor: nil)
+    ]
+
+    await sut.loadApplications()
+
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
+    #expect(sut.annotations.count == 2)
+  }
+
+  @Test func loadApplications_discardsPartialResults_whenAPageFails() async {
+    let (sut, spy, _) = makeSUT()
+    // Page 1 succeeds, page 2 throws: the drain aborts and the half-fetched set
+    // is discarded rather than published as a partial map.
+    spy.pagedResults = [
+      .success(ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1")),
+      .failure(DomainError.networkUnavailable),
+    ]
+
+    await sut.loadApplications()
+
+    #expect(sut.error == .networkUnavailable)
+    #expect(sut.annotations.isEmpty)
+    #expect(spy.fetchApplicationsPageCalls.count == 2)
+  }
+
+  @Test func selectZone_drainsAllPages() async throws {
+    let (sut, spy, _, _) = try makeSUTWithZones()
+    await sut.loadApplications()
+    spy.pagedResponses = [
+      ApplicationPage(applications: [.pendingReview], nextCursor: "cursor-1"),
+      ApplicationPage(applications: [.permitted], nextCursor: nil),
+    ]
+
+    await sut.selectZone(.london)
+
+    let londonCalls = spy.fetchApplicationsPageCalls.filter { $0.zone.id == WatchZone.london.id }
+    #expect(londonCalls.count == 2)
+    #expect(sut.annotations.count == 2)
   }
 }
