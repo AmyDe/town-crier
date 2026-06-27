@@ -74,6 +74,15 @@ extension ApplicationListViewModel {
     await loadApplications()
   }
 
+  /// Reacts to a filter change from the chip group (status chip or Unread
+  /// toggle). The selected filter drives the server query now (GH#682 slice 4),
+  /// not a client-side post-filter, so a change reloads from page 1 with a fresh
+  /// cursor and re-pages under the new filter — the same mechanism as a sort
+  /// change. A no-op when the active filter has not actually changed.
+  public func handleFilterChanged() async {
+    // Implemented in the green step.
+  }
+
   /// Appends a server page, dropping any rows already loaded so a keyset overlap
   /// at a page boundary never duplicates a row. Captures the new cursor.
   private func appendPage(_ page: ApplicationPage) {
