@@ -7,13 +7,15 @@ import (
 
 // TestPageCursor_RoundTrip proves the sort-aware keyset cursor survives an
 // encode/decode round-trip for every shape: a distance keyset, a non-null
-// start_date keyset, a NULL start_date keyset (the tail of a NULLS LAST scan), and
+// start_date keyset, a NULL start_date keyset (the tail of a NULLS LAST scan),
 // each of the four status keyset NULL-tail positions (the mixed-direction keyset
-// carries an extra nullable app_state key).
+// carries an extra nullable app_state key), and the recent-activity keyset
+// (a nullable activity timestamp + tiebreak, with its NULL-activity tail).
 func TestPageCursor_RoundTrip(t *testing.T) {
 	t.Parallel()
 	sd := "2026-01-02"
 	as := "Permitted"
+	ts := "2026-06-15T12:30:00Z"
 	tests := []struct {
 		name string
 		in   pageCursor
@@ -26,6 +28,8 @@ func TestPageCursor_RoundTrip(t *testing.T) {
 		{"status date-null tail", pageCursor{M: SortStatus, AS: &as, SD: nil, AC: "100", N: "24/0006/FUL"}},
 		{"status state-null tail", pageCursor{M: SortStatus, AS: nil, SD: &sd, AC: "200", N: "24/0007/FUL"}},
 		{"status both-null tail", pageCursor{M: SortStatus, AS: nil, SD: nil, AC: "300", N: "24/0008/FUL"}},
+		{"recent-activity non-null", pageCursor{M: SortRecentActivity, TS: &ts, AC: "100", N: "24/0009/FUL"}},
+		{"recent-activity null tail", pageCursor{M: SortRecentActivity, TS: nil, AC: "400", N: "24/0010/FUL"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,7 +57,31 @@ func TestPageCursor_RoundTrip(t *testing.T) {
 			if got.SD != nil && *got.SD != *tc.in.SD {
 				t.Errorf("SD: got %q, want %q", *got.SD, *tc.in.SD)
 			}
+			if (got.TS == nil) != (tc.in.TS == nil) {
+				t.Fatalf("TS nil mismatch: got %v, want %v", got.TS, tc.in.TS)
+			}
+			if got.TS != nil && *got.TS != *tc.in.TS {
+				t.Errorf("TS: got %q, want %q", *got.TS, *tc.in.TS)
+			}
 		})
+	}
+}
+
+// TestSort_Supported pins the server-side sort set: the five UI sorts are
+// supported (distance, newest, oldest, status, recent-activity); anything else
+// is rejected so the handler returns 400 rather than running an arbitrary order.
+func TestSort_Supported(t *testing.T) {
+	t.Parallel()
+	supported := []Sort{SortDistance, SortNewest, SortOldest, SortStatus, SortRecentActivity}
+	for _, s := range supported {
+		if !s.Supported() {
+			t.Errorf("Sort(%q).Supported() = false, want true", s)
+		}
+	}
+	for _, s := range []Sort{"", "nonsense", "DISTANCE", "Newest", "recentactivity"} {
+		if s.Supported() {
+			t.Errorf("Sort(%q).Supported() = true, want false", s)
+		}
 	}
 }
 
