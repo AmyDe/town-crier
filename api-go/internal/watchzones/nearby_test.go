@@ -1037,6 +1037,89 @@ func TestApplications_ParamlessGoldenResponse(t *testing.T) {
 	}
 }
 
+// TestApplications_StatusFilterRoutesToSortAwarePath proves ?status= opts into the
+// sort-aware path (even without ?sort=, since a filter needs the filterable
+// finder), threads the exact app_state through, and defaults the page size to 150.
+// "All" means no status filter, so ?status=All alone (no sort) stays on the legacy
+// distance path.
+func TestApplications_StatusFilterRoutesToSortAwarePath(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"Undecided", "Permitted", "Conditions", "Rejected", "Withdrawn", "Appealed"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status="+status, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status=%q: got %d, want 200", status, rec.Code)
+			}
+			if !apps.inZoneCalled {
+				t.Fatalf("status=%q must use the sort-aware FindInZonePage path", status)
+			}
+			if apps.lastStatus != status {
+				t.Errorf("threaded status: got %q, want %q", apps.lastStatus, status)
+			}
+			if apps.lastSort != applications.SortDistance {
+				t.Errorf("status filter without ?sort= defaults to distance: got %q", apps.lastSort)
+			}
+			if apps.lastLimit != 150 {
+				t.Errorf("filtered default limit: got %d, want 150", apps.lastLimit)
+			}
+		})
+	}
+}
+
+// TestApplications_StatusAllIsNoFilter proves ?status=All means "no status
+// filter": with no sort it stays byte-identical on the legacy distance path, and
+// combined with a sort it routes to the sort-aware path with an empty status.
+func TestApplications_StatusAllIsNoFilter(t *testing.T) {
+	t.Parallel()
+	t.Run("All alone stays on the legacy path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=All", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=All: got %d, want 200", rec.Code)
+		}
+		if !apps.called || apps.inZoneCalled {
+			t.Errorf("status=All alone must use the legacy FindNearbyPage path: called=%v inZone=%v", apps.called, apps.inZoneCalled)
+		}
+	})
+	t.Run("All with a sort carries no status filter", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&status=All", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("sort=newest&status=All: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || apps.lastStatus != "" {
+			t.Errorf("status=All must thread an empty status filter: inZone=%v status=%q", apps.inZoneCalled, apps.lastStatus)
+		}
+	})
+}
+
+// TestApplications_UnknownStatusIs400 proves any ?status= outside the app_state
+// vocabulary (and absent "All") is rejected with 400 before any spatial query.
+func TestApplications_UnknownStatusIs400(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"nonsense", "permitted", "REJECTED", "Approved", "all"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status="+status, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status=%q: got %d, want 400", status, rec.Code)
+			}
+			if apps.called || apps.inZoneCalled {
+				t.Error("must not run any spatial query for an unrecognised status")
+			}
+		})
+	}
+}
+
 // manyApps builds n distinct nearby applications, for asserting the bounded page
 // caps the downstream unread UID set.
 func manyApps(n int) []applications.PlanningApplication {
