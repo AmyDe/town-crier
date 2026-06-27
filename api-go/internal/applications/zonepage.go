@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -58,6 +59,56 @@ func (s Sort) Supported() bool {
 	}
 }
 
+// The status filter vocabulary (epic #682 slice 4). These are the PlanIt
+// app_state chip values the clients filter on; ?status= exact-matches the raw
+// app_state column against one of these. "All" (or an absent ?status=) means no
+// status filter; any other value is rejected with 400 (see StatusSupported).
+// app_state is a nullable raw string, so the match is on the exact stored value.
+const (
+	StatusUndecided  = "Undecided"
+	StatusPermitted  = "Permitted"
+	StatusConditions = "Conditions"
+	StatusRejected   = "Rejected"
+	StatusWithdrawn  = "Withdrawn"
+	StatusAppealed   = "Appealed"
+)
+
+// StatusSupported reports whether status is one of the recognised app_state
+// filter values. It is the concrete (non-"All", non-empty) vocabulary only:
+// callers map "" / "All" to "no filter" before reaching this.
+func StatusSupported(status string) bool {
+	switch status {
+	case StatusUndecided, StatusPermitted, StatusConditions, StatusRejected, StatusWithdrawn, StatusAppealed:
+		return true
+	default:
+		return false
+	}
+}
+
+// InZoneQuery is the full request descriptor for FindInZonePage: where to look
+// (UserID, Latitude, Longitude, RadiusMetres), how to order (Sort), how to
+// filter (Status, Unread), and how to page (Limit, Cursor). It replaces a long
+// positional parameter list (epic #682 slice 4) so the call site reads as one
+// query object rather than ten arguments.
+//
+// Status is the exact app_state to match; "" means no status filter. Unread true
+// restricts to applications with an unread notification for UserID; false means
+// no unread filter. Status and Unread are mutually exclusive at the API boundary
+// (the handler rejects both together with 400) — the store does not assume so,
+// but the cursor embeds both, so a cursor minted under one filter cannot be
+// replayed under another (ErrCursorFilterMismatch).
+type InZoneQuery struct {
+	UserID       string
+	Latitude     float64
+	Longitude    float64
+	RadiusMetres float64
+	Sort         Sort
+	Status       string
+	Unread       bool
+	Limit        int
+	Cursor       string
+}
+
 var (
 	// ErrCursorInvalid signals a ?cursor= token that is not a well-formed keyset
 	// cursor (bad base64 or non-cursor payload). Consumers map it to HTTP 400.
@@ -67,6 +118,12 @@ var (
 	// was minted under, so replaying it under a different sort would yield a
 	// mis-ordered page; consumers map this to HTTP 400, never a silent reset.
 	ErrCursorSortMismatch = errors.New("cursor sort mode does not match request sort")
+	// ErrCursorFilterMismatch signals a cursor whose embedded filter (status
+	// value and/or unread flag) differs from the request's filter. A keyset cursor
+	// is only valid for the candidate set it was minted over; replaying it under a
+	// different filter would gap or overlap pages, so consumers map this to HTTP
+	// 400 — symmetric with ErrCursorSortMismatch, never a silent reset.
+	ErrCursorFilterMismatch = errors.New("cursor filter does not match request filter")
 	// ErrUnsupportedSort signals a sort value outside the set this slice
 	// implements. Consumers map it to HTTP 400.
 	ErrUnsupportedSort = errors.New("unsupported sort")
@@ -74,7 +131,9 @@ var (
 
 // pageCursor is the opaque, sort-aware keyset position handed back to clients.
 // It embeds the sort mode (M) so a stale cursor cannot silently produce a page
-// in the wrong order, plus exactly the keys that sort's ORDER BY ranks on:
+// in the wrong order, the active filter (F = status value, U = unread flag) so a
+// cursor minted over one candidate set cannot be replayed over another, plus
+// exactly the keys that sort's ORDER BY ranks on:
 //   - distance: D (the KNN distance) + N (planit_name).
 //   - newest/oldest: SD (start_date, nil for a NULL-start_date tail row) + AC
 //     (authority_code) + N (planit_name).
@@ -83,13 +142,18 @@ var (
 //   - recent-activity: TS (the activity timestamp, nil for a NULL-activity tail
 //     row) + AC (authority_code) + N (planit_name).
 //
-// It is base64url-encoded JSON. AS, SD and TS use a nil pointer (omitted field)
-// to mean a NULL key value, so the next page's predicate can pick the matching
-// NULLS-LAST tail branch. SD is a "2006-01-02" date string so the predicate
-// compares against an unambiguous ::date, not a timezone-laden timestamp; TS is
-// an RFC3339Nano timestamp string compared against a ::timestamptz.
+// It is base64url-encoded JSON. F and U are omitempty so an unfiltered cursor is
+// byte-identical to the pre-slice-4 cursors (they decode to F="" U=false, which
+// matches an unfiltered request — old cursors keep working). AS, SD and TS use a
+// nil pointer (omitted field) to mean a NULL key value, so the next page's
+// predicate can pick the matching NULLS-LAST tail branch. SD is a "2006-01-02"
+// date string so the predicate compares against an unambiguous ::date, not a
+// timezone-laden timestamp; TS is an RFC3339Nano timestamp string compared
+// against a ::timestamptz.
 type pageCursor struct {
 	M  Sort    `json:"m"`
+	F  string  `json:"f,omitempty"`
+	U  bool    `json:"u,omitempty"`
 	D  string  `json:"d,omitempty"`
 	AS *string `json:"as,omitempty"`
 	SD *string `json:"sd,omitempty"`
@@ -244,44 +308,61 @@ func scanDatePageRow(row pgx.CollectableRow) (datePageRow, error) {
 	return r, nil
 }
 
-// FindInZonePage returns one page of up to limit applications within radiusMetres
-// of (latitude, longitude), ordered by the requested sort, plus an opaque
-// sort-aware cursor for the next page (empty when exhausted). It generalises
-// FindNearbyPage (which stays the legacy default-distance path with its own
-// cursor) to the {distance, newest, oldest} sorts of epic #682 slice 1. Every
-// sort keeps the ST_DWithin spatial predicate and a total order whose keyset
-// predicate exactly matches its ORDER BY, so pages never overlap or gap. The
-// cursor embeds the sort mode: replaying it under a different sort returns
-// ErrCursorSortMismatch, and a malformed cursor returns ErrCursorInvalid, so the
-// caller can return 400 rather than a mis-ordered page. It is authority-agnostic.
+// FindInZonePage returns one page of up to q.Limit applications within
+// q.RadiusMetres of (q.Latitude, q.Longitude), ordered by q.Sort and filtered by
+// q.Status / q.Unread, plus an opaque sort-and-filter-aware cursor for the next
+// page (empty when exhausted). It generalises FindNearbyPage (which stays the
+// legacy default-distance path with its own cursor) to the {distance, newest,
+// oldest, status, recent-activity} sorts of epic #682 slices 1-3 and the status /
+// unread filters of slice 4. Every sort keeps the ST_DWithin spatial predicate
+// and a total order whose keyset predicate exactly matches its ORDER BY, so pages
+// never overlap or gap; the filters compose by restricting the candidate set
+// without touching the ordering. The cursor embeds the sort mode AND the active
+// filter: replaying it under a different sort returns ErrCursorSortMismatch,
+// under a different filter ErrCursorFilterMismatch, and a malformed cursor returns
+// ErrCursorInvalid, so the caller can return 400 rather than a mis-ordered or
+// gapped page. It is authority-agnostic.
 //
-// userID scopes the per-user data the recent-activity sort joins (the caller's
-// latest unread notification per application). The other sorts ignore it.
-func (s *PostgresStore) FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort Sort, limit int, cursor string) ([]PlanningApplication, string, error) {
-	if !sort.Supported() {
-		return nil, "", fmt.Errorf("sort %q: %w", sort, ErrUnsupportedSort)
+// q.UserID scopes the per-user notification data the recent-activity sort joins
+// (the caller's latest unread per application) and the unread filter restricts on.
+// The scalar sorts ignore it unless q.Unread is set.
+func (s *PostgresStore) FindInZonePage(ctx context.Context, q InZoneQuery) ([]PlanningApplication, string, error) {
+	if !q.Sort.Supported() {
+		return nil, "", fmt.Errorf("sort %q: %w", q.Sort, ErrUnsupportedSort)
 	}
 	var c *pageCursor
-	if cursor != "" {
-		decoded, err := decodePageCursor(cursor)
+	if q.Cursor != "" {
+		decoded, err := decodePageCursor(q.Cursor)
 		if err != nil {
 			return nil, "", err
 		}
-		if decoded.M != sort {
-			return nil, "", fmt.Errorf("cursor sort %q, request sort %q: %w", decoded.M, sort, ErrCursorSortMismatch)
+		if decoded.M != q.Sort {
+			return nil, "", fmt.Errorf("cursor sort %q, request sort %q: %w", decoded.M, q.Sort, ErrCursorSortMismatch)
+		}
+		if decoded.F != q.Status || decoded.U != q.Unread {
+			return nil, "", fmt.Errorf("cursor filter {status:%q unread:%t}, request filter {status:%q unread:%t}: %w",
+				decoded.F, decoded.U, q.Status, q.Unread, ErrCursorFilterMismatch)
 		}
 		c = &decoded
 	}
-	if sort == SortDistance {
-		return s.findDistanceZonePage(ctx, latitude, longitude, radiusMetres, limit, c)
+
+	// Filtered requests (a status value and/or the unread flag) take the dynamic
+	// builder, which composes the status predicate and/or the unread INNER JOIN
+	// into the sort's query. Unfiltered requests stay on the proven per-sort
+	// constant queries unchanged.
+	if q.Status != "" || q.Unread {
+		return s.findFilteredZonePage(ctx, q, c)
 	}
-	if sort == SortStatus {
-		return s.findStatusZonePage(ctx, latitude, longitude, radiusMetres, limit, c)
+	if q.Sort == SortDistance {
+		return s.findDistanceZonePage(ctx, q.Latitude, q.Longitude, q.RadiusMetres, q.Limit, c)
 	}
-	if sort == SortRecentActivity {
-		return s.findRecentActivityZonePage(ctx, userID, latitude, longitude, radiusMetres, limit, c)
+	if q.Sort == SortStatus {
+		return s.findStatusZonePage(ctx, q.Latitude, q.Longitude, q.RadiusMetres, q.Limit, c)
 	}
-	return s.findDateZonePage(ctx, latitude, longitude, radiusMetres, sort, limit, c)
+	if q.Sort == SortRecentActivity {
+		return s.findRecentActivityZonePage(ctx, q.UserID, q.Latitude, q.Longitude, q.RadiusMetres, q.Limit, c)
+	}
+	return s.findDateZonePage(ctx, q.Latitude, q.Longitude, q.RadiusMetres, q.Sort, q.Limit, c)
 }
 
 // findDistanceZonePage serves SortDistance: the legacy KNN nearest-first query
@@ -587,4 +668,287 @@ func activityCursorOf(last activityPageRow) pageCursor {
 		c.TS = &ts
 	}
 	return c
+}
+
+// argBuilder accumulates positional query args and hands out their $N
+// placeholders, so the filtered FindInZonePage path can assemble a query that
+// interleaves spatial, join, status-filter and keyset parameters without
+// hand-numbering them. Only constant SQL fragments and these $N placeholders are
+// concatenated into the query text; every value flows through the args, so the
+// query stays fully parameterised.
+type argBuilder struct {
+	args []any
+}
+
+func (b *argBuilder) add(v any) string {
+	b.args = append(b.args, v)
+	return "$" + strconv.Itoa(len(b.args))
+}
+
+// findFilteredZonePage serves the status / unread filtered requests (epic #682
+// slice 4). It composes the same per-sort ORDER BY + keyset predicates the
+// unfiltered path uses with a status predicate (AND app_state = $x) and/or an
+// INNER JOIN to the caller's unread notifications, then collects with the sort's
+// projection scanner and mints a filter-stamped next cursor. c is the validated
+// (sort- and filter-matched) cursor, nil on the first page.
+func (s *PostgresStore) findFilteredZonePage(ctx context.Context, q InZoneQuery, c *pageCursor) ([]PlanningApplication, string, error) {
+	query, args, err := buildFilteredZoneQuery(q, c)
+	if err != nil {
+		return nil, "", err
+	}
+	switch q.Sort {
+	case SortDistance:
+		return s.collectFilteredDistancePage(ctx, q, query, args)
+	case SortRecentActivity:
+		return s.collectFilteredActivityPage(ctx, q, query, args)
+	default: // newest, oldest, status — the date-projection sorts
+		cursorOf := func(last datePageRow) pageCursor {
+			var cur pageCursor
+			if q.Sort == SortStatus {
+				cur = statusCursorOf(last)
+			} else {
+				cur = dateCursorOf(q.Sort, last)
+			}
+			cur.F, cur.U = q.Status, q.Unread
+			return cur
+		}
+		return s.collectKeysetPage(ctx, q.Sort, q.Latitude, q.Longitude, query, args, q.Limit, cursorOf)
+	}
+}
+
+// buildFilteredZoneQuery assembles the SQL + positional args for a status/unread
+// filtered page. The shape mirrors the unfiltered constants exactly — same
+// projection, ORDER BY and keyset predicates — but with two composable additions:
+// an optional "AND app_state = $x" status predicate, and an optional unread join.
+// The join is INNER when q.Unread is set (it drops applications with no unread for
+// the caller) and LEFT when only recent-activity needs it for ordering; both reuse
+// the slice-3 unread subquery (created_at > last_read_at, INNER to
+// notification_state so a first-touch caller contributes nothing).
+func buildFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error) {
+	b := &argBuilder{}
+	lonP := b.add(q.Longitude)
+	latP := b.add(q.Latitude)
+	point := "ST_SetSRID(ST_MakePoint(" + lonP + ", " + latP + "), 4326)::geography"
+
+	var projection string
+	switch q.Sort {
+	case SortDistance:
+		projection = appColumns + ", location <-> " + point + " AS distance"
+	case SortRecentActivity:
+		projection = dateColumns + ", " + activityExpr + " AS activity_ts"
+	default:
+		projection = dateColumns
+	}
+
+	var sb strings.Builder
+	sb.WriteString("SELECT ")
+	sb.WriteString(projection)
+	sb.WriteString(" FROM applications")
+
+	if q.Unread || q.Sort == SortRecentActivity {
+		joinType := "LEFT JOIN"
+		if q.Unread {
+			joinType = "JOIN" // INNER: drop applications with no unread for the caller.
+		}
+		userP := b.add(q.UserID)
+		subquery := "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
+			" FROM notifications n" +
+			" JOIN notification_state ns ON ns.user_id = n.user_id" +
+			" WHERE n.user_id = " + userP + " AND n.created_at > ns.last_read_at" +
+			" GROUP BY n.application_uid, n.authority_id"
+		sb.WriteString(" " + joinType + " (" + subquery + ") u" +
+			" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id")
+	}
+
+	radiusP := b.add(q.RadiusMetres)
+	sb.WriteString(" WHERE ST_DWithin(location, " + point + ", " + radiusP + ")")
+
+	if q.Status != "" {
+		sb.WriteString(" AND app_state = " + b.add(q.Status))
+	}
+
+	if c != nil {
+		predicate, err := keysetPredicate(q.Sort, point, c, b)
+		if err != nil {
+			return "", nil, err
+		}
+		sb.WriteString(" AND " + predicate)
+	}
+
+	sb.WriteString(" ORDER BY " + orderByExpr(q.Sort, point))
+	sb.WriteString(" LIMIT " + b.add(q.Limit))
+
+	return sb.String(), b.args, nil
+}
+
+// orderByExpr returns the ORDER BY column list (without LIMIT) for the sort. It
+// is the exact ordering the unfiltered constants use, so a filtered page is
+// ordered identically to its unfiltered counterpart — the filter only restricts
+// the candidate set.
+func orderByExpr(sort Sort, point string) string {
+	switch sort {
+	case SortDistance:
+		return "location <-> " + point + ", planit_name"
+	case SortNewest:
+		return "start_date DESC NULLS LAST, authority_code, planit_name"
+	case SortOldest:
+		return "start_date ASC NULLS LAST, authority_code, planit_name"
+	case SortStatus:
+		return "app_state ASC NULLS LAST, start_date DESC NULLS LAST, authority_code, planit_name"
+	case SortRecentActivity:
+		return activityExpr + " DESC NULLS LAST, authority_code, planit_name"
+	default:
+		return ""
+	}
+}
+
+// keysetPredicate builds the "strictly after the cursor" predicate for the sort,
+// assigning its parameters via b. It mirrors the unfiltered keyset constants
+// exactly (each column's direction and NULLS-LAST tail), so a filtered page never
+// overlaps or gaps. A distance cursor's stored decimal is parsed here; a malformed
+// one is ErrCursorInvalid.
+func keysetPredicate(sort Sort, point string, c *pageCursor, b *argBuilder) (string, error) {
+	switch sort {
+	case SortDistance:
+		dist, err := strconv.ParseFloat(c.D, 64)
+		if err != nil {
+			return "", fmt.Errorf("parse distance cursor: %w: %w", ErrCursorInvalid, err)
+		}
+		distP := b.add(dist)
+		nameP := b.add(c.N)
+		expr := "location <-> " + point
+		return "(" + expr + " > " + distP +
+			" OR (" + expr + " = " + distP + " AND planit_name > " + nameP + "))", nil
+	case SortNewest, SortOldest:
+		return dateKeysetPredicate(sort, c, b), nil
+	case SortStatus:
+		return statusKeysetPredicate(c, b), nil
+	case SortRecentActivity:
+		return activityKeysetPredicate(c, b), nil
+	default:
+		return "", fmt.Errorf("sort %q: %w", sort, ErrUnsupportedSort)
+	}
+}
+
+// dateKeysetPredicate mirrors newestKeysetQuery / oldestKeysetQuery (and their
+// NULL-start_date tail forms) with dynamic parameters.
+func dateKeysetPredicate(sort Sort, c *pageCursor, b *argBuilder) string {
+	if c.SD == nil {
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return "start_date IS NULL AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")"
+	}
+	cmp := "<"
+	if sort == SortOldest {
+		cmp = ">"
+	}
+	sdP := b.add(*c.SD)
+	acP := b.add(c.AC)
+	nameP := b.add(c.N)
+	return "(start_date " + cmp + " " + sdP + "::date OR start_date IS NULL" +
+		" OR (start_date = " + sdP + "::date AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")))"
+}
+
+// statusKeysetPredicate mirrors the four status keyset constants (the cursor row's
+// app_state/start_date NULLS-LAST position) with dynamic parameters.
+func statusKeysetPredicate(c *pageCursor, b *argBuilder) string {
+	switch {
+	case c.AS != nil && c.SD != nil:
+		asP := b.add(*c.AS)
+		sdP := b.add(*c.SD)
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return "(app_state > " + asP + " OR app_state IS NULL" +
+			" OR (app_state = " + asP + " AND (start_date < " + sdP + "::date OR start_date IS NULL))" +
+			" OR (app_state = " + asP + " AND start_date = " + sdP + "::date AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")))"
+	case c.AS != nil: // start_date NULL: cursor in its group's NULL-start_date tail.
+		asP := b.add(*c.AS)
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return "(app_state > " + asP + " OR app_state IS NULL" +
+			" OR (app_state = " + asP + " AND start_date IS NULL AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")))"
+	case c.SD != nil: // app_state NULL: cursor in the NULL-app_state tail.
+		sdP := b.add(*c.SD)
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return "app_state IS NULL AND ((start_date < " + sdP + "::date OR start_date IS NULL)" +
+			" OR (start_date = " + sdP + "::date AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")))"
+	default: // both NULL: the deepest tail.
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return "app_state IS NULL AND start_date IS NULL AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")"
+	}
+}
+
+// activityKeysetPredicate mirrors recentActivityKeysetQuery / its NULL-activity
+// tail form with dynamic parameters. The GREATEST expression is repeated inline
+// because Postgres cannot reference the SELECT alias in WHERE.
+func activityKeysetPredicate(c *pageCursor, b *argBuilder) string {
+	if c.TS == nil {
+		acP := b.add(c.AC)
+		nameP := b.add(c.N)
+		return activityExpr + " IS NULL AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")"
+	}
+	tsP := b.add(*c.TS)
+	acP := b.add(c.AC)
+	nameP := b.add(c.N)
+	return "(" + activityExpr + " < " + tsP + "::timestamptz OR " + activityExpr + " IS NULL" +
+		" OR (" + activityExpr + " = " + tsP + "::timestamptz AND (authority_code, planit_name) > (" + acP + ", " + nameP + ")))"
+}
+
+// collectFilteredDistancePage runs a filtered distance query (nearbyRow
+// projection) and mints a filter-stamped (distance, planit_name) next cursor.
+func (s *PostgresStore) collectFilteredDistancePage(ctx context.Context, q InZoneQuery, query string, args []any) ([]PlanningApplication, string, error) {
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("find filtered applications by distance near (%v, %v): %w", q.Latitude, q.Longitude, err)
+	}
+	collected, err := pgx.CollectRows(rows, scanNearbyRow)
+	if err != nil {
+		return nil, "", fmt.Errorf("find filtered applications by distance near (%v, %v): %w", q.Latitude, q.Longitude, err)
+	}
+	apps := make([]PlanningApplication, len(collected))
+	for i := range collected {
+		apps[i] = collected[i].app
+	}
+	next := ""
+	if q.Limit > 0 && len(collected) == q.Limit {
+		last := collected[len(collected)-1]
+		next, err = encodePageCursor(pageCursor{
+			M: SortDistance, F: q.Status, U: q.Unread,
+			D: strconv.FormatFloat(last.dist, 'g', -1, 64), N: last.app.Name,
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("encode distance cursor: %w", err)
+		}
+	}
+	return apps, next, nil
+}
+
+// collectFilteredActivityPage runs a filtered recent-activity query (activity
+// projection) and mints a filter-stamped (activity_ts, authority_code,
+// planit_name) next cursor.
+func (s *PostgresStore) collectFilteredActivityPage(ctx context.Context, q InZoneQuery, query string, args []any) ([]PlanningApplication, string, error) {
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("find filtered applications by %s near (%v, %v): %w", SortRecentActivity, q.Latitude, q.Longitude, err)
+	}
+	collected, err := pgx.CollectRows(rows, scanActivityPageRow)
+	if err != nil {
+		return nil, "", fmt.Errorf("find filtered applications by %s near (%v, %v): %w", SortRecentActivity, q.Latitude, q.Longitude, err)
+	}
+	apps := make([]PlanningApplication, len(collected))
+	for i := range collected {
+		apps[i] = collected[i].app
+	}
+	next := ""
+	if q.Limit > 0 && len(collected) == q.Limit {
+		cur := activityCursorOf(collected[len(collected)-1])
+		cur.F, cur.U = q.Status, q.Unread
+		next, err = encodePageCursor(cur)
+		if err != nil {
+			return nil, "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
+		}
+	}
+	return apps, next, nil
 }

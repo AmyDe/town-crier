@@ -60,7 +60,7 @@ type authorityResolver interface {
 // needs. *applications.PostgresStore satisfies both.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
-	FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
+	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -150,6 +150,19 @@ const invalidCursorMessage = "Invalid cursor."
 // invalidSortMessage is the 400 body when ?sort= is outside the supported set
 // ({distance, newest, oldest, status, recent-activity}).
 const invalidSortMessage = "Invalid sort."
+
+// invalidStatusMessage is the 400 body when ?status= is outside the app_state
+// filter vocabulary (and not "All"/absent, which mean no filter).
+const invalidStatusMessage = "Invalid status filter."
+
+// invalidUnreadMessage is the 400 body when ?unread= is neither "true", "false"
+// nor absent.
+const invalidUnreadMessage = "Invalid unread filter."
+
+// filterConflictMessage is the 400 body when a real ?status= filter and
+// ?unread=true are sent together: they are mutually exclusive (mirroring the
+// client rule). "All" is not a real status filter, so it does not conflict.
+const filterConflictMessage = "status and unread filters are mutually exclusive."
 
 // valid reports whether the create request passes the pre-handler guard:
 // non-blank name, positive radius within the server ceiling, in-range
@@ -316,6 +329,29 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?status= filters on the raw app_state; "All"/absent means no filter, any
+	// other non-vocabulary value is a clean 400.
+	status, statusOK := parseStatus(r.URL.Query().Get("status"))
+	if !statusOK {
+		h.writeError(w, r, http.StatusBadRequest, invalidStatusMessage)
+		return
+	}
+
+	// ?unread=true restricts to applications with an unread notification for the
+	// caller; false/absent means no unread filter. Anything else is a clean 400.
+	unreadFilter, unreadOK := parseUnread(r.URL.Query().Get("unread"))
+	if !unreadOK {
+		h.writeError(w, r, http.StatusBadRequest, invalidUnreadMessage)
+		return
+	}
+
+	// Status and unread are mutually exclusive; reject both together before any
+	// query (a status="" means no real filter, so it never conflicts).
+	if status != "" && unreadFilter {
+		h.writeError(w, r, http.StatusBadRequest, filterConflictMessage)
+		return
+	}
+
 	// decodeCursor strips the transport-layer base64 wrapping; a malformed wrapper
 	// is a clean 400. The unwrapped token is the store's opaque keyset cursor.
 	cursor, ok := decodeCursor(r.URL.Query().Get("cursor"))
@@ -324,11 +360,14 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
+	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, status, unreadFilter, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
-		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
-		// keyset cursor is only valid for the sort it was minted under.
-		if errors.Is(err, applications.ErrCursorInvalid) || errors.Is(err, applications.ErrCursorSortMismatch) {
+		// A stale, sort-mismatched or filter-mismatched cursor is a client error
+		// (400), not a 500: the keyset cursor is only valid for the sort AND filter
+		// it was minted under.
+		if errors.Is(err, applications.ErrCursorInvalid) ||
+			errors.Is(err, applications.ErrCursorSortMismatch) ||
+			errors.Is(err, applications.ErrCursorFilterMismatch) {
 			h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)
 			return
 		}
@@ -384,19 +423,31 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, results)
 }
 
-// findZonePage runs the bounded spatial page for the zone. With no ?sort= it
-// keeps the legacy nearest-first finder at the 500 default (byte-identical
-// param-less contract); with ?sort= it uses the sort-aware finder at the 150
-// default and a sort-aware keyset cursor. userID scopes the per-user notification
-// join the recent-activity sort needs (ignored by the other sorts). rawLimit is
-// the unparsed ?limit= value; cursor is the transport-unwrapped continuation token.
-func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
-	if !sortPresent {
+// findZonePage runs the bounded spatial page for the zone. A truly param-less
+// request (no ?sort=, no status filter, no unread filter) keeps the legacy
+// nearest-first finder at the 500 default (byte-identical param-less contract).
+// As soon as a sort OR a filter is requested it uses the sort-aware finder at the
+// 150 default and a sort-and-filter-aware keyset cursor. userID scopes the
+// per-user notification data the recent-activity sort joins and the unread filter
+// restricts on. rawLimit is the unparsed ?limit= value; cursor is the
+// transport-unwrapped continuation token.
+func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZone, sort applications.Sort, sortPresent bool, status string, unread bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
+	if !sortPresent && status == "" && !unread {
 		limit := parseLimit(rawLimit, defaultNearbyLimit)
 		return h.apps.FindNearbyPage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
 	}
 	limit := parseLimit(rawLimit, defaultSortedLimit)
-	return h.apps.FindInZonePage(ctx, userID, zone.Latitude, zone.Longitude, zone.RadiusMetres, sort, limit, cursor)
+	return h.apps.FindInZonePage(ctx, applications.InZoneQuery{
+		UserID:       userID,
+		Latitude:     zone.Latitude,
+		Longitude:    zone.Longitude,
+		RadiusMetres: zone.RadiusMetres,
+		Sort:         sort,
+		Status:       status,
+		Unread:       unread,
+		Limit:        limit,
+		Cursor:       cursor,
+	})
 }
 
 // parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
@@ -429,6 +480,36 @@ func parseSort(raw string) (sort applications.Sort, present, ok bool) {
 	}
 	s := applications.Sort(raw)
 	return s, true, s.Supported()
+}
+
+// parseStatus resolves ?status= to an app_state filter value. An absent value or
+// the sentinel "All" both mean "no status filter" (returns "", ok). A recognised
+// app_state value passes through. Any other value is an unsupported filter (ok ==
+// false) so the handler returns a clean 400 rather than silently ignoring it.
+func parseStatus(raw string) (status string, ok bool) {
+	if raw == "" || raw == "All" {
+		return "", true
+	}
+	if applications.StatusSupported(raw) {
+		return raw, true
+	}
+	return "", false
+}
+
+// parseUnread resolves ?unread= to the unread-only filter flag. "true" turns it
+// on; "false" or absent leave it off. Any other value is rejected (ok == false)
+// so a typo'd flag is a clean 400 rather than being silently treated as off.
+func parseUnread(raw string) (unread, ok bool) {
+	switch raw {
+	case "":
+		return false, true
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // decodeCursor base64url-decodes an opaque ?cursor= value into the store's raw

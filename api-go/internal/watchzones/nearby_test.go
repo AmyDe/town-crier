@@ -52,6 +52,8 @@ type fakeAppFinder struct {
 	lastLimit    int
 	lastCursor   string
 	lastUserID   string
+	lastStatus   string
+	lastUnread   bool
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -72,18 +74,20 @@ func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit
 	return apps, f.next, nil
 }
 
-func (f *fakeAppFinder) FindInZonePage(_ context.Context, userID string, _, _, _ float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+func (f *fakeAppFinder) FindInZonePage(_ context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error) {
 	f.inZoneCalled = true
-	f.lastUserID = userID
-	f.lastSort = sort
-	f.lastLimit = limit
-	f.lastCursor = cursor
+	f.lastUserID = q.UserID
+	f.lastSort = q.Sort
+	f.lastLimit = q.Limit
+	f.lastCursor = q.Cursor
+	f.lastStatus = q.Status
+	f.lastUnread = q.Unread
 	if f.inZoneErr != nil {
 		return nil, "", f.inZoneErr
 	}
 	apps := f.apps
-	if limit > 0 && len(apps) > limit {
-		apps = apps[:limit]
+	if q.Limit > 0 && len(apps) > q.Limit {
+		apps = apps[:q.Limit]
 	}
 	return apps, f.next, nil
 }
@@ -1030,6 +1034,204 @@ func TestApplications_ParamlessGoldenResponse(t *testing.T) {
 		`"latestUnreadEvent":null}]`
 	if got := rec.Body.String(); got != want {
 		t.Errorf("param-less response not byte-identical:\n got = %s\nwant = %s", got, want)
+	}
+}
+
+// TestApplications_StatusFilterRoutesToSortAwarePath proves ?status= opts into the
+// sort-aware path (even without ?sort=, since a filter needs the filterable
+// finder), threads the exact app_state through, and defaults the page size to 150.
+// "All" means no status filter, so ?status=All alone (no sort) stays on the legacy
+// distance path.
+func TestApplications_StatusFilterRoutesToSortAwarePath(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"Undecided", "Permitted", "Conditions", "Rejected", "Withdrawn", "Appealed"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status="+status, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status=%q: got %d, want 200", status, rec.Code)
+			}
+			if !apps.inZoneCalled {
+				t.Fatalf("status=%q must use the sort-aware FindInZonePage path", status)
+			}
+			if apps.lastStatus != status {
+				t.Errorf("threaded status: got %q, want %q", apps.lastStatus, status)
+			}
+			if apps.lastSort != applications.SortDistance {
+				t.Errorf("status filter without ?sort= defaults to distance: got %q", apps.lastSort)
+			}
+			if apps.lastLimit != 150 {
+				t.Errorf("filtered default limit: got %d, want 150", apps.lastLimit)
+			}
+		})
+	}
+}
+
+// TestApplications_StatusAllIsNoFilter proves ?status=All means "no status
+// filter": with no sort it stays byte-identical on the legacy distance path, and
+// combined with a sort it routes to the sort-aware path with an empty status.
+func TestApplications_StatusAllIsNoFilter(t *testing.T) {
+	t.Parallel()
+	t.Run("All alone stays on the legacy path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=All", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=All: got %d, want 200", rec.Code)
+		}
+		if !apps.called || apps.inZoneCalled {
+			t.Errorf("status=All alone must use the legacy FindNearbyPage path: called=%v inZone=%v", apps.called, apps.inZoneCalled)
+		}
+	})
+	t.Run("All with a sort carries no status filter", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&status=All", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("sort=newest&status=All: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || apps.lastStatus != "" {
+			t.Errorf("status=All must thread an empty status filter: inZone=%v status=%q", apps.inZoneCalled, apps.lastStatus)
+		}
+	})
+}
+
+// TestApplications_UnknownStatusIs400 proves any ?status= outside the app_state
+// vocabulary (and absent "All") is rejected with 400 before any spatial query.
+func TestApplications_UnknownStatusIs400(t *testing.T) {
+	t.Parallel()
+	for _, status := range []string{"nonsense", "permitted", "REJECTED", "Approved", "all"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status="+status, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status=%q: got %d, want 400", status, rec.Code)
+			}
+			if apps.called || apps.inZoneCalled {
+				t.Error("must not run any spatial query for an unrecognised status")
+			}
+		})
+	}
+}
+
+// TestApplications_UnreadFilterRoutesToSortAwarePath proves ?unread=true opts into
+// the sort-aware path (even without ?sort=), threads the flag through, and defaults
+// the page size to 150. ?unread=false (like absent) means no unread filter, so it
+// stays on the legacy distance path.
+func TestApplications_UnreadFilterRoutesToSortAwarePath(t *testing.T) {
+	t.Parallel()
+	t.Run("true routes to the filtered path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread {
+			t.Errorf("unread=true must use the filtered path with the flag set: inZone=%v unread=%v", apps.inZoneCalled, apps.lastUnread)
+		}
+		if apps.lastSort != applications.SortDistance || apps.lastLimit != 150 {
+			t.Errorf("unread without ?sort= defaults to distance/150: sort=%q limit=%d", apps.lastSort, apps.lastLimit)
+		}
+	})
+	t.Run("true with a sort carries the flag", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=oldest&unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("sort=oldest&unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread || apps.lastSort != applications.SortOldest {
+			t.Errorf("got inZone=%v unread=%v sort=%q", apps.inZoneCalled, apps.lastUnread, apps.lastSort)
+		}
+	})
+	t.Run("false alone stays on the legacy path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread=false", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unread=false: got %d, want 200", rec.Code)
+		}
+		if !apps.called || apps.inZoneCalled {
+			t.Errorf("unread=false alone must use the legacy path: called=%v inZone=%v", apps.called, apps.inZoneCalled)
+		}
+	})
+}
+
+// TestApplications_InvalidUnreadIs400 proves ?unread= that is neither true, false
+// nor absent is a clean 400 before any spatial query — never silently treated as
+// off.
+func TestApplications_InvalidUnreadIs400(t *testing.T) {
+	t.Parallel()
+	for _, val := range []string{"yes", "1", "TRUE", "True", "nope"} {
+		t.Run(val, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread="+val, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("unread=%q: got %d, want 400", val, rec.Code)
+			}
+			if apps.called || apps.inZoneCalled {
+				t.Error("must not run any spatial query for an invalid unread value")
+			}
+		})
+	}
+}
+
+// TestApplications_StatusAndUnreadTogetherIs400 proves a status filter and the
+// unread filter together are rejected with 400 before any spatial query — they
+// are mutually exclusive. "All" is not a real status filter, so All + unread is
+// allowed.
+func TestApplications_StatusAndUnreadTogetherIs400(t *testing.T) {
+	t.Parallel()
+	t.Run("real status + unread is 400", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=Permitted&unread=true", "")
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status=Permitted&unread=true: got %d, want 400", rec.Code)
+		}
+		if apps.called || apps.inZoneCalled {
+			t.Error("must not run any spatial query when status and unread conflict")
+		}
+	})
+	t.Run("All + unread is allowed", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?status=All&unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=All&unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread || apps.lastStatus != "" {
+			t.Errorf("All+unread must filter on unread only: inZone=%v unread=%v status=%q", apps.inZoneCalled, apps.lastUnread, apps.lastStatus)
+		}
+	})
+}
+
+// TestApplications_CursorFilterMismatchIs400 proves a cursor minted under one
+// filter and replayed under another (the store reports ErrCursorFilterMismatch)
+// surfaces as 400, never a gapped or overlapping page.
+func TestApplications_CursorFilterMismatchIs400(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{inZoneErr: applications.ErrCursorFilterMismatch}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("cursor-from-another-filter"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&status=Permitted&cursor="+cursor, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
 	}
 }
 

@@ -468,6 +468,41 @@ func withStart(a PlanningApplication, d time.Time) PlanningApplication {
 	return a
 }
 
+// zoneQuery is a brief InZoneQuery builder fixed to the standard 6 km London
+// fixture centre, for the cursor/sort-error tests.
+func zoneQuery(sort Sort, limit int, cursor string) InZoneQuery {
+	return InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: sort, Limit: limit, Cursor: cursor,
+	}
+}
+
+// pageAllFiltered pages FindInZonePage to exhaustion for an arbitrary query
+// (sort + status/unread filter + page size), returning the names in the order
+// seen across pages. base.Cursor is ignored (paging starts from page one). It
+// bounds the loop so a keyset bug that fails to advance fails instead of hanging.
+func pageAllFiltered(t *testing.T, store *PostgresStore, base InZoneQuery) []string {
+	t.Helper()
+	ctx := context.Background()
+	var names []string
+	cursor := ""
+	for range 1000 {
+		q := base
+		q.Cursor = cursor
+		page, next, err := store.FindInZonePage(ctx, q)
+		if err != nil {
+			t.Fatalf("FindInZonePage(sort=%s status=%q unread=%t cursor=%q): %v", base.Sort, base.Status, base.Unread, cursor, err)
+		}
+		names = append(names, appNames(page)...)
+		if next == "" {
+			return names
+		}
+		cursor = next
+	}
+	t.Fatalf("FindInZonePage(sort=%s status=%q unread=%t) did not exhaust within the safety bound", base.Sort, base.Status, base.Unread)
+	return nil
+}
+
 // pageAllInZone pages FindInZonePage to exhaustion as an anonymous caller (no
 // userID), for the sorts that ignore per-user data.
 func pageAllInZone(t *testing.T, store *PostgresStore, sort Sort, radius float64, limit int) []string {
@@ -484,7 +519,10 @@ func pageAllInZoneAs(t *testing.T, store *PostgresStore, userID string, sort Sor
 	var names []string
 	cursor := ""
 	for range 1000 {
-		page, next, err := store.FindInZonePage(ctx, userID, pgCentreLat, pgCentreLon, radius, sort, limit, cursor)
+		page, next, err := store.FindInZonePage(ctx, InZoneQuery{
+			UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon,
+			RadiusMetres: radius, Sort: sort, Limit: limit, Cursor: cursor,
+		})
 		if err != nil {
 			t.Fatalf("FindInZonePage(%s, cursor=%q): %v", sort, cursor, err)
 		}
@@ -670,7 +708,7 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	_, cursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "")
+	_, cursor, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, ""))
 	if err != nil {
 		t.Fatalf("mint newest cursor: %v", err)
 	}
@@ -678,24 +716,24 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 		t.Fatal("expected a continuation cursor after a full page")
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortOldest, 1, cursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortOldest, 1, cursor)); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
 	// A cursor minted under status carries mode=status; replaying it under any
 	// other sort is rejected, never a mis-ordered page.
-	_, statusCursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
+	_, statusCursor, err := store.FindInZonePage(ctx, zoneQuery(SortStatus, 1, ""))
 	if err != nil {
 		t.Fatalf("mint status cursor: %v", err)
 	}
 	if statusCursor == "" {
 		t.Fatal("expected a continuation cursor after a full status page")
 	}
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, statusCursor)); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay status cursor under newest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, "!!!not-base64!!!")); !errors.Is(err, ErrCursorInvalid) {
 		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
 	}
 }
@@ -708,7 +746,7 @@ func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(Sort("nonsense"), 10, "")); !errors.Is(err, ErrUnsupportedSort) {
 		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
 	}
 }
@@ -892,6 +930,248 @@ func TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread(t *testing.T) 
 	want := []string{"N", "M"} // N(feb) > M(jan); the at-watermark notification is read.
 	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
 		t.Fatalf("recent-activity strict-unread: got %v, want %v (a notification exactly at the watermark is read)", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_StatusFilter proves ?status= restricts the set
+// to exactly the matching app_state, composes with every scalar sort, and pages to
+// exhaustion with no overlap or gap. Rejected and NULL-app_state rows never appear.
+func TestPostgresStore_FindInZonePage_StatusFilter(t *testing.T) {
+	store := newAppPGStore(t)
+	statusFixture(t, store)
+
+	// Permitted rows only. Under newest/status: start_date DESC NULLS LAST then
+	// (authority_code, planit_name) — P1(mar), P3(feb,100), P4(feb,200), P2(jan),
+	// P5(NULL). Under distance: nearest-first by construction — P1..P5.
+	permittedByDate := []string{"P1", "P3", "P4", "P2", "P5"}
+	permittedByDistance := []string{"P1", "P2", "P3", "P4", "P5"}
+	cases := []struct {
+		sort Sort
+		want []string
+	}{
+		{SortNewest, permittedByDate},
+		{SortStatus, permittedByDate},
+		{SortDistance, permittedByDistance},
+	}
+	for _, tc := range cases {
+		for _, limit := range []int{100, 2, 1} {
+			base := InZoneQuery{
+				Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+				Sort: tc.sort, Status: "Permitted", Limit: limit,
+			}
+			if got := pageAllFiltered(t, store, base); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("status=Permitted sort=%s limit=%d: got %v, want %v", tc.sort, limit, got, tc.want)
+			}
+		}
+	}
+
+	// Rejected rows only, newest: R1(feb), R2(NULL).
+	rejected := pageAllFiltered(t, store, InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Status: "Rejected", Limit: 1,
+	})
+	if want := []string{"R1", "R2"}; !reflect.DeepEqual(rejected, want) {
+		t.Fatalf("status=Rejected: got %v, want %v", rejected, want)
+	}
+
+	// A status with no matching rows yields the empty set.
+	empty := pageAllFiltered(t, store, InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Status: "Withdrawn", Limit: 10,
+	})
+	if len(empty) != 0 {
+		t.Fatalf("status=Withdrawn (no rows): got %v, want empty", empty)
+	}
+}
+
+// unreadFixture seeds a deterministic in-radius set for the unread filter under a
+// scalar sort. U1 and U4 have a fresh UNREAD notification; U2 has only a READ one
+// (at/under the watermark); U3 has none. So ?unread=true keeps only {U1, U4}.
+// Distances increase with the name so the distance order is U1..U4.
+func unreadFixture(t *testing.T, store *PostgresStore, pool *pgxpool.Pool, userID string) {
+	t.Helper()
+	ctx := context.Background()
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	mar := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	apr := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("U1", 100), 100), jan), // fresh unread
+		withStart(at(pgApp("U2", 100), 200), feb), // read-only notification
+		withStart(at(pgApp("U3", 100), 300), mar), // no notification
+		withStart(at(pgApp("U4", 100), 400), apr), // fresh unread
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	watermark := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
+	seedWatermark(t, pool, userID, watermark)
+	seedNotification(t, pool, "n-U1", userID, "uid-U1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) // > watermark: unread
+	seedNotification(t, pool, "n-U2", userID, "uid-U2", 100, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))  // < watermark: read
+	seedNotification(t, pool, "n-U4", userID, "uid-U4", 100, time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)) // > watermark: unread
+}
+
+// TestPostgresStore_FindInZonePage_UnreadFilter proves ?unread=true (the INNER
+// JOIN to the caller's unread notifications) keeps only applications with an
+// unread notification, composes with scalar sorts, and pages without gaps. A
+// read-only or notification-less application is dropped.
+func TestPostgresStore_FindInZonePage_UnreadFilter(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	const userID = "user-unread"
+	unreadFixture(t, store, pool, userID)
+
+	// Newest: U4(apr) then U1(jan). Distance: U1(100) then U4(400). U2/U3 excluded.
+	cases := []struct {
+		sort Sort
+		want []string
+	}{
+		{SortNewest, []string{"U4", "U1"}},
+		{SortDistance, []string{"U1", "U4"}},
+	}
+	for _, tc := range cases {
+		for _, limit := range []int{100, 1} {
+			base := InZoneQuery{
+				UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+				Sort: tc.sort, Unread: true, Limit: limit,
+			}
+			if got := pageAllFiltered(t, store, base); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("unread=true sort=%s limit=%d: got %v, want %v", tc.sort, limit, got, tc.want)
+			}
+		}
+	}
+}
+
+// TestPostgresStore_FindInZonePage_UnreadFilter_FirstTouch proves a caller with NO
+// notification_state row (never read) gets the empty set under ?unread=true — the
+// INNER JOIN to notification_state yields nothing, even though matching
+// notifications exist.
+func TestPostgresStore_FindInZonePage_UnreadFilter_FirstTouch(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-firsttouch"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	app := withStart(at(pgApp("Z1", 100), 100), jan)
+	if err := store.Upsert(ctx, app); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	// A notification exists, but with no watermark row the user has read nothing,
+	// so the unread subquery (INNER to notification_state) contributes nothing.
+	seedNotification(t, pool, "n-Z1", userID, "uid-Z1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	got := pageAllFiltered(t, store, InZoneQuery{
+		UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Unread: true, Limit: 10,
+	})
+	if len(got) != 0 {
+		t.Fatalf("first-touch unread=true: got %v, want empty (no notification_state ⇒ no unread)", got)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_UnreadFilter_RecentActivity proves the unread
+// filter composes with the recent-activity sort: the unread join becomes INNER (so
+// an application with no unread is dropped even when its start_date is newest),
+// while the GREATEST(start_date, unread.created_at) ordering still holds.
+func TestPostgresStore_FindInZonePage_UnreadFilter_RecentActivity(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-ra-unread"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	jun := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("AA", 100), 100), jan), // oldest start, fresh unread → top
+		withStart(at(pgApp("BB", 100), 200), jun), // newest start, NO unread → dropped by INNER
+		withStart(at(pgApp("CC", 100), 300), feb), // unread (older) → second
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	seedWatermark(t, pool, userID, jan)
+	seedNotification(t, pool, "n-AA", userID, "uid-AA", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) // activity jun15
+	seedNotification(t, pool, "n-CC", userID, "uid-CC", 100, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))  // activity mar1
+
+	want := []string{"AA", "CC"} // AA(jun15) > CC(mar1); BB dropped (no unread).
+	for _, limit := range []int{100, 1} {
+		base := InZoneQuery{
+			UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+			Sort: SortRecentActivity, Unread: true, Limit: limit,
+		}
+		if got := pageAllFiltered(t, store, base); !reflect.DeepEqual(got, want) {
+			t.Fatalf("recent-activity unread=true limit=%d: got %v, want %v", limit, got, want)
+		}
+	}
+}
+
+// TestPostgresStore_FindInZonePage_CursorFilterMismatch proves a cursor minted
+// under one filter is rejected when replayed under another (status→other status,
+// status→unread, filtered→unfiltered, unfiltered→filtered), and that a cursor
+// replayed under the SAME filter keeps paging. Symmetric with the sort-mismatch
+// guard: never a gapped or overlapping page.
+func TestPostgresStore_FindInZonePage_CursorFilterMismatch(t *testing.T) {
+	ctx := context.Background()
+	store, pool := newActivityPGStore(t)
+	statusFixture(t, store)
+	const userID = "user-cursor"
+	seedWatermark(t, pool, userID, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	seedNotification(t, pool, "n-P1", userID, "uid-P1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	permitted := InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Status: "Permitted", Limit: 1,
+	}
+	_, cursor, err := store.FindInZonePage(ctx, permitted)
+	if err != nil {
+		t.Fatalf("mint status=Permitted cursor: %v", err)
+	}
+	if cursor == "" {
+		t.Fatal("expected a continuation cursor after a full filtered page")
+	}
+
+	// Replayed under a different status → mismatch.
+	rejectedReplay := permitted
+	rejectedReplay.Status, rejectedReplay.Cursor = "Rejected", cursor
+	if _, _, err := store.FindInZonePage(ctx, rejectedReplay); !errors.Is(err, ErrCursorFilterMismatch) {
+		t.Errorf("replay Permitted cursor under Rejected: got %v, want ErrCursorFilterMismatch", err)
+	}
+
+	// Replayed under the unread filter (status dropped) → mismatch.
+	unreadReplay := InZoneQuery{
+		UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Unread: true, Cursor: cursor,
+	}
+	if _, _, err := store.FindInZonePage(ctx, unreadReplay); !errors.Is(err, ErrCursorFilterMismatch) {
+		t.Errorf("replay Permitted cursor under unread: got %v, want ErrCursorFilterMismatch", err)
+	}
+
+	// Replayed unfiltered → mismatch.
+	unfilteredReplay := InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Cursor: cursor,
+	}
+	if _, _, err := store.FindInZonePage(ctx, unfilteredReplay); !errors.Is(err, ErrCursorFilterMismatch) {
+		t.Errorf("replay Permitted cursor unfiltered: got %v, want ErrCursorFilterMismatch", err)
+	}
+
+	// An unfiltered cursor replayed under a status filter → mismatch.
+	_, plainCursor, err := store.FindInZonePage(ctx, InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000, Sort: SortNewest, Limit: 1,
+	})
+	if err != nil {
+		t.Fatalf("mint unfiltered cursor: %v", err)
+	}
+	filteredReplay := permitted
+	filteredReplay.Cursor = plainCursor
+	if _, _, err := store.FindInZonePage(ctx, filteredReplay); !errors.Is(err, ErrCursorFilterMismatch) {
+		t.Errorf("replay unfiltered cursor under Permitted: got %v, want ErrCursorFilterMismatch", err)
+	}
+
+	// Replayed under the SAME filter → keeps paging (no error, advances).
+	sameReplay := permitted
+	sameReplay.Cursor = cursor
+	if _, _, err := store.FindInZonePage(ctx, sameReplay); err != nil {
+		t.Errorf("replay Permitted cursor under Permitted: unexpected error %v", err)
 	}
 }
 
