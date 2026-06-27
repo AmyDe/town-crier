@@ -80,7 +80,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
     ])
 
     _ = try await sut.fetchApplicationsPage(
-      for: testZone, sort: .newest, cursor: nil, limit: 150)
+      for: testZone, sort: .newest, filter: .all, cursor: nil, limit: 150)
 
     let url = try #require(transport.requests[0].url)
     #expect(url.path() == "/v1/me/watch-zones/zone-123/applications")
@@ -91,6 +91,48 @@ struct APIPlanningApplicationRepositoryPagedTests {
     #expect(!hasCursor)
   }
 
+  @Test("a status filter sends ?status=<appState> and no ?unread=")
+  func fetchApplicationsPage_statusFilter_sendsStatusParam() async throws {
+    let (sut, transport) = makeSUT(responses: [
+      (Data("[]".utf8), httpResponse(statusCode: 200, headers: [:]))
+    ])
+
+    _ = try await sut.fetchApplicationsPage(
+      for: testZone, sort: .newest, filter: .status(.permitted), cursor: nil, limit: 150)
+
+    let items = try queryItems(transport, at: 0)
+    #expect(items.contains(URLQueryItem(name: "status", value: "Permitted")))
+    #expect(!items.contains { $0.name == "unread" })
+  }
+
+  @Test("the unread filter sends ?unread=true and no ?status=")
+  func fetchApplicationsPage_unreadFilter_sendsUnreadParam() async throws {
+    let (sut, transport) = makeSUT(responses: [
+      (Data("[]".utf8), httpResponse(statusCode: 200, headers: [:]))
+    ])
+
+    _ = try await sut.fetchApplicationsPage(
+      for: testZone, sort: .newest, filter: .unread, cursor: nil, limit: 150)
+
+    let items = try queryItems(transport, at: 0)
+    #expect(items.contains(URLQueryItem(name: "unread", value: "true")))
+    #expect(!items.contains { $0.name == "status" })
+  }
+
+  @Test("the All filter sends neither ?status= nor ?unread=")
+  func fetchApplicationsPage_allFilter_sendsNeitherParam() async throws {
+    let (sut, transport) = makeSUT(responses: [
+      (Data("[]".utf8), httpResponse(statusCode: 200, headers: [:]))
+    ])
+
+    _ = try await sut.fetchApplicationsPage(
+      for: testZone, sort: .newest, filter: .all, cursor: nil, limit: 150)
+
+    let items = try queryItems(transport, at: 0)
+    #expect(!items.contains { $0.name == "status" })
+    #expect(!items.contains { $0.name == "unread" })
+  }
+
   @Test("paging beyond the first page sends the cursor")
   func fetchApplicationsPage_withCursor_includesCursorParam() async throws {
     let (sut, transport) = makeSUT(responses: [
@@ -98,7 +140,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
     ])
 
     _ = try await sut.fetchApplicationsPage(
-      for: testZone, sort: .oldest, cursor: "abc123", limit: 150)
+      for: testZone, sort: .oldest, filter: .all, cursor: "abc123", limit: 150)
 
     let items = try queryItems(transport, at: 0)
     #expect(items.contains(URLQueryItem(name: "sort", value: "oldest")))
@@ -112,7 +154,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
     ])
 
     let page = try await sut.fetchApplicationsPage(
-      for: testZone, sort: .newest, cursor: nil, limit: 150)
+      for: testZone, sort: .newest, filter: .all, cursor: nil, limit: 150)
 
     #expect(page.applications.count == 1)
     #expect(page.applications.first?.reference == ApplicationReference("2026/0042"))
@@ -126,7 +168,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
     ])
 
     let page = try await sut.fetchApplicationsPage(
-      for: testZone, sort: .distance, cursor: nil, limit: 150)
+      for: testZone, sort: .distance, filter: .all, cursor: nil, limit: 150)
 
     #expect(page.applications.isEmpty)
     #expect(page.nextCursor == nil)
@@ -144,7 +186,7 @@ struct APIPlanningApplicationRepositoryPagedTests {
 
     await #expect(throws: DomainError.networkUnavailable) {
       _ = try await sut.fetchApplicationsPage(
-        for: testZone, sort: .newest, cursor: nil, limit: 150)
+        for: testZone, sort: .newest, filter: .all, cursor: nil, limit: 150)
     }
   }
 }

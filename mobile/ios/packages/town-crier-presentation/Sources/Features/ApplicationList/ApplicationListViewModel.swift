@@ -47,6 +47,20 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   public var unreadCount: Int {
     applications.filter { $0.latestUnreadEvent != nil }.count
   }
+  /// The single server filter derived from the chip group (GH#682 slice 4). The
+  /// Unread toggle and the status chips are mutually exclusive (enforced by the
+  /// `didSet`s above and the server's 400 on both), so they collapse to exactly
+  /// one ``ApplicationFilter`` case. This is the value sent as `?status=`/
+  /// `?unread=` and the trigger the view observes to reload on a filter change.
+  public var activeFilter: ApplicationFilter {
+    if unreadOnly {
+      return .unread
+    }
+    if let status = selectedStatusFilter {
+      return .status(status)
+    }
+    return .all
+  }
   /// Bound by the sort menu. Setter persists the choice to `UserDefaults`
   /// under `sortKey` so user intent survives relaunches (spec decision #10).
   @Published var sort: ApplicationsSort {
@@ -80,6 +94,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// transition away from one reload; a client→client switch only re-sorts in
   /// memory, as before).
   var loadedSort: ApplicationsSort?
+  /// The filter the currently-loaded `applications` were fetched under. Lets a
+  /// filter change short-circuit when it would not change the query (GH#682
+  /// slice 4). Set alongside `loadedSort` on every fresh first-page load.
+  var loadedFilter: ApplicationFilter?
   /// Re-entrancy guard for next-page fetches — independent of `isLoadInFlight`
   /// so an in-flight first-page load never blocks (or is blocked by) appends.
   var isPageLoadInFlight = false

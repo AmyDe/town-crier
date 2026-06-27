@@ -27,6 +27,7 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
   public func fetchApplicationsPage(
     for zone: WatchZone,
     sort: ApplicationSortOrder,
+    filter: ApplicationFilter,
     cursor: String?,
     limit: Int
   ) async throws -> ApplicationPage {
