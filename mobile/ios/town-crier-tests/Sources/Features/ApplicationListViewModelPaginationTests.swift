@@ -4,12 +4,12 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Infinite-scroll pagination for the watch-zone list (GH#682 slice 1). For the
-/// three server-supported sorts (distance/newest/oldest) the ViewModel drives
+/// Infinite-scroll pagination for the watch-zone list (GH#682). Every UI sort
+/// is server-driven now — distance/newest/oldest (slice 1), status (slice 2)
+/// and recent-activity (slice 3) — so for all of them the ViewModel drives
 /// ordering from the server, follows `X-Next-Cursor` until it is absent, appends
 /// pages as the user nears the end, and resets the cursor when the sort changes.
-/// The client-side sorts (recent-activity/status) keep their param-less,
-/// single-page, client-sorted path unchanged.
+/// No sort is sorted or paged client-side any more.
 @Suite("ApplicationListViewModel — pagination (GH#682)")
 @MainActor
 struct ApplicationListViewModelPaginationTests {
@@ -240,28 +240,6 @@ struct ApplicationListViewModelPaginationTests {
     let last = try #require(spy.fetchApplicationsPageCalls.last)
     #expect(last.sort == .oldest)
     #expect(last.cursor == nil)
-  }
-
-  @Test("switching from client-side recent-activity to status drives the paged endpoint")
-  func switchingRecentActivityToStatus_usesPagedFetch() async throws {
-    // recent-activity stays client-side (param-less); status is now server-driven.
-    let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsResult = .success([.pendingReview, .permitted])
-    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
-    defaults.set(ApplicationsSort.recentActivity.rawValue, forKey: "test.raToStatus")
-    let sut = ApplicationListViewModel(
-      repository: spy, zone: .cambridge, userDefaults: defaults, sortKey: "test.raToStatus")
-
-    await sut.loadApplications()
-    #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls.isEmpty)
-
-    spy.pagedResponses = [ApplicationPage(applications: [.rejected, .pendingReview], nextCursor: nil)]
-    sut.sort = .status
-    await sut.handleSortChanged()
-
-    #expect(spy.fetchApplicationsPageCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls.first?.sort == .status)
   }
 
   // MARK: - recent-activity is server-driven (GH#682 slice 3)

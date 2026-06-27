@@ -26,13 +26,16 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
     SpyNotificationStateRepository
   ) {
     let remote = SpyPlanningApplicationRepository()
-    remote.fetchApplicationsResult = .success(refetchedApplications)
+    // The list path is paged for every sort now (GH#682 slice 3) and paging
+    // deliberately bypasses the offline cache, so the first load and the
+    // post-mark-all-read refetch are driven as successive server pages: the
+    // first carries the still-unread rows, the second the read rows the server
+    // returns once the watermark has advanced.
+    remote.pagedResponses = [
+      ApplicationPage(applications: cachedApplications, nextCursor: nil),
+      ApplicationPage(applications: refetchedApplications, nextCursor: nil),
+    ]
     let cache = SpyApplicationCacheStore()
-    cache.storedEntry = CacheEntry(
-      data: cachedApplications,
-      fetchedAt: Date().addingTimeInterval(-60),
-      ttlSeconds: 900
-    )
     let offlineRepository = OfflineAwareRepository(
       remote: remote,
       cache: cache,
@@ -56,10 +59,10 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
     )
   }
 
-  /// Without invalidation, the refetch after the mark-all-read POST would
-  /// short-circuit on the TTL-fresh cache and the chip would stay stuck
-  /// at the prior count. The view-model must clear every cached zone
-  /// before refetching.
+  /// mark-all-read is a global mutation, so the view-model must clear every
+  /// cached zone before refetching. The paged list path bypasses the cache,
+  /// but the param-less map path still reads it, so the invalidation keeps that
+  /// cache from serving stale unread flags after the watermark advances.
   @Test func markAllRead_invalidatesEveryCachedZoneBeforeRefetch() async {
     let cachedUnread = PlanningApplication.pendingReview
       .withLatestUnreadEvent(event(at: 1_700_500_000))
@@ -78,11 +81,11 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
     #expect(cache.invalidateAllCallCount == 1)
   }
 
-  /// End-to-end behavioural assertion: a TTL-fresh cache must not stop the
-  /// chip from zeroing after mark-all-read. With the invalidation in place,
-  /// the refetch goes to the network, returns rows with `latestUnreadEvent
-  /// == nil`, and `unreadCount` drops to 0 (tc-e3bu repro path).
-  @Test func markAllRead_zeroesUnreadCount_evenWhenCacheIsFresh() async {
+  /// End-to-end behavioural assertion (tc-e3bu contract, preserved through the
+  /// GH#682 slice 3 paged migration): after mark-all-read the paged refetch goes
+  /// to the network, returns rows with `latestUnreadEvent == nil`, and
+  /// `unreadCount` drops to 0 so the `Unread (N)` chip clears.
+  @Test func markAllRead_zeroesUnreadCount_viaPagedRefetch() async {
     let cachedUnread = PlanningApplication.pendingReview
       .withLatestUnreadEvent(event(at: 1_700_500_000))
     let refetchedRead = PlanningApplication.pendingReview
@@ -93,13 +96,13 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
     )
 
     await sut.loadApplications()
-    let remoteCallsBeforeMar = remote.fetchApplicationsCalls.count
+    let remoteCallsBeforeMar = remote.fetchApplicationsPageCalls.count
     #expect(sut.unreadCount == 1)
 
     await sut.markAllRead()
 
     #expect(sut.unreadCount == 0)
     #expect(!sut.hasUnread)
-    #expect(remote.fetchApplicationsCalls.count > remoteCallsBeforeMar)
+    #expect(remote.fetchApplicationsPageCalls.count > remoteCallsBeforeMar)
   }
 }

@@ -24,18 +24,18 @@ struct ApplicationListViewModelTests {
   ]
 
   // MARK: - Loading
-  @Test func loadApplications_populatesApplicationsSortedByDateDescending() async throws {
-    let older = PlanningApplication.pendingReview  // 1_700_000_000
-    let newer = PlanningApplication.permitted  // 1_700_100_000
-    let newest = PlanningApplication.rejected  // 1_700_200_000
-    let (sut, _) = try makeSUT(applications: [older, newest, newer])
+  @Test func loadApplications_preservesServerReturnedOrder() async throws {
+    // The server owns ordering for every sort now (GH#682 slice 3): the client
+    // renders the API order verbatim and never re-sorts locally — that would
+    // only ever order the pages already loaded. This input is deliberately not
+    // in date order so a leftover client-side `recent-activity` sort would
+    // reorder it and fail this assertion.
+    let serverOrdered: [PlanningApplication] = [.permitted, .pendingReview, .rejected]
+    let (sut, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
 
-    #expect(sut.filteredApplications.count == 3)
-    #expect(sut.filteredApplications[0].id == newest.id)
-    #expect(sut.filteredApplications[1].id == newer.id)
-    #expect(sut.filteredApplications[2].id == older.id)
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
   @Test func loadApplications_setsIsLoadingFalseAfterFetch() async throws {
@@ -48,7 +48,10 @@ struct ApplicationListViewModelTests {
 
   @Test func loadApplications_setsErrorOnFailure() async throws {
     let (sut, spy) = try makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+    // The list path is paged now (GH#682 slice 3), so the error must surface
+    // from the paged fetch — `fetchApplicationsResult` only feeds the spy's
+    // param-less fallback, which the page path no longer uses.
+    spy.fetchApplicationsPageError = DomainError.networkUnavailable
 
     await sut.loadApplications()
 
@@ -58,9 +61,10 @@ struct ApplicationListViewModelTests {
 
   @Test func loadApplications_clearsErrorOnRetry() async throws {
     let (sut, spy) = try makeSUT()
-    spy.fetchApplicationsResult = .failure(DomainError.networkUnavailable)
+    spy.fetchApplicationsPageError = DomainError.networkUnavailable
     await sut.loadApplications()
 
+    spy.fetchApplicationsPageError = nil
     spy.fetchApplicationsResult = .success([.pendingReview])
     await sut.loadApplications()
 
@@ -73,8 +77,8 @@ struct ApplicationListViewModelTests {
 
     await sut.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
+    #expect(spy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   // MARK: - Selection
@@ -139,8 +143,8 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
 
     #expect(zoneSpy.loadAllCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.count == 1)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.count == 1)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
     #expect(sut.filteredApplications.count == 1)
   }
 
@@ -178,7 +182,7 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
 
     #expect(sut.error == .networkUnavailable)
-    #expect(appSpy.fetchApplicationsCalls.isEmpty)
+    #expect(appSpy.fetchApplicationsPageCalls.isEmpty)
   }
 
   @Test func loadApplications_withWatchZoneRepository_refreshesZonesOnEveryCall() async throws {
@@ -198,7 +202,7 @@ struct ApplicationListViewModelTests {
     await sut.loadApplications()
 
     #expect(zoneSpy.loadAllCallCount == 2)
-    #expect(appSpy.fetchApplicationsCalls.count == 2)
+    #expect(appSpy.fetchApplicationsPageCalls.count == 2)
   }
 
   // MARK: - Empty State
@@ -254,31 +258,31 @@ struct ApplicationListViewModelTests {
     let (sut, appSpy, _, _) = try makeSUTWithZones()
     await sut.loadApplications()
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func loadApplications_restoresPersistedZoneSelection() async throws {
     let (sut, appSpy, _, _) = try makeSUTWithZones(persistedZoneId: "zone-002")
     await sut.loadApplications()
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.london.id)
   }
 
   @Test func loadApplications_fallsBackToFirstZone_whenPersistedZoneDeleted() async throws {
     let (sut, appSpy, _, _) = try makeSUTWithZones(persistedZoneId: "zone-deleted")
     await sut.loadApplications()
     #expect(sut.selectedZone?.id == WatchZone.cambridge.id)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func selectZone_fetchesApplicationsForNewZone() async throws {
     let (sut, appSpy, _, _) = try makeSUTWithZones()
     await sut.loadApplications()
-    let callsBefore = appSpy.fetchApplicationsCalls.count
+    let callsBefore = appSpy.fetchApplicationsPageCalls.count
     await sut.selectZone(.london)
     #expect(sut.selectedZone?.id == WatchZone.london.id)
-    #expect(appSpy.fetchApplicationsCalls.count == callsBefore + 1)
-    #expect(appSpy.fetchApplicationsCalls.last?.id == WatchZone.london.id)
+    #expect(appSpy.fetchApplicationsPageCalls.count == callsBefore + 1)
+    #expect(appSpy.fetchApplicationsPageCalls.last?.zone.id == WatchZone.london.id)
   }
 
   @Test func selectZone_persistsSelectionToUserDefaults() async throws {
