@@ -311,6 +311,17 @@ func (s *PostgresStore) findDistanceZonePage(ctx context.Context, latitude, long
 // a keyset cursor on (start_date, authority_code, planit_name).
 func (s *PostgresStore) findDateZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort Sort, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
 	query, args := dateZoneQuery(sort, latitude, longitude, radiusMetres, limit, c)
+	return s.collectKeysetPage(ctx, sort, latitude, longitude, query, args, limit, func(last datePageRow) pageCursor {
+		return dateCursorOf(sort, last)
+	})
+}
+
+// collectKeysetPage runs a date-projection keyset query (scanDatePageRow rows —
+// appColumns + authority_code, shared by the start_date and app_state sorts) and
+// returns the hydrated apps plus the next-page cursor, empty unless the page is
+// full. cursorOf builds the continuation cursor from the last row of a full page;
+// sort supplies error context only.
+func (s *PostgresStore) collectKeysetPage(ctx context.Context, sort Sort, latitude, longitude float64, query string, args []any, limit int, cursorOf func(datePageRow) pageCursor) ([]PlanningApplication, string, error) {
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", sort, latitude, longitude, err)
@@ -325,7 +336,7 @@ func (s *PostgresStore) findDateZonePage(ctx context.Context, latitude, longitud
 	}
 	next := ""
 	if limit > 0 && len(collected) == limit {
-		next, err = encodePageCursor(dateCursorOf(sort, collected[len(collected)-1]))
+		next, err = encodePageCursor(cursorOf(collected[len(collected)-1]))
 		if err != nil {
 			return nil, "", fmt.Errorf("encode %s cursor: %w", sort, err)
 		}
@@ -379,26 +390,7 @@ func dateCursorOf(sort Sort, last datePageRow) pageCursor {
 // are already hydrated on the application.
 func (s *PostgresStore) findStatusZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
 	query, args := statusZoneQuery(latitude, longitude, radiusMetres, limit, c)
-	rows, err := s.db.Query(ctx, query, args...)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications by status near (%v, %v): %w", latitude, longitude, err)
-	}
-	collected, err := pgx.CollectRows(rows, scanDatePageRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications by status near (%v, %v): %w", latitude, longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if limit > 0 && len(collected) == limit {
-		next, err = encodePageCursor(statusCursorOf(collected[len(collected)-1]))
-		if err != nil {
-			return nil, "", fmt.Errorf("encode status cursor: %w", err)
-		}
-	}
-	return apps, next, nil
+	return s.collectKeysetPage(ctx, SortStatus, latitude, longitude, query, args, limit, statusCursorOf)
 }
 
 // statusZoneQuery selects the first-page or the per-NULL-tail keyset query for
