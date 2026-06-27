@@ -4,6 +4,7 @@ package applications
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -457,6 +458,177 @@ func TestPostgresStore_FindNearbyPage_TieBreak(t *testing.T) {
 		cursor = next
 	}
 	assertNames(t, collected, []string{"APP-1-100", "APP-2-200A", "APP-3-200B", "APP-4-500"})
+}
+
+// withStart sets the application's start_date.
+func withStart(a PlanningApplication, d time.Time) PlanningApplication {
+	a.StartDate = &d
+	return a
+}
+
+// pageAllInZone pages FindInZonePage to exhaustion with the given page size and
+// returns the names in the order seen across pages. It bounds the loop so a
+// keyset bug that fails to advance fails the test instead of hanging.
+func pageAllInZone(t *testing.T, store *PostgresStore, sort Sort, radius float64, limit int) []string {
+	t.Helper()
+	ctx := context.Background()
+	var names []string
+	cursor := ""
+	for range 1000 {
+		page, next, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, radius, sort, limit, cursor)
+		if err != nil {
+			t.Fatalf("FindInZonePage(%s, cursor=%q): %v", sort, cursor, err)
+		}
+		names = append(names, appNames(page)...)
+		if next == "" {
+			return names
+		}
+		cursor = next
+	}
+	t.Fatalf("FindInZonePage(%s) did not exhaust within the safety bound", sort)
+	return nil
+}
+
+// sortFixture seeds a deterministic in-radius set spanning three start_dates
+// (one shared across two authorities, to exercise the (authority_code,
+// planit_name) tiebreak) plus two NULL-start_date rows (to exercise NULLS LAST
+// and a page boundary inside the NULL tail). All rows are within 6 km.
+func sortFixture(t *testing.T, store *PostgresStore) {
+	t.Helper()
+	ctx := context.Background()
+	mar := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("A1", 100), 100), mar),
+		withStart(at(pgApp("A2", 100), 200), jan),
+		withStart(at(pgApp("A3", 100), 300), feb),
+		withStart(at(pgApp("A4", 200), 350), feb), // equal date to A3, other authority
+		at(pgApp("A5", 100), 400),                 // NULL start_date
+		at(pgApp("A6", 100), 500),                 // NULL start_date
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+}
+
+// TestPostgresStore_FindInZonePage_Distance proves the sort-aware path reproduces
+// the legacy nearest-first ordering for SortDistance and pages without gaps.
+func TestPostgresStore_FindInZonePage_Distance(t *testing.T) {
+	store := newAppPGStore(t)
+	sortFixture(t, store)
+
+	// Single page (canonical order) — nearest-first by construction distance.
+	want := []string{"A1", "A2", "A3", "A4", "A5", "A6"}
+	if got := pageAllInZone(t, store, SortDistance, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("distance single page: got %v, want %v", got, want)
+	}
+	// Paged to exhaustion with a small page size — must equal the canonical order.
+	if got := pageAllInZone(t, store, SortDistance, 6000, 2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("distance paged: got %v, want %v", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_Newest proves start_date DESC NULLS LAST with
+// the (authority_code, planit_name) tiebreak, paged to exhaustion with no overlap
+// or gap, matches the single unpaged order.
+func TestPostgresStore_FindInZonePage_Newest(t *testing.T) {
+	store := newAppPGStore(t)
+	sortFixture(t, store)
+
+	// DESC by start_date; equal date (A3/A4) tiebreaks on authority_code "100" <
+	// "200"; NULL start_date (A5/A6) sorts last on planit_name "A5" < "A6".
+	want := []string{"A1", "A3", "A4", "A2", "A5", "A6"}
+	if got := pageAllInZone(t, store, SortNewest, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("newest single page: got %v, want %v", got, want)
+	}
+	if got := pageAllInZone(t, store, SortNewest, 6000, 2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("newest paged: got %v, want %v", got, want)
+	}
+	// Page size 1 forces a keyset boundary at every row, including inside the NULL tail.
+	if got := pageAllInZone(t, store, SortNewest, 6000, 1); !reflect.DeepEqual(got, want) {
+		t.Fatalf("newest paged size 1: got %v, want %v", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_Oldest proves start_date ASC NULLS LAST with
+// the same tiebreak, paged to exhaustion, matches the single unpaged order.
+func TestPostgresStore_FindInZonePage_Oldest(t *testing.T) {
+	store := newAppPGStore(t)
+	sortFixture(t, store)
+
+	want := []string{"A2", "A3", "A4", "A1", "A5", "A6"}
+	if got := pageAllInZone(t, store, SortOldest, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("oldest single page: got %v, want %v", got, want)
+	}
+	if got := pageAllInZone(t, store, SortOldest, 6000, 2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("oldest paged: got %v, want %v", got, want)
+	}
+	if got := pageAllInZone(t, store, SortOldest, 6000, 1); !reflect.DeepEqual(got, want) {
+		t.Fatalf("oldest paged size 1: got %v, want %v", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_RespectsRadius proves the spatial predicate
+// still bounds every sort: a row outside the radius never appears.
+func TestPostgresStore_FindInZonePage_RespectsRadius(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+	far := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC) // newest of all, but far away
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("IN", 100), 100), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
+		withStart(at(pgApp("OUT", 100), 50000), far), // 50 km, outside 6 km
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	for _, sort := range []Sort{SortDistance, SortNewest, SortOldest} {
+		got := pageAllInZone(t, store, sort, 6000, 10)
+		if !reflect.DeepEqual(got, []string{"IN"}) {
+			t.Errorf("%s: got %v, want [IN] (OUT is beyond the radius)", sort, got)
+		}
+	}
+}
+
+// TestPostgresStore_FindInZonePage_CursorSortMismatch proves a cursor minted under
+// one sort is rejected when replayed under another, and a malformed cursor is
+// reported as ErrCursorInvalid — both so the handler returns 400, never a
+// mis-ordered page.
+func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+	sortFixture(t, store)
+
+	_, cursor, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "")
+	if err != nil {
+		t.Fatalf("mint newest cursor: %v", err)
+	}
+	if cursor == "" {
+		t.Fatal("expected a continuation cursor after a full page")
+	}
+
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortOldest, 1, cursor); !errors.Is(err, ErrCursorSortMismatch) {
+		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
+	}
+
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
+		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_UnsupportedSort proves an out-of-set sort is
+// rejected with ErrUnsupportedSort (the handler validates first, but the store
+// fails closed rather than silently running an arbitrary order).
+func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+	sortFixture(t, store)
+
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("status"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
+	}
 }
 
 // TestPostgresStore_RecentNearby_And_NearestNearby distinguishes recency ordering

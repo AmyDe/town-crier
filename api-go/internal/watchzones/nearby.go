@@ -52,9 +52,14 @@ type authorityResolver interface {
 // cross-partition, so a border-spanning zone surfaces neighbour-authority apps
 // (tc-zldl). The fetch is bounded: it returns at most `limit` rows for the given
 // cursor plus an opaque continuation token for the next page (tc-fm8f).
-// *applications.CosmosStore satisfies it.
+//
+// FindNearbyPage is the legacy default-distance path (byte-identical param-less
+// contract). FindInZonePage adds the server-side ?sort= surface (epic #682 slice
+// 1: distance/newest/oldest) with a sort-aware keyset cursor. *applications.PostgresStore
+// satisfies both.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
+	FindInZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -121,19 +126,29 @@ type createRequest struct {
 // bump this value server-side first before shipping the iOS change.
 const maxRadiusMetres = 10_000
 
-// defaultNearbyLimit and maxNearbyLimit bound the per-request page of nearby
-// applications. The browse path fetches a SINGLE bounded page so a dense urban
-// zone can no longer drain tens of thousands of documents and blow the server
-// write timeout (tc-fm8f). Default and max are equal at 500: ~0.5 MB of full
-// Result rows, sub-second, low RU. The create + demo paths fetch page one only.
+// defaultNearbyLimit, defaultSortedLimit and maxNearbyLimit bound the per-request
+// page of nearby applications. The browse path fetches a SINGLE bounded page so a
+// dense urban zone can no longer drain tens of thousands of documents and blow the
+// server write timeout (tc-fm8f).
+//
+// The legacy param-less path keeps the 500 default (byte-identical backward-compat
+// contract, #541). The sort-aware path (?sort=) uses a smaller 150 default for a
+// snappier first paint and infinite-scroll increment (epic #682). maxNearbyLimit
+// is the shared clamp ceiling for both. The create + demo paths fetch page one only.
 const (
 	defaultNearbyLimit = 500
+	defaultSortedLimit = 150
 	maxNearbyLimit     = 500
 )
 
-// invalidCursorMessage is the 400 body when ?cursor= is not a valid base64url
-// continuation token previously handed out via the X-Next-Cursor header.
+// invalidCursorMessage is the 400 body when ?cursor= is not a valid continuation
+// token: a malformed base64url wrapper, a token that is not a keyset cursor, or a
+// cursor minted under a different ?sort= than the request carries.
 const invalidCursorMessage = "Invalid cursor."
+
+// invalidSortMessage is the 400 body when ?sort= is outside the supported set
+// ({distance, newest, oldest} for this slice).
+const invalidSortMessage = "Invalid sort."
 
 // valid reports whether the create request passes the pre-handler guard:
 // non-blank name, positive radius within the server ceiling, in-range
@@ -274,6 +289,11 @@ type latestUnreadEventWire struct {
 // its latest unread notification. When the caller has no read-watermark yet
 // (first touch) the unread lookup is skipped and every row's latestUnreadEvent
 // is null.
+//
+// Routing: a param-less call (no ?sort=) keeps the legacy nearest-first path
+// (FindNearbyPage, default 500) byte-identical for the in-review iOS build (#541).
+// A ?sort= call opts into the server-side sort surface (FindInZonePage, default
+// 150) with a sort-aware keyset cursor (epic #682 slice 1).
 func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -288,16 +308,28 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := parseNearbyLimit(r.URL.Query().Get("limit"))
+	sort, sortPresent, sortOK := parseSort(r.URL.Query().Get("sort"))
+	if !sortOK {
+		h.writeError(w, r, http.StatusBadRequest, invalidSortMessage)
+		return
+	}
+
+	// decodeCursor strips the transport-layer base64 wrapping; a malformed wrapper
+	// is a clean 400. The unwrapped token is the store's opaque keyset cursor.
 	cursor, ok := decodeCursor(r.URL.Query().Get("cursor"))
 	if !ok {
 		h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)
 		return
 	}
 
-	apps, nextCursor, err := h.apps.FindNearbyPage(
-		r.Context(), zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
+	apps, nextCursor, err := h.findZonePage(r.Context(), zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
+		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
+		// keyset cursor is only valid for the sort it was minted under.
+		if errors.Is(err, applications.ErrCursorInvalid) || errors.Is(err, applications.ErrCursorSortMismatch) {
+			h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)
+			return
+		}
 		h.serverError(w, r, "find applications in zone", err)
 		return
 	}
@@ -350,17 +382,32 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, r, http.StatusOK, results)
 }
 
-// parseNearbyLimit resolves ?limit= to a bounded page size: absent, non-numeric,
-// or non-positive falls back to the default; anything above the max clamps down.
-// It never rejects — an existing client that omits or fat-fingers the parameter
-// still gets a sane bounded page.
-func parseNearbyLimit(raw string) int {
+// findZonePage runs the bounded spatial page for the zone. With no ?sort= it
+// keeps the legacy nearest-first finder at the 500 default (byte-identical
+// param-less contract); with ?sort= it uses the sort-aware finder at the 150
+// default and a sort-aware keyset cursor. rawLimit is the unparsed ?limit= value;
+// cursor is the transport-unwrapped continuation token.
+func (h *handler) findZonePage(ctx context.Context, zone WatchZone, sort applications.Sort, sortPresent bool, rawLimit, cursor string) ([]applications.PlanningApplication, string, error) {
+	if !sortPresent {
+		limit := parseLimit(rawLimit, defaultNearbyLimit)
+		return h.apps.FindNearbyPage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
+	}
+	limit := parseLimit(rawLimit, defaultSortedLimit)
+	return h.apps.FindInZonePage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, sort, limit, cursor)
+}
+
+// parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
+// non-positive falls back to def; anything above the ceiling clamps to
+// maxNearbyLimit. It never rejects — an existing client that omits or fat-fingers
+// the parameter still gets a sane bounded page. def lets the legacy path keep its
+// 500 default while the sort-aware path defaults to 150.
+func parseLimit(raw string, def int) int {
 	if raw == "" {
-		return defaultNearbyLimit
+		return def
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n <= 0 {
-		return defaultNearbyLimit
+		return def
 	}
 	if n > maxNearbyLimit {
 		return maxNearbyLimit
@@ -368,10 +415,25 @@ func parseNearbyLimit(raw string) int {
 	return n
 }
 
-// decodeCursor base64url-decodes an opaque ?cursor= value into the raw Cosmos
-// continuation token. An empty value means the first page (ok). A malformed value
-// is rejected (ok == false) so a garbage cursor is a clean 400, not a silent
-// reset to the first page.
+// parseSort resolves ?sort= to a supported Sort. An absent value defaults to
+// SortDistance (the legacy nearest-first behaviour). The boolean reports whether
+// the value is supported in this slice ({distance, newest, oldest}); an
+// unsupported value (status, recent-activity, or garbage) is a clean 400. The
+// caller treats an absent value (ok with SortDistance and present=false) as the
+// legacy param-less path.
+func parseSort(raw string) (sort applications.Sort, present, ok bool) {
+	if raw == "" {
+		return applications.SortDistance, false, true
+	}
+	s := applications.Sort(raw)
+	return s, true, s.Supported()
+}
+
+// decodeCursor base64url-decodes an opaque ?cursor= value into the store's raw
+// keyset continuation token (backend-agnostic; sort-aware for the ?sort= path).
+// An empty value means the first page (ok). A malformed value is rejected
+// (ok == false) so a garbage cursor is a clean 400, not a silent reset to the
+// first page.
 func decodeCursor(raw string) (string, bool) {
 	if raw == "" {
 		return "", true
@@ -383,8 +445,8 @@ func decodeCursor(raw string) (string, bool) {
 	return string(b), true
 }
 
-// encodeCursor base64url-encodes a raw Cosmos continuation token for the
-// X-Next-Cursor response header — header- and URL-safe, unpadded.
+// encodeCursor base64url-encodes the store's raw keyset continuation token for
+// the X-Next-Cursor response header — header- and URL-safe, unpadded.
 func encodeCursor(token string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(token))
 }

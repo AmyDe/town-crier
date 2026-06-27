@@ -118,6 +118,9 @@ func (fakeAppStore) BreakdownByAuthority(context.Context, string) ([]application
 func (fakeAppStore) FindNearbyPage(context.Context, float64, float64, float64, int, string) ([]applications.PlanningApplication, string, error) {
 	return nil, "", nil
 }
+func (fakeAppStore) FindInZonePage(context.Context, float64, float64, float64, applications.Sort, int, string) ([]applications.PlanningApplication, string, error) {
+	return nil, "", nil
+}
 func (fakeAppStore) RecentNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
 	return nil, nil
 }
