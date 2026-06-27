@@ -27,6 +27,22 @@ enum JWTSubscriptionTierExtractor {
     return payload["sub"] as? String
   }
 
+  /// Extracts the `aud` (audience) claim from a JWT token, normalised to an
+  /// array. Per RFC 7519 the claim may be a single string or an array of
+  /// strings; both shapes are returned as `[String]`. Returns an empty array
+  /// when the claim is absent or the token is malformed -- callers treat that
+  /// as "unknown audience" and fail open.
+  static func extractAudiences(from token: String) -> [String] {
+    guard let payload = decodePayload(from: token) else { return [] }
+    if let single = payload["aud"] as? String {
+      return [single]
+    }
+    if let array = payload["aud"] as? [String] {
+      return array
+    }
+    return []
+  }
+
   /// Decodes the payload segment of a JWT token into a dictionary.
   /// Returns `nil` if the token is malformed or the payload is not valid JSON.
   static func decodePayload(from token: String) -> [String: Any]? {

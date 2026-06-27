@@ -74,6 +74,17 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
   public func refreshSession() async throws -> AuthSession {
     do {
       let credentials = try await credentialsManager.credentials()
+      guard Self.audienceMatches(
+        accessToken: credentials.accessToken, expected: config.audience
+      ) else {
+        // The stored token was minted for a different API audience (a
+        // prod-build -> dev-build flip, #660). It is still un-expired, so
+        // handing it back would 401 against the new API. Wipe it and force
+        // a fresh login instead (tc-iuvu).
+        _ = credentialsManager.clear()
+        await sessionCache.clear()
+        throw DomainError.sessionExpired
+      }
       let session = Self.mapToSession(credentials)
       await sessionCache.store(session)
       return session
@@ -108,7 +119,7 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     // Slow path: consult the keychain. `currentOrLoad` deduplicates
     // concurrent callers so a four-way burst with a cold cache still
     // issues at most one `SecItemCopyMatching`.
-    return await sessionCache.currentOrLoad { [credentialsManager] in
+    return await sessionCache.currentOrLoad { [credentialsManager, config] in
       // `hasValid()` only checks access-token expiry. Per Auth0 SDK docs,
       // apps using refresh tokens must also consult `canRenew()` at
       // startup — otherwise an expired access token forces a fresh login
@@ -118,6 +129,15 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
       }
       do {
         let credentials = try await credentialsManager.credentials()
+        guard Self.audienceMatches(
+          accessToken: credentials.accessToken, expected: config.audience
+        ) else {
+          // Stored token targets a different API audience (env flip, #660).
+          // Discard it; returning nil also nulls the session cache via
+          // `currentOrLoad`, so the next call re-authenticates (tc-iuvu).
+          _ = credentialsManager.clear()
+          return nil
+        }
         return Self.mapToSession(credentials)
       } catch {
         return nil
@@ -141,6 +161,23 @@ public final class Auth0AuthenticationService: TownCrierDomain.AuthenticationSer
     default:
       return false
     }
+  }
+
+  /// Whether the access token was issued for the API audience this build
+  /// targets. After an environment flip (prod build -> dev build, #660) a
+  /// cached but un-expired token still carries the previous audience, which
+  /// the new API rejects with 401. Comparing the `aud` claim against
+  /// `config.audience` lets the cached-credential read paths detect the
+  /// mismatch and force a fresh login.
+  ///
+  /// The `aud` claim may be a string or an array of strings; both are
+  /// matched by membership. **Fails open**: a token that cannot be decoded
+  /// or carries no `aud` claim is treated as matching, so a malformed-token
+  /// hiccup never wipes an otherwise valid session.
+  static func audienceMatches(accessToken: String, expected: String) -> Bool {
+    let audiences = JWTSubscriptionTierExtractor.extractAudiences(from: accessToken)
+    guard !audiences.isEmpty else { return true }
+    return audiences.contains(expected)
   }
 
   private static func mapToSession(_ credentials: Credentials) -> AuthSession {
