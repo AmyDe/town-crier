@@ -22,7 +22,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 | Component | Technology |
 |-----------|-----------|
 | Backend API | Go (net/http, log/slog), Azure Container Apps |
-| Database | Azure Cosmos DB (Serverless) via Cosmos DB SDK (no ORM) |
+| Database | Azure Database for PostgreSQL Flexible Server + PostGIS via pgx (no ORM) |
 | iOS App | Swift, SwiftUI, SwiftData, SPM |
 | Infrastructure | Pulumi (Go) |
 | CI/CD | GitHub Actions |
@@ -30,7 +30,7 @@ Town Crier is a mobile-first app for monitoring UK local authority planning appl
 
 ## Data Sources
 
-When looking up user data or entity information, query Cosmos DB first — not Auth0 or other external identity providers. Auth0 tenants may be deleted or unavailable, and most user data is already stored in Cosmos from onboarding.
+When looking up user data or entity information, query our own Postgres database first (the `town_crier_prod` database) — not Auth0 or other external identity providers. Auth0 tenants may be deleted or unavailable, and most user data is already stored in Postgres from onboarding.
 
 ## Git & Release Workflow
 
@@ -48,13 +48,13 @@ iOS patch releases keep tripping on the same two snags — bake the checks in:
 
 ## Follow-up Checks
 
-Never suggest `/schedule` to check on things later (deploy verification, "did the next run succeed?", monitor post-merge behaviour, etc.). The cloud agents that `/schedule` launches do not have the local credentials this repo's checks rely on — `gh`, `az`, `auth0`, `pulumi`, the Cosmos endpoint, the Dolt-backed `bd` server, and the Azure subscription context all live on the user's workstation. A scheduled cloud agent will silently fail the moment it tries to run any of those.
+Never suggest `/schedule` to check on things later (deploy verification, "did the next run succeed?", monitor post-merge behaviour, etc.). The cloud agents that `/schedule` launches do not have the local credentials this repo's checks rely on — `gh`, `az`, `auth0`, `pulumi`, the Postgres endpoint, the Dolt-backed `bd` server, and the Azure subscription context all live on the user's workstation. A scheduled cloud agent will silently fail the moment it tries to run any of those.
 
 `/loop` is the only viable way to check on things in the future, because it runs in the user's local session with full credentials. If a follow-up check is worth offering, offer `/loop` — never `/schedule`.
 
 ## Debugging Guidelines
 
-When diagnosing issues, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (e.g., Auth0 vs Cosmos, OpenTelemetry vs logs).
+When diagnosing issues, ask the user for the data source or context before exploring the codebase broadly. Don't assume where data comes from (e.g., Auth0 vs Postgres, OpenTelemetry vs logs).
 
 ## Scope Discipline
 
@@ -80,7 +80,7 @@ make test-integration               # Real Postgres + PostGIS tests — boots a 
 go test -tags=integration ./...     # Same, against an already-running DB (TEST_DATABASE_URL); skips cleanly if none
 ```
 
-The default `go test ./...` excludes the `integration`-tagged real-DB suite, so it needs no Docker. The integration suite (Cosmos → Postgres + PostGIS migration; see memo 0010 / epic #645) runs against local PostGIS via the `internal/platform/postgres/pgtest` harness; `go-coding-standards` has the details.
+The default `go test ./...` excludes the `integration`-tagged real-DB suite, so it needs no Docker. The integration suite (real-DB tests left in place by the completed Cosmos → Postgres + PostGIS migration; see ADR 0032) runs against local PostGIS via the `internal/platform/postgres/pgtest` harness; `go-coding-standards` has the details.
 
 ### iOS (`/mobile/ios`)
 
@@ -120,13 +120,13 @@ Skills live in `.claude/skills/` as `SKILL.md` files. Agents live in `.claude/ag
 Per-stack architecture and patterns live in that stack's coding-standards skill (see the table above). Cross-cutting constraints:
 
 ### Data Access
-No ORM — read and write Cosmos DB through the SDK directly. Business logic lives in domain entities and value objects, with HTTP handlers kept as lightweight orchestrators.
+No ORM — read and write Postgres through the pgx driver directly. Business logic lives in domain entities and value objects, with HTTP handlers kept as lightweight orchestrators.
 
 ### Testing
 - TDD workflow: Red-Green-Refactor.
 - Primary unit of test by stack: HTTP handlers and stores (Go); ViewModels and Use Cases (iOS); hooks (web).
 - Hand-written fakes/spies — no reflection-based mocking libraries.
-- **Real-DB integration tests (Go).** As the Cosmos → Postgres + PostGIS migration proceeds (memo 0010, epic #645), Postgres store ports also get real-database tests against a local PostGIS in Docker — behind the `//go:build integration` tag, using the `internal/platform/postgres/pgtest` harness. Run them with `make -C api-go test-integration` (boots the DB) or `go test -tags=integration ./...` against a running DB; they `t.Skip` cleanly when no DB is reachable, so the default `go test ./...` fakes-only loop stays Docker-free. These are additive to the unit fakes, not a replacement — they cover spatial/SQL behaviour (`ST_DWithin`, KNN `ORDER BY <->`, accurate `COUNT`) that fakes cannot honestly model. The `go-coding-standards` skill documents the harness API.
+- **Real-DB integration tests (Go).** Following the completed Cosmos → Postgres + PostGIS migration (ADR 0032), Postgres store ports have real-database tests against a local PostGIS in Docker — behind the `//go:build integration` tag, using the `internal/platform/postgres/pgtest` harness. Run them with `make -C api-go test-integration` (boots the DB) or `go test -tags=integration ./...` against a running DB; they `t.Skip` cleanly when no DB is reachable, so the default `go test ./...` fakes-only loop stays Docker-free. These are additive to the unit fakes, not a replacement — they cover spatial/SQL behaviour (`ST_DWithin`, KNN `ORDER BY <->`, accurate `COUNT`) that fakes cannot honestly model. The `go-coding-standards` skill documents the harness API.
 
 ## Naming Conventions
 
