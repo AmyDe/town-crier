@@ -20,20 +20,16 @@ type querier interface {
 }
 
 // Store is the full method set the apple-notification idempotency store exposes
-// to its consumers. It serves two purposes: a compile-time parity check (both
-// *CosmosNotificationStore and *PostgresNotificationStore must satisfy it, so a
-// Postgres port can never silently diverge from the Cosmos surface) and the
-// exported consumer-side interface cmd/api's wiring will accept so the store can
-// be flag-selected between backends (a later slice wires the flip).
+// to its consumers and the exported consumer-side interface cmd/api's wiring
+// accepts.
 type Store interface {
 	IsProcessed(ctx context.Context, notificationUUID string) (bool, error)
 	MarkProcessed(ctx context.Context, notificationUUID string) error
 }
 
-// Compile-time parity: both the Cosmos and Postgres stores satisfy the exported
-// Store interface and the handler's package-local idempotencyStore interface.
+// Compile-time check: the store satisfies the exported Store interface and the
+// handler's package-local idempotencyStore interface.
 var (
-	_ Store            = (*CosmosNotificationStore)(nil)
 	_ Store            = (*PostgresNotificationStore)(nil)
 	_ idempotencyStore = (*PostgresNotificationStore)(nil)
 )

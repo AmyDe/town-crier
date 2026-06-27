@@ -36,33 +36,10 @@ type Config struct {
 	// Defaults to localhost dev origin.
 	CorsAllowedOrigins []string
 
-	// CosmosEndpoint and CosmosDatabase address the Cosmos account and database
-	// the profiles store reads and writes. AzureClientID pins the user-assigned
-	// managed identity used for AAD auth (azidentity) (tc-6ig5). All three are
-	// empty until infra wires them, in which case the Cosmos client is not
-	// constructed and profile routes are unavailable.
-	CosmosEndpoint string
-	CosmosDatabase string
-	AzureClientID  string
-
-	// AppsZonesBackend selects the datastore for the Applications and WatchZones
-	// route stores. The only value that selects Postgres + PostGIS is the exact
-	// string "postgres"; every other value (including unset) keeps Cosmos. It is a
-	// dedicated, explicit flag (read from APPS_ZONES_BACKEND) set on the dev
-	// container only (epic #645, issue #657 Slice 2), never inferred from
-	// POSTGRES_AUTH, so a future prod POSTGRES_AUTH can never flip prod's stores
-	// off Cosmos.
-	AppsZonesBackend string
-
-	// StoreBackend is the full-cutover flag: when set to the exact string
-	// "postgres" it routes EVERY store in cmd/api to Postgres. It implies
-	// AppsZonesBackend (apps+zones also move to Postgres). It is a dedicated,
-	// explicit flag (read from STORE_BACKEND) that is NEVER inferred from
-	// POSTGRES_AUTH — a future env change cannot silently flip prod stores.
-	// Default/unset keeps all stores at their individual defaults (AppsZonesBackend
-	// still honoured for the apps+zones pair). Prod stays unset until the infra
-	// slice flips it (epic #645, issue #669 Slice 7a).
-	StoreBackend string
+	// AzureClientID pins the user-assigned managed identity used for AAD auth
+	// (azidentity) by the Postgres pool (passwordless Entra token) and the Service
+	// Bus client (tc-6ig5). Empty falls back to the ambient managed identity.
+	AzureClientID string
 
 	// Auth0M2MClientID / Auth0M2MClientSecret are the machine-to-machine
 	// client-credentials used to sync subscription tier and delete users in the
@@ -76,7 +53,7 @@ type Config struct {
 	// and poll-sb). ServiceBusNamespace is the fully-qualified namespace
 	// (e.g. sb-town-crier-prod.servicebus.windows.net); ServiceBusQueueName is the
 	// trigger queue name. Authentication is the pinned user-assigned managed
-	// identity (AzureClientID) — no SAS / connection string, mirroring the Cosmos
+	// identity (AzureClientID) — no SAS / connection string, mirroring the Postgres
 	// identity model. Both are empty on jobs that don't touch Service Bus (digest,
 	// hourly-digest, dormant-cleanup), in which case the Service Bus client is not
 	// constructed and the poll modes refuse to run rather than crash. The infra
@@ -159,7 +136,7 @@ type Config struct {
 	// PollingMaxPagesPerAuthorityPerCycle caps PlanIt pagination per authority
 	// (default 3). PollingHandlerBudgetSeconds is the soft per-cycle wall-clock
 	// budget (default 240); under ADR 0024's receive-and-delete model it is a
-	// safety cap, not a Service-Bus-lock bound — the Cosmos lease TTL (> handler
+	// safety cap, not a Service-Bus-lock bound — the lease TTL (> handler
 	// budget) prevents concurrent runs. PollReplicaTimeoutSeconds and
 	// PollShutdownGraceSeconds size the hard cycle budget (replicaTimeout − grace).
 	PollingMaxPagesPerAuthorityPerCycle int
@@ -168,13 +145,13 @@ type Config struct {
 	PollShutdownGraceSeconds            int
 
 	// NotificationsRetentionDays is the number of days to keep Notifications rows
-	// when running the pg-purge job (replacing Cosmos 90-day TTL). Loaded from
-	// NOTIFICATIONS_RETENTION_DAYS; defaults to 90 matching the Cosmos TTL.
+	// when running the pg-purge job. Loaded from NOTIFICATIONS_RETENTION_DAYS;
+	// defaults to 90.
 	NotificationsRetentionDays int
 
 	// DeviceRegistrationsRetentionDays is the number of days to keep DeviceRegistrations
-	// rows when running the pg-purge job (replacing Cosmos 180-day TTL). Loaded from
-	// DEVICE_REGISTRATIONS_RETENTION_DAYS; defaults to 180 matching the Cosmos TTL.
+	// rows when running the pg-purge job. Loaded from
+	// DEVICE_REGISTRATIONS_RETENTION_DAYS; defaults to 180.
 	DeviceRegistrationsRetentionDays int
 }
 
@@ -212,12 +189,7 @@ func LoadConfig() (Config, error) {
 		Auth0Audience:      os.Getenv("AUTH0_AUDIENCE"),
 		CorsAllowedOrigins: parseOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 
-		CosmosEndpoint: os.Getenv("COSMOS_ENDPOINT"),
-		CosmosDatabase: os.Getenv("COSMOS_DATABASE"),
-		AzureClientID:  os.Getenv("AZURE_CLIENT_ID"),
-
-		AppsZonesBackend: os.Getenv("APPS_ZONES_BACKEND"),
-		StoreBackend:     os.Getenv("STORE_BACKEND"),
+		AzureClientID: os.Getenv("AZURE_CLIENT_ID"),
 
 		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
 		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),

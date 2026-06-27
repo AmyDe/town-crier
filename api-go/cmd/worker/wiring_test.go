@@ -19,9 +19,8 @@ import (
 // pollAppConsumer mirrors polling's unexported applicationStore: the exact slice
 // of applications.Store the poll handler consumes — the change-dedup read and the
 // Upsert write the poll cycle performs. The worker hands NewPollPlanItHandler the
-// flag-selected applications.Store interface, so that interface (and thus both
-// the Postgres and Cosmos backends) must satisfy this contract for the poll
-// Upsert to reach either backend.
+// applications.Store interface, so that interface must satisfy this contract for
+// the poll Upsert to reach the store.
 type pollAppConsumer interface {
 	GetByUID(ctx context.Context, uid, authorityCode string) (applications.PlanningApplication, bool, error)
 	Upsert(ctx context.Context, a applications.PlanningApplication) error
@@ -29,14 +28,14 @@ type pollAppConsumer interface {
 
 // notifyZoneConsumer mirrors notifydispatch's unexported zoneMatcher: the notify
 // fan-out's only watch-zone dependency, the FindZonesContaining containment
-// lookup. The worker threads the flag-selected watchzones.Store into the fan-out,
-// so the interface must satisfy this — the proof that FindZonesContaining reaches
-// whichever backend the flag selects.
+// lookup. The worker threads the watchzones.Store into the fan-out, so the
+// interface must satisfy this — the proof that FindZonesContaining reaches the
+// store.
 type notifyZoneConsumer interface {
 	FindZonesContaining(ctx context.Context, latitude, longitude float64) ([]watchzones.WatchZone, error)
 }
 
-// Compile-time proof the flag-selected interfaces satisfy what the worker's poll
+// Compile-time proof the consumer-side interfaces satisfy what the worker's poll
 // Upsert and notify fan-out actually consume.
 var (
 	_ pollAppConsumer    = (applications.Store)(nil)
@@ -51,23 +50,22 @@ func testRegistry() *metrics.Registry {
 	return metrics.New(otel.Meter(metrics.MeterName))
 }
 
-// TestWirePollFanOut_AcceptsFlagSelectedZoneStore is the notify-path guard for
-// the riskiest wiring change (issue #664 Phase B): wirePollFanOut must take the
-// watchzones.Store interface, not the concrete *watchzones.CosmosStore, so the
-// poll fan-out's FindZonesContaining can run against the Postgres store when
-// APPS_ZONES_BACKEND=postgres. The test passes a non-Cosmos watchzones.Store (a
-// spy) — it compiles only once the parameter is the interface. An empty Config
-// leaves every other collaborator's Cosmos container nil (the constructors are
-// nil-tolerant), so the wiring runs with no Cosmos dependency.
-func TestWirePollFanOut_AcceptsFlagSelectedZoneStore(t *testing.T) {
+// TestWirePollFanOut_AcceptsZoneStoreInterface is the notify-path guard for the
+// riskiest wiring change (issue #664 Phase B): wirePollFanOut must take the
+// watchzones.Store interface so the poll fan-out's FindZonesContaining runs
+// against the Postgres store. The test passes a watchzones.Store spy — it
+// compiles only once the parameter is the interface. A nil stores pointer leaves
+// every other collaborator unset (the wiring is nil-tolerant), so the wiring runs
+// with no other store dependency.
+func TestWirePollFanOut_AcceptsZoneStoreInterface(t *testing.T) {
 	t.Parallel()
 
 	handler := &polling.PollPlanItHandler{}
 	spy := newSpyZoneStore()
 
-	if err := wirePollFanOut(platform.Config{}, handler, spy, testRegistry(), nil, discardLogger()); err != nil {
-		t.Fatalf("wirePollFanOut with a flag-selected watchzones.Store: %v", err)
-	}
+	// wirePollFanOut must accept the watchzones.Store interface (the spy) and wire
+	// the fan-out onto the handler without panicking on a nil stores pointer.
+	wirePollFanOut(platform.Config{}, handler, spy, testRegistry(), nil, discardLogger())
 }
 
 // TestEnqueuer_FindZonesContainingFlowsThroughInterface proves the notify fan-out

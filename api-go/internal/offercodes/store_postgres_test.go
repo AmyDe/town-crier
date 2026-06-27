@@ -120,14 +120,11 @@ func (r *fakeEmptyRows) CommandTag() pgconn.CommandTag                { return p
 func (r *fakeEmptyRows) Conn() *pgx.Conn                              { return nil }
 
 // ---------------------------------------------------------------------------
-// Compile-time parity: PostgresStore must satisfy the same consumer interfaces
-// as CosmosStore. Add here so a divergence is a compile error.
+// Compile-time check: PostgresStore satisfies the handler's consumer interface,
+// so a divergence is a compile error.
 // ---------------------------------------------------------------------------
 
-var (
-	_ codeStore = (*PostgresStore)(nil)
-	_ codeStore = (*CosmosStore)(nil)
-)
+var _ codeStore = (*PostgresStore)(nil)
 
 // ---------------------------------------------------------------------------
 // Get

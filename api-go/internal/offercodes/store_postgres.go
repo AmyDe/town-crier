@@ -21,10 +21,8 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full offer-code method set that both *CosmosStore and
-// *PostgresStore must satisfy. It serves two purposes: a compile-time parity
-// check (so neither store can silently diverge) and the exported consumer-side
-// interface cmd/api's wiring accepts once a Postgres backend is selected.
+// Store is the full offer-code method set *PostgresStore satisfies and the
+// exported consumer-side interface cmd/api's wiring accepts.
 //
 // The set covers:
 //   - the codeStore interface in handler.go (Get/Save/RedeemWithCAS)
@@ -39,14 +37,8 @@ type Store interface {
 	AnonymiseRedemptionsByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time parity: both stores must satisfy the same exported Store
-// interface. If a new method is added to either store, the corresponding
-// interface and the other store must be updated in the same change — the
-// compiler enforces this.
-var (
-	_ Store = (*CosmosStore)(nil)
-	_ Store = (*PostgresStore)(nil)
-)
+// Compile-time check: the store satisfies the exported Store interface.
+var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes offer codes in the Postgres `offer_codes` table
 // (Cosmos → Postgres migration; memo 0010, epic #645).

@@ -10,12 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Compile-time parity: both the Cosmos and Postgres lease stores satisfy
-// LeaseAccess. These declarations fail until both types and the interface exist.
-var (
-	_ LeaseAccess = (*LeaseStore)(nil)
-	_ LeaseAccess = (*PostgresLeaseStore)(nil)
-)
+// Compile-time check: the Postgres lease store satisfies LeaseAccess.
+var _ LeaseAccess = (*PostgresLeaseStore)(nil)
 
 // fakeLeaseQuerier is a hand-written double for the lease store's querier that
 // covers the error and rows-affected branches without a real database.

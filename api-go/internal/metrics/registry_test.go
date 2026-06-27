@@ -62,7 +62,6 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 	reg.NeverPolledCount(ctx, 5, "Watched")
 	reg.PlanItHTTPError(ctx, 500, 99)
 	reg.NotificationCreated(ctx, "NewApplication", "Zone")
-	reg.CosmosRequestCharge(ctx, 2.5, "ReadItem", "WatchZones")
 	reg.WatchZoneCreated(ctx)
 	reg.WatchZoneUpdated(ctx)
 	reg.WatchZoneDeleted(ctx)
@@ -85,7 +84,6 @@ func TestRegistry_RecordsAllInstrumentNames(t *testing.T) {
 		"towncrier.polling.never_polled_count",
 		"towncrier.planit.http_errors",
 		"towncrier.notifications.created",
-		"towncrier.cosmos.request_charge_ru",
 		"towncrier.watchzones.created",
 		"towncrier.watchzones.updated",
 		"towncrier.watchzones.deleted",
@@ -119,7 +117,6 @@ func TestRegistry_NilIsNoOp(t *testing.T) {
 	reg.NeverPolledCount(ctx, 1, "Watched")
 	reg.PlanItHTTPError(ctx, 500, 99)
 	reg.NotificationCreated(ctx, "NewApplication", "Zone")
-	reg.CosmosRequestCharge(ctx, 1, "ReadItem", "WatchZones")
 	reg.WatchZoneCreated(ctx)
 	reg.WatchZoneUpdated(ctx)
 	reg.WatchZoneDeleted(ctx)

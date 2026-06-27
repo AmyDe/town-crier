@@ -11,7 +11,7 @@ import (
 
 // fakeWatchZoneStore is a hand-written watchzones.Store double. Only GetByUserID
 // carries behaviour the export adapter needs; the remaining methods satisfy the
-// interface so the fake can stand in for either backend's concrete store.
+// interface so the fake can stand in for the concrete store.
 type fakeWatchZoneStore struct {
 	zones []watchzones.WatchZone
 	err   error
@@ -38,9 +38,8 @@ func (f *fakeWatchZoneStore) FindZonesContaining(_ context.Context, _, _ float64
 }
 
 // TestWatchZoneExportReader_ReadsThroughStoreInterface proves the export adapter
-// is backed by the consumer-side watchzones.Store interface, not the concrete
-// Cosmos store, so GET /v1/me/data exports a Postgres-resident user's watch zones
-// when APPS_ZONES_BACKEND=postgres (bead tc-s8g1). The fake is a plain
+// is backed by the consumer-side watchzones.Store interface, so GET /v1/me/data
+// exports a user's watch zones (bead tc-s8g1). The fake is a plain
 // watchzones.Store, which the adapter must accept and read through.
 func TestWatchZoneExportReader_ReadsThroughStoreInterface(t *testing.T) {
 	t.Parallel()

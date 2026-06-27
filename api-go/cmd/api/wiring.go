@@ -45,19 +45,17 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/demo-account": {},
 	// Admin routes are anonymous to Auth0 (no bearer token); they are
 	// authenticated solely by the X-Admin-Key gate inside the handlers.
-	"PUT /v1/admin/subscriptions":                 {},
-	"GET /v1/admin/users":                         {},
-	"POST /v1/admin/offer-codes":                  {},
-	"POST /v1/admin/watchzones/backfill-location": {},
-	"POST /v1/admin/watchzones/backfill-bbox":     {},
+	"PUT /v1/admin/subscriptions": {},
+	"GET /v1/admin/users":         {},
+	"POST /v1/admin/offer-codes":  {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
 	"POST /v1/webhooks/appstore": {},
 	// The build-time SEO endpoints are anonymous to Auth0 (no bearer token); they
 	// are authenticated solely by the X-Build-Key gate inside the handler, mirroring
-	// the admin routes. They read only public planning data from Cosmos. The first
-	// feeds authority pages; the second feeds town pages (bounded geo query).
+	// the admin routes. They read only public planning data. The first feeds
+	// authority pages; the second feeds town pages (bounded geo query).
 	"GET /v1/authorities/{id}/applications": {},
 	"GET /v1/applications/near":             {},
 }
@@ -76,10 +74,8 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // notifUnreadReader is the narrowest consumer-side interface the notification
-// store wired into NearbyRoutes must satisfy. Both *notifications.CosmosStore
-// (which only implements GetLatestUnreadByApplications) and
-// *notifications.PostgresStore (which satisfies the full notifications.Store)
-// satisfy it structurally.
+// store wired into NearbyRoutes must satisfy. *notifications.PostgresStore (which
+// satisfies the full notifications.Store) satisfies it structurally.
 type notifUnreadReader interface {
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
 }
@@ -101,25 +97,13 @@ type notifUnreadReader interface {
 //	    dispatches through rate limiting and activity recording (both no-ops for
 //	    anonymous routes, which carry no subject).
 //
-// store is nil when Cosmos is not configured (local boot without env): the
-// /v1/me routes are then unwired — requests fall to the 401 fallback — and the
-// profile-backed rate-limit/activity middlewares are skipped entirely. The
-// device-token, notification-state and watch-zone stores follow the same
-// nil-means-unwired convention. (The watch-zone preferences endpoints are
-// served by profiles.Routes off the profile store, so they come up with the
-// /v1/me routes, not the watch-zone store.)
-//
-// store, deviceStore, stateStore, notifStore, savedStore, offerStore,
-// adminStore and appleNotifStore are consumer-side interfaces, not concrete
-// *CosmosStore pointers, so cmd/api can serve each from either Cosmos or
-// Postgres per the STORE_BACKEND / APPS_ZONES_BACKEND flags (issue #669
-// Slice 7a). They MUST be passed as genuine nil interfaces (not a typed-nil
-// *CosmosStore boxed in an interface) when unconfigured, or the
-// nil-means-unwired guards below would wire dead routes — main.go's choose*
-// helpers enforce this. adminWatchZones stays the concrete Cosmos
-// *watchzones.CosmosStore because the admin location/bbox backfill it feeds is
-// a Cosmos-era migrator absent from the Postgres port; it is constructed
-// regardless of the flag so the admin surface is unaffected by the backend swap.
+// The store parameters are consumer-side interfaces backed by the Postgres
+// stores. Each retains the nil-means-unwired convention so a store-less local
+// boot (no datastore) leaves the corresponding routes unwired — requests fall to
+// the 401 fallback — and the profile-backed rate-limit/activity middlewares are
+// skipped entirely. (The watch-zone preferences endpoints are served by
+// profiles.Routes off the profile store, so they come up with the /v1/me routes,
+// not the watch-zone store.)
 func newRouter(
 	validator auth.TokenValidator,
 	corsOrigins []string,
@@ -131,7 +115,6 @@ func newRouter(
 	stateStore notificationstate.Store,
 	notifStore notifUnreadReader,
 	watchZoneStore watchzones.Store,
-	adminWatchZones *watchzones.CosmosStore,
 	appStore applications.Store,
 	savedStore savedapplications.Store,
 	geocodeClient *geocoding.Client,
@@ -154,8 +137,8 @@ func newRouter(
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
 	// Geocode and designations are authed (absent from anonymousPatterns) and
-	// have no Cosmos dependency — they call outbound UK services — so they are
-	// always wired, even on a Cosmos-less local boot.
+	// have no store dependency — they call outbound UK services — so they are
+	// always wired, even on a store-less local boot.
 	geocoding.Routes(mux, geocodeClient, logger)
 	designations.Routes(mux, designationClient, logger)
 
@@ -176,7 +159,7 @@ func newRouter(
 		// The delete path decrements the watch-zone quota counter on the profile
 		// via CAS, so it needs the CAS-capable profile store. Only pass the option
 		// when the profile store is genuinely present — passing a typed-nil
-		// *profiles.CosmosStore would wrap into a non-nil interface and defeat the
+		// *profiles.PostgresStore would wrap into a non-nil interface and defeat the
 		// handler's nil-check (the same typed-nil gotcha guarded for the saved
 		// store above).
 		zoneOpts := []watchzones.Option{watchzones.WithMetricsRecorder(registry)}
@@ -185,7 +168,7 @@ func newRouter(
 		}
 		watchzones.Routes(mux, watchZoneStore, logger, zoneOpts...)
 		// application-authorities derives from the user's watch zones plus the
-		// static authority data; it needs no Cosmos applications store.
+		// static authority data; it needs no applications store.
 		watchzones.AuthoritiesRoutes(mux, watchZoneStore, authorities.NewLookup(), logger)
 	}
 	if appStore != nil {
@@ -202,7 +185,7 @@ func newRouter(
 		// X-Build-Key) read recent applications from the same store: RecentRoutes by
 		// authority (authority pages) and NearRoutes by a bounded geo point (town
 		// pages). Both are registered here because they need the applications store;
-		// the routes are absent on a Cosmos-less local boot, where they fall to the
+		// the routes are absent on a store-less local boot, where they fall to the
 		// 401 fallback.
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
@@ -236,15 +219,11 @@ func newRouter(
 		// coded tier, and syncs Auth0. Needs both the profile and offer-code stores.
 		offercodes.Routes(mux, offerStore, store, auth0, time.Now, logger)
 	}
-	if adminStore != nil && offerStore != nil && adminWatchZones != nil {
+	if adminStore != nil && offerStore != nil {
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
-		// cross-partition admin store backs grant/list; the offer-code store backs
-		// generate; the Cosmos watch-zone store backs the one-shot location/bbox
-		// backfill (a Cosmos-era migrator, hence adminWatchZones not the flag-selected
-		// store). All three are Cosmos-gated, so the guard never disables admin in a
-		// real deployment (Cosmos configures every store together, even when the
-		// Applications/WatchZones routes are served from Postgres).
-		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), adminWatchZones, time.Now, logger)
+		// cross-user admin store backs grant/list; the offer-code store backs
+		// generate.
+		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -10,8 +9,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
@@ -21,7 +18,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
-	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 // denyAllValidator is the validator the API runs with when Auth0 config is
@@ -41,101 +37,154 @@ func (v staticValidator) ValidateToken(context.Context, string) (auth.Claims, er
 	return v.claims, nil
 }
 
-// fakeItems is an in-memory CosmosItems so wiring tests run the real store,
-// handlers, and post-auth middlewares with no Cosmos dependency.
-type fakeItems struct {
-	mu    sync.Mutex
-	items map[string][]byte
+// ── hand-written store fakes ──────────────────────────────────────────────────
+// The wiring tests drive the real router, handlers and post-auth middlewares
+// against these in-memory consumer-side fakes (no datastore dependency).
+
+// fakeProfileStore is a minimal profiles.Store with a Save/Get round-trip so the
+// authenticated-pipeline test can create then read a profile through the chain.
+type fakeProfileStore struct {
+	mu   sync.Mutex
+	byID map[string]*profiles.UserProfile
 }
 
-func newFakeItems() *fakeItems { return &fakeItems{items: map[string][]byte{}} }
+func newFakeProfileStore() *fakeProfileStore {
+	return &fakeProfileStore{byID: map[string]*profiles.UserProfile{}}
+}
 
-func (f *fakeItems) ReadItem(_ context.Context, _, id string) ([]byte, error) {
+func (f *fakeProfileStore) Get(_ context.Context, userID string) (*profiles.UserProfile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	raw, ok := f.items[id]
+	p, ok := f.byID[userID]
 	if !ok {
-		return nil, notFoundErr()
+		return nil, profiles.ErrNotFound
 	}
-	return raw, nil
+	return p, nil
 }
 
-func (f *fakeItems) UpsertItem(_ context.Context, _ string, item []byte) error {
+func (f *fakeProfileStore) Save(_ context.Context, p *profiles.UserProfile) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// The document's id field is the user id; the store always writes id == partition key.
-	f.items[idFromDoc(item)] = item
+	f.byID[p.UserID] = p
 	return nil
 }
 
-func (f *fakeItems) DeleteItem(_ context.Context, _, id string) error {
+func (f *fakeProfileStore) Delete(_ context.Context, userID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, ok := f.items[id]; !ok {
-		return notFoundErr()
+	if _, ok := f.byID[userID]; !ok {
+		return profiles.ErrNotFound
 	}
-	delete(f.items, id)
+	delete(f.byID, userID)
 	return nil
 }
 
-// QueryItems lets fakeItems also back a watchzones store; the wiring tests only
-// need the empty-list path, so it returns no documents.
-func (f *fakeItems) QueryItems(_ context.Context, _, _ string, _ map[string]any) ([][]byte, error) {
-	return nil, nil
-}
-
-// QueryItemsLongRead lets fakeItems satisfy applications.CosmosItems, whose
-// build-time SEO reads run on the longer per-attempt budget (tc-9tov). The
-// wiring tests only need the empty-list path.
-func (f *fakeItems) QueryItemsLongRead(_ context.Context, _, _ string, _ map[string]any) ([][]byte, error) {
-	return nil, nil
-}
-
-// QueryItemsCrossPartition / QueryPageCrossPartition let fakeItems back a
-// profiles.AdminStore; the wiring tests only need the empty result path.
-func (f *fakeItems) QueryItemsCrossPartition(_ context.Context, _ string, _ map[string]any) ([][]byte, error) {
-	return nil, nil
-}
-
-// ReadItemWithETag returns the item body and a synthetic etag, satisfying the
-// offercodes.cosmosItems CAS interface.
-func (f *fakeItems) ReadItemWithETag(_ context.Context, _, id string) ([]byte, string, bool, error) {
+func (f *fakeProfileStore) GetWithETag(_ context.Context, userID string) (*profiles.UserProfile, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	raw, ok := f.items[id]
+	p, ok := f.byID[userID]
 	if !ok {
-		return nil, "", false, nil
+		return nil, "", profiles.ErrNotFound
 	}
-	return raw, "etag-" + id, true, nil
+	return p, "etag-" + userID, nil
 }
 
-// ReplaceItemWithETag replaces the item unconditionally (no real etag enforcement
-// needed in wiring tests).
-func (f *fakeItems) ReplaceItemWithETag(_ context.Context, _ string, id string, item []byte, _ string) (string, error) {
+func (f *fakeProfileStore) UpdateZoneCountWithCAS(_ context.Context, userID string, p *profiles.UserProfile, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.items[id] = item
-	return "etag-replaced-" + id, nil
+	f.byID[userID] = p
+	return nil
 }
 
-func (f *fakeItems) QueryPageCrossPartition(_ context.Context, _ string, _ map[string]any, _ int, _ string) ([][]byte, string, error) {
+// fakeWatchZoneStore (a full watchzones.Store double) is defined in
+// export_adapters_test.go and reused here as the empty-path watch-zone store.
+
+// fakeAppStore is an applications.Store returning the empty path for every read.
+type fakeAppStore struct{}
+
+func (fakeAppStore) Upsert(context.Context, applications.PlanningApplication) error { return nil }
+func (fakeAppStore) GetByAuthorityAndName(context.Context, string, string) (applications.PlanningApplication, bool, error) {
+	return applications.PlanningApplication{}, false, nil
+}
+func (fakeAppStore) GetByUID(context.Context, string, string) (applications.PlanningApplication, bool, error) {
+	return applications.PlanningApplication{}, false, nil
+}
+func (fakeAppStore) RecentByAuthority(context.Context, string, int) ([]applications.PlanningApplication, error) {
+	return nil, nil
+}
+func (fakeAppStore) BreakdownByAuthority(context.Context, string) ([]applications.StateCount, error) {
+	return nil, nil
+}
+func (fakeAppStore) FindNearbyPage(context.Context, float64, float64, float64, int, string) ([]applications.PlanningApplication, string, error) {
 	return nil, "", nil
 }
-
-// notFoundErr mimics the azcore 404 the store's isNotFound detects.
-func notFoundErr() error {
-	return &azcore.ResponseError{StatusCode: http.StatusNotFound}
+func (fakeAppStore) RecentNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
+	return nil, nil
+}
+func (fakeAppStore) NearestNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
+	return nil, nil
+}
+func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, float64) ([]applications.StateCount, error) {
+	return nil, nil
 }
 
-// idFromDoc extracts the "id" property from a stored document without
-// round-tripping the whole shape.
-func idFromDoc(raw []byte) string {
-	var doc struct {
-		ID string `json:"id"`
-	}
-	_ = json.Unmarshal(raw, &doc)
-	return doc.ID
+// fakeSavedStore is a savedapplications.Store returning the empty path.
+type fakeSavedStore struct{}
+
+func (fakeSavedStore) Save(context.Context, savedapplications.SavedApplication) error { return nil }
+func (fakeSavedStore) Exists(context.Context, string, string) (bool, error)           { return false, nil }
+func (fakeSavedStore) Delete(context.Context, string, string) error                   { return nil }
+func (fakeSavedStore) GetByUserID(context.Context, string) ([]savedapplications.SavedApplication, error) {
+	return nil, nil
 }
+func (fakeSavedStore) UserIDsForApplication(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
+func (fakeSavedStore) DeleteAllByUserID(context.Context, string) error { return nil }
+
+// fakeAdminStore is a profiles.AdminProfileStore returning the empty path.
+type fakeAdminStore struct{}
+
+func (fakeAdminStore) GetByEmail(context.Context, string) (*profiles.UserProfile, error) {
+	return nil, profiles.ErrNotFound
+}
+func (fakeAdminStore) GetByOriginalTransactionID(context.Context, string) (*profiles.UserProfile, error) {
+	return nil, profiles.ErrNotFound
+}
+func (fakeAdminStore) ByDigestDay(context.Context, time.Weekday) ([]*profiles.UserProfile, error) {
+	return nil, nil
+}
+func (fakeAdminStore) Dormant(context.Context, time.Time) ([]*profiles.UserProfile, error) {
+	return nil, nil
+}
+func (fakeAdminStore) LapsedPaid(context.Context, time.Time) ([]*profiles.UserProfile, error) {
+	return nil, nil
+}
+func (fakeAdminStore) Save(context.Context, *profiles.UserProfile) error { return nil }
+func (fakeAdminStore) List(context.Context, string, int, string) (profiles.Page, error) {
+	return profiles.Page{}, nil
+}
+
+// fakeSubNotifStore is a subscriptions.Store; nothing is ever processed.
+type fakeSubNotifStore struct{}
+
+func (fakeSubNotifStore) IsProcessed(context.Context, string) (bool, error) { return false, nil }
+func (fakeSubNotifStore) MarkProcessed(context.Context, string) error       { return nil }
+
+// fakeOfferStore is an offercodes.Store returning the empty path.
+type fakeOfferStore struct{}
+
+func (fakeOfferStore) Get(context.Context, string) (offercodes.OfferCode, error) {
+	return offercodes.OfferCode{}, offercodes.ErrNotFound
+}
+func (fakeOfferStore) Save(context.Context, offercodes.OfferCode) error { return nil }
+func (fakeOfferStore) RedeemWithCAS(context.Context, string, string, time.Time) error {
+	return offercodes.ErrNotFound
+}
+func (fakeOfferStore) RedeemedByUserID(context.Context, string) ([]offercodes.OfferCode, error) {
+	return nil, nil
+}
+func (fakeOfferStore) AnonymiseRedemptionsByUserID(context.Context, string) error { return nil }
 
 // testGeocodeClient and testDesignationClient point at an unroutable address; the
 // deny-all wiring tests never reach the handlers, so the upstream is never
@@ -180,7 +229,7 @@ func testDesignationClientWith(t *testing.T, baseURL string, httpClient *http.Cl
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -280,12 +329,12 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	store := profiles.NewCosmosStore(newFakeItems())
-	watchZoneStore := watchzones.NewCosmosStore(newFakeItems())
-	appStore := applications.NewCosmosStore(newFakeItems())
-	savedStore := savedapplications.NewCosmosStore(newFakeItems())
+	store := newFakeProfileStore()
+	watchZoneStore := &fakeWatchZoneStore{}
+	appStore := fakeAppStore{}
+	savedStore := fakeSavedStore{}
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -383,7 +432,7 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
 	geocodeClient := testGeocodeClientWith(t, upstream.URL, upstream.Client())
 	designationClient := testDesignationClientWith(t, upstream.URL, upstream.Client())
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
 	if rec.Code != http.StatusOK {
@@ -410,9 +459,9 @@ func TestRouter_SubscriptionsWired(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	store := profiles.NewCosmosStore(newFakeItems())
-	adminStore := profiles.NewAdminStore(newFakeItems())
-	notifStore := subscriptions.NewCosmosNotificationStore(newFakeItems(), time.Now)
+	store := newFakeProfileStore()
+	adminStore := fakeAdminStore{}
+	notifStore := fakeSubNotifStore{}
 	roots, err := subscriptions.LoadAppleRootCertificates()
 	if err != nil {
 		t.Fatalf("LoadAppleRootCertificates: %v", err)
@@ -422,7 +471,7 @@ func TestRouter_SubscriptionsWired(t *testing.T) {
 		t.Fatalf("NewJWSVerifier: %v", err)
 	}
 
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, logger)
 
 	// Webhook is anonymous: a malformed body reaches the handler -> 400 with the
 	// malformed_request envelope, not the WWW-Authenticate 401 fallback.
@@ -450,13 +499,9 @@ func TestRouter_AdminGate(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	offerStore := offercodes.NewCosmosStore(newFakeItems())
-	adminStore := profiles.NewAdminStore(newFakeItems())
-	// The admin block now also requires the watch-zone store (it backs the
-	// location-backfill endpoint), so supply one — all admin stores are Cosmos-gated
-	// together in a real deployment.
-	watchZoneStore := watchzones.NewCosmosStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, watchZoneStore, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
+	offerStore := fakeOfferStore{}
+	adminStore := fakeAdminStore{}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).
@@ -487,8 +532,8 @@ func TestRouter_RecentApplicationsBuildKeyGate(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	appStore := applications.NewCosmosStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
+	appStore := fakeAppStore{}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
 
 	// No key: the build gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).
@@ -533,8 +578,8 @@ func TestRouter_NearApplicationsBuildKeyGate(t *testing.T) {
 	t.Parallel()
 
 	logger := slog.New(slog.DiscardHandler)
-	appStore := applications.NewCosmosStore(newFakeItems())
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
+	appStore := fakeAppStore{}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
 
 	noKey := nearRequest(t, h, "")
 	if noKey.Code != http.StatusUnauthorized {

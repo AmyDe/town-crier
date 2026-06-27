@@ -22,10 +22,8 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full saved-application method set both *CosmosStore and
-// *PostgresStore satisfy. It serves two purposes: a compile-time parity check
-// (both stores must satisfy it, so the Postgres port can never silently diverge)
-// and the exported consumer-side interface the later wiring slice flag-selects on.
+// Store is the full saved-application method set *PostgresStore satisfies and the
+// exported consumer-side interface the handlers and wiring depend on.
 type Store interface {
 	Save(ctx context.Context, sa SavedApplication) error
 	Exists(ctx context.Context, userID, applicationUID string) (bool, error)
@@ -35,11 +33,8 @@ type Store interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time parity: both stores satisfy the same consumer-side Store interface.
-var (
-	_ Store = (*CosmosStore)(nil)
-	_ Store = (*PostgresStore)(nil)
-)
+// Compile-time check: the store satisfies the consumer-side Store interface.
+var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes saved applications in the Postgres
 // `saved_applications` table (Cosmos → Postgres migration; memo 0010, epic #645).

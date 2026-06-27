@@ -1,9 +1,7 @@
 // Package pgpurge implements the pg-purge worker mode: a scheduled DELETE sweep
-// that replaces the Cosmos time-to-live (TTL) settings for Notifications (90
-// days) and DeviceRegistrations (180 days) on the Postgres backend. The Cosmos
-// TTL is passive and automatic; Postgres has no native TTL so a periodic purge
-// job must run in its place. The handler is wired only when STORE_BACKEND=postgres
-// — on Cosmos deployments the worker.Run nil guard logs and exits 0.
+// enforcing row retention for Notifications (90 days) and DeviceRegistrations
+// (180 days) on the Postgres backend. Postgres has no native time-to-live, so a
+// periodic purge job runs in its place.
 package pgpurge
 
 import (

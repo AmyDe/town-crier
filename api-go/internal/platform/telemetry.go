@@ -44,20 +44,20 @@ import (
 // defaultServiceName labels traces when OTEL_SERVICE_NAME is unset.
 const defaultServiceName = "town-crier-api-go"
 
-// cosmosDatabasePrefix is the shared prefix on the Cosmos database names
-// (town-crier-prod / town-crier-dev); the suffix is the deployment environment.
-const cosmosDatabasePrefix = "town-crier-"
+// postgresDatabasePrefix is the shared prefix on the Postgres database names
+// (town_crier_prod / town_crier_dev); the suffix is the deployment environment.
+const postgresDatabasePrefix = "town_crier_"
 
 // deploymentEnvironment derives the deployment.environment resource attribute
-// value from the COSMOS_DATABASE name. "town-crier-prod" -> "prod",
-// "town-crier-dev" -> "dev". An empty database (local dev, tests) or any name
-// without the expected "town-crier-" prefix returns "" so the caller omits the
+// value from the POSTGRES_DB name. "town_crier_prod" -> "prod",
+// "town_crier_dev" -> "dev". An empty database (local dev, tests) or any name
+// without the expected "town_crier_" prefix returns "" so the caller omits the
 // attribute rather than emitting deployment.environment="".
-func deploymentEnvironment(cosmosDB string) string {
-	if cosmosDB == "" {
+func deploymentEnvironment(postgresDB string) string {
+	if postgresDB == "" {
 		return ""
 	}
-	env, ok := strings.CutPrefix(cosmosDB, cosmosDatabasePrefix)
+	env, ok := strings.CutPrefix(postgresDB, postgresDatabasePrefix)
 	if !ok {
 		return ""
 	}
@@ -68,15 +68,15 @@ func deploymentEnvironment(cosmosDB string) string {
 // metric providers. service.name is set explicitly (Azure Monitor maps it to
 // AppRoleName); it deliberately keeps the current town-crier-{api,worker}-go
 // role names so existing Go-role dashboards keep matching. deployment.environment
-// is added from the COSMOS_DATABASE name so prod and dev signal separate as a
+// is added from the POSTGRES_DB name so prod and dev signal separate as a
 // dimension instead of commingling under one role (tc-yqyh); it is omitted
 // entirely when the environment can't be derived (local dev, tests). WithFromEnv
 // is applied last so an infra-injected OTEL_RESOURCE_ATTRIBUTES (e.g.
 // deployment.environment=prod) can override these explicit values without a code
 // change.
-func newTelemetryResource(ctx context.Context, serviceName, cosmosDB string) (*resource.Resource, error) {
+func newTelemetryResource(ctx context.Context, serviceName, postgresDB string) (*resource.Resource, error) {
 	attrs := []attribute.KeyValue{semconv.ServiceName(serviceName)}
-	if env := deploymentEnvironment(cosmosDB); env != "" {
+	if env := deploymentEnvironment(postgresDB); env != "" {
 		attrs = append(attrs, semconv.DeploymentEnvironment(env))
 	}
 	return resource.New(ctx,
@@ -91,8 +91,8 @@ func noopShutdown(context.Context) error { return nil }
 // SetupTelemetry configures the global OpenTelemetry tracer, logger and meter
 // providers.
 //
-// When OTEL_EXPORTER_OTLP_ENDPOINT is unset or empty (local dev, tests, the
-// contract suite, or a Cosmos-less boot) it self-disables: no exporters are
+// When OTEL_EXPORTER_OTLP_ENDPOINT is unset or empty (local dev, tests, or the
+// contract suite) it self-disables: no exporters are
 // built, the global no-op TracerProvider, LoggerProvider and MeterProvider are
 // left in place, and a no-op shutdown is returned. This keeps every existing
 // test green with no infra-then-test split.
@@ -116,7 +116,7 @@ func SetupTelemetry(ctx context.Context, logger *slog.Logger) (func(context.Cont
 	if serviceName == "" {
 		serviceName = defaultServiceName
 	}
-	res, err := newTelemetryResource(ctx, serviceName, os.Getenv("COSMOS_DATABASE"))
+	res, err := newTelemetryResource(ctx, serviceName, os.Getenv("POSTGRES_DB"))
 	if err != nil {
 		return nil, err
 	}

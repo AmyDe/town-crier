@@ -238,17 +238,6 @@ func TestRedeem_AlreadySubscribed(t *testing.T) {
 	}
 }
 
-func TestCosmosStore_SatisfiesCodeStore(t *testing.T) {
-	t.Parallel()
-	var _ codeStore = NewCosmosStore(newFakeItems())
-}
-
-func TestCosmosStore_SatisfiesProfileStore(t *testing.T) {
-	t.Parallel()
-	// The real profiles.CosmosStore must satisfy the redeem handler's profileStore.
-	var _ profileStore = profiles.NewCosmosStore(nil)
-}
-
 // TestRedeem_CASConflictReturns409 exercises the handler's CAS retry loop: the
 // fake store returns ErrCASPreconditionFailed on the first RedeemWithCAS call
 // (simulating a concurrent writer winning the race) and marks the code as

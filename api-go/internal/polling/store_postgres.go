@@ -20,24 +20,16 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// PollStateAccess is the full poll-state store method set its consumers rely on.
-// It serves two purposes: a compile-time parity check (both *PollStateStore and
-// *PostgresPollStateStore must satisfy it, so the Postgres port can never
-// silently diverge from the Cosmos surface) and the exported consumer-side
-// interface the later wiring slice (cmd/worker) will use to select between
-// Cosmos and Postgres backends behind the ALL_STORES_BACKEND flag.
+// PollStateAccess is the full poll-state store method set its consumers rely on
+// and the exported consumer-side interface the worker wiring depends on.
 type PollStateAccess interface {
 	Get(ctx context.Context, authorityID int) (PollState, bool, error)
 	Save(ctx context.Context, authorityID int, lastPollTime, highWaterMark time.Time, cursor *PollCursor) error
 	GetLeastRecentlyPolled(ctx context.Context, candidateAuthorityIDs []int) (LeastRecentlyPolledResult, error)
 }
 
-// Compile-time parity: both the Cosmos and Postgres stores satisfy the same
-// consumer-side interface, so neither can silently diverge from the other.
-var (
-	_ PollStateAccess = (*PollStateStore)(nil)
-	_ PollStateAccess = (*PostgresPollStateStore)(nil)
-)
+// Compile-time check: the store satisfies the consumer-side interface.
+var _ PollStateAccess = (*PostgresPollStateStore)(nil)
 
 // PostgresPollStateStore reads and writes per-authority poll state in the
 // Postgres `poll_state` table (Cosmos -> Postgres migration; memo 0010, epic

@@ -26,12 +26,9 @@ type querier interface {
 // across packages (handler's appStore, recent.go's recentStore, near.go's
 // nearStore, watchzones.appFinder's FindNearbyPage, the savedapplications snapshot
 // backfill's GetByUID, demoaccount's Upsert + FindNearbyPage, and the poll
-// Upsert). It serves two purposes: a compile-time parity check (both *CosmosStore
-// and *PostgresStore must satisfy it, so a Postgres port can never silently
-// diverge from the Cosmos surface) and the exported consumer-side interface
-// cmd/api's newRouter accepts, so the Applications routes can be served from
-// either backend behind the APPS_ZONES_BACKEND flag (issue #657 Slice 2). Every
-// narrower per-handler interface is a subset of this set.
+// Upsert). It is the exported consumer-side interface cmd/api's newRouter accepts
+// for the Applications routes. Every narrower per-handler interface is a subset
+// of this set.
 type Store interface {
 	Upsert(ctx context.Context, a PlanningApplication) error
 	GetByAuthorityAndName(ctx context.Context, authorityCode, name string) (PlanningApplication, bool, error)
@@ -44,14 +41,13 @@ type Store interface {
 	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
 }
 
-// Compile-time parity: the Postgres store satisfies the same consumer-side
-// interfaces the Cosmos store does, and both satisfy the full Store surface.
+// Compile-time check: the Postgres store satisfies the per-handler consumer-side
+// interfaces and the full Store surface.
 var (
 	_ appStore    = (*PostgresStore)(nil)
 	_ recentStore = (*PostgresStore)(nil)
 	_ nearStore   = (*PostgresStore)(nil)
 	_ Store       = (*PostgresStore)(nil)
-	_ Store       = (*CosmosStore)(nil)
 )
 
 // PostgresStore reads and writes planning applications in the Postgres
