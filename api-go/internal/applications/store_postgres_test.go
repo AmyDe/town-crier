@@ -699,7 +699,7 @@ func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("status"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
 		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
 	}
 }
