@@ -148,8 +148,7 @@ const (
 const invalidCursorMessage = "Invalid cursor."
 
 // invalidSortMessage is the 400 body when ?sort= is outside the supported set
-// ({distance, newest, oldest, status} for this slice; recent-activity arrives in a
-// later slice).
+// ({distance, newest, oldest, status, recent-activity}).
 const invalidSortMessage = "Invalid sort."
 
 // valid reports whether the create request passes the pre-handler guard:
@@ -295,7 +294,8 @@ type latestUnreadEventWire struct {
 // Routing: a param-less call (no ?sort=) keeps the legacy nearest-first path
 // (FindNearbyPage, default 500) byte-identical for the in-review iOS build (#541).
 // A ?sort= call opts into the server-side sort surface (FindInZonePage, default
-// 150) with a sort-aware keyset cursor (epic #682 slice 1).
+// 150) with a sort-aware keyset cursor (epic #682 slices 1-3; recent-activity
+// joins the caller's own notifications via the threaded userID).
 func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 	zoneID := r.PathValue("zoneId")
@@ -324,7 +324,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, nextCursor, err := h.findZonePage(r.Context(), "", zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
+	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
 		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
 		// keyset cursor is only valid for the sort it was minted under.
@@ -420,10 +420,9 @@ func parseLimit(raw string, def int) int {
 
 // parseSort resolves ?sort= to a supported Sort. An absent value defaults to
 // SortDistance (the legacy nearest-first behaviour). The boolean reports whether
-// the value is supported in this slice ({distance, newest, oldest, status}); an
-// unsupported value (recent-activity or garbage) is a clean 400. The caller treats
-// an absent value (ok with SortDistance and present=false) as the legacy param-less
-// path.
+// the value is supported ({distance, newest, oldest, status, recent-activity});
+// an unsupported value (garbage) is a clean 400. The caller treats an absent value
+// (ok with SortDistance and present=false) as the legacy param-less path.
 func parseSort(raw string) (sort applications.Sort, present, ok bool) {
 	if raw == "" {
 		return applications.SortDistance, false, true
