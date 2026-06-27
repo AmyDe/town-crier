@@ -213,12 +213,13 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.filteredApplications.map(\.id) == [appA.id, appC.id, appB.id])
   }
 
-  // newest/oldest are server-driven since GH#682 slice 1: the API returns rows
-  // already in `start_date` order (proven by the Go pgtest suite, #688) and the
-  // client pages them via infinite scroll. The client must not re-sort locally —
-  // that would only order the pages already loaded — so it preserves the
-  // server's order verbatim. (The full reset-cursor-and-reload-on-sort-change
-  // flow is covered by ApplicationListViewModelPaginationTests.)
+  // newest/oldest (GH#682 slice 1) and status (slice 2) are server-driven: the
+  // API returns rows already in the requested order (proven by the Go pgtest
+  // suite, #688/#690) and the client pages them via infinite scroll. The client
+  // must not re-sort locally — that would only order the pages already loaded —
+  // so it preserves the server's order verbatim. (The full
+  // reset-cursor-and-reload-on-sort-change flow is covered by
+  // ApplicationListViewModelPaginationTests.)
 
   @Test("newest is server-driven — the list preserves the server's order")
   func sort_newest_preservesServerOrder() async throws {
@@ -242,18 +243,18 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
-  @Test("status sort orders by appState raw value")
-  func sort_status_ordersByAppState() async throws {
-    let permitted = PlanningApplication.permitted  // "Permitted"
-    let rejected = PlanningApplication.rejected  // "Rejected"
-    let undecided = PlanningApplication.pendingReview  // "Undecided"
-    let (sut, _, _, _) = try makeSUT(applications: [undecided, rejected, permitted])
+  @Test("status is server-driven — the list preserves the server's order")
+  func sort_status_preservesServerOrder() async throws {
+    // Rejected, Undecided, Permitted — deliberately not in `status.rawValue`
+    // order. Status moved server-side in GH#682 slice 2, so the client must
+    // render the API order as-is rather than re-sorting by `app_state` locally.
+    let serverOrdered: [PlanningApplication] = [.rejected, .pendingReview, .permitted]
+    let (sut, _, _, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
     sut.sort = .status
 
-    let labels = sut.filteredApplications.map(\.status.rawValue)
-    #expect(labels == labels.sorted())
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
   // Distance-sort tests live in `ApplicationListViewModelDistanceSortTests`

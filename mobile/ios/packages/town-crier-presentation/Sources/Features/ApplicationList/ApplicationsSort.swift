@@ -28,9 +28,9 @@ public enum ApplicationsSort: String, CaseIterable, Sendable {
   case distance = "distance"
 
   /// The server-side sort order the API can page in, or `nil` for the
-  /// client-only sorts (recent-activity, status) which this slice keeps
-  /// computing locally over the fetched page (GH#682 slice 1). Distance, newest,
-  /// and oldest are server-driven and paged via infinite scroll.
+  /// client-only `recent-activity` sort, which this slice keeps computing
+  /// locally over the fetched page. Distance, newest, oldest, and status
+  /// (GH#682 slice 2) are server-driven and paged via infinite scroll.
   public var serverOrder: ApplicationSortOrder? {
     switch self {
     case .distance:
@@ -39,7 +39,9 @@ public enum ApplicationsSort: String, CaseIterable, Sendable {
       return .newest
     case .oldest:
       return .oldest
-    case .recentActivity, .status:
+    case .status:
+      return .status
+    case .recentActivity:
       return nil
     }
   }
