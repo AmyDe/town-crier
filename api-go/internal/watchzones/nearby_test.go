@@ -52,6 +52,8 @@ type fakeAppFinder struct {
 	lastLimit    int
 	lastCursor   string
 	lastUserID   string
+	lastStatus   string
+	lastUnread   bool
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -72,18 +74,20 @@ func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit
 	return apps, f.next, nil
 }
 
-func (f *fakeAppFinder) FindInZonePage(_ context.Context, userID string, _, _, _ float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+func (f *fakeAppFinder) FindInZonePage(_ context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error) {
 	f.inZoneCalled = true
-	f.lastUserID = userID
-	f.lastSort = sort
-	f.lastLimit = limit
-	f.lastCursor = cursor
+	f.lastUserID = q.UserID
+	f.lastSort = q.Sort
+	f.lastLimit = q.Limit
+	f.lastCursor = q.Cursor
+	f.lastStatus = q.Status
+	f.lastUnread = q.Unread
 	if f.inZoneErr != nil {
 		return nil, "", f.inZoneErr
 	}
 	apps := f.apps
-	if limit > 0 && len(apps) > limit {
-		apps = apps[:limit]
+	if q.Limit > 0 && len(apps) > q.Limit {
+		apps = apps[:q.Limit]
 	}
 	return apps, f.next, nil
 }

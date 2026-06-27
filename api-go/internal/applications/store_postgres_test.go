@@ -468,6 +468,15 @@ func withStart(a PlanningApplication, d time.Time) PlanningApplication {
 	return a
 }
 
+// zoneQuery is a brief InZoneQuery builder fixed to the standard 6 km London
+// fixture centre, for the cursor/sort-error tests.
+func zoneQuery(sort Sort, limit int, cursor string) InZoneQuery {
+	return InZoneQuery{
+		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: sort, Limit: limit, Cursor: cursor,
+	}
+}
+
 // pageAllInZone pages FindInZonePage to exhaustion as an anonymous caller (no
 // userID), for the sorts that ignore per-user data.
 func pageAllInZone(t *testing.T, store *PostgresStore, sort Sort, radius float64, limit int) []string {
@@ -484,7 +493,10 @@ func pageAllInZoneAs(t *testing.T, store *PostgresStore, userID string, sort Sor
 	var names []string
 	cursor := ""
 	for range 1000 {
-		page, next, err := store.FindInZonePage(ctx, userID, pgCentreLat, pgCentreLon, radius, sort, limit, cursor)
+		page, next, err := store.FindInZonePage(ctx, InZoneQuery{
+			UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon,
+			RadiusMetres: radius, Sort: sort, Limit: limit, Cursor: cursor,
+		})
 		if err != nil {
 			t.Fatalf("FindInZonePage(%s, cursor=%q): %v", sort, cursor, err)
 		}
@@ -670,7 +682,7 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	_, cursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "")
+	_, cursor, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, ""))
 	if err != nil {
 		t.Fatalf("mint newest cursor: %v", err)
 	}
@@ -678,24 +690,24 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 		t.Fatal("expected a continuation cursor after a full page")
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortOldest, 1, cursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortOldest, 1, cursor)); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
 	// A cursor minted under status carries mode=status; replaying it under any
 	// other sort is rejected, never a mis-ordered page.
-	_, statusCursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
+	_, statusCursor, err := store.FindInZonePage(ctx, zoneQuery(SortStatus, 1, ""))
 	if err != nil {
 		t.Fatalf("mint status cursor: %v", err)
 	}
 	if statusCursor == "" {
 		t.Fatal("expected a continuation cursor after a full status page")
 	}
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, statusCursor)); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay status cursor under newest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(SortNewest, 1, "!!!not-base64!!!")); !errors.Is(err, ErrCursorInvalid) {
 		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
 	}
 }
@@ -708,7 +720,7 @@ func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+	if _, _, err := store.FindInZonePage(ctx, zoneQuery(Sort("nonsense"), 10, "")); !errors.Is(err, ErrUnsupportedSort) {
 		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
 	}
 }

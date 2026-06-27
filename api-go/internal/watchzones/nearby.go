@@ -60,7 +60,7 @@ type authorityResolver interface {
 // needs. *applications.PostgresStore satisfies both.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
-	FindInZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
+	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -396,7 +396,15 @@ func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZon
 		return h.apps.FindNearbyPage(ctx, zone.Latitude, zone.Longitude, zone.RadiusMetres, limit, cursor)
 	}
 	limit := parseLimit(rawLimit, defaultSortedLimit)
-	return h.apps.FindInZonePage(ctx, userID, zone.Latitude, zone.Longitude, zone.RadiusMetres, sort, limit, cursor)
+	return h.apps.FindInZonePage(ctx, applications.InZoneQuery{
+		UserID:       userID,
+		Latitude:     zone.Latitude,
+		Longitude:    zone.Longitude,
+		RadiusMetres: zone.RadiusMetres,
+		Sort:         sort,
+		Limit:        limit,
+		Cursor:       cursor,
+	})
 }
 
 // parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
