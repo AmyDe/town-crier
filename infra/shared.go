@@ -11,7 +11,6 @@ import (
 	"github.com/pulumi/pulumi-azure-native-sdk/communication/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/consumption/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/containerregistry/v3"
-	"github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/managedidentity/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/monitor/v3"
@@ -250,30 +249,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Cosmos DB Account (shared across environments — serverless)
-	cosmosAccount, err := cosmosdb.NewDatabaseAccount(ctx, "cosmos-town-crier-shared", &cosmosdb.DatabaseAccountArgs{
-		AccountName:              pulumi.String("cosmos-town-crier-shared"),
-		ResourceGroupName:        resourceGroup.Name,
-		Kind:                     pulumi.String(string(cosmosdb.DatabaseAccountKindGlobalDocumentDB)),
-		DatabaseAccountOfferType: cosmosdb.DatabaseAccountOfferTypeStandard,
-		Capabilities: cosmosdb.CapabilityArray{
-			&cosmosdb.CapabilityArgs{Name: pulumi.String("EnableServerless")},
-		},
-		ConsistencyPolicy: &cosmosdb.ConsistencyPolicyArgs{
-			DefaultConsistencyLevel: cosmosdb.DefaultConsistencyLevelSession,
-		},
-		Locations: cosmosdb.LocationArray{
-			&cosmosdb.LocationArgs{
-				LocationName:     resourceGroup.Location,
-				FailoverPriority: pulumi.Int(0),
-			},
-		},
-		Tags: tags,
-	})
-	if err != nil {
-		return err
-	}
-
 	// Azure Database for PostgreSQL — Flexible Server (shared across environments; this single
 	// server hosts both the dev and prod databases long-term). First infra step of the Cosmos →
 	// Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645). Pre-revenue profile:
@@ -388,42 +363,9 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Cost Management budget alert — fires at £25 cumulative monthly spend on the shared
-	// Cosmos account. See tc-guwt and docs/cost-forecast/2026-05-02.md.
-	alertEmail := conf.Require("alertEmail")
-	_, err = consumption.NewBudget(ctx, "budget-cosmos-shared-monthly", &consumption.BudgetArgs{
-		BudgetName: pulumi.String("budget-cosmos-shared-monthly"),
-		Scope:      resourceGroup.ID(),
-		Amount:     pulumi.Float64(25),
-		Category:   consumption.CategoryTypeCost,
-		TimeGrain:  consumption.TimeGrainTypeMonthly,
-		TimePeriod: &consumption.BudgetTimePeriodArgs{
-			StartDate: pulumi.String("2026-05-01T00:00:00Z"),
-		},
-		Filter: &consumption.BudgetFilterArgs{
-			Dimensions: &consumption.BudgetComparisonExpressionArgs{
-				Name:     pulumi.String("ResourceId"),
-				Operator: pulumi.String(string(consumption.BudgetOperatorTypeIn)),
-				Values:   pulumi.StringArray{cosmosAccount.ID()},
-			},
-		},
-		Notifications: consumption.NotificationMap{
-			"actual_GreaterThan_100_Percent": &consumption.NotificationArgs{
-				Enabled:       pulumi.Bool(true),
-				Operator:      consumption.OperatorTypeGreaterThan,
-				Threshold:     pulumi.Float64(100),
-				ThresholdType: pulumi.String(string(consumption.ThresholdTypeActual)),
-				ContactEmails: pulumi.StringArray{pulumi.String(alertEmail)},
-				Locale:        consumption.CultureCode_En_Gb,
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
-
 	// Subscription-wide cost guard rail — fires at £50 cumulative monthly spend across the
 	// whole subscription. See tc-yica and docs/cost-forecast/2026-05-02.md.
+	alertEmail := conf.Require("alertEmail")
 	_, err = consumption.NewBudget(ctx, "budget-subscription-monthly", &consumption.BudgetArgs{
 		BudgetName: pulumi.String("budget-subscription-monthly"),
 		Scope:      pulumi.String(fmt.Sprintf("/subscriptions/%s", armSubscriptionID)),
@@ -451,21 +393,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 				Locale:        consumption.CultureCode_En_Gb,
 			},
 		},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Cosmos DB Built-in Data Contributor role — allows CRUD on documents.
-	// Role definition ID is well-known: 00000000-0000-0000-0000-000000000002.
-	_, err = cosmosdb.NewSqlResourceSqlRoleAssignment(ctx, "cosmos-data-role", &cosmosdb.SqlResourceSqlRoleAssignmentArgs{
-		AccountName:       cosmosAccount.Name,
-		ResourceGroupName: resourceGroup.Name,
-		RoleAssignmentId:  pulumi.String("a3e0b382-7e3a-4b2d-9c4f-1a2b3c4d5e6f"),
-		RoleDefinitionId: pulumi.Sprintf(
-			"%s/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002", cosmosAccount.ID()),
-		Scope:       cosmosAccount.ID(),
-		PrincipalId: cosmosDataIdentity.PrincipalId,
 	})
 	if err != nil {
 		return err
@@ -581,8 +508,6 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// polling namespace) because RBAC grants are keyed to the principal (object) ID.
 	ctx.Export("cosmosDataIdentityPrincipalId", cosmosDataIdentity.PrincipalId)
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
-	ctx.Export("cosmosAccountName", cosmosAccount.Name)
-	ctx.Export("cosmosAccountEndpoint", cosmosAccount.DocumentEndpoint)
 	// Postgres Flexible Server (Cosmos → Postgres migration, epic tc-hpd2). The admin password
 	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
 	// database connection strings.
