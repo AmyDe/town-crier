@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -74,6 +75,15 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.dispatch.ServeHTTP(w, r)
 }
 
+// notifUnreadReader is the narrowest consumer-side interface the notification
+// store wired into NearbyRoutes must satisfy. Both *notifications.CosmosStore
+// (which only implements GetLatestUnreadByApplications) and
+// *notifications.PostgresStore (which satisfies the full notifications.Store)
+// satisfy it structurally.
+type notifUnreadReader interface {
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
+}
+
 // newRouter wires the feature routes onto a mux and wraps it in the production
 // middleware chain. Ordering, from outermost to innermost:
 //
@@ -99,17 +109,44 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // served by profiles.Routes off the profile store, so they come up with the
 // /v1/me routes, not the watch-zone store.)
 //
-// watchZoneStore and appStore are consumer-side interfaces (watchzones.Store /
-// applications.Store), not concrete *CosmosStore pointers, so cmd/api can serve
-// these two from either Cosmos or Postgres per the APPS_ZONES_BACKEND flag
-// (issue #657 Slice 2). They MUST be passed as genuine nil interfaces (not a
-// typed-nil *CosmosStore boxed in an interface) when unconfigured, or the
-// nil-means-unwired guards below would wire dead routes — main.go's chooseAppStore
-// / chooseZoneStore enforce this. adminWatchZones stays the concrete Cosmos
-// *watchzones.CosmosStore because the admin location/bbox backfill it feeds is a
-// Cosmos-era migrator absent from the Postgres port; it is constructed regardless
-// of the flag so the admin surface is unaffected by the backend swap.
-func newRouter(validator auth.TokenValidator, corsOrigins []string, store *profiles.CosmosStore, auth0 profiles.Auth0Manager, cascade profiles.CascadeDeleters, exportReaders profiles.ExportReaders, deviceStore *devicetokens.CosmosStore, stateStore *notificationstate.CosmosStore, notifStore *notifications.CosmosStore, watchZoneStore watchzones.Store, adminWatchZones *watchzones.CosmosStore, appStore applications.Store, savedStore *savedapplications.CosmosStore, geocodeClient *geocoding.Client, designationClient *designations.Client, offerStore *offercodes.CosmosStore, adminStore *profiles.AdminStore, adminKey string, siteBuildKey string, jwsVerifier *subscriptions.JWSVerifier, appleNotifStore *subscriptions.CosmosNotificationStore, appleBundleID string, appleEnvironments []string, registry *metrics.Registry, logger *slog.Logger) http.Handler {
+// store, deviceStore, stateStore, notifStore, savedStore, offerStore,
+// adminStore and appleNotifStore are consumer-side interfaces, not concrete
+// *CosmosStore pointers, so cmd/api can serve each from either Cosmos or
+// Postgres per the STORE_BACKEND / APPS_ZONES_BACKEND flags (issue #669
+// Slice 7a). They MUST be passed as genuine nil interfaces (not a typed-nil
+// *CosmosStore boxed in an interface) when unconfigured, or the
+// nil-means-unwired guards below would wire dead routes — main.go's choose*
+// helpers enforce this. adminWatchZones stays the concrete Cosmos
+// *watchzones.CosmosStore because the admin location/bbox backfill it feeds is
+// a Cosmos-era migrator absent from the Postgres port; it is constructed
+// regardless of the flag so the admin surface is unaffected by the backend swap.
+func newRouter(
+	validator auth.TokenValidator,
+	corsOrigins []string,
+	store profiles.Store,
+	auth0 profiles.Auth0Manager,
+	cascade profiles.CascadeDeleters,
+	exportReaders profiles.ExportReaders,
+	deviceStore devicetokens.Store,
+	stateStore notificationstate.Store,
+	notifStore notifUnreadReader,
+	watchZoneStore watchzones.Store,
+	adminWatchZones *watchzones.CosmosStore,
+	appStore applications.Store,
+	savedStore savedapplications.Store,
+	geocodeClient *geocoding.Client,
+	designationClient *designations.Client,
+	offerStore offercodes.Store,
+	adminStore profiles.AdminProfileStore,
+	adminKey string,
+	siteBuildKey string,
+	jwsVerifier *subscriptions.JWSVerifier,
+	appleNotifStore subscriptions.Store,
+	appleBundleID string,
+	appleEnvironments []string,
+	registry *metrics.Registry,
+	logger *slog.Logger,
+) http.Handler {
 	mux := http.NewServeMux()
 	health.Routes(mux, logger)
 	versionconfig.Routes(mux, logger)

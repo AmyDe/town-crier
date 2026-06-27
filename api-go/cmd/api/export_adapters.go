@@ -67,10 +67,21 @@ func (r watchZoneExportReader) WatchZonesByUser(ctx context.Context, userID stri
 	return rows, nil
 }
 
-// notificationExportReader adapts the notifications digest store to
-// profiles.NotificationReader. It reads the full Notifications-container document
-// (AllByUser) so every exported field is carried.
-type notificationExportReader struct{ store *notifications.DigestStore }
+// allByUserReader is the narrowest consumer-side interface
+// notificationExportReader needs from the notification store. Both
+// *notifications.DigestStore (Cosmos digest path) and *notifications.PostgresStore
+// (which satisfies the full notifications.Store) expose AllByUser, so either
+// can be wired here without casting.
+type allByUserReader interface {
+	AllByUser(ctx context.Context, userID string) ([]notifications.DigestNotification, error)
+}
+
+// notificationExportReader adapts the notifications store to
+// profiles.NotificationReader. It reads the full document (AllByUser) so every
+// exported field is carried. The store field accepts either a Cosmos DigestStore
+// or a Postgres PostgresStore via the narrow allByUserReader interface, so the
+// GDPR export follows the STORE_BACKEND flag (issue #669 Slice 7a).
+type notificationExportReader struct{ store allByUserReader }
 
 func (r notificationExportReader) NotificationsByUser(ctx context.Context, userID string) ([]profiles.ExportedNotification, error) {
 	notifs, err := r.store.AllByUser(ctx, userID)
@@ -97,9 +108,11 @@ func (r notificationExportReader) NotificationsByUser(ctx context.Context, userI
 }
 
 // savedApplicationExportReader adapts the saved-application store to
-// profiles.SavedApplicationReader.
+// profiles.SavedApplicationReader. The store field accepts the consumer-side
+// savedapplications.Store interface so the GDPR export follows the STORE_BACKEND
+// flag (issue #669 Slice 7a) — both *CosmosStore and *PostgresStore satisfy it.
 type savedApplicationExportReader struct {
-	store *savedapplications.CosmosStore
+	store savedapplications.Store
 }
 
 func (r savedApplicationExportReader) SavedApplicationsByUser(ctx context.Context, userID string) ([]profiles.ExportedSavedApplication, error) {
@@ -118,8 +131,10 @@ func (r savedApplicationExportReader) SavedApplicationsByUser(ctx context.Contex
 }
 
 // deviceRegistrationExportReader adapts the device-token store to
-// profiles.DeviceRegistrationReader.
-type deviceRegistrationExportReader struct{ store *devicetokens.CosmosStore }
+// profiles.DeviceRegistrationReader. The store field accepts the consumer-side
+// devicetokens.Store interface so the GDPR export follows the STORE_BACKEND flag
+// (issue #669 Slice 7a) — both *CosmosStore and *PostgresStore satisfy it.
+type deviceRegistrationExportReader struct{ store devicetokens.Store }
 
 func (r deviceRegistrationExportReader) DeviceRegistrationsByUser(ctx context.Context, userID string) ([]profiles.ExportedDeviceRegistration, error) {
 	regs, err := r.store.ListByUser(ctx, userID)
@@ -140,8 +155,10 @@ func (r deviceRegistrationExportReader) DeviceRegistrationsByUser(ctx context.Co
 // offerCodeExportReader adapts the offer-code store to
 // profiles.OfferCodeRedemptionReader. A redeemed-by-user code always has a
 // RedeemedAt set, but a nil is guarded (it serialises as the zero instant) so a
-// malformed document can never panic the export.
-type offerCodeExportReader struct{ store *offercodes.CosmosStore }
+// malformed document can never panic the export. The store field accepts the
+// consumer-side offercodes.Store interface so the GDPR export follows the
+// STORE_BACKEND flag (issue #669 Slice 7a).
+type offerCodeExportReader struct{ store offercodes.Store }
 
 func (r offerCodeExportReader) OfferCodeRedemptionsByUser(ctx context.Context, userID string) ([]profiles.ExportedOfferCodeRedemption, error) {
 	codes, err := r.store.RedeemedByUserID(ctx, userID)
