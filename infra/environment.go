@@ -434,20 +434,19 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	} else if env == "prod" {
-		// Pre-stage the prod Postgres connection config so prod is "ready to cut over" from
-		// Cosmos (GH #664 Phase C, bead tc-hpd2.3). Mirrors the dev vars but targets
-		// town_crier_prod with the same least-priv, cluster-global towncrier_api role and Entra
-		// managed-identity auth (AZURE_CLIENT_ID above is reused for the token fetch).
+		// Prod is cut over to Postgres single-store (memo 0010 / GH #669, bead tc-hpd2.14).
+		// STORE_BACKEND=postgres routes every store to Postgres; the flag is explicit and
+		// prod-gated (never inferred from POSTGRES_AUTH). APPS_ZONES_BACKEND is aligned to
+		// "postgres" for consistency — the code ORs the two flags, but leaving "cosmos" next
+		// to a full-Postgres cutover would be misleading.
 		apiEnvVars = append(apiEnvVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-			// Prod stays on Cosmos: the connection config is pre-staged, but the backend is
-			// deliberately left on cosmos. The gated flip release (GH #664 Phase E) is what
-			// changes this single value to "postgres". Do NOT set this to "postgres" here.
-			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("cosmos")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
+			app.EnvironmentVarArgs{Name: pulumi.String("STORE_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	}
 
@@ -557,6 +556,14 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// full-scan jobs don't contend). Reverts lapsed offer-code/App Store paid tiers to Free in
 	// Cosmos and syncs Auth0 metadata (ADR 0010 reconciliation; epic tc-rlja / GH #608).
 	if err = createWorkerJob(ctx, ec, "subscription-sweep", "30 4 * * *", 600, "subscription-sweep", nil); err != nil {
+		return err
+	}
+	// pg-purge — daily at 02:00 UTC. Replaces the Cosmos per-document TTLs: runs
+	// WORKER_MODE=pg-purge which calls Postgres PurgeOlderThan to enforce the 90-day
+	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
+	// Created for both envs; on dev STORE_BACKEND is not set so the worker logs
+	// "store backend not postgres" and exits 0 — a clean no-op.
+	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge", nil); err != nil {
 		return err
 	}
 
@@ -727,13 +734,12 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: ec.cosmosDatabaseName},
 	)
 
-	// prod only: pre-stage the Postgres connection config on every worker job, mirroring the
-	// prod API container (GH #664 Phase C, bead tc-hpd2.3). The dev worker is intentionally
-	// excluded — it stays on Cosmos (out of scope here). AZURE_CLIENT_ID is already set on
-	// every worker job (createWorkerJob) and reused for the Entra MI token fetch, so it is not
-	// duplicated. APPS_ZONES_BACKEND stays "cosmos": the prod worker keeps writing/reading
-	// Apps + WatchZones from Cosmos until the gated flip release (GH #664 Phase E) changes this
-	// single value to "postgres".
+	// prod only: cut over every worker job to Postgres single-store (memo 0010 / GH #669,
+	// bead tc-hpd2.14). STORE_BACKEND=postgres routes every store to Postgres; APPS_ZONES_BACKEND
+	// is aligned to "postgres" for consistency. Dev worker is intentionally excluded — it already
+	// has APPS_ZONES_BACKEND=postgres on the API side and gains STORE_BACKEND when its own cutover
+	// bead lands. AZURE_CLIENT_ID is already set on every worker job (createWorkerJob) and reused
+	// for the Entra MI token fetch, so it is not duplicated here.
 	if ec.env == "prod" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: ec.postgresServerFqdn},
@@ -741,7 +747,8 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("cosmos")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
+			app.EnvironmentVarArgs{Name: pulumi.String("STORE_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	}
 
