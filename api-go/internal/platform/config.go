@@ -166,6 +166,16 @@ type Config struct {
 	PollingHandlerBudgetSeconds         int
 	PollReplicaTimeoutSeconds           int
 	PollShutdownGraceSeconds            int
+
+	// NotificationsRetentionDays is the number of days to keep Notifications rows
+	// when running the pg-purge job (replacing Cosmos 90-day TTL). Loaded from
+	// NOTIFICATIONS_RETENTION_DAYS; defaults to 90 matching the Cosmos TTL.
+	NotificationsRetentionDays int
+
+	// DeviceRegistrationsRetentionDays is the number of days to keep DeviceRegistrations
+	// rows when running the pg-purge job (replacing Cosmos 180-day TTL). Loaded from
+	// DEVICE_REGISTRATIONS_RETENTION_DAYS; defaults to 180 matching the Cosmos TTL.
+	DeviceRegistrationsRetentionDays int
 }
 
 // defaultPlanItBaseURL is the live PlanIt applications API.
@@ -243,6 +253,9 @@ func LoadConfig() (Config, error) {
 		PollingHandlerBudgetSeconds:         getenvInt("POLLING_HANDLER_BUDGET_SECONDS", 240),
 		PollReplicaTimeoutSeconds:           getenvInt("POLL_REPLICA_TIMEOUT_SECONDS", 600),
 		PollShutdownGraceSeconds:            getenvInt("POLL_SHUTDOWN_GRACE_SECONDS", 30),
+
+		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
+		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {

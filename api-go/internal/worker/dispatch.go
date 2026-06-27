@@ -39,6 +39,12 @@ const dormantBudget = 10 * time.Minute
 // cleanly and flushes telemetry.
 const sweepBudget = 10 * time.Minute
 
+// purgeBudget is the soft self-cancel for a single pg-purge run. A DELETE
+// WHERE created_at < cutoff on two tables is fast even at scale; 10 minutes is
+// generous while still bounded well under the Container Apps replicaTimeout so
+// the process exits cleanly and flushes telemetry.
+const purgeBudget = 10 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -66,6 +72,17 @@ type DormantRunner interface {
 // defeat the nil guard.
 type SweepRunner interface {
 	Run(ctx context.Context) (int, error)
+}
+
+// PurgeRunner is the consumer-side slice of the pg-purge handler the dispatcher
+// invokes. *pgpurge.Handler satisfies it; Run returns the number of notification
+// rows and device-registration rows deleted so the dispatcher can record them as
+// telemetry tags. It is exported so main() can hold a genuinely nil interface
+// value when STORE_BACKEND is not "postgres" — the nil runner causes dispatch to
+// log and exit 0 (Cosmos TTL handles expiry; pg-purge on a Cosmos deployment is
+// a deliberate no-op, not a deployment error).
+type PurgeRunner interface {
+	Run(ctx context.Context) (notifsPurged int, devicesPurged int, err error)
 }
 
 // PollRunResult is the dispatcher-facing summary of one poll-sb cycle. It mirrors
@@ -97,17 +114,19 @@ type PollOrchestrator interface {
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
 // code.
 //
-// poll-bootstrap, digest, hourly-digest, dormant-cleanup, and subscription-sweep
-// are implemented; poll-sb remains a loud stub that exits 1 until its own bead
-// (tc-yng2) lands. The Go worker image is not deployed to any job until the final
-// cutover bead, so a stub can never run in production. An unset or unknown mode is
-// a deployment accident and also fails fast.
+// poll-bootstrap, digest, hourly-digest, dormant-cleanup, subscription-sweep,
+// and pg-purge are implemented; poll-sb remains a loud stub that exits 1 until
+// its own bead (tc-yng2) lands. The Go worker image is not deployed to any job
+// until the final cutover bead, so a stub can never run in production. An unset
+// or unknown mode is a deployment accident and also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
 // then refuses to run rather than nil-panicking. Likewise digester / dormant may
 // be nil when the job has no Cosmos config; those modes then refuse to run rather
-// than nil-panicking.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, logger *slog.Logger) int {
+// than nil-panicking. purger may be nil when STORE_BACKEND is not "postgres";
+// pg-purge then logs and exits 0 — Cosmos TTL handles expiry, so this is never
+// an error.
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -132,6 +151,9 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 
 	case "poll-sb":
 		return runPollSB(ctx, poller, logger)
+
+	case "pg-purge":
+		return runPurge(ctx, purger, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
@@ -272,6 +294,43 @@ func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int 
 		return 1
 	}
 	span.SetAttributes(attribute.Int("subscription_sweep.downgraded_count", downgraded))
+	return 0
+}
+
+// runPurge executes one pg-purge cycle under a soft self-cancel budget, inside a
+// telemetry span named "Postgres Purge Cycle". It tags the span with the count of
+// notification and device-registration rows deleted. A nil runner (STORE_BACKEND
+// not set to "postgres") exits 0 with a log — Cosmos TTL handles expiry for
+// non-Postgres deployments and pg-purge on a Cosmos deployment is deliberate
+// no-op, not a deployment error. A non-nil runner error exits 1 so the job
+// surfaces the failure.
+func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Postgres Purge Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.InfoContext(ctx, "pg-purge: store backend is not postgres; Cosmos TTL handles expiry")
+		return 0
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, purgeBudget)
+	defer cancel()
+
+	notifsPurged, devicesPurged, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "pg-purge cycle failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(
+		attribute.Int("pg_purge.notifications_deleted", notifsPurged),
+		attribute.Int("pg_purge.device_registrations_deleted", devicesPurged),
+	)
+	logger.InfoContext(ctx, "pg-purge cycle completed",
+		"notificationsDeleted", notifsPurged,
+		"deviceRegistrationsDeleted", devicesPurged)
 	return 0
 }
 

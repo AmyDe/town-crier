@@ -214,7 +214,7 @@ func run() int {
 		sweepRunner = sweepHandler
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, logger)
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, nil, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
