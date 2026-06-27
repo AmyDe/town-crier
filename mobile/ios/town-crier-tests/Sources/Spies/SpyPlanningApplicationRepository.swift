@@ -49,10 +49,12 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
   // MARK: - Paged fetch (GH#682)
 
   /// A recorded `fetchApplicationsPage` invocation — lets tests assert the exact
-  /// query params (sort + cursor + limit) the ViewModel drove for each page.
+  /// query params (sort + filter + cursor + limit) the ViewModel drove for each
+  /// page.
   struct RecordedPageRequest: Sendable {
     let zone: WatchZone
     let sort: ApplicationSortOrder
+    let filter: ApplicationFilter
     let cursor: String?
     let limit: Int
   }
@@ -72,11 +74,12 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
   func fetchApplicationsPage(
     for zone: WatchZone,
     sort: ApplicationSortOrder,
+    filter: ApplicationFilter,
     cursor: String?,
     limit: Int
   ) async throws -> ApplicationPage {
     fetchApplicationsPageCalls.append(
-      RecordedPageRequest(zone: zone, sort: sort, cursor: cursor, limit: limit))
+      RecordedPageRequest(zone: zone, sort: sort, filter: filter, cursor: cursor, limit: limit))
     await waitForGateIfNeeded()
     if let fetchApplicationsPageError {
       throw fetchApplicationsPageError

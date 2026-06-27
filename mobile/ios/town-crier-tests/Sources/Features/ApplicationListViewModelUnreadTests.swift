@@ -121,21 +121,14 @@ struct ApplicationListViewModelUnreadTests {
   }
 
   // MARK: - Unread filter
-
-  @Test("unreadOnly filter keeps only rows with non-nil latestUnreadEvent")
-  func unreadOnly_filtersToUnreadRows() async throws {
-    let unread = PlanningApplication.pendingReview
-      .withLatestUnreadEvent(event(at: 1_700_500_000))
-    let read = PlanningApplication.permitted
-      .withLatestUnreadEvent(nil)
-    let (sut, _, _, _) = try makeSUT(applications: [unread, read])
-
-    await sut.loadApplications()
-    sut.unreadOnly = true
-
-    #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.id == unread.id)
-  }
+  //
+  // The Unread filter moved server-side in GH#682 slice 4: toggling it issues
+  // `?unread=true`, resets the cursor, and reloads page 1, and the ViewModel
+  // renders the server's returned set verbatim (no client-side
+  // `latestUnreadEvent != nil` post-filter). That behaviour is covered in
+  // `ApplicationListViewModelFilterTests`. The mutual-exclusivity rule below
+  // (the chip + Unread single-select group) is still enforced in the ViewModel's
+  // `didSet`s and stays here.
 
   @Test("toggling unreadOnly clears the status filter (single-select group)")
   func unreadOnly_clearsStatusFilter() async throws {

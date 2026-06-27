@@ -59,11 +59,12 @@ public final class OfflineAwareRepository: Sendable {
   public func fetchApplicationsPage(
     for zone: WatchZone,
     sort: ApplicationSortOrder,
+    filter: ApplicationFilter,
     cursor: String?,
     limit: Int
   ) async throws -> ApplicationPage {
     try await remote.fetchApplicationsPage(
-      for: zone, sort: sort, cursor: cursor, limit: limit)
+      for: zone, sort: sort, filter: filter, cursor: cursor, limit: limit)
   }
 
   /// Invalidates the cached applications for the given zone id.

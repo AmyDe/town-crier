@@ -47,6 +47,20 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   public var unreadCount: Int {
     applications.filter { $0.latestUnreadEvent != nil }.count
   }
+  /// The single server filter derived from the chip group (GH#682 slice 4). The
+  /// Unread toggle and the status chips are mutually exclusive (enforced by the
+  /// `didSet`s above and the server's 400 on both), so they collapse to exactly
+  /// one ``ApplicationFilter`` case. This is the value sent as `?status=`/
+  /// `?unread=` and the trigger the view observes to reload on a filter change.
+  public var activeFilter: ApplicationFilter {
+    if unreadOnly {
+      return .unread
+    }
+    if let status = selectedStatusFilter {
+      return .status(status)
+    }
+    return .all
+  }
   /// Bound by the sort menu. Setter persists the choice to `UserDefaults`
   /// under `sortKey` so user intent survives relaunches (spec decision #10).
   @Published var sort: ApplicationsSort {
@@ -80,6 +94,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// transition away from one reload; a client→client switch only re-sorts in
   /// memory, as before).
   var loadedSort: ApplicationsSort?
+  /// The filter the currently-loaded `applications` were fetched under. Lets a
+  /// filter change short-circuit when it would not change the query (GH#682
+  /// slice 4). Set alongside `loadedSort` on every fresh first-page load.
+  var loadedFilter: ApplicationFilter?
   /// Re-entrancy guard for next-page fetches — independent of `isLoadInFlight`
   /// so an in-flight first-page load never blocks (or is blocked by) appends.
   var isPageLoadInFlight = false
@@ -128,13 +146,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
 
-  /// The rows to render: the loaded `applications` with the client-side
-  /// status/unread filter applied. Ordering is owned entirely by the server
-  /// (every sort is paged via `?sort=` since GH#682 slice 3), so there is no
-  /// local re-sort — that would only ever order the pages already loaded. The
-  /// status/unread filter stays client-side until slice 4.
+  /// The rows to render. Ordering **and** filtering are owned entirely by the
+  /// server now: every sort is paged via `?sort=` (GH#682 slice 3) and the
+  /// status/unread filter is applied server-side via `?status=`/`?unread=`
+  /// (slice 4). The loaded `applications` are therefore the authoritative,
+  /// already-filtered, already-ordered set — rendered verbatim with no local
+  /// re-sort or re-filter (either would only ever touch the pages already
+  /// loaded). The name is kept for call-site stability.
   public var filteredApplications: [PlanningApplication] {
-    filterApplications(applications)
+    applications
   }
 
   public var isEmpty: Bool {
@@ -322,18 +342,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
-  }
-
-  private func filterApplications(
-    _ applications: [PlanningApplication]
-  ) -> [PlanningApplication] {
-    if unreadOnly {
-      return applications.filter { $0.latestUnreadEvent != nil }
-    }
-    if let filter = selectedStatusFilter {
-      return applications.filter { $0.status == filter }
-    }
-    return applications
   }
 
   private static func readPersistedSort(

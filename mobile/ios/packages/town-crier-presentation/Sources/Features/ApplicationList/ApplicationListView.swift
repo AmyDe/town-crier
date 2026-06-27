@@ -50,6 +50,13 @@ public struct ApplicationListView: View {
       // between the two client-side sorts only re-orders in memory (GH#682).
       Task { await viewModel.handleSortChanged() }
     }
+    .onChange(of: viewModel.activeFilter) {
+      // The status chips and Unread toggle now drive the server query, so a
+      // filter change re-pages from page 1 with a fresh cursor (GH#682 slice 4).
+      // Observing the derived `activeFilter` coalesces the chip + Unread updates
+      // into a single reload even when one toggle clears the other.
+      Task { await viewModel.handleFilterChanged() }
+    }
   }
 
   // MARK: - Toolbar

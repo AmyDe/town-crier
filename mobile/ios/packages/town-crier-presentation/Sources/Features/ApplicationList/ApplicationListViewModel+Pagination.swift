@@ -24,6 +24,7 @@ extension ApplicationListViewModel {
       nextCursor = nil
     }
     loadedSort = sort
+    loadedFilter = activeFilter
   }
 
   /// Fetches and appends the next server page when one exists. No-op unless the
@@ -73,6 +74,16 @@ extension ApplicationListViewModel {
     await loadApplications()
   }
 
+  /// Reacts to a filter change from the chip group (status chip or Unread
+  /// toggle). The selected filter drives the server query now (GH#682 slice 4),
+  /// not a client-side post-filter, so a change reloads from page 1 with a fresh
+  /// cursor and re-pages under the new filter — the same mechanism as a sort
+  /// change. A no-op when the active filter has not actually changed.
+  public func handleFilterChanged() async {
+    guard activeFilter != loadedFilter else { return }
+    await loadApplications()
+  }
+
   /// Appends a server page, dropping any rows already loaded so a keyset overlap
   /// at a page boundary never duplicates a row. Captures the new cursor.
   private func appendPage(_ page: ApplicationPage) {
@@ -81,6 +92,11 @@ extension ApplicationListViewModel {
     nextCursor = page.nextCursor
   }
 
+  /// Fetches one page, threading the ViewModel's current ``activeFilter`` into
+  /// the request so every page (first and subsequent) carries the same
+  /// `?status=`/`?unread=` filter. A filter change resets the cursor and
+  /// reloads from page 1 (see ``handleFilterChanged()``), so a cursor is only
+  /// ever replayed under the filter it was minted with.
   private func fetchPage(
     for zone: WatchZone,
     sort order: ApplicationSortOrder,
@@ -88,11 +104,11 @@ extension ApplicationListViewModel {
   ) async throws -> ApplicationPage {
     if let offlineRepository {
       return try await offlineRepository.fetchApplicationsPage(
-        for: zone, sort: order, cursor: cursor, limit: Self.pageSize)
+        for: zone, sort: order, filter: activeFilter, cursor: cursor, limit: Self.pageSize)
     }
     if let repository {
       return try await repository.fetchApplicationsPage(
-        for: zone, sort: order, cursor: cursor, limit: Self.pageSize)
+        for: zone, sort: order, filter: activeFilter, cursor: cursor, limit: Self.pageSize)
     }
     return ApplicationPage(applications: [], nextCursor: nil)
   }
