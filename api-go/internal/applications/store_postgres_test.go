@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
 
@@ -466,16 +468,23 @@ func withStart(a PlanningApplication, d time.Time) PlanningApplication {
 	return a
 }
 
-// pageAllInZone pages FindInZonePage to exhaustion with the given page size and
-// returns the names in the order seen across pages. It bounds the loop so a
-// keyset bug that fails to advance fails the test instead of hanging.
+// pageAllInZone pages FindInZonePage to exhaustion as an anonymous caller (no
+// userID), for the sorts that ignore per-user data.
 func pageAllInZone(t *testing.T, store *PostgresStore, sort Sort, radius float64, limit int) []string {
+	t.Helper()
+	return pageAllInZoneAs(t, store, "", sort, radius, limit)
+}
+
+// pageAllInZoneAs pages FindInZonePage to exhaustion for the given caller and
+// page size and returns the names in the order seen across pages. It bounds the
+// loop so a keyset bug that fails to advance fails the test instead of hanging.
+func pageAllInZoneAs(t *testing.T, store *PostgresStore, userID string, sort Sort, radius float64, limit int) []string {
 	t.Helper()
 	ctx := context.Background()
 	var names []string
 	cursor := ""
 	for range 1000 {
-		page, next, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, radius, sort, limit, cursor)
+		page, next, err := store.FindInZonePage(ctx, userID, pgCentreLat, pgCentreLon, radius, sort, limit, cursor)
 		if err != nil {
 			t.Fatalf("FindInZonePage(%s, cursor=%q): %v", sort, cursor, err)
 		}
@@ -661,7 +670,7 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	_, cursor, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "")
+	_, cursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "")
 	if err != nil {
 		t.Fatalf("mint newest cursor: %v", err)
 	}
@@ -669,24 +678,24 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 		t.Fatal("expected a continuation cursor after a full page")
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortOldest, 1, cursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortOldest, 1, cursor); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
 	// A cursor minted under status carries mode=status; replaying it under any
 	// other sort is rejected, never a mis-ordered page.
-	_, statusCursor, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
+	_, statusCursor, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
 	if err != nil {
 		t.Fatalf("mint status cursor: %v", err)
 	}
 	if statusCursor == "" {
 		t.Fatal("expected a continuation cursor after a full status page")
 	}
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
+	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
 		t.Errorf("replay status cursor under newest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
+	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
 		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
 	}
 }
@@ -699,8 +708,190 @@ func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+	if _, _, err := store.FindInZonePage(ctx, "", pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
 		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
+	}
+}
+
+// newActivityPGStore returns a store plus its pool over a database truncated of
+// applications AND the per-user notification tables, so the recent-activity join
+// starts from a clean state. The pool is returned for raw notification seeding
+// (the store has no notification writer).
+func newActivityPGStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
+	t.Helper()
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "applications", "notifications", "notification_state", "watch_zones")
+	return NewPostgresStore(pool), pool
+}
+
+// seedWatermark inserts the caller's notification read-watermark. Without a
+// watermark row the recent-activity join classifies nothing as unread (the
+// INNER JOIN to notification_state yields no rows), matching the handler's
+// first-touch rule.
+func seedWatermark(t *testing.T, pool *pgxpool.Pool, userID string, lastReadAt time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		"INSERT INTO notification_state (user_id, last_read_at) VALUES ($1, $2)",
+		userID, lastReadAt); err != nil {
+		t.Fatalf("seed watermark for %q: %v", userID, err)
+	}
+}
+
+// seedNotification inserts one notification for the caller. authorityID is the
+// INTEGER authority_id that the recent-activity join matches against the
+// application's area_id (NOT the text authority_code).
+func seedNotification(t *testing.T, pool *pgxpool.Pool, id, userID, appUID string, authorityID int, createdAt time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(),
+		"INSERT INTO notifications (id, user_id, application_uid, authority_id, event_type, created_at) "+
+			"VALUES ($1, $2, $3, $4, $5, $6)",
+		id, userID, appUID, authorityID, "NewApplication", createdAt); err != nil {
+		t.Fatalf("seed notification %q: %v", id, err)
+	}
+}
+
+// activityFixture seeds a deterministic in-radius set for the recent-activity
+// sort. The headline case: AA has the oldest start_date but a fresh UNREAD event,
+// so its activity timestamp (the unread's created_at) floats it above BB, which
+// has the newest start_date but no unread. CC and DD share an activity timestamp
+// (equal start_date, no unread) across two authorities to exercise the
+// (authority_code, planit_name) tiebreak; EE and FF have neither start_date nor
+// unread, so their activity is NULL (the NULLS-LAST tail).
+func activityFixture(t *testing.T, store *PostgresStore, pool *pgxpool.Pool, userID string) {
+	t.Helper()
+	ctx := context.Background()
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	jun := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("AA", 100), 100), jan), // oldest start, but a fresh unread
+		withStart(at(pgApp("BB", 100), 200), jun), // newest start, no unread
+		withStart(at(pgApp("CC", 100), 300), feb), // equal activity to DD
+		withStart(at(pgApp("DD", 200), 350), feb), // equal date, other authority
+		at(pgApp("EE", 100), 400),                 // NULL start, no unread -> NULL activity
+		at(pgApp("FF", 100), 500),                 // NULL start, no unread -> NULL activity
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	// Watermark well before the unread event so AA's notification is unread.
+	seedWatermark(t, pool, userID, jan)
+	// AA's unread event, later than BB's newest start_date, floats AA to the top.
+	seedNotification(t, pool, "n-AA", userID, "uid-AA", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+}
+
+// TestPostgresStore_FindInZonePage_RecentActivity proves the GREATEST(start_date,
+// unread.created_at) DESC NULLS LAST ordering with the (authority_code,
+// planit_name) tiebreak, paged to exhaustion with no overlap or gap, matches the
+// single unpaged order. The headline behaviour: an app with a fresh UNREAD event
+// (AA) sorts above an app with a newer start_date but no unread (BB).
+func TestPostgresStore_FindInZonePage_RecentActivity(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	const userID = "user-A"
+	activityFixture(t, store, pool, userID)
+
+	// AA(unread jun15) > BB(start jun01) > CC(feb,auth100) > DD(feb,auth200) >
+	// EE(NULL) > FF(NULL). AA above BB is the headline unread-floats-up case;
+	// CC before DD is the equal-activity authority tiebreak; EE/FF are the
+	// NULL-activity tail ordered by planit_name.
+	want := []string{"AA", "BB", "CC", "DD", "EE", "FF"}
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity single page: got %v, want %v", got, want)
+	}
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity paged: got %v, want %v", got, want)
+	}
+	// Page size 1 forces a keyset boundary at every row, including inside the
+	// NULL-activity tail.
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 1); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity paged size 1: got %v, want %v", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_RecentActivity_JoinKey proves the join keys on
+// (application_uid AND authority_id->area_id): a notification whose application_uid
+// matches but whose authority_id differs from the application's area_id must NOT
+// contribute to that app's activity. If it falsely joined, X's fresh unread would
+// float it above Y; correctly it does not, so Y (newer start_date) sorts first.
+func TestPostgresStore_FindInZonePage_RecentActivity_JoinKey(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-A"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("X", 100), 100), jan), // area_id 100
+		withStart(at(pgApp("Y", 100), 200), feb), // newer start, no notification
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	seedWatermark(t, pool, userID, jan)
+	// A fresh unread for X's uid but under the WRONG authority (999 != 100). The
+	// join requires area_id = authority_id, so this must not touch X's activity.
+	seedNotification(t, pool, "n-wrong", userID, "uid-X", 999, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	want := []string{"Y", "X"} // Y(feb) > X(jan); the wrong-authority unread is ignored.
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity join-key: got %v, want %v (a wrong-authority notification must not join)", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_RecentActivity_FirstTouch proves a caller with
+// NO notification_state row has no unread anywhere (the INNER JOIN to
+// notification_state yields nothing), so recent-activity orders by start_date
+// alone — even when a matching notification exists.
+func TestPostgresStore_FindInZonePage_RecentActivity_FirstTouch(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-firsttouch"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("P", 100), 100), jan), // matching notification, but no watermark
+		withStart(at(pgApp("Q", 100), 200), feb), // newer start, no notification
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	// NOTE: no seedWatermark — the user has never read, so has no state row.
+	seedNotification(t, pool, "n-P", userID, "uid-P", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	want := []string{"Q", "P"} // Q(feb) > P(jan); no watermark means P's notification is not unread.
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity first-touch: got %v, want %v (no watermark means no unread influence)", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread proves the unread
+// predicate is a STRICT created_at > last_read_at: a notification created exactly
+// at the watermark is read, not unread, so it does not contribute to activity.
+func TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-strict"
+	watermark := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("M", 100), 100), jan), // notification exactly AT the watermark
+		withStart(at(pgApp("N", 100), 200), feb), // newer start, no notification
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	seedWatermark(t, pool, userID, watermark)
+	// created_at == last_read_at: read, not unread (strict >), so M's activity is
+	// its start_date, not this timestamp.
+	seedNotification(t, pool, "n-M", userID, "uid-M", 100, watermark)
+
+	want := []string{"N", "M"} // N(feb) > M(jan); the at-watermark notification is read.
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity strict-unread: got %v, want %v (a notification exactly at the watermark is read)", got, want)
 	}
 }
 
