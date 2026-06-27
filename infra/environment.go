@@ -277,6 +277,13 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+			// Accept Sandbox StoreKit transactions on dev: TestFlight builds route to the dev
+			// API (api-dev) and TestFlight purchases carry environment="Sandbox". Without this,
+			// APPLE_ENVIRONMENT falls back to the code default "Production" only and the verify
+			// handler rejects every TestFlight purchase, so pro features never unlock (tc-81c9).
+			// Prod deliberately stays Production-only (omits this var) so a sandbox tester cannot
+			// self-grant a paid tier against production.
+			app.EnvironmentVarArgs{Name: pulumi.String("APPLE_ENVIRONMENT"), Value: pulumi.String("Sandbox,Production")},
 		)
 	} else if env == "prod" {
 		// Prod runs on Postgres single-store (memo 0010 / GH #669, bead tc-hpd2.14). The prod
