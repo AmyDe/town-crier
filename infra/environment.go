@@ -6,7 +6,6 @@ import (
 
 	"github.com/pulumi/pulumi-azure-native-sdk/app/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/authorization/v3"
-	"github.com/pulumi/pulumi-azure-native-sdk/cosmosdb/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/dbforpostgresql/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/resources/v3"
 	"github.com/pulumi/pulumi-azure-native-sdk/servicebus/v3"
@@ -79,16 +78,6 @@ func cloudflareIngressIPRestrictions() app.IpSecurityRestrictionRuleArray {
 	return rules
 }
 
-// cosmosContainerDefinition defines a Cosmos DB container with its partition key and
-// optional advanced settings.
-type cosmosContainerDefinition struct {
-	name             string
-	partitionKeyPath string
-	defaultTTL       *int
-	uniqueKeyPaths   [][]string
-	indexingPolicy   cosmosdb.IndexingPolicyPtrInput
-}
-
 // serviceBusPollingInfra captures the Service Bus resources used by the adaptive polling
 // trigger: namespace (short name + FQDN) and queue name.
 type serviceBusPollingInfra struct {
@@ -105,8 +94,6 @@ type envContext struct {
 	acrLoginServer              pulumi.StringOutput
 	acrPullIdentityID           pulumi.StringOutput
 	cosmosDataIdentityID        pulumi.StringOutput
-	cosmosAccountEndpoint       pulumi.StringOutput
-	cosmosDatabaseName          pulumi.StringOutput
 	cosmosDataIdentityClientID  pulumi.StringOutput
 	postgresServerFqdn          pulumi.StringOutput
 	appInsightsConnectionString pulumi.StringOutput
@@ -118,8 +105,6 @@ type envContext struct {
 	auth0M2mClientSecret        pulumi.StringOutput
 	tags                        pulumi.StringMap
 }
-
-func intPtr(v int) *int { return &v }
 
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
 	frontendDomain := conf.Require("frontendDomain")
@@ -158,8 +143,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	containerAppsEnvironmentID := shared.GetStringOutput(pulumi.String("containerAppsEnvironmentId"))
 	cosmosDataIdentityID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityId"))
 	cosmosDataIdentityClientID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityClientId"))
-	cosmosAccountName := shared.GetStringOutput(pulumi.String("cosmosAccountName"))
-	cosmosAccountEndpoint := shared.GetStringOutput(pulumi.String("cosmosAccountEndpoint"))
 	appInsightsConnectionString := shared.GetStringOutput(pulumi.String("appInsightsConnectionString"))
 	acsConnectionString := shared.GetStringOutput(pulumi.String("acsConnectionString"))
 	sharedResourceGroupName := shared.GetStringOutput(pulumi.String("resourceGroupName"))
@@ -180,140 +163,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	})
 	if err != nil {
 		return err
-	}
-
-	// Cosmos DB Database (in shared account)
-	cosmosDatabase, err := cosmosdb.NewSqlResourceSqlDatabase(ctx, fmt.Sprintf("db-town-crier-%s", env), &cosmosdb.SqlResourceSqlDatabaseArgs{
-		AccountName:       cosmosAccountName,
-		ResourceGroupName: sharedResourceGroupName,
-		DatabaseName:      pulumi.String(fmt.Sprintf("town-crier-%s", env)),
-		Resource: &cosmosdb.SqlDatabaseResourceArgs{
-			Id: pulumi.String(fmt.Sprintf("town-crier-%s", env)),
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	// Cosmos DB Containers — definition slice + creation loop
-	containerDefinitions := []cosmosContainerDefinition{
-		// Applications — partitioned by authority code, spatial index on location
-		{
-			name:             "Applications",
-			partitionKeyPath: "/authorityCode",
-			defaultTTL:       intPtr(-1), // TTL enabled, per-document control
-			uniqueKeyPaths:   [][]string{{"/planitName"}},
-			indexingPolicy: &cosmosdb.IndexingPolicyArgs{
-				Automatic:    pulumi.Bool(true),
-				IndexingMode: cosmosdb.IndexingModeConsistent,
-				IncludedPaths: cosmosdb.IncludedPathArray{
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/authorityCode/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/appState/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/appType/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/decidedDate/?")},
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/lastDifferent/?")},
-				},
-				ExcludedPaths: cosmosdb.ExcludedPathArray{
-					&cosmosdb.ExcludedPathArgs{Path: pulumi.String("/*")},
-					&cosmosdb.ExcludedPathArgs{Path: pulumi.String("/\"_etag\"/?")},
-				},
-				SpatialIndexes: cosmosdb.SpatialSpecArray{
-					&cosmosdb.SpatialSpecArgs{
-						Path:  pulumi.String("/location/?"),
-						Types: pulumi.StringArray{pulumi.String(string(cosmosdb.SpatialTypePoint))},
-					},
-				},
-				CompositeIndexes: cosmosdb.CompositePathArrayArray{
-					cosmosdb.CompositePathArray{
-						&cosmosdb.CompositePathArgs{Path: pulumi.String("/authorityCode"), Order: cosmosdb.CompositePathSortOrderAscending},
-						&cosmosdb.CompositePathArgs{Path: pulumi.String("/lastDifferent"), Order: cosmosdb.CompositePathSortOrderDescending},
-					},
-				},
-			},
-		},
-		// Users — partitioned by id
-		{name: "Users", partitionKeyPath: "/id"},
-		// WatchZones — partitioned by userId, unique on (userId, name).
-		// Keeps Cosmos default full indexing (IncludedPaths "/*") so the Phase 1
-		// authority pre-filter (WHERE c.authorityId = @authorityId, tc-8dud) stays
-		// index-served; ADDS a GeoJSON Point spatial index on /location so the
-		// Phase 2c index-served FindZonesContaining query (tc-qbq4) can bind to it.
-		// Inert until that query switches to reference c.location.
-		{
-			name:             "WatchZones",
-			partitionKeyPath: "/userId",
-			uniqueKeyPaths:   [][]string{{"/userId", "/name"}},
-			indexingPolicy: &cosmosdb.IndexingPolicyArgs{
-				Automatic:    pulumi.Bool(true),
-				IndexingMode: cosmosdb.IndexingModeConsistent,
-				IncludedPaths: cosmosdb.IncludedPathArray{
-					&cosmosdb.IncludedPathArgs{Path: pulumi.String("/*")},
-				},
-				ExcludedPaths: cosmosdb.ExcludedPathArray{
-					&cosmosdb.ExcludedPathArgs{Path: pulumi.String("/\"_etag\"/?")},
-				},
-				SpatialIndexes: cosmosdb.SpatialSpecArray{
-					&cosmosdb.SpatialSpecArgs{
-						Path:  pulumi.String("/location/?"),
-						Types: pulumi.StringArray{pulumi.String(string(cosmosdb.SpatialTypePoint))},
-					},
-				},
-			},
-		},
-		// Notifications — partitioned by userId, 90-day TTL
-		{name: "Notifications", partitionKeyPath: "/userId", defaultTTL: intPtr(90 * 24 * 60 * 60)},
-		// NotificationState — one watermark document per user (read-state cutoff)
-		{name: "NotificationState", partitionKeyPath: "/userId"},
-		// Leases — for change feed processor checkpointing
-		{name: "Leases", partitionKeyPath: "/id"},
-		// DeviceRegistrations — partitioned by userId
-		{name: "DeviceRegistrations", partitionKeyPath: "/userId"},
-		// SavedApplications — partitioned by userId
-		{name: "SavedApplications", partitionKeyPath: "/userId"},
-		// PollState — single document storing last poll timestamp
-		{name: "PollState", partitionKeyPath: "/id"},
-		// OfferCodes — partitioned by code for point reads on redemption
-		{name: "OfferCodes", partitionKeyPath: "/code"},
-		// AppleNotifications — idempotency store for App Store Server Notifications
-		{name: "AppleNotifications", partitionKeyPath: "/id"},
-	}
-
-	for _, def := range containerDefinitions {
-		resourceArgs := &cosmosdb.SqlContainerResourceArgs{
-			Id: pulumi.String(def.name),
-			PartitionKey: &cosmosdb.ContainerPartitionKeyArgs{
-				Paths: pulumi.StringArray{pulumi.String(def.partitionKeyPath)},
-				Kind:  cosmosdb.PartitionKindHash,
-			},
-		}
-		if def.defaultTTL != nil {
-			resourceArgs.DefaultTtl = pulumi.Int(*def.defaultTTL)
-		}
-		if def.uniqueKeyPaths != nil {
-			uniqueKeys := cosmosdb.UniqueKeyArray{}
-			for _, paths := range def.uniqueKeyPaths {
-				stringPaths := pulumi.StringArray{}
-				for _, p := range paths {
-					stringPaths = append(stringPaths, pulumi.String(p))
-				}
-				uniqueKeys = append(uniqueKeys, &cosmosdb.UniqueKeyArgs{Paths: stringPaths})
-			}
-			resourceArgs.UniqueKeyPolicy = &cosmosdb.UniqueKeyPolicyArgs{UniqueKeys: uniqueKeys}
-		}
-		if def.indexingPolicy != nil {
-			resourceArgs.IndexingPolicy = def.indexingPolicy
-		}
-
-		_, err = cosmosdb.NewSqlResourceSqlContainer(ctx, fmt.Sprintf("container-%s-%s", strings.ToLower(def.name), env), &cosmosdb.SqlResourceSqlContainerArgs{
-			AccountName:       cosmosAccountName,
-			ResourceGroupName: sharedResourceGroupName,
-			DatabaseName:      cosmosDatabase.Name,
-			ContainerName:     pulumi.String(def.name),
-			Resource:          resourceArgs,
-		})
-		if err != nil {
-			return err
-		}
 	}
 
 	// Managed Certificate for API custom domain (phase >= 2 binds it with SniEnabled).
@@ -353,8 +202,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		acrLoginServer:             acrLoginServer,
 		acrPullIdentityID:          acrPullIdentityID,
 		cosmosDataIdentityID:       cosmosDataIdentityID,
-		cosmosAccountEndpoint:      cosmosAccountEndpoint,
-		cosmosDatabaseName:         cosmosDatabase.Name,
 		cosmosDataIdentityClientID: cosmosDataIdentityClientID,
 		// Postgres FQDN threaded through so the worker-job path (createWorkerJob /
 		// addGoWorkerEnv, which only receives ec) can build the prod Postgres connection
@@ -410,8 +257,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
 		// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
 		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
-		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: cosmosAccountEndpoint},
-		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: cosmosDatabase.Name},
 		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
@@ -422,36 +267,27 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
 	}
 	if env == "dev" {
-		// Dev is cut over to Postgres single-store, mirroring prod (this bead tc-hpd2.18 / GH
-		// #681; the deferred completion of the migration). STORE_BACKEND=postgres routes every
-		// store to Postgres on dev; APPS_ZONES_BACKEND is aligned to "postgres" for consistency
-		// (the code ORs the two flags). This block is now identical to the prod block below
-		// except POSTGRES_DB=town_crier_dev. COSMOS_* stays as a safety net — removing it is a
-		// separate later slice (GH #681 slice C). The flags are explicit, not inferred from
-		// POSTGRES_AUTH.
+		// Dev runs on Postgres single-store, mirroring prod (GH #681). The dev API
+		// authenticates to town_crier_dev via Entra managed identity (POSTGRES_AUTH); the
+		// connection vars are explicit. This block is now identical to the prod block below
+		// except POSTGRES_DB=town_crier_dev.
 		apiEnvVars = append(apiEnvVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_dev")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
-			app.EnvironmentVarArgs{Name: pulumi.String("STORE_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	} else if env == "prod" {
-		// Prod is cut over to Postgres single-store (memo 0010 / GH #669, bead tc-hpd2.14).
-		// STORE_BACKEND=postgres routes every store to Postgres; the flag is explicit and
-		// prod-gated (never inferred from POSTGRES_AUTH). APPS_ZONES_BACKEND is aligned to
-		// "postgres" for consistency — the code ORs the two flags, but leaving "cosmos" next
-		// to a full-Postgres cutover would be misleading.
+		// Prod runs on Postgres single-store (memo 0010 / GH #669, bead tc-hpd2.14). The prod
+		// API authenticates to town_crier_prod via Entra managed identity (POSTGRES_AUTH); the
+		// connection vars are explicit.
 		apiEnvVars = append(apiEnvVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-			app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
-			app.EnvironmentVarArgs{Name: pulumi.String("STORE_BACKEND"), Value: pulumi.String("postgres")},
 		)
 	}
 
@@ -566,8 +402,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// pg-purge — daily at 02:00 UTC. Replaces the Cosmos per-document TTLs: runs
 	// WORKER_MODE=pg-purge which calls Postgres PurgeOlderThan to enforce the 90-day
 	// (Notifications) and 180-day (DeviceRegistrations) retention defaults (memo 0010 / GH #669).
-	// Created for both envs; with dev now cut over to STORE_BACKEND=postgres (tc-hpd2.18 / GH
-	// #681) it enforces retention against town_crier_dev, the same as prod against town_crier_prod.
+	// Created for both envs: it enforces retention against town_crier_dev on dev, the same as
+	// prod against town_crier_prod (GH #681).
 	if err = createWorkerJob(ctx, ec, "pg-purge", "0 2 * * *", 600, "pg-purge", nil); err != nil {
 		return err
 	}
@@ -616,7 +452,6 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 
 	ctx.Export("resourceGroupName", resourceGroup.Name)
-	ctx.Export("cosmosAccountEndpoint", cosmosAccountEndpoint)
 	ctx.Export("staticWebAppName", staticWebApp.Name)
 	ctx.Export("seoSnapshotStorageAccountName", seoSnapshotAccountName)
 	ctx.Export("seoSnapshotContainerName", seoSnapshotContainerName)
@@ -733,28 +568,16 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 // addGoWorkerEnv appends the Go worker's env vars (SINGLE-underscore names). The consumer
 // is api-go/internal/platform/config.go.
 func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode string, pollingBus *serviceBusPollingInfra) app.EnvironmentVarArray {
-	// All modes: Go-named Cosmos endpoint/database.
-	envVars = append(envVars,
-		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_ENDPOINT"), Value: ec.cosmosAccountEndpoint},
-		app.EnvironmentVarArgs{Name: pulumi.String("COSMOS_DATABASE"), Value: ec.cosmosDatabaseName},
-	)
-
-	// Both envs: cut over every worker job to Postgres single-store. Prod cut over first
-	// (memo 0010 / GH #669, bead tc-hpd2.14); dev is now completed to match (this bead
-	// tc-hpd2.18 / GH #681). STORE_BACKEND=postgres routes every store to Postgres;
-	// APPS_ZONES_BACKEND is aligned to "postgres" for consistency. POSTGRES_DB is per-env
-	// (town_crier_dev / town_crier_prod) — ec.env is exactly "dev"/"prod". COSMOS_* above
-	// stays as a safety net; removing it is a separate later slice (GH #681 slice C).
-	// AZURE_CLIENT_ID is already set on every worker job (createWorkerJob) and reused for the
-	// Entra MI token fetch, so it is not duplicated here.
+	// Both envs: every worker job runs on Postgres single-store (memo 0010 / GH #669 prod,
+	// GH #681 dev). POSTGRES_DB is per-env (town_crier_dev / town_crier_prod) — ec.env is
+	// exactly "dev"/"prod". AZURE_CLIENT_ID is already set on every worker job
+	// (createWorkerJob) and reused for the Entra MI token fetch, so it is not duplicated here.
 	envVars = append(envVars,
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: ec.postgresServerFqdn},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_" + ec.env)},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
 		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-		app.EnvironmentVarArgs{Name: pulumi.String("APPS_ZONES_BACKEND"), Value: pulumi.String("postgres")},
-		app.EnvironmentVarArgs{Name: pulumi.String("STORE_BACKEND"), Value: pulumi.String("postgres")},
 	)
 
 	// poll / poll-bootstrap: Service Bus namespace + queue.
