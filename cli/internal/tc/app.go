@@ -17,8 +17,6 @@ Commands:
   generate-offer-codes        Bulk-generate single-use offer codes
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
-  backfill-watchzone-location One-shot: add a GeoJSON location to legacy watch zones
-  backfill-watchzone-bbox     One-shot: add a bounding box to legacy watch zones
   help                        Show this help message
   version                     Print version
 
@@ -75,10 +73,6 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 		return runGrantSubscription(ctx, client, env, args)
 	case "list-users":
 		return runListUsers(ctx, client, env, args)
-	case "backfill-watchzone-location":
-		return runBackfillWatchZoneLocation(ctx, client, env, args)
-	case "backfill-watchzone-bbox":
-		return runBackfillWatchZoneBoundingBox(ctx, client, env, args)
 	default:
 		fmt.Fprintf(env.Err, "Unknown command: %s\n", args.Command)
 		fmt.Fprintln(env.Err, "Run 'tc help' for a list of commands.")
