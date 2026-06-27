@@ -45,6 +45,11 @@ public struct ApplicationListView: View {
     .refreshable {
       await viewModel.loadApplications()
     }
+    .onChange(of: viewModel.sort) {
+      // Server-driven sorts re-page from page 1 with a fresh cursor; switching
+      // between the two client-side sorts only re-orders in memory (GH#682).
+      Task { await viewModel.handleSortChanged() }
+    }
   }
 
   // MARK: - Toolbar
@@ -180,6 +185,11 @@ public struct ApplicationListView: View {
           .contentShape(Rectangle())
           .onTapGesture {
             viewModel.selectApplication(application.id)
+          }
+          .onAppear {
+            // Infinite scroll: nearing the end pulls the next server page when
+            // the active sort is server-driven (GH#682). A no-op otherwise.
+            Task { await viewModel.onRowAppear(application) }
           }
       }
     }

@@ -24,6 +24,37 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     return dtos.map { $0.toDomain() }
   }
 
+  public func fetchApplicationsPage(
+    for zone: WatchZone,
+    sort: ApplicationSortOrder,
+    cursor: String?,
+    limit: Int
+  ) async throws -> ApplicationPage {
+    var query: [URLQueryItem] = [
+      URLQueryItem(name: "sort", value: sort.rawValue),
+      URLQueryItem(name: "limit", value: String(limit)),
+    ]
+    if let cursor, !cursor.isEmpty {
+      query.append(URLQueryItem(name: "cursor", value: cursor))
+    }
+
+    let result: (value: [PlanningApplicationDTO], nextCursor: String?)
+    do {
+      result = try await apiClient.requestPaged(
+        .get("/v1/me/watch-zones/\(zone.id.value)/applications", query: query)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+
+    return ApplicationPage(
+      applications: result.value.map { $0.toDomain() },
+      nextCursor: result.nextCursor
+    )
+  }
+
   public func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {

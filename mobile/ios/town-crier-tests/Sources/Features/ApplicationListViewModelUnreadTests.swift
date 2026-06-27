@@ -213,30 +213,33 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.filteredApplications.map(\.id) == [appA.id, appC.id, appB.id])
   }
 
-  @Test("newest sort orders by receivedDate desc")
-  func sort_newest_ordersByReceivedDateDesc() async throws {
-    let older = PlanningApplication.pendingReview  // 1_700_000_000
-    let middle = PlanningApplication.permitted  // 1_700_100_000
-    let newest = PlanningApplication.rejected  // 1_700_200_000
-    let (sut, _, _, _) = try makeSUT(applications: [middle, older, newest])
+  // newest/oldest are server-driven since GH#682 slice 1: the API returns rows
+  // already in `start_date` order (proven by the Go pgtest suite, #688) and the
+  // client pages them via infinite scroll. The client must not re-sort locally —
+  // that would only order the pages already loaded — so it preserves the
+  // server's order verbatim. (The full reset-cursor-and-reload-on-sort-change
+  // flow is covered by ApplicationListViewModelPaginationTests.)
+
+  @Test("newest is server-driven — the list preserves the server's order")
+  func sort_newest_preservesServerOrder() async throws {
+    let serverOrdered: [PlanningApplication] = [.rejected, .permitted, .pendingReview]
+    let (sut, _, _, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
     sut.sort = .newest
 
-    #expect(sut.filteredApplications.map(\.id) == [newest.id, middle.id, older.id])
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
-  @Test("oldest sort orders by receivedDate asc")
-  func sort_oldest_ordersByReceivedDateAsc() async throws {
-    let older = PlanningApplication.pendingReview
-    let middle = PlanningApplication.permitted
-    let newest = PlanningApplication.rejected
-    let (sut, _, _, _) = try makeSUT(applications: [middle, older, newest])
+  @Test("oldest is server-driven — the list preserves the server's order")
+  func sort_oldest_preservesServerOrder() async throws {
+    let serverOrdered: [PlanningApplication] = [.pendingReview, .permitted, .rejected]
+    let (sut, _, _, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
     sut.sort = .oldest
 
-    #expect(sut.filteredApplications.map(\.id) == [older.id, middle.id, newest.id])
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
   @Test("status sort orders by appState raw value")

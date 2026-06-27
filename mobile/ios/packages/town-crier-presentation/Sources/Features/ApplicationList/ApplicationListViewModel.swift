@@ -14,7 +14,10 @@ import TownCrierDomain
 /// single-select status-chip group.
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
-  @Published private(set) var applications: [PlanningApplication] = []
+  // `internal(set)` (the default for this non-public property) rather than
+  // `private(set)`: the paged load/append lives in `+Pagination` extension file
+  // and mutates this. Still read-only outside the presentation module.
+  @Published var applications: [PlanningApplication] = []
   @Published var selectedStatusFilter: ApplicationStatus? {
     didSet {
       // Status and Unread chips share a single-select group (spec decision #7)
@@ -51,11 +54,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
 
-  private let repository: PlanningApplicationRepository?
-  private let offlineRepository: OfflineAwareRepository?
+  // `repository`/`offlineRepository`/`zone` are internal (not `private`) so the
+  // `+Pagination` extension file can drive the paged fetch.
+  let repository: PlanningApplicationRepository?
+  let offlineRepository: OfflineAwareRepository?
   private let watchZoneRepository: WatchZoneRepository?
   private let notificationStateRepository: NotificationStateRepository?
-  private var zone: WatchZone?
+  var zone: WatchZone?
   /// Re-entrancy guard for ``loadApplications()``. A single user action can
   /// trigger the load repeatedly — `.task` firing alongside `.refreshable`, a
   /// scenePhase change, or the view re-appearing — and each unguarded call
@@ -63,6 +68,27 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   /// request firing 3-6 times within seconds, all cancelled (HTTP 499). While
   /// one load is in flight, further calls short-circuit (bd tc-eum5).
   private var isLoadInFlight = false
+  /// Continuation token for the next server page, or `nil` when no more pages
+  /// exist (the last page omits `X-Next-Cursor`) or the active sort is
+  /// client-side. Reset to `nil` on every fresh first-page load and on any sort
+  /// change so a stale cursor can never page a differently-ordered set
+  /// (GH#682 slice 1). Internal so the `+Pagination` extension can drive it.
+  var nextCursor: String?
+  /// The sort the currently-loaded `applications` were fetched under. Lets a
+  /// sort change decide whether a refetch is needed (server sorts and any
+  /// transition away from one reload; a client→client switch only re-sorts in
+  /// memory, as before).
+  var loadedSort: ApplicationsSort?
+  /// Re-entrancy guard for next-page fetches — independent of `isLoadInFlight`
+  /// so an in-flight first-page load never blocks (or is blocked by) appends.
+  var isPageLoadInFlight = false
+  /// Server page size requested for the infinite-scroll path. Matches the API's
+  /// sorted-path default (GH#682); the server clamps anything larger.
+  static let pageSize = 150
+  /// Trigger the next-page fetch once the appearing row is within this many rows
+  /// of the end of the loaded set, so the next page lands before the user hits
+  /// the bottom.
+  static let prefetchThreshold = 10
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
   private let sortKey: String
@@ -212,10 +238,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       }
       guard let activeZone = selectedZone ?? zone else {
         applications = []
+        nextCursor = nil
         isLoading = false
         return
       }
-      applications = try await fetchApplications(for: activeZone)
+      try await loadActiveZone(activeZone)
     } catch {
       handleError(error)
     }
@@ -230,7 +257,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     isLoading = true
     error = nil
     do {
-      applications = try await fetchApplications(for: zone)
+      try await loadActiveZone(zone)
     } catch {
       handleError(error)
     }
@@ -262,7 +289,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     await offlineRepository?.invalidateAllCaches()
     guard let activeZone = selectedZone ?? zone else { return }
     do {
-      applications = try await fetchApplications(for: activeZone)
+      try await loadActiveZone(activeZone)
     } catch {
       // Refetch failure is non-fatal — the existing rows stay rendered.
     }
@@ -281,7 +308,9 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     selectedZone = zones.first
   }
 
-  private func fetchApplications(for zone: WatchZone) async throws -> [PlanningApplication] {
+  /// Internal (not `private`): the `+Pagination` extension's `loadActiveZone`
+  /// uses this for the client-side sort path.
+  func fetchApplications(for zone: WatchZone) async throws -> [PlanningApplication] {
     if let offlineRepository {
       return try await offlineRepository.fetchApplications(for: zone).data
     } else if let repository {
@@ -311,45 +340,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.sorted { lhs, rhs in
         recentActivityScore(lhs) > recentActivityScore(rhs)
       }
-    case .newest:
-      return applications.sorted { $0.receivedDate > $1.receivedDate }
-    case .oldest:
-      return applications.sorted { $0.receivedDate < $1.receivedDate }
     case .status:
       return applications.sorted { $0.status.rawValue < $1.status.rawValue }
-    case .distance:
-      return sortByDistance(applications)
-    }
-  }
-
-  /// Ascending haversine distance from the active zone's centre. Apps
-  /// without a `location` sort last (preserving their incoming relative
-  /// order via the stable-pair tiebreaker so we don't surface arbitrary
-  /// noise). Falls back to identity when no zone is selected — the sort
-  /// option is hidden in that state, but defensive coding keeps the
-  /// switch total. Spec: tc-mso6 (mirrors the web sibling tc-ge7j).
-  private func sortByDistance(
-    _ applications: [PlanningApplication]
-  ) -> [PlanningApplication] {
-    guard let activeZone = selectedZone ?? zone else {
+    case .distance, .newest, .oldest:
+      // Server-ordered sorts arrive pre-sorted from the API and are paged via
+      // infinite scroll, so they are never re-sorted client-side — that would
+      // only ever order the pages already loaded (GH#682 slice 1). Identity
+      // preserves the server order and keeps the switch total.
       return applications
     }
-    let scored = applications.enumerated().map { index, app in
-      (index: index, app: app, distance: app.location.map { activeZone.distance(to: $0) })
-    }
-    let sorted = scored.sorted { lhs, rhs in
-      switch (lhs.distance, rhs.distance) {
-      case let (.some(left), .some(right)):
-        return left < right
-      case (.some, .none):
-        return true
-      case (.none, .some):
-        return false
-      case (.none, .none):
-        return lhs.index < rhs.index
-      }
-    }
-    return sorted.map(\.app)
   }
 
   /// `max(receivedDate, latestUnreadEvent.createdAt)` per spec decision #9 —
