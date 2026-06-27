@@ -16,8 +16,8 @@ import (
 // cursor are both this type, so a cursor minted under one sort can be rejected
 // when replayed under another (see FindInZonePage and ErrCursorSortMismatch).
 //
-// Slice 1 (epic #682) implements {distance, newest, oldest}. The remaining UI
-// sorts (status, recent-activity) arrive in later slices; until then they are
+// Slices 1-2 (epic #682) implement {distance, newest, oldest, status}. The
+// remaining UI sort (recent-activity) arrives in a later slice; until then it is
 // rejected as unsupported.
 type Sort string
 
@@ -32,12 +32,17 @@ const (
 	// SortOldest orders by start_date ASC NULLS LAST, then the unique tiebreak
 	// (authority_code, planit_name). It reuses the newest btree, scanned backward.
 	SortOldest Sort = "oldest"
+	// SortStatus orders by app_state ASC NULLS LAST, then start_date DESC NULLS
+	// LAST, then the unique tiebreak (authority_code, planit_name). The mixed
+	// directions (app_state ASC / start_date DESC) make the keyset predicate
+	// per-key (see findStatusZonePage).
+	SortStatus Sort = "status"
 )
 
 // Supported reports whether s is a sort this slice implements server-side.
 func (s Sort) Supported() bool {
 	switch s {
-	case SortDistance, SortNewest, SortOldest:
+	case SortDistance, SortNewest, SortOldest, SortStatus:
 		return true
 	default:
 		return false
