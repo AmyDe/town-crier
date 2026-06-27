@@ -362,9 +362,12 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 
 	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, status, unreadFilter, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
-		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
-		// keyset cursor is only valid for the sort it was minted under.
-		if errors.Is(err, applications.ErrCursorInvalid) || errors.Is(err, applications.ErrCursorSortMismatch) {
+		// A stale, sort-mismatched or filter-mismatched cursor is a client error
+		// (400), not a 500: the keyset cursor is only valid for the sort AND filter
+		// it was minted under.
+		if errors.Is(err, applications.ErrCursorInvalid) ||
+			errors.Is(err, applications.ErrCursorSortMismatch) ||
+			errors.Is(err, applications.ErrCursorFilterMismatch) {
 			h.writeError(w, r, http.StatusBadRequest, invalidCursorMessage)
 			return
 		}
