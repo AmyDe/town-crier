@@ -673,6 +673,19 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
+	// A cursor minted under status carries mode=status; replaying it under any
+	// other sort is rejected, never a mis-ordered page.
+	_, statusCursor, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
+	if err != nil {
+		t.Fatalf("mint status cursor: %v", err)
+	}
+	if statusCursor == "" {
+		t.Fatal("expected a continuation cursor after a full status page")
+	}
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
+		t.Errorf("replay status cursor under newest: got err %v, want ErrCursorSortMismatch", err)
+	}
+
 	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
 		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
 	}
