@@ -58,9 +58,16 @@ type authorityResolver interface {
 // 1-3: distance/newest/oldest/status/recent-activity) with a sort-aware keyset
 // cursor; userID scopes the per-user notification join the recent-activity sort
 // needs. *applications.PostgresStore satisfies both.
+//
+// FindClustersInZone (issue #698) backs the server-side map clustering endpoint:
+// it returns PostGIS grid-aggregated cluster bubbles (centroid + count + status
+// breakdown) for a viewport, so the map renders a handful of aggregates instead
+// of eager-draining every application. *applications.PostgresStore satisfies all
+// three.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q applications.InZoneQuery) ([]applications.PlanningApplication, string, error)
+	FindClustersInZone(ctx context.Context, q applications.ClusterQuery) ([]applications.Cluster, error)
 }
 
 // watermarkReader reads the caller's notification read-watermark. A nil return
@@ -108,6 +115,7 @@ func NearbyRoutes(
 	}
 	mux.HandleFunc("POST /v1/me/watch-zones", h.create)
 	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications", h.applications)
+	mux.HandleFunc("GET /v1/me/watch-zones/{zoneId}/applications/clusters", h.clusters)
 }
 
 // createRequest is the POST body. The optional flags default to true
@@ -154,6 +162,14 @@ const invalidSortMessage = "Invalid sort."
 // invalidStatusMessage is the 400 body when ?status= is outside the app_state
 // filter vocabulary (and not "All"/absent, which mean no filter).
 const invalidStatusMessage = "Invalid status filter."
+
+// invalidBBoxMessage is the 400 body when ?bbox= is not four in-range,
+// well-ordered finite decimal degrees (west,south,east,north).
+const invalidBBoxMessage = "Invalid bbox."
+
+// invalidZoomMessage is the 400 body when ?zoom= is not an integer in the slippy
+// range 0..maxZoom.
+const invalidZoomMessage = "Invalid zoom."
 
 // invalidUnreadMessage is the 400 body when ?unread= is neither "true", "false"
 // nor absent.
@@ -448,6 +464,144 @@ func (h *handler) findZonePage(ctx context.Context, userID string, zone WatchZon
 		Limit:        limit,
 		Cursor:       cursor,
 	})
+}
+
+// clusters implements GET /v1/me/watch-zones/{zoneId}/applications/clusters
+// (issue #698): load the zone (404 if not owned, like the sibling applications
+// route), parse the viewport (?bbox=) and zoom (?zoom=) and optional ?status=
+// filter (each malformed value is a clean 400 before any query), translate the
+// zoom into a PostGIS grid cell size, and return the grid-aggregated clusters for
+// the visible rect as a JSON array. The store stays a pure spatial primitive: the
+// zoom -> grid-size policy lives here so density can be tuned without a store change.
+func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
+	userID := auth.Subject(r.Context())
+	zoneID := r.PathValue("zoneId")
+
+	zone, err := h.store.Get(r.Context(), userID, zoneID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		h.serverError(w, r, "load watch zone", err)
+		return
+	}
+
+	box, ok := parseBBox(r.URL.Query().Get("bbox"))
+	if !ok {
+		h.writeError(w, r, http.StatusBadRequest, invalidBBoxMessage)
+		return
+	}
+
+	gridSize, ok := parseZoom(r.URL.Query().Get("zoom"))
+	if !ok {
+		h.writeError(w, r, http.StatusBadRequest, invalidZoomMessage)
+		return
+	}
+
+	// ?status= filters on the raw app_state; "All"/absent means no filter, any
+	// other non-vocabulary value is a clean 400 (same vocabulary as the list).
+	status, ok := parseStatus(r.URL.Query().Get("status"))
+	if !ok {
+		h.writeError(w, r, http.StatusBadRequest, invalidStatusMessage)
+		return
+	}
+
+	clusters, err := h.apps.FindClustersInZone(r.Context(), applications.ClusterQuery{
+		Latitude:        zone.Latitude,
+		Longitude:       zone.Longitude,
+		RadiusMetres:    zone.RadiusMetres,
+		West:            box.west,
+		South:           box.south,
+		East:            box.east,
+		North:           box.north,
+		GridSizeDegrees: gridSize,
+		Status:          status,
+	})
+	if err != nil {
+		h.serverError(w, r, "find clusters in zone", err)
+		return
+	}
+	// Encode a bare JSON array, never null, for an empty viewport.
+	if clusters == nil {
+		clusters = []applications.Cluster{}
+	}
+	h.writeJSON(w, r, http.StatusOK, clusters)
+}
+
+// viewport is the parsed ?bbox= rectangle in WGS84 decimal degrees.
+type viewport struct {
+	west, south, east, north float64
+}
+
+// parseBBox resolves ?bbox=west,south,east,north into a viewport. It rejects
+// (ok == false) anything that is not exactly four finite decimal degrees, with
+// coordinates in range (lng [-180,180], lat [-90,90]) and strictly ordered
+// (west < east, south < north), so a malformed viewport is a clean 400 rather
+// than a degenerate or world-spanning query.
+func parseBBox(raw string) (viewport, bool) {
+	if raw == "" {
+		return viewport{}, false
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) != 4 {
+		return viewport{}, false
+	}
+	vals := make([]float64, 4)
+	for i, p := range parts {
+		v, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return viewport{}, false
+		}
+		vals[i] = v
+	}
+	box := viewport{west: vals[0], south: vals[1], east: vals[2], north: vals[3]}
+	if box.west < -180 || box.west > 180 || box.east < -180 || box.east > 180 {
+		return viewport{}, false
+	}
+	if box.south < -90 || box.south > 90 || box.north < -90 || box.north > 90 {
+		return viewport{}, false
+	}
+	if box.west >= box.east || box.south >= box.north {
+		return viewport{}, false
+	}
+	return box, true
+}
+
+// maxZoom is the inclusive upper bound on the standard slippy-map zoom range a
+// client may request; baseGridDegrees is the grid cell size (in degrees) at zoom
+// 0. Each cell is 1/8 of a zoom tile (a tile is 360/2^z degrees wide), so a
+// screenful of a few tiles yields a bounded handful of cluster cells.
+const (
+	maxZoom         = 20
+	baseGridDegrees = 45.0 // 360 / 2^3 (eight cells per tile at zoom 0)
+)
+
+// zoomGridDegrees is the server-owned zoom -> grid-cell-size lookup. Index z holds
+// the cell size in degrees for slippy zoom z: baseGridDegrees / 2^z, so the cell
+// halves with every zoom level (45 deg at z=0 down to ~4.8e-5 deg at z=20, where
+// each application is effectively its own cell). Keeping this table in the handler
+// lets us retune density without touching the store or shipping a client release.
+var zoomGridDegrees = func() [maxZoom + 1]float64 {
+	var table [maxZoom + 1]float64
+	for z := range table {
+		table[z] = baseGridDegrees / float64(uint64(1)<<uint(z))
+	}
+	return table
+}()
+
+// parseZoom resolves ?zoom= to a grid cell size via zoomGridDegrees. An absent,
+// non-integer, or out-of-range (outside 0..maxZoom) value is rejected
+// (ok == false) so a garbage zoom is a clean 400, never a silent default.
+func parseZoom(raw string) (float64, bool) {
+	if raw == "" {
+		return 0, false
+	}
+	z, err := strconv.Atoi(raw)
+	if err != nil || z < 0 || z > maxZoom {
+		return 0, false
+	}
+	return zoomGridDegrees[z], true
 }
 
 // parseLimit resolves ?limit= to a bounded page size: absent, non-numeric, or
