@@ -50,6 +50,22 @@ public final class OfflineAwareRepository: Sendable {
     }
   }
 
+  /// Fetches a single server-sorted, server-paged page straight from the remote.
+  ///
+  /// Pagination deliberately bypasses the offline cache: the cache is keyed
+  /// per-zone on the full first-page set, not on cursor-addressed pages, so the
+  /// list's infinite-scroll pages always hit the network (GH#682 slice 1). The
+  /// param-less ``fetchApplications(for:)`` path keeps its cache behaviour.
+  public func fetchApplicationsPage(
+    for zone: WatchZone,
+    sort: ApplicationSortOrder,
+    cursor: String?,
+    limit: Int
+  ) async throws -> ApplicationPage {
+    try await remote.fetchApplicationsPage(
+      for: zone, sort: sort, cursor: cursor, limit: limit)
+  }
+
   /// Invalidates the cached applications for the given zone id.
   ///
   /// Callers should invoke this after a watch-zone edit changes the zone's
