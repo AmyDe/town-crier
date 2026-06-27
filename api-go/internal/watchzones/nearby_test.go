@@ -1220,6 +1220,21 @@ func TestApplications_StatusAndUnreadTogetherIs400(t *testing.T) {
 	})
 }
 
+// TestApplications_CursorFilterMismatchIs400 proves a cursor minted under one
+// filter and replayed under another (the store reports ErrCursorFilterMismatch)
+// surfaces as 400, never a gapped or overlapping page.
+func TestApplications_CursorFilterMismatchIs400(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{inZoneErr: applications.ErrCursorFilterMismatch}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("cursor-from-another-filter"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&status=Permitted&cursor="+cursor, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+}
+
 // manyApps builds n distinct nearby applications, for asserting the bounded page
 // caps the downstream unread UID set.
 func manyApps(n int) []applications.PlanningApplication {
