@@ -163,6 +163,107 @@ struct ApplicationListViewModelPaginationTests {
     #expect(spy.fetchApplicationsCalls.isEmpty)
   }
 
+  // MARK: - status is server-driven (GH#682 slice 2)
+
+  @Test("selecting status issues ?sort=status and paginates via the cursor")
+  func statusSort_paginatesViaCursor() async throws {
+    // Pages are in the server's status order (app_state ASC, start_date DESC),
+    // deliberately NOT in `status.rawValue` order, so a stray client re-sort
+    // would reorder them and fail this assertion.
+    let page1 = ApplicationPage(applications: [.rejected, .permitted], nextCursor: "status-cursor-2")
+    let page2 = ApplicationPage(applications: [.withdrawn, .pendingReview], nextCursor: nil)
+    let (sut, spy) = try makeSUT(sort: .status, pages: [page1, page2])
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsPageCalls.first?.sort == .status)
+    #expect(spy.fetchApplicationsPageCalls.first?.cursor == nil)
+
+    await sut.onRowAppear(.permitted)
+
+    #expect(
+      sut.filteredApplications.map(\.id) == [
+        PlanningApplication.rejected, .permitted, .withdrawn, .pendingReview,
+      ].map(\.id)
+    )
+    #expect(spy.fetchApplicationsPageCalls.count == 2)
+    #expect(spy.fetchApplicationsPageCalls[1].sort == .status)
+    #expect(spy.fetchApplicationsPageCalls[1].cursor == "status-cursor-2")
+    #expect(spy.fetchApplicationsCalls.isEmpty)
+  }
+
+  @Test("status preserves the server order — no local app_state re-sort")
+  func statusSort_preservesServerOrder() async throws {
+    // Rejected, Undecided, Permitted — not in `status.rawValue` order. The
+    // server owns the ordering; a local re-sort would reorder this set.
+    let serverOrdered = ApplicationPage(
+      applications: [.rejected, .pendingReview, .permitted], nextCursor: nil)
+    let (sut, _) = try makeSUT(sort: .status, pages: [serverOrdered])
+
+    await sut.loadApplications()
+
+    #expect(
+      sut.filteredApplications.map(\.id) == [
+        PlanningApplication.rejected, .pendingReview, .permitted,
+      ].map(\.id)
+    )
+  }
+
+  @Test("switching to status clears the cursor and reloads from page 1")
+  func switchingToStatus_resetsCursorAndReloadsPageOne() async throws {
+    let newestPage = ApplicationPage(applications: [.pendingReview], nextCursor: "newest-cursor")
+    let (sut, spy) = try makeSUT(sort: .newest, pages: [newestPage])
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsPageCalls.last?.sort == .newest)
+
+    spy.pagedResponses = [ApplicationPage(applications: [.permitted], nextCursor: nil)]
+    sut.sort = .status
+    await sut.handleSortChanged()
+
+    let last = try #require(spy.fetchApplicationsPageCalls.last)
+    #expect(last.sort == .status)
+    #expect(last.cursor == nil)
+  }
+
+  @Test("switching away from status clears the cursor and reloads from page 1")
+  func switchingFromStatus_resetsCursorAndReloadsPageOne() async throws {
+    let statusPage = ApplicationPage(applications: [.permitted], nextCursor: "status-cursor")
+    let (sut, spy) = try makeSUT(sort: .status, pages: [statusPage])
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsPageCalls.last?.sort == .status)
+
+    spy.pagedResponses = [ApplicationPage(applications: [.rejected], nextCursor: nil)]
+    sut.sort = .oldest
+    await sut.handleSortChanged()
+
+    let last = try #require(spy.fetchApplicationsPageCalls.last)
+    #expect(last.sort == .oldest)
+    #expect(last.cursor == nil)
+  }
+
+  @Test("switching from client-side recent-activity to status drives the paged endpoint")
+  func switchingRecentActivityToStatus_usesPagedFetch() async throws {
+    // recent-activity stays client-side (param-less); status is now server-driven.
+    let spy = SpyPlanningApplicationRepository()
+    spy.fetchApplicationsResult = .success([.pendingReview, .permitted])
+    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
+    defaults.set(ApplicationsSort.recentActivity.rawValue, forKey: "test.raToStatus")
+    let sut = ApplicationListViewModel(
+      repository: spy, zone: .cambridge, userDefaults: defaults, sortKey: "test.raToStatus")
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsCalls.count == 1)
+    #expect(spy.fetchApplicationsPageCalls.isEmpty)
+
+    spy.pagedResponses = [ApplicationPage(applications: [.rejected, .pendingReview], nextCursor: nil)]
+    sut.sort = .status
+    await sut.handleSortChanged()
+
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
+    #expect(spy.fetchApplicationsPageCalls.first?.sort == .status)
+  }
+
   // MARK: - Client sorts keep the legacy path
 
   @Test("a client-side sort keeps the param-less fetch and does not paginate")
