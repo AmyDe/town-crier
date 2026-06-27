@@ -9,9 +9,10 @@ import TownCrierDomain
 /// Owns the unread-watermark plumbing (tc-1nsa.8) when a
 /// ``NotificationStateRepository`` is injected: derives the per-zone unread
 /// count client-side from each row's `latestUnreadEvent` (tc-e9ox), exposes
-/// the four sort modes from the spec, drives the Mark-All-Read toolbar
-/// action, and supplies an Unread filter that mirrors the web bead's
-/// single-select status-chip group.
+/// the five sort modes (all server-driven and paged since GH#682 slice 3),
+/// drives the Mark-All-Read toolbar action, and supplies an Unread filter
+/// that mirrors the web bead's single-select status-chip group. Ordering is
+/// the server's; only the status/unread filter stays client-side (slice 4).
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   // `internal(set)` (the default for this non-public property) rather than
