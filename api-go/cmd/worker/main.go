@@ -685,6 +685,7 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, backend store
 	}
 
 	// Safely extract pg store fields (nil when STORE_BACKEND != postgres).
+	var pgProfileAdmin *profiles.PostgresAdminStore
 	var pgZone *watchzones.PostgresStore
 	var pgProfile *profiles.PostgresStore
 	var pgNotif *notifications.PostgresStore
@@ -693,6 +694,7 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, backend store
 	var pgSaved *savedapplications.PostgresStore
 	var pgOffer *offercodes.PostgresStore
 	if pg != nil {
+		pgProfileAdmin = pg.profileAdmin
 		pgZone = pg.zone
 		pgProfile = pg.profile
 		pgNotif = pg.notification
@@ -761,7 +763,14 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, backend store
 		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
 
-	return dormant.New(profiles.NewAdminStore(users), deleters, logger, time.Now), nil
+	// The FINDER (dormant-account scan) is flag-selected just like every deleter:
+	// post-cutover the Cosmos Users container is dark, so a Cosmos-hardcoded finder
+	// would scan an empty container, find zero dormant accounts, and silently stop
+	// erasing inactive users — a UK GDPR retention gap. chooseAdminProfileStore
+	// routes the Dormant scan to Postgres when STORE_BACKEND=postgres, Cosmos
+	// otherwise (the same value buildSweep uses for its finder).
+	finder := chooseAdminProfileStore(pgProfileAdmin, profiles.NewAdminStore(users))
+	return dormant.New(finder, deleters, logger, time.Now), nil
 }
 
 // buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
