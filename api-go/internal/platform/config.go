@@ -51,8 +51,18 @@ type Config struct {
 	// dedicated, explicit flag (read from APPS_ZONES_BACKEND) set on the dev
 	// container only (epic #645, issue #657 Slice 2), never inferred from
 	// POSTGRES_AUTH, so a future prod POSTGRES_AUTH can never flip prod's stores
-	// off Cosmos. The other nine stores stay Cosmos regardless.
+	// off Cosmos.
 	AppsZonesBackend string
+
+	// StoreBackend is the full-cutover flag: when set to the exact string
+	// "postgres" it routes EVERY store in cmd/api to Postgres. It implies
+	// AppsZonesBackend (apps+zones also move to Postgres). It is a dedicated,
+	// explicit flag (read from STORE_BACKEND) that is NEVER inferred from
+	// POSTGRES_AUTH — a future env change cannot silently flip prod stores.
+	// Default/unset keeps all stores at their individual defaults (AppsZonesBackend
+	// still honoured for the apps+zones pair). Prod stays unset until the infra
+	// slice flips it (epic #645, issue #669 Slice 7a).
+	StoreBackend string
 
 	// Auth0M2MClientID / Auth0M2MClientSecret are the machine-to-machine
 	// client-credentials used to sync subscription tier and delete users in the
@@ -197,6 +207,7 @@ func LoadConfig() (Config, error) {
 		AzureClientID:  os.Getenv("AZURE_CLIENT_ID"),
 
 		AppsZonesBackend: os.Getenv("APPS_ZONES_BACKEND"),
+		StoreBackend:     os.Getenv("STORE_BACKEND"),
 
 		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
 		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),
