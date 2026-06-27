@@ -28,6 +28,24 @@ public final class URLSessionAPIClient: Sendable {
   }
 
   public func request<T: Decodable & Sendable>(_ endpoint: APIEndpoint) async throws -> T {
+    try await performRequest(endpoint).value
+  }
+
+  /// Performs a request and returns the decoded body alongside the opaque
+  /// `X-Next-Cursor` continuation token from the response headers — `nil` when
+  /// the header is absent (i.e. the last page). Auth, 401 token refresh, and
+  /// HTTP status mapping are identical to ``request(_:)``. Used by the watch-zone
+  /// applications list to page the full set via infinite scroll (GH#682).
+  public func requestPaged<T: Decodable & Sendable>(
+    _ endpoint: APIEndpoint
+  ) async throws -> (value: T, nextCursor: String?) {
+    let result: (value: T, response: HTTPURLResponse) = try await performRequest(endpoint)
+    return (result.value, result.response.value(forHTTPHeaderField: "X-Next-Cursor"))
+  }
+
+  private func performRequest<T: Decodable & Sendable>(
+    _ endpoint: APIEndpoint
+  ) async throws -> (value: T, response: HTTPURLResponse) {
     #if DEBUG
       Self.logger.debug("▶ \(endpoint.method.rawValue) \(endpoint.path)")
     #endif
@@ -130,7 +148,7 @@ public final class URLSessionAPIClient: Sendable {
   private func executeRequest<T: Decodable>(
     _ endpoint: APIEndpoint,
     accessToken: String
-  ) async throws -> T {
+  ) async throws -> (value: T, response: HTTPURLResponse) {
     let urlRequest = try buildRequest(endpoint, accessToken: accessToken)
 
     #if DEBUG
@@ -157,11 +175,11 @@ public final class URLSessionAPIClient: Sendable {
 
     if T.self == EmptyResponse.self {
       // swiftlint:disable:next force_cast
-      return EmptyResponse() as! T
+      return (EmptyResponse() as! T, httpResponse)
     }
 
     do {
-      return try decoder.decode(T.self, from: data)
+      return (try decoder.decode(T.self, from: data), httpResponse)
     } catch {
       #if DEBUG
         Self.logger.error("✗ Decoding failed: \(error.localizedDescription)")
