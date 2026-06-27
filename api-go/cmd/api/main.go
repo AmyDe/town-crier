@@ -77,28 +77,49 @@ func main() {
 		go probePostgresManagedIdentity(logger)
 	}
 
-	// APPS_ZONES_BACKEND gates the Applications + WatchZones route stores onto
-	// Postgres (dev only; prod and every other store stay Cosmos — issue #657
-	// Slice 2). When it selects Postgres we build ONE pool — MI-token auth from
-	// the dev container's POSTGRES_*/AZURE_CLIENT_ID via NewPoolFromEnv — and back
-	// both Postgres stores with it. Dev explicitly wants Postgres, so a pool that
-	// can't be built is fatal rather than a silent Cosmos fallback. The pool closes
-	// on shutdown. When the flag is unset (prod, local) these stay nil and the
-	// existing Cosmos construction is byte-for-byte unchanged.
+	// APPS_ZONES_BACKEND selects Postgres for the Applications + WatchZones stores.
+	// STORE_BACKEND selects Postgres for ALL stores simultaneously (full cutover,
+	// issue #669 Slice 7a). Only the exact string "postgres" (trimmed) activates
+	// either flag; unset / "cosmos" / anything else keeps Cosmos.
+	// STORE_BACKEND=postgres implies apps+zones too, so a single pool is built
+	// whenever EITHER flag selects Postgres. The pool is fatal if it cannot be
+	// built — explicit Postgres selection is intentional and a misconfigured pool
+	// must never silently fall back to Cosmos.
 	appsZonesBackend := resolveBackend(cfg.AppsZonesBackend)
+	fullBackend := resolveStoreBackend(cfg.StoreBackend)
 	var (
-		pgAppStore       *applications.PostgresStore
-		pgWatchZoneStore *watchzones.PostgresStore
+		pgAppStore        *applications.PostgresStore
+		pgWatchZoneStore  *watchzones.PostgresStore
+		pgProfileStore    *profiles.PostgresStore
+		pgAdminStore      *profiles.PostgresAdminStore
+		pgDeviceStore     *devicetokens.PostgresStore
+		pgStateStore      *notificationstate.PostgresStore
+		pgNotifStore      *notifications.PostgresStore
+		pgSavedStore      *savedapplications.PostgresStore
+		pgOfferStore      *offercodes.PostgresStore
+		pgAppleNotifStore *subscriptions.PostgresNotificationStore
 	)
-	if appsZonesBackend == backendPostgres {
+	if appsZonesBackend == backendPostgres || fullBackend == backendPostgres {
 		pool, perr := postgres.NewPoolFromEnv(context.Background())
 		if perr != nil {
-			log.Fatalf("apps/zones backend=postgres: build postgres pool: %v", perr)
+			log.Fatalf("postgres backend: build pool: %v", perr)
 		}
 		defer pool.Close()
 		pgAppStore = applications.NewPostgresStore(pool)
 		pgWatchZoneStore = watchzones.NewPostgresStore(pool)
-		logger.Info("apps/zones backend selected", "backend", "postgres")
+		if fullBackend == backendPostgres {
+			pgProfileStore = profiles.NewPostgresStore(pool)
+			pgAdminStore = profiles.NewPostgresAdminStore(pool)
+			pgDeviceStore = devicetokens.NewPostgresStore(pool)
+			pgStateStore = notificationstate.NewPostgresStore(pool)
+			pgNotifStore = notifications.NewPostgresStore(pool)
+			pgSavedStore = savedapplications.NewPostgresStore(pool)
+			pgOfferStore = offercodes.NewPostgresStore(pool)
+			pgAppleNotifStore = subscriptions.NewPostgresNotificationStore(pool, time.Now)
+			logger.Info("all stores backend selected", "backend", "postgres")
+		} else {
+			logger.Info("apps/zones backend selected", "backend", "postgres")
+		}
 	}
 
 	validator, err := auth.NewAuth0Validator(cfg.Auth0Domain, cfg.Auth0Audience, logger)
@@ -111,20 +132,26 @@ func main() {
 		log.Fatal(err)
 	}
 	cosmos.WithMetrics(registry)
-	var store *profiles.CosmosStore
+	var cosmosProfileStore *profiles.CosmosStore
 	if cosmos != nil {
-		store = profiles.NewCosmosStore(cosmos)
+		cosmosProfileStore = profiles.NewCosmosStore(cosmos)
 	}
+	// store is the flag-selected profile store: Postgres when STORE_BACKEND=postgres,
+	// Cosmos otherwise. chooseProfileStore returns a genuine nil interface when the
+	// chosen backend has no store configured, so newRouter's nil-means-unwired guards
+	// never trip on a typed nil.
+	store := chooseProfileStore(fullBackend, pgProfileStore, cosmosProfileStore)
 
 	devices, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosDeviceRegistrationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	devices.WithMetrics(registry)
-	var deviceStore *devicetokens.CosmosStore
+	var cosmosDeviceStore *devicetokens.CosmosStore
 	if devices != nil {
-		deviceStore = devicetokens.NewCosmosStore(devices)
+		cosmosDeviceStore = devicetokens.NewCosmosStore(devices)
 	}
+	deviceStore := chooseDeviceStore(fullBackend, pgDeviceStore, cosmosDeviceStore)
 
 	stateContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationStateContainer, logger)
 	if err != nil {
@@ -136,16 +163,20 @@ func main() {
 		log.Fatal(err)
 	}
 	notificationsContainer.WithMetrics(registry)
-	var stateStore *notificationstate.CosmosStore
+	var cosmosStateStore *notificationstate.CosmosStore
 	if stateContainer != nil && notificationsContainer != nil {
-		stateStore = notificationstate.NewCosmosStore(stateContainer, notificationsContainer)
+		cosmosStateStore = notificationstate.NewCosmosStore(stateContainer, notificationsContainer)
 	}
-	// The Notifications container also backs the per-application latest-unread
-	// lookup used by GET /v1/me/watch-zones/{zoneId}/applications.
-	var notifStore *notifications.CosmosStore
+	stateStore := chooseStateStore(fullBackend, pgStateStore, cosmosStateStore)
+	// cosmosNotifStore is the Cosmos latest-unread path. notifStore is the
+	// flag-selected notifUnreadReader for NearbyRoutes: in Postgres mode
+	// pgNotifStore satisfies the interface; in Cosmos mode cosmosNotifStore
+	// does (it only implements GetLatestUnreadByApplications).
+	var cosmosNotifStore *notifications.CosmosStore
 	if notificationsContainer != nil {
-		notifStore = notifications.NewCosmosStore(notificationsContainer)
+		cosmosNotifStore = notifications.NewCosmosStore(notificationsContainer)
 	}
+	notifStore := chooseNotifStore(fullBackend, pgNotifStore, cosmosNotifStore)
 
 	watchZones, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosWatchZonesContainer, logger)
 	if err != nil {
@@ -162,7 +193,14 @@ func main() {
 	if watchZones != nil {
 		cosmosWatchZoneStore = watchzones.NewCosmosStore(watchZones)
 	}
-	watchZoneStore := chooseZoneStore(appsZonesBackend, pgWatchZoneStore, cosmosWatchZoneStore)
+	// The watch-zone and applications stores follow STORE_BACKEND when set
+	// (which implies apps+zones on Postgres), otherwise APPS_ZONES_BACKEND.
+	// Both choosers receive the same effective backend.
+	zoneAndAppsBackend := appsZonesBackend
+	if fullBackend == backendPostgres {
+		zoneAndAppsBackend = backendPostgres
+	}
+	watchZoneStore := chooseZoneStore(zoneAndAppsBackend, pgWatchZoneStore, cosmosWatchZoneStore)
 
 	appsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosApplicationsContainer, logger)
 	if err != nil {
@@ -176,48 +214,55 @@ func main() {
 	// appStore is the flag-selected consumer-side interface the application routes
 	// use (Postgres on dev, Cosmos elsewhere); a genuine nil interface leaves the
 	// routes unwired on a store-less boot.
-	appStore := chooseAppStore(appsZonesBackend, pgAppStore, cosmosAppStore)
+	appStore := chooseAppStore(zoneAndAppsBackend, pgAppStore, cosmosAppStore)
 
 	savedContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosSavedApplicationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	savedContainer.WithMetrics(registry)
-	var savedStore *savedapplications.CosmosStore
+	var cosmosSavedStore *savedapplications.CosmosStore
 	if savedContainer != nil {
-		savedStore = savedapplications.NewCosmosStore(savedContainer)
+		cosmosSavedStore = savedapplications.NewCosmosStore(savedContainer)
 	}
+	savedStore := chooseSavedStore(fullBackend, pgSavedStore, cosmosSavedStore)
 
 	offerCodesContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosOfferCodesContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	offerCodesContainer.WithMetrics(registry)
-	var offerStore *offercodes.CosmosStore
+	var cosmosOfferStore *offercodes.CosmosStore
 	if offerCodesContainer != nil {
-		offerStore = offercodes.NewCosmosStore(offerCodesContainer)
+		cosmosOfferStore = offercodes.NewCosmosStore(offerCodesContainer)
 	}
+	offerStore := chooseOfferStore(fullBackend, pgOfferStore, cosmosOfferStore)
 
-	// cascade bundles the per-container deleters DELETE /v1/me runs for a complete
-	// GDPR erasure (bead tc-qkf2). It is populated only when Cosmos is configured —
-	// the same condition under which profiles.Routes is wired — so the handler's
-	// deleters are never nil when the route is reachable. The four DeleteAllByUserID
-	// stores satisfy erasure.ChildDeleter directly; notification-state is bridged by
-	// erasure.NotificationStateChild (its store method is DeleteByUserID), shared with
-	// the dormant-cleanup worker (bead tc-gf0g). The offer-code anonymiser scrubs the
-	// redeemer back-reference (redeemedByUserId + redeemedAt) without deleting the
-	// admin-issued code (bead tc-5jyh).
 	// cascadeWatchZoneDeleter and exportWatchZoneReader bind both GDPR paths to
-	// the flag-selected watch-zone store (watchZoneStore) — Postgres on dev, Cosmos
-	// elsewhere — so account erasure and the data export cover a Postgres-resident
-	// user's zones, not just Cosmos ones (bead tc-s8g1). The admin location/bbox
-	// backfill still uses cosmosWatchZoneStore directly (a Cosmos-only migrator).
+	// the flag-selected watch-zone store (watchZoneStore) — Postgres on dev/prod
+	// cutover, Cosmos elsewhere — so account erasure and the data export cover a
+	// Postgres-resident user's zones (bead tc-s8g1). The admin backfill migrator
+	// still uses cosmosWatchZoneStore directly.
 	cascadeWatchZoneDeleter, exportWatchZoneReader := gdprWatchZoneWiring(watchZoneStore)
 
+	// cascade bundles the per-store deleters DELETE /v1/me runs for a complete
+	// GDPR erasure (bead tc-qkf2). All six members are now flag-selected via the
+	// STORE_BACKEND choosers above, so the cascade targets the same backend the
+	// routes use. In Postgres mode pgNotifStore satisfies erasure.ChildDeleter
+	// (DeleteAllByUserID); in Cosmos mode the dedicated DeleteStore wraps the
+	// container. The other four stores satisfy erasure.ChildDeleter or
+	// erasure.RedemptionAnonymiser directly on their exported Store interface.
+	var cascadeNotifDeleter erasure.ChildDeleter
+	if fullBackend == backendPostgres && pgNotifStore != nil {
+		cascadeNotifDeleter = pgNotifStore
+	} else if notificationsContainer != nil {
+		cascadeNotifDeleter = notifications.NewDeleteStore(notificationsContainer)
+	}
+
 	var cascade profiles.CascadeDeleters
-	if notificationsContainer != nil && watchZoneStore != nil && savedContainer != nil && devices != nil && stateContainer != nil && offerStore != nil {
+	if cascadeNotifDeleter != nil && watchZoneStore != nil && savedStore != nil && deviceStore != nil && stateStore != nil && offerStore != nil {
 		cascade = profiles.CascadeDeleters{
-			Notifications:       notifications.NewDeleteStore(notificationsContainer),
+			Notifications:       cascadeNotifDeleter,
 			WatchZones:          cascadeWatchZoneDeleter,
 			SavedApplications:   savedStore,
 			DeviceRegistrations: deviceStore,
@@ -227,21 +272,24 @@ func main() {
 	}
 
 	// exportReaders bundles the per-collection readers GET /v1/me/data uses to
-	// source the GDPR export's child collections (bead tc-lllv). Like cascade it is
-	// populated only when Cosmos is configured — the same condition under which
-	// profiles.Routes is wired — so the export's readers are never nil when the
-	// route is reachable; on a Cosmos-less local boot the readers stay nil and the
-	// export renders every collection as [] (never null). The adapters
-	// (export_adapters.go) map each store's records to the profiles-local export
-	// row types, keeping the store -> row mapping out of profiles (which must not
-	// import the feature packages — offercodes already imports profiles). The
-	// notifications reader uses the digest store's full-document AllByUser read so
-	// every exported field is carried, not the latest-unread projection.
+	// source the GDPR export's child collections (bead tc-lllv). All five members
+	// are now flag-selected, so the export reads from the same backend the routes
+	// use. In Postgres mode pgNotifStore satisfies allByUserReader (AllByUser); in
+	// Cosmos mode the dedicated DigestStore provides the full-document AllByUser
+	// read. The adapters (export_adapters.go) map store records to profiles-local
+	// export row types, keeping store → row mapping out of profiles.
+	var exportNotifReader allByUserReader
+	if fullBackend == backendPostgres && pgNotifStore != nil {
+		exportNotifReader = pgNotifStore
+	} else if notificationsContainer != nil {
+		exportNotifReader = notifications.NewDigestStore(notificationsContainer)
+	}
+
 	var exportReaders profiles.ExportReaders
-	if notificationsContainer != nil && watchZoneStore != nil && savedContainer != nil && devices != nil && offerStore != nil {
+	if exportNotifReader != nil && watchZoneStore != nil && savedStore != nil && deviceStore != nil && offerStore != nil {
 		exportReaders = profiles.ExportReaders{
 			WatchZones:           exportWatchZoneReader,
-			Notifications:        notificationExportReader{store: notifications.NewDigestStore(notificationsContainer)},
+			Notifications:        notificationExportReader{store: exportNotifReader},
 			SavedApplications:    savedApplicationExportReader{store: savedStore},
 			DeviceRegistrations:  deviceRegistrationExportReader{store: deviceStore},
 			OfferCodeRedemptions: offerCodeExportReader{store: offerStore},
@@ -249,22 +297,24 @@ func main() {
 	}
 
 	// The admin grant/list operations query the Users container cross-partition
-	// (by email, and the full list), so the admin store reuses the same container
-	// as the profile store.
-	var adminStore *profiles.AdminStore
+	// (by email, and the full list), so the Cosmos admin store reuses the same
+	// container as the profile store. adminStore is the flag-selected interface.
+	var cosmosAdminStore *profiles.AdminStore
 	if cosmos != nil {
-		adminStore = profiles.NewAdminStore(cosmos)
+		cosmosAdminStore = profiles.NewAdminStore(cosmos)
 	}
+	adminStore := chooseAdminStore(fullBackend, pgAdminStore, cosmosAdminStore)
 
 	appleNotificationsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosAppleNotificationsContainer, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
 	appleNotificationsContainer.WithMetrics(registry)
-	var appleNotifStore *subscriptions.CosmosNotificationStore
+	var cosmosAppleNotifStore *subscriptions.CosmosNotificationStore
 	if appleNotificationsContainer != nil {
-		appleNotifStore = subscriptions.NewCosmosNotificationStore(appleNotificationsContainer, time.Now)
+		cosmosAppleNotifStore = subscriptions.NewCosmosNotificationStore(appleNotificationsContainer, time.Now)
 	}
+	appleNotifStore := chooseAppleNotifStore(fullBackend, pgAppleNotifStore, cosmosAppleNotifStore)
 
 	// The JWS verifier embeds the Apple Root CA - G3 and needs no Cosmos, so it is
 	// always available; the subscription routes only wire when the backing stores
