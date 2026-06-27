@@ -155,6 +155,10 @@ const invalidSortMessage = "Invalid sort."
 // filter vocabulary (and not "All"/absent, which mean no filter).
 const invalidStatusMessage = "Invalid status filter."
 
+// invalidUnreadMessage is the 400 body when ?unread= is neither "true", "false"
+// nor absent.
+const invalidUnreadMessage = "Invalid unread filter."
+
 // valid reports whether the create request passes the pre-handler guard:
 // non-blank name, positive radius within the server ceiling, in-range
 // coordinates, and a positive authority id when one is supplied.
@@ -328,6 +332,14 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ?unread=true restricts to applications with an unread notification for the
+	// caller; false/absent means no unread filter. Anything else is a clean 400.
+	unreadFilter, unreadOK := parseUnread(r.URL.Query().Get("unread"))
+	if !unreadOK {
+		h.writeError(w, r, http.StatusBadRequest, invalidUnreadMessage)
+		return
+	}
+
 	// decodeCursor strips the transport-layer base64 wrapping; a malformed wrapper
 	// is a clean 400. The unwrapped token is the store's opaque keyset cursor.
 	cursor, ok := decodeCursor(r.URL.Query().Get("cursor"))
@@ -336,7 +348,7 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, status, false, r.URL.Query().Get("limit"), cursor)
+	apps, nextCursor, err := h.findZonePage(r.Context(), userID, zone, sort, sortPresent, status, unreadFilter, r.URL.Query().Get("limit"), cursor)
 	if err != nil {
 		// A stale or sort-mismatched cursor is a client error (400), not a 500: the
 		// keyset cursor is only valid for the sort it was minted under.
@@ -467,6 +479,22 @@ func parseStatus(raw string) (status string, ok bool) {
 		return raw, true
 	}
 	return "", false
+}
+
+// parseUnread resolves ?unread= to the unread-only filter flag. "true" turns it
+// on; "false" or absent leave it off. Any other value is rejected (ok == false)
+// so a typo'd flag is a clean 400 rather than being silently treated as off.
+func parseUnread(raw string) (unread, ok bool) {
+	switch raw {
+	case "":
+		return false, true
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // decodeCursor base64url-decodes an opaque ?cursor= value into the store's raw
