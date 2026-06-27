@@ -5,13 +5,35 @@ import TownCrierDomain
 /// Map view displaying planning application pins colour-coded by status.
 public struct MapView: View {
   @StateObject private var viewModel: MapViewModel
-  @State private var mapPosition: MapCameraPosition = .automatic
+  // mapPosition and updateMapPosition are only needed on macOS, where
+  // ClusteredMapView (UIViewRepresentable) is unavailable and the SwiftUI
+  // Map(position:) fallback handles camera framing.
+  #if !canImport(UIKit)
+    @State private var mapPosition: MapCameraPosition = .automatic
+  #endif
 
   public init(viewModel: MapViewModel) {
     _viewModel = StateObject(wrappedValue: viewModel)
   }
 
   public var body: some View {
+    // On iOS, ClusteredMapView owns the camera — no onChange needed.
+    // On macOS (SPM compile-time target), fall back to SwiftUI Map + updateMapPosition.
+    #if canImport(UIKit)
+      contentStack
+    #else
+      contentStack
+        .onChange(of: viewModel.selectedZone?.id) { _, _ in
+          withAnimation {
+            updateMapPosition()
+          }
+        }
+    #endif
+  }
+
+  // MARK: - Shared content
+
+  private var contentStack: some View {
     VStack(spacing: 0) {
       if viewModel.showZonePicker {
         zonePickerSection
@@ -24,12 +46,9 @@ public struct MapView: View {
     .background(Color.tcBackground)
     .task {
       await viewModel.loadApplications()
-      updateMapPosition()
-    }
-    .onChange(of: viewModel.selectedZone?.id) { _, _ in
-      withAnimation {
+      #if !canImport(UIKit)
         updateMapPosition()
-      }
+      #endif
     }
     .sheet(
       item: Binding(
@@ -41,50 +60,6 @@ public struct MapView: View {
         ApplicationSummarySheet(application: application, viewModel: viewModel)
       }
     )
-  }
-
-  @ViewBuilder
-  private var mapContent: some View {
-    Map(position: $mapPosition) {
-      ForEach(viewModel.filteredAnnotations) { annotation in
-        Annotation(
-          annotation.title,
-          coordinate: CLLocationCoordinate2D(
-            latitude: annotation.latitude,
-            longitude: annotation.longitude
-          ),
-          anchor: .bottom
-        ) {
-          pinView(for: annotation)
-            .onTapGesture {
-              viewModel.selectApplication(annotation.applicationId)
-            }
-        }
-      }
-
-      MapCircle(
-        center: CLLocationCoordinate2D(
-          latitude: viewModel.centreLat,
-          longitude: viewModel.centreLon
-        ),
-        radius: viewModel.radiusMetres
-      )
-      .foregroundStyle(Color.tcAmber.opacity(0.08))
-      .stroke(Color.tcAmber.opacity(0.3), lineWidth: 1.5)
-    }
-    .mapStyle(.standard(elevation: .flat))
-  }
-
-  private func pinView(for annotation: MapAnnotationItem) -> some View {
-    Image(systemName: "mappin.circle.fill")
-      .font(.system(.title2))
-      .foregroundStyle(annotation.status.displayColor)
-      .background(
-        Circle()
-          .fill(Color.tcSurface)
-          .frame(width: 20, height: 20)
-      )
-      .accessibilityLabel("\(annotation.title), \(annotation.status.displayLabel)")
   }
 
   // MARK: - Zone Picker
@@ -156,7 +131,15 @@ public struct MapView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.tcBackground)
       } else {
-        mapContent
+        // iOS: MKMapView with native clustering (GH#542, GH#682 slice 5).
+        // macOS (SPM compile target): fall back to SwiftUI Map so the package
+        // still compiles for swift test without UIKit.
+        #if canImport(UIKit)
+          ClusteredMapView(viewModel: viewModel)
+            .ignoresSafeArea(edges: .bottom)
+        #else
+          mapContent
+        #endif
         if viewModel.isLoading {
           ProgressView()
             .controlSize(.large)
@@ -174,16 +157,64 @@ public struct MapView: View {
     }
   }
 
-  private func updateMapPosition() {
-    mapPosition = .region(
-      MKCoordinateRegion(
-        center: CLLocationCoordinate2D(
-          latitude: viewModel.centreLat,
-          longitude: viewModel.centreLon
-        ),
-        latitudinalMeters: viewModel.radiusMetres * 2.5,
-        longitudinalMeters: viewModel.radiusMetres * 2.5
+  // MARK: - macOS SwiftUI Map fallback (not compiled on iOS)
+
+  #if !canImport(UIKit)
+    @ViewBuilder
+    private var mapContent: some View {
+      Map(position: $mapPosition) {
+        ForEach(viewModel.filteredAnnotations) { annotation in
+          Annotation(
+            annotation.title,
+            coordinate: CLLocationCoordinate2D(
+              latitude: annotation.latitude,
+              longitude: annotation.longitude
+            ),
+            anchor: .bottom
+          ) {
+            pinView(for: annotation)
+              .onTapGesture {
+                viewModel.selectApplication(annotation.applicationId)
+              }
+          }
+        }
+
+        MapCircle(
+          center: CLLocationCoordinate2D(
+            latitude: viewModel.centreLat,
+            longitude: viewModel.centreLon
+          ),
+          radius: viewModel.radiusMetres
+        )
+        .foregroundStyle(Color.tcAmber.opacity(0.08))
+        .stroke(Color.tcAmber.opacity(0.3), lineWidth: 1.5)
+      }
+      .mapStyle(.standard(elevation: .flat))
+    }
+
+    private func pinView(for annotation: MapAnnotationItem) -> some View {
+      Image(systemName: "mappin.circle.fill")
+        .font(.system(.title2))
+        .foregroundStyle(annotation.status.displayColor)
+        .background(
+          Circle()
+            .fill(Color.tcSurface)
+            .frame(width: 20, height: 20)
+        )
+        .accessibilityLabel("\(annotation.title), \(annotation.status.displayLabel)")
+    }
+
+    private func updateMapPosition() {
+      mapPosition = .region(
+        MKCoordinateRegion(
+          center: CLLocationCoordinate2D(
+            latitude: viewModel.centreLat,
+            longitude: viewModel.centreLon
+          ),
+          latitudinalMeters: viewModel.radiusMetres * 2.5,
+          longitudinalMeters: viewModel.radiusMetres * 2.5
+        )
       )
-    )
-  }
+    }
+  #endif
 }
