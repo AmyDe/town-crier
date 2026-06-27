@@ -31,6 +31,15 @@ struct ApplicationListViewModelPaginationTests {
     return (vm, spy)
   }
 
+  // MARK: - status classification (GH#682 slice 2)
+
+  @Test("status is a server-driven sort mapping to the '?sort=status' raw value")
+  func status_isServerDriven() {
+    #expect(ApplicationsSort.status.serverOrder == .status)
+    #expect(ApplicationsSort.status.isServerSorted)
+    #expect(ApplicationSortOrder.status.rawValue == "status")
+  }
+
   // MARK: - Page append
 
   @Test("scrolling near the end fetches the next page via the cursor and appends")
