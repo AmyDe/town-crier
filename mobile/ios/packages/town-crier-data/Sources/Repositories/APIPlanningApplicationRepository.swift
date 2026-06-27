@@ -35,6 +35,17 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
       URLQueryItem(name: "sort", value: sort.rawValue),
       URLQueryItem(name: "limit", value: String(limit)),
     ]
+    // Status and unread are mutually exclusive at the type level, so at most one
+    // of these is ever appended — the server 400s if both arrive together. The
+    // `.all` case omits both (the "All" chip / Unread off).
+    switch filter {
+    case .all:
+      break
+    case .status(let status):
+      query.append(URLQueryItem(name: "status", value: status.rawValue))
+    case .unread:
+      query.append(URLQueryItem(name: "unread", value: "true"))
+    }
     if let cursor, !cursor.isEmpty {
       query.append(URLQueryItem(name: "cursor", value: cursor))
     }
