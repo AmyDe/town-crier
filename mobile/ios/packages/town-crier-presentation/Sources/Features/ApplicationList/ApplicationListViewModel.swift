@@ -340,13 +340,14 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.sorted { lhs, rhs in
         recentActivityScore(lhs) > recentActivityScore(rhs)
       }
-    case .status:
-      return applications.sorted { $0.status.rawValue < $1.status.rawValue }
-    case .distance, .newest, .oldest:
+    case .distance, .newest, .oldest, .status:
       // Server-ordered sorts arrive pre-sorted from the API and are paged via
       // infinite scroll, so they are never re-sorted client-side — that would
-      // only ever order the pages already loaded (GH#682 slice 1). Identity
-      // preserves the server order and keeps the switch total.
+      // only ever order the pages already loaded (GH#682 slices 1-2). `status`
+      // joined this set in slice 2: the server orders by `app_state ASC NULLS
+      // LAST, start_date DESC`, and a local `app_state` re-sort would destroy
+      // that tiebreak. Identity preserves the server order and keeps the switch
+      // total.
       return applications
     }
   }
