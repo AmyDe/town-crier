@@ -80,7 +80,8 @@ extension ApplicationListViewModel {
   /// cursor and re-pages under the new filter — the same mechanism as a sort
   /// change. A no-op when the active filter has not actually changed.
   public func handleFilterChanged() async {
-    // Implemented in the green step.
+    guard activeFilter != loadedFilter else { return }
+    await loadApplications()
   }
 
   /// Appends a server page, dropping any rows already loaded so a keyset overlap

@@ -146,13 +146,15 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
 
-  /// The rows to render: the loaded `applications` with the client-side
-  /// status/unread filter applied. Ordering is owned entirely by the server
-  /// (every sort is paged via `?sort=` since GH#682 slice 3), so there is no
-  /// local re-sort — that would only ever order the pages already loaded. The
-  /// status/unread filter stays client-side until slice 4.
+  /// The rows to render. Ordering **and** filtering are owned entirely by the
+  /// server now: every sort is paged via `?sort=` (GH#682 slice 3) and the
+  /// status/unread filter is applied server-side via `?status=`/`?unread=`
+  /// (slice 4). The loaded `applications` are therefore the authoritative,
+  /// already-filtered, already-ordered set — rendered verbatim with no local
+  /// re-sort or re-filter (either would only ever touch the pages already
+  /// loaded). The name is kept for call-site stability.
   public var filteredApplications: [PlanningApplication] {
-    filterApplications(applications)
+    applications
   }
 
   public var isEmpty: Bool {
@@ -340,18 +342,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return try await repository.fetchApplications(for: zone)
     }
     return []
-  }
-
-  private func filterApplications(
-    _ applications: [PlanningApplication]
-  ) -> [PlanningApplication] {
-    if unreadOnly {
-      return applications.filter { $0.latestUnreadEvent != nil }
-    }
-    if let filter = selectedStatusFilter {
-      return applications.filter { $0.status == filter }
-    }
-    return applications
   }
 
   private static func readPersistedSort(

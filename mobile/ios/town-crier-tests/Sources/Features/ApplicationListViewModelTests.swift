@@ -19,10 +19,6 @@ struct ApplicationListViewModelTests {
     return (vm, spy)
   }
 
-  private static let allApps: [PlanningApplication] = [
-    .pendingReview, .permitted, .rejected, .withdrawn,
-  ]
-
   // MARK: - Loading
   @Test func loadApplications_preservesServerReturnedOrder() async throws {
     // The server owns ordering for every sort now (GH#682 slice 3): the client
@@ -93,37 +89,11 @@ struct ApplicationListViewModelTests {
     #expect(selectedId == PlanningApplicationId(authority: "CAM", name: "2026/0042"))
   }
 
-  // MARK: - Status Filtering (free for all tiers — tc-acf0)
-
-  @Test func filterByStatus_filtersByPermitted() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps)
-    await sut.loadApplications()
-
-    sut.selectedStatusFilter = .permitted
-
-    #expect(sut.filteredApplications.count == 1)
-    #expect(sut.filteredApplications.first?.status == .permitted)
-  }
-
-  @Test func filterByStatus_nilFilter_showsAll() async throws {
-    let (sut, _) = try makeSUT(applications: Self.allApps)
-    await sut.loadApplications()
-
-    sut.selectedStatusFilter = .permitted
-    #expect(sut.filteredApplications.count == 1)
-
-    sut.selectedStatusFilter = nil
-    #expect(sut.filteredApplications.count == 4)
-  }
-
-  @Test func filterByStatus_noMatchingResults_returnsEmpty() async throws {
-    let (sut, _) = try makeSUT(applications: [.pendingReview])
-    await sut.loadApplications()
-
-    sut.selectedStatusFilter = .permitted
-
-    #expect(sut.filteredApplications.isEmpty)
-  }
+  // Status/unread filtering moved server-side in GH#682 slice 4 — the chips and
+  // Unread toggle now drive `?status=`/`?unread=` and the ViewModel renders the
+  // server's returned set verbatim. That behaviour lives in
+  // `ApplicationListViewModelFilterTests`; there is no longer any client-side
+  // `filterApplications` to exercise here.
 
   // MARK: - Zone Resolution
 
