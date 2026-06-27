@@ -69,13 +69,17 @@ var (
 //   - distance: D (the KNN distance) + N (planit_name).
 //   - newest/oldest: SD (start_date, nil for a NULL-start_date tail row) + AC
 //     (authority_code) + N (planit_name).
+//   - status: AS (app_state, nil for a NULL-app_state tail row) + SD (start_date,
+//     nil for a NULL-start_date tail row) + AC (authority_code) + N (planit_name).
 //
-// It is base64url-encoded JSON. SD is a "2006-01-02" date string so the next
-// page's predicate compares against an unambiguous ::date, not a timezone-laden
-// timestamp.
+// It is base64url-encoded JSON. AS and SD use a nil pointer (omitted field) to
+// mean a NULL key value, so the next page's predicate can pick the matching
+// NULLS-LAST tail branch. SD is a "2006-01-02" date string so the predicate
+// compares against an unambiguous ::date, not a timezone-laden timestamp.
 type pageCursor struct {
 	M  Sort    `json:"m"`
 	D  string  `json:"d,omitempty"`
+	AS *string `json:"as,omitempty"`
 	SD *string `json:"sd,omitempty"`
 	AC string  `json:"ac,omitempty"`
 	N  string  `json:"n"`
@@ -155,6 +159,62 @@ const (
 		oldestOrderBy
 )
 
+// statusOrderBy is the ORDER BY + LIMIT suffix for SortStatus. app_state ASC NULLS
+// LAST groups by state with the NULL-app_state rows trailing; within a group
+// start_date DESC NULLS LAST orders newest-first with NULL-start_date rows
+// trailing; (authority_code, planit_name) is the unique tiebreak. The mixed
+// directions (state ASC / date DESC) make the keyset predicate per-key.
+const statusOrderBy = " ORDER BY app_state ASC NULLS LAST, start_date DESC NULLS LAST, authority_code, planit_name LIMIT $4"
+
+// statusFirstQuery is the status first page: spatial predicate only, ordered,
+// limited. It reuses dateFromWhere (same projection: appColumns + authority_code).
+const statusFirstQuery = dateFromWhere + statusOrderBy
+
+// Status keyset queries. The "strictly after the cursor" predicate exactly mirrors
+// statusOrderBy as a lexicographic OR-chain, honouring each column's direction and
+// NULLS LAST, so pages never overlap or gap:
+//
+//	after-col1 (app_state ASC NULLS LAST)
+//	  OR (eq-col1 AND after-col2 (start_date DESC NULLS LAST))
+//	  OR (eq-col1 AND eq-col2 AND (authority_code, planit_name) > tiebreak)
+//
+// Because app_state and start_date are each independently nullable, the cursor row
+// sits in one of four NULLS-LAST positions, each needing its own predicate (a NULL
+// key has no "strictly after" at that column — nothing follows a NULLS-LAST tail —
+// and equality at a NULL key is `IS NULL`):
+//
+//	statusKeysetQuery          app_state non-null, start_date non-null
+//	statusKeysetDateNullQuery  app_state non-null, start_date NULL
+//	statusKeysetStateNullQuery app_state NULL,     start_date non-null
+//	statusKeysetBothNullQuery  app_state NULL,     start_date NULL
+const (
+	// $5 app_state, $6 start_date(::date), $7 authority_code, $8 planit_name.
+	statusKeysetQuery = dateFromWhere +
+		" AND (app_state > $5 OR app_state IS NULL" +
+		" OR (app_state = $5 AND (start_date < $6::date OR start_date IS NULL))" +
+		" OR (app_state = $5 AND start_date = $6::date AND (authority_code, planit_name) > ($7, $8)))" +
+		statusOrderBy
+	// $5 app_state, $6 authority_code, $7 planit_name. Cursor in the NULL-start_date
+	// tail of its app_state group: no start_date follows it, so equal-state only
+	// advances on the tiebreak; a greater (or NULL) app_state still follows.
+	statusKeysetDateNullQuery = dateFromWhere +
+		" AND (app_state > $5 OR app_state IS NULL" +
+		" OR (app_state = $5 AND start_date IS NULL AND (authority_code, planit_name) > ($6, $7)))" +
+		statusOrderBy
+	// $5 start_date(::date), $6 authority_code, $7 planit_name. Cursor in the
+	// NULL-app_state tail: no app_state follows it, so the scan stays within
+	// app_state IS NULL and advances on start_date DESC NULLS LAST then the tiebreak.
+	statusKeysetStateNullQuery = dateFromWhere +
+		" AND app_state IS NULL AND ((start_date < $5::date OR start_date IS NULL)" +
+		" OR (start_date = $5::date AND (authority_code, planit_name) > ($6, $7)))" +
+		statusOrderBy
+	// $5 authority_code, $6 planit_name. Deepest tail: NULL app_state AND NULL
+	// start_date — only the (authority_code, planit_name) tiebreak remains.
+	statusKeysetBothNullQuery = dateFromWhere +
+		" AND app_state IS NULL AND start_date IS NULL AND (authority_code, planit_name) > ($5, $6)" +
+		statusOrderBy
+)
+
 // datePageRow carries a hydrated application plus its authority_code, so the last
 // row of a full page can be encoded into the next-page keyset cursor.
 type datePageRow struct {
@@ -198,6 +258,9 @@ func (s *PostgresStore) FindInZonePage(ctx context.Context, latitude, longitude,
 	}
 	if sort == SortDistance {
 		return s.findDistanceZonePage(ctx, latitude, longitude, radiusMetres, limit, c)
+	}
+	if sort == SortStatus {
+		return s.findStatusZonePage(ctx, latitude, longitude, radiusMetres, limit, c)
 	}
 	return s.findDateZonePage(ctx, latitude, longitude, radiusMetres, sort, limit, c)
 }
@@ -303,6 +366,73 @@ func dateZoneQuery(sort Sort, latitude, longitude, radiusMetres float64, limit i
 // predicate compares against a ::date, free of timezone drift.
 func dateCursorOf(sort Sort, last datePageRow) pageCursor {
 	c := pageCursor{M: sort, AC: last.ac, N: last.app.Name}
+	if last.app.StartDate != nil {
+		sd := last.app.StartDate.Format("2006-01-02")
+		c.SD = &sd
+	}
+	return c
+}
+
+// findStatusZonePage serves SortStatus: the app_state-then-start_date query with a
+// mixed-direction keyset cursor on (app_state, start_date, authority_code,
+// planit_name). It reuses the date-projection row scanner; app_state and start_date
+// are already hydrated on the application.
+func (s *PostgresStore) findStatusZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
+	query, args := statusZoneQuery(latitude, longitude, radiusMetres, limit, c)
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("find applications by status near (%v, %v): %w", latitude, longitude, err)
+	}
+	collected, err := pgx.CollectRows(rows, scanDatePageRow)
+	if err != nil {
+		return nil, "", fmt.Errorf("find applications by status near (%v, %v): %w", latitude, longitude, err)
+	}
+	apps := make([]PlanningApplication, len(collected))
+	for i := range collected {
+		apps[i] = collected[i].app
+	}
+	next := ""
+	if limit > 0 && len(collected) == limit {
+		next, err = encodePageCursor(statusCursorOf(collected[len(collected)-1]))
+		if err != nil {
+			return nil, "", fmt.Errorf("encode status cursor: %w", err)
+		}
+	}
+	return apps, next, nil
+}
+
+// statusZoneQuery selects the first-page or the per-NULL-tail keyset query for
+// SortStatus and assembles its positional args. The base args ($1..$4) are
+// longitude, latitude, radius, limit; the keyset args extend them, their count and
+// meaning matching the chosen query's NULL-tail case (see the status keyset query
+// constants).
+func statusZoneQuery(latitude, longitude, radiusMetres float64, limit int, c *pageCursor) (string, []any) {
+	base := []any{longitude, latitude, radiusMetres, limit}
+	switch {
+	case c == nil:
+		return statusFirstQuery, base
+	case c.AS != nil && c.SD != nil:
+		return statusKeysetQuery, append(base, *c.AS, *c.SD, c.AC, c.N)
+	case c.AS != nil: // start_date NULL: cursor in its group's NULL-start_date tail.
+		return statusKeysetDateNullQuery, append(base, *c.AS, c.AC, c.N)
+	case c.SD != nil: // app_state NULL: cursor in the NULL-app_state tail.
+		return statusKeysetStateNullQuery, append(base, *c.SD, c.AC, c.N)
+	default: // both NULL: the deepest tail.
+		return statusKeysetBothNullQuery, append(base, c.AC, c.N)
+	}
+}
+
+// statusCursorOf builds the next-page keyset cursor from the last row of a full
+// status page: its app_state (nil for a NULL-app_state tail row), start_date (nil
+// for a NULL-start_date tail row), authority_code, and planit_name. start_date is
+// formatted as an unambiguous "2006-01-02" so the next predicate compares against a
+// ::date, free of timezone drift.
+func statusCursorOf(last datePageRow) pageCursor {
+	c := pageCursor{M: SortStatus, AC: last.ac, N: last.app.Name}
+	if last.app.AppState != nil {
+		as := *last.app.AppState
+		c.AS = &as
+	}
 	if last.app.StartDate != nil {
 		sd := last.app.StartDate.Format("2006-01-02")
 		c.SD = &sd
