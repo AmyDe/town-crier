@@ -1120,6 +1120,74 @@ func TestApplications_UnknownStatusIs400(t *testing.T) {
 	}
 }
 
+// TestApplications_UnreadFilterRoutesToSortAwarePath proves ?unread=true opts into
+// the sort-aware path (even without ?sort=), threads the flag through, and defaults
+// the page size to 150. ?unread=false (like absent) means no unread filter, so it
+// stays on the legacy distance path.
+func TestApplications_UnreadFilterRoutesToSortAwarePath(t *testing.T) {
+	t.Parallel()
+	t.Run("true routes to the filtered path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread {
+			t.Errorf("unread=true must use the filtered path with the flag set: inZone=%v unread=%v", apps.inZoneCalled, apps.lastUnread)
+		}
+		if apps.lastSort != applications.SortDistance || apps.lastLimit != 150 {
+			t.Errorf("unread without ?sort= defaults to distance/150: sort=%q limit=%d", apps.lastSort, apps.lastLimit)
+		}
+	})
+	t.Run("true with a sort carries the flag", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=oldest&unread=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("sort=oldest&unread=true: got %d, want 200", rec.Code)
+		}
+		if !apps.inZoneCalled || !apps.lastUnread || apps.lastSort != applications.SortOldest {
+			t.Errorf("got inZone=%v unread=%v sort=%q", apps.inZoneCalled, apps.lastUnread, apps.lastSort)
+		}
+	})
+	t.Run("false alone stays on the legacy path", func(t *testing.T) {
+		t.Parallel()
+		apps := &fakeAppFinder{}
+		mux := newNearbyMux(t, sortDeps(t, apps))
+		rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread=false", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("unread=false: got %d, want 200", rec.Code)
+		}
+		if !apps.called || apps.inZoneCalled {
+			t.Errorf("unread=false alone must use the legacy path: called=%v inZone=%v", apps.called, apps.inZoneCalled)
+		}
+	})
+}
+
+// TestApplications_InvalidUnreadIs400 proves ?unread= that is neither true, false
+// nor absent is a clean 400 before any spatial query — never silently treated as
+// off.
+func TestApplications_InvalidUnreadIs400(t *testing.T) {
+	t.Parallel()
+	for _, val := range []string{"yes", "1", "TRUE", "True", "nope"} {
+		t.Run(val, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?unread="+val, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("unread=%q: got %d, want 400", val, rec.Code)
+			}
+			if apps.called || apps.inZoneCalled {
+				t.Error("must not run any spatial query for an invalid unread value")
+			}
+		})
+	}
+}
+
 // manyApps builds n distinct nearby applications, for asserting the bounded page
 // caps the downstream unread UID set.
 func manyApps(n int) []applications.PlanningApplication {
