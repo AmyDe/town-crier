@@ -65,7 +65,7 @@ func TestWirePollFanOut_AcceptsFlagSelectedZoneStore(t *testing.T) {
 	handler := &polling.PollPlanItHandler{}
 	spy := newSpyZoneStore()
 
-	if err := wirePollFanOut(platform.Config{}, handler, spy, testRegistry(), discardLogger()); err != nil {
+	if err := wirePollFanOut(platform.Config{}, handler, spy, testRegistry(), nil, discardLogger()); err != nil {
 		t.Fatalf("wirePollFanOut with a flag-selected watchzones.Store: %v", err)
 	}
 }

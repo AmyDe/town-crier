@@ -2,10 +2,10 @@
 // Container Apps Jobs. One process per job: WORKER_MODE selects the mode,
 // the process runs it once, flushes telemetry, and exits with a status code.
 //
-// poll-bootstrap, digest, hourly-digest, dormant-cleanup, and subscription-sweep
-// are implemented; poll-sb remains a loud stub that exits 1 until its own bead
-// (tc-yng2) lands. The Go image is not deployed to any job until the final
-// cutover, so a stub can never strand a real job.
+// poll-bootstrap, digest, hourly-digest, dormant-cleanup, subscription-sweep
+// and pg-purge are implemented; poll-sb remains a loud stub that exits 1 until
+// its own bead (tc-yng2) lands. The Go image is not deployed to any job until
+// the final cutover, so a stub can never strand a real job.
 package main
 
 import (
@@ -32,6 +32,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/notifydispatch"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
+	"github.com/AmyDe/town-crier/api-go/internal/pgpurge"
 	"github.com/AmyDe/town-crier/api-go/internal/planit"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres"
@@ -98,30 +99,47 @@ func run() int {
 	// emit their towncrier.* metrics (tc-21np).
 	registry := metrics.New(otel.Meter(metrics.MeterName))
 
-	// APPS_ZONES_BACKEND gates the Applications + WatchZones stores onto Postgres
-	// (dev only; prod and every other store stay Cosmos — issue #657 / #664 Phase
-	// B), mirroring cmd/api. When it selects Postgres we build ONE pool for the
-	// whole process — MI-token auth from the container's POSTGRES_*/AZURE_CLIENT_ID
-	// via NewPoolFromEnv — and reuse it across the poll, digest and dormant builders
-	// below. The worker explicitly wants Postgres here, so a pool that can't be built
-	// is fatal rather than a silent Cosmos fallback. The pool closes on shutdown.
-	// When the flag is unset (prod, local) these stay nil and every existing Cosmos
-	// construction is byte-for-byte unchanged.
-	appsZonesBackend := resolveBackend(cfg.AppsZonesBackend)
-	var (
-		pgAppStore       *applications.PostgresStore
-		pgWatchZoneStore *watchzones.PostgresStore
-	)
+	// appsZonesBackend selects the Applications + WatchZones store backend.
+	// resolveAppsZonesBackend returns backendPostgres when EITHER APPS_ZONES_BACKEND
+	// or STORE_BACKEND is "postgres" — so a full-cutover STORE_BACKEND=postgres flag
+	// moves apps+zones to Postgres without requiring both flags to be set.
+	appsZonesBackend := resolveAppsZonesBackend(cfg.AppsZonesBackend, cfg.StoreBackend)
+	// fullBackend is the STORE_BACKEND flag resolved independently: backendPostgres
+	// only when STORE_BACKEND="postgres". It gates the full per-store cutover (every
+	// store beyond apps+zones) and the pg-purge job.
+	fullBackend := resolveStoreBackend(cfg.StoreBackend)
+
+	// Build a shared Postgres pool + stores when EITHER flag selects Postgres.
+	// One pool is reused by every store and every builder below; it closes on
+	// process exit. A pool error is always fatal — the operator explicitly requested
+	// Postgres, so a silent Cosmos fallback would be a misconfiguration silenced.
+	var pg *pgStores
 	if appsZonesBackend == backendPostgres {
 		pool, perr := postgres.NewPoolFromEnv(context.Background())
 		if perr != nil {
-			logger.Error("apps/zones backend=postgres: build postgres pool", "error", perr)
+			logger.Error("postgres backend: build pool", "error", perr)
 			return 1
 		}
 		defer pool.Close()
-		pgAppStore = applications.NewPostgresStore(pool)
-		pgWatchZoneStore = watchzones.NewPostgresStore(pool)
-		logger.Info("apps/zones backend selected", "backend", "postgres")
+
+		pg = &pgStores{
+			app:  applications.NewPostgresStore(pool),
+			zone: watchzones.NewPostgresStore(pool),
+		}
+		if fullBackend == backendPostgres {
+			pg.profile = profiles.NewPostgresStore(pool)
+			pg.profileAdmin = profiles.NewPostgresAdminStore(pool)
+			pg.notification = notifications.NewPostgresStore(pool)
+			pg.notifState = notificationstate.NewPostgresStore(pool)
+			pg.device = devicetokens.NewPostgresStore(pool)
+			pg.savedApp = savedapplications.NewPostgresStore(pool)
+			pg.offerCode = offercodes.NewPostgresStore(pool)
+			pg.pollState = polling.NewPostgresPollStateStore(pool)
+			pg.lease = polling.NewPostgresLeaseStore(pool, time.Now)
+		}
+		logger.Info("postgres backend selected",
+			"appsZones", appsZonesBackend == backendPostgres,
+			"full", fullBackend == backendPostgres)
 	}
 
 	// The Service Bus client (and thus the bootstrapper and the poll-sb
@@ -159,7 +177,7 @@ func run() int {
 	// the "no Cosmos" case leaves it nil — assigning a typed-nil *digest.Handler
 	// would make the interface non-nil and defeat worker.Run's nil guard.
 	var digester worker.DigestRunner
-	handler, err := buildDigester(cfg, registry, appsZonesBackend, pgWatchZoneStore, logger)
+	handler, err := buildDigester(cfg, registry, appsZonesBackend, pg, logger)
 	if err != nil {
 		logger.Error("build digest handler", "error", err)
 		return 1
@@ -174,7 +192,7 @@ func run() int {
 	// worker.Run's nil guard). The Auth0 deleter falls back to a no-op when the M2M
 	// credentials are absent, so a Cosmos-only job still boots cleanly.
 	var dormantRunner worker.DormantRunner
-	dormantHandler, err := buildDormant(cfg, registry, appsZonesBackend, pgWatchZoneStore, logger)
+	dormantHandler, err := buildDormant(cfg, registry, appsZonesBackend, pg, logger)
 	if err != nil {
 		logger.Error("build dormant cleanup handler", "error", err)
 		return 1
@@ -189,7 +207,7 @@ func run() int {
 	// run rather than crashing. Declared as the interface so the "unconfigured"
 	// case stays a nil interface value (a typed-nil adapter would defeat the guard).
 	var poller worker.PollOrchestrator
-	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, appsZonesBackend, pgAppStore, pgWatchZoneStore, logger)
+	pollAdapter, err := buildPollOrchestrator(cfg, sbClient, registry, appsZonesBackend, pg, logger)
 	if err != nil {
 		logger.Error("build poll-sb orchestrator", "error", err)
 		return 1
@@ -205,7 +223,7 @@ func run() int {
 	// syncer falls back to a no-op when the M2M credentials are absent, so a
 	// Cosmos-only job still boots cleanly.
 	var sweepRunner worker.SweepRunner
-	sweepHandler, err := buildSweep(cfg, registry, logger)
+	sweepHandler, err := buildSweep(cfg, registry, pg, logger)
 	if err != nil {
 		logger.Error("build subscription sweep handler", "error", err)
 		return 1
@@ -214,19 +232,51 @@ func run() int {
 		sweepRunner = sweepHandler
 	}
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, logger)
+	// The pg-purge runner replaces Cosmos TTL for Notifications (90 days by
+	// default, NOTIFICATIONS_RETENTION_DAYS) and DeviceRegistrations (180 days,
+	// DEVICE_REGISTRATIONS_RETENTION_DAYS). It is wired only when
+	// STORE_BACKEND=postgres — on Cosmos deployments the pg-purge mode exits 0
+	// immediately (the worker.Run nil guard logs and exits 0). A nil purger
+	// signals "Cosmos TTL handles expiry; exit 0" — unlike other nil runners
+	// which exit 1.
+	var purger worker.PurgeRunner
+	if fullBackend == backendPostgres && pg != nil {
+		purger = pgpurge.New(
+			pg.notification,
+			pg.device,
+			time.Duration(cfg.NotificationsRetentionDays)*24*time.Hour,
+			time.Duration(cfg.DeviceRegistrationsRetentionDays)*24*time.Hour,
+			time.Now,
+			logger,
+		)
+	}
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
-// Cosmos poll-state and etag-CAS lease stores, the cycle-alternating authority
-// provider, the ingestion handler, and the next-run scheduler — bridged to the
-// receive/publish operations of the shared Service Bus client. It returns
-// (nil, nil) when Service Bus or Cosmos config is absent, so poll-sb refuses to
-// run rather than nil-panicking. The cycle budget (replicaTimeout − grace) and
-// the handler/lease budgets all come from config.
-func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, backend storeBackend, pgAppStore *applications.PostgresStore, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
+// poll-state and lease stores (Postgres or Cosmos, flag-selected from pg),
+// the cycle-alternating authority provider, the ingestion handler, and the
+// next-run scheduler — bridged to the receive/publish operations of the shared
+// Service Bus client. It returns (nil, nil) when Service Bus or Cosmos config
+// is absent, so poll-sb refuses to run rather than nil-panicking. The cycle
+// budget (replicaTimeout − grace) and the handler/lease budgets all come from
+// config.
+func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, registry *metrics.Registry, backend storeBackend, pg *pgStores, logger *slog.Logger) (*pollOrchestratorAdapter, error) {
 	if sbClient == nil || cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent SB/Cosmos config is a valid "no poller" state, not an error
+	}
+
+	// Safely extract pg store fields (nil when STORE_BACKEND != postgres).
+	var pgApp *applications.PostgresStore
+	var pgZone *watchzones.PostgresStore
+	var pgPollState *polling.PostgresPollStateStore
+	var pgLease *polling.PostgresLeaseStore
+	if pg != nil {
+		pgApp = pg.app
+		pgZone = pg.zone
+		pgPollState = pg.pollState
+		pgLease = pg.lease
 	}
 
 	planItClient, err := planit.NewClient(planit.Options{
@@ -266,14 +316,29 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	}
 	zonesContainer.WithMetrics(registry)
 
-	stateStore := polling.NewPollStateStore(stateContainer)
-	leaseStore := polling.NewLeaseStore(leaseItemsAdapter{leasesContainer}, time.Now)
 	// appStore and zoneStore are the flag-selected consumer-side interfaces the
 	// poll handler (Upsert + change dedup) and the watch-zone notify fan-out
-	// (FindZonesContaining) consume — Postgres when APPS_ZONES_BACKEND=postgres,
-	// Cosmos otherwise. The poll-state and lease stores always stay Cosmos.
-	appStore := chooseAppStore(backend, pgAppStore, applications.NewCosmosStore(appsContainer))
-	zoneStore := chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer))
+	// (FindZonesContaining) consume — Postgres when APPS_ZONES_BACKEND=postgres
+	// or STORE_BACKEND=postgres, Cosmos otherwise.
+	appStore := chooseAppStore(backend, pgApp, applications.NewCosmosStore(appsContainer))
+	zoneStore := chooseZoneStore(backend, pgZone, watchzones.NewCosmosStore(zonesContainer))
+
+	// stateStore and leaseStore are flag-selected from pg when STORE_BACKEND=postgres;
+	// they stay on Cosmos otherwise. Both polling.PollStateAccess and polling.LeaseAccess
+	// are satisfied by both the Cosmos and Postgres concrete types.
+	var stateStore polling.PollStateAccess
+	if pgPollState != nil {
+		stateStore = pgPollState
+	} else {
+		stateStore = polling.NewPollStateStore(stateContainer)
+	}
+
+	var leaseStore polling.LeaseAccess
+	if pgLease != nil {
+		leaseStore = pgLease
+	} else {
+		leaseStore = polling.NewLeaseStore(leaseItemsAdapter{leasesContainer}, time.Now)
+	}
 
 	cycleSelector := polling.NewMinuteCycleSelector(time.Now)
 	authorityProvider := polling.NewCycleAlternatingProvider(
@@ -304,7 +369,7 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 	// watch-zone notification fan-out.
 	// This is the CUTOVER-BLOCKER fan-out (bead tc-uc2p) — without it the
 	// Notifications container stays empty and every alert/digest breaks.
-	if err := wirePollFanOut(cfg, handler, zoneStore, registry, logger); err != nil {
+	if err := wirePollFanOut(cfg, handler, zoneStore, registry, pg, logger); err != nil {
 		return nil, err
 	}
 
@@ -344,14 +409,29 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // the ingestion handler. They share the WatchZones store with the poll's
 // authority provider (the same watchzones.Store satisfies the zone-containment
 // lookup) and open their own Notifications / Users / NotificationState /
-// DeviceRegistrations / SavedApplications containers. zoneStore is the
-// flag-selected watchzones.Store interface — not the concrete Cosmos store — so
-// the notify FindZonesContaining hot path runs against Postgres when
-// APPS_ZONES_BACKEND=postgres (issue #664 Phase B). The APNs push sender is real
-// when its credentials are present, NoOp otherwise so the poll job boots even
-// without APNs config (the record is still written, so the digest pipeline keeps
-// working).
-func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore watchzones.Store, registry *metrics.Registry, logger *slog.Logger) error {
+// DeviceRegistrations / SavedApplications containers. Each store is
+// flag-selected from pg when STORE_BACKEND=postgres, Cosmos otherwise — so the
+// full fan-out path uses Postgres when the full cutover flag is set. zoneStore
+// is always the flag-selected watchzones.Store from buildPollOrchestrator so
+// FindZonesContaining already runs against the right backend. The APNs push
+// sender is real when its credentials are present, NoOp otherwise so the poll
+// job boots even without APNs config (the record is still written, so the
+// digest pipeline keeps working).
+func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore watchzones.Store, registry *metrics.Registry, pg *pgStores, logger *slog.Logger) error {
+	// Safely extract pg store fields (nil when STORE_BACKEND != postgres).
+	var pgNotif *notifications.PostgresStore
+	var pgProfile *profiles.PostgresStore
+	var pgDevice *devicetokens.PostgresStore
+	var pgNotifState *notificationstate.PostgresStore
+	var pgSaved *savedapplications.PostgresStore
+	if pg != nil {
+		pgNotif = pg.notification
+		pgProfile = pg.profile
+		pgDevice = pg.device
+		pgNotifState = pg.notifState
+		pgSaved = pg.savedApp
+	}
+
 	notifsContainer, err := platform.NewCosmosContainerNamed(cfg, platform.CosmosNotificationsContainer, logger)
 	if err != nil {
 		return err
@@ -378,11 +458,11 @@ func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zon
 	}
 	savedContainer.WithMetrics(registry)
 
-	notifStore := notifications.NewDigestStore(notifsContainer)
-	profileStore := profiles.NewCosmosStore(usersContainer)
-	deviceStore := devicetokens.NewCosmosStore(devicesContainer)
-	statePushStore := notificationstate.NewCosmosStore(stateContainer, notifsContainer)
-	savedStore := savedapplications.NewCosmosStore(savedContainer)
+	notifStore := chooseNotifDigestStore(pgNotif, notifications.NewDigestStore(notifsContainer))
+	profileStore := chooseProfileStore(pgProfile, profiles.NewCosmosStore(usersContainer))
+	deviceStore := chooseDeviceStore(pgDevice, devicetokens.NewCosmosStore(devicesContainer))
+	statePushStore := chooseNotifStateStore(pgNotifState, notificationstate.NewCosmosStore(stateContainer, notifsContainer))
+	savedStore := chooseSavedStore(pgSaved, savedapplications.NewCosmosStore(savedContainer))
 	pushSender := buildPushSender(cfg, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np).
@@ -484,15 +564,31 @@ func maxInt(a, b int) int {
 }
 
 // buildDigester constructs the digest handler when Cosmos is configured, wiring
-// the per-container stores and the email/push senders (real when their
-// credentials are present, NoOp otherwise so a job without ACS/APNs boots
-// cleanly). It returns (nil, nil) when Cosmos is unconfigured — the digest modes
-// then refuse to run rather than nil-panicking. Returning the concrete
-// *digest.Handler lets worker.Run accept it via its unexported digestRunner
-// interface (structural satisfaction).
-func buildDigester(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*digest.Handler, error) {
+// the per-container stores (flag-selected from pg when STORE_BACKEND=postgres)
+// and the email/push senders (real when their credentials are present, NoOp
+// otherwise so a job without ACS/APNs boots cleanly). It returns (nil, nil)
+// when Cosmos is unconfigured — the digest modes then refuse to run rather than
+// nil-panicking. Returning the concrete *digest.Handler lets worker.Run accept
+// it via its unexported digestRunner interface (structural satisfaction).
+func buildDigester(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pg *pgStores, logger *slog.Logger) (*digest.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no digester" state, not an error
+	}
+
+	// Safely extract pg store fields (nil when STORE_BACKEND != postgres).
+	var pgZone *watchzones.PostgresStore
+	var pgNotif *notifications.PostgresStore
+	var pgProfile *profiles.PostgresStore
+	var pgProfileAdmin *profiles.PostgresAdminStore
+	var pgNotifState *notificationstate.PostgresStore
+	var pgDevice *devicetokens.PostgresStore
+	if pg != nil {
+		pgZone = pg.zone
+		pgNotif = pg.notification
+		pgProfile = pg.profile
+		pgProfileAdmin = pg.profileAdmin
+		pgNotifState = pg.notifState
+		pgDevice = pg.device
 	}
 
 	users, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
@@ -521,16 +617,23 @@ func buildDigester(cfg platform.Config, registry *metrics.Registry, backend stor
 	}
 	devicesContainer.WithMetrics(registry)
 
-	profileStore := digestProfiles{
-		admin: profiles.NewAdminStore(users),
-		point: profiles.NewCosmosStore(users),
-	}
-	notificationStore := notifications.NewDigestStore(notifs)
 	// zoneStore is the flag-selected watch-zone reader the weekly digest fans out
-	// over — Postgres when APPS_ZONES_BACKEND=postgres, Cosmos otherwise.
-	zoneStore := chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer))
-	stateStore := notificationstate.NewCosmosStore(stateContainer, notifs)
-	deviceStore := devicetokens.NewCosmosStore(devicesContainer)
+	// over — Postgres when APPS_ZONES_BACKEND=postgres or STORE_BACKEND=postgres,
+	// Cosmos otherwise.
+	zoneStore := chooseZoneStore(backend, pgZone, watchzones.NewCosmosStore(zonesContainer))
+	// notificationStore, stateStore, deviceStore are flag-selected from pg when
+	// STORE_BACKEND=postgres, Cosmos otherwise.
+	notificationStore := chooseNotifDigestStore(pgNotif, notifications.NewDigestStore(notifs))
+	stateStore := chooseNotifStateStore(pgNotifState, notificationstate.NewCosmosStore(stateContainer, notifs))
+	deviceStore := chooseDeviceStore(pgDevice, devicetokens.NewCosmosStore(devicesContainer))
+
+	// digestProfiles combines the cross-partition admin selector (ByDigestDay) and
+	// the point-read store (Get). Both fields accept either the Cosmos or Postgres
+	// store implementation via the exported profiles interfaces.
+	profileStore := digestProfiles{
+		admin: chooseAdminProfileStore(pgProfileAdmin, profiles.NewAdminStore(users)),
+		point: chooseProfileStore(pgProfile, profiles.NewCosmosStore(users)),
+	}
 
 	emailSender := buildEmailSender(cfg, logger)
 	pushSender := buildPushSender(cfg, logger)
@@ -549,12 +652,14 @@ func buildDigester(cfg platform.Config, registry *metrics.Registry, backend stor
 }
 
 // digestProfiles adapts the two profile stores the digest handler needs — the
-// cross-partition digest-day selector (AdminStore) and the per-user point read
-// (CosmosStore) — into the single consumer-side profile interface the handler
-// depends on.
+// cross-partition digest-day selector (AdminProfileStore) and the per-user
+// point read (Store) — into the single consumer-side profile interface the
+// handler depends on. Both fields are exported interfaces satisfied by both the
+// Cosmos and Postgres store implementations, so flag-selection between backends
+// does not require a concrete type change here.
 type digestProfiles struct {
-	admin *profiles.AdminStore
-	point *profiles.CosmosStore
+	admin profiles.AdminProfileStore
+	point profiles.Store
 }
 
 func (p digestProfiles) ByDigestDay(ctx context.Context, day time.Weekday) ([]*profiles.UserProfile, error) {
@@ -566,15 +671,37 @@ func (p digestProfiles) Get(ctx context.Context, userID string) (*profiles.UserP
 }
 
 // buildDormant constructs the dormant-cleanup handler when Cosmos is configured,
-// wiring the dormant-account finder, the per-container erasure stores, and the
-// Auth0 M2M deleter (real when its credentials are present, NoOp otherwise so a
-// job without Auth0 M2M config still erases Cosmos data). It returns (nil, nil)
-// when Cosmos is unconfigured — the dormant-cleanup mode then refuses to run
-// rather than nil-panicking. Returning the concrete *dormant.Handler lets
-// worker.Run accept it via its exported DormantRunner interface.
-func buildDormant(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pgWatchZoneStore *watchzones.PostgresStore, logger *slog.Logger) (*dormant.Handler, error) {
+// wiring the dormant-account finder, the per-container erasure stores (ALL
+// flag-selected from pg when STORE_BACKEND=postgres — GDPR cascade completeness
+// is a hard requirement), and the Auth0 M2M deleter (real when its credentials
+// are present, NoOp otherwise so a job without Auth0 M2M config still erases
+// data). It returns (nil, nil) when Cosmos is unconfigured — the dormant-cleanup
+// mode then refuses to run rather than nil-panicking. Returning the concrete
+// *dormant.Handler lets worker.Run accept it via its exported DormantRunner
+// interface.
+func buildDormant(cfg platform.Config, registry *metrics.Registry, backend storeBackend, pg *pgStores, logger *slog.Logger) (*dormant.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no dormant handler" state, not an error
+	}
+
+	// Safely extract pg store fields (nil when STORE_BACKEND != postgres).
+	var pgProfileAdmin *profiles.PostgresAdminStore
+	var pgZone *watchzones.PostgresStore
+	var pgProfile *profiles.PostgresStore
+	var pgNotif *notifications.PostgresStore
+	var pgNotifState *notificationstate.PostgresStore
+	var pgDevice *devicetokens.PostgresStore
+	var pgSaved *savedapplications.PostgresStore
+	var pgOffer *offercodes.PostgresStore
+	if pg != nil {
+		pgProfileAdmin = pg.profileAdmin
+		pgZone = pg.zone
+		pgProfile = pg.profile
+		pgNotif = pg.notification
+		pgNotifState = pg.notifState
+		pgDevice = pg.device
+		pgSaved = pg.savedApp
+		pgOffer = pg.offerCode
 	}
 
 	users, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
@@ -613,30 +740,37 @@ func buildDormant(cfg platform.Config, registry *metrics.Registry, backend store
 	}
 	offerCodesContainer.WithMetrics(registry)
 
-	// The four DeleteAllByUserID stores satisfy erasure.ChildDeleter directly, the
-	// profile store's Delete satisfies erasure.ProfileDeleter directly, and the
-	// notification-state store (whose method is DeleteByUserID) is bridged by
-	// erasure.NotificationStateChild — so no per-step adapter types are needed. The
-	// offer-code store anonymises the redeemer back-reference (redeemedByUserId +
-	// redeemedAt) without deleting the admin-issued code (bead tc-5jyh).
+	// Every erasure.Deleters member is flag-selected: a Postgres row must never be
+	// missed by the GDPR cascade. Notifications uses the Postgres store directly
+	// (which has DeleteAllByUserID) instead of the Cosmos-specific DeleteStore —
+	// so the same pg.notification store serves both the fan-out path and erasure.
+	var notifDeleter erasure.ChildDeleter
+	if pgNotif != nil {
+		notifDeleter = pgNotif
+	} else {
+		notifDeleter = notifications.NewDeleteStore(notifs)
+	}
+
 	deleters := erasure.Deleters{
-		Notifications: notifications.NewDeleteStore(notifs),
-		// WatchZones is the flag-selected store the dormant-account GDPR erasure
-		// cascade deletes a user's watch zones from — Postgres when
-		// APPS_ZONES_BACKEND=postgres, Cosmos otherwise — so a Postgres watch zone is
-		// never missed by erasure (issue #664 Phase B). chooseZoneStore returns a
-		// genuine watchzones.Store (DeleteAllByUserID satisfies erasure.ChildDeleter).
-		WatchZones:          chooseZoneStore(backend, pgWatchZoneStore, watchzones.NewCosmosStore(zonesContainer)),
-		SavedApplications:   savedapplications.NewCosmosStore(savedContainer),
-		DeviceRegistrations: devicetokens.NewCosmosStore(devicesContainer),
-		NotificationState:   erasure.NotificationStateChild(notificationstate.NewCosmosStore(stateContainer, notifs)),
-		OfferCodes:          offercodes.NewCosmosStore(offerCodesContainer),
-		Profile:             profiles.NewCosmosStore(users),
+		Notifications:       notifDeleter,
+		WatchZones:          chooseZoneStore(backend, pgZone, watchzones.NewCosmosStore(zonesContainer)),
+		SavedApplications:   chooseSavedStore(pgSaved, savedapplications.NewCosmosStore(savedContainer)),
+		DeviceRegistrations: chooseDeviceStore(pgDevice, devicetokens.NewCosmosStore(devicesContainer)),
+		NotificationState:   erasure.NotificationStateChild(chooseNotifStateStore(pgNotifState, notificationstate.NewCosmosStore(stateContainer, notifs))),
+		OfferCodes:          chooseOfferStore(pgOffer, offercodes.NewCosmosStore(offerCodesContainer)),
+		Profile:             chooseProfileStore(pgProfile, profiles.NewCosmosStore(users)),
 		Auth0:               buildAuth0Deleter(cfg, logger),
 		ProfileAbsent:       func(e error) bool { return errors.Is(e, profiles.ErrNotFound) },
 	}
 
-	return dormant.New(profiles.NewAdminStore(users), deleters, logger, time.Now), nil
+	// The FINDER (dormant-account scan) is flag-selected just like every deleter:
+	// post-cutover the Cosmos Users container is dark, so a Cosmos-hardcoded finder
+	// would scan an empty container, find zero dormant accounts, and silently stop
+	// erasing inactive users — a UK GDPR retention gap. chooseAdminProfileStore
+	// routes the Dormant scan to Postgres when STORE_BACKEND=postgres, Cosmos
+	// otherwise (the same value buildSweep uses for its finder).
+	finder := chooseAdminProfileStore(pgProfileAdmin, profiles.NewAdminStore(users))
+	return dormant.New(finder, deleters, logger, time.Now), nil
 }
 
 // buildAuth0Deleter returns the real Auth0 Management (M2M) client when the M2M
@@ -663,16 +797,21 @@ func buildAuth0Deleter(cfg platform.Config, logger *slog.Logger) erasure.Auth0De
 }
 
 // buildSweep constructs the subscription-sweep handler when Cosmos is configured,
-// wiring the lapsed-paid finder and profile saver (both the AdminStore over the
-// Users container) and the Auth0 M2M syncer (real when its credentials are
-// present, NoOp otherwise so a job without Auth0 M2M config still reverts the
-// stored Cosmos tier). It returns (nil, nil) when Cosmos is unconfigured — the
-// subscription-sweep mode then refuses to run rather than nil-panicking.
-// Returning the concrete *subscriptionsweep.Handler lets worker.Run accept it via
-// its exported SweepRunner interface.
-func buildSweep(cfg platform.Config, registry *metrics.Registry, logger *slog.Logger) (*subscriptionsweep.Handler, error) {
+// wiring the lapsed-paid finder and profile saver (both the AdminProfileStore —
+// Postgres or Cosmos, flag-selected from pg) and the Auth0 M2M syncer (real
+// when its credentials are present, NoOp otherwise so a job without Auth0 M2M
+// config still reverts the stored tier). It returns (nil, nil) when Cosmos is
+// unconfigured — the subscription-sweep mode then refuses to run rather than
+// nil-panicking. Returning the concrete *subscriptionsweep.Handler lets
+// worker.Run accept it via its exported SweepRunner interface.
+func buildSweep(cfg platform.Config, registry *metrics.Registry, pg *pgStores, logger *slog.Logger) (*subscriptionsweep.Handler, error) {
 	if cfg.CosmosEndpoint == "" {
 		return nil, nil //nolint:nilnil // absent Cosmos config is a valid "no sweep handler" state, not an error
+	}
+
+	var pgProfileAdmin *profiles.PostgresAdminStore
+	if pg != nil {
+		pgProfileAdmin = pg.profileAdmin
 	}
 
 	users, err := platform.NewCosmosContainerNamed(cfg, "Users", logger)
@@ -681,11 +820,10 @@ func buildSweep(cfg platform.Config, registry *metrics.Registry, logger *slog.Lo
 	}
 	users.WithMetrics(registry)
 
-	// The AdminStore satisfies both the sweep's Finder (LapsedPaid) and Saver
-	// (Save) — the lapsed scan and the downgrade upsert both span / key on the
-	// Users container, so one store serves both roles.
-	store := profiles.NewAdminStore(users)
-	return subscriptionsweep.New(store, store, buildAuth0Syncer(cfg, logger), logger, time.Now), nil
+	// adminStore is flag-selected: both LapsedPaid (Finder) and Save (Saver) come
+	// from the same AdminProfileStore, whether Cosmos or Postgres.
+	adminStore := chooseAdminProfileStore(pgProfileAdmin, profiles.NewAdminStore(users))
+	return subscriptionsweep.New(adminStore, adminStore, buildAuth0Syncer(cfg, logger), logger, time.Now), nil
 }
 
 // buildAuth0Syncer returns the real Auth0 Management (M2M) client when the M2M
