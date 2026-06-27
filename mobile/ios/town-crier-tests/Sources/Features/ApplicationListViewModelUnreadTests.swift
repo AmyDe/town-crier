@@ -194,32 +194,36 @@ struct ApplicationListViewModelUnreadTests {
     #expect(sut.sort == .status)
   }
 
-  @Test("recent-activity sort orders by max(receivedDate, latestUnreadEvent.createdAt) desc")
-  func sort_recentActivity_ordersByLatestActivity() async throws {
-    // app A: received earliest, but has a much-later unread event → top
-    // app B: received in the middle, no unread event → middle
-    // app C: received latest, no unread event → just below A
+  @Test("recent-activity is server-driven — the list preserves the server's order")
+  func sort_recentActivity_preservesServerOrder() async throws {
+    // recent-activity moved server-side in GH#682 slice 3 (#692): the API orders
+    // by GREATEST(start_date, unread.created_at) DESC via the notification join
+    // and the client renders that order as-is. The set below is deliberately
+    // NOT in the order a local max(receivedDate, latestUnreadEvent.createdAt)
+    // sort would produce (that would be [appA, appC, appB]), so a leftover
+    // client-side re-sort would reorder it and fail this assertion.
     let appA = PlanningApplication.pendingReview  // 1_700_000_000
       .withLatestUnreadEvent(event(at: 1_700_900_000))
     let appB = PlanningApplication.permitted  // 1_700_100_000
       .withLatestUnreadEvent(nil)
     let appC = PlanningApplication.rejected  // 1_700_200_000
       .withLatestUnreadEvent(nil)
-    let (sut, _, _, _) = try makeSUT(applications: [appB, appA, appC])
+    let serverOrdered = [appB, appA, appC]
+    let (sut, _, _, _) = try makeSUT(applications: serverOrdered)
 
     await sut.loadApplications()
     sut.sort = .recentActivity
 
-    #expect(sut.filteredApplications.map(\.id) == [appA.id, appC.id, appB.id])
+    #expect(sut.filteredApplications.map(\.id) == serverOrdered.map(\.id))
   }
 
-  // newest/oldest (GH#682 slice 1) and status (slice 2) are server-driven: the
-  // API returns rows already in the requested order (proven by the Go pgtest
-  // suite, #688/#690) and the client pages them via infinite scroll. The client
-  // must not re-sort locally — that would only order the pages already loaded —
-  // so it preserves the server's order verbatim. (The full
-  // reset-cursor-and-reload-on-sort-change flow is covered by
-  // ApplicationListViewModelPaginationTests.)
+  // newest/oldest (GH#682 slice 1), status (slice 2) and recent-activity
+  // (slice 3) are all server-driven: the API returns rows already in the
+  // requested order (proven by the Go pgtest suite, #688/#690/#692) and the
+  // client pages them via infinite scroll. The client must not re-sort locally —
+  // that would only order the pages already loaded — so it preserves the
+  // server's order verbatim. (The full reset-cursor-and-reload-on-sort-change
+  // flow is covered by ApplicationListViewModelPaginationTests.)
 
   @Test("newest is server-driven — the list preserves the server's order")
   func sort_newest_preservesServerOrder() async throws {
@@ -311,16 +315,17 @@ struct ApplicationListViewModelUnreadTests {
     let (sut, appSpy, _, _) = try makeSUT(applications: [unread])
 
     await sut.loadApplications()
-    let callsBefore = appSpy.fetchApplicationsCalls.count
+    let callsBefore = appSpy.fetchApplicationsPageCalls.count
 
-    // Server-side mark-all-read flips every row's latestUnreadEvent to nil
+    // Server-side mark-all-read flips every row's latestUnreadEvent to nil. The
+    // refetch is paged now (GH#682 slice 3), so it drives the paged endpoint.
     appSpy.fetchApplicationsResult = .success([
       PlanningApplication.pendingReview.withLatestUnreadEvent(nil)
     ])
 
     await sut.markAllRead()
 
-    #expect(appSpy.fetchApplicationsCalls.count > callsBefore)
+    #expect(appSpy.fetchApplicationsPageCalls.count > callsBefore)
     #expect(sut.applications.first?.latestUnreadEvent == nil)
   }
 

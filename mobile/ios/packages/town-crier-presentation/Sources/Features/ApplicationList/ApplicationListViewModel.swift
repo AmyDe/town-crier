@@ -9,9 +9,10 @@ import TownCrierDomain
 /// Owns the unread-watermark plumbing (tc-1nsa.8) when a
 /// ``NotificationStateRepository`` is injected: derives the per-zone unread
 /// count client-side from each row's `latestUnreadEvent` (tc-e9ox), exposes
-/// the four sort modes from the spec, drives the Mark-All-Read toolbar
-/// action, and supplies an Unread filter that mirrors the web bead's
-/// single-select status-chip group.
+/// the five sort modes (all server-driven and paged since GH#682 slice 3),
+/// drives the Mark-All-Read toolbar action, and supplies an Unread filter
+/// that mirrors the web bead's single-select status-chip group. Ordering is
+/// the server's; only the status/unread filter stays client-side (slice 4).
 @MainActor
 public final class ApplicationListViewModel: ObservableObject, ErrorHandlingViewModel {
   // `internal(set)` (the default for this non-public property) rather than
@@ -127,9 +128,13 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     }
   }
 
+  /// The rows to render: the loaded `applications` with the client-side
+  /// status/unread filter applied. Ordering is owned entirely by the server
+  /// (every sort is paged via `?sort=` since GH#682 slice 3), so there is no
+  /// local re-sort — that would only ever order the pages already loaded. The
+  /// status/unread filter stays client-side until slice 4.
   public var filteredApplications: [PlanningApplication] {
-    let base = filterApplications(applications)
-    return sortApplications(base, by: sort)
+    filterApplications(applications)
   }
 
   public var isEmpty: Bool {
@@ -329,36 +334,6 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
       return applications.filter { $0.status == filter }
     }
     return applications
-  }
-
-  private func sortApplications(
-    _ applications: [PlanningApplication],
-    by sort: ApplicationsSort
-  ) -> [PlanningApplication] {
-    switch sort {
-    case .recentActivity:
-      return applications.sorted { lhs, rhs in
-        recentActivityScore(lhs) > recentActivityScore(rhs)
-      }
-    case .distance, .newest, .oldest, .status:
-      // Server-ordered sorts arrive pre-sorted from the API and are paged via
-      // infinite scroll, so they are never re-sorted client-side — that would
-      // only ever order the pages already loaded (GH#682 slices 1-2). `status`
-      // joined this set in slice 2: the server orders by `app_state ASC NULLS
-      // LAST, start_date DESC`, and a local `app_state` re-sort would destroy
-      // that tiebreak. Identity preserves the server order and keeps the switch
-      // total.
-      return applications
-    }
-  }
-
-  /// `max(receivedDate, latestUnreadEvent.createdAt)` per spec decision #9 —
-  /// surfaces newly-decided rows alongside newly-received ones.
-  private func recentActivityScore(_ application: PlanningApplication) -> Date {
-    if let event = application.latestUnreadEvent {
-      return max(application.receivedDate, event.createdAt)
-    }
-    return application.receivedDate
   }
 
   private static func readPersistedSort(

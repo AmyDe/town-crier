@@ -4,12 +4,12 @@ import TownCrierDomain
 
 @testable import TownCrierPresentation
 
-/// Infinite-scroll pagination for the watch-zone list (GH#682 slice 1). For the
-/// three server-supported sorts (distance/newest/oldest) the ViewModel drives
+/// Infinite-scroll pagination for the watch-zone list (GH#682). Every UI sort
+/// is server-driven now — distance/newest/oldest (slice 1), status (slice 2)
+/// and recent-activity (slice 3) — so for all of them the ViewModel drives
 /// ordering from the server, follows `X-Next-Cursor` until it is absent, appends
 /// pages as the user nears the end, and resets the cursor when the sort changes.
-/// The client-side sorts (recent-activity/status) keep their param-less,
-/// single-page, client-sorted path unchanged.
+/// No sort is sorted or paged client-side any more.
 @Suite("ApplicationListViewModel — pagination (GH#682)")
 @MainActor
 struct ApplicationListViewModelPaginationTests {
@@ -242,43 +242,85 @@ struct ApplicationListViewModelPaginationTests {
     #expect(last.cursor == nil)
   }
 
-  @Test("switching from client-side recent-activity to status drives the paged endpoint")
-  func switchingRecentActivityToStatus_usesPagedFetch() async throws {
-    // recent-activity stays client-side (param-less); status is now server-driven.
-    let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsResult = .success([.pendingReview, .permitted])
-    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
-    defaults.set(ApplicationsSort.recentActivity.rawValue, forKey: "test.raToStatus")
-    let sut = ApplicationListViewModel(
-      repository: spy, zone: .cambridge, userDefaults: defaults, sortKey: "test.raToStatus")
+  // MARK: - recent-activity is server-driven (GH#682 slice 3)
+
+  @Test("selecting recent-activity issues ?sort=recent-activity and paginates via the cursor")
+  func recentActivitySort_paginatesViaCursor() async throws {
+    // Pages are in the server's recent-activity order
+    // (GREATEST(start_date, unread.created_at) DESC), deliberately NOT in any
+    // local order, so a stray client re-sort would reorder them and fail this
+    // assertion. `sort.rawValue` is asserted rather than the enum case so the
+    // test compiles before the `ApplicationSortOrder.recentActivity` case lands.
+    let page1 = ApplicationPage(applications: [.rejected, .permitted], nextCursor: "ra-cursor-2")
+    let page2 = ApplicationPage(applications: [.withdrawn, .pendingReview], nextCursor: nil)
+    let (sut, spy) = try makeSUT(sort: .recentActivity, pages: [page1, page2])
 
     await sut.loadApplications()
-    #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls.isEmpty)
+    #expect(spy.fetchApplicationsPageCalls.first?.sort.rawValue == "recent-activity")
+    #expect(spy.fetchApplicationsPageCalls.first?.cursor == nil)
 
-    spy.pagedResponses = [ApplicationPage(applications: [.rejected, .pendingReview], nextCursor: nil)]
-    sut.sort = .status
-    await sut.handleSortChanged()
-
-    #expect(spy.fetchApplicationsPageCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls.first?.sort == .status)
-  }
-
-  // MARK: - Client sorts keep the legacy path
-
-  @Test("a client-side sort keeps the param-less fetch and does not paginate")
-  func clientSort_usesParamlessFetch() async throws {
-    let spy = SpyPlanningApplicationRepository()
-    spy.fetchApplicationsResult = .success([.pendingReview, .permitted])
-    let defaults = try #require(UserDefaults(suiteName: UUID().uuidString))
-    defaults.set(ApplicationsSort.recentActivity.rawValue, forKey: "test.clientSort")
-    let sut = ApplicationListViewModel(
-      repository: spy, zone: .cambridge, userDefaults: defaults, sortKey: "test.clientSort")
-
-    await sut.loadApplications()
     await sut.onRowAppear(.permitted)
 
-    #expect(spy.fetchApplicationsCalls.count == 1)
-    #expect(spy.fetchApplicationsPageCalls.isEmpty)
+    #expect(
+      sut.filteredApplications.map(\.id) == [
+        PlanningApplication.rejected, .permitted, .withdrawn, .pendingReview,
+      ].map(\.id)
+    )
+    #expect(spy.fetchApplicationsPageCalls.count == 2)
+    #expect(spy.fetchApplicationsPageCalls[1].sort.rawValue == "recent-activity")
+    #expect(spy.fetchApplicationsPageCalls[1].cursor == "ra-cursor-2")
+    #expect(spy.fetchApplicationsCalls.isEmpty)
+  }
+
+  @Test("recent-activity preserves the server order — no local max(startDate, unread) re-sort")
+  func recentActivitySort_preservesServerOrder() async throws {
+    // The server owns recent-activity ordering now; the client must render the
+    // API order verbatim. This set is deliberately not in any client-derivable
+    // order so a leftover `max(startDate, unread.createdAt)` sort would reorder it.
+    let serverOrdered = ApplicationPage(
+      applications: [.rejected, .pendingReview, .permitted], nextCursor: nil)
+    let (sut, _) = try makeSUT(sort: .recentActivity, pages: [serverOrdered])
+
+    await sut.loadApplications()
+
+    #expect(
+      sut.filteredApplications.map(\.id) == [
+        PlanningApplication.rejected, .pendingReview, .permitted,
+      ].map(\.id)
+    )
+  }
+
+  @Test("switching to recent-activity clears the cursor and reloads from page 1")
+  func switchingToRecentActivity_resetsCursorAndReloadsPageOne() async throws {
+    let newestPage = ApplicationPage(applications: [.pendingReview], nextCursor: "newest-cursor")
+    let (sut, spy) = try makeSUT(sort: .newest, pages: [newestPage])
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsPageCalls.last?.sort == .newest)
+
+    spy.pagedResponses = [ApplicationPage(applications: [.permitted], nextCursor: nil)]
+    sut.sort = .recentActivity
+    await sut.handleSortChanged()
+
+    let last = try #require(spy.fetchApplicationsPageCalls.last)
+    #expect(last.sort.rawValue == "recent-activity")
+    #expect(last.cursor == nil)
+  }
+
+  @Test("switching away from recent-activity clears the cursor and reloads from page 1")
+  func switchingFromRecentActivity_resetsCursorAndReloadsPageOne() async throws {
+    let raPage = ApplicationPage(applications: [.permitted], nextCursor: "ra-cursor")
+    let (sut, spy) = try makeSUT(sort: .recentActivity, pages: [raPage])
+
+    await sut.loadApplications()
+    #expect(spy.fetchApplicationsPageCalls.last?.sort.rawValue == "recent-activity")
+
+    spy.pagedResponses = [ApplicationPage(applications: [.rejected], nextCursor: nil)]
+    sut.sort = .oldest
+    await sut.handleSortChanged()
+
+    let last = try #require(spy.fetchApplicationsPageCalls.last)
+    #expect(last.sort == .oldest)
+    #expect(last.cursor == nil)
   }
 }

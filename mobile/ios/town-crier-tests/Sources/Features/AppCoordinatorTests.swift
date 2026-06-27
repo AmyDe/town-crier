@@ -123,7 +123,7 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(spy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(spy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
   }
 
   @Test func applicationListViewModel_onApplicationSelected_fetchesAndSetsDetail() async {
@@ -160,7 +160,7 @@ struct AppCoordinatorTests {
     await vm.loadApplications()
 
     #expect(zoneSpy.loadAllCallCount == 1)
-    #expect(appSpy.fetchApplicationsCalls.first?.id == WatchZone.cambridge.id)
+    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id == WatchZone.cambridge.id)
     #expect(vm.filteredApplications.count == 1)
   }
 

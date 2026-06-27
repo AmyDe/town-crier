@@ -33,14 +33,16 @@ struct ApplicationListViewModelConcurrentLoadTests {
     await Task.yield()
     await Task.yield()
 
-    // The guard means the in-flight fetch count is still exactly 1.
-    #expect(spy.fetchApplicationsCalls.count == 1)
+    // The guard means the in-flight fetch count is still exactly 1. The list is
+    // paged for every sort now (GH#682 slice 3), so the load drives the paged
+    // endpoint rather than the param-less fetch.
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
 
     spy.releaseGate()
     await first.value
     await second.value
 
-    #expect(spy.fetchApplicationsCalls.count == 1)
+    #expect(spy.fetchApplicationsPageCalls.count == 1)
   }
 
   @Test func loadApplications_afterPriorLoadCompletes_fetchesAgain() async {
@@ -53,6 +55,6 @@ struct ApplicationListViewModelConcurrentLoadTests {
 
     // Sequential (non-overlapping) loads are still allowed — pull-to-refresh
     // after the first load completes must hit the network.
-    #expect(spy.fetchApplicationsCalls.count == 2)
+    #expect(spy.fetchApplicationsPageCalls.count == 2)
   }
 }

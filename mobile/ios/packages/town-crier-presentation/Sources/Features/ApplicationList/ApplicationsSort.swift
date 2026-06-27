@@ -11,8 +11,10 @@ import TownCrierDomain
 /// Spec: `docs/specs/notifications-unread-watermark.md`, Pre-Resolved
 /// Decisions #9 (default sort) and #10 (4 client-side options persisted).
 public enum ApplicationsSort: String, CaseIterable, Sendable {
-  /// Default mode — orders by `max(receivedDate, latestUnreadEvent.createdAt)`
-  /// descending so newly-decided rows surface alongside newly-received ones.
+  /// Default mode — the server orders by
+  /// `GREATEST(start_date, unread.created_at) DESC` via the notification join
+  /// (GH#682 slice 3, #692) so newly-decided rows surface alongside
+  /// newly-received ones. Server-driven and paged like every other sort.
   case recentActivity = "recent-activity"
   /// Receive-date descending (the previous default before unread tracking).
   case newest = "newest"
@@ -27,10 +29,12 @@ public enum ApplicationsSort: String, CaseIterable, Sendable {
   /// hides this option in multi-zone "all" views (tc-mso6).
   case distance = "distance"
 
-  /// The server-side sort order the API can page in, or `nil` for the
-  /// client-only `recent-activity` sort, which this slice keeps computing
-  /// locally over the fetched page. Distance, newest, oldest, and status
-  /// (GH#682 slice 2) are server-driven and paged via infinite scroll.
+  /// The server-side sort order the API pages in. Every UI sort now maps to a
+  /// server order: distance/newest/oldest (GH#682 slice 1), status (slice 2),
+  /// and recent-activity (slice 3, #692). The client never sorts locally, so
+  /// this is non-`nil` for all cases. It stays `Optional` only so the paged
+  /// infinite-scroll plumbing in `+Pagination` can remain generic over a future
+  /// client-only sort, should one ever be added.
   public var serverOrder: ApplicationSortOrder? {
     switch self {
     case .distance:
@@ -42,12 +46,12 @@ public enum ApplicationsSort: String, CaseIterable, Sendable {
     case .status:
       return .status
     case .recentActivity:
-      return nil
+      return .recentActivity
     }
   }
 
   /// Whether the server owns the ordering (and therefore drives the paged
-  /// infinite-scroll path) for this sort.
+  /// infinite-scroll path) for this sort. True for every sort since slice 3.
   public var isServerSorted: Bool {
     serverOrder != nil
   }
