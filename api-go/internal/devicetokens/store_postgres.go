@@ -19,13 +19,11 @@ type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store is the full device-registration method set both *CosmosStore and
-// *PostgresStore satisfy. It serves two purposes: a compile-time parity check
-// (both stores must satisfy it, so the Postgres port can never silently diverge)
-// and the exported consumer-side interface the later wiring slice flag-selects on.
+// Store is the full device-registration method set *PostgresStore satisfies and
+// the exported consumer-side interface the handlers and wiring depend on.
 //
-// PurgeOlderThan is deliberately NOT in Store: it replaces the Cosmos 180-day TTL
-// and exists only on *PostgresStore (a later slice schedules it).
+// PurgeOlderThan is deliberately NOT in Store: it backs the pg-purge retention
+// job and exists only on *PostgresStore.
 type Store interface {
 	GetByToken(ctx context.Context, userID, token string) (*DeviceRegistration, error)
 	Save(ctx context.Context, reg DeviceRegistration) error
@@ -34,11 +32,8 @@ type Store interface {
 	DeleteAllByUserID(ctx context.Context, userID string) error
 }
 
-// Compile-time parity: both stores satisfy the same consumer-side Store interface.
-var (
-	_ Store = (*CosmosStore)(nil)
-	_ Store = (*PostgresStore)(nil)
-)
+// Compile-time check: the store satisfies the consumer-side Store interface.
+var _ Store = (*PostgresStore)(nil)
 
 // PostgresStore reads and writes device registrations in the Postgres
 // `device_registrations` table (Cosmos → Postgres migration; memo 0010, epic #645).

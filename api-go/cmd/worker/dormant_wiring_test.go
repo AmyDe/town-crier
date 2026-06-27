@@ -38,38 +38,24 @@ func (q *recordingQuerier) QueryRow(_ context.Context, _ string, _ ...any) pgx.R
 	panic("recordingQuerier.QueryRow not expected in this test")
 }
 
-// TestBuildDormant_FinderIsFlagSelectedPostgresAdminStore proves the
-// dormant-cleanup FINDER (not just the deleters) is flag-selected to Postgres
-// when the full-cutover stores are present. This is the GDPR-retention guard for
-// tc-hpd2.13: post-cutover the Cosmos Users container is dark, so a finder still
-// hardcoded to Cosmos would scan an empty container, find zero dormant accounts,
-// and silently stop erasing inactive users.
+// TestBuildDormant_FinderIsPostgresAdminStore proves the dormant-cleanup FINDER
+// (not just the deleters) routes through the Postgres admin store. This is the
+// GDPR-retention guard for tc-hpd2.13: the finder must scan the live Postgres
+// users so inactive accounts keep being erased.
 //
-// The test injects a recording querier through pgStores.profileAdmin, then drives
-// the real handler: handler.Run calls finder.Dormant first, which (for the
-// Postgres admin store) issues the last_active_at_epoch scan through the fake.
-// The sentinel error proves the finder routed through Postgres; if the finder
-// were still the Cosmos admin store the fake would never be touched and the error
-// would be a Cosmos failure instead.
-func TestBuildDormant_FinderIsFlagSelectedPostgresAdminStore(t *testing.T) {
+// The test injects a recording querier through stores.profileAdmin, then drives
+// the real handler: handler.Run calls finder.Dormant first, which issues the
+// last_active_at_epoch scan through the fake. The sentinel error proves the
+// finder routed through Postgres. The other deleters are constructed from nil
+// store fields but are never reached — Run aborts on the finder's error first.
+func TestBuildDormant_FinderIsPostgresAdminStore(t *testing.T) {
 	t.Parallel()
 
 	sentinel := errors.New("pg dormant scan reached")
 	q := &recordingQuerier{queryErr: sentinel}
-	pg := &pgStores{profileAdmin: profiles.NewPostgresAdminStore(q)}
+	st := &stores{profileAdmin: profiles.NewPostgresAdminStore(q)}
 
-	// A non-empty endpoint clears buildDormant's Cosmos-config guard; the azcosmos
-	// client is built lazily so no network call is made. The Cosmos deleters are
-	// constructed but never reached — Run aborts on the finder's error first.
-	cfg := platform.Config{
-		CosmosEndpoint: "https://example.documents.azure.com:443/",
-		CosmosDatabase: "db",
-	}
-
-	handler, err := buildDormant(cfg, testRegistry(), backendPostgres, pg, discardLogger())
-	if err != nil {
-		t.Fatalf("buildDormant: %v", err)
-	}
+	handler := buildDormant(platform.Config{}, st, discardLogger())
 	if handler == nil {
 		t.Fatal("buildDormant returned a nil handler")
 	}

@@ -1,5 +1,5 @@
-// Package watchzones owns the watch-zone feature: the domain model, the Cosmos
-// store over the WatchZones container, and the /v1/me/watch-zones HTTP handlers
+// Package watchzones owns the watch-zone feature: the domain model, the Postgres
+// store over the watch_zones table, and the /v1/me/watch-zones HTTP handlers
 // (GH#418 iteration 5). It follows idiomatic Go — a plain struct validated at
 // construction, a consumer-side store interface, and hand-written test fakes.
 //
@@ -16,6 +16,9 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrNotFound signals that no watch zone exists for the given (user, zone) pair.
+var ErrNotFound = errors.New("watch zone not found")
 
 // WatchZone is a user's geofenced monitoring area: a circle (centre + radius)
 // scoped to one planning authority. Exported fields keep it a plain Go value;

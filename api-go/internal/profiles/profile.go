@@ -1,4 +1,4 @@
-// Package profiles owns the user-profile feature: the domain model, the Cosmos
+// Package profiles owns the user-profile feature: the domain model, the Postgres
 // store, the /v1/me HTTP handlers, and the Auth0 Management (M2M) client used to
 // keep Auth0's subscription_tier metadata in sync. It follows idiomatic Go: a
 // plain struct validated at construction, a consumer-side store interface, and
@@ -11,6 +11,17 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrNotFound signals that no profile exists for the given user id. Callers use
+// errors.Is to translate it to a 404 response.
+var ErrNotFound = errors.New("user profile not found")
+
+// Page is one page of the admin user list: the profiles on this page plus the
+// continuation token for the next page (empty when exhausted).
+type Page struct {
+	Profiles          []*UserProfile
+	ContinuationToken string
+}
 
 // SubscriptionTier enumerates the entitlement levels. The string forms ("Free",
 // "Personal", "Pro") are the canonical values stored in Cosmos and served on the

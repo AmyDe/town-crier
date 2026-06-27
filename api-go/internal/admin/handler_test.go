@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
-	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
 type fakeAdminStore struct {
@@ -76,41 +74,14 @@ func (f *fakeGenerator) Generate() (string, error) {
 	return c, nil
 }
 
-type fakeBackfiller struct {
-	result watchzones.BackfillResult
-	err    error
-	calls  int
-
-	bboxResult watchzones.BackfillResult
-	bboxErr    error
-	bboxCalls  int
-}
-
-func (f *fakeBackfiller) BackfillLocation(_ context.Context) (watchzones.BackfillResult, error) {
-	f.calls++
-	if f.err != nil {
-		return watchzones.BackfillResult{}, f.err
-	}
-	return f.result, nil
-}
-
-func (f *fakeBackfiller) BackfillBoundingBox(_ context.Context) (watchzones.BackfillResult, error) {
-	f.bboxCalls++
-	if f.bboxErr != nil {
-		return watchzones.BackfillResult{}, f.bboxErr
-	}
-	return f.bboxResult, nil
-}
-
 func newTestHandler(store profileAdminStore, auth0 tierSync, codes offerCodeStore, gen codeGenerator, now time.Time) *handler {
 	return &handler{
-		profiles:   store,
-		auth0:      auth0,
-		codes:      codes,
-		generator:  gen,
-		watchZones: &fakeBackfiller{},
-		now:        func() time.Time { return now },
-		logger:     slog.New(slog.DiscardHandler),
+		profiles:  store,
+		auth0:     auth0,
+		codes:     codes,
+		generator: gen,
+		now:       func() time.Time { return now },
+		logger:    slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -316,121 +287,4 @@ func TestGenerate_ValidationErrors(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestBackfillWatchZoneLocation_ReturnsReconciledCounts(t *testing.T) {
-	t.Parallel()
-
-	backfiller := &fakeBackfiller{result: watchzones.BackfillResult{Total: 5, Backfilled: 3, AlreadyHad: 2}}
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = backfiller
-
-	rec := serve(t, h.backfillWatchZoneLocation, http.MethodPost, "/v1/admin/watchzones/backfill-location", "")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
-	}
-	if got := rec.Body.String(); got != `{"total":5,"backfilled":3,"alreadyHad":2}` {
-		t.Errorf("body = %s", got)
-	}
-	if backfiller.calls != 1 {
-		t.Errorf("backfiller called %d times, want 1", backfiller.calls)
-	}
-}
-
-func TestBackfillWatchZoneLocation_StoreErrorIs500(t *testing.T) {
-	t.Parallel()
-
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = &fakeBackfiller{err: errors.New("scan boom")}
-
-	rec := serve(t, h.backfillWatchZoneLocation, http.MethodPost, "/v1/admin/watchzones/backfill-location", "")
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
-	}
-}
-
-// TestBackfillWatchZoneLocation_RequiresAdminKey locks the X-Admin-Key gate on
-// the route, mirroring the gate on the other admin endpoints: a request with no
-// key (or an empty configured key) gets a bodyless 401 and never reaches the
-// backfiller.
-func TestBackfillWatchZoneLocation_RequiresAdminKey(t *testing.T) {
-	t.Parallel()
-
-	backfiller := &fakeBackfiller{}
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = backfiller
-	gated := requireAdminKey("secret", h.backfillWatchZoneLocation)
-
-	rec := serve(t, gated, http.MethodPost, "/v1/admin/watchzones/backfill-location", "")
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401 with no admin key", rec.Code)
-	}
-	if backfiller.calls != 0 {
-		t.Errorf("backfiller must not run for an unauthenticated request, calls = %d", backfiller.calls)
-	}
-}
-
-func TestBackfillWatchZoneBoundingBox_ReturnsReconciledCounts(t *testing.T) {
-	t.Parallel()
-
-	backfiller := &fakeBackfiller{bboxResult: watchzones.BackfillResult{Total: 5, Backfilled: 3, AlreadyHad: 2}}
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = backfiller
-
-	rec := serve(t, h.backfillWatchZoneBoundingBox, http.MethodPost, "/v1/admin/watchzones/backfill-bbox", "")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
-	}
-	if got := rec.Body.String(); got != `{"total":5,"backfilled":3,"alreadyHad":2}` {
-		t.Errorf("body = %s", got)
-	}
-	if backfiller.bboxCalls != 1 {
-		t.Errorf("backfiller called %d times, want 1", backfiller.bboxCalls)
-	}
-}
-
-func TestBackfillWatchZoneBoundingBox_StoreErrorIs500(t *testing.T) {
-	t.Parallel()
-
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = &fakeBackfiller{bboxErr: errors.New("scan boom")}
-
-	rec := serve(t, h.backfillWatchZoneBoundingBox, http.MethodPost, "/v1/admin/watchzones/backfill-bbox", "")
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
-	}
-}
-
-// TestBackfillWatchZoneBoundingBox_RequiresAdminKey locks the X-Admin-Key gate on
-// the route, mirroring the gate on the other admin endpoints: a request with no
-// key gets a bodyless 401 and never reaches the backfiller.
-func TestBackfillWatchZoneBoundingBox_RequiresAdminKey(t *testing.T) {
-	t.Parallel()
-
-	backfiller := &fakeBackfiller{}
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
-	h.watchZones = backfiller
-	gated := requireAdminKey("secret", h.backfillWatchZoneBoundingBox)
-
-	rec := serve(t, gated, http.MethodPost, "/v1/admin/watchzones/backfill-bbox", "")
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401 with no admin key", rec.Code)
-	}
-	if backfiller.bboxCalls != 0 {
-		t.Errorf("backfiller must not run for an unauthenticated request, calls = %d", backfiller.bboxCalls)
-	}
-}
-
-func TestStores_SatisfyInterfaces(t *testing.T) {
-	t.Parallel()
-	var _ profileAdminStore = profiles.NewAdminStore(nil)
-	var _ offerCodeStore = offercodes.NewCosmosStore(nil)
-	var _ codeGenerator = offercodes.NewRandomGenerator()
-	var _ watchZoneBackfiller = watchzones.NewCosmosStore(nil)
 }

@@ -7,6 +7,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
+// ErrNotFound signals that no offer code exists for the given canonical code.
+var ErrNotFound = errors.New("offer code not found")
+
 // ErrAlreadyRedeemed is returned by Redeem when the code has already been
 // claimed. The redeem handler detects the already-redeemed state before calling
 // Redeem and builds the wire 409 message itself; this guards the invariant.

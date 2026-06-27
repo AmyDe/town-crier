@@ -78,9 +78,9 @@ type SweepRunner interface {
 // invokes. *pgpurge.Handler satisfies it; Run returns the number of notification
 // rows and device-registration rows deleted so the dispatcher can record them as
 // telemetry tags. It is exported so main() can hold a genuinely nil interface
-// value when STORE_BACKEND is not "postgres" — the nil runner causes dispatch to
-// log and exit 0 (Cosmos TTL handles expiry; pg-purge on a Cosmos deployment is
-// a deliberate no-op, not a deployment error).
+// value when no purge runner is configured — the nil runner causes dispatch to
+// log and exit 0 (an unconfigured pg-purge is a deliberate no-op, not a
+// deployment error).
 type PurgeRunner interface {
 	Run(ctx context.Context) (notifsPurged int, devicesPurged int, err error)
 }
@@ -121,11 +121,9 @@ type PollOrchestrator interface {
 // or unknown mode is a deployment accident and also fails fast.
 //
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
-// then refuses to run rather than nil-panicking. Likewise digester / dormant may
-// be nil when the job has no Cosmos config; those modes then refuse to run rather
-// than nil-panicking. purger may be nil when STORE_BACKEND is not "postgres";
-// pg-purge then logs and exits 0 — Cosmos TTL handles expiry, so this is never
-// an error.
+// then refuses to run rather than nil-panicking. purger may be nil when no purge
+// runner is configured; pg-purge then logs and exits 0, so this is never an
+// error.
 func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
@@ -299,11 +297,9 @@ func runSweep(ctx context.Context, runner SweepRunner, logger *slog.Logger) int 
 
 // runPurge executes one pg-purge cycle under a soft self-cancel budget, inside a
 // telemetry span named "Postgres Purge Cycle". It tags the span with the count of
-// notification and device-registration rows deleted. A nil runner (STORE_BACKEND
-// not set to "postgres") exits 0 with a log — Cosmos TTL handles expiry for
-// non-Postgres deployments and pg-purge on a Cosmos deployment is deliberate
-// no-op, not a deployment error. A non-nil runner error exits 1 so the job
-// surfaces the failure.
+// notification and device-registration rows deleted. A nil runner exits 0 with a
+// log — an unconfigured pg-purge is a deliberate no-op, not a deployment error.
+// A non-nil runner error exits 1 so the job surfaces the failure.
 func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "Postgres Purge Cycle")

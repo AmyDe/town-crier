@@ -76,20 +76,12 @@ func TestLoadConfig_Auth0DefaultsEmpty(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_Cosmos(t *testing.T) {
-	t.Setenv("COSMOS_ENDPOINT", "https://town-crier.documents.azure.com:443/")
-	t.Setenv("COSMOS_DATABASE", "town-crier")
+func TestLoadConfig_AzureClientID(t *testing.T) {
 	t.Setenv("AZURE_CLIENT_ID", "11111111-2222-3333-4444-555555555555")
 
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
-	}
-	if cfg.CosmosEndpoint != "https://town-crier.documents.azure.com:443/" {
-		t.Errorf("CosmosEndpoint: got %q", cfg.CosmosEndpoint)
-	}
-	if cfg.CosmosDatabase != "town-crier" {
-		t.Errorf("CosmosDatabase: got %q", cfg.CosmosDatabase)
 	}
 	if cfg.AzureClientID != "11111111-2222-3333-4444-555555555555" {
 		t.Errorf("AzureClientID: got %q", cfg.AzureClientID)

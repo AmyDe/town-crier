@@ -6,21 +6,20 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
-// TestGDPRWatchZoneWiring_FollowsBackendFlag proves the GDPR erasure cascade
+// TestGDPRWatchZoneWiring_BindsBothPaths proves the GDPR erasure cascade
 // (DELETE /v1/me) and the data export (GET /v1/me/data) are both bound to the
-// SAME flag-selected watch-zone store the routes use — so when
-// APPS_ZONES_BACKEND=postgres an account deletion or export covers a
-// Postgres-resident user's watch zones, instead of silently missing them on the
-// always-Cosmos store (bead tc-s8g1). With the flag unset both stay on Cosmos.
-func TestGDPRWatchZoneWiring_FollowsBackendFlag(t *testing.T) {
+// SAME watch-zone store the routes use, so an account deletion or export covers a
+// user's watch zones rather than silently missing them (bead tc-s8g1). A genuine
+// nil store yields genuine nil wiring so the cascade/export guards leave the GDPR
+// paths unbuilt rather than holding a nil deleter the cascade would dereference.
+func TestGDPRWatchZoneWiring_BindsBothPaths(t *testing.T) {
 	t.Parallel()
 
-	cosmos := watchzones.NewCosmosStore(newFakeItems())
 	pg := watchzones.NewPostgresStore(nil) // querier never touched by these assertions
 
-	t.Run("postgres backend binds both GDPR paths to the Postgres store", func(t *testing.T) {
+	t.Run("a present store binds both GDPR paths to it", func(t *testing.T) {
 		t.Parallel()
-		deleter, reader := gdprWatchZoneWiring(chooseZoneStore(backendPostgres, pg, cosmos))
+		deleter, reader := gdprWatchZoneWiring(pg)
 
 		if _, ok := deleter.(*watchzones.PostgresStore); !ok {
 			t.Errorf("cascade deleter = %T, want *watchzones.PostgresStore", deleter)
@@ -34,25 +33,10 @@ func TestGDPRWatchZoneWiring_FollowsBackendFlag(t *testing.T) {
 		}
 	})
 
-	t.Run("cosmos backend binds both GDPR paths to the Cosmos store", func(t *testing.T) {
+	t.Run("a nil store yields genuine nil wiring so the cascade/export guards leave the GDPR paths unbuilt", func(t *testing.T) {
 		t.Parallel()
-		deleter, reader := gdprWatchZoneWiring(chooseZoneStore(backendCosmos, pg, cosmos))
-
-		if _, ok := deleter.(*watchzones.CosmosStore); !ok {
-			t.Errorf("cascade deleter = %T, want *watchzones.CosmosStore", deleter)
-		}
-		adapter, ok := reader.(watchZoneExportReader)
-		if !ok {
-			t.Fatalf("export reader = %T, want watchZoneExportReader", reader)
-		}
-		if _, ok := adapter.store.(*watchzones.CosmosStore); !ok {
-			t.Errorf("export reader store = %T, want *watchzones.CosmosStore", adapter.store)
-		}
-	})
-
-	t.Run("nil store yields genuine nil wiring so the cascade/export guards leave the GDPR paths unbuilt", func(t *testing.T) {
-		t.Parallel()
-		deleter, reader := gdprWatchZoneWiring(chooseZoneStore(backendPostgres, nil, cosmos))
+		var nilStore watchzones.Store
+		deleter, reader := gdprWatchZoneWiring(nilStore)
 
 		if deleter != nil {
 			t.Errorf("cascade deleter = %T, want a genuine nil so the cascade is not built with a nil deleter", deleter)

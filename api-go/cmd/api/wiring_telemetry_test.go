@@ -15,7 +15,7 @@ import (
 
 // recordSpansFor drives method+path through the full newRouter chain (otelhttp
 // outermost) with a recording TracerProvider installed globally, and returns the
-// recorded request spans. The router runs deny-all + Cosmos-less, so it exercises
+// recorded request spans. The router runs deny-all + store-less, so it exercises
 // only routes that need no store.
 func recordSpansFor(t *testing.T, h http.Handler, method, path, authz string) []sdktrace.ReadOnlySpan {
 	t.Helper()
@@ -56,7 +56,7 @@ func TestRouter_RequestSpanCarriesRouteAndStatus(t *testing.T) {
 		// Anonymous matched route, 200.
 		{"health 200", http.MethodGet, "/v1/health", "", "GET /v1/health", http.StatusOK, true},
 		// Authed matched route with no token -> the fallback-deny 401. The route
-		// still matched (geocode is always wired, even Cosmos-less), so the span is
+		// still matched (geocode is always wired, even store-less), so the span is
 		// named after it.
 		{"geocode 401", http.MethodGet, "/v1/geocode/SW1A1AA", "", "GET /v1/geocode/{postcode}", http.StatusUnauthorized, true},
 		// Unmatched path -> 401 fallback, no route, default span name preserved.

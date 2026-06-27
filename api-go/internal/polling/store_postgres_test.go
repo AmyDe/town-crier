@@ -50,12 +50,8 @@ func (f *fakeQuerier) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	return &fakePollRow{err: f.rowErr}
 }
 
-// Compile-time parity: both the Cosmos and Postgres stores satisfy PollStateAccess.
-// These declarations fail to compile until both types and the interface exist.
-var (
-	_ PollStateAccess = (*PollStateStore)(nil)
-	_ PollStateAccess = (*PostgresPollStateStore)(nil)
-)
+// Compile-time check: the Postgres store satisfies PollStateAccess.
+var _ PollStateAccess = (*PostgresPollStateStore)(nil)
 
 // TestPostgresPollStateStore_GetMissingReturnsNotFound confirms that a miss
 // (pgx.ErrNoRows from the point-read query) surfaces as (zero, false, nil).

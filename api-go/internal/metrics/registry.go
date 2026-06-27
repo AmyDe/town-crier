@@ -2,8 +2,8 @@
 // towncrier.* OpenTelemetry instruments, registered against the global OTel
 // MeterProvider (wired in internal/platform/telemetry.go via the OTLP/gRPC
 // metric exporter -> the ACA managed-environment OTel agent -> App Insights
-// AppMetrics). It covers the polling-pipeline KPIs, PlanIt error rate, Cosmos
-// RU consumption and watch-zone counters the SRE team monitors (bead tc-21np).
+// AppMetrics). It covers the polling-pipeline KPIs, PlanIt error rate and
+// watch-zone counters the SRE team monitors (bead tc-21np).
 //
 // Instrument names and tag keys (cycle.type, polling.authority_code,
 // never_polled, header_present, caller, ...) are stable: changing them would
@@ -54,8 +54,6 @@ type Registry struct {
 	planitHTTPErrors metric.Int64Counter
 
 	notificationsCreated metric.Int64Counter
-
-	cosmosRequestCharge metric.Float64Histogram
 
 	watchZonesCreated metric.Int64Counter
 	watchZonesUpdated metric.Int64Counter
@@ -153,12 +151,6 @@ func New(meter metric.Meter) *Registry {
 	r.notificationsCreated = counter(
 		"towncrier.notifications.created",
 		metric.WithDescription("Notification records created (may or may not result in push)"),
-	)
-
-	r.cosmosRequestCharge = histogram(
-		"towncrier.cosmos.request_charge_ru",
-		metric.WithUnit("RU"),
-		metric.WithDescription("Cosmos RU consumption per operation"),
 	)
 
 	r.watchZonesCreated = counter("towncrier.watchzones.created")
@@ -322,18 +314,6 @@ func (r *Registry) NotificationCreated(ctx context.Context, eventType, sources s
 	r.notificationsCreated.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("event_type", eventType),
 		attribute.String("sources", sources),
-	))
-}
-
-// CosmosRequestCharge records the RU charge of a single Cosmos operation, tagged
-// with the operation and container.
-func (r *Registry) CosmosRequestCharge(ctx context.Context, ru float64, operation, container string) {
-	if r == nil || r.cosmosRequestCharge == nil {
-		return
-	}
-	r.cosmosRequestCharge.Record(ctx, ru, metric.WithAttributes(
-		attribute.String("operation", operation),
-		attribute.String("container", container),
 	))
 }
 

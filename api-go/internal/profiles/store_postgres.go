@@ -34,11 +34,8 @@ type querier interface {
 // sentinel directly so callers need not know which backend produced the error.
 var errCASPreconditionFailed = platform.ErrCASPreconditionFailed
 
-// Store is the full point-store method set that both *CosmosStore and
-// *PostgresStore must satisfy. It serves as the compile-time parity check (a
-// Postgres port can never silently diverge from the Cosmos surface) and as the
-// exported consumer-side interface the later wiring slice uses to flag-select
-// between backends.
+// Store is the full point-store method set *PostgresStore satisfies and the
+// exported consumer-side interface the handlers and wiring depend on.
 //
 // The set covers:
 //   - the profileStore interface in handler.go (Get/Save/Delete)
@@ -53,9 +50,9 @@ type Store interface {
 	UpdateZoneCountWithCAS(ctx context.Context, userID string, p *UserProfile, etag string) error
 }
 
-// AdminProfileStore is the full admin-store method set that both *AdminStore
-// and *PostgresAdminStore must satisfy. It serves the same parity and
-// flag-selection role as Store for the cross-partition / cross-user surface.
+// AdminProfileStore is the full admin-store method set *PostgresAdminStore
+// satisfies, covering the cross-user surface (find-by-email, digest-day and
+// dormant scans, lapsed-paid sweep, save, paged list).
 type AdminProfileStore interface {
 	GetByEmail(ctx context.Context, email string) (*UserProfile, error)
 	GetByOriginalTransactionID(ctx context.Context, originalTransactionID string) (*UserProfile, error)
@@ -66,14 +63,10 @@ type AdminProfileStore interface {
 	List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (Page, error)
 }
 
-// Compile-time parity: both stores must satisfy the same exported interfaces.
-// If a new method is added to either store, the corresponding interface and the
-// other store must be updated in the same change — the compiler enforces this.
+// Compile-time check: the stores satisfy their exported interfaces.
 var (
-	_ Store = (*CosmosStore)(nil)
 	_ Store = (*PostgresStore)(nil)
 
-	_ AdminProfileStore = (*AdminStore)(nil)
 	_ AdminProfileStore = (*PostgresAdminStore)(nil)
 )
 

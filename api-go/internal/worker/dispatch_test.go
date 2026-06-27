@@ -341,9 +341,8 @@ func TestRun_PgPurgeRunsAndExitsZero(t *testing.T) {
 
 func TestRun_PgPurgeWithNilRunnerExitsZero(t *testing.T) {
 	t.Parallel()
-	// When STORE_BACKEND is not postgres the purger is nil; pg-purge must exit 0
-	// (not 1) because Cosmos TTL handles expiry and running pg-purge on a
-	// Cosmos deployment is a deliberate safe no-op.
+	// When no purge runner is configured the purger is nil; pg-purge must exit 0
+	// (not 1) — an unconfigured pg-purge is a deliberate safe no-op.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 

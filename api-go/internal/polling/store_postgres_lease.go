@@ -9,22 +9,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// LeaseAccess is the full lease-store method set its consumers rely on. It
-// serves two purposes: a compile-time parity check (both *LeaseStore and
-// *PostgresLeaseStore must satisfy it) and the exported consumer-side interface
-// the later wiring slice (cmd/worker) will use to select between Cosmos and
-// Postgres backends behind the ALL_STORES_BACKEND flag.
+// LeaseAccess is the full lease-store method set its consumers rely on and the
+// exported consumer-side interface the worker wiring depends on.
 type LeaseAccess interface {
 	TryAcquire(ctx context.Context, ttl time.Duration) (LeaseAcquireResult, error)
 	Release(ctx context.Context, handle LeaseHandle) LeaseReleaseOutcome
 }
 
-// Compile-time parity: both the Cosmos and Postgres lease stores satisfy the
-// same consumer-side interface, so neither can silently diverge.
-var (
-	_ LeaseAccess = (*LeaseStore)(nil)
-	_ LeaseAccess = (*PostgresLeaseStore)(nil)
-)
+// Compile-time check: the store satisfies the consumer-side interface.
+var _ LeaseAccess = (*PostgresLeaseStore)(nil)
 
 // PostgresLeaseStore is the Postgres-backed polling lease (Cosmos → Postgres
 // migration; memo 0010, epic #645). It maintains a single row in the `leases`

@@ -20,21 +20,21 @@ import (
 func TestDeploymentEnvironment(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		cosmosDB string
-		want     string
+		name       string
+		postgresDB string
+		want       string
 	}{
-		{"prod database", "town-crier-prod", "prod"},
-		{"dev database", "town-crier-dev", "dev"},
+		{"prod database", "town_crier_prod", "prod"},
+		{"dev database", "town_crier_dev", "dev"},
 		{"empty database", "", ""},
 		{"unprefixed name omits environment", "somethingelse", ""},
-		{"prefix only yields empty env", "town-crier-", ""},
+		{"prefix only yields empty env", "town_crier_", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := deploymentEnvironment(tc.cosmosDB); got != tc.want {
-				t.Errorf("deploymentEnvironment(%q) = %q, want %q", tc.cosmosDB, got, tc.want)
+			if got := deploymentEnvironment(tc.postgresDB); got != tc.want {
+				t.Errorf("deploymentEnvironment(%q) = %q, want %q", tc.postgresDB, got, tc.want)
 			}
 		})
 	}
@@ -70,7 +70,7 @@ func resourceHasAttr(res *resource.Resource, key attribute.Key) (string, bool) {
 }
 
 func TestNewTelemetryResource_TagsDeploymentEnvironment(t *testing.T) {
-	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "town-crier-prod")
+	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "town_crier_prod")
 	if err != nil {
 		t.Fatalf("newTelemetryResource: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestNewTelemetryResource_TagsDeploymentEnvironment(t *testing.T) {
 	}
 }
 
-func TestNewTelemetryResource_OmitsEnvironmentWhenCosmosDBUnset(t *testing.T) {
+func TestNewTelemetryResource_OmitsEnvironmentWhenPostgresDBUnset(t *testing.T) {
 	res, err := newTelemetryResource(context.Background(), "town-crier-api-go", "")
 	if err != nil {
 		t.Fatalf("newTelemetryResource: %v", err)
@@ -99,7 +99,7 @@ func TestNewTelemetryResource_OmitsEnvironmentWhenCosmosDBUnset(t *testing.T) {
 
 	const envKey = attribute.Key("deployment.environment")
 	if got, ok := resourceHasAttr(res, envKey); ok {
-		t.Errorf("expected no deployment.environment attribute when COSMOS_DATABASE unset, got %q", got)
+		t.Errorf("expected no deployment.environment attribute when POSTGRES_DB unset, got %q", got)
 	}
 
 	// service.name must still be present.
