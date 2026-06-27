@@ -42,12 +42,15 @@ func (f *fakeResolver) ResolveAuthority(_ context.Context, _, _ float64) (int, e
 }
 
 type fakeAppFinder struct {
-	apps       []applications.PlanningApplication
-	next       string
-	err        error
-	called     bool
-	lastLimit  int
-	lastCursor string
+	apps         []applications.PlanningApplication
+	next         string
+	err          error
+	called       bool
+	inZoneCalled bool
+	inZoneErr    error
+	lastSort     applications.Sort
+	lastLimit    int
+	lastCursor   string
 }
 
 func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
@@ -61,6 +64,21 @@ func (f *fakeAppFinder) FindNearbyPage(_ context.Context, _, _, _ float64, limit
 	// The production store caps at the query layer (the page-size hint); the fake
 	// caps here so handler tests can prove the downstream unread lookup receives a
 	// bounded UID set (tc-fm8f).
+	apps := f.apps
+	if limit > 0 && len(apps) > limit {
+		apps = apps[:limit]
+	}
+	return apps, f.next, nil
+}
+
+func (f *fakeAppFinder) FindInZonePage(_ context.Context, _, _, _ float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error) {
+	f.inZoneCalled = true
+	f.lastSort = sort
+	f.lastLimit = limit
+	f.lastCursor = cursor
+	if f.inZoneErr != nil {
+		return nil, "", f.inZoneErr
+	}
 	apps := f.apps
 	if limit > 0 && len(apps) > limit {
 		apps = apps[:limit]
@@ -770,6 +788,205 @@ func TestValid_RejectsNonFiniteCoordinates(t *testing.T) {
 				t.Errorf("%s: valid() returned true, want false", tc.name)
 			}
 		})
+	}
+}
+
+// sortDeps builds a standard dependency set for the applications-list sort tests:
+// one seeded zone, a configurable finder, no watermark.
+func sortDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
+	t.Helper()
+	return nearbyDeps{
+		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
+		apps:     apps,
+		profiles: &fakeProfileReader{},
+		resolver: &fakeResolver{},
+		state:    &fakeWatermark{},
+		unread:   &fakeUnread{},
+	}
+}
+
+// TestApplications_ParamlessUsesLegacyDistancePath proves the byte-identical
+// contract's routing: with no params the handler keeps using the legacy distance
+// finder (FindNearbyPage) at the default 500, never the sort-aware path.
+func TestApplications_ParamlessUsesLegacyDistancePath(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if !apps.called {
+		t.Error("param-less request must use the legacy FindNearbyPage path")
+	}
+	if apps.inZoneCalled {
+		t.Error("param-less request must NOT use the sort-aware path")
+	}
+	if apps.lastLimit != 500 {
+		t.Errorf("legacy default limit: got %d, want 500", apps.lastLimit)
+	}
+}
+
+// TestApplications_SortRoutesToSortAwarePath proves ?sort= routes to
+// FindInZonePage with the parsed sort and the new default page size of 150.
+func TestApplications_SortRoutesToSortAwarePath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		query    string
+		wantSort applications.Sort
+	}{
+		{"?sort=distance", applications.SortDistance},
+		{"?sort=newest", applications.SortNewest},
+		{"?sort=oldest", applications.SortOldest},
+	}
+	for _, tc := range tests {
+		t.Run(tc.query, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications"+tc.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want 200", rec.Code)
+			}
+			if !apps.inZoneCalled {
+				t.Fatal("a ?sort= request must use the sort-aware FindInZonePage path")
+			}
+			if apps.called {
+				t.Error("a ?sort= request must NOT use the legacy FindNearbyPage path")
+			}
+			if apps.lastSort != tc.wantSort {
+				t.Errorf("sort: got %q, want %q", apps.lastSort, tc.wantSort)
+			}
+			if apps.lastLimit != 150 {
+				t.Errorf("sort-aware default limit: got %d, want 150", apps.lastLimit)
+			}
+		})
+	}
+}
+
+// TestApplications_SortAwareLimitParsing proves the sort-aware path parses ?limit=
+// with a 150 default and clamps to the shared 500 ceiling.
+func TestApplications_SortAwareLimitParsing(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		query     string
+		wantLimit int
+	}{
+		{"explicit below ceiling", "?sort=newest&limit=50", 50},
+		{"at ceiling", "?sort=newest&limit=500", 500},
+		{"above ceiling clamps", "?sort=newest&limit=10000", 500},
+		{"absent uses sort default", "?sort=newest", 150},
+		{"zero uses sort default", "?sort=newest&limit=0", 150},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications"+tc.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status: got %d, want 200", rec.Code)
+			}
+			if apps.lastLimit != tc.wantLimit {
+				t.Errorf("limit: got %d, want %d", apps.lastLimit, tc.wantLimit)
+			}
+		})
+	}
+}
+
+// TestApplications_UnknownSortIs400 proves any sort outside this slice's set —
+// including the valid-future values status and recent-activity — is rejected with
+// 400 before any spatial query runs.
+func TestApplications_UnknownSortIs400(t *testing.T) {
+	t.Parallel()
+	for _, sortVal := range []string{"status", "recent-activity", "nonsense", "DISTANCE", "Newest"} {
+		t.Run(sortVal, func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, sortDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort="+sortVal, "")
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("sort=%q: got status %d, want 400", sortVal, rec.Code)
+			}
+			if apps.called || apps.inZoneCalled {
+				t.Error("must not run any spatial query for an unsupported sort")
+			}
+		})
+	}
+}
+
+// TestApplications_CursorSortMismatchIs400 proves a cursor minted under a
+// different sort (the store reports ErrCursorSortMismatch) surfaces as 400, never
+// a mis-ordered page.
+func TestApplications_CursorSortMismatchIs400(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{inZoneErr: applications.ErrCursorSortMismatch}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("cursor-from-another-sort"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=oldest&cursor="+cursor, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+}
+
+// TestApplications_MalformedInnerCursorIs400 proves a cursor that decodes at the
+// transport layer but is not a valid keyset token (store reports ErrCursorInvalid)
+// surfaces as 400.
+func TestApplications_MalformedInnerCursorIs400(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{inZoneErr: applications.ErrCursorInvalid}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	cursor := base64.RawURLEncoding.EncodeToString([]byte("not-a-real-keyset"))
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest&cursor="+cursor, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", rec.Code)
+	}
+}
+
+// TestApplications_SortAwareSetsNextCursorHeader proves the sort-aware path hands
+// the store's continuation token back via X-Next-Cursor, base64url-wrapped like
+// the legacy path.
+func TestApplications_SortAwareSetsNextCursorHeader(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}, next: "sort-token-9"}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications?sort=newest", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	got := rec.Header().Get("X-Next-Cursor")
+	want := base64.RawURLEncoding.EncodeToString([]byte("sort-token-9"))
+	if got != want {
+		t.Errorf("X-Next-Cursor: got %q, want %q", got, want)
+	}
+}
+
+// TestApplications_ParamlessGoldenResponse pins the byte-identical backward-compat
+// contract: the param-less response is the bare []Result array, unchanged by the
+// sort surface. An in-review iOS build depends on these exact bytes.
+func TestApplications_ParamlessGoldenResponse(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}}
+	mux := newNearbyMux(t, sortDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	want := `[{"name":"24/001","uid":"uid-1","areaName":"City of London","areaId":471,` +
+		`"address":"1 Test St","postcode":null,"description":"An extension",` +
+		`"appType":"Full","appState":"Permitted","appSize":null,"startDate":null,` +
+		`"decidedDate":null,"consultedDate":null,"longitude":null,"latitude":null,` +
+		`"url":null,"link":null,"lastDifferent":"2026-06-14T09:00:00+00:00",` +
+		`"latestUnreadEvent":null}]`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("param-less response not byte-identical:\n got = %s\nwant = %s", got, want)
 	}
 }
 
