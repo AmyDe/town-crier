@@ -7,11 +7,13 @@ import (
 
 // TestPageCursor_RoundTrip proves the sort-aware keyset cursor survives an
 // encode/decode round-trip for every shape: a distance keyset, a non-null
-// start_date keyset, and a NULL start_date keyset (the tail of a NULLS LAST
-// scan).
+// start_date keyset, a NULL start_date keyset (the tail of a NULLS LAST scan), and
+// each of the four status keyset NULL-tail positions (the mixed-direction keyset
+// carries an extra nullable app_state key).
 func TestPageCursor_RoundTrip(t *testing.T) {
 	t.Parallel()
 	sd := "2026-01-02"
+	as := "Permitted"
 	tests := []struct {
 		name string
 		in   pageCursor
@@ -20,6 +22,10 @@ func TestPageCursor_RoundTrip(t *testing.T) {
 		{"newest non-null", pageCursor{M: SortNewest, SD: &sd, AC: "100", N: "24/0002/FUL"}},
 		{"oldest non-null", pageCursor{M: SortOldest, SD: &sd, AC: "200", N: "24/0003/FUL"}},
 		{"newest null tail", pageCursor{M: SortNewest, SD: nil, AC: "300", N: "24/0004/FUL"}},
+		{"status state+date", pageCursor{M: SortStatus, AS: &as, SD: &sd, AC: "100", N: "24/0005/FUL"}},
+		{"status date-null tail", pageCursor{M: SortStatus, AS: &as, SD: nil, AC: "100", N: "24/0006/FUL"}},
+		{"status state-null tail", pageCursor{M: SortStatus, AS: nil, SD: &sd, AC: "200", N: "24/0007/FUL"}},
+		{"status both-null tail", pageCursor{M: SortStatus, AS: nil, SD: nil, AC: "300", N: "24/0008/FUL"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -34,6 +40,12 @@ func TestPageCursor_RoundTrip(t *testing.T) {
 			}
 			if got.M != tc.in.M || got.D != tc.in.D || got.AC != tc.in.AC || got.N != tc.in.N {
 				t.Errorf("round-trip mismatch: got %+v, want %+v", got, tc.in)
+			}
+			if (got.AS == nil) != (tc.in.AS == nil) {
+				t.Fatalf("AS nil mismatch: got %v, want %v", got.AS, tc.in.AS)
+			}
+			if got.AS != nil && *got.AS != *tc.in.AS {
+				t.Errorf("AS: got %q, want %q", *got.AS, *tc.in.AS)
 			}
 			if (got.SD == nil) != (tc.in.SD == nil) {
 				t.Fatalf("SD nil mismatch: got %v, want %v", got.SD, tc.in.SD)

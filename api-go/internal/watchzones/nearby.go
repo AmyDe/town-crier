@@ -54,9 +54,9 @@ type authorityResolver interface {
 // cursor plus an opaque continuation token for the next page (tc-fm8f).
 //
 // FindNearbyPage is the legacy default-distance path (byte-identical param-less
-// contract). FindInZonePage adds the server-side ?sort= surface (epic #682 slice
-// 1: distance/newest/oldest) with a sort-aware keyset cursor. *applications.PostgresStore
-// satisfies both.
+// contract). FindInZonePage adds the server-side ?sort= surface (epic #682 slices
+// 1-2: distance/newest/oldest/status) with a sort-aware keyset cursor.
+// *applications.PostgresStore satisfies both.
 type appFinder interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]applications.PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, latitude, longitude, radiusMetres float64, sort applications.Sort, limit int, cursor string) ([]applications.PlanningApplication, string, error)
@@ -147,7 +147,8 @@ const (
 const invalidCursorMessage = "Invalid cursor."
 
 // invalidSortMessage is the 400 body when ?sort= is outside the supported set
-// ({distance, newest, oldest} for this slice).
+// ({distance, newest, oldest, status} for this slice; recent-activity arrives in a
+// later slice).
 const invalidSortMessage = "Invalid sort."
 
 // valid reports whether the create request passes the pre-handler guard:
@@ -417,10 +418,10 @@ func parseLimit(raw string, def int) int {
 
 // parseSort resolves ?sort= to a supported Sort. An absent value defaults to
 // SortDistance (the legacy nearest-first behaviour). The boolean reports whether
-// the value is supported in this slice ({distance, newest, oldest}); an
-// unsupported value (status, recent-activity, or garbage) is a clean 400. The
-// caller treats an absent value (ok with SortDistance and present=false) as the
-// legacy param-less path.
+// the value is supported in this slice ({distance, newest, oldest, status}); an
+// unsupported value (recent-activity or garbage) is a clean 400. The caller treats
+// an absent value (ok with SortDistance and present=false) as the legacy param-less
+// path.
 func parseSort(raw string) (sort applications.Sort, present, ok bool) {
 	if raw == "" {
 		return applications.SortDistance, false, true

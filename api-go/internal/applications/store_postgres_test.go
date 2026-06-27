@@ -570,6 +570,66 @@ func TestPostgresStore_FindInZonePage_Oldest(t *testing.T) {
 	}
 }
 
+// statusFixture seeds a deterministic in-radius set spanning two non-NULL
+// app_state values ("Permitted" < "Rejected") plus a NULL-app_state group, each
+// with varied and NULL start_dates, including an equal-(app_state, start_date)
+// pair across two authorities to exercise the (authority_code, planit_name)
+// tiebreak. All rows are within 6 km.
+func statusFixture(t *testing.T, store *PostgresStore) {
+	t.Helper()
+	ctx := context.Background()
+	mar := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	permitted, rejected := pgPtr("Permitted"), pgPtr("Rejected")
+	for _, a := range []PlanningApplication{
+		withState(withStart(at(pgApp("P1", 100), 100), mar), permitted),
+		withState(withStart(at(pgApp("P2", 100), 200), jan), permitted),
+		withState(withStart(at(pgApp("P3", 100), 300), feb), permitted),
+		withState(withStart(at(pgApp("P4", 200), 350), feb), permitted), // equal (state,date) as P3, other authority
+		withState(at(pgApp("P5", 100), 400), permitted),                 // NULL start_date within Permitted
+		withState(withStart(at(pgApp("R1", 100), 500), feb), rejected),
+		withState(at(pgApp("R2", 100), 600), rejected), // NULL start_date within Rejected
+		withStart(at(pgApp("N1", 100), 700), mar),      // NULL app_state
+		at(pgApp("N2", 100), 800),                      // NULL app_state, NULL start_date
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+}
+
+// TestPostgresStore_FindInZonePage_Status proves the mixed-direction keyset —
+// app_state ASC NULLS LAST, start_date DESC NULLS LAST, (authority_code,
+// planit_name) — pages to exhaustion with no overlap or gap and matches the single
+// unpaged order. NULL app_state rows sort last; within an app_state group NULL
+// start_date rows sort last; equal (app_state, start_date) tiebreaks on
+// (authority_code, planit_name).
+func TestPostgresStore_FindInZonePage_Status(t *testing.T) {
+	store := newAppPGStore(t)
+	statusFixture(t, store)
+
+	// Permitted (state ASC first): mar, feb tiebreak "100"(P3)<"200"(P4), jan, NULL.
+	// Rejected next: feb, NULL. NULL app_state last: mar, NULL.
+	want := []string{"P1", "P3", "P4", "P2", "P5", "R1", "R2", "N1", "N2"}
+	if got := pageAllInZone(t, store, SortStatus, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("status single page: got %v, want %v", got, want)
+	}
+	if got := pageAllInZone(t, store, SortStatus, 6000, 2); !reflect.DeepEqual(got, want) {
+		t.Fatalf("status paged: got %v, want %v", got, want)
+	}
+	// Page size 1 forces a keyset boundary at every row: across app_state group
+	// boundaries, inside a group's NULL-start_date tail, and into the NULL
+	// app_state tail.
+	if got := pageAllInZone(t, store, SortStatus, 6000, 1); !reflect.DeepEqual(got, want) {
+		t.Fatalf("status paged size 1: got %v, want %v", got, want)
+	}
+	// Page size 3 lands boundaries mid-group and at group edges.
+	if got := pageAllInZone(t, store, SortStatus, 6000, 3); !reflect.DeepEqual(got, want) {
+		t.Fatalf("status paged size 3: got %v, want %v", got, want)
+	}
+}
+
 // TestPostgresStore_FindInZonePage_RespectsRadius proves the spatial predicate
 // still bounds every sort: a row outside the radius never appears.
 func TestPostgresStore_FindInZonePage_RespectsRadius(t *testing.T) {
@@ -584,7 +644,7 @@ func TestPostgresStore_FindInZonePage_RespectsRadius(t *testing.T) {
 			t.Fatalf("Upsert %s: %v", a.Name, err)
 		}
 	}
-	for _, sort := range []Sort{SortDistance, SortNewest, SortOldest} {
+	for _, sort := range []Sort{SortDistance, SortNewest, SortOldest, SortStatus} {
 		got := pageAllInZone(t, store, sort, 6000, 10)
 		if !reflect.DeepEqual(got, []string{"IN"}) {
 			t.Errorf("%s: got %v, want [IN] (OUT is beyond the radius)", sort, got)
@@ -613,6 +673,19 @@ func TestPostgresStore_FindInZonePage_CursorSortMismatch(t *testing.T) {
 		t.Errorf("replay newest cursor under oldest: got err %v, want ErrCursorSortMismatch", err)
 	}
 
+	// A cursor minted under status carries mode=status; replaying it under any
+	// other sort is rejected, never a mis-ordered page.
+	_, statusCursor, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortStatus, 1, "")
+	if err != nil {
+		t.Fatalf("mint status cursor: %v", err)
+	}
+	if statusCursor == "" {
+		t.Fatal("expected a continuation cursor after a full status page")
+	}
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, statusCursor); !errors.Is(err, ErrCursorSortMismatch) {
+		t.Errorf("replay status cursor under newest: got err %v, want ErrCursorSortMismatch", err)
+	}
+
 	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, SortNewest, 1, "!!!not-base64!!!"); !errors.Is(err, ErrCursorInvalid) {
 		t.Errorf("malformed cursor: got err %v, want ErrCursorInvalid", err)
 	}
@@ -626,7 +699,7 @@ func TestPostgresStore_FindInZonePage_UnsupportedSort(t *testing.T) {
 	store := newAppPGStore(t)
 	sortFixture(t, store)
 
-	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("status"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
+	if _, _, err := store.FindInZonePage(ctx, pgCentreLat, pgCentreLon, 6000, Sort("nonsense"), 10, ""); !errors.Is(err, ErrUnsupportedSort) {
 		t.Errorf("unsupported sort: got err %v, want ErrUnsupportedSort", err)
 	}
 }

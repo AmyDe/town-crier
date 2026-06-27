@@ -839,6 +839,7 @@ func TestApplications_SortRoutesToSortAwarePath(t *testing.T) {
 		{"?sort=distance", applications.SortDistance},
 		{"?sort=newest", applications.SortNewest},
 		{"?sort=oldest", applications.SortOldest},
+		{"?sort=status", applications.SortStatus},
 	}
 	for _, tc := range tests {
 		t.Run(tc.query, func(t *testing.T) {
@@ -898,11 +899,11 @@ func TestApplications_SortAwareLimitParsing(t *testing.T) {
 }
 
 // TestApplications_UnknownSortIs400 proves any sort outside this slice's set —
-// including the valid-future values status and recent-activity — is rejected with
-// 400 before any spatial query runs.
+// including the valid-future value recent-activity — is rejected with 400 before
+// any spatial query runs.
 func TestApplications_UnknownSortIs400(t *testing.T) {
 	t.Parallel()
-	for _, sortVal := range []string{"status", "recent-activity", "nonsense", "DISTANCE", "Newest"} {
+	for _, sortVal := range []string{"recent-activity", "nonsense", "DISTANCE", "Newest"} {
 		t.Run(sortVal, func(t *testing.T) {
 			t.Parallel()
 			apps := &fakeAppFinder{}
