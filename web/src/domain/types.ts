@@ -216,6 +216,63 @@ export interface NotificationStateSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Map clusters
+// ---------------------------------------------------------------------------
+
+/**
+ * The composite key of the lone application in a single-member cluster cell,
+ * present iff `count == 1`. `authority` is the areaId as a decimal string and
+ * `name` is the PlanIt case reference (which may contain slashes). Together they
+ * point-read the full record via `GET /v1/applications/{authority}/{name...}`.
+ */
+export interface ClusterMember {
+  readonly authority: string;
+  readonly name: string;
+}
+
+/**
+ * A server-computed aggregate of planning applications for one grid cell of the
+ * watch-zone map (GH#698). The API grids the in-viewport applications by zoom
+ * level in PostGIS and returns one of these per non-empty cell, so the browser
+ * renders tens of aggregates instead of holding the whole zone's applications.
+ *
+ * When `count > 1` the cell renders as an amber count bubble and `member` is
+ * `null`; a tap zooms in. When `count == 1` the cell holds a single application,
+ * so `member` carries its identity and `statusCounts` its lone status — enough
+ * to draw a status-coloured pin and, on tap, point-read the full record.
+ */
+export interface MapCluster {
+  /** Cell centroid latitude — the mean position of the cell's members. */
+  readonly latitude: number;
+  /** Cell centroid longitude — the mean position of the cell's members. */
+  readonly longitude: number;
+  /** Number of applications collapsed into this cell. */
+  readonly count: number;
+  /** Per-status breakdown of the cell's members; the values sum to `count`. */
+  readonly statusCounts: Readonly<Record<string, number>>;
+  /** The single member's identity, present iff `count == 1`. */
+  readonly member: ClusterMember | null;
+}
+
+/** Whether this cell holds exactly one application (a pin, not a bubble). */
+export function clusterIsSingleMember(cluster: MapCluster): boolean {
+  return cluster.count === 1;
+}
+
+/**
+ * The lone application's PlanIt `app_state` for a single-member cell — drives
+ * the status-coloured pin. `null` for multi-member cells (which render as an
+ * amber bubble) and for a single cell that carries no status counts.
+ */
+export function clusterMemberStatus(cluster: MapCluster): string | null {
+  if (cluster.count !== 1) {
+    return null;
+  }
+  const keys = Object.keys(cluster.statusCounts);
+  return keys[0] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Saved applications
 // ---------------------------------------------------------------------------
 

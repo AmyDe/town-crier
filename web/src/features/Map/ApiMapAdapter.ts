@@ -1,38 +1,40 @@
 import type { ApiClient } from '../../api/client';
-import type { ApplicationUid, WatchZoneId, WatchZoneSummary, PlanningApplication, SavedApplication } from '../../domain/types';
-import type { MapPort } from '../../domain/ports/map-port';
+import type {
+  ApplicationStatus,
+  ClusterMember,
+  MapCluster,
+  PlanningApplication,
+  WatchZoneId,
+  WatchZoneSummary,
+} from '../../domain/types';
+import type { MapBounds, MapPort } from '../../domain/ports/map-port';
 import { applicationsApi } from '../../api/applications';
 import { watchZonesApi } from '../../api/watchZones';
-import { savedApplicationsApi } from '../../api/savedApplications';
 
 export class ApiMapAdapter implements MapPort {
   private readonly apps: ReturnType<typeof applicationsApi>;
   private readonly zones: ReturnType<typeof watchZonesApi>;
-  private readonly saved: ReturnType<typeof savedApplicationsApi>;
 
   constructor(client: ApiClient) {
     this.apps = applicationsApi(client);
     this.zones = watchZonesApi(client);
-    this.saved = savedApplicationsApi(client);
   }
 
   async fetchMyZones(): Promise<readonly WatchZoneSummary[]> {
     return this.zones.list();
   }
 
-  async fetchApplicationsByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplication[]> {
-    return this.apps.getByZone(zoneId as string);
+  async fetchClusters(
+    zoneId: WatchZoneId,
+    bounds: MapBounds,
+    zoom: number,
+    status: ApplicationStatus | null,
+  ): Promise<readonly MapCluster[]> {
+    const bbox = `${bounds.west},${bounds.south},${bounds.east},${bounds.north}`;
+    return this.apps.getClusters(zoneId as string, { bbox, zoom, status });
   }
 
-  async fetchSavedApplications(): Promise<readonly SavedApplication[]> {
-    return this.saved.list();
-  }
-
-  async saveApplication(application: PlanningApplication): Promise<void> {
-    await this.saved.save(application);
-  }
-
-  async unsaveApplication(uid: ApplicationUid): Promise<void> {
-    await this.saved.remove(uid as string);
+  async fetchApplicationByMember(member: ClusterMember): Promise<PlanningApplication> {
+    return this.apps.getByAuthorityAndName(member.authority, member.name);
   }
 }
