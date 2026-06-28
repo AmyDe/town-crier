@@ -117,6 +117,52 @@ func TestCORS_PreflightShortCircuits(t *testing.T) {
 	}
 }
 
+func TestCORS_ExposesNextCursorHeader(t *testing.T) {
+	t.Parallel()
+
+	h := CORS([]string{"https://towncrierapp.uk"})(okHandler())
+
+	tests := []struct {
+		name       string
+		method     string
+		origin     string
+		preflight  bool
+		wantExpose bool
+	}{
+		{"allowed origin GET", http.MethodGet, "https://towncrierapp.uk", false, true},
+		{"allowed origin preflight", http.MethodOptions, "https://towncrierapp.uk", true, true},
+		{"disallowed origin", http.MethodGet, "https://evil.example.com", false, false},
+		{"no origin header", http.MethodGet, "", false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequestWithContext(t.Context(), tc.method, "/api/me", nil)
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			if tc.preflight {
+				req.Header.Set("Access-Control-Request-Method", "GET")
+			}
+			rec := httptest.NewRecorder()
+
+			h.ServeHTTP(rec, req)
+
+			// A browser fetch() can only read X-Next-Cursor for cursor pagination
+			// when the server exposes it via Access-Control-Expose-Headers, and
+			// only ever for allowed origins.
+			got := rec.Header().Get("Access-Control-Expose-Headers")
+			if tc.wantExpose {
+				if got != "X-Next-Cursor" {
+					t.Errorf("Access-Control-Expose-Headers = %q, want %q", got, "X-Next-Cursor")
+				}
+			} else if got != "" {
+				t.Errorf("Access-Control-Expose-Headers = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestCORS_PreflightEchoesRequestedHeaders(t *testing.T) {
 	t.Parallel()
 
