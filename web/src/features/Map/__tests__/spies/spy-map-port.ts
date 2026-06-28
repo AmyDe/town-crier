@@ -1,5 +1,20 @@
-import type { ApplicationUid, WatchZoneId, WatchZoneSummary, PlanningApplication, SavedApplication } from '../../../../domain/types';
-import type { MapPort } from '../../../../domain/ports/map-port';
+import type {
+  ApplicationStatus,
+  ClusterMember,
+  MapCluster,
+  PlanningApplication,
+  WatchZoneId,
+  WatchZoneSummary,
+} from '../../../../domain/types';
+import type { MapBounds, MapPort } from '../../../../domain/ports/map-port';
+import { anApplication } from '../fixtures/map.fixtures';
+
+export interface FetchClustersCall {
+  readonly zoneId: WatchZoneId;
+  readonly bounds: MapBounds;
+  readonly zoom: number;
+  readonly status: ApplicationStatus | null;
+}
 
 export class SpyMapPort implements MapPort {
   fetchMyZonesCalls = 0;
@@ -14,47 +29,34 @@ export class SpyMapPort implements MapPort {
     return this.fetchMyZonesResult;
   }
 
-  fetchApplicationsByZoneCalls: WatchZoneId[] = [];
-  fetchApplicationsByZoneResults: Map<string, readonly PlanningApplication[]> = new Map();
-  fetchApplicationsByZoneError: Error | null = null;
+  fetchClustersCalls: FetchClustersCall[] = [];
+  fetchClustersResult: readonly MapCluster[] = [];
+  /** Per-zone overrides; falls back to `fetchClustersResult` when absent. */
+  fetchClustersResultsByZone: Map<string, readonly MapCluster[]> = new Map();
+  fetchClustersError: Error | null = null;
 
-  async fetchApplicationsByZone(zoneId: WatchZoneId): Promise<readonly PlanningApplication[]> {
-    this.fetchApplicationsByZoneCalls.push(zoneId);
-    if (this.fetchApplicationsByZoneError) {
-      throw this.fetchApplicationsByZoneError;
+  async fetchClusters(
+    zoneId: WatchZoneId,
+    bounds: MapBounds,
+    zoom: number,
+    status: ApplicationStatus | null,
+  ): Promise<readonly MapCluster[]> {
+    this.fetchClustersCalls.push({ zoneId, bounds, zoom, status });
+    if (this.fetchClustersError) {
+      throw this.fetchClustersError;
     }
-    return this.fetchApplicationsByZoneResults.get(zoneId as string) ?? [];
+    return this.fetchClustersResultsByZone.get(zoneId as string) ?? this.fetchClustersResult;
   }
 
-  fetchSavedApplicationsCalls = 0;
-  fetchSavedApplicationsResult: readonly SavedApplication[] = [];
-  fetchSavedApplicationsError: Error | null = null;
+  fetchApplicationByMemberCalls: ClusterMember[] = [];
+  fetchApplicationByMemberResult: PlanningApplication = anApplication();
+  fetchApplicationByMemberError: Error | null = null;
 
-  async fetchSavedApplications(): Promise<readonly SavedApplication[]> {
-    this.fetchSavedApplicationsCalls++;
-    if (this.fetchSavedApplicationsError) {
-      throw this.fetchSavedApplicationsError;
+  async fetchApplicationByMember(member: ClusterMember): Promise<PlanningApplication> {
+    this.fetchApplicationByMemberCalls.push(member);
+    if (this.fetchApplicationByMemberError) {
+      throw this.fetchApplicationByMemberError;
     }
-    return this.fetchSavedApplicationsResult;
-  }
-
-  saveApplicationCalls: PlanningApplication[] = [];
-  saveApplicationError: Error | null = null;
-
-  async saveApplication(application: PlanningApplication): Promise<void> {
-    this.saveApplicationCalls.push(application);
-    if (this.saveApplicationError) {
-      throw this.saveApplicationError;
-    }
-  }
-
-  unsaveApplicationCalls: ApplicationUid[] = [];
-  unsaveApplicationError: Error | null = null;
-
-  async unsaveApplication(uid: ApplicationUid): Promise<void> {
-    this.unsaveApplicationCalls.push(uid);
-    if (this.unsaveApplicationError) {
-      throw this.unsaveApplicationError;
-    }
+    return this.fetchApplicationByMemberResult;
   }
 }

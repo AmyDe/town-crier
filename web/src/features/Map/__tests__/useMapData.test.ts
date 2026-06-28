@@ -2,290 +2,205 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { useMapData } from '../useMapData';
 import { SpyMapPort } from './spies/spy-map-port';
-import { aZone, aSecondZone, anApplication, aSecondApplication, aSavedApplication } from './fixtures/map.fixtures';
-import { asWatchZoneId, asApplicationUid } from '../../../domain/types';
+import {
+  aZone,
+  aSecondZone,
+  aBubbleCluster,
+  aSinglePinCluster,
+  anApplication,
+} from './fixtures/map.fixtures';
+import type { MapBounds } from '../../../domain/ports/map-port';
+import { asWatchZoneId } from '../../../domain/types';
+
+const BOUNDS: MapBounds = { west: -0.2, south: 51.4, east: 0.1, north: 51.6 };
+const OTHER_BOUNDS: MapBounds = { west: 0.0, south: 52.0, east: 0.3, north: 52.3 };
+
+async function loadedHook(spy: SpyMapPort) {
+  const view = renderHook(() => useMapData(spy));
+  await waitFor(() => {
+    expect(view.result.current.isLoading).toBe(false);
+  });
+  return view;
+}
 
 describe('useMapData', () => {
-  it('fetches saved application UIDs alongside applications', async () => {
+  it('auto-selects the first zone after loading zones', async () => {
     const spy = new SpyMapPort();
-    const zone = aZone();
-    const app = anApplication();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [app]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+    spy.fetchMyZonesResult = [aZone(), aSecondZone()];
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
 
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(true);
-    expect(result.current.savedUids.size).toBe(1);
-    expect(spy.fetchSavedApplicationsCalls).toBe(1);
-  });
-
-  it('returns empty savedUids when no applications are saved', async () => {
-    const spy = new SpyMapPort();
-    spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
-    spy.fetchSavedApplicationsResult = [];
-
-    const { result } = renderHook(() => useMapData(spy));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.savedUids.size).toBe(0);
-  });
-
-  it('fetches zones and applications per zone', async () => {
-    const spy = new SpyMapPort();
-    const zone1 = aZone();
-    const zone2 = aSecondZone();
-    spy.fetchMyZonesResult = [zone1, zone2];
-
-    const app1 = anApplication();
-    const app2 = aSecondApplication();
-    spy.fetchApplicationsByZoneResults.set('zone-001', [app1]);
-    spy.fetchApplicationsByZoneResults.set('zone-002', [app2]);
-
-    const { result } = renderHook(() => useMapData(spy));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.applications).toEqual([app1, app2]);
+    expect(result.current.selectedZone?.id).toBe(asWatchZoneId('zone-001'));
+    expect(result.current.zones).toHaveLength(2);
     expect(result.current.error).toBeNull();
     expect(spy.fetchMyZonesCalls).toBe(1);
-    expect(spy.fetchApplicationsByZoneCalls).toContainEqual(asWatchZoneId('zone-001'));
-    expect(spy.fetchApplicationsByZoneCalls).toContainEqual(asWatchZoneId('zone-002'));
   });
 
-  it('sets error state when zone fetch fails', async () => {
+  it('surfaces an error when the zone load fails', async () => {
     const spy = new SpyMapPort();
     spy.fetchMyZonesError = new Error('Network unavailable');
 
-    const { result } = renderHook(() => useMapData(spy));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+    const { result } = await loadedHook(spy);
 
     expect(result.current.error).toBe('Network unavailable');
-    expect(result.current.applications).toEqual([]);
+    expect(result.current.selectedZone).toBeNull();
+    expect(result.current.clusters).toEqual([]);
   });
 
-  it('returns loading state while fetching', () => {
-    const spy = new SpyMapPort();
-    spy.fetchMyZonesResult = [];
-
-    const { result } = renderHook(() => useMapData(spy));
-
-    expect(result.current.isLoading).toBe(true);
-    expect(result.current.applications).toEqual([]);
-    expect(result.current.error).toBeNull();
-  });
-
-  it('deduplicates applications across overlapping zones', async () => {
-    const spy = new SpyMapPort();
-    const zone1 = aZone();
-    const zone2 = aSecondZone();
-    spy.fetchMyZonesResult = [zone1, zone2];
-
-    const sharedApp = anApplication();
-    spy.fetchApplicationsByZoneResults.set('zone-001', [sharedApp]);
-    spy.fetchApplicationsByZoneResults.set('zone-002', [sharedApp]);
-
-    const { result } = renderHook(() => useMapData(spy));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    expect(result.current.applications).toHaveLength(1);
-    expect(spy.fetchApplicationsByZoneCalls).toHaveLength(2);
-  });
-
-  it('adds uid to savedUids on save', async () => {
-    const spy = new SpyMapPort();
-    const application = anApplication();
-    spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
-    spy.fetchSavedApplicationsResult = [];
-
-    const { result } = renderHook(() => useMapData(spy));
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    await act(async () => {
-      await result.current.saveApplication(application);
-    });
-
-    expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(true);
-    expect(spy.saveApplicationCalls).toEqual([application]);
-  });
-
-  it('removes uid from savedUids on unsave', async () => {
+  it('fetches clusters for the active zone and current viewport on a region change', async () => {
     const spy = new SpyMapPort();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+    spy.fetchClustersResult = [aBubbleCluster()];
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
+
+    act(() => {
+      result.current.onRegionChange(BOUNDS, 13);
+    });
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(spy.fetchClustersCalls).toHaveLength(1);
     });
-
-    await act(async () => {
-      await result.current.unsaveApplication(asApplicationUid('app-001'));
+    const call = spy.fetchClustersCalls[0]!;
+    expect(call.zoneId).toBe(asWatchZoneId('zone-001'));
+    expect(call.bounds).toEqual(BOUNDS);
+    expect(call.zoom).toBe(13);
+    expect(call.status).toBeNull();
+    await waitFor(() => {
+      expect(result.current.clusters).toHaveLength(1);
     });
-
-    expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(false);
-    expect(spy.unsaveApplicationCalls).toEqual([asApplicationUid('app-001')]);
   });
 
-  it('reverts savedUids when save fails', async () => {
+  it('debounces rapid region changes into a single fetch with the last viewport', async () => {
     const spy = new SpyMapPort();
-    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
-    spy.fetchSavedApplicationsResult = [];
-    spy.saveApplicationError = new Error('Server error');
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
+
+    act(() => {
+      result.current.onRegionChange(BOUNDS, 11);
+      result.current.onRegionChange(OTHER_BOUNDS, 15);
+    });
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(spy.fetchClustersCalls).toHaveLength(1);
     });
-
-    await act(async () => {
-      await result.current.saveApplication(application);
-    });
-
-    expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(false);
+    // Give any stray debounced call time to fire — it must not.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(spy.fetchClustersCalls).toHaveLength(1);
+    expect(spy.fetchClustersCalls[0]!.bounds).toEqual(OTHER_BOUNDS);
+    expect(spy.fetchClustersCalls[0]!.zoom).toBe(15);
   });
 
-  it('reverts savedUids when unsave fails', async () => {
+  it('queries only the active zone, never draining other zones', async () => {
     const spy = new SpyMapPort();
-    spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [anApplication()]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
-    spy.unsaveApplicationError = new Error('Server error');
+    spy.fetchMyZonesResult = [aZone(), aSecondZone()];
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
+
+    act(() => {
+      result.current.onRegionChange(BOUNDS, 12);
+    });
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(spy.fetchClustersCalls).toHaveLength(1);
     });
-
-    await act(async () => {
-      await result.current.unsaveApplication(asApplicationUid('app-001'));
-    });
-
-    expect(result.current.savedUids.has(asApplicationUid('app-001'))).toBe(true);
+    expect(spy.fetchClustersCalls.every((c) => c.zoneId === asWatchZoneId('zone-001'))).toBe(true);
+    expect(spy.fetchMyZonesCalls).toBe(1);
   });
 
-  it('shows uid as saved after save-unsave-save toggle sequence', async () => {
+  it('refetches clusters server-side with status= when the status filter changes', async () => {
     const spy = new SpyMapPort();
-    const application = anApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
-    spy.fetchSavedApplicationsResult = [];
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
+
+    act(() => {
+      result.current.onRegionChange(BOUNDS, 13);
+    });
+    await waitFor(() => {
+      expect(spy.fetchClustersCalls).toHaveLength(1);
+    });
+
+    act(() => {
+      result.current.setStatusFilter('Permitted');
+    });
 
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(spy.fetchClustersCalls).toHaveLength(2);
     });
-
-    const uid = asApplicationUid('app-001');
-
-    await act(async () => {
-      await result.current.saveApplication(application);
-    });
-    expect(result.current.savedUids.has(uid)).toBe(true);
-
-    await act(async () => {
-      await result.current.unsaveApplication(uid);
-    });
-    expect(result.current.savedUids.has(uid)).toBe(false);
-
-    await act(async () => {
-      await result.current.saveApplication(application);
-    });
-    expect(result.current.savedUids.has(uid)).toBe(true);
+    const last = spy.fetchClustersCalls[1]!;
+    expect(last.status).toBe('Permitted');
+    expect(last.bounds).toEqual(BOUNDS);
+    expect(result.current.selectedStatusFilter).toBe('Permitted');
   });
 
-  it('shows uid as unsaved after unsave-save-unsave toggle sequence on initially saved item', async () => {
+  it('clears the status filter and requeries when the active zone changes', async () => {
     const spy = new SpyMapPort();
-    const application = anApplication();
-    spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [application]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+    spy.fetchMyZonesResult = [aZone(), aSecondZone()];
+    spy.fetchClustersResultsByZone.set('zone-002', [aBubbleCluster()]);
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
 
+    act(() => {
+      result.current.onRegionChange(BOUNDS, 13);
+    });
     await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
+      expect(spy.fetchClustersCalls).toHaveLength(1);
+    });
+    act(() => {
+      result.current.setStatusFilter('Permitted');
+    });
+    await waitFor(() => {
+      expect(result.current.selectedStatusFilter).toBe('Permitted');
     });
 
-    const uid = asApplicationUid('app-001');
-
-    await act(async () => {
-      await result.current.unsaveApplication(uid);
+    act(() => {
+      result.current.selectZone(aSecondZone());
     });
-    expect(result.current.savedUids.has(uid)).toBe(false);
 
-    await act(async () => {
-      await result.current.saveApplication(application);
+    expect(result.current.selectedZone?.id).toBe(asWatchZoneId('zone-002'));
+    expect(result.current.selectedStatusFilter).toBeNull();
+    await waitFor(() => {
+      expect(
+        spy.fetchClustersCalls.some(
+          (c) => c.zoneId === asWatchZoneId('zone-002') && c.status === null,
+        ),
+      ).toBe(true);
     });
-    expect(result.current.savedUids.has(uid)).toBe(true);
-
-    await act(async () => {
-      await result.current.unsaveApplication(uid);
-    });
-    expect(result.current.savedUids.has(uid)).toBe(false);
   });
 
-  it('handles save and unsave of different UIDs independently', async () => {
+  it('point-reads the application for a single-member cell', async () => {
     const spy = new SpyMapPort();
-    const appA = anApplication();
-    const appB = aSecondApplication();
     spy.fetchMyZonesResult = [aZone()];
-    spy.fetchApplicationsByZoneResults.set('zone-001', [appA, appB]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+    const app = anApplication();
+    spy.fetchApplicationByMemberResult = app;
 
-    const { result } = renderHook(() => useMapData(spy));
+    const { result } = await loadedHook(spy);
 
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    const uidA = asApplicationUid('app-001');
-    const uidB = asApplicationUid('app-002');
-
-    // uidA starts saved, uidB starts unsaved
-    expect(result.current.savedUids.has(uidA)).toBe(true);
-    expect(result.current.savedUids.has(uidB)).toBe(false);
-
-    // unsave A and save B simultaneously
+    const cluster = aSinglePinCluster();
+    let resolved: Awaited<ReturnType<typeof result.current.resolveMember>> = null;
     await act(async () => {
-      await result.current.unsaveApplication(uidA);
+      resolved = await result.current.resolveMember(cluster.member!);
     });
+
+    expect(resolved).toEqual(app);
+    expect(spy.fetchApplicationByMemberCalls).toEqual([cluster.member]);
+  });
+
+  it('resolveMember returns null on a point-read failure', async () => {
+    const spy = new SpyMapPort();
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchApplicationByMemberError = new Error('boom');
+
+    const { result } = await loadedHook(spy);
+
+    const cluster = aSinglePinCluster();
+    let resolved: Awaited<ReturnType<typeof result.current.resolveMember>> = anApplication();
     await act(async () => {
-      await result.current.saveApplication(appB);
+      resolved = await result.current.resolveMember(cluster.member!);
     });
 
-    expect(result.current.savedUids.has(uidA)).toBe(false);
-    expect(result.current.savedUids.has(uidB)).toBe(true);
-
-    expect(spy.unsaveApplicationCalls).toEqual([uidA]);
-    expect(spy.saveApplicationCalls).toEqual([appB]);
+    expect(resolved).toBeNull();
   });
 });
