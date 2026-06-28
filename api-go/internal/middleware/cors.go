@@ -34,6 +34,11 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 			// Vary: Origin prevents a shared cache from serving one origin's
 			// CORS-decorated response to a request from a different origin.
 			w.Header().Add("Vary", "Origin")
+			// Expose X-Next-Cursor so a browser fetch() can read the keyset
+			// pagination cursor cross-origin (GH#711). Set on the matched-origin
+			// branch before the preflight check so it applies to both the 204
+			// preflight and the normal pass-through response.
+			w.Header().Set("Access-Control-Expose-Headers", "X-Next-Cursor")
 
 			// Preflight: an OPTIONS request carrying Access-Control-Request-Method.
 			// AllowAnyMethod / AllowAnyHeader means we echo exactly what the
