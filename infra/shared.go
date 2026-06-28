@@ -474,12 +474,11 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 						dashboardPart(4, 4, 4, 4, metricTile(appInsightsID, "towncrier.watchzones.deleted", "Watch Zones Deleted")),
 						dashboardPart(8, 4, 4, 4, metricTile(appInsightsID, "towncrier.notifications.sent", "Notifications Sent")),
 						// Row 3: Sync & Infrastructure Health
-						dashboardPart(0, 8, 3, 4, metricChartTile(appInsightsID, "Sync Success vs Failure",
+						dashboardPart(0, 8, 4, 4, metricChartTile(appInsightsID, "Sync Success vs Failure",
 							metricSpec{name: "towncrier.polling.authorities_polled", label: "Successes"},
 							metricSpec{name: "towncrier.polling.failures", label: "Failures"})),
-						dashboardPart(3, 8, 3, 4, metricTile(appInsightsID, "towncrier.polling.applications_ingested", "Applications Ingested")),
-						dashboardPart(6, 8, 3, 4, metricTile(appInsightsID, "towncrier.cosmos.request_charge_ru", "Cosmos RU Consumption")),
-						dashboardPart(9, 8, 3, 4, metricTile(appInsightsID, "towncrier.api.errors", "API Errors")),
+						dashboardPart(4, 8, 4, 4, metricTile(appInsightsID, "towncrier.polling.applications_ingested", "Applications Ingested")),
+						dashboardPart(8, 8, 4, 4, metricTile(appInsightsID, "towncrier.api.errors", "API Errors")),
 						// Row 4: PlanIt API Health
 						dashboardPart(0, 12, 6, 4, kqlTile(appInsightsID,
 							"customMetrics | where name == 'towncrier.planit.http_errors' | extend status = tostring(customDimensions['http.response.status_code']) | where status == '429' | summarize Value=sum(value) by timestamp=bin(timestamp, 1h) | render timechart",
