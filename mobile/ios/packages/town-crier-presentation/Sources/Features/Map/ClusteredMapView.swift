@@ -75,9 +75,11 @@
   extension ClusteredMapView {
     /// `MKMapViewDelegate` for ``ClusteredMapView``. Holds no business logic — it
     /// styles cluster markers, routes a single-member tap to
-    /// ``MapViewModel/selectCluster(_:)``, zooms into a multi-member cell, debounces
-    /// the region-change refetch, and renders the zone radius circle. All
-    /// callbacks run on the main thread (MapKit guarantees it), matching the
+    /// ``MapViewModel/selectCluster(_:)``, opens the disambiguation list for an
+    /// unsplittable (stacked) multi-member cell via
+    /// ``MapViewModel/selectStack(_:)`` while zooming into a splittable one,
+    /// debounces the region-change refetch, and renders the zone radius circle.
+    /// All callbacks run on the main thread (MapKit guarantees it), matching the
     /// `@MainActor` isolation.
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
@@ -226,14 +228,22 @@
         mapView.deselectAnnotation(annotation, animated: false)
 
         if cluster.count > 1 {
-          // Zoom into the cell so its members spread into finer cells on the next
-          // (debounced) refetch.
-          var region = mapView.region
-          region.center = annotation.coordinate
-          region.span = MKCoordinateSpan(
-            latitudeDelta: max(region.span.latitudeDelta / 2, 0.0005),
-            longitudeDelta: max(region.span.longitudeDelta / 2, 0.0005))
-          mapView.setRegion(region, animated: true)
+          if cluster.isStacked {
+            // Members are coincident (or closer than the finest grid cell), so no
+            // zoom level can ever split them. Open the disambiguation list of the
+            // stacked applications instead of zooming forever (GH#722).
+            let viewModel = self.viewModel
+            Task { await viewModel.selectStack(cluster) }
+          } else {
+            // Splittable cell: zoom into it so its members spread into finer cells
+            // on the next (debounced) refetch.
+            var region = mapView.region
+            region.center = annotation.coordinate
+            region.span = MKCoordinateSpan(
+              latitudeDelta: max(region.span.latitudeDelta / 2, 0.0005),
+              longitudeDelta: max(region.span.longitudeDelta / 2, 0.0005))
+            mapView.setRegion(region, animated: true)
+          }
         } else {
           let viewModel = self.viewModel
           Task { await viewModel.selectCluster(cluster) }
