@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ApplicationCard } from '../ApplicationCard';
 import {
   undecidedApplication,
@@ -18,6 +19,17 @@ function renderCard(
     <MemoryRouter>
       <ApplicationCard application={app} />
     </MemoryRouter>,
+  );
+}
+
+function LocationStateProbe() {
+  const location = useLocation();
+  const state = (location.state ?? {}) as { authority?: string; name?: string };
+  return (
+    <div>
+      <span data-testid="state-authority">{state.authority ?? ''}</span>
+      <span data-testid="state-name">{state.name ?? ''}</span>
+    </div>
   );
 }
 
@@ -78,6 +90,24 @@ describe('ApplicationCard', () => {
 
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', '/applications/APP-001');
+  });
+
+  it('carries the authority and name in navigation state on the detail link', async () => {
+    const user = userEvent.setup();
+    const app = undecidedApplication();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<ApplicationCard application={app} />} />
+          <Route path="/applications/*" element={<LocationStateProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('link'));
+
+    expect(screen.getByTestId('state-authority')).toHaveTextContent('42');
+    expect(screen.getByTestId('state-name')).toHaveTextContent('2026/0042/FUL');
   });
 
   it('truncates long descriptions with an ellipsis', () => {
