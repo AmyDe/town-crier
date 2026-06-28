@@ -60,6 +60,19 @@ public struct MapView: View {
         ApplicationSummarySheet(application: application, viewModel: viewModel)
       }
     )
+    // Disambiguation list for an unsplittable (stacked) cluster (GH#722). Its
+    // `onDismiss` presents the chosen row's summary, so the list always finishes
+    // dismissing before the summary appears — the two `.sheet`s are never both up.
+    .sheet(
+      item: Binding(
+        get: { viewModel.stackedApplications },
+        set: { _ in viewModel.clearStack() }
+      ),
+      onDismiss: { viewModel.presentPendingSummaryIfNeeded() },
+      content: { stacked in
+        StackedApplicationsSheet(stacked: stacked, viewModel: viewModel)
+      }
+    )
   }
 
   // MARK: - Zone Picker
@@ -174,7 +187,15 @@ public struct MapView: View {
           ) {
             pinView(for: cluster)
               .onTapGesture {
-                Task { await viewModel.selectCluster(cluster) }
+                // Mirror the UIKit didSelect routing: a stacked (unsplittable)
+                // cell opens the disambiguation list; everything else point-reads
+                // its single member (GH#722). Splittable bubbles have no zoom-in
+                // affordance in this macOS fallback, so they no-op as before.
+                if cluster.isStacked {
+                  Task { await viewModel.selectStack(cluster) }
+                } else {
+                  Task { await viewModel.selectCluster(cluster) }
+                }
               }
           }
         }

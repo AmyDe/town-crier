@@ -123,6 +123,75 @@ struct APIPlanningApplicationRepositoryClustersTests {
     #expect(single.memberStatus == .permitted)
   }
 
+  private static let stackedClustersJSON = """
+    [
+      {
+        "latitude": 51.51,
+        "longitude": -0.12,
+        "count": 3,
+        "statusCounts": { "Permitted": 2, "Undecided": 1 },
+        "applicationId": null,
+        "applicationIds": [
+          { "authority": "123", "name": "22/1234/FUL" },
+          { "authority": "123", "name": "22/5678/FUL" },
+          { "authority": "123", "name": "22/9012/FUL" }
+        ]
+      },
+      {
+        "latitude": 51.52,
+        "longitude": -0.14,
+        "count": 80,
+        "statusCounts": { "Permitted": 80 },
+        "applicationId": null
+      }
+    ]
+    """
+
+  @Test("decodes applicationIds into MapCluster.members for an unsplittable cell")
+  func fetchClusters_decodesStackedMembers() async throws {
+    let (sut, _) = makeSUT(responses: [
+      (Data(Self.stackedClustersJSON.utf8), httpResponse(statusCode: 200, headers: [:]))
+    ])
+
+    let clusters = try await sut.fetchClusters(
+      for: testZone, viewport: viewport, zoom: 20, filter: .all)
+
+    #expect(clusters.count == 2)
+
+    // Hoisted out of #require: a key-path-as-function inside the macro trips its
+    // rethrows instrumentation ("call can throw").
+    let stackedCell = clusters.first(where: \.isStacked)
+    let stacked = try #require(stackedCell)
+    #expect(stacked.count == 3)
+    #expect(
+      stacked.members == [
+        PlanningApplicationId(authority: "123", name: "22/1234/FUL"),
+        PlanningApplicationId(authority: "123", name: "22/5678/FUL"),
+        PlanningApplicationId(authority: "123", name: "22/9012/FUL"),
+      ])
+
+    // A splittable multi-member cell omits applicationIds, so members is empty
+    // and the client keeps today's zoom-in behaviour.
+    let splittable = try #require(clusters.first { $0.count == 80 })
+    #expect(splittable.members.isEmpty)
+    #expect(!splittable.isStacked)
+  }
+
+  @Test("absent applicationIds decodes to empty members")
+  func fetchClusters_absentApplicationIds_emptyMembers() async throws {
+    let (sut, _) = makeSUT(responses: [
+      (Data(Self.clustersJSON.utf8), httpResponse(statusCode: 200, headers: [:]))
+    ])
+
+    let clusters = try await sut.fetchClusters(
+      for: testZone, viewport: viewport, zoom: 11, filter: .all)
+
+    // Hoisted out of #expect for the same rethrows-macro reason as above.
+    let allMembersEmpty = clusters.allSatisfy(\.members.isEmpty)
+    #expect(allMembersEmpty)
+    #expect(clusters.allSatisfy { !$0.isStacked })
+  }
+
   @Test("maps a network error to DomainError.networkUnavailable")
   func fetchClusters_networkError_mapsToDomainError() async throws {
     let authService = SpyAuthenticationService()
