@@ -117,7 +117,7 @@ public struct ApplicationListView: View {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: TCSpacing.small) {
           ForEach(viewModel.zones) { zone in
-            ZoneChipView(
+            CapsuleChipView(
               label: zone.name,
               isSelected: zone.id == viewModel.selectedZone?.id
             ) {
@@ -206,10 +206,10 @@ public struct ApplicationListView: View {
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     // The extra `!unreadOnly` guard stays here, not in the shared
-    // `FilterChipView`: when the Unread chip is active, every status chip
+    // `CapsuleChipView`: when the Unread chip is active, every status chip
     // must read as unselected even if `selectedStatusFilter` still matches.
     let isSelected = !viewModel.unreadOnly && viewModel.selectedStatusFilter == status
-    return FilterChipView(label: label, isSelected: isSelected) {
+    return CapsuleChipView(label: label, isSelected: isSelected) {
       viewModel.selectedStatusFilter = status
     }
   }
