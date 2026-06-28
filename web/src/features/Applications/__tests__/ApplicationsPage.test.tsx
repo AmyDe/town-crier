@@ -136,10 +136,12 @@ describe('ApplicationsPage — Unread chip', () => {
     window.localStorage.clear();
   });
 
-  it('renders an Unread chip whose badge equals the distinct count of unread applications loaded', async () => {
+  it("renders an Unread chip whose badge equals the zone's whole unread total (not loaded rows)", async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
+    // Two loaded rows carry an unread event, but the whole zone has five —
+    // the chip must reflect the zone total, not the rows on screen.
     browsePort.fetchByZoneResult = onePage([
       undecidedApplication({
         latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
@@ -149,15 +151,16 @@ describe('ApplicationsPage — Unread chip', () => {
         latestUnreadEvent: { type: 'DecisionUpdate', decision: 'Rejected', createdAt: '2026-04-15T00:00:00Z' },
       }),
     ]);
+    browsePort.unreadTotal = 5;
 
     renderPage({ zonesPort, browsePort });
 
-    const chip = await screen.findByRole('button', { name: /unread \(2\)/i });
+    const chip = await screen.findByRole('button', { name: /unread \(5\)/i });
     expect(chip).toBeInTheDocument();
     expect(chip).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('hides the Unread chip when no loaded application has an unread event', async () => {
+  it('hides the Unread chip when the zone has no unread applications', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
@@ -180,6 +183,7 @@ describe('ApplicationsPage — Unread chip', () => {
     });
     const read = permittedApplication();
     browsePort.fetchByZoneResponder = (q) => onePage(q.unread ? [unread] : [unread, read]);
+    browsePort.unreadTotal = 1;
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort });
@@ -211,6 +215,7 @@ describe('ApplicationsPage — Mark all read', () => {
         latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
       }),
     ]);
+    browsePort.unreadTotal = 1;
 
     renderPage({ zonesPort, browsePort });
 
@@ -226,6 +231,7 @@ describe('ApplicationsPage — Mark all read', () => {
         latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
       }),
     ]);
+    browsePort.unreadTotal = 1;
     const stateRepo = new SpyNotificationStateRepository();
     const user = userEvent.setup();
 

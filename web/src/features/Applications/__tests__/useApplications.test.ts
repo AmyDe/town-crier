@@ -328,27 +328,33 @@ describe('useApplications — keyset pagination (X-Next-Cursor)', () => {
   });
 });
 
-describe('useApplications — unread chip count (derived from loaded rows)', () => {
-  it('counts distinct applications carrying a latestUnreadEvent', async () => {
+describe('useApplications — unread chip count (whole-zone, not loaded pages)', () => {
+  it('sources the count from the whole-zone unread total, independent of loaded pages', async () => {
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = {
-      rows: [
-        undecidedApplication({
-          latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
-        }),
-        permittedApplication(),
-        rejectedApplication({
-          latestUnreadEvent: { type: 'DecisionUpdate', decision: 'Rejected', createdAt: '2026-04-15T00:00:00Z' },
-        }),
-      ],
-      nextCursor: null,
-    };
+    // The main list is multi-page: page 1 has one row with more to come.
+    browsePort.fetchByZoneResponder = (q) =>
+      q.cursor === null
+        ? { rows: [withUid(undecidedApplication(), 'P1')], nextCursor: 'c1' }
+        : { rows: [withUid(permittedApplication(), 'P2')], nextCursor: null };
+    // The whole-zone unread total is larger than any single loaded page.
+    browsePort.unreadTotal = 7;
     const zones = [cambridgeZone()];
 
     const { result } = renderHook(() => useApplications(makeOptions({ browsePort, zones })));
 
-    await waitFor(() => expect(result.current.applications).toHaveLength(3));
-    expect(result.current.unreadCount).toBe(2);
+    // Only page 1 is loaded, yet the chip already reflects the whole zone.
+    await waitFor(() => expect(result.current.unreadCount).toBe(7));
+    expect(result.current.applications).toHaveLength(1);
+    expect(result.current.hasMore).toBe(true);
+    expect(browsePort.countUnreadCalls).toHaveLength(1);
+    expect(browsePort.countUnreadCalls[0]).toBe(cambridgeZone().id);
+
+    // Loading another page must NOT change the whole-zone count or refetch it.
+    const countCallsBefore = browsePort.countUnreadCalls.length;
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.applications).toHaveLength(2));
+    expect(result.current.unreadCount).toBe(7);
+    expect(browsePort.countUnreadCalls.length).toBe(countCallsBefore);
   });
 
   it('does not reach for the notification-state snapshot for the chip count', async () => {
@@ -380,6 +386,7 @@ describe('useApplications — markAllRead', () => {
       ],
       nextCursor: null,
     };
+    browsePort.unreadTotal = 2;
     const stateRepo = new SpyNotificationStateRepository();
     const zones = [cambridgeZone()];
 
@@ -397,6 +404,8 @@ describe('useApplications — markAllRead', () => {
       ],
       nextCursor: null,
     };
+    // Server watermark advances on mark-all-read — the whole-zone count drops.
+    browsePort.unreadTotal = 0;
 
     await act(async () => {
       await result.current.markAllRead();
