@@ -13,7 +13,8 @@ export function ConnectedApplicationDetailPage() {
 
   const applicationRepository: ApplicationRepository = useMemo(
     () => ({
-      fetchApplication: (uid) => applicationsApi(client).getByUid(uid),
+      fetchApplication: (authority, name) =>
+        applicationsApi(client).getByAuthorityAndName(authority, name),
     }),
     [client],
   );
