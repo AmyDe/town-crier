@@ -197,6 +197,13 @@ export interface PlanningApplicationSummary {
   readonly appType: string;
   readonly appState: string;
   readonly areaName: string;
+  /**
+   * Numeric authority (PlanIt area) id. Together with `name` it forms the
+   * composite key the detail page point-reads via
+   * `GET /v1/applications/{authority}/{name...}` — carried in router navigation
+   * state so a tapped list row resolves without a uid endpoint (tc-yxnc).
+   */
+  readonly areaId: AuthorityId;
   readonly startDate: string | null;
   readonly url: string | null;
   /**

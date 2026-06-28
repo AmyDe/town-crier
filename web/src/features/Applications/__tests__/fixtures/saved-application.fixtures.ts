@@ -1,5 +1,5 @@
 import type { SavedApplication, PlanningApplicationSummary } from '../../../../domain/types';
-import { asApplicationUid } from '../../../../domain/types';
+import { asApplicationUid, asAuthorityId } from '../../../../domain/types';
 
 function summaryForUid(uid: string, overrides?: Partial<PlanningApplicationSummary>): PlanningApplicationSummary {
   return {
@@ -11,6 +11,7 @@ function summaryForUid(uid: string, overrides?: Partial<PlanningApplicationSumma
     appType: 'Full Planning',
     appState: 'Undecided',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-01-15',
     url: 'https://planit.org.uk/planapplic/' + uid,
     latestUnreadEvent: null,

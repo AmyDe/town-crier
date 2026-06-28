@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { ApiClient } from '../client';
 import { applicationsApi } from '../applications';
 import type { PlanningApplicationSummary } from '../../domain/types';
-import { asApplicationUid } from '../../domain/types';
+import { asApplicationUid, asAuthorityId } from '../../domain/types';
 
 interface RecordedGet {
   readonly path: string;
@@ -62,6 +62,7 @@ function summary(uid: string): PlanningApplicationSummary {
     appType: 'Full Planning',
     appState: 'Undecided',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-01-01',
     url: null,
     latitude: null,
