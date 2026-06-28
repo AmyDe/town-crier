@@ -1,5 +1,12 @@
 import type { ApiClient } from './client';
-import type { AuthorityListItem, MapCluster, PlanningApplication } from '../domain/types';
+import type {
+  ApplicationsSort,
+  ApplicationStatus,
+  AuthorityListItem,
+  MapCluster,
+  PlanningApplication,
+  PlanningApplicationSummary,
+} from '../domain/types';
 
 interface UserApplicationAuthoritiesResponse {
   readonly authorities: readonly AuthorityListItem[];
@@ -13,6 +20,29 @@ interface MapClusterDto {
   readonly count: number;
   readonly statusCounts: Record<string, number>;
   readonly applicationId: { readonly authority: string; readonly name: string } | null;
+}
+
+/**
+ * Query for one page of the server-driven watch-zone applications list (GH#711,
+ * Slice B). The server owns sort and status/unread filtering; the client follows
+ * the opaque `X-Next-Cursor` header to exhaustion. `status` and `unread` are
+ * mutually exclusive — sending both is a 400, so `unread` wins here defensively
+ * (the calling hook already enforces single-select).
+ */
+export interface GetByZonePageOptions {
+  readonly sort: ApplicationsSort;
+  readonly status: ApplicationStatus | null;
+  readonly unread: boolean;
+  /** Opaque, sort-aware continuation token; `null`/omitted fetches page one. */
+  readonly cursor: string | null;
+  /** Page size; omitted lets the server apply its default (150, ceiling 500). */
+  readonly limit?: number;
+}
+
+/** One page of list rows plus the cursor for the next page (`null` = last). */
+export interface ZoneApplicationsPage {
+  readonly rows: readonly PlanningApplicationSummary[];
+  readonly nextCursor: string | null;
 }
 
 export interface GetClustersOptions {
@@ -42,6 +72,39 @@ export function applicationsApi(client: ApiClient) {
         .then((r) => r.authorities),
     getByZone: (zoneId: string) =>
       client.get<readonly PlanningApplication[]>(`/v1/me/watch-zones/${zoneId}/applications`),
+    /**
+     * Server-driven, keyset-paginated page of a zone's applications (GH#711).
+     * Drives `?sort/status/unread/cursor/limit` server-side and reads the next
+     * cursor from the `X-Next-Cursor` response header (exposed cross-origin by
+     * Slice A's CORS change). The body stays a bare array. The param-less
+     * `getByZone` above is left untouched for backward-compatible callers.
+     */
+    getByZonePaged: (
+      zoneId: string,
+      options: GetByZonePageOptions,
+    ): Promise<ZoneApplicationsPage> => {
+      const params: Record<string, string> = { sort: options.sort };
+      if (options.unread) {
+        params.unread = 'true';
+      } else if (options.status != null) {
+        params.status = options.status;
+      }
+      if (options.cursor != null) {
+        params.cursor = options.cursor;
+      }
+      if (options.limit != null) {
+        params.limit = String(options.limit);
+      }
+      return client
+        .getWithHeaders<readonly PlanningApplicationSummary[]>(
+          `/v1/me/watch-zones/${zoneId}/applications`,
+          params,
+        )
+        .then(({ body, headers }) => ({
+          rows: body,
+          nextCursor: headers.get('X-Next-Cursor'),
+        }));
+    },
     getByUid: (uid: string) =>
       client.get<PlanningApplication>(`/v1/applications/${uid}`),
     /**

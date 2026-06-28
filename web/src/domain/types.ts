@@ -55,6 +55,20 @@ export type NotificationEventType = "NewApplication" | "DecisionUpdate";
 export type SubscriptionTier = "Free" | "Personal" | "Pro";
 
 /**
+ * Server-side sort vocabulary for the watch-zone applications list. These map
+ * one-to-one onto the `?sort=` values the API accepts
+ * (`GET /v1/me/watch-zones/{zoneId}/applications`); an absent param defaults to
+ * `distance` (nearest-first). The picker hides `distance` when no single zone
+ * is active. Mirrors the iOS list sort modes (#682).
+ */
+export type ApplicationsSort =
+  | "recent-activity"
+  | "newest"
+  | "oldest"
+  | "status"
+  | "distance";
+
+/**
  * Matches the API's numeric day-of-week enum.
  * 0 = Sunday, 1 = Monday, ..., 6 = Saturday.
  */
