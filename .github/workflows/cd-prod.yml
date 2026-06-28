@@ -126,11 +126,15 @@ jobs:
               --query digest -o tsv 2>/dev/null
           }
 
-          DIGEST="$(digest_for_tag "$SHA")"
+          # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
+          # substitution aborts the step. Without it, a missing SHA-tagged image
+          # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
+          # CI-only merge) kills the job before the `latest` fallback can run.
+          DIGEST="$(digest_for_tag "$SHA" || true)"
           if [ -n "$DIGEST" ]; then
             echo "Using exact image for SHA $SHA ($DIGEST)"
           else
-            DIGEST="$(digest_for_tag latest)"
+            DIGEST="$(digest_for_tag latest || true)"
             if [ -n "$DIGEST" ]; then
               echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
             else
@@ -188,11 +192,15 @@ jobs:
               --query digest -o tsv 2>/dev/null
           }
 
-          DIGEST="$(digest_for_tag "$SHA")"
+          # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
+          # substitution aborts the step. Without it, a missing SHA-tagged image
+          # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
+          # CI-only merge) kills the job before the `latest` fallback can run.
+          DIGEST="$(digest_for_tag "$SHA" || true)"
           if [ -n "$DIGEST" ]; then
             echo "Using exact image for SHA $SHA ($DIGEST)"
           else
-            DIGEST="$(digest_for_tag latest)"
+            DIGEST="$(digest_for_tag latest || true)"
             if [ -n "$DIGEST" ]; then
               echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
             else
