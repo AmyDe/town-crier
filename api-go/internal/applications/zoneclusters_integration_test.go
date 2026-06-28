@@ -72,6 +72,20 @@ func clusterQuery(gridSize float64, status string) ClusterQuery {
 	}
 }
 
+// finestGridDegrees mirrors the watchzones handler's coalesce threshold policy:
+// baseGridDegrees (45) / 2^maxZoom (20), the zoom-20 cell size (~4.29e-5 deg, ~5 m
+// at UK latitudes). A multi-member cell whose member points span less than this in
+// both axes can never be split by zooming, so it carries an applicationIds list.
+const finestGridDegrees = 45.0 / float64(uint64(1)<<20)
+
+// coalesceQuery is clusterQuery with the finest-grid coalesce threshold wired in,
+// exactly as the handler supplies it, so the member-list behaviour is exercised.
+func coalesceQuery(gridSize float64, status string) ClusterQuery {
+	q := clusterQuery(gridSize, status)
+	q.CoalesceThresholdDegrees = finestGridDegrees
+	return q
+}
+
 // directCount returns COUNT(*) over the same in-radius + in-bbox predicates the
 // cluster query applies, the independent reference for count conservation.
 func directCount(t *testing.T, store *PostgresStore, q ClusterQuery) int {
@@ -426,7 +440,7 @@ func TestPostgresStore_FindClustersInZone_ExplainUsesGiSTIndex(t *testing.T) {
 	ctx := context.Background()
 
 	q := clusterQuery(0.01, "")
-	args := append([]any{}, q.Longitude, q.Latitude, q.RadiusMetres, q.GridSizeDegrees, q.West, q.South, q.East, q.North)
+	args := append([]any{}, q.Longitude, q.Latitude, q.RadiusMetres, q.GridSizeDegrees, q.West, q.South, q.East, q.North, q.CoalesceThresholdDegrees)
 
 	// SET enable_seqscan = off and the EXPLAIN must run on the SAME connection
 	// (the setting is session state), so acquire one pooled connection for both.
@@ -466,3 +480,127 @@ func TestPostgresStore_FindClustersInZone_ExplainUsesGiSTIndex(t *testing.T) {
 }
 
 func floatNear(a, b, tol float64) bool { return math.Abs(a-b) <= tol }
+
+// memberNames projects a member list to its application names for set comparison.
+func memberNames(members []PlanningApplicationID) []string {
+	names := make([]string, len(members))
+	for i, m := range members {
+		names[i] = m.Name
+	}
+	return names
+}
+
+// equalStringSet reports whether a and b hold the same names (order-independent).
+func equalStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// TestFindClustersInZone_CoincidentApplications_ReturnsMemberList is the honest
+// real-PostGIS coverage for the applicationIds member list — the ST_SnapToGrid /
+// ST_Extent behaviour a fake store cannot model:
+//
+//   - coincident points (a single address with several planning rounds) share a
+//     cell at the finest grid, their extent is 0 < threshold, so the cell carries
+//     the full member list — the dead-end the issue fixes;
+//   - a multi-member cell whose points span wider than the finest grid is still
+//     splittable by zoom, so its member list stays nil (unchanged behaviour);
+//   - the ?status= filter restricts the member list to matching applications, so a
+//     filtered map never lists an application the filter excludes.
+func TestFindClustersInZone_CoincidentApplications_ReturnsMemberList(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("coincident points at the finest grid surface the member list", func(t *testing.T) {
+		store := newAppPGStore(t)
+		// Three applications at the IDENTICAL coordinate: no grid size can split them.
+		for _, name := range []string{"A1", "A2", "A3"} {
+			if err := store.Upsert(ctx, clusterApp(name, 100, 0.0, 0.0)); err != nil {
+				t.Fatalf("Upsert %s: %v", name, err)
+			}
+		}
+
+		clusters, err := store.FindClustersInZone(ctx, coalesceQuery(finestGridDegrees, ""))
+		if err != nil {
+			t.Fatalf("FindClustersInZone: %v", err)
+		}
+		if len(clusters) != 1 {
+			t.Fatalf("got %d clusters, want 1 (coincident points share a cell at zoom 20)", len(clusters))
+		}
+		c := clusters[0]
+		if c.Count != 3 {
+			t.Errorf("count: got %d, want 3", c.Count)
+		}
+		if got, want := memberNames(c.Members), []string{"A1", "A2", "A3"}; !equalStringSet(got, want) {
+			t.Errorf("applicationIds names: got %v, want %v", got, want)
+		}
+		for _, m := range c.Members {
+			if m.Authority != "100" {
+				t.Errorf("member authority: got %q, want %q (area_id as decimal string)", m.Authority, "100")
+			}
+		}
+	})
+
+	t.Run("splittable multi-member cell yields a nil member list", func(t *testing.T) {
+		store := newAppPGStore(t)
+		// Two applications 0.001 deg apart — far wider than the finest grid cell.
+		// They fall in one coarse-grid cell now, but zooming in would separate them,
+		// so the cell is splittable and offers no member list.
+		for i, off := range [2]float64{0.000, 0.001} {
+			if err := store.Upsert(ctx, clusterApp("S"+strconv.Itoa(i), 100, off, 0.0)); err != nil {
+				t.Fatalf("Upsert: %v", err)
+			}
+		}
+
+		clusters, err := store.FindClustersInZone(ctx, coalesceQuery(0.01, ""))
+		if err != nil {
+			t.Fatalf("FindClustersInZone: %v", err)
+		}
+		if len(clusters) != 1 {
+			t.Fatalf("got %d clusters, want 1 coarse cell", len(clusters))
+		}
+		if clusters[0].Count != 2 {
+			t.Fatalf("count: got %d, want 2 (multi-member but splittable)", clusters[0].Count)
+		}
+		if clusters[0].Members != nil {
+			t.Errorf("splittable cell must have nil Members, got %v", clusters[0].Members)
+		}
+	})
+
+	t.Run("status filter restricts the member list", func(t *testing.T) {
+		store := newAppPGStore(t)
+		// Five coincident applications: three Permitted, two Rejected.
+		for _, s := range []struct{ name, state string }{
+			{"P1", "Permitted"}, {"P2", "Permitted"}, {"P3", "Permitted"},
+			{"R1", "Rejected"}, {"R2", "Rejected"},
+		} {
+			if err := store.Upsert(ctx, withState(clusterApp(s.name, 100, 0.0, 0.0), pgPtr(s.state))); err != nil {
+				t.Fatalf("Upsert %s: %v", s.name, err)
+			}
+		}
+
+		clusters, err := store.FindClustersInZone(ctx, coalesceQuery(finestGridDegrees, "Permitted"))
+		if err != nil {
+			t.Fatalf("FindClustersInZone: %v", err)
+		}
+		if len(clusters) != 1 {
+			t.Fatalf("got %d clusters, want 1", len(clusters))
+		}
+		if got, want := memberNames(clusters[0].Members), []string{"P1", "P2", "P3"}; !equalStringSet(got, want) {
+			t.Errorf("filtered applicationIds: got %v, want only the Permitted members %v", got, want)
+		}
+	})
+}
