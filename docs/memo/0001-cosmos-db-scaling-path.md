@@ -4,7 +4,9 @@ Date: 2026-04-02
 
 ## Status
 
-Open
+Superseded by ADR [0032](../adr/0032-consolidate-datastore-on-postgres-postgis.md)
+
+> Resolved 2026-06-28. This memo's revisit trigger fired: Cosmos RU cost reached ~£37/month against the "~£15/month consistently" threshold set below, and the product's geographic query shape kept fighting the `/authorityCode` partition key. The migration target named here — Postgres + PostGIS — is exactly what shipped; Cosmos DB was retired entirely on 2026-06-27. The change-feed rearchitecture this memo feared as "the hardest part" never applied, because the Go system has no change feed. The decision is recorded in [ADR 0032](../adr/0032-consolidate-datastore-on-postgres-postgis.md) and the full analysis in [memo 0010](0010-cosmos-partition-strategy-and-postgres-postgis.md). Analysis below retained as the rationale trail.
 
 ## Question
 

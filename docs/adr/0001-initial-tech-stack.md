@@ -3,7 +3,7 @@
 Date: 2026-03-16
 
 ## Status
-Accepted — the backend (item 2) and IaC (item 7) technology choices have since been reversed by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md) and [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md), and the admin CLI (added after this ADR, originally .NET) was migrated by [ADR 0030](0030-migrate-admin-cli-from-dotnet-to-go.md); **.NET is no longer used anywhere in the repository.** All non-.NET choices stand: iOS (Swift), Azure hosting, Cosmos DB (Serverless), the Cosmos-SDK / no-ORM data-access pattern, and GitHub Actions.
+Accepted — the backend (item 2) and IaC (item 7) technology choices have since been reversed by [ADR 0028](0028-migrate-backend-from-dotnet-to-go.md) and [ADR 0029](0029-migrate-infrastructure-from-dotnet-to-go.md), and the admin CLI (added after this ADR, originally .NET) was migrated by [ADR 0030](0030-migrate-admin-cli-from-dotnet-to-go.md); **.NET is no longer used anywhere in the repository.** The database (item 4) and the Cosmos-SDK / no-ORM data-access pattern (item 5) have since been reversed by [ADR 0032](0032-consolidate-datastore-on-postgres-postgis.md), which retired Cosmos DB for a single Postgres + PostGIS datastore accessed via the `pgx` driver (still no ORM). The remaining original choices stand: iOS (Swift), Azure hosting, and GitHub Actions.
 
 ## Context
 The project "town-crier" requires a mobile application and a supporting backend API. The primary mobile platform is iOS, and the backend needs to be hosted in a cloud environment with strong enterprise support and scalability.
