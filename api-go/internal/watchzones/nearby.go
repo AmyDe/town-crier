@@ -517,6 +517,12 @@ func (h *handler) clusters(w http.ResponseWriter, r *http.Request) {
 		North:           box.north,
 		GridSizeDegrees: gridSize,
 		Status:          status,
+		// The coalesce threshold is the finest (zoom-20) grid cell size, not the
+		// request's own grid: a multi-member cell whose member points already span
+		// less than this can never be split by zooming, so the store attaches an
+		// applicationIds member list. Deriving it from the same zoomGridDegrees
+		// table keeps it tracking the zoom -> grid policy with no separate constant.
+		CoalesceThresholdDegrees: zoomGridDegrees[maxZoom],
 	})
 	if err != nil {
 		h.serverError(w, r, "find clusters in zone", err)
