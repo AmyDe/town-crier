@@ -30,3 +30,36 @@
 .leaflet-popup-close-button:focus {
   color: var(--tc-text-primary);
 }
+
+/* ==========================================================================
+   Cluster markers (GH#698)
+   An amber count bubble for multi-member cells; a status-coloured pin for
+   single-member cells. Colours come from design tokens (the bubble's amber
+   inline, the pin's status colour via the --tc-pin-color custom property set
+   inline by markerIcons.ts), so both follow the active theme.
+   ========================================================================== */
+
+.tc-cluster-bubble {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--tc-radius-full);
+  color: var(--tc-text-on-accent);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-bold);
+  border: 2px solid var(--tc-surface);
+  box-shadow: var(--tc-shadow-elevated);
+  cursor: pointer;
+}
+
+.tc-status-pin {
+  width: 25px;
+  height: 41px;
+  cursor: pointer;
+}
+
+.tc-status-pin svg path {
+  fill: var(--tc-pin-color);
+}
