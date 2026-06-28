@@ -270,14 +270,6 @@ export interface AuthorityListItem {
   readonly areaType: string;
 }
 
-export interface AuthorityDetail {
-  readonly id: AuthorityId;
-  readonly name: string;
-  readonly areaType: string;
-  readonly councilUrl: string | null;
-  readonly planningUrl: string | null;
-}
-
 // ---------------------------------------------------------------------------
 // Geocoding
 // ---------------------------------------------------------------------------
@@ -333,15 +325,6 @@ export interface UpdateZonePreferencesRequest {
   readonly newApplicationEmail: boolean;
   readonly decisionPush: boolean;
   readonly decisionEmail: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Paginated result types
-// ---------------------------------------------------------------------------
-
-export interface AuthoritiesResult {
-  readonly authorities: readonly AuthorityListItem[];
-  readonly total: number;
 }
 
 // ---------------------------------------------------------------------------
