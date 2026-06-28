@@ -2,12 +2,12 @@ import { RedeemError, type RedeemErrorCode, type RedeemResult } from './types';
 
 export type RedeemOfferCodeClient = (code: string) => Promise<RedeemResult>;
 
-const KNOWN_SERVER_ERROR_CODES: Record<string, RedeemErrorCode> = {
-  invalid_code_format: 'invalid_code_format',
-  invalid_code: 'invalid_code',
-  code_already_redeemed: 'code_already_redeemed',
-  already_subscribed: 'already_subscribed',
-};
+const KNOWN_SERVER_ERROR_CODES = new Set<string>([
+  'invalid_code_format',
+  'invalid_code',
+  'code_already_redeemed',
+  'already_subscribed',
+]);
 
 export function createRedeemOfferCodeClient(
   getAccessToken: () => Promise<string>,
@@ -31,8 +31,8 @@ export function createRedeemOfferCodeClient(
 
     const serverCode = await readServerErrorCode(response);
     const mapped: RedeemErrorCode =
-      serverCode !== null && serverCode in KNOWN_SERVER_ERROR_CODES
-        ? KNOWN_SERVER_ERROR_CODES[serverCode]!
+      serverCode !== null && KNOWN_SERVER_ERROR_CODES.has(serverCode)
+        ? (serverCode as RedeemErrorCode)
         : 'network';
     throw new RedeemError(mapped, `Redeem failed (${response.status})`);
   };
