@@ -266,35 +266,28 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
 	}
+	// Both env stacks (dev + prod — the only environment stacks) run on Postgres
+	// single-store (memo 0010 / GH #669 prod, GH #681 dev). The API authenticates to
+	// town_crier_<env> via Entra managed identity (POSTGRES_AUTH); the connection vars are
+	// explicit and identical across envs except POSTGRES_DB. env is exactly "dev"/"prod"
+	// here, so "town_crier_"+env mirrors the addGoWorkerEnv idiom. AZURE_CLIENT_ID is already
+	// set above and reused for the token fetch — no duplication.
+	apiEnvVars = append(apiEnvVars,
+		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
+		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_" + env)},
+		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
+		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
+		app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
+	)
 	if env == "dev" {
-		// Dev runs on Postgres single-store, mirroring prod (GH #681). The dev API
-		// authenticates to town_crier_dev via Entra managed identity (POSTGRES_AUTH); the
-		// connection vars are explicit. This block is now identical to the prod block below
-		// except POSTGRES_DB=town_crier_dev.
+		// Accept Sandbox StoreKit transactions on dev: TestFlight builds route to the dev
+		// API (api-dev) and TestFlight purchases carry environment="Sandbox". Without this,
+		// APPLE_ENVIRONMENT falls back to the code default "Production" only and the verify
+		// handler rejects every TestFlight purchase, so pro features never unlock (tc-81c9).
+		// Prod deliberately stays Production-only (omits this var) so a sandbox tester cannot
+		// self-grant a paid tier against production.
 		apiEnvVars = append(apiEnvVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_dev")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
-			// Accept Sandbox StoreKit transactions on dev: TestFlight builds route to the dev
-			// API (api-dev) and TestFlight purchases carry environment="Sandbox". Without this,
-			// APPLE_ENVIRONMENT falls back to the code default "Production" only and the verify
-			// handler rejects every TestFlight purchase, so pro features never unlock (tc-81c9).
-			// Prod deliberately stays Production-only (omits this var) so a sandbox tester cannot
-			// self-grant a paid tier against production.
 			app.EnvironmentVarArgs{Name: pulumi.String("APPLE_ENVIRONMENT"), Value: pulumi.String("Sandbox,Production")},
-		)
-	} else if env == "prod" {
-		// Prod runs on Postgres single-store (memo 0010 / GH #669, bead tc-hpd2.14). The prod
-		// API authenticates to town_crier_prod via Entra managed identity (POSTGRES_AUTH); the
-		// connection vars are explicit.
-		apiEnvVars = append(apiEnvVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_HOST"), Value: shared.GetStringOutput(pulumi.String("postgresServerFqdn"))},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_USER"), Value: pulumi.String("towncrier_api")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_SSLMODE"), Value: pulumi.String("require")},
-			app.EnvironmentVarArgs{Name: pulumi.String("POSTGRES_AUTH"), Value: pulumi.String("azure-managed-identity")},
 		)
 	}
 
