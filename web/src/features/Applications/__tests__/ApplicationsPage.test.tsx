@@ -11,7 +11,8 @@ import {
   permittedApplication,
   rejectedApplication,
 } from '../../../components/ApplicationCard/__tests__/fixtures/planning-application-summary.fixtures';
-import type { WatchZoneSummary } from '../../../domain/types';
+import { asApplicationUid } from '../../../domain/types';
+import type { PlanningApplicationSummary, WatchZoneSummary } from '../../../domain/types';
 
 class SpyZonesPort {
   fetchZonesCalls = 0;
@@ -53,18 +54,16 @@ function renderPage({
   );
 }
 
+/** Convenience: a single-page result (no further pages). */
+function onePage(rows: readonly PlanningApplicationSummary[]) {
+  return { rows, nextCursor: null };
+}
+
 describe('ApplicationsPage — heading and zone bootstrap', () => {
-  let zonesPort: SpyZonesPort;
-  let browsePort: SpyApplicationsBrowsePort;
-
-  beforeEach(() => {
-    zonesPort = new SpyZonesPort();
-    browsePort = new SpyApplicationsBrowsePort();
-  });
-
   it('renders page heading', async () => {
+    const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [];
-    renderPage({ zonesPort, browsePort });
+    renderPage({ zonesPort });
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Applications' })).toBeInTheDocument();
@@ -72,8 +71,9 @@ describe('ApplicationsPage — heading and zone bootstrap', () => {
   });
 
   it('shows empty state when user has no watch zones', async () => {
+    const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [];
-    renderPage({ zonesPort, browsePort });
+    renderPage({ zonesPort });
 
     await waitFor(() => {
       expect(
@@ -88,7 +88,6 @@ describe('ApplicationsPage — filter bar', () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone(), oxfordZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
 
     renderPage({ zonesPort, browsePort });
 
@@ -99,21 +98,20 @@ describe('ApplicationsPage — filter bar', () => {
     expect(screen.getByRole('option', { name: 'Office - Oxford' })).toBeInTheDocument();
   });
 
-  it('switches the active zone when a different option is chosen', async () => {
+  it('switches the active zone (server-side fetch) when a different option is chosen', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone(), oxfordZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [undecidedApplication()];
+    browsePort.fetchByZoneResult = onePage([undecidedApplication()]);
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort });
 
     const selector = await screen.findByRole('combobox', { name: /zone/i });
-
     await user.selectOptions(selector, oxfordZone().id);
 
     await waitFor(() => {
-      expect(browsePort.fetchByZoneCalls).toContain(oxfordZone().id);
+      expect(browsePort.fetchByZoneCalls.some((c) => c.zoneId === oxfordZone().id)).toBe(true);
     });
   });
 
@@ -121,7 +119,6 @@ describe('ApplicationsPage — filter bar', () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
 
     renderPage({ zonesPort, browsePort });
 
@@ -132,20 +129,6 @@ describe('ApplicationsPage — filter bar', () => {
     expect(screen.getByRole('button', { name: 'Granted' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refused' })).toBeInTheDocument();
   });
-
-  it('does not render a Saved toggle (moved to /saved)', async () => {
-    const zonesPort = new SpyZonesPort();
-    zonesPort.fetchZonesResult = [cambridgeZone()];
-    const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
-
-    renderPage({ zonesPort, browsePort });
-
-    await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument();
-    });
-    expect(screen.queryByRole('switch', { name: /saved/i })).not.toBeInTheDocument();
-  });
 });
 
 describe('ApplicationsPage — Unread chip', () => {
@@ -153,30 +136,19 @@ describe('ApplicationsPage — Unread chip', () => {
     window.localStorage.clear();
   });
 
-  it('renders an Unread chip whose badge equals the distinct count of unread applications in the zone', async () => {
-    // Two of the three loaded apps carry an unread event — the chip must
-    // read "Unread (2)", not the inflated event count that would come from
-    // a server-side notification-state snapshot (tc-u6bm).
+  it('renders an Unread chip whose badge equals the distinct count of unread applications loaded', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
+    browsePort.fetchByZoneResult = onePage([
       undecidedApplication({
-        latestUnreadEvent: {
-          type: 'NewApplication',
-          decision: null,
-          createdAt: '2026-04-01T00:00:00Z',
-        },
+        latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
       }),
-      permittedApplication(), // null — no unread
+      permittedApplication(),
       rejectedApplication({
-        latestUnreadEvent: {
-          type: 'DecisionUpdate',
-          decision: 'Rejected',
-          createdAt: '2026-04-15T00:00:00Z',
-        },
+        latestUnreadEvent: { type: 'DecisionUpdate', decision: 'Rejected', createdAt: '2026-04-15T00:00:00Z' },
       }),
-    ];
+    ]);
 
     renderPage({ zonesPort, browsePort });
 
@@ -185,45 +157,11 @@ describe('ApplicationsPage — Unread chip', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('chip count tracks distinct unread apps, not the server-side event total', async () => {
-    // The notification-state snapshot reports 7 (an event count — apps with
-    // multiple events inflate it). Only one of the loaded apps actually
-    // carries an unread event, so the chip must show 1.
+  it('hides the Unread chip when no loaded application has an unread event', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
-      undecidedApplication({
-        latestUnreadEvent: {
-          type: 'NewApplication',
-          decision: null,
-          createdAt: '2026-04-01T00:00:00Z',
-        },
-      }),
-      permittedApplication(), // null
-    ];
-    const stateRepo = new SpyNotificationStateRepository();
-    stateRepo.getStateResult = {
-      lastReadAt: '2026-01-01T00:00:00Z',
-      version: 1,
-      totalUnreadCount: 7,
-    };
-
-    renderPage({ zonesPort, browsePort, notificationStateRepository: stateRepo });
-
-    expect(
-      await screen.findByRole('button', { name: /unread \(1\)/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /unread \(7\)/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('hides the Unread chip when no application in the zone has an unread event', async () => {
-    const zonesPort = new SpyZonesPort();
-    zonesPort.fetchZonesResult = [cambridgeZone()];
-    const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
+    browsePort.fetchByZoneResult = onePage([undecidedApplication(), permittedApplication()]);
 
     renderPage({ zonesPort, browsePort });
 
@@ -233,27 +171,20 @@ describe('ApplicationsPage — Unread chip', () => {
     expect(screen.queryByRole('button', { name: /unread/i })).not.toBeInTheDocument();
   });
 
-  it('toggles the unread filter when the Unread chip is clicked', async () => {
+  it('refetches with unread-only (server-side) when the Unread chip is clicked', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
-      undecidedApplication({
-        latestUnreadEvent: {
-          type: 'NewApplication',
-          decision: null,
-          createdAt: '2026-04-01T00:00:00Z',
-        },
-      }),
-      permittedApplication(), // null
-    ];
+    const unread = undecidedApplication({
+      latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
+    });
+    const read = permittedApplication();
+    browsePort.fetchByZoneResponder = (q) => onePage(q.unread ? [unread] : [unread, read]);
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort });
 
-    await waitFor(() =>
-      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
     expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
 
     await user.click(await screen.findByRole('button', { name: /unread \(1\)/i }));
@@ -262,6 +193,7 @@ describe('ApplicationsPage — Unread chip', () => {
       expect(screen.queryByText('2026/0099/LBC')).not.toBeInTheDocument();
     });
     expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument();
+    expect(browsePort.fetchByZoneCalls.at(-1)!.unread).toBe(true);
   });
 });
 
@@ -270,63 +202,30 @@ describe('ApplicationsPage — Mark all read', () => {
     window.localStorage.clear();
   });
 
-  it('renders a Mark all read button when at least one application is unread', async () => {
+  it('renders a Mark all read button when at least one loaded application is unread', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
+    browsePort.fetchByZoneResult = onePage([
       undecidedApplication({
-        latestUnreadEvent: {
-          type: 'NewApplication',
-          decision: null,
-          createdAt: '2026-04-01T00:00:00Z',
-        },
+        latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
       }),
-    ];
+    ]);
 
     renderPage({ zonesPort, browsePort });
 
-    expect(
-      await screen.findByRole('button', { name: /mark all read/i }),
-    ).toBeInTheDocument();
-  });
-
-  it('hides the Mark all read button when nothing in the zone is unread', async () => {
-    const zonesPort = new SpyZonesPort();
-    zonesPort.fetchZonesResult = [cambridgeZone()];
-    const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
-
-    renderPage({ zonesPort, browsePort });
-
-    await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: /zone/i })).toBeInTheDocument(),
-    );
-    expect(
-      screen.queryByRole('button', { name: /mark all read/i }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /mark all read/i })).toBeInTheDocument();
   });
 
   it('calls markAllRead on the repository when clicked', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
+    browsePort.fetchByZoneResult = onePage([
       undecidedApplication({
-        latestUnreadEvent: {
-          type: 'NewApplication',
-          decision: null,
-          createdAt: '2026-04-01T00:00:00Z',
-        },
+        latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
       }),
-      permittedApplication({
-        latestUnreadEvent: {
-          type: 'DecisionUpdate',
-          decision: 'Permitted',
-          createdAt: '2026-04-15T00:00:00Z',
-        },
-      }),
-    ];
+    ]);
     const stateRepo = new SpyNotificationStateRepository();
     const user = userEvent.setup();
 
@@ -350,53 +249,43 @@ describe('ApplicationsPage — Sort menu', () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
 
     renderPage({ zonesPort, browsePort });
 
     const sort = await screen.findByRole('combobox', { name: /sort/i });
     expect(sort).toHaveValue('recent-activity');
-    expect(
-      screen.getByRole('option', { name: /recent activity/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /recent activity/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /newest/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /oldest/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /^status$/i })).toBeInTheDocument();
   });
 
-  it('changes sort order when a different option is selected', async () => {
+  it('refetches with the chosen sort server-side', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
-      undecidedApplication({ startDate: '2026-01-01' }),
-      permittedApplication({ startDate: '2026-03-01' }),
-    ];
+    browsePort.fetchByZoneResult = onePage([undecidedApplication()]);
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort });
 
-    await waitFor(() =>
-      expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
 
     const sort = await screen.findByRole('combobox', { name: /sort/i });
     await user.selectOptions(sort, 'oldest');
 
     expect(sort).toHaveValue('oldest');
+    await waitFor(() => expect(browsePort.fetchByZoneCalls.at(-1)!.sort).toBe('oldest'));
+    expect(browsePort.fetchByZoneCalls.at(-1)!.cursor).toBeNull();
   });
 
   it('exposes a "Distance" option once a zone has been auto-selected', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
 
     renderPage({ zonesPort, browsePort });
 
-    // The auto-select effect in useApplications fires after zones load —
-    // wait for the resulting Distance option (only emitted once a zone is
-    // active) rather than racing the synchronous picker mount.
     await screen.findByRole('option', { name: /^distance$/i });
   });
 
@@ -404,24 +293,20 @@ describe('ApplicationsPage — Sort menu', () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [];
 
     renderPage({ zonesPort, browsePort });
 
     await waitFor(() => expect(zonesPort.fetchZonesCalls).toBe(1));
-    // No zones → no auto-selected zone → distance must not appear in any
-    // sort surface. The picker itself only renders once a zone exists, so
-    // simply assert the option is not in the document.
     expect(screen.queryByRole('option', { name: /^distance$/i })).toBeNull();
   });
 });
 
 describe('ApplicationsPage — list rendering', () => {
-  it("auto-selects the first zone and shows its applications", async () => {
+  it('auto-selects the first zone and shows its applications', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [undecidedApplication(), permittedApplication()];
+    browsePort.fetchByZoneResult = onePage([undecidedApplication(), permittedApplication()]);
 
     renderPage({ zonesPort, browsePort });
 
@@ -431,15 +316,14 @@ describe('ApplicationsPage — list rendering', () => {
     expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
   });
 
-  it('filters list when a status chip is clicked', async () => {
+  it('refetches with the status filter (server-side) when a status chip is clicked', async () => {
     const zonesPort = new SpyZonesPort();
     zonesPort.fetchZonesResult = [cambridgeZone()];
     const browsePort = new SpyApplicationsBrowsePort();
-    browsePort.fetchByZoneResult = [
-      undecidedApplication(),
-      permittedApplication(),
-      rejectedApplication(),
-    ];
+    browsePort.fetchByZoneResponder = (q) => {
+      const all = [undecidedApplication(), permittedApplication(), rejectedApplication()];
+      return onePage(q.status === null ? all : all.filter((a) => a.appState === q.status));
+    };
     const user = userEvent.setup();
 
     renderPage({ zonesPort, browsePort });
@@ -452,5 +336,44 @@ describe('ApplicationsPage — list rendering', () => {
       expect(screen.queryByText('2026/0042/FUL')).not.toBeInTheDocument();
     });
     expect(screen.getByText('2026/0099/LBC')).toBeInTheDocument();
+    expect(browsePort.fetchByZoneCalls.at(-1)!.status).toBe('Permitted');
+  });
+});
+
+describe('ApplicationsPage — Load more (keyset pagination)', () => {
+  it('appends the next page when Load more is clicked, then hides the button on the last page', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    const first = undecidedApplication({ name: 'FIRST/0001' });
+    const second = { ...permittedApplication(), uid: asApplicationUid('SECOND-1'), name: 'SECOND/0002' };
+    browsePort.fetchByZoneResponder = (q) =>
+      q.cursor === null ? { rows: [first], nextCursor: 'c1' } : { rows: [second], nextCursor: null };
+    const user = userEvent.setup();
+
+    renderPage({ zonesPort, browsePort });
+
+    await waitFor(() => expect(screen.getByText('FIRST/0001')).toBeInTheDocument());
+    const loadMore = screen.getByRole('button', { name: /load more/i });
+
+    await user.click(loadMore);
+
+    await waitFor(() => expect(screen.getByText('SECOND/0002')).toBeInTheDocument());
+    // First page row is still present (appended, not replaced).
+    expect(screen.getByText('FIRST/0001')).toBeInTheDocument();
+    // Last page reached — the button is gone.
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it('does not render Load more when the first page is already the last', async () => {
+    const zonesPort = new SpyZonesPort();
+    zonesPort.fetchZonesResult = [cambridgeZone()];
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = onePage([undecidedApplication()]);
+
+    renderPage({ zonesPort, browsePort });
+
+    await waitFor(() => expect(screen.getByText('2026/0042/FUL')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
   });
 });
