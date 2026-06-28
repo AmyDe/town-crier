@@ -105,8 +105,6 @@ export function applicationsApi(client: ApiClient) {
           nextCursor: headers.get('X-Next-Cursor'),
         }));
     },
-    getByUid: (uid: string) =>
-      client.get<PlanningApplication>(`/v1/applications/${uid}`),
     /**
      * Fetches the server-computed cluster aggregates for the visible viewport of
      * a single watch zone (GH#698). The map renders these instead of draining
