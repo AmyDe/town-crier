@@ -1,9 +1,20 @@
-# Deploys a new image to an Azure Container App, then deactivates the
+# Deploys a new image to an Azure Container App, verifies the now-active
+# revision actually runs that image (by digest), then deactivates the
 # previously-active revision to keep the revision list clean.
+#
+# A unique --revision-suffix (run id + attempt) is passed so a fresh revision
+# always rolls — even when the image digest is unchanged — which sidesteps the
+# silent ":latest == :latest" no-op that froze prod (tc-rh4w). The verify step
+# then fails the build if the active revision does NOT run the deployed digest,
+# so a stale/no-op deploy can never report green again.
+#
+# Callers may pass the image as a digest ref (registry/repo@sha256:…, as
+# cd-prod does) or a tag ref (registry/repo:tag, as cd-dev does). Verification
+# normalises both to a digest before comparing.
 #
 # Assumes azure/login has already been called in an earlier step.
 name: Deploy Container App
-description: Update a Container App with a new image and deactivate the old revision
+description: Update a Container App with a new image, verify it took, and deactivate the old revision
 
 inputs:
   app-name:
@@ -13,7 +24,10 @@ inputs:
     description: Azure resource group
     required: true
   image:
-    description: Full image reference including tag (e.g., myregistry.azurecr.io/app:sha)
+    description: >-
+      Full image reference — digest ref (myregistry.azurecr.io/app@sha256:…,
+      preferred) or tag ref (myregistry.azurecr.io/app:sha). Verification
+      normalises either form to a digest.
     required: true
 
 outputs:
@@ -37,10 +51,79 @@ runs:
     - name: Deploy new image
       shell: bash
       run: |
+        set -euo pipefail
+        # Force a unique revision per run-attempt so a new revision always rolls
+        # (belt-and-braces on top of digest deploys). ACA suffix rules: lowercase
+        # [a-z0-9-], start alphabetic; the leading 'r' guarantees that and the
+        # run id/attempt are numeric. <app>--<suffix> stays well under 64 chars.
+        SUFFIX="r${{ github.run_id }}-${{ github.run_attempt }}"
+        SUFFIX="$(printf '%s' "$SUFFIX" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-')"
         az containerapp update \
           --name "${{ inputs.app-name }}" \
           --resource-group "${{ inputs.resource-group }}" \
-          --image "${{ inputs.image }}"
+          --image "${{ inputs.image }}" \
+          --revision-suffix "$SUFFIX"
+
+    - name: Verify active revision runs the deployed image
+      shell: bash
+      run: |
+        set -euo pipefail
+        APP="${{ inputs.app-name }}"
+        RG="${{ inputs.resource-group }}"
+        WANT_REF="${{ inputs.image }}"
+
+        # Resolve any image ref (digest form or tag form) to its sha256 digest.
+        # A digest ref is returned as-is; a tag ref is resolved against ACR.
+        digest_of() {
+          local ref="$1" server registry repo_ref
+          case "$ref" in
+            *@sha256:*)
+              printf '%s' "${ref##*@}"
+              ;;
+            *)
+              server="${ref%%/*}"
+              registry="${server%%.*}"
+              repo_ref="${ref#*/}"
+              az acr repository show \
+                --name "$registry" \
+                --image "$repo_ref" \
+                --query digest -o tsv
+              ;;
+          esac
+        }
+
+        WANT_DIGEST="$(digest_of "$WANT_REF")"
+
+        LATEST_REV="$(az containerapp show \
+          --name "$APP" \
+          --resource-group "$RG" \
+          --query "properties.latestRevisionName" -o tsv)"
+
+        RUNNING_REF="$(az containerapp revision show \
+          --name "$APP" \
+          --resource-group "$RG" \
+          --revision "$LATEST_REV" \
+          --query "properties.template.containers[0].image" -o tsv)"
+
+        GOT_DIGEST="$(digest_of "$RUNNING_REF")"
+
+        echo "Deployed image  : $WANT_REF"
+        echo "Wanted digest   : $WANT_DIGEST"
+        echo "Latest revision : $LATEST_REV"
+        echo "Running image   : $RUNNING_REF"
+        echo "Running digest  : $GOT_DIGEST"
+
+        if [ -z "$WANT_DIGEST" ] || [ -z "$GOT_DIGEST" ]; then
+          echo "::error::Could not resolve image digests (want='$WANT_DIGEST' got='$GOT_DIGEST')"
+          exit 1
+        fi
+
+        if [ "$WANT_DIGEST" != "$GOT_DIGEST" ]; then
+          echo "::error::Deploy did not take: active revision $LATEST_REV runs $GOT_DIGEST but we deployed $WANT_DIGEST"
+          exit 1
+        fi
+
+        echo "Verified: active revision $LATEST_REV runs the deployed digest."
 
     - name: Deactivate old revision
       if: steps.old-revision.outputs.revision != ''

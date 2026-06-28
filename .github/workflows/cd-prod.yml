@@ -5,6 +5,7 @@
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
 #   AZURE_TENANT_ID        — Azure AD tenant
 #   AZURE_SUBSCRIPTION_ID  — Azure subscription
+#   ACR_LOGIN_SERVER       — Azure Container Registry login server (for digest resolve)
 #   PULUMI_ACCESS_TOKEN    — Pulumi Cloud access token
 #   ADMIN_API_KEY          — API key for admin endpoints
 #
@@ -104,32 +105,47 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resolve Go API image tag
-        id: check-image
+      # Resolve to an IMMUTABLE DIGEST (registry/repo@sha256:…), never a
+      # mutable tag. Prefer the exact tag-SHA image; else fall back to the
+      # current :latest digest; else fail. Deploying by digest means a code
+      # change rolls a new revision (digest differs) and an unchanged image is
+      # a legitimate no-op — the silent ":latest string == :latest string"
+      # no-op that froze prod becomes impossible.
+      - name: Resolve Go API image digest
+        id: resolve-image
         run: |
-          ACR_NAME="${{ secrets.ACR_LOGIN_SERVER }}"
-          ACR_NAME="${ACR_NAME%.azurecr.io}"
+          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${ACR_SERVER%.azurecr.io}"
+          REPO="town-crier-api-go"
           SHA="${{ steps.resolve.outputs.sha }}"
-          if az acr manifest show \
-            --registry "$ACR_NAME" \
-            --name "town-crier-api-go:$SHA" 2>/dev/null; then
-            echo "Using exact image for SHA $SHA"
-            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
-          elif az acr manifest show \
-            --registry "$ACR_NAME" \
-            --name "town-crier-api-go:latest" 2>/dev/null; then
-            echo "No image for SHA $SHA — falling back to latest"
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+
+          digest_for_tag() {
+            az acr repository show \
+              --name "$ACR_NAME" \
+              --image "${REPO}:$1" \
+              --query digest -o tsv 2>/dev/null
+          }
+
+          DIGEST="$(digest_for_tag "$SHA")"
+          if [ -n "$DIGEST" ]; then
+            echo "Using exact image for SHA $SHA ($DIGEST)"
           else
-            echo "::error::No Go API image found (tried SHA $SHA and latest)"
-            exit 1
+            DIGEST="$(digest_for_tag latest)"
+            if [ -n "$DIGEST" ]; then
+              echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
+            else
+              echo "::error::No Go API image found (tried SHA $SHA and latest)"
+              exit 1
+            fi
           fi
+
+          echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/deploy-container-app
         with:
           app-name: ca-town-crier-api-go-prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api-go:${{ steps.check-image.outputs.tag }}
+          image: ${{ steps.resolve-image.outputs.image }}
 
   # ── Worker ───────────────────────────────────────────────
   worker:
@@ -153,33 +169,46 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Resolve worker image tag
-        id: check-image
+      # Resolve to an IMMUTABLE DIGEST (registry/repo@sha256:…), never a
+      # mutable tag — same rationale as the Go API job above. Pinning the
+      # worker jobs to a digest makes each release run an exact, reproducible
+      # image instead of whatever :latest happens to resolve to at run time.
+      - name: Resolve worker image digest
+        id: resolve-image
         run: |
-          ACR_NAME="${{ secrets.ACR_LOGIN_SERVER }}"
-          ACR_NAME="${ACR_NAME%.azurecr.io}"
+          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${ACR_SERVER%.azurecr.io}"
+          REPO="town-crier-worker-go"
           SHA="${{ steps.resolve.outputs.sha }}"
-          if az acr manifest show \
-            --registry "$ACR_NAME" \
-            --name "town-crier-worker-go:$SHA" 2>/dev/null; then
-            echo "Using exact image for SHA $SHA"
-            echo "tag=$SHA" >> "$GITHUB_OUTPUT"
-          elif az acr manifest show \
-            --registry "$ACR_NAME" \
-            --name "town-crier-worker-go:latest" 2>/dev/null; then
-            echo "No image for SHA $SHA — falling back to latest"
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
+
+          digest_for_tag() {
+            az acr repository show \
+              --name "$ACR_NAME" \
+              --image "${REPO}:$1" \
+              --query digest -o tsv 2>/dev/null
+          }
+
+          DIGEST="$(digest_for_tag "$SHA")"
+          if [ -n "$DIGEST" ]; then
+            echo "Using exact image for SHA $SHA ($DIGEST)"
           else
-            echo "::error::No worker image found (tried SHA $SHA and latest)"
-            exit 1
+            DIGEST="$(digest_for_tag latest)"
+            if [ -n "$DIGEST" ]; then
+              echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
+            else
+              echo "::error::No worker image found (tried SHA $SHA and latest)"
+              exit 1
+            fi
           fi
+
+          echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
           jobs: poll poll-bootstrap digest digest-hourly dormant-cleanup
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker-go:${{ steps.check-image.outputs.tag }}
+          image: ${{ steps.resolve-image.outputs.image }}
 
   # ── Web ───────────────────────────────────────────────
   web:
