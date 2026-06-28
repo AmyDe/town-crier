@@ -56,14 +56,23 @@ Two non-negotiables, baked into the brief:
 - **Always drive the app from a Sonnet subagent — never the orchestrator.** mobile-mcp and agent-browser emit token-heavy screenshots that bloat the main context fast. The orchestrator dispatches a `general-purpose` subagent with `model: sonnet` that navigates, screenshots, and reports findings back as **text** (pass/fail + what it saw), never raw images into the main loop.
 - **Pick the tool by stack.** iOS → **mobile-mcp** (project MCP; golden `xcodegen → clean build → boot sim → install → drive` path in memory `reference_ios_simulator_build_deploy`). Web → **agent-browser** (Homebrew CLI on `PATH`: `open`/`snapshot`/`click`/`screenshot`; screenshot paths MUST be absolute — memory `reference_agent_browser_cli`).
 
-**Simulating data-dependent scenarios entirely locally (no remote infra).** When the change only shows up with data (a populated list, a clustered map, a tier-gated state), stand the stack up on the workstation instead of leaning on dev/prod:
+**Simulating data-dependent scenarios entirely locally (no remote infra).** When the change only shows up with data (a populated list, a clustered map, a tier-gated state) **and** needs a signed-in user, the deployed dev API **won't have your seed** — so stand the *whole* stack up on the workstation. The complete, load-bearing recipe (with the non-obvious bits) lives in memories `reference_local_api_stack_and_seed` + `reference_local_web_browser_verification_auth`; the parts the next session keeps tripping on:
 
-- `make -C api-go db-up` boots Postgres + PostGIS on `:5433` (docker compose).
-- Run the API against it: `TEST_DATABASE_URL=postgres://towncrier:towncrier@localhost:5433/towncrier_test?sslmode=disable go run ./cmd/api`. With empty Auth0 env it boots **deny-all** (fine for unauthed/data-shape checks); set the dev Auth0 vars for authed flows.
-- **Web** points at it via `VITE_API_BASE_URL` (default `http://localhost:5000`); `cd web && npm run dev`, then drive the dev server with agent-browser.
-- **iOS** DEBUG builds hardcode `api-dev.towncrierapp.uk` (`APIEnvironment.swift`), so the simplest iOS path verifies against the **shared dev** API + the dev test login — not local docker. Only seed locally for iOS if you also repoint the build at localhost.
+- **Postgres:** `make -C api-go db-up` boots PostGIS on `:5433` but does **NOT** migrate. The goose **CLI** fails here (pulls missing drivers), and `cmd/pgmigrate` is Azure-only — so apply migrations via a tiny throwaway module that calls goose as a **library** with only `lib/pq`, pointed at `internal/platform/postgres/migrations`. Then **seed** with raw SQL: tiers are capitalized (`Free`/`Personal`/`Pro`), apps match zones **geographically** (`ST_DWithin`, so just place them within `radius_metres` of the zone centre), and "unread" = a `notifications` row whose `created_at` is newer than `notification_state.last_read_at`.
+- **API:** `TEST_DATABASE_URL=postgres://towncrier:towncrier@localhost:5433/towncrier_test?sslmode=disable`, **`POSTGRES_AUTH` UNSET** (selects the password pool), plus `AUTH0_DOMAIN=towncrierapp.uk.auth0.com AUTH0_AUDIENCE=https://api-dev.towncrierapp.uk CORS_ALLOWED_ORIGINS=http://localhost:5173 PORT=8080`, then `go run ./cmd/api`. It validates real Auth0 JWTs against the live JWKS, so an injected dev token works.
+- **Web auth wall (the big one):** the dev Auth0 SPA does **NOT** whitelist `http://localhost` callbacks, so a redirect login is impossible (403). `cd web && npm run dev -- --port 5173 --strictPort` with `VITE_API_BASE_URL=http://localhost:8080` + the dev `VITE_AUTH0_*`, then mint a token with the Auth0 **password grant** and inject it into `auth0-spa-js`'s localStorage cache (`@@auth0spajs@@::<clientId>::<audience>::<scope>`) so `getTokenSilently` serves it with no redirect. Dev SPA `client_id=rgP7yhxRKByriQGa7RHElaGVmXslbVjV`, `audience=https://api-dev.towncrierapp.uk`. Reusable inject/seed scripts + the exact recipe are in the web memory.
+- **iOS** DEBUG hardcodes `api-dev.towncrierapp.uk` (`APIEnvironment.swift`), so iOS verifies against **deployed dev** + the dev login by default; only seed locally if you also repoint the build at localhost.
 
-**Dev test login (non-sensitive — fine to use and to keep in this skill / in the brief):** `christy+tctest10@salter.uk` / `StrongPassword1!`. Sign in with this to exercise authed flows against deployed **dev** (`api-dev.towncrierapp.uk`) — the default iOS DEBUG target, or the web app pointed at the dev API. Prefer it over the local deny-all stack whenever the change needs a real signed-in session.
+**Dev test login (non-sensitive — keep it in this skill and in the brief):** `christy+tctest10@salter.uk` / `StrongPassword1!`. Use it for the password grant above (local authed+seeded web) or to sign in directly against deployed **dev** (iOS DEBUG, or web pointed at the dev API) when no local seed is needed.
+
+### Execution-environment gotchas (carry a terse line into the brief)
+
+These each cost a real session a cycle — bake them in so the next one doesn't rediscover them:
+
+- **RTK mangles shell output.** A shell hook proxies `curl`, `eslint`, `vitest`, `grep`/`rg` through RTK, which can dump output to stdout (it once **leaked an access token** and broke a pipe), invent phantom lint errors, or print a false "SCOPE VIOLATION". For anything whose output you parse, bypass it: `/usr/bin/curl`, `node ./node_modules/eslint/bin/eslint.js src`, `node ./node_modules/vitest/vitest.mjs run`, plain `grep`, or `rtk proxy <cmd>`.
+- **`curl --data-urlencode` for any value with `+`/reserved chars** — the `+` in the test email sent via plain `--data` is form-decoded to a space → `invalid_grant` "wrong email or password".
+- **`bd worktree create` bases the new branch off the orchestrator tree's CURRENT HEAD, not `origin/main`.** On any branch other than an up-to-date `main` the worktree is wrong-based (missing already-merged work). Right after creating it: `git -C <wt> reset --hard origin/main` and confirm `git -C <wt> log -1` == `origin/main` before dispatching the worker.
+- **Verify each bead against its OWN worktree's build.** Two beads in flight = two worktrees, but only one Vite/sim at a time — don't verify bead B against bead A's running build (it silently shows the wrong result; swap the dev server to the right worktree first).
 
 Tool limits to flag rather than paper over: mobile-mcp has no pinch/two-finger gesture (map zoom-*out* can't be driven) and a still screenshot can't show jank/frame-rate — for those, the subagent reports "needs a human eye", it does not claim verified.
 
@@ -89,7 +98,8 @@ change needs a bead.)
 DELIVERY — you are the orchestrator; you do NOT write code yourself:
   1. Worktree first. Create an isolated worktree (`bd worktree create <name> --branch <branch>`),
      apply the two bd worktree workarounds (GH#3421 port symlink + `chmod 700 .beads/`, see
-     CLAUDE.md), then dispatch the worker into it with the path in hand.
+     CLAUDE.md), then `git -C <wt> reset --hard origin/main` (it bases off the current branch's
+     HEAD, NOT origin/main — verify `log -1` matches). Dispatch the worker with the path in hand.
   2. Dispatch the matching TDD worker for the tech area:
        <selected worker(s) and allowed path(s) from Phase 2>
      The worker consults its coding-standards skill; UI work also consults design-language.
@@ -106,13 +116,16 @@ CURRENT STATE:
   - Landed: <what's already done / merged>
   - Remaining: <the concrete slices left, in order>
 
-VERIFY LOCALLY <keep only for an iOS/web UI change; delete for backend/infra>: before opening
-the PR, drive the running app and eyeball the change — from a SONNET subagent (mobile-mcp for
-iOS, agent-browser for web; their screenshots bloat context, so it reports findings as TEXT).
-Golden paths: memories reference_ios_simulator_build_deploy / reference_agent_browser_cli.
-Data-dependent? Seed locally, no remote infra: `make -C api-go db-up` + `go run ./cmd/api`
-against it. Authed flow on deployed dev? Sign in with test creds christy+tctest10@salter.uk
-/ StrongPassword1! (non-sensitive).
+VERIFY LOCALLY <keep only for an iOS/web UI change; delete for backend/infra>: before the PR,
+drive the running app from a SONNET subagent (agent-browser=web, mobile-mcp=iOS; reports TEXT,
+screenshots bloat context) and eyeball the change. Data-dependent + authed web ⇒ run the FULL
+stack locally (deployed dev has no seed): `make -C api-go db-up` then migrate (goose-as-library,
+lib/pq) + seed, local `cmd/api` (POSTGRES_AUTH unset, CORS localhost:5173), Vite :5173, and an
+Auth0 password-grant token injected into localStorage (dev SPA blocks localhost login). Recipe +
+scripts: memories reference_local_api_stack_and_seed + reference_local_web_browser_verification_auth.
+Test login: christy+tctest10@salter.uk / StrongPassword1! (non-sensitive). Verify each bead on
+its OWN worktree build. ENV: RTK mangles curl/eslint/vitest/grep — use /usr/bin/curl, the
+node_modules bins, plain grep; `curl --data-urlencode` for the `+` in the email.
 
 KEY DECISIONS (already settled — don't reopen): <decisions, or "none">
 BLOCKERS: <blocker, or "none">
@@ -140,6 +153,8 @@ printf 'file://%s\n' "$dest"                            # cmd-clickable link in 
 
 Then tell the user plainly, in one or two lines: the brief is **on your clipboard** (paste straight after `/goal`), saved at the **cmd-clickable `file://…` link**, and N characters (under the 3k cap). Still print the fenced block in chat as a preview. **Never** write the handoff into `.claude/` or anywhere under the repo — only the temp dir.
 
+Also remind the user how to confirm it armed: send `/clear` and `/goal` as **separate** messages (never one burst — the `/clear`→`/goal` race silently swallows the command), then check the session prints **`Stop hook is now active`** and actually starts working. If you see only `Goal set:` then silence, the `/goal` was swallowed — re-send it on its own. A fresh session can't install that Stop hook from inside itself, so re-sending `/goal` is the only fix. See memory `feedback_goal_clear_race`.
+
 ## Rules
 
 - **Under 3000 characters, measured — not estimated.** The brief is hard-capped at <3k chars because `/goal` truncates beyond it. Write it to a file, count it (`python3 -c "print(len(open('f').read()))"`), and condense until it clears. An over-length brief is a defective brief.
@@ -149,4 +164,5 @@ Then tell the user plainly, in one or two lines: the brief is **on your clipboar
 - **TDD worker by default, raw subagent only out of boundary.** Pick the worker from the table; reach for a `general-purpose` subagent only when nothing fits, and give it a tailored prompt.
 - **Orchestrator never writes code.** The brief always routes implementation through a worker or subagent in a worktree, validated by tests, shipped via PR.
 - **Visual-verify iOS/web UI changes before ship — always via a Sonnet subagent.** Any user-visible iOS or web change in the handover must instruct the new session to drive the running app and eyeball the change locally *before* the PR opens, and that driving (mobile-mcp / agent-browser) must run in a `model: sonnet` subagent that reports findings as text — their screenshots bloat context. Use the local Docker stack (`make -C api-go db-up` + local `cmd/api`) to simulate data-dependent scenarios without remote infra. Omit the VERIFY LOCALLY block entirely for backend/infra/CI/docs handovers.
+- **Carry the execution-environment gotchas.** Any brief that involves a worktree, shell tooling, or local web/iOS verification must surface the gotchas from Phase 2 (RTK mangling → bypass binaries; `bd worktree create` wrong-bases → reset to origin/main; `--data-urlencode` for the `+` email; the localhost auth wall + password-grant injection; verify each bead on its own build). Inline the test creds; lean on the two local-stack memories for the long-form recipe so the brief stays under 3k.
 - **Don't implement.** This skill produces the brief and stops.
