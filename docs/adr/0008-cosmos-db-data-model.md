@@ -4,7 +4,9 @@ Date: 2026-03-16
 
 ## Status
 
-Accepted
+Superseded by [ADR 0032](0032-consolidate-datastore-on-postgres-postgis.md)
+
+The Cosmos DB data model described here was retired on 2026-06-27 when all data consolidated onto a single Postgres + PostGIS datastore. See [ADR 0032](0032-consolidate-datastore-on-postgres-postgis.md) for the decision and [memo 0010](../memo/0010-cosmos-partition-strategy-and-postgres-postgis.md) for the analysis. The container/partition-key model below is preserved as the historical record of the Cosmos era.
 
 ## Context
 
