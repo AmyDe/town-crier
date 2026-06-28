@@ -2,6 +2,15 @@ import Combine
 import Foundation
 import TownCrierDomain
 
+/// The applications stacked at one unsplittable map cell, wrapped as an
+/// `Identifiable` value so it can drive a `.sheet(item:)` for the disambiguation
+/// list (GH#722). `id` is the source cluster's id, so re-tapping the same stacked
+/// cell re-presents the same list rather than a spurious second sheet.
+struct StackedApplications: Identifiable, Equatable, Sendable {
+  let id: String
+  let applications: [PlanningApplication]
+}
+
 /// ViewModel driving the map view with server-computed cluster aggregates
 /// (GH#698). Instead of eager-draining every application in the zone, the map
 /// fetches only the clusters inside the current viewport and refetches
@@ -22,6 +31,16 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   /// `onDismiss`, which serialises the dismiss-then-present transition and
   /// avoids SwiftUI's two-sheets-at-once race.
   @Published private(set) var pendingDetailApplication: PlanningApplication?
+  /// The applications stacked at the tapped unsplittable cell, presented as a
+  /// disambiguation list (GH#722). Nil when no stacked cell is open. Published
+  /// only on a fully-successful read of every member (see ``selectStack(_:)``).
+  @Published private(set) var stackedApplications: StackedApplications?
+  /// The application whose *summary* sheet should open once the disambiguation
+  /// list has finished dismissing. Set by ``selectFromStack(_:)`` and consumed by
+  /// ``presentPendingSummaryIfNeeded()`` from the list sheet's `onDismiss`, which
+  /// serialises the dismiss-then-present transition so the list and the summary
+  /// are never on screen at once (SwiftUI's two-sheets race).
+  @Published private(set) var pendingSummaryApplication: PlanningApplication?
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
@@ -205,6 +224,71 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
       // A transient point-read failure leaves the map untouched; the user can
       // tap the pin again. We deliberately do not blank the map with an error.
     }
+  }
+
+  /// Routes a tap on a *stacked* (unsplittable) cell — a cluster whose members
+  /// are coincident or closer than the finest grid cell, so zoom can never split
+  /// them (GH#722). Point-reads every carried member concurrently (one ~1-row
+  /// read each, via the same `fetchApplication(by:)` a single-pin tap uses) and
+  /// publishes them as the disambiguation list, preserving the cluster's
+  /// ``MapCluster/members`` order — a `TaskGroup` completes out of order, so the
+  /// results are tagged with their index and reindexed.
+  ///
+  /// All-or-nothing on failure: if *any* member read throws, we publish nothing
+  /// and leave the map untouched (no list, no error-blanking) — mirroring
+  /// ``selectCluster(_:)``. A half-list would misrepresent what is at the
+  /// location, and the acceptance criterion requires a fetch failure to leave map
+  /// state untouched; the user can tap the bubble again. A no-op for a cell that
+  /// is not stacked (the map view zooms into those instead).
+  public func selectStack(_ cluster: MapCluster) async {
+    guard cluster.isStacked else { return }
+    let members = cluster.members
+    do {
+      let applications = try await withThrowingTaskGroup(
+        of: (Int, PlanningApplication).self
+      ) { group in
+        for (index, member) in members.enumerated() {
+          group.addTask { [repository] in
+            (index, try await repository.fetchApplication(by: member))
+          }
+        }
+        var collected: [(index: Int, application: PlanningApplication)] = []
+        for try await pair in group {
+          collected.append((index: pair.0, application: pair.1))
+        }
+        return collected.sorted { $0.index < $1.index }.map(\.application)
+      }
+      stackedApplications = StackedApplications(id: cluster.id, applications: applications)
+    } catch {
+      // A transient point-read failure leaves the map untouched; we deliberately
+      // do not present a partial list or blank the map with an error.
+    }
+  }
+
+  /// Handles a tap on a disambiguation-list row. Stashes the chosen application
+  /// as ``pendingSummaryApplication`` and clears ``stackedApplications`` to
+  /// dismiss the list. The list sheet's `onDismiss` then calls
+  /// ``presentPendingSummaryIfNeeded()`` so the summary opens only after the list
+  /// has gone — never two sheets at once (GH#722).
+  public func selectFromStack(_ application: PlanningApplication) {
+    pendingSummaryApplication = application
+    stackedApplications = nil
+  }
+
+  /// Presents any pending stacked-row summary via ``selectApplication(_:)``,
+  /// clearing the pending slot first so it fires exactly once. Invoked from the
+  /// disambiguation list sheet's `onDismiss`. No-op when nothing is pending (e.g.
+  /// the user swiped the list away instead of tapping a row).
+  public func presentPendingSummaryIfNeeded() {
+    guard let pending = pendingSummaryApplication else { return }
+    pendingSummaryApplication = nil
+    selectApplication(pending)
+  }
+
+  /// Dismisses the disambiguation list without selecting a row — wired to the
+  /// list sheet's dismiss binding (swipe-to-dismiss).
+  public func clearStack() {
+    stackedApplications = nil
   }
 
   /// Selects an application directly, presenting the summary sheet. The map's
