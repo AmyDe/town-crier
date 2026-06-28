@@ -381,30 +381,25 @@ func (s *PostgresStore) findDistanceZonePage(ctx context.Context, latitude, long
 		}
 		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, longitude, latitude, radiusMetres, limit, dist, c.N)
 	}
+	wrap := func(err error) error {
+		return fmt.Errorf("find applications by distance near (%v, %v): %w", latitude, longitude, err)
+	}
 	if err != nil {
-		return nil, "", fmt.Errorf("find applications by distance near (%v, %v): %w", latitude, longitude, err)
+		return nil, "", wrap(err)
 	}
-	collected, err := pgx.CollectRows(rows, scanNearbyRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications by distance near (%v, %v): %w", latitude, longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if limit > 0 && len(collected) == limit {
-		last := collected[len(collected)-1]
-		next, err = encodePageCursor(pageCursor{
-			M: SortDistance,
-			D: strconv.FormatFloat(last.dist, 'g', -1, 64),
-			N: last.app.Name,
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("encode distance cursor: %w", err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanNearbyRow, nearbyAppOf,
+		func(last nearbyRow) (string, error) {
+			enc, err := encodePageCursor(pageCursor{
+				M: SortDistance,
+				D: strconv.FormatFloat(last.dist, 'g', -1, 64),
+				N: last.app.Name,
+			})
+			if err != nil {
+				return "", fmt.Errorf("encode distance cursor: %w", err)
+			}
+			return enc, nil
+		},
+		limit, wrap)
 }
 
 // findDateZonePage serves SortNewest/SortOldest: the start_date-ordered query with
@@ -416,32 +411,74 @@ func (s *PostgresStore) findDateZonePage(ctx context.Context, latitude, longitud
 	})
 }
 
+// nearbyAppOf, datePageAppOf and activityAppOf project the hydrated application
+// out of each paged-row type for collectPage. Every row carries the application
+// in its .app field; these adapters exist only because Go generics cannot read a
+// struct field through a type parameter.
+func nearbyAppOf(r nearbyRow) PlanningApplication     { return r.app }
+func datePageAppOf(r datePageRow) PlanningApplication { return r.app }
+func activityAppOf(r activityPageRow) PlanningApplication {
+	return r.app
+}
+
+// collectPage is the shared tail of every paged zone read. It drains rows with
+// scan, projects each row's application via appOf, and — only when the page came
+// back full (limit > 0 && len == limit) — mints the next-page cursor from the last
+// row via cursorOf. cursorOf owns its own encoding and error context (the cursor
+// codec differs per call site: encodePageCursor for the sort-aware cursors,
+// encodeNearbyCursor for the legacy FindNearbyPage), so its ("", err) propagates
+// unchanged. A row-scan failure is wrapped with wrap, so each call site keeps its
+// existing "find ... near (lat, lon)" error context byte-for-byte.
+func collectPage[T any](
+	rows pgx.Rows,
+	scan func(pgx.CollectableRow) (T, error),
+	appOf func(T) PlanningApplication,
+	cursorOf func(T) (string, error),
+	limit int,
+	wrap func(error) error,
+) ([]PlanningApplication, string, error) {
+	collected, err := pgx.CollectRows(rows, scan)
+	if err != nil {
+		return nil, "", wrap(err)
+	}
+	apps := make([]PlanningApplication, len(collected))
+	for i := range collected {
+		apps[i] = appOf(collected[i])
+	}
+	next := ""
+	if limit > 0 && len(collected) == limit {
+		next, err = cursorOf(collected[len(collected)-1])
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return apps, next, nil
+}
+
 // collectKeysetPage runs a date-projection keyset query (scanDatePageRow rows —
 // appColumns + authority_code, shared by the start_date and app_state sorts) and
 // returns the hydrated apps plus the next-page cursor, empty unless the page is
 // full. cursorOf builds the continuation cursor from the last row of a full page;
-// sort supplies error context only.
+// sort supplies error context only. It routes the collect-and-mint tail through
+// collectPage, adapting cursorOf (a pageCursor builder) into the encode-and-wrap
+// closure collectPage expects.
 func (s *PostgresStore) collectKeysetPage(ctx context.Context, sort Sort, latitude, longitude float64, query string, args []any, limit int, cursorOf func(datePageRow) pageCursor) ([]PlanningApplication, string, error) {
+	wrap := func(err error) error {
+		return fmt.Errorf("find applications by %s near (%v, %v): %w", sort, latitude, longitude, err)
+	}
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", sort, latitude, longitude, err)
+		return nil, "", wrap(err)
 	}
-	collected, err := pgx.CollectRows(rows, scanDatePageRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", sort, latitude, longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if limit > 0 && len(collected) == limit {
-		next, err = encodePageCursor(cursorOf(collected[len(collected)-1]))
-		if err != nil {
-			return nil, "", fmt.Errorf("encode %s cursor: %w", sort, err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanDatePageRow, datePageAppOf,
+		func(last datePageRow) (string, error) {
+			enc, err := encodePageCursor(cursorOf(last))
+			if err != nil {
+				return "", fmt.Errorf("encode %s cursor: %w", sort, err)
+			}
+			return enc, nil
+		},
+		limit, wrap)
 }
 
 // dateZoneQuery selects the first-page, non-null-keyset, or NULL-tail-keyset query
@@ -618,26 +655,22 @@ func scanActivityPageRow(row pgx.CollectableRow) (activityPageRow, error) {
 // authority_code, planit_name). userID scopes the joined unread notifications.
 func (s *PostgresStore) findRecentActivityZonePage(ctx context.Context, userID string, latitude, longitude, radiusMetres float64, limit int, c *pageCursor) ([]PlanningApplication, string, error) {
 	query, args := recentActivityZoneQuery(userID, latitude, longitude, radiusMetres, limit, c)
+	wrap := func(err error) error {
+		return fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
+	}
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
+		return nil, "", wrap(err)
 	}
-	collected, err := pgx.CollectRows(rows, scanActivityPageRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications by %s near (%v, %v): %w", SortRecentActivity, latitude, longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if limit > 0 && len(collected) == limit {
-		next, err = encodePageCursor(activityCursorOf(collected[len(collected)-1]))
-		if err != nil {
-			return nil, "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanActivityPageRow, activityAppOf,
+		func(last activityPageRow) (string, error) {
+			enc, err := encodePageCursor(activityCursorOf(last))
+			if err != nil {
+				return "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
+			}
+			return enc, nil
+		},
+		limit, wrap)
 }
 
 // recentActivityZoneQuery selects the first-page, non-null-keyset, or
@@ -899,56 +932,47 @@ func activityKeysetPredicate(c *pageCursor, b *argBuilder) string {
 // collectFilteredDistancePage runs a filtered distance query (nearbyRow
 // projection) and mints a filter-stamped (distance, planit_name) next cursor.
 func (s *PostgresStore) collectFilteredDistancePage(ctx context.Context, q InZoneQuery, query string, args []any) ([]PlanningApplication, string, error) {
+	wrap := func(err error) error {
+		return fmt.Errorf("find filtered applications by distance near (%v, %v): %w", q.Latitude, q.Longitude, err)
+	}
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("find filtered applications by distance near (%v, %v): %w", q.Latitude, q.Longitude, err)
+		return nil, "", wrap(err)
 	}
-	collected, err := pgx.CollectRows(rows, scanNearbyRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find filtered applications by distance near (%v, %v): %w", q.Latitude, q.Longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if q.Limit > 0 && len(collected) == q.Limit {
-		last := collected[len(collected)-1]
-		next, err = encodePageCursor(pageCursor{
-			M: SortDistance, F: q.Status, U: q.Unread,
-			D: strconv.FormatFloat(last.dist, 'g', -1, 64), N: last.app.Name,
-		})
-		if err != nil {
-			return nil, "", fmt.Errorf("encode distance cursor: %w", err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanNearbyRow, nearbyAppOf,
+		func(last nearbyRow) (string, error) {
+			enc, err := encodePageCursor(pageCursor{
+				M: SortDistance, F: q.Status, U: q.Unread,
+				D: strconv.FormatFloat(last.dist, 'g', -1, 64), N: last.app.Name,
+			})
+			if err != nil {
+				return "", fmt.Errorf("encode distance cursor: %w", err)
+			}
+			return enc, nil
+		},
+		q.Limit, wrap)
 }
 
 // collectFilteredActivityPage runs a filtered recent-activity query (activity
 // projection) and mints a filter-stamped (activity_ts, authority_code,
 // planit_name) next cursor.
 func (s *PostgresStore) collectFilteredActivityPage(ctx context.Context, q InZoneQuery, query string, args []any) ([]PlanningApplication, string, error) {
+	wrap := func(err error) error {
+		return fmt.Errorf("find filtered applications by %s near (%v, %v): %w", SortRecentActivity, q.Latitude, q.Longitude, err)
+	}
 	rows, err := s.db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("find filtered applications by %s near (%v, %v): %w", SortRecentActivity, q.Latitude, q.Longitude, err)
+		return nil, "", wrap(err)
 	}
-	collected, err := pgx.CollectRows(rows, scanActivityPageRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find filtered applications by %s near (%v, %v): %w", SortRecentActivity, q.Latitude, q.Longitude, err)
-	}
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-	next := ""
-	if q.Limit > 0 && len(collected) == q.Limit {
-		cur := activityCursorOf(collected[len(collected)-1])
-		cur.F, cur.U = q.Status, q.Unread
-		next, err = encodePageCursor(cur)
-		if err != nil {
-			return nil, "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanActivityPageRow, activityAppOf,
+		func(last activityPageRow) (string, error) {
+			cur := activityCursorOf(last)
+			cur.F, cur.U = q.Status, q.Unread
+			enc, err := encodePageCursor(cur)
+			if err != nil {
+				return "", fmt.Errorf("encode %s cursor: %w", SortRecentActivity, err)
+			}
+			return enc, nil
+		},
+		q.Limit, wrap)
 }
