@@ -273,29 +273,21 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 		}
 		rows, err = s.db.Query(ctx, findNearbyKeysetQuery, longitude, latitude, radiusMetres, limit, dist, name)
 	}
+	wrap := func(err error) error {
+		return fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
+	}
 	if err != nil {
-		return nil, "", fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
+		return nil, "", wrap(err)
 	}
-
-	collected, err := pgx.CollectRows(rows, scanNearbyRow)
-	if err != nil {
-		return nil, "", fmt.Errorf("find applications near (%v, %v): %w", latitude, longitude, err)
-	}
-
-	apps := make([]PlanningApplication, len(collected))
-	for i := range collected {
-		apps[i] = collected[i].app
-	}
-
-	next := ""
-	if limit > 0 && len(collected) == limit {
-		last := collected[len(collected)-1]
-		next, err = encodeNearbyCursor(last.dist, last.app.Name)
-		if err != nil {
-			return nil, "", fmt.Errorf("encode nearby cursor: %w", err)
-		}
-	}
-	return apps, next, nil
+	return collectPage(rows, scanNearbyRow, nearbyAppOf,
+		func(last nearbyRow) (string, error) {
+			enc, err := encodeNearbyCursor(last.dist, last.app.Name)
+			if err != nil {
+				return "", fmt.Errorf("encode nearby cursor: %w", err)
+			}
+			return enc, nil
+		},
+		limit, wrap)
 }
 
 // seoNearbyPoint is the query point for the authority-scoped SEO spatial reads,
