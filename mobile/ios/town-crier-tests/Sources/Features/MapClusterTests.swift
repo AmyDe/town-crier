@@ -58,4 +58,49 @@ struct MapClusterTests {
 
     #expect(first.id != second.id)
   }
+
+  // MARK: - Stacked (unsplittable) cells (GH#722)
+
+  @Test func stacked_whenMultiMemberWithCarriedMembers() throws {
+    let coordinate = try Coordinate(latitude: 51.5, longitude: -0.12)
+    let members = [
+      PlanningApplicationId(authority: "42", name: "22/1234/FUL"),
+      PlanningApplicationId(authority: "42", name: "22/5678/FUL"),
+    ]
+
+    let cluster = MapCluster(
+      coordinate: coordinate,
+      count: 2,
+      statusCounts: [.permitted: 1, .undecided: 1],
+      member: nil,
+      members: members
+    )
+
+    #expect(cluster.isStacked)
+    #expect(cluster.members == members)
+  }
+
+  @Test func notStacked_whenMultiMemberWithoutCarriedMembers() throws {
+    let coordinate = try Coordinate(latitude: 51.5, longitude: -0.12)
+
+    let cluster = MapCluster(
+      coordinate: coordinate,
+      count: 42,
+      statusCounts: [.permitted: 42],
+      member: nil
+    )
+
+    #expect(!cluster.isStacked)
+    #expect(cluster.members.isEmpty)
+  }
+
+  @Test func notStacked_whenSingleMember() throws {
+    let coordinate = try Coordinate(latitude: 51.5, longitude: -0.12)
+    let member = PlanningApplicationId(authority: "42", name: "22/1234/FUL")
+
+    let cluster = MapCluster(
+      coordinate: coordinate, count: 1, statusCounts: [.permitted: 1], member: member)
+
+    #expect(!cluster.isStacked)
+  }
 }
