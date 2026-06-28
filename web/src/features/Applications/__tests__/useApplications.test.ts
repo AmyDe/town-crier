@@ -289,7 +289,12 @@ describe('useApplications — keyset pagination (X-Next-Cursor)', () => {
     await waitFor(() => expect(result.current.applications).toHaveLength(1));
 
     act(() => result.current.setSort('newest'));
-    await waitFor(() => expect(browsePort.fetchByZoneCalls.at(-1)!.sort).toBe('newest'));
+    // Wait for the page-1 re-query to settle (so the next cursor is available)
+    // before paging — otherwise loadMore races the in-flight first page.
+    await waitFor(() =>
+      expect(result.current.applications[0]?.uid).toBe(asApplicationUid('newest-null')),
+    );
+    expect(result.current.hasMore).toBe(true);
 
     act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.applications).toHaveLength(2));
@@ -405,26 +410,38 @@ describe('useApplications — markAllRead', () => {
 });
 
 describe('useApplications — sort persistence', () => {
+  // A stable spy per test — `makeOptions` defaults would mint a fresh port on
+  // every render, changing the query effect's dependency identity and looping.
+  function persistenceOptions() {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = { rows: [], nextCursor: null };
+    return makeOptions({ browsePort, zones: [cambridgeZone()] });
+  }
+
   it('defaults to recent-activity', () => {
-    const { result } = renderHook(() => useApplications(makeOptions({ zones: [cambridgeZone()] })));
+    const options = persistenceOptions();
+    const { result } = renderHook(() => useApplications(options));
     expect(result.current.sort).toBe('recent-activity');
   });
 
   it('persists the sort selection to localStorage', () => {
-    const { result } = renderHook(() => useApplications(makeOptions({ zones: [cambridgeZone()] })));
+    const options = persistenceOptions();
+    const { result } = renderHook(() => useApplications(options));
     act(() => result.current.setSort('newest'));
     expect(window.localStorage.getItem('applicationsListSort')).toBe('newest');
   });
 
   it('rehydrates the persisted sort on mount', () => {
     window.localStorage.setItem('applicationsListSort', 'oldest');
-    const { result } = renderHook(() => useApplications(makeOptions({ zones: [cambridgeZone()] })));
+    const options = persistenceOptions();
+    const { result } = renderHook(() => useApplications(options));
     expect(result.current.sort).toBe('oldest');
   });
 
   it('falls back to recent-activity for an unknown persisted value', () => {
     window.localStorage.setItem('applicationsListSort', 'nonsense');
-    const { result } = renderHook(() => useApplications(makeOptions({ zones: [cambridgeZone()] })));
+    const options = persistenceOptions();
+    const { result } = renderHook(() => useApplications(options));
     expect(result.current.sort).toBe('recent-activity');
   });
 });

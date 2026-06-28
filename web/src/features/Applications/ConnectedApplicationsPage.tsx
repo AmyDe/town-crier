@@ -11,8 +11,13 @@ export function ConnectedApplicationsPage() {
 
   const browsePort: ApplicationsBrowsePort = useMemo(
     () => ({
-      fetchByZone: (zoneId) =>
-        applicationsApi(client).getByZone(zoneId as string),
+      fetchByZone: (query) =>
+        applicationsApi(client).getByZonePaged(query.zoneId as string, {
+          sort: query.sort,
+          status: query.status,
+          unread: query.unread,
+          cursor: query.cursor,
+        }),
     }),
     [client],
   );

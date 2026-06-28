@@ -166,3 +166,33 @@
   color: var(--tc-text-secondary);
   font-size: var(--tc-text-body);
 }
+
+.loadMoreButton {
+  display: block;
+  margin: var(--tc-space-lg) auto 0;
+  min-height: 44px;
+  padding: var(--tc-space-sm) var(--tc-space-lg);
+  font: inherit;
+  font-size: var(--tc-text-body);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-text-primary);
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  cursor: pointer;
+  transition: border-color var(--tc-duration-fast) ease, background var(--tc-duration-fast) ease;
+}
+
+.loadMoreButton:hover:not(:disabled) {
+  border-color: var(--tc-amber);
+}
+
+.loadMoreButton:focus-visible {
+  outline: 2px solid var(--tc-border-focused);
+  outline-offset: 2px;
+}
+
+.loadMoreButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
