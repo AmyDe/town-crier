@@ -48,7 +48,7 @@ inputs:
   seo-town-min-population:
     description: SEO_TOWN_MIN_POPULATION — population floor for published town SEO pages (towns below this are not published)
     required: false
-    default: "20000"
+    default: "5000"
   render-mode:
     description: >-
       When "true", build the SPA only and render /planning/* + sitemap.xml from a
