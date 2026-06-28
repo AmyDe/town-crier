@@ -2,14 +2,17 @@ import Combine
 import Foundation
 import TownCrierDomain
 
-/// ViewModel driving the map view with planning application pins. Status
-/// filtering is free for all subscription tiers (tc-acf0); the cross-zone
-/// Saved-on-map listing was retired in favour of the dedicated Saved tab.
-/// `canSave` and the bookmark icon on the summary sheet remain — that's
-/// the per-application save flow, not a list-level filter.
+/// ViewModel driving the map view with server-computed cluster aggregates
+/// (GH#698). Instead of eager-draining every application in the zone, the map
+/// fetches only the clusters inside the current viewport and refetches
+/// (debounced) on pan/zoom, so a dense 22k zone stays smooth. Status filtering
+/// is free for all subscription tiers (tc-acf0) and is applied server-side: a
+/// chip change refetches clusters with `status=` rather than filtering an
+/// in-memory set. `canSave` and the bookmark icon on the summary sheet remain —
+/// that's the per-application save flow, not a list-level filter.
 @MainActor
 public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
-  @Published private(set) var annotations: [MapAnnotationItem] = []
+  @Published private(set) var clusters: [MapCluster] = []
   @Published private(set) var isLoading = false
   @Published var error: DomainError?
   @Published private(set) var selectedApplication: PlanningApplication?
@@ -22,7 +25,7 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   @Published private(set) var hasLoaded = false
   @Published private(set) var zones: [WatchZone] = []
   @Published private(set) var selectedZone: WatchZone?
-  @Published var selectedStatusFilter: ApplicationStatus?
+  @Published private(set) var selectedStatusFilter: ApplicationStatus?
   @Published private(set) var savedApplicationUids: Set<String> = []
 
   @Published private(set) var centreLat: Double = 51.5074
@@ -32,26 +35,27 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
   private let repository: PlanningApplicationRepository
   private let watchZoneRepository: WatchZoneRepository
   private let savedApplicationRepository: SavedApplicationRepository?
-  private var applications: [PlanningApplication] = []
   private let userDefaults: UserDefaults
   private let zoneSelectionKey: String
 
-  /// Page size for the eager map drain. Matches the server's default page size
-  /// and the list's `pageSize`; the loop simply pulls as many of these as the
-  /// zone holds.
-  private static let pageSize = 150
+  /// The viewport/zoom of the most recent cluster fetch, so a status-chip change
+  /// can refetch for the same visible rect without the view re-supplying it.
+  private var lastViewport: MapViewport?
+  private var lastZoom: Int?
 
   public var canSave: Bool {
     savedApplicationRepository != nil
   }
 
-  public var filteredAnnotations: [MapAnnotationItem] {
-    guard let filter = selectedStatusFilter else { return annotations }
-    return annotations.filter { $0.status == filter }
+  public var isEmpty: Bool {
+    hasLoaded && clusters.isEmpty && error == nil && !isLoading
   }
 
-  public var isEmpty: Bool {
-    hasLoaded && filteredAnnotations.isEmpty && error == nil && !isLoading
+  /// Whether to show the status filter chips: only once a zone has loaded, so a
+  /// filter that returns zero clusters doesn't make the chips vanish (the user
+  /// must be able to switch back to "All").
+  public var showStatusFilters: Bool {
+    hasLoaded && error == nil && selectedZone != nil
   }
 
   /// Whether the currently selected application is in the user's saved set.
@@ -112,9 +116,11 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
       centreLon = zone.centre.longitude
       radiusMetres = zone.radiusMetres
 
-      let fetched = try await drainAllPages(for: zone)
-      applications = fetched
-      annotations = makeAnnotations(from: fetched)
+      // Seed the map with the whole-zone viewport so clusters render before the
+      // map view's first region-change refines them to the exact visible rect.
+      let (viewport, zoom) = Self.initialViewport(
+        centre: zone.centre, radiusMetres: zone.radiusMetres)
+      await loadClusters(viewport: viewport, zoom: zoom)
     } catch {
       handleError(error)
     }
@@ -122,37 +128,33 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     hasLoaded = true
   }
 
-  /// Eager-drains every page of a zone's applications for the map (GH#682
-  /// slice 5). The list lazily pages on scroll, but a map needs every pin to be
-  /// spatially meaningful, so we follow `X-Next-Cursor` to exhaustion here.
-  /// Sort is irrelevant for pins, so we take the cheapest server plan
-  /// (`distance`, the param-less default) with no filter. The accumulated set is
-  /// returned whole — the caller publishes `annotations` atomically only after a
-  /// clean drain, so a mid-stream failure discards the partial pages rather than
-  /// flashing a half-populated map. Clustering (``ClusteredMapView``) keeps the
-  /// rendered marker count bounded regardless of how many pins this returns.
-  private func drainAllPages(for zone: WatchZone) async throws -> [PlanningApplication] {
-    var allApplications: [PlanningApplication] = []
-    var cursor: String?
-    repeat {
-      let page = try await repository.fetchApplicationsPage(
-        for: zone,
-        sort: .distance,
-        filter: .all,
-        cursor: cursor,
-        limit: Self.pageSize
-      )
-      allApplications.append(contentsOf: page.applications)
-      cursor = page.nextCursor
-    } while cursor != nil
-    return allApplications
+  /// Fetches the cluster aggregates for a viewport at a zoom and publishes them.
+  /// Called on appear (seeded from the zone) and on every debounced region
+  /// change. A transient refetch failure (pan/zoom) keeps the last good clusters
+  /// rather than blanking the map; a screen-level error is surfaced only when
+  /// there is nothing to show yet.
+  public func loadClusters(viewport: MapViewport, zoom: Int) async {
+    guard let zone = selectedZone else { return }
+    lastViewport = viewport
+    lastZoom = zoom
+    let filter: ApplicationFilter = selectedStatusFilter.map { .status($0) } ?? .all
+    do {
+      clusters = try await repository.fetchClusters(
+        for: zone, viewport: viewport, zoom: zoom, filter: filter)
+      error = nil
+    } catch {
+      if clusters.isEmpty {
+        handleError(error)
+      }
+    }
   }
 
-  private func makeAnnotations(from applications: [PlanningApplication]) -> [MapAnnotationItem] {
-    applications.compactMap { app in
-      guard let location = app.location else { return nil }
-      return MapAnnotationItem(application: app, coordinate: location)
-    }
+  /// Applies a status filter chip by refetching the current viewport's clusters
+  /// server-side with `status=` (GH#698) — never by filtering a held set.
+  public func applyStatusFilter(_ status: ApplicationStatus?) async {
+    selectedStatusFilter = status
+    guard let viewport = lastViewport, let zoom = lastZoom else { return }
+    await loadClusters(viewport: viewport, zoom: zoom)
   }
 
   /// Loads the set of saved application UIDs so `isSelectedApplicationSaved`
@@ -176,13 +178,9 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     radiusMetres = zone.radiusMetres
     isLoading = true
     error = nil
-    do {
-      let fetched = try await drainAllPages(for: zone)
-      applications = fetched
-      annotations = makeAnnotations(from: fetched)
-    } catch {
-      handleError(error)
-    }
+    let (viewport, zoom) = Self.initialViewport(
+      centre: zone.centre, radiusMetres: zone.radiusMetres)
+    await loadClusters(viewport: viewport, zoom: zoom)
     isLoading = false
   }
 
@@ -194,9 +192,26 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
     return zones.first
   }
 
-  public func selectApplication(_ id: PlanningApplicationId) {
-    selectedApplication = applications.first { $0.id == id }
-    onApplicationSelected?(id)
+  /// Routes a cluster tap. A multi-member cell does nothing here (the map view
+  /// zooms into it). A single-member cell point-reads the full application by
+  /// the id the cluster carried — one ~1-row read, no held set and no O(n) scan
+  /// — and selects it, which presents the summary sheet.
+  public func selectCluster(_ cluster: MapCluster) async {
+    guard cluster.isSingleMember, let member = cluster.member else { return }
+    do {
+      let application = try await repository.fetchApplication(by: member)
+      selectApplication(application)
+    } catch {
+      // A transient point-read failure leaves the map untouched; the user can
+      // tap the pin again. We deliberately do not blank the map with an error.
+    }
+  }
+
+  /// Selects an application directly, presenting the summary sheet. The map's
+  /// single-pin tap reaches this via ``selectCluster(_:)`` after a point read.
+  public func selectApplication(_ application: PlanningApplication) {
+    selectedApplication = application
+    onApplicationSelected?(application.id)
   }
 
   public func clearSelection() {
@@ -249,5 +264,35 @@ public final class MapViewModel: ObservableObject, ErrorHandlingViewModel {
         // Preserve current state on failure
       }
     }
+  }
+
+  // MARK: - Viewport geometry
+
+  /// Derives the initial whole-zone viewport and slippy zoom from a zone centre
+  /// and radius. Mirrors the camera framing (a span of 2.5x the radius), so the
+  /// seeded clusters cover the whole circle until the map view reports its real
+  /// visible rect.
+  static func initialViewport(
+    centre: Coordinate, radiusMetres: Double
+  ) -> (viewport: MapViewport, zoom: Int) {
+    let metresPerDegreeLat = 111_320.0
+    let halfSpanMetres = radiusMetres * 2.5 / 2
+    let halfLatDeg = halfSpanMetres / metresPerDegreeLat
+    let cosLat = max(0.01, cos(centre.latitude * .pi / 180))
+    let halfLonDeg = halfSpanMetres / (metresPerDegreeLat * cosLat)
+    let viewport = MapViewport(
+      west: centre.longitude - halfLonDeg,
+      south: centre.latitude - halfLatDeg,
+      east: centre.longitude + halfLonDeg,
+      north: centre.latitude + halfLatDeg)
+    return (viewport, slippyZoom(forLongitudeSpanDegrees: halfLonDeg * 2))
+  }
+
+  /// Standard slippy-map zoom for a longitude span: `log2(360 / span)`, clamped
+  /// to the API's accepted 0...20 range.
+  static func slippyZoom(forLongitudeSpanDegrees longitudeSpan: Double) -> Int {
+    guard longitudeSpan > 0 else { return 20 }
+    let zoom = (log2(360.0 / longitudeSpan)).rounded()
+    return max(0, min(20, Int(zoom)))
   }
 }

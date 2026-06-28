@@ -67,6 +67,42 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     )
   }
 
+  public func fetchClusters(
+    for zone: WatchZone,
+    viewport: MapViewport,
+    zoom: Int,
+    filter: ApplicationFilter
+  ) async throws -> [MapCluster] {
+    var query: [URLQueryItem] = [
+      URLQueryItem(name: "bbox", value: Self.bboxValue(for: viewport)),
+      URLQueryItem(name: "zoom", value: String(zoom)),
+    ]
+    // Only a status filter is meaningful for the map clusters endpoint; `.all`
+    // and `.unread` send no status param (the map has no unread filter).
+    if case .status(let status) = filter {
+      query.append(URLQueryItem(name: "status", value: status.rawValue))
+    }
+
+    let dtos: [MapClusterDTO]
+    do {
+      dtos = try await apiClient.request(
+        .get("/v1/me/watch-zones/\(zone.id.value)/applications/clusters", query: query)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+    return dtos.compactMap { $0.toDomain() }
+  }
+
+  /// Renders the viewport as the `bbox=west,south,east,north` value the server
+  /// expects. Swift's `Double` interpolation is locale-independent (always uses
+  /// `.` for the decimal separator), so this is safe regardless of device locale.
+  private static func bboxValue(for viewport: MapViewport) -> String {
+    "\(viewport.west),\(viewport.south),\(viewport.east),\(viewport.north)"
+  }
+
   public func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     let dto: PlanningApplicationDTO
     do {
@@ -86,6 +122,41 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
       throw error.toDomainError()
     }
     return dto.toDomain()
+  }
+}
+
+// MARK: - Cluster DTO
+
+/// Wire shape for one cell of the map clusters endpoint (GH#698). A `count > 1`
+/// cell has a null `applicationId` and a multi-status `statusCounts`; a
+/// `count == 1` cell carries the lone application's `{authority, name}` and a
+/// single-entry `statusCounts`.
+struct MapClusterDTO: Decodable, Sendable {
+  let latitude: Double
+  let longitude: Double
+  let count: Int
+  let statusCounts: [String: Int]
+  let applicationId: MemberDTO?
+
+  struct MemberDTO: Decodable, Sendable {
+    let authority: String
+    let name: String
+  }
+
+  func toDomain() -> MapCluster? {
+    guard let coordinate = try? Coordinate(latitude: latitude, longitude: longitude) else {
+      return nil
+    }
+    // Fold unknown wire states into `.unknown`, summing any collisions so the
+    // per-status counts still total `count`.
+    let counts = statusCounts.reduce(into: [ApplicationStatus: Int]()) { acc, pair in
+      let status = ApplicationStatus(rawValue: pair.key) ?? .unknown
+      acc[status, default: 0] += pair.value
+    }
+    let member = applicationId.map { member in
+      PlanningApplicationId(authority: member.authority, name: member.name)
+    }
+    return MapCluster(coordinate: coordinate, count: count, statusCounts: counts, member: member)
   }
 }
 

@@ -38,7 +38,7 @@ public struct MapView: View {
       if viewModel.showZonePicker {
         zonePickerSection
       }
-      if !viewModel.annotations.isEmpty {
+      if viewModel.showStatusFilters {
         filterHeader
       }
       mapBody
@@ -105,7 +105,7 @@ public struct MapView: View {
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
     FilterChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
-      viewModel.selectedStatusFilter = status
+      Task { await viewModel.applyStatusFilter(status) }
     }
   }
 
@@ -163,18 +163,18 @@ public struct MapView: View {
     @ViewBuilder
     private var mapContent: some View {
       Map(position: $mapPosition) {
-        ForEach(viewModel.filteredAnnotations) { annotation in
+        ForEach(viewModel.clusters) { cluster in
           Annotation(
-            annotation.title,
+            Self.annotationLabel(for: cluster),
             coordinate: CLLocationCoordinate2D(
-              latitude: annotation.latitude,
-              longitude: annotation.longitude
+              latitude: cluster.coordinate.latitude,
+              longitude: cluster.coordinate.longitude
             ),
             anchor: .bottom
           ) {
-            pinView(for: annotation)
+            pinView(for: cluster)
               .onTapGesture {
-                viewModel.selectApplication(annotation.applicationId)
+                Task { await viewModel.selectCluster(cluster) }
               }
           }
         }
@@ -192,16 +192,33 @@ public struct MapView: View {
       .mapStyle(.standard(elevation: .flat))
     }
 
-    private func pinView(for annotation: MapAnnotationItem) -> some View {
-      Image(systemName: "mappin.circle.fill")
-        .font(.system(.title2))
-        .foregroundStyle(annotation.status.displayColor)
-        .background(
-          Circle()
-            .fill(Color.tcSurface)
-            .frame(width: 20, height: 20)
-        )
-        .accessibilityLabel("\(annotation.title), \(annotation.status.displayLabel)")
+    private static func annotationLabel(for cluster: MapCluster) -> String {
+      cluster.count > 1
+        ? "\(cluster.count) applications"
+        : (cluster.memberStatus ?? .unknown).displayLabel
+    }
+
+    @ViewBuilder
+    private func pinView(for cluster: MapCluster) -> some View {
+      if cluster.count > 1 {
+        Text(cluster.count > 999 ? "999+" : "\(cluster.count)")
+          .font(.system(.caption, weight: .semibold))
+          .foregroundStyle(Color.tcTextOnAccent)
+          .padding(TCSpacing.small)
+          .background(Circle().fill(Color.tcAmber))
+          .accessibilityLabel("\(cluster.count) applications")
+      } else {
+        let status = cluster.memberStatus ?? .unknown
+        Image(systemName: "mappin.circle.fill")
+          .font(.system(.title2))
+          .foregroundStyle(status.displayColor)
+          .background(
+            Circle()
+              .fill(Color.tcSurface)
+              .frame(width: 20, height: 20)
+          )
+          .accessibilityLabel(status.displayLabel)
+      }
     }
 
     private func updateMapPosition() {

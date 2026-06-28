@@ -190,9 +190,9 @@ struct AppCoordinatorTests {
 
   // MARK: - Map ViewModel Factory
 
-  @Test func makeMapViewModel_fetchesByZone() async {
+  @Test func makeMapViewModel_fetchesClustersByZone() async {
     let appSpy = SpyPlanningApplicationRepository()
-    appSpy.fetchApplicationsByZone = ["zone-001": [.pendingReview]]
+    appSpy.fetchClustersResult = .success([.bubble(count: 7)])
     let watchZoneSpy = SpyWatchZoneRepository()
     watchZoneSpy.loadAllResult = .success([.cambridge])
     let coordinator = AppCoordinator(
@@ -210,9 +210,9 @@ struct AppCoordinatorTests {
 
     await vm.loadApplications()
 
-    #expect(appSpy.fetchApplicationsPageCalls.count == 1)
-    #expect(appSpy.fetchApplicationsPageCalls.first?.zone.id.value == "zone-001")
-    #expect(vm.annotations.count == 1)
+    // The map path sources clusters, not paged rows (GH#698).
+    #expect(appSpy.fetchClustersCalls.first?.zone.id.value == "zone-001")
+    #expect(vm.clusters.count == 1)
   }
 
   // MARK: - Saved Application List Factory

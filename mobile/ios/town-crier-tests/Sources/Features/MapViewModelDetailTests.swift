@@ -22,7 +22,7 @@ struct MapViewModelDetailTests {
   @Test func requestFullDetail_stashesSelectionAsPendingAndClearsSelection() async {
     let (sut, _, _) = makeSUT()
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplication.pendingReview.id)
+    sut.selectApplication(.pendingReview)
 
     sut.requestFullDetail()
 
@@ -33,7 +33,7 @@ struct MapViewModelDetailTests {
   @Test func presentPendingDetailIfNeeded_firesCallbackOnceWithPendingApplication() async {
     let (sut, _, _) = makeSUT()
     await sut.loadApplications()
-    sut.selectApplication(PlanningApplication.pendingReview.id)
+    sut.selectApplication(.pendingReview)
     sut.requestFullDetail()
 
     var captured: [PlanningApplication] = []
