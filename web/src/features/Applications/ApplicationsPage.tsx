@@ -57,6 +57,8 @@ export function ApplicationsPage({
     selectedZone,
     applications,
     isLoading: isLoadingApps,
+    isLoadingMore,
+    hasMore,
     error: appsError,
     selectedStatusFilter,
     unreadOnly,
@@ -67,6 +69,8 @@ export function ApplicationsPage({
     setStatusFilter,
     setUnreadOnly,
     setSort,
+    loadMore,
+    reload,
     markAllRead,
   } = useApplications({
     browsePort,
@@ -209,7 +213,7 @@ export function ApplicationsPage({
               title="Something went wrong"
               message={appsError}
               actionLabel="Try again"
-              onAction={() => selectedZone && selectZone(selectedZone)}
+              onAction={reload}
             />
           )}
 
@@ -222,13 +226,25 @@ export function ApplicationsPage({
           )}
 
           {!isLoadingApps && appsError === null && applications.length > 0 && (
-            <ul className={styles.list}>
-              {applications.map((app) => (
-                <li key={app.uid}>
-                  <ApplicationCard application={app} />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className={styles.list}>
+                {applications.map((app) => (
+                  <li key={app.uid}>
+                    <ApplicationCard application={app} />
+                  </li>
+                ))}
+              </ul>
+              {hasMore && (
+                <button
+                  type="button"
+                  className={styles.loadMoreButton}
+                  onClick={() => loadMore()}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              )}
+            </>
           )}
         </>
       )}

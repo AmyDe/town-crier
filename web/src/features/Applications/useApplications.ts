@@ -3,26 +3,17 @@ import type {
   WatchZoneSummary,
   PlanningApplicationSummary,
   ApplicationStatus,
+  ApplicationsSort,
 } from '../../domain/types';
 import type { ApplicationsBrowsePort } from '../../domain/ports/applications-browse-port';
 import type { NotificationStateRepository } from '../../domain/ports/notification-state-repository';
-import { haversineDistanceMetres } from '../../domain/geo/distance';
 
 /**
- * Sort modes for the Applications screen — persisted under
- * `applicationsListSort` in localStorage. Default: `recent-activity`.
- *
- * The `distance` mode orders rows by ascending haversine distance from the
- * selected watch-zone centre and is only meaningful when a single zone is
- * active; the picker hides it in multi-zone / no-zone surfaces. Mirrors the
- * iOS sibling tc-mso6 (PR #374).
+ * Re-exported from the domain so existing consumers (`ApplicationsPage`) keep
+ * importing the sort type from this hook. The vocabulary itself, and its
+ * mapping onto the server's `?sort=` param, lives in `domain/types`.
  */
-export type ApplicationsSort =
-  | 'recent-activity'
-  | 'newest'
-  | 'oldest'
-  | 'status'
-  | 'distance';
+export type { ApplicationsSort };
 
 const APPLICATIONS_SORT_VALUES: readonly ApplicationsSort[] = [
   'recent-activity',
@@ -63,102 +54,25 @@ export interface UseApplicationsOptions {
 
 interface State {
   readonly selectedZone: WatchZoneSummary | null;
+  /** Accumulated rows across every page fetched so far for the current query. */
   readonly applications: readonly PlanningApplicationSummary[];
+  /** True while the first page of a (re)query is in flight. */
   readonly isLoading: boolean;
+  /** True while a subsequent page (load-more) is in flight. */
+  readonly isLoadingMore: boolean;
   readonly error: string | null;
   readonly selectedStatusFilter: ApplicationStatus | null;
   readonly unreadOnly: boolean;
   readonly sort: ApplicationsSort;
+  /** Cursor for the next page; `null` once the last page has been reached. */
+  readonly nextCursor: string | null;
+  /** Bumped to force a page-1 refetch without changing the query inputs (retry). */
+  readonly reloadNonce: number;
 }
 
 function extractError(err: unknown): string {
   if (err instanceof Error) return err.message;
   return 'Unknown error';
-}
-
-function recentActivityScore(app: PlanningApplicationSummary): number {
-  const startDateMs = app.startDate ? Date.parse(app.startDate) : 0;
-  const unreadMs = app.latestUnreadEvent
-    ? Date.parse(app.latestUnreadEvent.createdAt)
-    : 0;
-  return Math.max(startDateMs, unreadMs);
-}
-
-function startDateMs(app: PlanningApplicationSummary): number {
-  return app.startDate ? Date.parse(app.startDate) : 0;
-}
-
-function sortApplications(
-  applications: readonly PlanningApplicationSummary[],
-  sort: ApplicationsSort,
-  selectedZone: WatchZoneSummary | null,
-): readonly PlanningApplicationSummary[] {
-  const copy = [...applications];
-  switch (sort) {
-    case 'recent-activity':
-      copy.sort((a, b) => recentActivityScore(b) - recentActivityScore(a));
-      return copy;
-    case 'newest':
-      copy.sort((a, b) => startDateMs(b) - startDateMs(a));
-      return copy;
-    case 'oldest':
-      copy.sort((a, b) => startDateMs(a) - startDateMs(b));
-      return copy;
-    case 'status':
-      copy.sort((a, b) => a.appState.localeCompare(b.appState));
-      return copy;
-    case 'distance':
-      return sortByDistance(copy, selectedZone);
-  }
-}
-
-/**
- * Ascending haversine distance from the active zone's centre. Apps without
- * a location sort last (preserving their incoming relative order via a
- * stable index tiebreaker so we don't surface arbitrary noise). Falls back
- * to identity when no zone is selected — the option is filtered out of the
- * picker in that state, but the defensive fallback keeps the function total.
- * Mirrors `ApplicationListViewModel.sortByDistance` on iOS (tc-mso6).
- */
-function sortByDistance(
-  applications: PlanningApplicationSummary[],
-  selectedZone: WatchZoneSummary | null,
-): readonly PlanningApplicationSummary[] {
-  if (selectedZone === null) {
-    return applications;
-  }
-  const centre = {
-    latitude: selectedZone.latitude,
-    longitude: selectedZone.longitude,
-  };
-  type Scored = {
-    readonly index: number;
-    readonly app: PlanningApplicationSummary;
-    readonly distance: number | null;
-  };
-  const scored: Scored[] = applications.map((app, index) => ({
-    index,
-    app,
-    distance: distanceFromCentre(app, centre),
-  }));
-  scored.sort((a, b) => {
-    if (a.distance === null && b.distance === null) return a.index - b.index;
-    if (a.distance === null) return 1;
-    if (b.distance === null) return -1;
-    return a.distance - b.distance;
-  });
-  return scored.map((s) => s.app);
-}
-
-function distanceFromCentre(
-  app: PlanningApplicationSummary,
-  centre: { latitude: number; longitude: number },
-): number | null {
-  if (app.latitude === null || app.longitude === null) return null;
-  return haversineDistanceMetres(centre, {
-    latitude: app.latitude,
-    longitude: app.longitude,
-  });
 }
 
 export function useApplications(options: UseApplicationsOptions) {
@@ -167,76 +81,118 @@ export function useApplications(options: UseApplicationsOptions) {
     selectedZone: null,
     applications: [],
     isLoading: false,
+    isLoadingMore: false,
     error: null,
     selectedStatusFilter: null,
     unreadOnly: false,
     sort: readPersistedSort(),
+    nextCursor: null,
+    reloadNonce: 0,
   }));
   const hasAutoSelectedRef = useRef(false);
 
-  // Auto-select the first zone the first time zones become non-empty.
+  // Monotonic generation counter. Each page-1 (re)query and each markAllRead
+  // refetch bumps it; an in-flight load-more captures the current value and
+  // discards its result if a newer query has since superseded it (e.g. the
+  // user changed sort/filter mid-load). This is what makes "reset to page 1
+  // on sort/filter change" race-safe.
+  const requestIdRef = useRef(0);
+
+  // Latest query inputs + pagination flags, mirrored into a ref so the
+  // event-driven `loadMore`/`markAllRead` callbacks read fresh values without
+  // re-subscribing. We build a fresh object (never the useState value) to stay
+  // clear of the react-hooks immutability rule.
+  const latestRef = useRef({
+    zone: null as WatchZoneSummary | null,
+    sort: state.sort,
+    status: null as ApplicationStatus | null,
+    unread: false,
+    nextCursor: null as string | null,
+    isLoading: false,
+    isLoadingMore: false,
+  });
+  useEffect(() => {
+    latestRef.current = {
+      zone: state.selectedZone,
+      sort: state.sort,
+      status: state.selectedStatusFilter,
+      unread: state.unreadOnly,
+      nextCursor: state.nextCursor,
+      isLoading: state.isLoading,
+      isLoadingMore: state.isLoadingMore,
+    };
+  });
+
+  // Auto-select the first zone the first time zones become non-empty. The query
+  // effect below reacts to the resulting `selectedZone` change and fetches.
   useEffect(() => {
     if (hasAutoSelectedRef.current) return;
     if (zones.length === 0) return;
     hasAutoSelectedRef.current = true;
     const firstZone = zones[0]!;
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setState((prev) => ({ ...prev, selectedZone: firstZone }));
+  }, [zones]);
+
+  // Page-1 query. Reacts to any change of the query inputs (zone, sort,
+  // status, unread) or an explicit reload, always resetting pagination to the
+  // first page (cursor null, accumulated rows discarded).
+  useEffect(() => {
+    if (state.selectedZone === null) return;
+    const zone = state.selectedZone;
+    const sort = state.sort;
+    const status = state.selectedStatusFilter;
+    const unread = state.unreadOnly;
+    const requestId = ++requestIdRef.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState((prev) => ({
       ...prev,
-      selectedZone: firstZone,
+      applications: [],
+      nextCursor: null,
       isLoading: true,
+      isLoadingMore: false,
       error: null,
     }));
     browsePort
-      .fetchByZone(firstZone.id)
-      .then((apps) =>
-        setState((prev) => ({ ...prev, applications: apps, isLoading: false })),
-      )
-      .catch((err: unknown) =>
+      .fetchByZone({ zoneId: zone.id, sort, status, unread, cursor: null })
+      .then(({ rows, nextCursor }) => {
+        if (requestId !== requestIdRef.current) return;
+        setState((prev) => ({ ...prev, applications: rows, nextCursor, isLoading: false }));
+      })
+      .catch((err: unknown) => {
+        if (requestId !== requestIdRef.current) return;
         setState((prev) => ({
           ...prev,
           applications: [],
+          nextCursor: null,
           isLoading: false,
           error: extractError(err),
-        })),
-      );
-  }, [zones, browsePort]);
+        }));
+      });
+  }, [
+    state.selectedZone,
+    state.sort,
+    state.selectedStatusFilter,
+    state.unreadOnly,
+    state.reloadNonce,
+    browsePort,
+  ]);
 
-  const selectZone = useCallback(
-    (zone: WatchZoneSummary) => {
-      setState((prev) => ({
-        ...prev,
-        selectedZone: zone,
-        selectedStatusFilter: null,
-        unreadOnly: false,
-        isLoading: true,
-        error: null,
-      }));
-      browsePort
-        .fetchByZone(zone.id)
-        .then((apps) =>
-          setState((prev) => ({ ...prev, applications: apps, isLoading: false })),
-        )
-        .catch((err: unknown) =>
-          setState((prev) => ({
-            ...prev,
-            applications: [],
-            isLoading: false,
-            error: extractError(err),
-          })),
-        );
-    },
-    [browsePort],
-  );
-
-  const setStatusFilter = useCallback((status: ApplicationStatus | null) => {
-    // Status and Unread chips share a single-select group (spec decision #7);
-    // selecting a status clears any unread-only mode.
+  const selectZone = useCallback((zone: WatchZoneSummary) => {
+    // Selecting a zone resets the status/unread filters (and, via the query
+    // effect, pagination) to a clean first page.
     setState((prev) => ({
       ...prev,
-      selectedStatusFilter: status,
+      selectedZone: zone,
+      selectedStatusFilter: null,
       unreadOnly: false,
     }));
+  }, []);
+
+  const setStatusFilter = useCallback((status: ApplicationStatus | null) => {
+    // Status and Unread chips share a single-select group; selecting a status
+    // clears unread-only so the two are never sent to the server together.
+    setState((prev) => ({ ...prev, selectedStatusFilter: status, unreadOnly: false }));
   }, []);
 
   const setUnreadOnly = useCallback((on: boolean) => {
@@ -252,82 +208,95 @@ export function useApplications(options: UseApplicationsOptions) {
     setState((prev) => ({ ...prev, sort }));
   }, []);
 
-  // Track the currently-selected zone in a ref so async actions like
-  // `markAllRead` can refetch the right zone after their await without
-  // closing over stale state. We use a small ref tracking only the zone id
-  // rather than mirroring the full state object — the latter conflicts with
-  // the `react-hooks/immutability` rule that forbids mutating values handed
-  // back from useState.
-  const selectedZoneIdRef = useRef<WatchZoneSummary['id'] | null>(
-    state.selectedZone?.id ?? null,
-  );
-  useEffect(() => {
-    selectedZoneIdRef.current = state.selectedZone?.id ?? null;
-  }, [state.selectedZone]);
+  const reload = useCallback(() => {
+    setState((prev) => ({ ...prev, reloadNonce: prev.reloadNonce + 1 }));
+  }, []);
+
+  // Fetch the next page and append it. Guards against double-firing and against
+  // running once the cursor is exhausted. A query that started before a newer
+  // page-1 (re)query is dropped via the requestId check.
+  const loadMore = useCallback(() => {
+    const snap = latestRef.current;
+    if (
+      snap.zone === null ||
+      snap.nextCursor === null ||
+      snap.isLoading ||
+      snap.isLoadingMore
+    ) {
+      return;
+    }
+    const requestId = requestIdRef.current;
+    const zone = snap.zone;
+    const cursor = snap.nextCursor;
+    setState((prev) => ({ ...prev, isLoadingMore: true }));
+    browsePort
+      .fetchByZone({ zoneId: zone.id, sort: snap.sort, status: snap.status, unread: snap.unread, cursor })
+      .then(({ rows, nextCursor }) => {
+        if (requestId !== requestIdRef.current) return;
+        setState((prev) => ({
+          ...prev,
+          applications: [...prev.applications, ...rows],
+          nextCursor,
+          isLoadingMore: false,
+        }));
+      })
+      .catch((err: unknown) => {
+        if (requestId !== requestIdRef.current) return;
+        setState((prev) => ({ ...prev, isLoadingMore: false, error: extractError(err) }));
+      });
+  }, [browsePort]);
 
   const markAllRead = useCallback(async () => {
-    // Server-side mark-all-read is idempotent. The refetch below replaces
-    // every row with `latestUnreadEvent: null`, which collapses the
-    // client-derived `unreadCount` to zero — no separate snapshot fetch
-    // needed (tc-u6bm).
+    // Server-side mark-all-read is idempotent. The page-1 refetch below replaces
+    // every row with `latestUnreadEvent: null`, collapsing the derived
+    // `unreadCount` to zero — no separate snapshot fetch needed (tc-u6bm).
     try {
       await notificationStateRepository.markAllRead();
     } catch {
-      // Swallow — the post-mark refetch is the source of truth for the
-      // visible unread state. A retry can be added if drift becomes a
-      // problem in practice.
+      // Swallow — the post-mark refetch is the source of truth for unread state.
     }
-    const activeZoneId = selectedZoneIdRef.current;
-    if (activeZoneId !== null) {
-      try {
-        const apps = await browsePort.fetchByZone(activeZoneId);
-        setState((prev) => ({ ...prev, applications: apps }));
-      } catch {
-        // Refetch failure is non-fatal — the existing rows stay rendered.
-      }
+    const snap = latestRef.current;
+    if (snap.zone === null) return;
+    const requestId = ++requestIdRef.current; // supersede any in-flight load-more
+    try {
+      const { rows, nextCursor } = await browsePort.fetchByZone({
+        zoneId: snap.zone.id,
+        sort: snap.sort,
+        status: snap.status,
+        unread: snap.unread,
+        cursor: null,
+      });
+      if (requestId !== requestIdRef.current) return;
+      setState((prev) => ({ ...prev, applications: rows, nextCursor }));
+    } catch {
+      // Refetch failure is non-fatal — the existing rows stay rendered.
     }
   }, [browsePort, notificationStateRepository]);
 
-  // Derived: count of distinct applications in the active zone whose latest
-  // event is unread. Replaces the previous server-side `totalUnreadCount`
-  // (an event count) which inflated the chip beyond the visible row count
-  // when an app had multiple unread events (tc-u6bm).
+  // Derived: count of distinct loaded applications whose latest event is unread.
+  // With server-side paging this reflects the rows fetched so far rather than
+  // the whole zone — accurate for typical zones and for the unread-only view.
   const unreadCount = useMemo(
     () => state.applications.filter((app) => app.latestUnreadEvent !== null).length,
     [state.applications],
   );
 
-  // Derived: filtered, sorted applications.
-  const filteredApplications = useMemo<readonly PlanningApplicationSummary[]>(() => {
-    let rows: readonly PlanningApplicationSummary[] = state.applications;
-    if (state.unreadOnly) {
-      rows = rows.filter((app) => app.latestUnreadEvent !== null);
-    } else if (state.selectedStatusFilter !== null) {
-      rows = rows.filter((app) => app.appState === state.selectedStatusFilter);
-    }
-    return sortApplications(rows, state.sort, state.selectedZone);
-  }, [
-    state.applications,
-    state.selectedStatusFilter,
-    state.unreadOnly,
-    state.sort,
-    state.selectedZone,
-  ]);
-
-  // Sort modes the picker should expose right now. The `distance` option is
-  // only meaningful relative to a chosen zone, so it's filtered out when no
-  // zone is active (multi-zone surfaces or the transient pre-auto-select
-  // state). Mirrors the iOS sibling's `availableSortOptions` (tc-mso6).
-  const availableSortOptions = useMemo<readonly ApplicationsSort[]>(() => {
-    return APPLICATIONS_SORT_VALUES.filter(
-      (mode) => mode !== 'distance' || state.selectedZone !== null,
-    );
-  }, [state.selectedZone]);
+  // Sort modes the picker should expose. `distance` is only meaningful relative
+  // to a chosen zone, so it's hidden when no zone is active.
+  const availableSortOptions = useMemo<readonly ApplicationsSort[]>(
+    () =>
+      APPLICATIONS_SORT_VALUES.filter(
+        (mode) => mode !== 'distance' || state.selectedZone !== null,
+      ),
+    [state.selectedZone],
+  );
 
   return {
     selectedZone: state.selectedZone,
-    applications: filteredApplications,
+    applications: state.applications,
     isLoading: state.isLoading,
+    isLoadingMore: state.isLoadingMore,
+    hasMore: state.nextCursor !== null,
     error: state.error,
     selectedStatusFilter: state.selectedStatusFilter,
     unreadOnly: state.unreadOnly,
@@ -338,6 +307,8 @@ export function useApplications(options: UseApplicationsOptions) {
     setStatusFilter,
     setUnreadOnly,
     setSort,
+    loadMore,
+    reload,
     markAllRead,
   };
 }
