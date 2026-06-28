@@ -153,8 +153,8 @@ struct MapClusterDTO: Decodable, Sendable {
       let status = ApplicationStatus(rawValue: pair.key) ?? .unknown
       acc[status, default: 0] += pair.value
     }
-    let member = applicationId.map {
-      PlanningApplicationId(authority: $0.authority, name: $0.name)
+    let member = applicationId.map { member in
+      PlanningApplicationId(authority: member.authority, name: member.name)
     }
     return MapCluster(coordinate: coordinate, count: count, statusCounts: counts, member: member)
   }

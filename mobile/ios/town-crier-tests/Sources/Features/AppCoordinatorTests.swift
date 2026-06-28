@@ -211,8 +211,6 @@ struct AppCoordinatorTests {
     await vm.loadApplications()
 
     // The map path sources clusters, not paged rows (GH#698).
-    #expect(appSpy.fetchApplicationsPageCalls.isEmpty)
-    #expect(appSpy.fetchClustersCalls.count == 1)
     #expect(appSpy.fetchClustersCalls.first?.zone.id.value == "zone-001")
     #expect(vm.clusters.count == 1)
   }

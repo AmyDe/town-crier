@@ -47,10 +47,14 @@ struct MapClusterTests {
   @Test func id_distinguishesMultiMemberCellsByCoordinate() throws {
     let first = MapCluster(
       coordinate: try Coordinate(latitude: 51.5, longitude: -0.12),
-      count: 10, statusCounts: [.permitted: 10], member: nil)
+      count: 10,
+      statusCounts: [.permitted: 10],
+      member: nil)
     let second = MapCluster(
       coordinate: try Coordinate(latitude: 51.6, longitude: -0.12),
-      count: 10, statusCounts: [.permitted: 10], member: nil)
+      count: 10,
+      statusCounts: [.permitted: 10],
+      member: nil)
 
     #expect(first.id != second.id)
   }
