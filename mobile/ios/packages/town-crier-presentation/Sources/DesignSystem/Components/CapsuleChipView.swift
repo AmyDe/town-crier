@@ -1,13 +1,20 @@
 import SwiftUI
 
-/// A compact, tappable capsule chip used in horizontal filter rows.
+/// A compact, tappable capsule chip used in horizontal chip rows.
+///
+/// Shared, neutral component for any single-line capsule selection chip — both
+/// the status-filter rows (e.g. "Pending", "Refused") and the watch-zone picker
+/// rows (e.g. a zone name) render with it, so the name describes the shape
+/// rather than any one call site's meaning.
 ///
 /// Purely presentational: it renders a label in a capsule whose fill, text
 /// colour, and border reflect the `isSelected` flag, and forwards taps to
-/// `onTap`. The caller owns all selection logic — `FilterChipView` never
-/// inspects a view model — so the same chip can express different selection
-/// rules at each call site (e.g. the application list ANDs in an
-/// "unread filter inactive" guard) without changing its appearance.
+/// `onTap`. The caller owns all selection logic — `CapsuleChipView` never
+/// inspects a view model — so each call site can compute selection from its own
+/// state (e.g. `viewModel.selectedStatusFilter == .undecided` or
+/// `zone.id == viewModel.selectedZone?.id`) and run its own tap action,
+/// synchronous or async (e.g. `Task { await viewModel.selectZone(zone) }`),
+/// without changing the chip's appearance.
 ///
 /// Follows the design language: `tcCaptionEmphasis` typography, `tcAmber`
 /// for the selected fill, `tcSurface` for the unselected fill, and a
@@ -15,14 +22,14 @@ import SwiftUI
 ///
 /// Usage:
 /// ```swift
-/// FilterChipView(
+/// CapsuleChipView(
 ///     label: "Pending",
 ///     isSelected: viewModel.selectedStatusFilter == .undecided
 /// ) {
 ///     viewModel.selectedStatusFilter = .undecided
 /// }
 /// ```
-public struct FilterChipView: View {
+public struct CapsuleChipView: View {
   private let label: String
   private let isSelected: Bool
   let onTap: () -> Void

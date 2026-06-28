@@ -56,7 +56,7 @@ public struct SavedApplicationListView: View {
   }
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
-    FilterChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
+    CapsuleChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
       viewModel.selectedStatusFilter = status
     }
   }

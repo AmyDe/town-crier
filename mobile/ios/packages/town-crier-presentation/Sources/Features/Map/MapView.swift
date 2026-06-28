@@ -68,7 +68,7 @@ public struct MapView: View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: TCSpacing.small) {
         ForEach(viewModel.zones) { zone in
-          ZoneChipView(
+          CapsuleChipView(
             label: zone.name,
             isSelected: zone.id == viewModel.selectedZone?.id
           ) {
@@ -104,7 +104,7 @@ public struct MapView: View {
   }
 
   private func filterChip(label: String, status: ApplicationStatus?) -> some View {
-    FilterChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
+    CapsuleChipView(label: label, isSelected: viewModel.selectedStatusFilter == status) {
       Task { await viewModel.applyStatusFilter(status) }
     }
   }
