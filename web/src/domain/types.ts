@@ -42,22 +42,6 @@ export type ApplicationStatus =
   | "Referred"
   | "Not Available";
 
-const APPLICATION_STATUSES: readonly string[] = [
-  "Undecided",
-  "Permitted",
-  "Conditions",
-  "Rejected",
-  "Withdrawn",
-  "Appealed",
-  "Unresolved",
-  "Referred",
-  "Not Available",
-];
-
-export function isApplicationStatus(value: unknown): value is ApplicationStatus {
-  return typeof value === "string" && APPLICATION_STATUSES.includes(value);
-}
-
 /**
  * Wire-format tag distinguishing the lifecycle event a notification was raised
  * for. Matches the API's `NotificationEventType`, which serialises as a string.
@@ -68,26 +52,7 @@ export function isApplicationStatus(value: unknown): value is ApplicationStatus 
  */
 export type NotificationEventType = "NewApplication" | "DecisionUpdate";
 
-const NOTIFICATION_EVENT_TYPES: readonly string[] = [
-  "NewApplication",
-  "DecisionUpdate",
-];
-
-export function isNotificationEventType(
-  value: unknown,
-): value is NotificationEventType {
-  return (
-    typeof value === "string" && NOTIFICATION_EVENT_TYPES.includes(value)
-  );
-}
-
 export type SubscriptionTier = "Free" | "Personal" | "Pro";
-
-const SUBSCRIPTION_TIERS: readonly string[] = ["Free", "Personal", "Pro"];
-
-export function isSubscriptionTier(value: unknown): value is SubscriptionTier {
-  return typeof value === "string" && SUBSCRIPTION_TIERS.includes(value);
-}
 
 /**
  * Matches the API's numeric day-of-week enum.
