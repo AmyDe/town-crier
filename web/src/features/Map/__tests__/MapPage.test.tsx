@@ -1,210 +1,237 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MapPage } from '../MapPage';
 import { SpyMapPort } from './spies/spy-map-port';
-import { aZone, anApplication, aSavedApplication } from './fixtures/map.fixtures';
+import {
+  aZone,
+  aSecondZone,
+  aBubbleCluster,
+  aSinglePinCluster,
+  anApplication,
+} from './fixtures/map.fixtures';
 import { asApplicationUid } from '../../../domain/types';
+
+const h = vi.hoisted(() => {
+  const setView = vi.fn();
+  return {
+    setView,
+    mapInstance: {
+      getBounds: () => ({
+        getWest: () => -0.2,
+        getSouth: () => 51.4,
+        getEast: () => 0.1,
+        getNorth: () => 51.6,
+      }),
+      getZoom: () => 13,
+      setView,
+    },
+  };
+});
 
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="map-container">{children}</div>
   ),
   TileLayer: () => <div data-testid="tile-layer" />,
-  Marker: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="map-marker">{children}</div>
+  Marker: ({
+    icon,
+    eventHandlers,
+  }: {
+    icon?: { className?: string; html?: string };
+    eventHandlers?: { click?: () => void };
+  }) => (
+    <button
+      data-testid="map-marker"
+      data-icon-class={icon?.className}
+      data-icon-html={icon?.html}
+      onClick={() => eventHandlers?.click?.()}
+    />
   ),
-  Popup: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="map-popup">{children}</div>
-  ),
-  useMap: () => ({ fitBounds: vi.fn() }),
+  useMap: () => h.mapInstance,
+  useMapEvents: () => h.mapInstance,
 }));
 
 vi.mock('leaflet', () => ({
-  default: {
-    divIcon: () => ({}),
-    latLngBounds: () => ({}),
-    latLng: (lat: number, lng: number) => ({ lat, lng }),
-  },
-  divIcon: () => ({}),
-  latLngBounds: () => ({}),
-  latLng: (lat: number, lng: number) => ({ lat, lng }),
+  default: { divIcon: (opts: unknown) => opts },
+  divIcon: (opts: unknown) => opts,
 }));
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+function renderMap(spy: SpyMapPort) {
+  return render(
+    <MemoryRouter initialEntries={['/map']}>
+      <Routes>
+        <Route path="/map" element={<MapPage port={spy} />} />
+        <Route path="/applications/*" element={<LocationProbe />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 describe('MapPage', () => {
   let spy: SpyMapPort;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     spy = new SpyMapPort();
   });
 
-  it('renders map heading and container', async () => {
+  it('renders the map heading and container once a zone has loaded', async () => {
     spy.fetchMyZonesResult = [aZone()];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
       expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
-
     expect(screen.getByRole('heading', { name: 'Map' })).toBeInTheDocument();
   });
 
-  it('renders loading state initially', () => {
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
-
+  it('renders the loading state initially', () => {
+    renderMap(spy);
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
-  it('renders error state on failure', async () => {
+  it('renders the error state when zone load fails', async () => {
     spy.fetchMyZonesError = new Error('Network unavailable');
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
       expect(screen.getByText('Network unavailable')).toBeInTheDocument();
     });
   });
 
-  it('renders application markers with popups showing summary info', async () => {
-    const zone = aZone();
-    const app = anApplication();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [app]);
+  it('requests clusters for the current viewport on mount', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchClustersResult = [aBubbleCluster()];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
-      expect(screen.getByTestId('map-marker')).toBeInTheDocument();
+      expect(spy.fetchClustersCalls.length).toBeGreaterThanOrEqual(1);
     });
-
-    expect(screen.getByText('Erection of two-storey rear extension')).toBeInTheDocument();
-    expect(screen.getByText('12 Mill Road, Cambridge')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /View details/i })).toHaveAttribute(
-      'href',
-      '/applications/app-001',
-    );
+    const call = spy.fetchClustersCalls[0]!;
+    expect(call.bounds).toEqual({ west: -0.2, south: 51.4, east: 0.1, north: 51.6 });
+    expect(call.zoom).toBe(13);
+    expect(call.status).toBeNull();
   });
 
-  it('skips applications without coordinates', async () => {
-    const zone = aZone();
-    const appWithCoords = anApplication();
-    const appWithoutCoords = anApplication({
-      uid: 'no-coords' as never,
-      latitude: null,
-      longitude: null,
-    });
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [
-      appWithCoords,
-      appWithoutCoords,
-    ]);
+  it('renders an amber count bubble for a multi-member cell', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchClustersResult = [aBubbleCluster({ count: 9 })];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('map-marker')).toHaveLength(1);
+      const markers = screen.getAllByTestId('map-marker');
+      const bubble = markers.find(
+        (m) => m.getAttribute('data-icon-class') === 'tc-cluster-bubble-wrapper',
+      );
+      expect(bubble).toBeDefined();
+      expect(bubble!.getAttribute('data-icon-html')).toContain('9');
     });
   });
 
-  it('renders "Save application" button for unsaved apps', async () => {
-    const zone = aZone();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
-    spy.fetchSavedApplicationsResult = [];
+  it('renders a status-coloured pin for a single-member cell', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchClustersResult = [aSinglePinCluster({ statusCounts: { Permitted: 1 } })];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save application' })).toBeInTheDocument();
+      const markers = screen.getAllByTestId('map-marker');
+      const pin = markers.find(
+        (m) => m.getAttribute('data-icon-class') === 'tc-status-pin-wrapper',
+      );
+      expect(pin).toBeDefined();
+      expect(pin!.getAttribute('data-icon-html')).toContain('var(--tc-status-permitted)');
     });
   });
 
-  it('renders "Unsave application" button for saved apps', async () => {
-    const zone = aZone();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+  it('zooms in when a multi-member bubble is tapped', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchClustersResult = [aBubbleCluster()];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
+
+    let bubble: HTMLElement | undefined;
+    await waitFor(() => {
+      bubble = screen
+        .getAllByTestId('map-marker')
+        .find((m) => m.getAttribute('data-icon-class') === 'tc-cluster-bubble-wrapper');
+      expect(bubble).toBeDefined();
+    });
+
+    fireEvent.click(bubble!);
+
+    expect(h.setView).toHaveBeenCalledTimes(1);
+  });
+
+  it('point-reads {authority,name} and opens the app when a single pin is tapped', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    const pinCluster = aSinglePinCluster();
+    spy.fetchClustersResult = [pinCluster];
+    spy.fetchApplicationByMemberResult = anApplication({ uid: asApplicationUid('app-777') });
+
+    renderMap(spy);
+
+    let pin: HTMLElement | undefined;
+    await waitFor(() => {
+      pin = screen
+        .getAllByTestId('map-marker')
+        .find((m) => m.getAttribute('data-icon-class') === 'tc-status-pin-wrapper');
+      expect(pin).toBeDefined();
+    });
+
+    fireEvent.click(pin!);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Unsave application' })).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent('/applications/app-777');
+    });
+    expect(spy.fetchApplicationByMemberCalls).toEqual([pinCluster.member]);
+  });
+
+  it('refetches clusters with status= when a status chip is selected', async () => {
+    spy.fetchMyZonesResult = [aZone()];
+    spy.fetchClustersResult = [aBubbleCluster()];
+
+    renderMap(spy);
+
+    await waitFor(() => {
+      expect(spy.fetchClustersCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Granted' }));
+
+    await waitFor(() => {
+      expect(spy.fetchClustersCalls.some((c) => c.status === 'Permitted')).toBe(true);
     });
   });
 
-  it('calls saveApplication with the full application when save button is clicked', async () => {
-    const zone = aZone();
-    const application = anApplication();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [application]);
-    spy.fetchSavedApplicationsResult = [];
+  it('shows a zone picker when more than one zone exists', async () => {
+    spy.fetchMyZonesResult = [aZone(), aSecondZone()];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save application' })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save application' }));
-
-    await waitFor(() => {
-      expect(spy.saveApplicationCalls).toEqual([application]);
+      expect(screen.getByRole('combobox', { name: /watch zone/i })).toBeInTheDocument();
     });
   });
 
-  it('calls unsaveApplication when unsave button is clicked', async () => {
-    const zone = aZone();
-    spy.fetchMyZonesResult = [zone];
-    spy.fetchApplicationsByZoneResults.set(zone.id as string, [anApplication()]);
-    spy.fetchSavedApplicationsResult = [aSavedApplication()];
+  it('does not show a zone picker for a single zone', async () => {
+    spy.fetchMyZonesResult = [aZone()];
 
-    render(
-      <MemoryRouter>
-        <MapPage port={spy} />
-      </MemoryRouter>,
-    );
+    renderMap(spy);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Unsave application' })).toBeInTheDocument();
+      expect(screen.getByTestId('map-container')).toBeInTheDocument();
     });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Unsave application' }));
-
-    await waitFor(() => {
-      expect(spy.unsaveApplicationCalls).toEqual([asApplicationUid('app-001')]);
-    });
+    expect(screen.queryByRole('combobox', { name: /watch zone/i })).not.toBeInTheDocument();
   });
 });

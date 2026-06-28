@@ -13,6 +13,53 @@
   margin: 0;
 }
 
+.zonePicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tc-space-xs);
+}
+
+.zonePickerLabel {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
+
+.zoneSelect {
+  padding: var(--tc-space-sm) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  font-size: var(--tc-text-body);
+}
+
+.statusFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tc-space-sm);
+}
+
+.chip {
+  padding: var(--tc-space-xs) var(--tc-space-md);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-full);
+  background: var(--tc-surface);
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--tc-amber);
+}
+
+.chipActive {
+  background: var(--tc-amber);
+  border-color: var(--tc-amber);
+  color: var(--tc-text-on-accent);
+}
+
 .mapWrapper {
   flex: 1;
   min-height: 400px;
@@ -37,33 +84,4 @@
   height: 100%;
   color: var(--tc-status-rejected);
   font-size: var(--tc-text-body);
-}
-
-.popupDescription {
-  font-size: var(--tc-text-caption);
-  color: var(--tc-text-primary);
-  margin: 0 0 var(--tc-space-xs) 0;
-  flex: 1;
-}
-
-.popupAddress {
-  font-size: var(--tc-text-caption);
-  color: var(--tc-text-secondary);
-  margin: 0 0 var(--tc-space-sm) 0;
-}
-
-.popupLink {
-  font-size: var(--tc-text-caption);
-  color: var(--tc-amber);
-  text-decoration: none;
-}
-
-.popupLink:hover {
-  text-decoration: underline;
-}
-
-.popupHeader {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--tc-space-xs);
 }
