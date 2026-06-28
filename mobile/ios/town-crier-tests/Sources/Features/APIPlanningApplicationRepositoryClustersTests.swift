@@ -158,7 +158,10 @@ struct APIPlanningApplicationRepositoryClustersTests {
 
     #expect(clusters.count == 2)
 
-    let stacked = try #require(clusters.first { $0.isStacked })
+    // Hoisted out of #require: a key-path-as-function inside the macro trips its
+    // rethrows instrumentation ("call can throw").
+    let stackedCell = clusters.first(where: \.isStacked)
+    let stacked = try #require(stackedCell)
     #expect(stacked.count == 3)
     #expect(
       stacked.members == [
@@ -183,7 +186,9 @@ struct APIPlanningApplicationRepositoryClustersTests {
     let clusters = try await sut.fetchClusters(
       for: testZone, viewport: viewport, zoom: 11, filter: .all)
 
-    #expect(clusters.allSatisfy { $0.members.isEmpty })
+    // Hoisted out of #expect for the same rethrows-macro reason as above.
+    let allMembersEmpty = clusters.allSatisfy(\.members.isEmpty)
+    #expect(allMembersEmpty)
     #expect(clusters.allSatisfy { !$0.isStacked })
   }
 
