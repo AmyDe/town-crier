@@ -1334,6 +1334,93 @@ func TestClusters_PassesZoneAndParamsToStore(t *testing.T) {
 	if q.GridSizeDegrees != wantGrid {
 		t.Errorf("grid size for zoom 12: got %v, want %v", q.GridSizeDegrees, wantGrid)
 	}
+	// The coalesce threshold is the finest (zoom-20) grid cell, independent of the
+	// request's own zoom: it is the "zooming can never separate these" boundary
+	// below which a multi-member cell gets an applicationIds member list.
+	wantThreshold := 45.0 / float64(uint64(1)<<20) // 360/2^(20+3)
+	if q.CoalesceThresholdDegrees != wantThreshold {
+		t.Errorf("coalesce threshold: got %v, want the finest-grid size %v", q.CoalesceThresholdDegrees, wantThreshold)
+	}
+}
+
+// TestClusters_CoalesceThresholdIsFinestGridRegardlessOfZoom proves the handler
+// threads the same finest-grid coalesce threshold into the store query for every
+// request zoom — it is the zoom-20 cell size, not the request's own grid size — so
+// the member-list decision is stable across zoom levels.
+func TestClusters_CoalesceThresholdIsFinestGridRegardlessOfZoom(t *testing.T) {
+	t.Parallel()
+	wantThreshold := 45.0 / float64(uint64(1)<<20)
+	for _, zoom := range []int{0, 5, 12, 20} {
+		t.Run(strconv.Itoa(zoom), func(t *testing.T) {
+			t.Parallel()
+			apps := &fakeAppFinder{}
+			mux := newNearbyMux(t, clusterDeps(t, apps))
+			rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters?bbox=-0.2,51.4,-0.05,51.6&zoom="+strconv.Itoa(zoom), "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("zoom=%d: got %d, want 200", zoom, rec.Code)
+			}
+			if got := apps.lastClusterQuery.CoalesceThresholdDegrees; got != wantThreshold {
+				t.Errorf("zoom=%d coalesce threshold: got %v, want %v", zoom, got, wantThreshold)
+			}
+		})
+	}
+}
+
+// TestClusters_WireShape_ApplicationIds pins the additive member-list contract: an
+// unsplittable coincident cell carries applicationIds listing its members, while a
+// splittable multi-member cell omits the field entirely (omitempty). The status
+// filter is threaded straight through to the store (which restricts the member
+// list at the SQL layer — see the integration suite).
+func TestClusters_WireShape_ApplicationIds(t *testing.T) {
+	t.Parallel()
+	apps := &fakeAppFinder{clusters: []applications.Cluster{
+		{ // splittable multi-member cell: no member list, client zooms in
+			Latitude: 51.51, Longitude: -0.12, Count: 42,
+			StatusCounts: map[string]int{"Permitted": 42},
+			Members:      nil,
+		},
+		{ // unsplittable coincident cell: carries the disambiguation list
+			Latitude: 51.52, Longitude: -0.13, Count: 3,
+			StatusCounts: map[string]int{"Permitted": 2, "Rejected": 1},
+			Members: []applications.PlanningApplicationID{
+				{Authority: "471", Name: "24/001"},
+				{Authority: "471", Name: "24/002"},
+				{Authority: "471", Name: "24/003"},
+			},
+		},
+	}}
+	mux := newNearbyMux(t, clusterDeps(t, apps))
+
+	rec := doReq(t, mux, http.MethodGet, "/v1/me/watch-zones/zone-1/applications/clusters"+validClusterQuery, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var got []struct {
+		Count          int `json:"count"`
+		ApplicationIDs *[]struct {
+			Authority string `json:"authority"`
+			Name      string `json:"name"`
+		} `json:"applicationIds"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v; raw=%s", err, rec.Body.String())
+	}
+	if len(got) != 2 {
+		t.Fatalf("clusters: got %d, want 2", len(got))
+	}
+	if got[0].ApplicationIDs != nil {
+		t.Errorf("splittable cell must omit applicationIds, got %+v", got[0].ApplicationIDs)
+	}
+	if got[1].ApplicationIDs == nil {
+		t.Fatalf("coincident cell must carry applicationIds, got null")
+	}
+	if len(*got[1].ApplicationIDs) != 3 {
+		t.Fatalf("applicationIds: got %d entries, want 3", len(*got[1].ApplicationIDs))
+	}
+	ids := *got[1].ApplicationIDs
+	if ids[0].Authority != "471" || ids[0].Name != "24/001" {
+		t.Errorf("applicationIds[0]: got %+v, want {471, 24/001}", ids[0])
+	}
 }
 
 // TestClusters_ZoomToGridSizeLookup proves the server-owned zoom -> grid-cell-size
