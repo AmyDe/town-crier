@@ -168,6 +168,21 @@ extension MapCluster {
       statusCounts: [status: 1],
       member: member)
   }
+
+  /// An unsplittable (coincident) multi-member cell carrying its stacked
+  /// members' identities; a tap opens the disambiguation list (GH#722).
+  static func stacked(
+    members: [PlanningApplicationId],
+    latitude: Double = 51.5,
+    longitude: Double = -0.12
+  ) -> MapCluster {
+    MapCluster(
+      coordinate: try! Coordinate(latitude: latitude, longitude: longitude),
+      count: members.count,
+      statusCounts: [.permitted: members.count],
+      member: nil,
+      members: members)
+  }
 }
 
 extension MapViewport {

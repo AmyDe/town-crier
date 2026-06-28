@@ -107,9 +107,19 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
   private(set) var fetchApplicationCalls: [PlanningApplicationId] = []
   var fetchApplicationResult: Result<PlanningApplication, Error> = .success(.pendingReview)
 
+  /// Per-id results for `fetchApplication(by:)`. When a key matches the requested
+  /// id it takes precedence over `fetchApplicationResult`, so a stacked-cluster
+  /// test can return a distinct application per member (and assert ordering /
+  /// identities) or make a single member's read throw to prove the all-or-nothing
+  /// resilience of `selectStack` (GH#722).
+  var fetchApplicationResultsById: [PlanningApplicationId: Result<PlanningApplication, Error>] = [:]
+
   func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication {
     fetchApplicationCalls.append(id)
     await waitForGateIfNeeded()
+    if let scoped = fetchApplicationResultsById[id] {
+      return try scoped.get()
+    }
     return try fetchApplicationResult.get()
   }
 
