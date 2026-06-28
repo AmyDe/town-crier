@@ -186,7 +186,7 @@ jobs:
     name: Deploy web
     needs: infra
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -210,7 +210,7 @@ jobs:
           vite-auth0-client-id: ${{ vars.VITE_AUTH0_CLIENT_ID }}
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
-          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
           render-mode: 'true'
           storage-account-name: sttowncrierprod
 

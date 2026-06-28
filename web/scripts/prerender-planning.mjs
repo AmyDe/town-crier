@@ -45,6 +45,8 @@ import { renderPlanningPage } from './lib/render-page.mjs';
 import { renderTownPage } from './lib/render-town-page.mjs';
 import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
+import { isSameNameAsAuthority } from './lib/same-name.mjs';
+import { mergeRedirects } from './lib/redirect-config.mjs';
 
 const DEFAULT_LIMIT = 30;
 
@@ -172,6 +174,21 @@ export const AUTHORITIES_FILE = join(
 export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
 
 /**
+ * The hand-written base Static Web Apps config (`navigationFallback`,
+ * `globalHeaders`, `routes`). Vite copies `public/` -> `dist/` BEFORE the
+ * prerender runs, so this is also present in the outDir; we deliberately read
+ * the SOURCE here (so re-running the prerender never double-merges) and write the
+ * merged result — base routes plus the same-name 301 redirects — into the outDir.
+ * @type {string}
+ */
+export const BASE_SWA_CONFIG_FILE = join(
+  SCRIPT_DIR,
+  '..',
+  'public',
+  'staticwebapp.config.json',
+);
+
+/**
  * @typedef {import('./lib/render-sitemap.mjs').SitemapEntry} SitemapEntry
  */
 
@@ -183,6 +200,7 @@ export const TOWNS_FILE = join(SCRIPT_DIR, '..', 'src', 'data', 'towns.json');
  * @property {Array<{ name: string, reason: string }>} excluded
  * @property {string[]} publishedTowns                  town paths written (<authority>/<town>)
  * @property {Array<{ name: string, reason: string }>} excludedTowns
+ * @property {string[]} [redirects]                     suppressed same-name town paths 301'd to their authority page
  */
 
 /**
@@ -361,6 +379,31 @@ async function writePage(outDir, data) {
 }
 
 /**
+ * Read the hand-written base SWA config, merge a 301 redirect for every
+ * suppressed same-name town page (tc-77ll), and write the result into the build
+ * outDir. Without this, a suppressed `/planning/<x>/<x>` URL would fall through
+ * `navigationFallback` to `index.html` (a 200 SPA shell = soft-404, worse than
+ * the duplicate it replaced). The merged route set stays well within the SWA
+ * route-count limit (≤151 redirects plus a handful of base routes).
+ *
+ * @param {Object} args
+ * @param {string} args.outDir
+ * @param {ReadonlyArray<string>} args.redirects   suppressed town paths ("<auth>/<town>")
+ * @param {string} args.baseConfigPath             source base config (web/public/staticwebapp.config.json)
+ * @returns {Promise<void>}
+ */
+async function writeRedirectConfig({ outDir, redirects, baseConfigPath }) {
+  const raw = await readFile(baseConfigPath, 'utf-8');
+  const baseConfig = JSON.parse(raw);
+  const merged = mergeRedirects(baseConfig, redirects);
+  await writeFile(
+    join(outDir, 'staticwebapp.config.json'),
+    `${JSON.stringify(merged, null, 2)}\n`,
+    'utf-8',
+  );
+}
+
+/**
  * Render and write a page if the authority qualifies and clears the gate.
  * Mutates `published`/`excluded`/`seenSlugs` and returns nothing.
  *
@@ -511,6 +554,8 @@ async function writeTownPage(outDir, data) {
  * @param {string[]} args.publishedTowns
  * @param {SitemapEntry[]} args.sitemapEntries           parallel { path, lastmod } records
  * @param {Array<{ name: string, reason: string }>} args.excludedTowns
+ * @param {string[]} args.redirects
+ *   suppressed same-name town paths to 301-redirect to their authority page
  * @param {Set<string>} args.seenPaths
  * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
  *   accumulates each published town under its parent authorityId so the (later)
@@ -530,6 +575,7 @@ async function considerTown(args) {
     publishedTowns,
     sitemapEntries,
     excludedTowns,
+    redirects,
     seenPaths,
     townsByAuthority,
     logger,
@@ -544,6 +590,21 @@ async function considerTown(args) {
     town.authorityId,
     authorities,
   );
+
+  // Same-name dedup (tc-77ll / #717): a town whose NORMALIZED slug equals its
+  // authority's slug (e.g. /planning/wrexham/wrexham vs /planning/wrexham)
+  // duplicates the stronger authority page with an identical <title>. Suppress
+  // it — no page, no sitemap entry, and (by returning before townsByAuthority is
+  // touched) no self-link from the authority page — and record a 301 to the
+  // authority page so the dead, likely-indexed URL is not a soft-404. Only
+  // reached after the coverage gate, so a same-name town that never published
+  // gets no redirect.
+  if (isSameNameAsAuthority(authorityName, town.slug)) {
+    excludedTowns.push({ name: town.name, reason: 'same-name' });
+    redirects.push(townPagePath(authoritySlug, town.slug));
+    return;
+  }
+
   const path = townPagePath(authoritySlug, town.slug);
   if (seenPaths.has(path)) {
     logger.warn(`[prerender] duplicate town path "${path}" — skipped`);
@@ -595,7 +656,7 @@ async function considerTown(args) {
  * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
- * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>> }>}
+ * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>>, redirects: string[] }>}
  */
 async function renderTownPages(args) {
   const { outDir, towns, authorities, getGeo, limit, logger } = args;
@@ -606,6 +667,9 @@ async function renderTownPages(args) {
   const townSitemapEntries = [];
   /** @type {Array<{ name: string, reason: string }>} */
   const excludedTowns = [];
+  // Suppressed same-name town paths (tc-77ll), to be 301'd to their authority.
+  /** @type {string[]} */
+  const redirects = [];
   const seenPaths = new Set();
   // Published towns keyed by parent authorityId — handed to the authority pass so
   // each authority page can link down to its own (gated-in) town children.
@@ -627,13 +691,20 @@ async function renderTownPages(args) {
       publishedTowns,
       sitemapEntries: townSitemapEntries,
       excludedTowns,
+      redirects,
       seenPaths,
       townsByAuthority,
       logger,
     });
   }
 
-  return { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority };
+  return {
+    publishedTowns,
+    townSitemapEntries,
+    excludedTowns,
+    townsByAuthority,
+    redirects,
+  };
 }
 
 /**
@@ -652,12 +723,20 @@ async function renderTownPages(args) {
  * @param {ReadonlyArray<Town & { total: number, statusBreakdown?: object[], applications?: object[] }>} args.townEntries
  * @param {ReadonlyArray<{ id: number, name: string }>} args.authorities  resolves a town's parent-authority slug
  * @param {number} args.limit
+ * @param {string} [args.baseConfigPath]  base SWA config to merge same-name 301s into
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<PrerenderResult>}
  */
 async function renderEntries(args) {
-  const { outDir, authorityEntries, townEntries, authorities, limit, logger } =
-    args;
+  const {
+    outDir,
+    authorityEntries,
+    townEntries,
+    authorities,
+    limit,
+    baseConfigPath = BASE_SWA_CONFIG_FILE,
+    logger,
+  } = args;
 
   // Town pass FIRST: an authority page must link only to towns that actually
   // published (cleared the coverage gate), so the per-authority town map has to
@@ -665,21 +744,26 @@ async function renderEntries(args) {
   // order is immaterial. Town entries carry the geo projection inline, so
   // `getGeo` is a pure lookup — no network. With zero town entries the loop is a
   // no-op and `authorities` is never consulted.
-  const { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority } =
-    await renderTownPages({
-      outDir,
-      towns: townEntries,
-      authorities,
-      getGeo: async (town) => ({
-        applications: Array.isArray(town.applications) ? town.applications : [],
-        total: town.total,
-        statusBreakdown: Array.isArray(town.statusBreakdown)
-          ? town.statusBreakdown
-          : [],
-      }),
-      limit,
-      logger,
-    });
+  const {
+    publishedTowns,
+    townSitemapEntries,
+    excludedTowns,
+    townsByAuthority,
+    redirects,
+  } = await renderTownPages({
+    outDir,
+    towns: townEntries,
+    authorities,
+    getGeo: async (town) => ({
+      applications: Array.isArray(town.applications) ? town.applications : [],
+      total: town.total,
+      statusBreakdown: Array.isArray(town.statusBreakdown)
+        ? town.statusBreakdown
+        : [],
+    }),
+    limit,
+    logger,
+  });
 
   /** @type {string[]} */
   const published = [];
@@ -720,7 +804,15 @@ async function renderEntries(args) {
     renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
     'utf-8',
   );
-  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
+  await writeRedirectConfig({ outDir, redirects, baseConfigPath });
+  return {
+    skipped: false,
+    published,
+    excluded,
+    publishedTowns,
+    excludedTowns,
+    redirects,
+  };
 }
 
 /**
@@ -729,13 +821,21 @@ async function renderEntries(args) {
  * @param {string} args.fixturePath               authority fixture (optional)
  * @param {string} [args.townFixturePath]         town fixture (optional)
  * @param {number} args.limit
+ * @param {string} [args.baseConfigPath]          base SWA config for same-name 301s
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<PrerenderResult>}
  */
 async function runFixtureMode(args) {
-  const { outDir, fixturePath, townFixturePath, limit, loadAuthorities, logger } =
-    args;
+  const {
+    outDir,
+    fixturePath,
+    townFixturePath,
+    limit,
+    baseConfigPath,
+    loadAuthorities,
+    logger,
+  } = args;
 
   /** @type {Array<{ id: number, name: string, areaType: string }>} */
   let authorityEntries = [];
@@ -768,6 +868,7 @@ async function runFixtureMode(args) {
     townEntries,
     authorities,
     limit,
+    baseConfigPath,
     logger,
   });
 }
@@ -779,6 +880,7 @@ async function runFixtureMode(args) {
  * @param {string} args.buildKey
  * @param {number} args.limit
  * @param {number} args.minPopulation
+ * @param {string} [args.baseConfigPath]  base SWA config for same-name 301s
  * @param {typeof globalThis.fetch} args.fetchImpl
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} args.loadAuthorities
  * @param {() => Promise<Town[]>} args.loadTowns
@@ -792,6 +894,7 @@ async function runLiveMode(args) {
     buildKey,
     limit,
     minPopulation,
+    baseConfigPath = BASE_SWA_CONFIG_FILE,
     fetchImpl,
     loadAuthorities,
     loadTowns,
@@ -823,16 +926,21 @@ async function runLiveMode(args) {
     }
   }
 
-  const { publishedTowns, townSitemapEntries, excludedTowns, townsByAuthority } =
-    await renderTownPages({
-      outDir,
-      towns: eligibleTowns,
-      authorities,
-      getGeo: (town) =>
-        fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
-      limit,
-      logger,
-    });
+  const {
+    publishedTowns,
+    townSitemapEntries,
+    excludedTowns,
+    townsByAuthority,
+    redirects,
+  } = await renderTownPages({
+    outDir,
+    towns: eligibleTowns,
+    authorities,
+    getGeo: (town) =>
+      fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
+    limit,
+    logger,
+  });
   excludedTowns.push(...populationExcludedTowns);
 
   /** @type {string[]} */
@@ -879,7 +987,15 @@ async function runLiveMode(args) {
     renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
     'utf-8',
   );
-  return { skipped: false, published, excluded, publishedTowns, excludedTowns };
+  await writeRedirectConfig({ outDir, redirects, baseConfigPath });
+  return {
+    skipped: false,
+    published,
+    excluded,
+    publishedTowns,
+    excludedTowns,
+    redirects,
+  };
 }
 
 /**
@@ -1010,6 +1126,7 @@ async function gatherSnapshot(args) {
  * @param {string} [options.townFixturePath]       committed town JSON fixture (fixture mode)
  * @param {number} [options.limit]                 applications rendered per page
  * @param {Record<string, string | undefined>} [options.env]  environment (for SEO_TOWN_MIN_POPULATION)
+ * @param {string} [options.baseConfigPath]        base SWA config to merge same-name 301s into
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {() => Promise<Array<{ id: number, name: string, areaType: string }>>} [options.loadAuthorities]
  * @param {() => Promise<Town[]>} [options.loadTowns]
@@ -1025,6 +1142,7 @@ export async function runPrerender(options) {
     townFixturePath,
     limit = DEFAULT_LIMIT,
     env = process.env,
+    baseConfigPath = BASE_SWA_CONFIG_FILE,
     fetchImpl = globalThis.fetch,
     loadAuthorities = () => loadAuthoritiesFromFile(AUTHORITIES_FILE, readFile),
     loadTowns = () => loadTownsFromFile(TOWNS_FILE, readFile),
@@ -1037,6 +1155,7 @@ export async function runPrerender(options) {
       fixturePath,
       townFixturePath,
       limit,
+      baseConfigPath,
       loadAuthorities,
       logger,
     });
@@ -1050,6 +1169,7 @@ export async function runPrerender(options) {
       excluded: [],
       publishedTowns: [],
       excludedTowns: [],
+      redirects: [],
     };
   }
 
@@ -1065,6 +1185,7 @@ export async function runPrerender(options) {
     buildKey,
     limit,
     minPopulation: resolveMinPopulation(env),
+    baseConfigPath,
     fetchImpl,
     loadAuthorities,
     loadTowns,
@@ -1171,6 +1292,7 @@ function assertValidSnapshot(snapshot, snapshotPath) {
  * @param {string} options.outDir
  * @param {string} options.snapshotPath
  * @param {number} [options.limit]                  override; defaults to the snapshot's own
+ * @param {string} [options.baseConfigPath]         base SWA config to merge same-name 301s into
  * @param {(path: string, encoding: string) => Promise<string>} [options.readFileImpl]
  * @param {{ log: Function, warn: Function, error: Function }} [options.logger]
  * @returns {Promise<PrerenderResult>}
@@ -1180,6 +1302,7 @@ export async function runRender(options) {
     outDir,
     snapshotPath,
     limit,
+    baseConfigPath = BASE_SWA_CONFIG_FILE,
     readFileImpl = readFile,
     logger = console,
   } = options;
@@ -1221,6 +1344,7 @@ export async function runRender(options) {
     townEntries: snapshot.townPages,
     authorities: snapshot.authorities,
     limit: renderLimit,
+    baseConfigPath,
     logger,
   });
 }

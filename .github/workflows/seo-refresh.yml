@@ -42,7 +42,7 @@
 # Requires per-environment GitHub variables (vars.*):
 #   VITE_API_BASE_URL, VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID,
 #   VITE_AUTH0_AUDIENCE, VITE_APPLICATIONINSIGHTS_CONNECTION_STRING,
-#   SEO_TOWN_MIN_POPULATION (optional; defaults to 20000)
+#   SEO_TOWN_MIN_POPULATION (optional; defaults to 5000)
 #
 # Requires GitHub Environments:
 #   development, production  — each with an OIDC federated credential. The
@@ -99,7 +99,7 @@ jobs:
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           site-build-key: ""
-          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
       - uses: ./.github/actions/azure-login
         with:
@@ -114,7 +114,7 @@ jobs:
         env:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
+          SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
       # Shared-key access is disabled on the account, so --auth-mode login (AAD).
       - name: Upload snapshot to Azure Blob
@@ -172,7 +172,7 @@ jobs:
           vite-auth0-audience: ${{ vars.VITE_AUTH0_AUDIENCE }}
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           site-build-key: ""
-          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
+          seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
       - uses: ./.github/actions/azure-login
         with:
@@ -187,7 +187,7 @@ jobs:
         env:
           SITE_BUILD_KEY: ${{ secrets.SITE_BUILD_KEY }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-          SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '20000' }}
+          SEO_TOWN_MIN_POPULATION: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
 
       # Shared-key access is disabled on the account, so --auth-mode login (AAD).
       - name: Upload snapshot to Azure Blob
