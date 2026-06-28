@@ -68,6 +68,12 @@ interface State {
   readonly nextCursor: string | null;
   /** Bumped to force a page-1 refetch without changing the query inputs (retry). */
   readonly reloadNonce: number;
+  /**
+   * Whole-zone unread total for the "Unread (N)" chip (GH#716, Problem 2).
+   * Sourced from `browsePort.countUnread(zone.id)` — independent of how many
+   * main-list pages are loaded — not derived from the rows fetched so far.
+   */
+  readonly unreadCount: number;
 }
 
 function extractError(err: unknown): string {
@@ -88,6 +94,7 @@ export function useApplications(options: UseApplicationsOptions) {
     sort: readPersistedSort(),
     nextCursor: null,
     reloadNonce: 0,
+    unreadCount: 0,
   }));
   const hasAutoSelectedRef = useRef(false);
 
@@ -97,6 +104,12 @@ export function useApplications(options: UseApplicationsOptions) {
   // user changed sort/filter mid-load). This is what makes "reset to page 1
   // on sort/filter change" race-safe.
   const requestIdRef = useRef(0);
+
+  // Separate generation counter for the whole-zone unread count. Kept distinct
+  // from `requestIdRef` so a count refresh never supersedes an in-flight list
+  // page (and vice versa); it only guards the count's own zone-change/markAllRead
+  // refetches against stale responses overwriting a newer zone's total.
+  const countUnreadRequestIdRef = useRef(0);
 
   // Latest query inputs + pagination flags, mirrored into a ref so the
   // event-driven `loadMore`/`markAllRead` callbacks read fresh values without
@@ -178,6 +191,26 @@ export function useApplications(options: UseApplicationsOptions) {
     browsePort,
   ]);
 
+  // Whole-zone unread total for the chip. Re-fetched only when the selected zone
+  // changes — deliberately independent of sort/status/unread/pagination, so
+  // loading more list pages (or toggling filters) never moves the chip's number.
+  // markAllRead refreshes it explicitly.
+  useEffect(() => {
+    if (state.selectedZone === null) return;
+    const zoneId = state.selectedZone.id;
+    const requestId = ++countUnreadRequestIdRef.current;
+    browsePort
+      .countUnread(zoneId)
+      .then((count) => {
+        if (requestId !== countUnreadRequestIdRef.current) return;
+        setState((prev) => ({ ...prev, unreadCount: count }));
+      })
+      .catch(() => {
+        // Non-fatal: leave the previous count in place rather than zeroing the
+        // chip on a transient failure.
+      });
+  }, [state.selectedZone, browsePort]);
+
   const selectZone = useCallback((zone: WatchZoneSummary) => {
     // Selecting a zone resets the status/unread filters (and, via the query
     // effect, pagination) to a clean first page.
@@ -247,9 +280,10 @@ export function useApplications(options: UseApplicationsOptions) {
   }, [browsePort]);
 
   const markAllRead = useCallback(async () => {
-    // Server-side mark-all-read is idempotent. The page-1 refetch below replaces
-    // every row with `latestUnreadEvent: null`, collapsing the derived
-    // `unreadCount` to zero — no separate snapshot fetch needed (tc-u6bm).
+    // Server-side mark-all-read is idempotent. We then refresh two things in
+    // parallel: page 1 (its rows now carry `latestUnreadEvent: null`, so the
+    // cards render as read) and the whole-zone unread count (the server
+    // watermark advanced, so it should drop — typically to zero).
     try {
       await notificationStateRepository.markAllRead();
     } catch {
@@ -257,29 +291,41 @@ export function useApplications(options: UseApplicationsOptions) {
     }
     const snap = latestRef.current;
     if (snap.zone === null) return;
+    const zoneId = snap.zone.id;
     const requestId = ++requestIdRef.current; // supersede any in-flight load-more
-    try {
-      const { rows, nextCursor } = await browsePort.fetchByZone({
-        zoneId: snap.zone.id,
-        sort: snap.sort,
-        status: snap.status,
-        unread: snap.unread,
-        cursor: null,
-      });
-      if (requestId !== requestIdRef.current) return;
-      setState((prev) => ({ ...prev, applications: rows, nextCursor }));
-    } catch {
-      // Refetch failure is non-fatal — the existing rows stay rendered.
-    }
+    const countRequestId = ++countUnreadRequestIdRef.current;
+    await Promise.all([
+      browsePort
+        .fetchByZone({
+          zoneId,
+          sort: snap.sort,
+          status: snap.status,
+          unread: snap.unread,
+          cursor: null,
+        })
+        .then(({ rows, nextCursor }) => {
+          if (requestId !== requestIdRef.current) return;
+          setState((prev) => ({ ...prev, applications: rows, nextCursor }));
+        })
+        .catch(() => {
+          // Refetch failure is non-fatal — the existing rows stay rendered.
+        }),
+      browsePort
+        .countUnread(zoneId)
+        .then((count) => {
+          if (countRequestId !== countUnreadRequestIdRef.current) return;
+          setState((prev) => ({ ...prev, unreadCount: count }));
+        })
+        .catch(() => {
+          // Non-fatal — leave the previous count in place.
+        }),
+    ]);
   }, [browsePort, notificationStateRepository]);
 
-  // Derived: count of distinct loaded applications whose latest event is unread.
-  // With server-side paging this reflects the rows fetched so far rather than
-  // the whole zone — accurate for typical zones and for the unread-only view.
-  const unreadCount = useMemo(
-    () => state.applications.filter((app) => app.latestUnreadEvent !== null).length,
-    [state.applications],
-  );
+  // Whole-zone unread total for the chip, sourced from `browsePort.countUnread`
+  // (see the count-fetch effect above) rather than the loaded rows — so it
+  // reflects the zone, not how far the user has paged (GH#716, Problem 2).
+  const unreadCount = state.unreadCount;
 
   // Sort modes the picker should expose. `distance` is only meaningful relative
   // to a chosen zone, so it's hidden when no zone is active.

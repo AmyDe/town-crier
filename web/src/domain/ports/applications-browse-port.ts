@@ -31,4 +31,13 @@ export interface ApplicationsPageResult {
 
 export interface ApplicationsBrowsePort {
   fetchByZone(query: ApplicationsBrowseQuery): Promise<ApplicationsPageResult>;
+  /**
+   * Returns the zone's **full** unread total, independent of the main list's
+   * pagination (GH#716, Problem 2). Sourced from the unread-only query exhausted
+   * across every page, so loading more main-list pages never changes it. This is
+   * what the "Unread (N)" chip counts — a whole-zone signal, not the rows loaded
+   * so far. Deliberately zone-scoped (not the account-wide notification-state
+   * snapshot, which would over-count a multi-zone user).
+   */
+  countUnread(zoneId: WatchZoneId): Promise<number>;
 }
