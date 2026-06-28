@@ -19,14 +19,25 @@ import {
 } from './fixtures/designation-context.fixtures';
 import { asApplicationUid } from '../../../domain/types';
 
+interface DetailRouterState {
+  authority?: string;
+  name?: string;
+}
+
+const DEFAULT_STATE: DetailRouterState = {
+  authority: '42',
+  name: '2026/0042/FUL',
+};
+
 function renderPage(
   appRepo: SpyApplicationRepository = new SpyApplicationRepository(),
   desigRepo: SpyDesignationRepository = new SpyDesignationRepository(),
   savedRepo: SpySavedApplicationRepository = new SpySavedApplicationRepository(),
   uid = 'APP-001',
+  state: DetailRouterState | null = DEFAULT_STATE,
 ) {
   return render(
-    <MemoryRouter initialEntries={[`/applications/${uid}`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/applications/${uid}`, state }]}>
       <Routes>
         <Route
           path="/applications/*"
@@ -282,5 +293,30 @@ describe('ApplicationDetailPage', () => {
     expect(
       await screen.findByText(/application not found/i),
     ).toBeInTheDocument();
+  });
+
+  it('resolves the application via the composite key carried in router state', async () => {
+    const appRepo = new SpyApplicationRepository();
+    appRepo.fetchApplicationResult = fullApplication();
+
+    renderPage(appRepo);
+
+    expect(
+      await screen.findByRole('heading', { name: '2026/0042/FUL' }),
+    ).toBeInTheDocument();
+    expect(appRepo.fetchApplicationCalls).toEqual([
+      { authority: '42', name: '2026/0042/FUL' },
+    ]);
+  });
+
+  it('shows a graceful notice and does not fetch when no router state is present', async () => {
+    const appRepo = new SpyApplicationRepository();
+
+    renderPage(appRepo, undefined, undefined, 'APP-001', null);
+
+    expect(
+      await screen.findByText(/open this application from your list/i),
+    ).toBeInTheDocument();
+    expect(appRepo.fetchApplicationCalls).toEqual([]);
   });
 });

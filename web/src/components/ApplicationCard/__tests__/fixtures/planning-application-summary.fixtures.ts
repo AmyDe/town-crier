@@ -1,5 +1,5 @@
 import type { PlanningApplicationSummary } from '../../../../domain/types';
-import { asApplicationUid } from '../../../../domain/types';
+import { asApplicationUid, asAuthorityId } from '../../../../domain/types';
 
 export function undecidedApplication(
   overrides?: Partial<PlanningApplicationSummary>,
@@ -13,6 +13,7 @@ export function undecidedApplication(
     appType: 'Full Planning',
     appState: 'Undecided',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-01-15',
     url: 'https://planit.org.uk/planapplic/APP-001',
     latestUnreadEvent: null,
@@ -32,6 +33,7 @@ export function permittedApplication(
     appType: 'Listed Building Consent',
     appState: 'Permitted',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-02-20',
     url: null,
     latestUnreadEvent: null,
@@ -51,6 +53,7 @@ export function conditionsApplication(
     appType: 'Full Planning',
     appState: 'Conditions',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-02-25',
     url: null,
     latestUnreadEvent: null,
@@ -70,6 +73,7 @@ export function rejectedApplication(
     appType: 'Full Planning',
     appState: 'Rejected',
     areaName: 'Cambridge City Council',
+    areaId: asAuthorityId(42),
     startDate: '2026-02-28',
     url: null,
     latestUnreadEvent: null,

@@ -14,6 +14,7 @@ function toSummary(app: PlanningApplication): PlanningApplicationSummary {
     appType: app.appType,
     appState: app.appState,
     areaName: app.areaName,
+    areaId: app.areaId,
     startDate: app.startDate,
     url: app.url,
     latitude: app.latitude,

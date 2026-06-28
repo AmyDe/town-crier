@@ -59,7 +59,14 @@ vi.mock('leaflet', () => ({
 
 function LocationProbe() {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
+  const state = (location.state ?? {}) as { authority?: string; name?: string };
+  return (
+    <div>
+      <div data-testid="location">{location.pathname}</div>
+      <div data-testid="location-authority">{state.authority ?? ''}</div>
+      <div data-testid="location-name">{state.name ?? ''}</div>
+    </div>
+  );
 }
 
 function renderMap(spy: SpyMapPort) {
@@ -195,6 +202,8 @@ describe('MapPage', () => {
       expect(screen.getByTestId('location')).toHaveTextContent('/applications/app-777');
     });
     expect(spy.fetchApplicationByMemberCalls).toEqual([pinCluster.member]);
+    expect(screen.getByTestId('location-authority')).toHaveTextContent('1');
+    expect(screen.getByTestId('location-name')).toHaveTextContent('22/1234/FUL');
   });
 
   it('refetches clusters with status= when a status chip is selected', async () => {

@@ -23,6 +23,7 @@ export function ApplicationCard({ application }: Props) {
   return (
     <Link
       to={`/applications/${application.uid}`}
+      state={{ authority: String(application.areaId), name: application.name }}
       className={`${styles.card} ${isUnread ? styles.cardUnread : styles.cardRead}`}
       data-testid="application-card"
       data-unread={isUnread ? 'true' : 'false'}

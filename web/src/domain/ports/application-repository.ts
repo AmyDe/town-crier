@@ -1,5 +1,5 @@
-import type { ApplicationUid, PlanningApplication } from '../types';
+import type { PlanningApplication } from '../types';
 
 export interface ApplicationRepository {
-  fetchApplication(uid: ApplicationUid): Promise<PlanningApplication>;
+  fetchApplication(authority: string, name: string): Promise<PlanningApplication>;
 }

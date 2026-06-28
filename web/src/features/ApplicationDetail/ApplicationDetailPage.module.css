@@ -22,6 +22,17 @@
   font-size: var(--tc-text-body);
 }
 
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: var(--tc-space-lg) var(--tc-space-md);
+  text-align: center;
+  color: var(--tc-text-secondary);
+  font-size: var(--tc-text-body);
+}
+
 .header {
   margin-bottom: var(--tc-space-lg);
 }

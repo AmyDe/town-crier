@@ -130,7 +130,12 @@ export function MapPage({ port }: Props) {
     async (member: ClusterMember) => {
       const application = await resolveMember(member);
       if (application) {
-        navigate(`/applications/${application.uid}`);
+        navigate(`/applications/${application.uid}`, {
+          state: {
+            authority: String(application.areaId),
+            name: application.name,
+          },
+        });
       }
     },
     [resolveMember, navigate],

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { asApplicationUid } from '../../domain/types';
 import type { ApplicationRepository } from '../../domain/ports/application-repository';
 import type { DesignationRepository } from '../../domain/ports/designation-repository';
@@ -23,13 +23,30 @@ export function ApplicationDetailPage({
   const { '*': rawUid } = useParams();
   const uid = asApplicationUid(rawUid ?? '');
 
-  const { application, isLoading, error } = useApplication(applicationRepository, uid);
+  const location = useLocation();
+  const state = (location.state ?? {}) as { authority?: string; name?: string };
+  const authority = state.authority ?? null;
+  const name = state.name ?? null;
+
+  const { application, isLoading, error } = useApplication(
+    applicationRepository,
+    authority,
+    name,
+  );
   const { designations } = useDesignations(
     designationRepository,
     application?.latitude ?? null,
     application?.longitude ?? null,
   );
   const { isSaved, toggleSave } = useSavedApplication(savedApplicationRepository, uid);
+
+  if (authority === null || name === null) {
+    return (
+      <div className={styles.notice}>
+        Open this application from your list to see its details.
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className={styles.loading}>Loading application...</div>;
