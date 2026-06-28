@@ -131,12 +131,19 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
 /// cell has a null `applicationId` and a multi-status `statusCounts`; a
 /// `count == 1` cell carries the lone application's `{authority, name}` and a
 /// single-entry `statusCounts`.
+///
+/// An *unsplittable* multi-member cell — members coincident or closer than the
+/// finest grid cell, so zoom can never separate them — additionally carries
+/// `applicationIds`, the capped list of its members' `{authority, name}` ids
+/// (GH#722). It is omitted/null for every splittable cell, so `members` defaults
+/// to empty and existing behaviour is unchanged.
 struct MapClusterDTO: Decodable, Sendable {
   let latitude: Double
   let longitude: Double
   let count: Int
   let statusCounts: [String: Int]
   let applicationId: MemberDTO?
+  let applicationIds: [MemberDTO]?
 
   struct MemberDTO: Decodable, Sendable {
     let authority: String
@@ -156,7 +163,12 @@ struct MapClusterDTO: Decodable, Sendable {
     let member = applicationId.map { member in
       PlanningApplicationId(authority: member.authority, name: member.name)
     }
-    return MapCluster(coordinate: coordinate, count: count, statusCounts: counts, member: member)
+    let members =
+      applicationIds?.map { member in
+        PlanningApplicationId(authority: member.authority, name: member.name)
+      } ?? []
+    return MapCluster(
+      coordinate: coordinate, count: count, statusCounts: counts, member: member, members: members)
   }
 }
 
