@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Town Crier is a mobile-first app for monitoring UK local authority planning applications, delivering push notifications to residents, community groups, and property professionals. It uses PlanIt (planit.org.uk) as its primary data provider, with a polling-based ingestion model (see ADR 0006).
 
+## Business Status
+
+**Town Crier is no longer pre-revenue.** As of 2026-06-29 we have our first paying customer who is not personally known to the owner — a real, arm's-length subscriber. Treat the product as live with real customers, not a test deployment.
+
+Operational consequence: the **fix-forward-always, no-rollback** posture that applied during the pre-revenue window is now **reversed**. A broken deploy can harm a paying user, so production stability matters. Rollback safety, soak/verification gates before promoting, and staged cutovers are back on the table; don't assume "we can just fix forward" is acceptable for anything user-facing. Use judgement about blast radius rather than reaching for blunt cutovers by default.
+
 ## Monorepo Structure
 
 ```
