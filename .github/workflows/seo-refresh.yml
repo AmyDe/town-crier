@@ -222,7 +222,7 @@ jobs:
           skip_api_build: true
 
       # Notify Bing (IndexNow) of all live URLs so the crawl queue is skipped.
-      # Key file at https://towncrierapp.uk/b0b25e7c078d416e88646f873fe92423.txt
+      # Key file at https://towncrierapp.uk/1cb201daee1a485fb8cce2a68e8ee465.txt
       # is part of web/public/ and therefore already deployed above.
       - name: Submit sitemap URLs to IndexNow
         run: |
@@ -234,8 +234,8 @@ jobs:
             -H "Content-Type: application/json; charset=utf-8" \
             -d "{
               \"host\": \"towncrierapp.uk\",
-              \"key\": \"b0b25e7c078d416e88646f873fe92423\",
-              \"keyLocation\": \"https://towncrierapp.uk/b0b25e7c078d416e88646f873fe92423.txt\",
+              \"key\": \"1cb201daee1a485fb8cce2a68e8ee465\",
+              \"keyLocation\": \"https://towncrierapp.uk/1cb201daee1a485fb8cce2a68e8ee465.txt\",
               \"urlList\": $urls
             }")
           echo "IndexNow response: $http_code — $(cat /tmp/indexnow-response.txt)"
