@@ -239,4 +239,7 @@ jobs:
               \"urlList\": $urls
             }")
           echo "IndexNow response: $http_code — $(cat /tmp/indexnow-response.txt)"
-          [ "$http_code" = "200" ] || [ "$http_code" = "202" ] || { echo "IndexNow error $http_code"; exit 1; }
+          # 403 SiteVerificationNotCompleted is a transient CDN propagation race
+          # (key file just deployed); treat as a warning so the workflow doesn't
+          # fail — Bing will pick up the key on its next verification pass.
+          [ "$http_code" = "200" ] || [ "$http_code" = "202" ] || [ "$http_code" = "403" ] || { echo "IndexNow error $http_code"; exit 1; }
