@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/aasa"
 	"github.com/AmyDe/town-crier/api-go/internal/admin"
 	"github.com/AmyDe/town-crier/api-go/internal/api"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -22,6 +23,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
@@ -75,6 +77,11 @@ var anonymousPatterns = map[string]struct{}{
 	// page's unfurl image (#738 Slice 2). The ".png" suffix is enforced in the
 	// handler, so the registered pattern is suffix-free.
 	"GET /og/{authoritySlug}/{ref...}": {},
+	// The Apple App Site Association document is anonymous: Apple's daemon fetches
+	// it without a bearer token to associate the share host with the iOS app for
+	// Universal Links (#738 Slice 3). Content-Type is application/json and the path
+	// carries no ".json" extension.
+	"GET /.well-known/apple-app-site-association": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -194,6 +201,11 @@ func newRouter(
 	legal.Routes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
+	// The Apple App Site Association document (#738 Slice 3) is stateless and needs
+	// no store, so it is registered unconditionally on the share host. The App ID
+	// is composed from the canonical team + bundle constants (fixed contract), not
+	// runtime config.
+	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)
 	// Geocode and designations are authed (absent from anonymousPatterns) and
 	// have no store dependency — they call outbound UK services — so they are
 	// always wired, even on a store-less local boot.
