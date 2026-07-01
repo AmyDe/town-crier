@@ -1,0 +1,42 @@
+[
+  {
+    "input": "Basingstoke and Deane",
+    "expected": "basingstoke-and-deane"
+  },
+  {
+    "input": "Bristol, City of",
+    "expected": "bristol-city-of"
+  },
+  {
+    "input": "King's Lynn and West Norfolk",
+    "expected": "kings-lynn-and-west-norfolk"
+  },
+  {
+    "input": "Hammersmith & Fulham",
+    "expected": "hammersmith-and-fulham"
+  },
+  {
+    "input": "  Test   Name  ",
+    "expected": "test-name"
+  },
+  {
+    "input": "Bro Morgannwg / Vale of Glamorgan",
+    "expected": "bro-morgannwg-vale-of-glamorgan"
+  },
+  {
+    "input": "King’s Lynn",
+    "expected": "kings-lynn"
+  },
+  {
+    "input": "Stratford-on-Avon",
+    "expected": "stratford-on-avon"
+  },
+  {
+    "input": "Test 123",
+    "expected": "test-123"
+  },
+  {
+    "input": "-- Foo --",
+    "expected": "foo"
+  }
+]
