@@ -19,3 +19,16 @@ func TestAnonymousPatterns_IncludesBySlugApplicationRead(t *testing.T) {
 		t.Errorf("the by-id read must stay authed; %q must NOT be anonymous", byID)
 	}
 }
+
+// TestAnonymousPatterns_IncludesSharePage pins the anonymity of the public
+// server-rendered share page (#738). The auth middleware keys on the exact
+// registered pattern string, so this must match the route wired in sharepage
+// byte-for-byte.
+func TestAnonymousPatterns_IncludesSharePage(t *testing.T) {
+	t.Parallel()
+
+	const sharePage = "GET /a/{authoritySlug}/{ref...}"
+	if _, ok := anonymousPatterns[sharePage]; !ok {
+		t.Errorf("anonymousPatterns must include %q", sharePage)
+	}
+}

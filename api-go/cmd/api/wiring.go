@@ -24,6 +24,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -64,6 +65,10 @@ var anonymousPatterns = map[string]struct{}{
 	// and iOS inbound deep-link resolution (#738). The sibling by-id read stays
 	// authed (absent from this map).
 	"GET /v1/applications/by-slug/{authoritySlug}/{ref...}": {},
+	// The public share page is anonymous (public planning data only; no user data,
+	// no cookies, no client-IP logging): a server-rendered HTML page for a single
+	// application, the tracer surface of the shareable-page epic (#738).
+	"GET /a/{authoritySlug}/{ref...}": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -195,6 +200,11 @@ func newRouter(
 		// 401 fallback.
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
+		// The public share page (#738): an anonymous, server-rendered HTML page for a
+		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
+		// same applications store and resolves the authority slug via the static
+		// authority lookup; it reads no user data and emits only public planning data.
+		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
