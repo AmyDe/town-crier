@@ -222,24 +222,72 @@ jobs:
           skip_api_build: true
 
       # Notify Bing (IndexNow) of all live URLs so the crawl queue is skipped.
-      # Key file at https://towncrierapp.uk/1cb201daee1a485fb8cce2a68e8ee465.txt
-      # is part of web/public/ and therefore already deployed above.
+      # Bing's IndexNow verifier fetches the key file from the CDN edge to
+      # confirm ownership. The SWA upload above redeploys that file, and for a
+      # short window afterwards the edge can serve the SPA fallback / a cold
+      # cache for the key URL, so verification returns 403
+      # SiteVerificationNotCompleted and the whole batch is rejected. We
+      # therefore (1) wait until the edge serves the correct key contents, then
+      # (2) submit with retry-on-403 backoff. A persistent 403 means the URLs
+      # were NOT accepted, so it fails the step — it must never be silently
+      # swallowed again (that masked a total IndexNow outage for weeks).
       - name: Submit sitemap URLs to IndexNow
+        env:
+          INDEXNOW_KEY: 1cb201daee1a485fb8cce2a68e8ee465
         run: |
-          urls=$(grep -oP '(?<=<loc>)[^<]+' web/dist/sitemap.xml | jq -R '.' | jq -s '.')
-          count=$(echo "$urls" | jq 'length')
+          set -uo pipefail
+          key_url="https://towncrierapp.uk/${INDEXNOW_KEY}.txt"
+
+          # 1. Wait for the freshly-deployed key file to be served at the edge
+          #    with the exact key contents (not the SPA fallback). Up to ~3 min.
+          for attempt in $(seq 1 12); do
+            body=$(curl -fsS "$key_url" 2>/dev/null || true)
+            if [ "$body" = "$INDEXNOW_KEY" ]; then
+              echo "Key file live at edge (attempt $attempt)."
+              break
+            fi
+            echo "Key file not settled yet (attempt $attempt); waiting 15s..."
+            sleep 15
+          done
+          # Extra margin: Bing's verifier fetches the key file independently of
+          # the check above and may still be hitting a colder edge.
+          sleep 30
+
+          # 2. Build the payload and submit, retrying on 403 with backoff.
+          urls=$(grep -oP '(?<=<loc>)[^<]+' web/dist/sitemap.xml | jq -R '.' | jq -s '.' || true)
+          count=$(echo "$urls" | jq 'length' 2>/dev/null || echo 0)
+          if [ "$count" -lt 1 ]; then
+            echo "No URLs parsed from web/dist/sitemap.xml — failing."
+            exit 1
+          fi
+          payload=$(jq -n \
+            --arg host "towncrierapp.uk" \
+            --arg key "$INDEXNOW_KEY" \
+            --arg keyLocation "$key_url" \
+            --argjson urlList "$urls" \
+            '{host: $host, key: $key, keyLocation: $keyLocation, urlList: $urlList}')
+
           echo "Submitting $count URLs to IndexNow..."
-          http_code=$(curl -s -o /tmp/indexnow-response.txt -w "%{http_code}" \
-            -X POST "https://api.indexnow.org/IndexNow" \
-            -H "Content-Type: application/json; charset=utf-8" \
-            -d "{
-              \"host\": \"towncrierapp.uk\",
-              \"key\": \"1cb201daee1a485fb8cce2a68e8ee465\",
-              \"keyLocation\": \"https://towncrierapp.uk/1cb201daee1a485fb8cce2a68e8ee465.txt\",
-              \"urlList\": $urls
-            }")
-          echo "IndexNow response: $http_code — $(cat /tmp/indexnow-response.txt)"
-          # 403 SiteVerificationNotCompleted is a transient CDN propagation race
-          # (key file just deployed); treat as a warning so the workflow doesn't
-          # fail — Bing will pick up the key on its next verification pass.
-          [ "$http_code" = "200" ] || [ "$http_code" = "202" ] || [ "$http_code" = "403" ] || { echo "IndexNow error $http_code"; exit 1; }
+          for attempt in $(seq 1 6); do
+            http_code=$(curl -s -o /tmp/indexnow-response.txt -w "%{http_code}" \
+              -X POST "https://api.indexnow.org/IndexNow" \
+              -H "Content-Type: application/json; charset=utf-8" \
+              --data "$payload")
+            echo "Attempt $attempt: IndexNow response $http_code — $(cat /tmp/indexnow-response.txt)"
+            case "$http_code" in
+              200|202)
+                echo "IndexNow accepted $count URLs."
+                exit 0
+                ;;
+              403)
+                echo "Verification not complete yet; retrying in 30s..."
+                sleep 30
+                ;;
+              *)
+                echo "IndexNow hard error $http_code — failing."
+                exit 1
+                ;;
+            esac
+          done
+          echo "IndexNow still returning 403 after retries — submissions were NOT accepted."
+          exit 1
