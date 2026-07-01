@@ -27,6 +27,13 @@ export class ApiNotificationStateRepository
     return this.api.markAllRead();
   }
 
+  async markApplicationRead(
+    applicationUid: string,
+    authorityId: number,
+  ): Promise<void> {
+    return this.api.markApplicationRead(applicationUid, authorityId);
+  }
+
   async advance(asOf: string): Promise<void> {
     return this.api.advance(asOf);
   }
