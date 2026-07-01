@@ -22,11 +22,14 @@ type Authority struct {
 	AreaType string `json:"areaType"`
 }
 
-// staticStore holds the authorities pre-sorted by name (ordinal-ignore-case)
-// and indexed by id for O(1) point lookups.
+// staticStore holds the authorities pre-sorted by name (ordinal-ignore-case),
+// indexed by id for O(1) point lookups, and indexed both ways between slug and
+// id. The slug maps are built once at construction, never per call.
 type staticStore struct {
-	sorted []Authority
-	byIDx  map[int]Authority
+	sorted   []Authority
+	byIDx    map[int]Authority
+	slugToID map[string]int
+	idToSlug map[int]string
 }
 
 // newStaticStore loads and indexes the embedded authorities once. It panics on
@@ -47,11 +50,29 @@ func newStaticStore() *staticStore {
 	})
 
 	byIDx := make(map[int]Authority, len(records))
+	slugToID := make(map[string]int, len(records))
+	idToSlug := make(map[int]string, len(records))
 	for _, a := range records {
 		byIDx[a.ID] = a
+
+		slug := Slugify(a.Name)
+		idToSlug[a.ID] = slug
+		// Collision policy: if two authority names slugify to the same slug, the
+		// FIRST by store order wins. records is already sorted by name
+		// (ordinal-ignore-case), so the winner is deterministic. Collisions are
+		// not expected among LPA names, but this keeps resolution stable if one
+		// ever appears.
+		if _, exists := slugToID[slug]; !exists {
+			slugToID[slug] = a.ID
+		}
 	}
 
-	return &staticStore{sorted: records, byIDx: byIDx}
+	return &staticStore{
+		sorted:   records,
+		byIDx:    byIDx,
+		slugToID: slugToID,
+		idToSlug: idToSlug,
+	}
 }
 
 func (s *staticStore) all() []Authority {
@@ -61,6 +82,16 @@ func (s *staticStore) all() []Authority {
 func (s *staticStore) byID(id int) (Authority, bool) {
 	a, ok := s.byIDx[id]
 	return a, ok
+}
+
+func (s *staticStore) slugToAreaID(slug string) (int, bool) {
+	id, ok := s.slugToID[slug]
+	return id, ok
+}
+
+func (s *staticStore) slugForAreaID(id int) (string, bool) {
+	slug, ok := s.idToSlug[id]
+	return slug, ok
 }
 
 // compareOrdinalIgnoreCase sorts ASCII strings by code unit after uppercasing,

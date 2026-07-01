@@ -23,6 +23,20 @@ func (l *Lookup) All() []Authority {
 	return l.store.all()
 }
 
+// SlugToAreaID resolves an authority slug (as produced by Slugify over the
+// authority Name) to its area id — the authority ID — reporting whether the slug
+// is known. On a slug collision the first authority by list order wins (see
+// newStaticStore). Returns (0, false) for an unknown slug.
+func (l *Lookup) SlugToAreaID(slug string) (int, bool) {
+	return l.store.slugToAreaID(slug)
+}
+
+// SlugForAreaID returns Slugify(Name) for the authority with the given id,
+// reporting whether the id is known. Returns ("", false) for an unknown id.
+func (l *Lookup) SlugForAreaID(id int) (string, bool) {
+	return l.store.slugForAreaID(id)
+}
+
 // CompareOrdinalIgnoreCase exposes the package's ordinal, case-insensitive name
 // comparator so callers building authority lists order them identically to the
 // /v1/authorities list ordering.
