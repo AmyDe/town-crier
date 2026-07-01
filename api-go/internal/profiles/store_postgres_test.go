@@ -37,6 +37,97 @@ func newFakePGStore(tag pgconn.CommandTag, err error) *PostgresStore {
 	return NewPostgresStore(&fakeExecQuerier{tag: tag, err: err})
 }
 
+// fakeScanRow is a hand-written rowScanner that copies a fixed slice of column
+// values into the scan destinations, mirroring the real pgx scan. It supports
+// only the destination types scanUserRow uses, so an unexpected column change
+// surfaces as a panic rather than a silent zero value.
+type fakeScanRow struct {
+	cols []any
+}
+
+func (r *fakeScanRow) Scan(dest ...any) error {
+	if len(dest) != len(r.cols) {
+		return errors.New("scan: column count mismatch")
+	}
+	for i, d := range dest {
+		switch p := d.(type) {
+		case *string:
+			*p = r.cols[i].(string)
+		case **string:
+			if r.cols[i] == nil {
+				*p = nil
+			} else {
+				s := r.cols[i].(string)
+				*p = &s
+			}
+		case *bool:
+			*p = r.cols[i].(bool)
+		case **bool:
+			if r.cols[i] == nil {
+				*p = nil
+			} else {
+				b := r.cols[i].(bool)
+				*p = &b
+			}
+		case *int:
+			*p = r.cols[i].(int)
+		case **int:
+			if r.cols[i] == nil {
+				*p = nil
+			} else {
+				n := r.cols[i].(int)
+				*p = &n
+			}
+		case *int64:
+			*p = r.cols[i].(int64)
+		case *time.Time:
+			*p = r.cols[i].(time.Time)
+		case **time.Time:
+			if r.cols[i] == nil {
+				*p = nil
+			} else {
+				tt := r.cols[i].(time.Time)
+				*p = &tt
+			}
+		default:
+			return errors.New("scan: unsupported destination type")
+		}
+	}
+	return nil
+}
+
+// TestScanUserRow_CreatedAt verifies created_at is scanned into
+// UserProfile.CreatedAt in the same column order as userSelectCols. The column
+// values below must stay in lockstep with the userSelectCols projection.
+func TestScanUserRow_CreatedAt(t *testing.T) {
+	t.Parallel()
+	lastActive := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	created := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	row := &fakeScanRow{cols: []any{
+		// user_id, email, push_enabled, digest_day,
+		"auth0|u1", "u@example.com", true, 1,
+		// email_digest_enabled, saved_decision_push, saved_decision_email,
+		true, true, true,
+		// zone_preferences::text,
+		"{}",
+		// tier, subscription_expiry, original_transaction_id, grace_period_expiry,
+		"Free", nil, nil, nil,
+		// last_active_at, last_active_at_epoch, created_at, watch_zone_count, version
+		lastActive, lastActive.UnixMilli(), created, nil, 0,
+	}}
+
+	p, _, err := scanUserRow(row)
+	if err != nil {
+		t.Fatalf("scanUserRow: %v", err)
+	}
+	if !p.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt: got %v, want %v", p.CreatedAt, created)
+	}
+	if !p.LastActiveAt.Equal(lastActive) {
+		t.Errorf("LastActiveAt: got %v, want %v", p.LastActiveAt, lastActive)
+	}
+}
+
 // testProfile builds a minimal valid UserProfile for use in store tests.
 // The userID parameter is intentionally parameterised for readability even
 // though unit tests call it with the same argument — it is also used by the
