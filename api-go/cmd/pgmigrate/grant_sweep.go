@@ -42,7 +42,7 @@ func buildGrantSweepSQL(role string) (string, error) {
 // An empty role skips the sweep (logged, not an error). It reuses the Entra
 // token already carried in dsn by opening its own short-lived connection; it
 // does NOT fetch a second token.
-func grantAppRole(ctx context.Context, dsn, role string) error {
+func grantAppRole(ctx context.Context, dsn, role string) (err error) {
 	if role == "" {
 		fmt.Println("pgmigrate: grant sweep skipped (no app role configured)")
 		return nil
@@ -57,7 +57,11 @@ func grantAppRole(ctx context.Context, dsn, role string) error {
 	if err != nil {
 		return fmt.Errorf("connect for grant sweep: %w", err)
 	}
-	defer func() { _ = conn.Close(ctx) }()
+	defer func() {
+		if cerr := conn.Close(ctx); cerr != nil && err == nil {
+			err = fmt.Errorf("close grant sweep connection: %w", cerr)
+		}
+	}()
 
 	// The sweep carries no parameters, so pgx uses the simple protocol and runs
 	// both GRANTs in one round trip. GRANT ... ON ALL TABLES emits a benign
