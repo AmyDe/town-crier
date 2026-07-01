@@ -3,6 +3,7 @@ package profiles
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -226,5 +227,197 @@ func TestList_BadCursor_ReturnsError(t *testing.T) {
 	store := NewPostgresAdminStore(&recordingQuerier{rows: &fakeUserRows{}})
 	if _, err := store.List(context.Background(), "", 5, "!!!not-base64!!!"); err == nil {
 		t.Fatal("List with malformed cursor: want error, got nil")
+	}
+}
+
+// --- PaidCandidates ---
+
+// paidUserRow builds a full userSelectCols projection for a paid-tier user with
+// the given expiry and original-transaction id. Order MUST match userSelectCols.
+func paidUserRow(userID, tier string, expiry *time.Time, otid *string) []any {
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	return []any{
+		userID, nil, true, 1,
+		true, true, true,
+		"{}",
+		tier, expiry, otid, nil,
+		created, created.UnixMilli(), created, nil, 0,
+	}
+}
+
+// TestPaidCandidates_LoadsAllUnfiltered returns every paid-tier row unfiltered —
+// including a lapsed one — so the caller classifies via EffectiveTier in Go, and
+// scopes the query with tier != 'Free'.
+func TestPaidCandidates_LoadsAllUnfiltered(t *testing.T) {
+	t.Parallel()
+	expired := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // long past
+	txn := "1000000000000001"
+	q := &recordingQuerier{rows: &fakeUserRows{rows: [][]any{
+		paidUserRow("auth0|active", "Pro", ptrTime(time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)), &txn),
+		paidUserRow("auth0|lapsed", "Personal", &expired, nil),
+	}}}
+	store := NewPostgresAdminStore(q)
+
+	got, err := store.PaidCandidates(context.Background())
+	if err != nil {
+		t.Fatalf("PaidCandidates: %v", err)
+	}
+	if !strings.Contains(q.sql, "tier != 'Free'") {
+		t.Errorf("SQL missing paid-tier scope: %s", q.sql)
+	}
+	if len(got) != 2 {
+		t.Fatalf("candidates: got %d, want 2 (lapsed NOT filtered out)", len(got))
+	}
+}
+
+func ptrTime(t time.Time) *time.Time { return &t }
+
+// --- UserStats ---
+
+// genRows is a pgx.Rows over pre-baked []any tuples for the aggregate queries.
+type genRows struct {
+	rows [][]any
+	idx  int
+	err  error
+}
+
+func (r *genRows) Next() bool {
+	if r.err != nil {
+		return false
+	}
+	return r.idx < len(r.rows)
+}
+func (r *genRows) Scan(dest ...any) error {
+	src := r.rows[r.idx]
+	r.idx++
+	for i, d := range dest {
+		switch p := d.(type) {
+		case *int:
+			*p = src[i].(int)
+		case *string:
+			*p = src[i].(string)
+		case **string:
+			if src[i] == nil {
+				*p = nil
+			} else {
+				s := src[i].(string)
+				*p = &s
+			}
+		case *time.Time:
+			*p = src[i].(time.Time)
+		}
+	}
+	return nil
+}
+func (r *genRows) Close()                                       {}
+func (r *genRows) Err() error                                   { return r.err }
+func (r *genRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *genRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *genRows) Values() ([]any, error)                       { return nil, nil }
+func (r *genRows) RawValues() [][]byte                          { return nil }
+func (r *genRows) Conn() *pgx.Conn                              { return nil }
+
+// fifoQuerier serves a fixed sequence of Query results (UserStats issues three:
+// scalar aggregate, tier group-by, most-recent). Exec/QueryRow are unused.
+type fifoQuerier struct {
+	results []*genRows
+	idx     int
+	sqls    []string
+}
+
+func (q *fifoQuerier) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	panic("fifoQuerier.Exec not expected")
+}
+func (q *fifoQuerier) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error) {
+	q.sqls = append(q.sqls, sql)
+	r := q.results[q.idx]
+	q.idx++
+	if r.err != nil {
+		return nil, r.err
+	}
+	return r, nil
+}
+func (q *fifoQuerier) QueryRow(context.Context, string, ...any) pgx.Row {
+	panic("fifoQuerier.QueryRow not expected")
+}
+
+// TestUserStats_AssemblesAllMetrics maps the three aggregate queries into a
+// single struct: scalar counts, per-tier breakdown, and the most-recent signup.
+func TestUserStats_AssemblesAllMetrics(t *testing.T) {
+	t.Parallel()
+	newest := time.Date(2026, 6, 30, 9, 0, 0, 0, time.UTC)
+	q := &fifoQuerier{results: []*genRows{
+		// scalar: total, signups24h, signups7d, signups30d, active24h, active7d, zeroWZ, noEmail, totalWZ
+		{rows: [][]any{{100, 5, 12, 30, 8, 20, 15, 3, 250}}},
+		// tier group-by: (tier, count)
+		{rows: [][]any{{"Free", 70}, {"Personal", 20}, {"Pro", 10}}},
+		// most-recent: (user_id, email, created_at)
+		{rows: [][]any{{"auth0|newest", "new@example.com", newest}}},
+	}}
+	store := NewPostgresAdminStore(q)
+
+	got, err := store.UserStats(context.Background(), time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("UserStats: %v", err)
+	}
+	if got.Total != 100 {
+		t.Errorf("Total: got %d, want 100", got.Total)
+	}
+	if got.Signups24h != 5 || got.Signups7d != 12 || got.Signups30d != 30 {
+		t.Errorf("signups: got %d/%d/%d, want 5/12/30", got.Signups24h, got.Signups7d, got.Signups30d)
+	}
+	if got.Active24h != 8 || got.Active7d != 20 {
+		t.Errorf("active: got %d/%d, want 8/20", got.Active24h, got.Active7d)
+	}
+	if got.ZeroWatchZones != 15 || got.NoEmail != 3 || got.TotalWatchZones != 250 {
+		t.Errorf("activity/reach: got zeroWZ=%d noEmail=%d totalWZ=%d, want 15/3/250",
+			got.ZeroWatchZones, got.NoEmail, got.TotalWatchZones)
+	}
+	if got.ByTier["Free"] != 70 || got.ByTier["Personal"] != 20 || got.ByTier["Pro"] != 10 {
+		t.Errorf("byTier: got %+v, want Free:70 Personal:20 Pro:10", got.ByTier)
+	}
+	if got.MostRecent == nil {
+		t.Fatal("MostRecent: got nil, want the newest signup")
+	}
+	if got.MostRecent.UserID != "auth0|newest" || got.MostRecent.Email == nil || *got.MostRecent.Email != "new@example.com" {
+		t.Errorf("MostRecent: got %+v", got.MostRecent)
+	}
+	if !got.MostRecent.CreatedAt.Equal(newest) {
+		t.Errorf("MostRecent.CreatedAt: got %v, want %v", got.MostRecent.CreatedAt, newest)
+	}
+}
+
+// TestUserStats_NoUsers_NilMostRecent leaves MostRecent nil when the most-recent
+// query returns no rows (an empty user base).
+func TestUserStats_NoUsers_NilMostRecent(t *testing.T) {
+	t.Parallel()
+	q := &fifoQuerier{results: []*genRows{
+		{rows: [][]any{{0, 0, 0, 0, 0, 0, 0, 0, 0}}},
+		{rows: [][]any{}},
+		{rows: [][]any{}}, // no most-recent row
+	}}
+	store := NewPostgresAdminStore(q)
+
+	got, err := store.UserStats(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("UserStats: %v", err)
+	}
+	if got.Total != 0 {
+		t.Errorf("Total: got %d, want 0", got.Total)
+	}
+	if got.MostRecent != nil {
+		t.Errorf("MostRecent: got %+v, want nil", got.MostRecent)
+	}
+}
+
+// TestUserStats_PropagatesQueryError wraps a failure from the scalar query.
+func TestUserStats_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("stats boom")
+	q := &fifoQuerier{results: []*genRows{{err: boom}}}
+	store := NewPostgresAdminStore(q)
+
+	if _, err := store.UserStats(context.Background(), time.Now()); !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }

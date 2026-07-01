@@ -579,3 +579,132 @@ func TestPostgresAdminStore_List_Pagination(t *testing.T) {
 		t.Errorf("filtered: got %d profiles, want 1", len(filtered.Profiles))
 	}
 }
+
+// TestPostgresAdminStore_PaidCandidates loads every stored-paid-tier profile
+// unfiltered — including a lapsed one — so the caller classifies in Go via
+// EffectiveTier. Free-tier profiles never appear.
+func TestPostgresAdminStore_PaidCandidates(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+
+	// Lapsed paid: Personal, expired 30 days ago (must STILL be returned).
+	pLapsed := pgProfile(t, "auth0|pc-lapsed", "lapsed@example.com")
+	pLapsed.Tier = TierPersonal
+	exp := now.Add(-30 * 24 * time.Hour)
+	pLapsed.SubscriptionExpiry = &exp
+	// Active paid: Pro, expiry in the future.
+	pActive := pgProfile(t, "auth0|pc-active", "active@example.com")
+	pActive.Tier = TierPro
+	future := now.Add(30 * 24 * time.Hour)
+	pActive.SubscriptionExpiry = &future
+	// Free: must never appear.
+	pFree := pgProfile(t, "auth0|pc-free", "free@example.com")
+	for _, p := range []*UserProfile{pLapsed, pActive, pFree} {
+		if err := store.Save(ctx, p); err != nil {
+			t.Fatalf("Save %s: %v", p.UserID, err)
+		}
+	}
+
+	got, err := admin.PaidCandidates(ctx)
+	if err != nil {
+		t.Fatalf("PaidCandidates: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("candidates: got %d, want 2 (lapsed NOT filtered, free excluded)", len(got))
+	}
+	ids := map[string]bool{}
+	for _, p := range got {
+		ids[p.UserID] = true
+	}
+	if !ids["auth0|pc-lapsed"] || !ids["auth0|pc-active"] {
+		t.Errorf("candidates: got %v, want both paid users incl. the lapsed one", ids)
+	}
+	if ids["auth0|pc-free"] {
+		t.Error("Free-tier profile must not be a paid candidate")
+	}
+}
+
+// TestPostgresAdminStore_UserStats exercises the full aggregate against a real
+// DB: total, per-tier breakdown, signup windows, most-recent signup, active
+// windows, zero-watch-zone / no-email counts, and total watch zones — none of
+// which a hand-written fake can honestly model.
+func TestPostgresAdminStore_UserStats(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "users")
+	store := NewPostgresStore(pool)
+	admin := NewPostgresAdminStore(pool)
+	ctx := context.Background()
+
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+
+	// Empty base: everything zero, MostRecent nil.
+	empty, err := admin.UserStats(ctx, now)
+	if err != nil {
+		t.Fatalf("UserStats empty: %v", err)
+	}
+	if empty.Total != 0 || empty.MostRecent != nil || empty.TotalWatchZones != 0 {
+		t.Errorf("UserStats empty: got %+v, want zero totals and nil MostRecent", empty)
+	}
+
+	// seedUser saves a profile with a given tier / email / watch-zone count /
+	// last-active, then forces created_at (DB-owned) to the requested instant.
+	seedUser := func(id, email string, tier SubscriptionTier, wz *int, lastActive, createdAt time.Time) {
+		t.Helper()
+		p, perr := NewProfile(id, email, now)
+		if perr != nil {
+			t.Fatalf("NewProfile %s: %v", id, perr)
+		}
+		p.Tier = tier
+		p.WatchZoneCount = wz
+		p.LastActiveAt = lastActive
+		if serr := store.Save(ctx, p); serr != nil {
+			t.Fatalf("Save %s: %v", id, serr)
+		}
+		if _, uerr := pool.Exec(ctx, "UPDATE users SET created_at = $1 WHERE user_id = $2", createdAt, id); uerr != nil {
+			t.Fatalf("force created_at %s: %v", id, uerr)
+		}
+	}
+
+	wz2, wz0, wz5 := 2, 0, 5
+	seedUser("auth0|uA", "a@example.com", TierFree, &wz2, now.Add(-1*time.Hour), now.Add(-2*time.Hour))
+	seedUser("auth0|uB", "b@example.com", TierPersonal, &wz0, now.Add(-3*24*time.Hour), now.Add(-3*24*time.Hour))
+	seedUser("auth0|uC", "", TierPro, nil, now.Add(-40*24*time.Hour), now.Add(-10*24*time.Hour))
+	seedUser("auth0|uD", "d@example.com", TierFree, &wz5, now.Add(-2*time.Hour), now.Add(-40*24*time.Hour))
+
+	got, err := admin.UserStats(ctx, now)
+	if err != nil {
+		t.Fatalf("UserStats: %v", err)
+	}
+	if got.Total != 4 {
+		t.Errorf("Total: got %d, want 4", got.Total)
+	}
+	if got.ByTier["Free"] != 2 || got.ByTier["Personal"] != 1 || got.ByTier["Pro"] != 1 {
+		t.Errorf("ByTier: got %+v, want Free:2 Personal:1 Pro:1", got.ByTier)
+	}
+	if got.Signups24h != 1 || got.Signups7d != 2 || got.Signups30d != 3 {
+		t.Errorf("signups: got %d/%d/%d, want 1/2/3", got.Signups24h, got.Signups7d, got.Signups30d)
+	}
+	if got.Active24h != 2 || got.Active7d != 3 {
+		t.Errorf("active: got %d/%d, want 2/3", got.Active24h, got.Active7d)
+	}
+	if got.ZeroWatchZones != 2 {
+		t.Errorf("ZeroWatchZones: got %d, want 2 (uB=0, uC=NULL)", got.ZeroWatchZones)
+	}
+	if got.NoEmail != 1 {
+		t.Errorf("NoEmail: got %d, want 1 (uC)", got.NoEmail)
+	}
+	if got.TotalWatchZones != 7 {
+		t.Errorf("TotalWatchZones: got %d, want 7 (2+0+5, uC NULL ignored)", got.TotalWatchZones)
+	}
+	if got.MostRecent == nil || got.MostRecent.UserID != "auth0|uA" {
+		t.Fatalf("MostRecent: got %+v, want auth0|uA", got.MostRecent)
+	}
+	if got.MostRecent.Email == nil || *got.MostRecent.Email != "a@example.com" {
+		t.Errorf("MostRecent.Email: got %v, want a@example.com", got.MostRecent.Email)
+	}
+}
