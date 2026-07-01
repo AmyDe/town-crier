@@ -418,6 +418,57 @@ describe('useApplications — markAllRead', () => {
   });
 });
 
+describe('useApplications — tap-to-read (onOpenApplication)', () => {
+  it('marks an unread application read on open and optimistically drops the chip count', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = { rows: [], nextCursor: null };
+    browsePort.unreadTotal = 3;
+    const stateRepo = new SpyNotificationStateRepository();
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones, notificationStateRepository: stateRepo })),
+    );
+
+    await waitFor(() => expect(result.current.unreadCount).toBe(3));
+
+    const unread = undecidedApplication({
+      latestUnreadEvent: { type: 'NewApplication', decision: null, createdAt: '2026-04-01T00:00:00Z' },
+    });
+
+    act(() => result.current.onOpenApplication(unread));
+
+    // Sends the app's NAME (not uid) plus its areaId to the repository.
+    expect(stateRepo.markApplicationReadCalls).toEqual([
+      { applicationUid: unread.name, authorityId: unread.areaId },
+    ]);
+    // Chip drops immediately by one, without a whole-zone count refetch.
+    expect(result.current.unreadCount).toBe(2);
+    expect(browsePort.countUnreadCalls).toHaveLength(1);
+  });
+
+  it('does not call the repository when opening an already-read application', async () => {
+    const browsePort = new SpyApplicationsBrowsePort();
+    browsePort.fetchByZoneResult = { rows: [], nextCursor: null };
+    browsePort.unreadTotal = 3;
+    const stateRepo = new SpyNotificationStateRepository();
+    const zones = [cambridgeZone()];
+
+    const { result } = renderHook(() =>
+      useApplications(makeOptions({ browsePort, zones, notificationStateRepository: stateRepo })),
+    );
+
+    await waitFor(() => expect(result.current.unreadCount).toBe(3));
+
+    const read = permittedApplication({ latestUnreadEvent: null });
+
+    act(() => result.current.onOpenApplication(read));
+
+    expect(stateRepo.markApplicationReadCalls).toHaveLength(0);
+    expect(result.current.unreadCount).toBe(3);
+  });
+});
+
 describe('useApplications — sort persistence', () => {
   // A stable spy per test — `makeOptions` defaults would mint a fresh port on
   // every render, changing the query effect's dependency identity and looping.
