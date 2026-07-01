@@ -136,8 +136,10 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		`name="twitter:description" content="Erection of a two-storey rear extension."`,
 		`name="twitter:image"`,
 		`name="apple-itunes-app" content="app-id=6764095657`,
-		// og:image AND twitter:image both point at the Slice-1 branded placeholder.
-		"https://towncrierapp.uk/android-chrome-512x512.png",
+		// og:image AND twitter:image both point at the generated OSM map-card route
+		// (the branded fallback is now baked by that route, not a static URL).
+		`property="og:image" content="https://share.towncrierapp.uk/og/croydon/23/03456/FUL.png"`,
+		`name="twitter:image" content="https://share.towncrierapp.uk/og/croydon/23/03456/FUL.png"`,
 		// Visible essentials.
 		"10 Downing Street, London",
 		"CR0 1AB",

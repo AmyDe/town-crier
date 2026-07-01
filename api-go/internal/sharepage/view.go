@@ -18,12 +18,6 @@ const (
 	// Banner meta so iOS Safari offers "Open in app" / "Download".
 	appleAppID = "6764095657"
 
-	// ogImageFallback is the Slice-1 branded PLACEHOLDER unfurl image (the app
-	// icon). The real 1200x630 OSM map card — a baked map of the site with a pin —
-	// arrives in Slice 2; until then both og:image and twitter:image point here.
-	// This slice adds no image route and no binary asset.
-	ogImageFallback = "https://towncrierapp.uk/android-chrome-512x512.png"
-
 	// App Store deep link, mirroring the web appStoreUrl('share-page') shape: the
 	// campaign-free base, the share-page campaign token, and mt=8.
 	appStoreBaseURL    = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
@@ -94,13 +88,16 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		Title:         headline + " · Town Crier",
 		OGTitle:       headline,
 		OGDescription: summarise(app.Description, place),
-		OGImage:       ogImageFallback,
-		CanonicalURL:  canonical,
-		AppleAppID:    appleAppID,
-		CTAHref:       ctaURL(),
-		Ref:           ref,
-		Address:       app.Address,
-		Description:   app.Description,
+		// The unfurl image is the generated OSM map-card route for this exact
+		// (slug, ref); that route decides map vs branded fallback, so the page
+		// always points here (Slice 2, #738).
+		OGImage:      shareOrigin + "/og/" + slug + "/" + ref + ".png",
+		CanonicalURL: canonical,
+		AppleAppID:   appleAppID,
+		CTAHref:      ctaURL(),
+		Ref:          ref,
+		Address:      app.Address,
+		Description:  app.Description,
 	}
 
 	if app.Postcode != nil {
