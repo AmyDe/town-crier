@@ -405,6 +405,82 @@ func readAtOf(t *testing.T, pool *pgxpool.Pool, id string) *time.Time {
 	return readAt
 }
 
+// --- MarkReadUpTo (temporary advance compat shim, tc-ekii) ---
+
+// TestIntegration_NotificationState_MarkReadUpTo proves the read_at translation of
+// the retired watermark advance: notifications created at or before asOf are marked
+// read (read_at NOT NULL), a later notification stays unread, a repeat clears zero
+// (idempotent), the version token bumps only when a row was cleared, and a first-touch
+// user gets a state row created on the first clear. This is real-DB behaviour (the
+// created_at <= asOf predicate and the conditional CTE bump) the fake querier cannot
+// model. Remove with the shim per bead tc-v5w8.
+func TestIntegration_NotificationState_MarkReadUpTo(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+
+	tm2 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // <= asOf
+	tm1 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC) // <= asOf
+	asOf := time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC)
+	tp1 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC) // > asOf
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	// All three start unread (Create leaves read_at NULL — the first-touch user has
+	// no notification_state row yet).
+	seedUnreadNotif(t, pool, "n1", "user-1", "24-01111", 330, tm2)
+	seedUnreadNotif(t, pool, "n2", "user-1", "24-02222", 330, tm1)
+	seedUnreadNotif(t, pool, "n3", "user-1", "24-03333", 330, tp1)
+	if got := unreadCountFor(t, pool, "user-1"); got != 3 {
+		t.Fatalf("seeded unread: got %d, want 3", got)
+	}
+
+	// Advance to asOf: the two at-or-before rows clear, the later one stays unread.
+	cleared, err := s.MarkReadUpTo(ctx, "user-1", asOf, now)
+	if err != nil {
+		t.Fatalf("MarkReadUpTo: %v", err)
+	}
+	if cleared != 2 {
+		t.Errorf("cleared: got %d, want 2 (rows created_at <= asOf)", cleared)
+	}
+	if got := readAtOf(t, pool, "n1"); got == nil {
+		t.Error("n1 (created_at < asOf) must be read")
+	}
+	if got := readAtOf(t, pool, "n2"); got == nil {
+		t.Error("n2 (created_at < asOf) must be read")
+	}
+	if got := readAtOf(t, pool, "n3"); got != nil {
+		t.Errorf("n3 (created_at > asOf) must stay unread, got read_at %v", got)
+	}
+
+	// First-touch user: the clear upserts a state row at version 1.
+	st, err := s.Get(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("Get after advance: %v", err)
+	}
+	if st == nil || st.Version != 1 {
+		t.Fatalf("state after first advance: got %+v, want version 1", st)
+	}
+
+	// A second advance to the same asOf clears nothing (idempotent) and does not
+	// bump the version token again.
+	second, err := s.MarkReadUpTo(ctx, "user-1", asOf, now)
+	if err != nil {
+		t.Fatalf("second MarkReadUpTo: %v", err)
+	}
+	if second != 0 {
+		t.Errorf("second advance cleared: got %d, want 0 (idempotent)", second)
+	}
+	st, err = s.Get(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("Get after second advance: %v", err)
+	}
+	if st == nil || st.Version != 1 {
+		t.Errorf("version after zero-clear advance: got %+v, want unchanged 1", st)
+	}
+	if got := unreadCountFor(t, pool, "user-1"); got != 1 {
+		t.Errorf("unread after advance: got %d, want 1 (only the post-asOf row)", got)
+	}
+}
+
 // --- DeleteByUserID ---
 
 func TestIntegration_NotificationState_DeleteByUserID(t *testing.T) {
