@@ -1,7 +1,7 @@
 {
   "documentType": "privacy",
   "title": "Privacy Policy",
-  "lastUpdated": "2026-06-18",
+  "lastUpdated": "2026-07-01",
   "sections": [
     {
       "heading": "Who We Are",
@@ -17,7 +17,7 @@
     },
     {
       "heading": "Who Processes Your Data for Us",
-      "body": "We use Microsoft Azure to host the service. Your account, watch zones, notifications, and email delivery run on Azure services based in the UK (Cosmos DB, Container Apps, Communication Services, Application Insights). Our website is served from Azure Static Web Apps in the European Union; this serves the site's HTML, CSS, and JavaScript only, and none of your account data is stored there. We use Auth0 (an Okta company) for sign-in; Auth0 stores your email address and credentials in the United Kingdom. We use Apple's Push Notification Service to deliver iOS alerts, and Apple's App Store to handle subscription billing. We use postcodes.io (UK-hosted) to convert postcodes to coordinates, and the UK Government's Planning Data service (planning.data.gov.uk) to look up conservation areas, listed buildings, and other planning designations near an application (we only send coordinates, no personal data). On the web, map tiles are fetched directly from OpenStreetMap when you view a map. We use PlanIt (planit.org.uk) as our source of planning data; we only read from them, we do not send them any of your information."
+      "body": "We use Microsoft Azure to host the service. Your account, watch zones, notifications, and email delivery run on Azure services based in the UK (Cosmos DB, Container Apps, Communication Services, Application Insights). Our website is served from Azure Static Web Apps in the European Union; this serves the site's HTML, CSS, and JavaScript only, and none of your account data is stored there. We use Auth0 (an Okta company) for sign-in; Auth0 stores your email address and credentials in the United Kingdom. We use Apple's Push Notification Service to deliver iOS alerts, and Apple's App Store to handle subscription billing. We use postcodes.io (UK-hosted) to convert postcodes to coordinates, and the UK Government's Planning Data service (planning.data.gov.uk) to look up conservation areas, listed buildings, and other planning designations near an application (we only send coordinates, no personal data). Map tiles are fetched from OpenStreetMap in two places: directly by your browser when you view a map on the web, and by our own servers when we generate the map image shown on a public shared-application page. Neither request includes any of your personal data. We use PlanIt (planit.org.uk) as our source of planning data; we only read from them, we do not send them any of your information."
     },
     {
       "heading": "International Transfers",
