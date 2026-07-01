@@ -187,6 +187,24 @@ jobs:
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ steps.resolve-image.outputs.image }}
 
+      # Durably tag the digest we just shipped as release-<version> inside the
+      # same registry. The acr-build-push prune step protects any manifest
+      # carrying a "release-*" tag, so this digest survives dev-build churn and
+      # stays available for an ACA rollback-by-digest. `az acr import` with the
+      # source and target in the same registry only adds a tag to the existing
+      # manifest (no data movement); `--force` makes it idempotent on re-run.
+      # Runs only after a successful deploy, so we protect digests that shipped.
+      - name: Tag deployed Go API digest as durable release
+        run: |
+          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${ACR_SERVER%.azurecr.io}"
+          REPO="town-crier-api-go"
+          az acr import \
+            --name "$ACR_NAME" \
+            --source "${{ steps.resolve-image.outputs.image }}" \
+            --image "${REPO}:release-${GITHUB_REF_NAME}" \
+            --force
+
   # ── Worker ───────────────────────────────────────────────
   worker:
     name: Deploy Worker
@@ -253,6 +271,24 @@ jobs:
           env-suffix: prod
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ steps.resolve-image.outputs.image }}
+
+      # Durably tag the digest we just shipped as release-<version> inside the
+      # same registry. The acr-build-push prune step protects any manifest
+      # carrying a "release-*" tag, so this digest survives dev-build churn and
+      # stays available for an ACA rollback-by-digest. `az acr import` with the
+      # source and target in the same registry only adds a tag to the existing
+      # manifest (no data movement); `--force` makes it idempotent on re-run.
+      # Runs only after a successful deploy, so we protect digests that shipped.
+      - name: Tag deployed worker digest as durable release
+        run: |
+          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
+          ACR_NAME="${ACR_SERVER%.azurecr.io}"
+          REPO="town-crier-worker-go"
+          az acr import \
+            --name "$ACR_NAME" \
+            --source "${{ steps.resolve-image.outputs.image }}" \
+            --image "${REPO}:release-${GITHUB_REF_NAME}" \
+            --force
 
   # ── Web ───────────────────────────────────────────────
   web:
