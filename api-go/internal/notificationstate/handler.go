@@ -24,7 +24,7 @@ type stateStore interface {
 	Get(ctx context.Context, userID string) (*State, error)
 	UnreadCount(ctx context.Context, userID string) (int, error)
 	MarkAllRead(ctx context.Context, userID string, now time.Time) (int64, error)
-	MarkApplicationsRead(ctx context.Context, userID string, uids []string, authorityIDs []int, now time.Time) (int64, error)
+	MarkApplicationsRead(ctx context.Context, userID string, refs []string, authorityIDs []int, now time.Time) (int64, error)
 }
 
 // stateResult is the GET /v1/me/notification-state response body:
@@ -37,10 +37,19 @@ type stateResult struct {
 	TotalUnreadCount int                 `json:"totalUnreadCount"`
 }
 
-// applicationRef identifies one application to mark read: the bare per-council
-// PlanIt ref plus its authority id. Both are needed because applicationUid is
-// not unique across authorities (the client exposes uid + areaId on every row).
+// applicationRef identifies one application to mark read: a PlanIt case reference
+// plus its authority id. Both are needed because the case reference is unique only
+// within a council; authorityId disambiguates across councils.
 type applicationRef struct {
+	// ApplicationUID keeps the JSON key `applicationUid` for wire compatibility
+	// with the already-merged iOS client — but the value it carries is the PlanIt
+	// case REFERENCE (= a.Name, e.g. "24/0001"), NOT the application_uid column
+	// (= a.UID, e.g. "24/0001/FUL"). The store matches it against application_name,
+	// never application_uid (#733). This is required because everything that would
+	// call mark-read carries a.Name: the push payload sets applicationRef =
+	// n.ApplicationName, iOS sends id.name, and web sends summary.name. a.Name is
+	// unique within a council, so authorityId disambiguates cross-council. Do not
+	// rename this JSON key without shipping a coordinated client change.
 	ApplicationUID string `json:"applicationUid"`
 	AuthorityID    int    `json:"authorityId"`
 }
@@ -118,9 +127,11 @@ func (h handler) markAllRead(w http.ResponseWriter, r *http.Request) {
 }
 
 // markRead clears the caller's unread notifications for the requested
-// applications (scoped by the composite application_uid + authorityId). It is
-// idempotent — 204 even when zero rows changed — and an empty array marks
-// nothing. A malformed body or an over-cap array returns a bodyless 400.
+// applications (scoped by the composite case reference + authorityId; the store
+// matches the reference against application_name, not application_uid — see
+// applicationRef). It is idempotent — 204 even when zero rows changed — and an
+// empty array marks nothing. A malformed body or an over-cap array returns a
+// bodyless 400.
 func (h handler) markRead(w http.ResponseWriter, r *http.Request) {
 	userID := auth.Subject(r.Context())
 
@@ -135,14 +146,16 @@ func (h handler) markRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uids := make([]string, len(req.Applications))
+	// refs carry PlanIt case references (a.Name), matched against application_name
+	// by the store — the applicationUid JSON key is a wire-compat misnomer (#733).
+	refs := make([]string, len(req.Applications))
 	authorityIDs := make([]int, len(req.Applications))
 	for i, a := range req.Applications {
-		uids[i] = a.ApplicationUID
+		refs[i] = a.ApplicationUID
 		authorityIDs[i] = a.AuthorityID
 	}
 
-	if _, err := h.store.MarkApplicationsRead(r.Context(), userID, uids, authorityIDs, h.now()); err != nil {
+	if _, err := h.store.MarkApplicationsRead(r.Context(), userID, refs, authorityIDs, h.now()); err != nil {
 		h.logger.ErrorContext(r.Context(), "mark applications read", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
