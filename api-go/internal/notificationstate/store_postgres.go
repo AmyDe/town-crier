@@ -28,6 +28,10 @@ type Store interface {
 	UnreadCount(ctx context.Context, userID string) (int, error)
 	MarkAllRead(ctx context.Context, userID string, now time.Time) (int64, error)
 	MarkApplicationsRead(ctx context.Context, userID string, refs []string, authorityIDs []int, now time.Time) (int64, error)
+	// MarkReadUpTo is a TEMPORARY backward-compat shim for the retired
+	// scroll-to-clear watermark (see the method doc and pgMarkReadUpToQuery).
+	// REMOVE per bead tc-v5w8 once the per-app read-state iOS build is live.
+	MarkReadUpTo(ctx context.Context, userID string, asOf, now time.Time) (int64, error)
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
@@ -222,6 +226,63 @@ func (s *PostgresStore) MarkApplicationsRead(ctx context.Context, userID string,
 	counts, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
 		return 0, fmt.Errorf("scan mark applications read count for %q: %w", userID, err)
+	}
+	if len(counts) == 0 {
+		return 0, nil
+	}
+	return counts[0], nil
+}
+
+// pgMarkReadUpToQuery is the read_at-model translation of the retired
+// scroll-to-clear watermark advance. It clears every unread notification created
+// at or before asOf (the read_at equivalent of moving a watermark to asOf) and
+// bumps the version change token only when it actually cleared a row (upserting
+// the state row when absent) — the same atomic CTE style as
+// pgMarkApplicationsReadQuery. Both tables mutate in one data-modifying
+// statement; the top-level SELECT returns the cleared count.
+//
+// TEMPORARY BACKWARD-COMPAT SHIM (tc-ekii). ADR 0035 (#733) removed the watermark
+// advance in favour of per-application read_at, so new iOS/web clients do NOT call
+// advance (they use POST /v1/me/applications/mark-read). This query exists only to
+// keep the App Store iOS builds that predate that change (still live + one in Apple
+// review) clearing their push badge on tap during the review window. REMOVE per bead
+// tc-v5w8 once the new iOS build is live; advance 404-ing again is the #733/ADR-0035
+// end-state.
+//
+// $1 userID, $2 asOf, $3 now.
+const pgMarkReadUpToQuery = `
+WITH cleared AS (
+    UPDATE notifications
+    SET read_at = $3
+    WHERE user_id = $1 AND created_at <= $2 AND read_at IS NULL
+    RETURNING 1
+), bumped AS (
+    INSERT INTO notification_state (user_id, last_read_at, version)
+    SELECT $1, $3, 1 WHERE EXISTS (SELECT 1 FROM cleared)
+    ON CONFLICT (user_id) DO UPDATE SET version = notification_state.version + 1
+    RETURNING 1
+)
+SELECT count(*) FROM cleared`
+
+// MarkReadUpTo clears every unread notification for the user created at or before
+// asOf and bumps the version change token when it cleared at least one row
+// (leaving the token untouched on a zero-row no-op, so a repeat advance is
+// idempotent). It returns the number of notifications cleared. This is the
+// read_at-model equivalent of the retired watermark advance-to-asOf.
+//
+// TEMPORARY BACKWARD-COMPAT SHIM (tc-ekii) — see pgMarkReadUpToQuery. Called only
+// by the re-added POST /v1/me/notification-state/advance route, which exists purely
+// to keep pre-per-app-read-state iOS clients (App Store live + Apple review) clearing
+// their badge on push-tap. New iOS/web clients use MarkApplicationsRead instead.
+// REMOVE per bead tc-v5w8 once the new iOS build is live.
+func (s *PostgresStore) MarkReadUpTo(ctx context.Context, userID string, asOf, now time.Time) (int64, error) {
+	rows, err := s.db.Query(ctx, pgMarkReadUpToQuery, userID, asOf, now)
+	if err != nil {
+		return 0, fmt.Errorf("mark read up to for %q: %w", userID, err)
+	}
+	counts, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return 0, fmt.Errorf("scan mark read up to count for %q: %w", userID, err)
 	}
 	if len(counts) == 0 {
 		return 0, nil

@@ -97,7 +97,10 @@ Track read state per application on the `notifications` table via a nullable
   per-row badges there lag until a mark-read/mark-all creates the row — a known follow-up,
   out of scope for this change.
 - Clients (iOS, web) must add `markApplicationRead` and delete `advance`; these ship as
-  separate PRs. Until they do, the `advance` route returns 404.
+  separate PRs. During the App Store review window for the new iOS build, `advance` is
+  temporarily retained as a read_at-backed compat shim (it marks every unread notification
+  created at or before `asOf` read) so pre-per-app-read-state iOS clients still clear their
+  push badge on tap; it is removed (returning to 404) once that build is live (bead tc-v5w8).
 - `notification_state`/`version` can be dropped in a later cleanup once `version` is
   confirmed unused; GDPR erasure is unchanged (`read_at` is a column on `notifications`
   rows already removed by erasure).

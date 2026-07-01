@@ -22,11 +22,16 @@ type fakeStateStore struct {
 	cntErr      error
 	markAllErr  error
 	markReadErr error
+	markUpToErr error
 
 	markAllCalls  int
 	markReadCalls int
 	markReadRefs  []string
 	markReadAuths []int
+
+	markUpToCalls int
+	markUpToAsOf  time.Time
+	markUpToNow   time.Time
 }
 
 func newFakeStateStore() *fakeStateStore {
@@ -67,6 +72,18 @@ func (f *fakeStateStore) MarkApplicationsRead(_ context.Context, _ string, refs 
 		return 0, f.markReadErr
 	}
 	return int64(len(refs)), nil
+}
+
+// MarkReadUpTo backs the temporary advance compat shim (tc-ekii): it records the
+// parsed asOf and now so the handler test can assert the translation.
+func (f *fakeStateStore) MarkReadUpTo(_ context.Context, _ string, asOf, now time.Time) (int64, error) {
+	f.markUpToCalls++
+	f.markUpToAsOf = asOf
+	f.markUpToNow = now
+	if f.markUpToErr != nil {
+		return 0, f.markUpToErr
+	}
+	return 0, nil
 }
 
 func testMux(t *testing.T, store stateStore, now time.Time) *http.ServeMux {
@@ -275,6 +292,76 @@ func TestHandler_MarkRead(t *testing.T) {
 
 		body := `{"applications":[{"applicationUid":"24-01234","authorityId":330}]}`
 		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, body)
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rec.Code)
+		}
+	})
+}
+
+// TestHandler_Advance covers the TEMPORARY backward-compat shim (tc-ekii): the
+// re-added POST /v1/me/notification-state/advance translates the old
+// {asOf}-watermark request to a read_at MarkReadUpTo(asOf, now) call and returns
+// an idempotent 204. New iOS/web clients do not call this route (they use
+// /v1/me/applications/mark-read); remove per tc-v5w8 once the new iOS build is live.
+func TestHandler_Advance(t *testing.T) {
+	t.Parallel()
+
+	const path = "/v1/me/notification-state/advance"
+
+	t.Run("parses asOf and marks read up to it, returns 204", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+		now := time.Date(2026, 6, 15, 8, 0, 0, 0, time.UTC)
+		asOf := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+		rec := doReq(t, testMux(t, store, now), http.MethodPost, path, `{"asOf":"2026-06-01T12:00:00Z"}`)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", rec.Code)
+		}
+		if store.markUpToCalls != 1 {
+			t.Fatalf("MarkReadUpTo calls = %d, want 1", store.markUpToCalls)
+		}
+		if !store.markUpToAsOf.Equal(asOf) {
+			t.Errorf("asOf passed = %v, want %v", store.markUpToAsOf, asOf)
+		}
+		if !store.markUpToNow.Equal(now) {
+			t.Errorf("now passed = %v, want %v", store.markUpToNow, now)
+		}
+	})
+
+	t.Run("idempotent second call is still 204", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+		mux := testMux(t, store, time.Now())
+		body := `{"asOf":"2026-06-01T12:00:00Z"}`
+
+		if rec := doReq(t, mux, http.MethodPost, path, body); rec.Code != http.StatusNoContent {
+			t.Fatalf("first call status = %d, want 204", rec.Code)
+		}
+		if rec := doReq(t, mux, http.MethodPost, path, body); rec.Code != http.StatusNoContent {
+			t.Fatalf("second call status = %d, want 204", rec.Code)
+		}
+	})
+
+	t.Run("malformed body is a bodyless 400", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, `{"asOf":`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if store.markUpToCalls != 0 {
+			t.Errorf("malformed body must not touch the store: calls=%d", store.markUpToCalls)
+		}
+	})
+
+	t.Run("store error is 500", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+		store.markUpToErr = errors.New("db down")
+
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, `{"asOf":"2026-06-01T12:00:00Z"}`)
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", rec.Code)
 		}
