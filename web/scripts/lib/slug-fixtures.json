@@ -38,5 +38,21 @@
   {
     "input": "-- Foo --",
     "expected": "foo"
+  },
+  {
+    "input": "Café Royal",
+    "expected": "caf-royal"
+  },
+  {
+    "input": "Málaga & Sevilla",
+    "expected": "m-laga-and-sevilla"
+  },
+  {
+    "input": "東京 Tokyo",
+    "expected": "tokyo"
+  },
+  {
+    "input": "北京市",
+    "expected": ""
   }
 ]
