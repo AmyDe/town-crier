@@ -83,10 +83,46 @@ jobs:
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
+  # ── Database: run migrations ─────────────────────────
+  # Applies pending goose migrations (and the app-role grant sweep) BEFORE the
+  # API and worker deploy jobs, so the new image never serves against a stale
+  # schema. Authenticates as the CI service principal — a Postgres Entra admin
+  # on psql-town-crier-shared — via the OIDC azure-login session, so
+  # DefaultAzureCredential yields a passwordless ossrdbms token; no stored DB
+  # secret is involved. A non-zero exit fails the deploy loudly (never a silent
+  # skip); goose.Up is idempotent, so an up-to-date DB is a no-op. See ADR 0036.
+  migrate-prod:
+    name: "Database: Run migrations (prod)"
+    needs: infra
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api-go/go.mod
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply migrations
+        working-directory: api-go
+        run: |
+          go run ./cmd/pgmigrate \
+            -host psql-town-crier-shared.postgres.database.azure.com \
+            -admin-user town-crier-github-actions \
+            -db town_crier_prod \
+            -timeout 120s
+
   # ── Go API ────────────────────────────────────────────
   api-go:
     name: Deploy Go API
-    needs: infra
+    needs: [infra, migrate-prod]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -154,7 +190,7 @@ jobs:
   # ── Worker ───────────────────────────────────────────────
   worker:
     name: Deploy Worker
-    needs: infra
+    needs: [infra, migrate-prod]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
