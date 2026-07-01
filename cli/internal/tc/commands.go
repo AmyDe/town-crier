@@ -35,9 +35,14 @@ type listUsersResponse struct {
 }
 
 type listUsersItem struct {
-	UserID string  `json:"userId"`
-	Email  *string `json:"email"`
-	Tier   string  `json:"tier"`
+	UserID             string  `json:"userId"`
+	Email              *string `json:"email"`
+	Tier               string  `json:"tier"`
+	WatchZoneCount     *int    `json:"watchZoneCount"`
+	CreatedAt          *string `json:"createdAt"`
+	LastActiveAt       *string `json:"lastActiveAt"`
+	NotificationTotal  int     `json:"notificationTotal"`
+	NotificationUnread int     `json:"notificationUnread"`
 }
 
 // parseStrictInt parses s as a non-negative base-10 integer, accepting only
