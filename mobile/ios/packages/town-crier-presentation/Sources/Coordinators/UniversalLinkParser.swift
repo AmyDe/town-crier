@@ -4,15 +4,38 @@ import TownCrierDomain
 /// Parses Universal Link URLs (handed to the app by
 /// `NSUserActivityTypeBrowsingWeb`) into the in-app ``DeepLink`` vocabulary.
 ///
-/// The web app exposes two relevant routes that the AASA file claims:
-/// `/applications/{uid}` (a specific planning application) and `/applications`
-/// (the root list). PlanIt UIDs may contain `/` so the entire path suffix
-/// after `/applications/` is preserved verbatim.
+/// Two schemes are recognised:
+/// - the public share scheme `/a/{authoritySlug}/{ref...}` (GH #738 Slice 4),
+///   where `ref` is the application's full area-prefixed PlanIt name, verbatim
+///   (slashes preserved as path separators);
+/// - the legacy `/applications/{uid}` (a specific planning application) and
+///   `/applications` (the root list). PlanIt UIDs may contain `/`, so the
+///   entire path suffix after `/applications/` is preserved verbatim.
 public enum UniversalLinkParser {
   private static let applicationsPath = "/applications"
+  private static let sharePrefix = "/a/"
 
   public static func parse(_ url: URL) -> DeepLink? {
     let path = url.path
+    if let shareLink = parseShare(path) {
+      return shareLink
+    }
+    return parseApplications(path)
+  }
+
+  /// Parses `/a/{authoritySlug}/{ref...}`: the first segment after `/a/` is the
+  /// slug, everything after it (verbatim, slashes preserved) is the ref. A bare
+  /// `/a` or `/a/`, or a slug with no ref, returns `nil`. The `/a/` separator is
+  /// required, so `/afoo` does not match.
+  private static func parseShare(_ path: String) -> DeepLink? {
+    guard path.hasPrefix(sharePrefix) else { return nil }
+    let suffix = String(path.dropFirst(sharePrefix.count))
+    let parts = suffix.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+    return .shareApplication(authoritySlug: String(parts[0]), ref: String(parts[1]))
+  }
+
+  private static func parseApplications(_ path: String) -> DeepLink? {
     guard path.hasPrefix(applicationsPath) else { return nil }
     let suffix = String(path.dropFirst(applicationsPath.count))
     if suffix.isEmpty {

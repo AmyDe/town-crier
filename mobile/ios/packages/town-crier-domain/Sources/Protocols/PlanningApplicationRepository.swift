@@ -3,6 +3,14 @@ public protocol PlanningApplicationRepository: Sendable {
   func fetchApplications(for zone: WatchZone) async throws -> [PlanningApplication]
   func fetchApplication(by id: PlanningApplicationId) async throws -> PlanningApplication
 
+  /// Fetches a single application by its public share identity — the API-emitted
+  /// authority slug plus the full area-prefixed PlanIt ref (slashes preserved).
+  /// Backs inbound Universal Link resolution for `/a/{authoritySlug}/{ref...}`
+  /// via the anonymous by-slug read (GH #738 Slice 4). The slug comes from the
+  /// URL/API; iOS never computes it.
+  func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+    -> PlanningApplication
+
   /// Fetches a single server-sorted, server-filtered, server-paged page of a
   /// zone's applications, returning the decoded rows plus the continuation
   /// cursor for the next page (`nil` on the last page). The list's infinite

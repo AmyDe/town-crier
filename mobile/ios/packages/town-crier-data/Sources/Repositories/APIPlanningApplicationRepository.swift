@@ -123,6 +123,29 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     }
     return dto.toDomain()
   }
+
+  public func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+    -> PlanningApplication {
+    let dto: PlanningApplicationDTO
+    do {
+      // Anonymous public read: /v1/applications/by-slug/{authoritySlug}/{**ref}.
+      // The greedy `{**ref}` segment preserves slashes in the full area-prefixed
+      // PlanIt name, so `ref` interpolates raw exactly like `id.name` does in the
+      // by-id read above (GH #738 Slice 4).
+      dto = try await apiClient.request(
+        .get("/v1/applications/by-slug/\(authoritySlug)/\(ref)")
+      )
+    } catch APIError.notFound {
+      throw DomainError.applicationNotFound(
+        PlanningApplicationId(authority: authoritySlug, name: ref)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+    return dto.toDomain()
+  }
 }
 
 // MARK: - Cluster DTO

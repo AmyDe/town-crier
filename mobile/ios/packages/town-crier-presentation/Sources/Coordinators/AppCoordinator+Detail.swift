@@ -41,6 +41,30 @@ extension AppCoordinator {
     }
   }
 
+  /// Resolves an inbound public share Universal Link `/a/{authoritySlug}/{ref...}`
+  /// (GH #738 Slice 4) into the native detail screen. The anonymous by-slug read
+  /// returns the full application, so this presents it directly — no round-trip
+  /// through the by-id fetch. Same cancellation-guard pattern as
+  /// ``showApplicationDetail(_:)-(PlanningApplicationId)`` so overlapping opens
+  /// collapse to a single presentation.
+  func showApplicationDetail(bySlug authoritySlug: String, ref: String) {
+    pendingDetailLoad?.cancel()
+    pendingDetailLoad = Task { [weak self] in
+      guard let self else { return }
+      do {
+        let application = try await repository.fetchApplication(bySlug: authoritySlug, ref: ref)
+        guard !Task.isCancelled else { return }
+        detailApplication = application
+      } catch let domainError as DomainError {
+        guard !Task.isCancelled else { return }
+        deepLinkError = domainError
+      } catch {
+        guard !Task.isCancelled else { return }
+        deepLinkError = .unexpected(error.localizedDescription)
+      }
+    }
+  }
+
   /// Test-only synchronisation: await the most recent
   /// `showApplicationDetail` fetch. Replaces flaky `Task.sleep` waits.
   public func waitForPendingDetailLoad() async {
