@@ -76,19 +76,4 @@ describe('ApiNotificationStateRepository', () => {
     );
   });
 
-  it('advance POSTs the asOf instant', async () => {
-    const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
-    const client = createApiClient(baseUrl, getToken, fakeFetch);
-    const repo = new ApiNotificationStateRepository(client);
-
-    await repo.advance('2026-05-04T12:00:00Z');
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe(
-      'https://api.example.com/v1/me/notification-state/advance',
-    );
-    expect(calls[0]!.init.body).toBe(
-      JSON.stringify({ asOf: '2026-05-04T12:00:00Z' }),
-    );
-  });
 });

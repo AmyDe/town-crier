@@ -1,10 +1,6 @@
 import type { ApiClient } from './client';
 import type { NotificationStateSnapshot } from '../domain/types';
 
-interface AdvanceRequestBody {
-  readonly asOf: string;
-}
-
 /**
  * HTTP client for the notification read-state endpoints. Read state is now
  * per-application (`notifications.read_at`), replacing the single last-read
@@ -36,9 +32,5 @@ export function notificationStateApi(client: ApiClient) {
       client.post<void>('/v1/me/applications/mark-read', {
         applications: [{ applicationUid, authorityId }],
       }),
-    advance: (asOf: string) => {
-      const body: AdvanceRequestBody = { asOf };
-      return client.post<void>('/v1/me/notification-state/advance', body);
-    },
   };
 }

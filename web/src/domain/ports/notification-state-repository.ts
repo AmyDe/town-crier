@@ -29,9 +29,4 @@ export interface NotificationStateRepository {
    * council.
    */
   markApplicationRead(applicationUid: string, authorityId: number): Promise<void>;
-  /**
-   * Advances the watermark forward to `asOf`. No-op if `asOf` is at or before
-   * the existing watermark (server-enforced monotonicity).
-   */
-  advance(asOf: string): Promise<void>;
 }

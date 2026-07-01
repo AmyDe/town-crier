@@ -83,21 +83,3 @@ describe('notificationStateApi.markApplicationRead', () => {
     );
   });
 });
-
-describe('notificationStateApi.advance', () => {
-  it('POSTs /v1/me/notification-state/advance with the asOf instant in the body', async () => {
-    const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
-    const client = createApiClient(baseUrl, getToken, fakeFetch);
-
-    await notificationStateApi(client).advance('2026-05-04T12:00:00Z');
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe(
-      'https://api.example.com/v1/me/notification-state/advance',
-    );
-    expect(calls[0]!.init.method).toBe('POST');
-    expect(calls[0]!.init.body).toBe(
-      JSON.stringify({ asOf: '2026-05-04T12:00:00Z' }),
-    );
-  });
-});
