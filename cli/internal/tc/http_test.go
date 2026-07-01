@@ -14,6 +14,14 @@ func clientFor(server *httptest.Server) *Client {
 	return NewClient(Config{URL: server.URL, APIKey: "sk-test"})
 }
 
+// testStatsJSON is a minimal but complete GET /v1/admin/stats body, shared by
+// the stats render tests and the list-users summary-header tests.
+const testStatsJSON = `{"users":{"total":2,"byTier":{"Free":1,"Personal":0,"Pro":1}},` +
+	`"paying":{"effectivePaid":1,"appStore":1,"comped":0,"lapsed":0,"inGrace":0},` +
+	`"signups":{"last24h":0,"last7d":1,"last30d":2,"mostRecent":{"userId":"u1","email":"a@b.com","createdAt":"2026-07-01T09:00:00Z"}},` +
+	`"activity":{"active24h":1,"active7d":2,"zeroWatchZones":0,"noEmail":1},` +
+	`"reach":{"watchZones":3,"savedApplications":5,"deviceRegistrations":2,"notificationsSent":10,"notificationsUnread":4}}`
+
 func TestRunGenerateOfferCodes_StreamsCodesOnSuccess(t *testing.T) {
 	t.Parallel()
 	var gotBody generateOfferCodesRequest
