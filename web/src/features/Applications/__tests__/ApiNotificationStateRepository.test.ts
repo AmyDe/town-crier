@@ -58,6 +58,24 @@ describe('ApiNotificationStateRepository', () => {
     expect(calls[0]!.init.method).toBe('POST');
   });
 
+  it('markApplicationRead POSTs to /v1/me/applications/mark-read with the app NAME', async () => {
+    const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
+    const client = createApiClient(baseUrl, getToken, fakeFetch);
+    const repo = new ApiNotificationStateRepository(client);
+
+    // First arg is the application's `name`, second is its `areaId`.
+    await repo.markApplicationRead('24/0001', 42);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe(
+      'https://api.example.com/v1/me/applications/mark-read',
+    );
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(calls[0]!.init.body).toBe(
+      JSON.stringify({ applications: [{ applicationUid: '24/0001', authorityId: 42 }] }),
+    );
+  });
+
   it('advance POSTs the asOf instant', async () => {
     const { fetch: fakeFetch, calls } = createFakeFetch(204, null);
     const client = createApiClient(baseUrl, getToken, fakeFetch);
