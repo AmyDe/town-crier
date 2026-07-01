@@ -23,7 +23,8 @@ import (
 type fakeOfferCodeQuerier struct {
 	execTag    pgconn.CommandTag
 	execErr    error
-	queryErr   error // returned from Query()
+	queryErr   error    // returned from Query()
+	queryRows  pgx.Rows // returned from Query() when non-nil (else fakeEmptyRows)
 	rowResults []pgx.Row
 	rowIdx     int
 }
@@ -35,6 +36,9 @@ func (f *fakeOfferCodeQuerier) Exec(_ context.Context, _ string, _ ...any) (pgco
 func (f *fakeOfferCodeQuerier) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	if f.queryErr != nil {
 		return nil, f.queryErr
+	}
+	if f.queryRows != nil {
+		return f.queryRows, nil
 	}
 	return &fakeEmptyRows{}, nil
 }
@@ -354,5 +358,89 @@ func TestPostgresStore_Get_LegacyCoalesceHydration(t *testing.T) {
 	}
 	if !got.IsRedeemed() {
 		t.Error("legacy code with non-nil RedeemedByUserID must be considered redeemed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RedeemedByUsers (batched)
+// ---------------------------------------------------------------------------
+
+// fakeCodeRows is a pgx.Rows over pre-baked full-code column tuples, so
+// pgx.CollectRows(scanCodeRow) can hydrate multiple OfferCodes in one Query.
+type fakeCodeRows struct {
+	rows []fakeFullCodeRow
+	idx  int
+}
+
+func (r *fakeCodeRows) Next() bool { return r.idx < len(r.rows) }
+func (r *fakeCodeRows) Scan(dest ...any) error {
+	err := r.rows[r.idx].Scan(dest...)
+	r.idx++
+	return err
+}
+func (r *fakeCodeRows) Close()                                       {}
+func (r *fakeCodeRows) Err() error                                   { return nil }
+func (r *fakeCodeRows) Values() ([]any, error)                       { return nil, nil }
+func (r *fakeCodeRows) RawValues() [][]byte                          { return nil }
+func (r *fakeCodeRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *fakeCodeRows) CommandTag() pgconn.CommandTag                { return pgconn.CommandTag{} }
+func (r *fakeCodeRows) Conn() *pgx.Conn                              { return nil }
+
+// TestPostgresStore_RedeemedByUsers_Empty short-circuits an empty user set with
+// no query and an empty, non-nil map.
+func TestPostgresStore_RedeemedByUsers_Empty(t *testing.T) {
+	t.Parallel()
+	q := &fakeOfferCodeQuerier{}
+	store := NewPostgresStore(q)
+
+	got, err := store.RedeemedByUsers(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("RedeemedByUsers: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("empty users: got %v, want empty non-nil map", got)
+	}
+}
+
+// TestPostgresStore_RedeemedByUsers_PropagatesQueryError wraps a Query failure.
+func TestPostgresStore_RedeemedByUsers_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("redemptions boom")
+	q := &fakeOfferCodeQuerier{queryErr: boom}
+	store := NewPostgresStore(q)
+
+	_, err := store.RedeemedByUsers(context.Background(), []string{"auth0|u1"})
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
+	}
+}
+
+// TestPostgresStore_RedeemedByUsers_GroupsByUser groups the flat result by the
+// code's RedeemedByUserID so each user gets exactly their own codes.
+func TestPostgresStore_RedeemedByUsers_GroupsByUser(t *testing.T) {
+	t.Parallel()
+	u1 := "auth0|u1"
+	u2 := "auth0|u2"
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	redeemed := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	q := &fakeOfferCodeQuerier{queryRows: &fakeCodeRows{rows: []fakeFullCodeRow{
+		{code: "AAAAAAAAAAAA", tier: "Pro", durationDays: 30, createdAt: created, redeemed: true, redeemedByUserID: &u1, redeemedAt: &redeemed},
+		{code: "BBBBBBBBBBBB", tier: "Personal", durationDays: 7, createdAt: created, redeemed: true, redeemedByUserID: &u2, redeemedAt: &redeemed},
+		{code: "CCCCCCCCCCCC", tier: "Pro", durationDays: 90, createdAt: created, redeemed: true, redeemedByUserID: &u1, redeemedAt: &redeemed},
+	}}}
+	store := NewPostgresStore(q)
+
+	got, err := store.RedeemedByUsers(context.Background(), []string{u1, u2})
+	if err != nil {
+		t.Fatalf("RedeemedByUsers: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("map size: got %d, want 2", len(got))
+	}
+	if len(got[u1]) != 2 {
+		t.Errorf("u1 codes: got %d, want 2", len(got[u1]))
+	}
+	if len(got[u2]) != 1 || got[u2][0].Code != "BBBBBBBBBBBB" {
+		t.Errorf("u2 codes: got %+v, want [BBBBBBBBBBBB]", got[u2])
 	}
 }

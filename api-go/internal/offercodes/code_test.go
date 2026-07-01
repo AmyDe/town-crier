@@ -74,6 +74,45 @@ func TestOfferCode_Redeem_RejectsSecondRedemption(t *testing.T) {
 	}
 }
 
+// ActiveAt is the single authoritative "still-active offer window" rule reused
+// by both the list-users row column and the admin stats aggregate: a code is
+// active only while its own redeemed_at + duration window has not yet closed.
+func TestOfferCode_ActiveAt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	redeemedRecently := now.Add(-10 * 24 * time.Hour)
+	redeemedLongAgo := now.Add(-40 * 24 * time.Hour)
+	redeemedExactlyAtBoundary := now.Add(-30 * 24 * time.Hour)
+
+	tests := []struct {
+		name         string
+		durationDays int
+		redeemedAt   *time.Time
+		want         bool
+	}{
+		{"never redeemed", 30, nil, false},
+		{"within window", 30, &redeemedRecently, true},
+		{"past window", 30, &redeemedLongAgo, false},
+		{"exactly at boundary is expired", 30, &redeemedExactlyAtBoundary, false},
+		{"zero duration is never active", 0, &redeemedRecently, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := OfferCode{
+				Code:         "ABCDEFGHJKMN",
+				Tier:         profiles.TierPro,
+				DurationDays: tc.durationDays,
+				RedeemedAt:   tc.redeemedAt,
+			}
+			if got := c.ActiveAt(now); got != tc.want {
+				t.Errorf("ActiveAt(%v) = %v, want %v", now, got, tc.want)
+			}
+		})
+	}
+}
+
 // An anonymised code (redeemer scrubbed for GDPR Art. 17, but the consumed
 // tombstone retained) must still report as redeemed and reject re-redemption,
 // even though its RedeemedByUserID / RedeemedAt are now nil.
