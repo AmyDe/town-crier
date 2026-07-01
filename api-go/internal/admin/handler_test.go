@@ -9,9 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
+
+// fakeNotifCounts is a hand-written notificationCounts double: it records the
+// user ids it was asked about and returns pre-configured tallies.
+type fakeNotifCounts struct {
+	counts map[string]notifications.NotificationCounts
+	gotIDs []string
+}
+
+func (f *fakeNotifCounts) CountsByUsers(_ context.Context, userIDs []string) (map[string]notifications.NotificationCounts, error) {
+	f.gotIDs = userIDs
+	return f.counts, nil
+}
 
 type fakeAdminStore struct {
 	byEmail map[string]*profiles.UserProfile
@@ -74,14 +87,15 @@ func (f *fakeGenerator) Generate() (string, error) {
 	return c, nil
 }
 
-func newTestHandler(store profileAdminStore, auth0 tierSync, codes offerCodeStore, gen codeGenerator, now time.Time) *handler {
+func newTestHandler(store profileAdminStore, notifCounts notificationCounts, auth0 tierSync, codes offerCodeStore, gen codeGenerator, now time.Time) *handler {
 	return &handler{
-		profiles:  store,
-		auth0:     auth0,
-		codes:     codes,
-		generator: gen,
-		now:       func() time.Time { return now },
-		logger:    slog.New(slog.DiscardHandler),
+		profiles:    store,
+		notifCounts: notifCounts,
+		auth0:       auth0,
+		codes:       codes,
+		generator:   gen,
+		now:         func() time.Time { return now },
+		logger:      slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -113,7 +127,7 @@ func TestGrant_ActivatesPaidTier(t *testing.T) {
 
 	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}}
 	auth0 := &fakeTierSync{}
-	h := newTestHandler(store, auth0, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h := newTestHandler(store, &fakeNotifCounts{}, auth0, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Pro"}`)
 
@@ -140,7 +154,7 @@ func TestGrant_FreeExpiresSubscription(t *testing.T) {
 	paid := freeProfile(t)
 	paid.ActivateSubscription(profiles.TierPro, time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC))
 	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": paid}}
-	h := newTestHandler(store, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Free"}`)
 
@@ -159,7 +173,7 @@ func TestGrant_EmailNotFound(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{}}
-	h := newTestHandler(store, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"missing@example.com","tier":"Pro"}`)
 
@@ -175,7 +189,7 @@ func TestGrant_InvalidTier(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeAdminStore{byEmail: map[string]*profiles.UserProfile{"u@example.com": freeProfile(t)}}
-	h := newTestHandler(store, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h := newTestHandler(store, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.grantSubscription, http.MethodPut, "/v1/admin/subscriptions", `{"email":"u@example.com","tier":"Bronze"}`)
 
@@ -187,23 +201,40 @@ func TestGrant_InvalidTier(t *testing.T) {
 func TestListUsers_ReturnsPage(t *testing.T) {
 	t.Parallel()
 
-	p1 := freeProfile(t)
-	p2, _ := profiles.NewProfile("auth0|u2", "b@example.com", time.Now())
+	// p1: has a watch-zone count and 2 unread of 57 notifications.
+	created1 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	p1, _ := profiles.NewProfile("auth0|u1", "u@example.com", created1)
+	wz := 2
+	p1.WatchZoneCount = &wz
+	// p2: legacy nil watch-zone count and no notifications (absent from counts).
+	created2 := time.Date(2026, 2, 2, 10, 0, 0, 0, time.UTC)
+	p2, _ := profiles.NewProfile("auth0|u2", "b@example.com", created2)
 	p2.Tier = profiles.TierPro
+
 	store := &fakeAdminStore{page: profiles.Page{Profiles: []*profiles.UserProfile{p1, p2}, ContinuationToken: "next"}}
-	h := newTestHandler(store, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	counts := &fakeNotifCounts{counts: map[string]notifications.NotificationCounts{
+		"auth0|u1": {Total: 57, Unread: 2},
+	}}
+	h := newTestHandler(store, counts, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.listUsers, http.MethodGet, "/v1/admin/users?search=example&pageSize=50", "")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	want := `{"items":[{"userId":"auth0|u1","email":"u@example.com","tier":"Free"},{"userId":"auth0|u2","email":"b@example.com","tier":"Pro"}],"continuationToken":"next"}`
+	want := `{"items":[` +
+		`{"userId":"auth0|u1","email":"u@example.com","tier":"Free","watchZoneCount":2,"createdAt":"2026-01-01T09:00:00Z","lastActiveAt":"2026-01-01T09:00:00Z","notificationTotal":57,"notificationUnread":2},` +
+		`{"userId":"auth0|u2","email":"b@example.com","tier":"Pro","watchZoneCount":null,"createdAt":"2026-02-02T10:00:00Z","lastActiveAt":"2026-02-02T10:00:00Z","notificationTotal":0,"notificationUnread":0}` +
+		`],"continuationToken":"next"}`
 	if got := rec.Body.String(); got != want {
 		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
 	}
 	if store.gotSearch != "example" || store.gotPageSize != 50 {
 		t.Errorf("forwarded search=%q pageSize=%d", store.gotSearch, store.gotPageSize)
+	}
+	// The handler batches the whole page's user ids into a single counts lookup.
+	if len(counts.gotIDs) != 2 || counts.gotIDs[0] != "auth0|u1" || counts.gotIDs[1] != "auth0|u2" {
+		t.Errorf("counts lookup ids = %v, want [auth0|u1 auth0|u2]", counts.gotIDs)
 	}
 }
 
@@ -211,7 +242,8 @@ func TestListUsers_DefaultsAndNullToken(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeAdminStore{page: profiles.Page{Profiles: nil, ContinuationToken: ""}}
-	h := newTestHandler(store, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	counts := &fakeNotifCounts{}
+	h := newTestHandler(store, counts, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 
 	rec := serve(t, h.listUsers, http.MethodGet, "/v1/admin/users", "")
 
@@ -224,12 +256,16 @@ func TestListUsers_DefaultsAndNullToken(t *testing.T) {
 	if store.gotPageSize != 20 {
 		t.Errorf("default pageSize = %d, want 20", store.gotPageSize)
 	}
+	// An empty page must not trigger a counts lookup at all.
+	if counts.gotIDs != nil {
+		t.Errorf("empty page issued a counts lookup for %v", counts.gotIDs)
+	}
 }
 
 func TestListUsers_InvalidPageSize(t *testing.T) {
 	t.Parallel()
 
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 	rec := serve(t, h.listUsers, http.MethodGet, "/v1/admin/users?pageSize=abc", "")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
@@ -242,7 +278,7 @@ func TestGenerate_HappyPath(t *testing.T) {
 	offerStore := &fakeOfferStore{}
 	gen := &fakeGenerator{codes: []string{"ABCDEFGHJKMN", "NPQRSTVWXYZ0"}}
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, offerStore, gen, now)
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, gen, now)
 
 	rec := serve(t, h.generateOfferCodes, http.MethodPost, "/v1/admin/offer-codes", `{"count":2,"tier":"Pro","durationDays":30}`)
 
@@ -277,7 +313,7 @@ func TestGenerate_ValidationErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			h := newTestHandler(&fakeAdminStore{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+			h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
 			rec := serve(t, h.generateOfferCodes, http.MethodPost, "/v1/admin/offer-codes", tc.body)
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400", rec.Code)
