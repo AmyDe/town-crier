@@ -154,6 +154,11 @@ type UserProfile struct {
 	OriginalTransactionID *string
 	GracePeriodExpiry     *time.Time
 	LastActiveAt          time.Time
+	// CreatedAt is the profile's creation time. It is owned by the database
+	// (users.created_at DEFAULT CURRENT_TIMESTAMP) and read-only in Go: Save
+	// never writes it. NewProfile stamps it for the in-memory create response,
+	// but the DB DEFAULT is authoritative on persistence.
+	CreatedAt time.Time
 	// WatchZoneCount is the CAS-maintained quota counter. A nil value indicates
 	// a legacy profile written before this field existed; the create path
 	// initialises it on first use by reading the live zone count (lazy-init).
@@ -174,6 +179,7 @@ func NewProfile(userID, email string, now time.Time) (*UserProfile, error) {
 		ZonePreferences: map[string]ZonePreferences{},
 		Tier:            TierFree,
 		LastActiveAt:    now,
+		CreatedAt:       now,
 	}, nil
 }
 
