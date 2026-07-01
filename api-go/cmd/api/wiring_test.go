@@ -341,6 +341,19 @@ func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
 	if got := byID.Header().Get("WWW-Authenticate"); got != "Bearer" {
 		t.Errorf("by-id WWW-Authenticate = %q, want Bearer", got)
 	}
+
+	// (4) Public og:image card: anonymous, 200 image/png. This application carries
+	// no coordinates, so the card takes the branded fallback path and fetches no
+	// OSM tiles — the full router wires the real tile client, so a coordinate-less
+	// fixture keeps this test off the network while still proving the route is
+	// wired and anonymous.
+	ogCard := serveReq(t, h, http.MethodGet, "/og/croydon/23/03456/FUL.png", "", "")
+	if ogCard.Code != http.StatusOK {
+		t.Fatalf("GET /og/croydon/... status = %d, want 200 (anonymous); body len = %d", ogCard.Code, ogCard.Body.Len())
+	}
+	if ct := ogCard.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("og:image Content-Type = %q, want image/png", ct)
+	}
 }
 
 // TestRouter_FallbackDeny pins the 401 surface: protected routes, unmatched
