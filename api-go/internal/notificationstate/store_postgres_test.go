@@ -299,6 +299,34 @@ func TestPostgresNSStore_MarkApplicationsRead_PropagatesQueryError(t *testing.T)
 	}
 }
 
+// --- MarkReadUpTo (temporary advance compat shim, tc-ekii) ---
+
+func TestPostgresNSStore_MarkReadUpTo_ReturnsClearedCount(t *testing.T) {
+	t.Parallel()
+	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows([][]any{{int64(2)}})}}}
+	s := NewPostgresStore(q)
+
+	cleared, err := s.MarkReadUpTo(context.Background(), "user-1", time.Now(), time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleared != 2 {
+		t.Errorf("cleared: got %d, want 2", cleared)
+	}
+}
+
+func TestPostgresNSStore_MarkReadUpTo_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("mark-up-to boom")
+	q := &fakeNSQuerier{queryResponses: []queryResp{{err: boom}}}
+	s := NewPostgresStore(q)
+
+	_, err := s.MarkReadUpTo(context.Background(), "user-1", time.Now(), time.Now())
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
+	}
+}
+
 // --- DeleteByUserID ---
 
 func TestPostgresNSStore_DeleteByUserID_Success(t *testing.T) {
