@@ -97,7 +97,7 @@ const userSelectCols = `user_id, email, push_enabled, digest_day,
 	email_digest_enabled, saved_decision_push, saved_decision_email,
 	zone_preferences::text,
 	tier, subscription_expiry, original_transaction_id, grace_period_expiry,
-	last_active_at, last_active_at_epoch, watch_zone_count, version`
+	last_active_at, last_active_at_epoch, created_at, watch_zone_count, version`
 
 // rowScanner is the minimal interface that both pgx.Row (returned by QueryRow)
 // and pgx.Rows (returned by Query, positioned via Next) satisfy. Defining it
@@ -125,6 +125,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		gracePeriodExpiry            *time.Time
 		lastActiveAt                 time.Time
 		lastActiveAtEpoch            int64
+		createdAt                    time.Time
 		watchZoneCount               *int
 		version                      int
 	)
@@ -134,7 +135,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		&emailDigestEnabled, &savedDecisionPush, &savedDecisionEmail,
 		&zonePrefText,
 		&tier, &subscriptionExpiry, &originalTransactionID, &gracePeriodExpiry,
-		&lastActiveAt, &lastActiveAtEpoch, &watchZoneCount, &version,
+		&lastActiveAt, &lastActiveAtEpoch, &createdAt, &watchZoneCount, &version,
 	); err != nil {
 		return nil, 0, err
 	}
@@ -165,6 +166,7 @@ func scanUserRow(row rowScanner) (*UserProfile, int, error) {
 		OriginalTransactionID: originalTransactionID,
 		GracePeriodExpiry:     gracePeriodExpiry,
 		LastActiveAt:          lastActiveAt,
+		CreatedAt:             createdAt,
 		WatchZoneCount:        watchZoneCount,
 	}
 	return p, version, nil

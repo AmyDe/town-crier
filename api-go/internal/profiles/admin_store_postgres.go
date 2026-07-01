@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -168,58 +169,77 @@ func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {
 	return nil
 }
 
-// listCursor is the keyset pagination cursor for List. It encodes the last
-// user_id seen on the previous page as a base64url string so it is opaque to
-// callers — matching the Cosmos continuation-token contract.
+// listCursor is the keyset pagination cursor for List. It carries the
+// (created_at, user_id) pair of the last row on the previous page — the same
+// compound key List orders by — so paging is stable even when many rows share
+// a created_at (the migration backfill gives every pre-existing row the same
+// timestamp, so user_id is the essential tiebreak).
 type listCursor struct {
+	CreatedAt  time.Time
 	LastUserID string
 }
 
-func encodeListCursor(lastUserID string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(lastUserID))
+// encodeListCursor renders the cursor as base64url("<createdAt RFC3339Nano>|<userID>")
+// so it is opaque to callers. created_at is encoded first: it never contains a
+// "|", so decodeListCursor can split on the first separator and keep any "|" in
+// the user id (auth0|..., apple|...) intact.
+func encodeListCursor(createdAt time.Time, lastUserID string) string {
+	raw := createdAt.UTC().Format(time.RFC3339Nano) + "|" + lastUserID
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
-func decodeListCursor(token string) (string, error) {
+func decodeListCursor(token string) (listCursor, error) {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return "", fmt.Errorf("decode list cursor: %w", err)
+		return listCursor{}, fmt.Errorf("decode list cursor: %w", err)
 	}
-	return string(b), nil
+	parts := strings.SplitN(string(b), "|", 2)
+	if len(parts) != 2 {
+		return listCursor{}, fmt.Errorf("decode list cursor: malformed cursor %q", string(b))
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return listCursor{}, fmt.Errorf("decode list cursor: parse created_at: %w", err)
+	}
+	return listCursor{CreatedAt: createdAt, LastUserID: parts[1]}, nil
 }
 
-// List returns one page of profiles ordered by user_id, optionally filtered
-// by a case-insensitive email substring. An empty continuationToken starts
-// from the first page; a non-empty token resumes after the last user_id from
-// the previous page. Mirrors AdminStore.List's contract (Page + opaque token).
+// List returns one page of profiles ordered by (created_at, user_id) — oldest
+// created first, so newly-created users naturally appear at the bottom of the
+// list — optionally filtered by a case-insensitive email substring. An empty
+// continuationToken starts from the first page; a non-empty token resumes after
+// the (created_at, user_id) pair of the previous page's last row via a compound
+// keyset guard. Mirrors AdminStore.List's contract (Page + opaque token).
 func (s *PostgresAdminStore) List(ctx context.Context, emailSearch string, pageSize int, continuationToken string) (Page, error) {
-	var lastUserID string
-	if continuationToken != "" {
+	var cursor listCursor
+	hasCursor := continuationToken != ""
+	if hasCursor {
 		var err error
-		lastUserID, err = decodeListCursor(continuationToken)
+		cursor, err = decodeListCursor(continuationToken)
 		if err != nil {
 			return Page{}, fmt.Errorf("list profiles: %w", err)
 		}
 	}
 
-	// Build the WHERE clause from the two optional predicates.
-	// We always add at least the cursor guard when paging; on the first page
-	// (empty cursor) we still ORDER BY user_id so the cursor is meaningful.
+	// All four branches order by the compound (created_at, user_id) key; the two
+	// cursor branches add the row-value keyset guard, shifting param numbering.
+	const orderLimit = " ORDER BY created_at, user_id LIMIT "
 	var (
 		sql  string
 		args []any
 	)
 	switch {
-	case emailSearch != "" && lastUserID != "":
-		sql = pgAdminSelectCols + "WHERE email ILIKE $1 AND user_id > $2 ORDER BY user_id LIMIT $3"
-		args = []any{"%" + emailSearch + "%", lastUserID, pageSize}
+	case emailSearch != "" && hasCursor:
+		sql = pgAdminSelectCols + "WHERE email ILIKE $1 AND (created_at, user_id) > ($2, $3)" + orderLimit + "$4"
+		args = []any{"%" + emailSearch + "%", cursor.CreatedAt, cursor.LastUserID, pageSize}
 	case emailSearch != "":
-		sql = pgAdminSelectCols + "WHERE email ILIKE $1 ORDER BY user_id LIMIT $2"
+		sql = pgAdminSelectCols + "WHERE email ILIKE $1" + orderLimit + "$2"
 		args = []any{"%" + emailSearch + "%", pageSize}
-	case lastUserID != "":
-		sql = pgAdminSelectCols + "WHERE user_id > $1 ORDER BY user_id LIMIT $2"
-		args = []any{lastUserID, pageSize}
+	case hasCursor:
+		sql = pgAdminSelectCols + "WHERE (created_at, user_id) > ($1, $2)" + orderLimit + "$3"
+		args = []any{cursor.CreatedAt, cursor.LastUserID, pageSize}
 	default:
-		sql = pgAdminSelectCols + "ORDER BY user_id LIMIT $1"
+		sql = pgAdminSelectCols + strings.TrimPrefix(orderLimit, " ") + "$1"
 		args = []any{pageSize}
 	}
 
@@ -236,7 +256,8 @@ func (s *PostgresAdminStore) List(ctx context.Context, emailSearch string, pageS
 	// page means we reached the end.
 	nextToken := ""
 	if len(profiles) == pageSize {
-		nextToken = encodeListCursor(profiles[len(profiles)-1].UserID)
+		last := profiles[len(profiles)-1]
+		nextToken = encodeListCursor(last.CreatedAt, last.UserID)
 	}
 
 	return Page{Profiles: profiles, ContinuationToken: nextToken}, nil

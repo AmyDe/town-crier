@@ -20,6 +20,15 @@ const (
 	EventDecisionUpdate EventType = "DecisionUpdate"
 )
 
+// NotificationCounts is a per-user notification tally: the total number of
+// notifications and how many are still unread (read_at IS NULL). It backs the
+// admin user list's "unread/total" column and is deliberately kept off
+// UserProfile — it is a list-view aggregate, not a profile property.
+type NotificationCounts struct {
+	Total  int
+	Unread int
+}
+
 // LatestUnread is the per-application unread descriptor surfaced on each row of
 // the applications-by-zone result: the event, the optional PlanIt decision
 // string (decision updates only), and when the notification was raised.

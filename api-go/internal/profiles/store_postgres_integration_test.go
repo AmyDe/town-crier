@@ -44,6 +44,12 @@ func assertProfileEqual(t *testing.T, got, want *UserProfile) {
 	g, w := *got, *want
 	g.LastActiveAt = got.LastActiveAt.UTC().Truncate(time.Microsecond)
 	w.LastActiveAt = want.LastActiveAt.UTC().Truncate(time.Microsecond)
+	// CreatedAt is DB-owned (DEFAULT CURRENT_TIMESTAMP): the round-tripped value
+	// is the DB insert time, never the in-memory NewProfile timestamp, so it is
+	// excluded from the field-by-field comparison. Round-trip presence is
+	// asserted separately in SaveGetRoundTrip.
+	g.CreatedAt = time.Time{}
+	w.CreatedAt = time.Time{}
 	if !reflect.DeepEqual(g, w) {
 		t.Errorf("profile mismatch:\n got = %+v\nwant = %+v", g, w)
 	}
@@ -71,6 +77,11 @@ func TestPostgresStore_SaveGetRoundTrip(t *testing.T) {
 		t.Fatalf("Get: %v", err)
 	}
 	assertProfileEqual(t, got, p)
+	// created_at is stamped by the DB DEFAULT on insert (Go never writes it), so
+	// the round-tripped value must be populated.
+	if got.CreatedAt.IsZero() {
+		t.Error("CreatedAt: got zero, want DB-stamped creation time")
+	}
 }
 
 // TestPostgresStore_Get_Miss confirms a missing profile returns ErrNotFound.
@@ -499,8 +510,10 @@ func TestPostgresAdminStore_Save(t *testing.T) {
 }
 
 // TestPostgresAdminStore_List_Pagination verifies that List pages correctly
-// through profiles ordered by user_id using the keyset cursor, and that an
-// email filter narrows results.
+// through profiles ordered by (created_at, user_id) using the compound keyset
+// cursor, and that an email filter narrows results. Every seeded row is forced
+// to share a created_at so the test exercises the user_id tiebreak — the exact
+// state the backfill migration leaves pre-existing rows in.
 func TestPostgresAdminStore_List_Pagination(t *testing.T) {
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "users")
@@ -515,6 +528,11 @@ func TestPostgresAdminStore_List_Pagination(t *testing.T) {
 		if err := store.Save(ctx, pgProfile(t, id, email)); err != nil {
 			t.Fatalf("Save %s: %v", id, err)
 		}
+	}
+	// Force an identical created_at on every row so ordering falls through to the
+	// user_id tiebreak (the realistic post-backfill state).
+	if _, err := pool.Exec(ctx, "UPDATE users SET created_at = '2020-01-01T00:00:00Z'"); err != nil {
+		t.Fatalf("force created_at: %v", err)
 	}
 
 	// Page 1: first 3.
@@ -539,6 +557,17 @@ func TestPostgresAdminStore_List_Pagination(t *testing.T) {
 	}
 	if page2.ContinuationToken != "" {
 		t.Errorf("page 2: expected empty token (last page), got %q", page2.ContinuationToken)
+	}
+
+	// The compound cursor must page stably in user_id order across the two pages
+	// when created_at ties: list1..list5 with no gaps or repeats.
+	var gotIDs []string
+	for _, p := range append(page1.Profiles, page2.Profiles...) {
+		gotIDs = append(gotIDs, p.UserID)
+	}
+	wantIDs := []string{"auth0|list1", "auth0|list2", "auth0|list3", "auth0|list4", "auth0|list5"}
+	if !reflect.DeepEqual(gotIDs, wantIDs) {
+		t.Errorf("paged order = %v, want %v", gotIDs, wantIDs)
 	}
 
 	// Email filter: only profile 3 matches "list3".

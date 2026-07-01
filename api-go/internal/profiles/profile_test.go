@@ -37,6 +37,12 @@ func TestNewProfile_Defaults(t *testing.T) {
 	if !p.LastActiveAt.Equal(now) {
 		t.Errorf("LastActiveAt: got %v, want %v", p.LastActiveAt, now)
 	}
+	// CreatedAt is set for the in-memory create response. On persistence the DB
+	// DEFAULT is authoritative, but NewProfile stamps it so the create path
+	// returns a populated value.
+	if !p.CreatedAt.Equal(now) {
+		t.Errorf("CreatedAt: got %v, want %v", p.CreatedAt, now)
+	}
 }
 
 func TestNewProfile_RejectsEmptyUserID(t *testing.T) {

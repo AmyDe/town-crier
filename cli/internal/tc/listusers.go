@@ -76,14 +76,88 @@ func buildListUsersPath(hasSearch bool, search string, pageSize int, continuatio
 	return sb.String()
 }
 
+// printUsersTable renders one page as an aligned table. Column widths are
+// computed per page (rather than hard-coded) so any user-id length — a short
+// Auth0 id or a ~49-char Apple id — renders without pushing the later columns
+// out of alignment.
 func printUsersTable(out io.Writer, page *listUsersResponse) {
-	fmt.Fprintf(out, "%-24s %-32s %-10s\n", "UserId", "Email", "Tier")
-	fmt.Fprintln(out, strings.Repeat("-", 66))
-	for _, item := range page.Items {
-		email := "(none)"
-		if item.Email != nil {
-			email = *item.Email
-		}
-		fmt.Fprintf(out, "%-24s %-32s %-10s\n", item.UserID, email, item.Tier)
+	const (
+		hUserID     = "UserId"
+		hEmail      = "Email"
+		hTier       = "Tier"
+		hWatchZones = "WatchZones"
+		hLastActive = "LastActive"
+		hCreated    = "Created"
+		hNotifs     = "Notifs"
+	)
+
+	type cells struct {
+		userID, email, tier, watchZones, lastActive, created, notifs string
 	}
+	rows := make([]cells, 0, len(page.Items))
+	for _, item := range page.Items {
+		rows = append(rows, cells{
+			userID:     item.UserID,
+			email:      emailCell(item.Email),
+			tier:       item.Tier,
+			watchZones: watchZonesCell(item.WatchZoneCount),
+			lastActive: datePart(item.LastActiveAt),
+			created:    datePart(item.CreatedAt),
+			notifs:     fmt.Sprintf("%d/%d", item.NotificationUnread, item.NotificationTotal),
+		})
+	}
+
+	// Seed widths from the headers, then widen to the longest cell per column.
+	wUserID, wEmail, wTier := len(hUserID), len(hEmail), len(hTier)
+	wWatch, wLast, wCreated, wNotifs := len(hWatchZones), len(hLastActive), len(hCreated), len(hNotifs)
+	for _, r := range rows {
+		wUserID = max(wUserID, len(r.userID))
+		wEmail = max(wEmail, len(r.email))
+		wTier = max(wTier, len(r.tier))
+		wWatch = max(wWatch, len(r.watchZones))
+		wLast = max(wLast, len(r.lastActive))
+		wCreated = max(wCreated, len(r.created))
+		wNotifs = max(wNotifs, len(r.notifs))
+	}
+
+	format := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n",
+		wUserID, wEmail, wTier, wWatch, wLast, wCreated, wNotifs)
+
+	header := fmt.Sprintf(format, hUserID, hEmail, hTier, hWatchZones, hLastActive, hCreated, hNotifs)
+	fmt.Fprint(out, header)
+	fmt.Fprintln(out, strings.Repeat("-", len(strings.TrimRight(header, "\n"))))
+	for _, r := range rows {
+		fmt.Fprintf(out, format, r.userID, r.email, r.tier, r.watchZones, r.lastActive, r.created, r.notifs)
+	}
+}
+
+// emailCell renders an optional email, falling back to "(none)" when absent.
+func emailCell(email *string) string {
+	if email == nil {
+		return "(none)"
+	}
+	return *email
+}
+
+// watchZonesCell renders the watch-zone count, or "-" for a legacy profile that
+// never had the counter (nil).
+func watchZonesCell(n *int) string {
+	if n == nil {
+		return "-"
+	}
+	return strconv.Itoa(*n)
+}
+
+// datePart trims an RFC3339 timestamp to its date portion (YYYY-MM-DD) for
+// compact display. A nil or empty value renders as "-"; a value shorter than a
+// full date is passed through unchanged.
+func datePart(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	v := *s
+	if len(v) >= len("2006-01-02") {
+		return v[:len("2006-01-02")]
+	}
+	return v
 }

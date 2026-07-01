@@ -155,7 +155,12 @@ func TestRunListUsers_SinglePageTable(t *testing.T) {
 	}
 
 	got := out.String()
-	for _, want := range []string{"UserId", "Email", "Tier", strings.Repeat("-", 66), "u1", "a@b.com", "u2", "(none)", "Free"} {
+	for _, want := range []string{
+		"UserId", "Email", "Tier", "WatchZones", "LastActive", "Created", "Notifs",
+		"u1", "a@b.com", "u2", "(none)", "Free",
+		"-", // legacy rows with no watch-zone / dates render "-"
+		"0/0",
+	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout missing %q; got:\n%s", want, got)
 		}

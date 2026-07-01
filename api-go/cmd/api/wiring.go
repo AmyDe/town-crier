@@ -84,11 +84,13 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	d.dispatch.ServeHTTP(w, r)
 }
 
-// notifUnreadReader is the narrowest consumer-side interface the notification
-// store wired into NearbyRoutes must satisfy. *notifications.PostgresStore (which
-// satisfies the full notifications.Store) satisfies it structurally.
-type notifUnreadReader interface {
+// notifStoreReader is the consumer-side slice of the notification store the
+// router wires into two places: the latest-unread lookup for NearbyRoutes and
+// the batched per-user tally for the admin user list. *notifications.PostgresStore
+// (which satisfies the full notifications.Store) satisfies it structurally.
+type notifStoreReader interface {
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
+	CountsByUsers(ctx context.Context, userIDs []string) (map[string]notifications.NotificationCounts, error)
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production
@@ -124,7 +126,7 @@ func newRouter(
 	exportReaders profiles.ExportReaders,
 	deviceStore devicetokens.Store,
 	stateStore notificationstate.Store,
-	notifStore notifUnreadReader,
+	notifStore notifStoreReader,
 	watchZoneStore watchzones.Store,
 	appStore applications.Store,
 	savedStore savedapplications.Store,
@@ -239,7 +241,7 @@ func newRouter(
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
 		// cross-user admin store backs grant/list; the offer-code store backs
 		// generate.
-		admin.Routes(mux, adminKey, adminStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+		admin.Routes(mux, adminKey, adminStore, notifStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the
