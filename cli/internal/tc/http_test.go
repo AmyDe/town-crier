@@ -150,8 +150,12 @@ func TestRunGrantSubscription_InvalidTierReturns1(t *testing.T) {
 
 func TestRunListUsers_SinglePageTable(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
 		_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"},{"userId":"u2","email":null,"tier":"Free"}],"continuationToken":null}`)
 	}))
 	defer server.Close()
@@ -179,8 +183,12 @@ func TestRunListUsers_PaginatesOnYes(t *testing.T) {
 	t.Parallel()
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.String())
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		paths = append(paths, r.URL.String())
 		if r.URL.Query().Get("continuationToken") == "" {
 			_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":"TOKEN1"}`)
 			return
@@ -208,9 +216,13 @@ func TestRunListUsers_PaginatesOnYes(t *testing.T) {
 func TestRunListUsers_StopsOnNo(t *testing.T) {
 	t.Parallel()
 	var requests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		requests++
 		_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":"TOKEN1"}`)
 	}))
 	defer server.Close()

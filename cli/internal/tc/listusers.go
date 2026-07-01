@@ -30,6 +30,7 @@ func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs
 
 	reader := bufio.NewReader(env.In)
 	continuationToken := ""
+	firstPage := true
 
 	for {
 		path := buildListUsersPath(hasSearch, search, pageSize, continuationToken)
@@ -44,6 +45,10 @@ func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs
 			return exitRuntime
 		}
 
+		if firstPage {
+			printStatsSummary(ctx, client, env.Out)
+			firstPage = false
+		}
 		printUsersTable(env.Out, page)
 
 		if page.ContinuationToken == nil {
@@ -59,6 +64,17 @@ func runListUsers(ctx context.Context, client *Client, env Env, args *ParsedArgs
 	}
 
 	return exitOK
+}
+
+// printStatsSummary fetches the aggregate once and prints a one-line header
+// above the first page. It is a convenience, not the payload: any failure
+// (network, non-2xx, empty body) is swallowed so the users table still renders.
+func printStatsSummary(ctx context.Context, client *Client, out io.Writer) {
+	var resp *statsResponse
+	if err := client.GetJSON(ctx, "/v1/admin/stats", &resp); err != nil || resp == nil {
+		return
+	}
+	fmt.Fprintln(out, statsSummaryLine(resp))
 }
 
 func buildListUsersPath(hasSearch bool, search string, pageSize int, continuationToken string) string {
