@@ -54,6 +54,19 @@ func NewOfferCode(code string, tier profiles.SubscriptionTier, durationDays int,
 // RedeemedByUserID has been scrubbed, so it can never be re-redeemed.
 func (c *OfferCode) IsRedeemed() bool { return c.Redeemed || c.RedeemedByUserID != nil }
 
+// ActiveAt reports whether the code's granted tier window is still open at now:
+// the redemption instant plus DurationDays has not yet passed. A code that was
+// never redeemed (RedeemedAt == nil) is never active. This is the single
+// authoritative "still-active offer window" rule reused by both the list-users
+// offer-code column and the admin stats comped/active-offer aggregate, so the
+// two surfaces can never disagree on whether a code still counts.
+func (c *OfferCode) ActiveAt(now time.Time) bool {
+	if c.RedeemedAt == nil {
+		return false
+	}
+	return c.RedeemedAt.Add(time.Duration(c.DurationDays) * 24 * time.Hour).After(now)
+}
+
 // Redeem claims the code for userID at now. A second redemption is rejected with
 // ErrAlreadyRedeemed.
 func (c *OfferCode) Redeem(userID string, now time.Time) error {
