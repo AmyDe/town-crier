@@ -44,16 +44,22 @@ runs:
         docker push "$IMAGE"
         docker push "$LATEST"
 
-    - name: Prune old ACR manifests (keep newest 5)
+    - name: Prune old ACR manifests (preserve release digests)
       shell: bash
       run: |
         # Basic-tier ACR has no RetentionPolicy, so we prune manually after each push.
-        # Keep the 5 newest manifests (by createdTime) for this repo and delete the rest.
-        # The "latest" tag is always on the most recently pushed manifest, so it is
-        # always retained by virtue of being in the top 5.
+        # Rollback safety (tc-44nf): ACA rollback-by-digest needs old release images to
+        # still exist, but frequent dev builds share these repos with prod releases and
+        # used to evict a release within a day (newest-5 window). So the prune now
+        # PROTECTS any manifest carrying a "release-*" tag (applied by cd-prod after a
+        # successful deploy): it keeps the newest KEEP_RELEASE release manifests and the
+        # newest KEEP_DEV non-release (dev-build) manifests, deleting only what falls
+        # outside both windows. The "latest" tag is always on the most recently pushed
+        # manifest, so it is always retained by virtue of being in the newest KEEP_DEV.
         REGISTRY="$(echo "${{ inputs.acr-login-server }}" | cut -d. -f1)"
         IMAGE_NAME="${{ inputs.image-name }}"
-        KEEP=5
+        KEEP_DEV=10
+        KEEP_RELEASE=15
 
         echo "Listing manifests for ${REGISTRY}/${IMAGE_NAME}..."
         MANIFESTS_JSON="$(az acr manifest list-metadata \
@@ -61,14 +67,19 @@ runs:
           --name "$IMAGE_NAME" \
           -o json)"
 
-        # Sort by createdTime descending, drop the first KEEP entries, emit digests for the rest.
+        # Partition by whether a manifest carries a release-* tag. Within each class,
+        # sort newest-first and drop the ones inside the keep window; delete the rest.
+        # A manifest with no tags is treated as non-release (the // [] guards null).
         DIGESTS_TO_DELETE="$(echo "$MANIFESTS_JSON" \
-          | jq -r --argjson keep "$KEEP" '
-              sort_by(.createdTime) | reverse | .[$keep:] | .[].digest
+          | jq -r --argjson kd "$KEEP_DEV" --argjson kr "$KEEP_RELEASE" '
+              def is_release: ((.tags // []) | any(startswith("release-")));
+              ([ .[] | select(is_release)       ] | sort_by(.createdTime) | reverse | .[$kr:])
+              + ([ .[] | select(is_release | not) ] | sort_by(.createdTime) | reverse | .[$kd:])
+              | .[].digest
             ')"
 
         if [ -z "$DIGESTS_TO_DELETE" ]; then
-          echo "Nothing to prune (<= ${KEEP} manifests present)."
+          echo "Nothing to prune (all manifests within the keep windows)."
           exit 0
         fi
 
