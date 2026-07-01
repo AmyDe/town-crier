@@ -151,6 +151,57 @@ func (s *PostgresStore) ListByUser(ctx context.Context, userID string) ([]Device
 	return regs, nil
 }
 
+// pgDeviceCountsByUsersQuery tallies each user's live device-registration count
+// in one grouped pass. The (user_id, token) primary key makes each row a
+// distinct live token, so count(*) per user is already deduped on (user_id,
+// token). Users with no rows produce no row; the caller defaults them to 0.
+const pgDeviceCountsByUsersQuery = "SELECT user_id, count(*) FROM device_registrations " +
+	"WHERE user_id = ANY($1) GROUP BY user_id"
+
+// CountsByUsers returns each user's live device-token count in a single grouped
+// query, mirroring notifications.PostgresStore.CountsByUsers. The count reflects
+// live (non-TTL-purged) tokens, deduped on (user_id, token) by the primary key.
+// Users absent from the result are absent from the map; the caller treats a
+// missing key as 0 via the map zero value. An empty user set returns an empty
+// map without issuing a query.
+func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error) {
+	counts := make(map[string]int, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+	rows, err := s.db.Query(ctx, pgDeviceCountsByUsersQuery, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query device token counts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			userID string
+			count  int
+		)
+		if err := rows.Scan(&userID, &count); err != nil {
+			return nil, fmt.Errorf("scan device token count: %w", err)
+		}
+		counts[userID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("device token count rows: %w", err)
+	}
+	return counts, nil
+}
+
+const pgDeviceCountQuery = "SELECT count(*) FROM device_registrations"
+
+// Count returns the global number of live device registrations across all users
+// — the admin stats "reach" total.
+func (s *PostgresStore) Count(ctx context.Context) (int, error) {
+	var total int
+	if err := s.db.QueryRow(ctx, pgDeviceCountQuery).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count device registrations: %w", err)
+	}
+	return total, nil
+}
+
 const pgDeleteAllDevicesQuery = "DELETE FROM device_registrations WHERE user_id = $1"
 
 // DeleteAllByUserID removes every device registration for the user. Used by the
