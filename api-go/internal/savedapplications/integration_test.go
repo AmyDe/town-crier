@@ -307,6 +307,74 @@ func TestSavedPostgresStore_DeleteAllByUserID(t *testing.T) {
 	}
 }
 
+// TestSavedPostgresStore_CountsByUsers_Integration tallies each user's saved
+// applications in one grouped query. A user with no rows is absent from the map
+// (defaults to 0 at the call site); a user outside the requested set is excluded.
+func TestSavedPostgresStore_CountsByUsers_Integration(t *testing.T) {
+	ctx := context.Background()
+	store := newSavedPGStore(t)
+
+	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
+	// u1 saves two apps, u2 saves one, u3 (queried) saves none, u4 (not queried).
+	for _, sa := range []SavedApplication{
+		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), now),
+		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), now),
+		pgSavedApp(t, "auth0|u2", pgApp("app-c", 100), now),
+		pgSavedApp(t, "auth0|u4", pgApp("app-d", 100), now),
+	} {
+		if err := store.Save(ctx, sa); err != nil {
+			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
+		}
+	}
+
+	got, err := store.CountsByUsers(ctx, []string{"auth0|u1", "auth0|u2", "auth0|u3"})
+	if err != nil {
+		t.Fatalf("CountsByUsers: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("map size: got %d, want 2 (u3 absent, u4 excluded)", len(got))
+	}
+	if got["auth0|u1"] != 2 {
+		t.Errorf("u1: got %d, want 2", got["auth0|u1"])
+	}
+	if got["auth0|u2"] != 1 {
+		t.Errorf("u2: got %d, want 1", got["auth0|u2"])
+	}
+	if _, ok := got["auth0|u3"]; ok {
+		t.Error("u3 (no saved rows) must be absent from the map")
+	}
+}
+
+// TestSavedPostgresStore_Count_Integration returns the global count(*) across all
+// users' saved applications.
+func TestSavedPostgresStore_Count_Integration(t *testing.T) {
+	ctx := context.Background()
+	store := newSavedPGStore(t)
+
+	if got, err := store.Count(ctx); err != nil || got != 0 {
+		t.Fatalf("Count empty: got (%d, %v), want (0, nil)", got, err)
+	}
+
+	now := time.Date(2026, 6, 27, 0, 0, 0, 0, time.UTC)
+	for _, sa := range []SavedApplication{
+		pgSavedApp(t, "auth0|u1", pgApp("app-a", 100), now),
+		pgSavedApp(t, "auth0|u1", pgApp("app-b", 100), now),
+		pgSavedApp(t, "auth0|u2", pgApp("app-c", 100), now),
+	} {
+		if err := store.Save(ctx, sa); err != nil {
+			t.Fatalf("Save %s: %v", sa.ApplicationUID, err)
+		}
+	}
+
+	got, err := store.Count(ctx)
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if got != 3 {
+		t.Errorf("Count = %d, want 3", got)
+	}
+}
+
 // TestSavedPostgresStore_NilSnapshot stores a record with no snapshot (nil
 // Application) and confirms the round-trip returns nil Application.
 func TestSavedPostgresStore_NilSnapshot(t *testing.T) {

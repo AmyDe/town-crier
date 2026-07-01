@@ -147,6 +147,157 @@ func (s *PostgresAdminStore) LapsedPaid(ctx context.Context, now time.Time) ([]*
 	return lapsed, nil
 }
 
+// PaidCandidates loads every profile whose stored tier is paid (tier != 'Free'),
+// unfiltered — the caller classifies each in Go via EffectiveTier(now). Unlike
+// LapsedPaid (which filters to the lapsed subset), this returns ALL paid-tier
+// candidates so the admin stats handler can bucket them into effective-paid /
+// App Store / comped / lapsed / in-grace without re-expressing the expiry/grace
+// rule in SQL. The candidate set is small (only paying users), so loading it
+// whole is cheap.
+func (s *PostgresAdminStore) PaidCandidates(ctx context.Context) ([]*UserProfile, error) {
+	rows, err := s.db.Query(ctx, pgAdminSelectCols+"WHERE tier != 'Free'")
+	if err != nil {
+		return nil, fmt.Errorf("query paid candidates: %w", err)
+	}
+	candidates, err := collectUsers(rows)
+	if err != nil {
+		return nil, fmt.Errorf("decode paid candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+// RecentSignup identifies the single most-recently-created user for the admin
+// stats "signups" block. Email is nil when the account has none (e.g. a
+// Sign-in-with-Apple user who withheld it).
+type RecentSignup struct {
+	UserID    string
+	Email     *string
+	CreatedAt time.Time
+}
+
+// UserStats is the admin-dashboard aggregate over the users table: whole-base
+// counts computed in SQL (COUNT / GROUP BY / MAX) and returned as a plain
+// struct. The paying breakdown is deliberately NOT here — it is classified in Go
+// from PaidCandidates via EffectiveTier so the expiry/grace rule stays in the
+// domain. now is injected by the caller (never SQL now()), matching the
+// codebase's clock convention.
+type UserStats struct {
+	Total           int
+	ByTier          map[string]int
+	Signups24h      int
+	Signups7d       int
+	Signups30d      int
+	MostRecent      *RecentSignup
+	Active24h       int
+	Active7d        int
+	ZeroWatchZones  int
+	NoEmail         int
+	TotalWatchZones int
+}
+
+// pgUserStatsScalarQuery computes every scalar aggregate in one pass. The signup
+// and activity windows compare against caller-supplied cutoffs ($1 = now-24h,
+// $2 = now-7d, $3 = now-30d) rather than SQL now(). Column order MUST match the
+// scan in UserStats.
+const pgUserStatsScalarQuery = `
+SELECT
+    count(*),
+    count(*) FILTER (WHERE created_at > $1),
+    count(*) FILTER (WHERE created_at > $2),
+    count(*) FILTER (WHERE created_at > $3),
+    count(*) FILTER (WHERE last_active_at > $1),
+    count(*) FILTER (WHERE last_active_at > $2),
+    count(*) FILTER (WHERE COALESCE(watch_zone_count, 0) = 0),
+    count(*) FILTER (WHERE email IS NULL),
+    COALESCE(SUM(watch_zone_count), 0)
+FROM users`
+
+const pgUserStatsTierQuery = "SELECT tier, count(*) FROM users GROUP BY tier"
+
+const pgUserStatsMostRecentQuery = "SELECT user_id, email, created_at FROM users ORDER BY created_at DESC LIMIT 1"
+
+// UserStats returns the whole-user-base aggregate for GET /v1/admin/stats. It
+// issues three read queries: the scalar aggregate (counts + total watch zones),
+// the per-tier GROUP BY breakdown, and the single most-recent signup. now is the
+// caller's clock; the 24h/7d/30d cutoffs are derived from it in Go so the SQL
+// carries no now().
+func (s *PostgresAdminStore) UserStats(ctx context.Context, now time.Time) (UserStats, error) {
+	cutoff24h := now.Add(-24 * time.Hour)
+	cutoff7d := now.Add(-7 * 24 * time.Hour)
+	cutoff30d := now.Add(-30 * 24 * time.Hour)
+
+	stats := UserStats{ByTier: map[string]int{"Free": 0, "Personal": 0, "Pro": 0}}
+
+	scalarRows, err := s.db.Query(ctx, pgUserStatsScalarQuery, cutoff24h, cutoff7d, cutoff30d)
+	if err != nil {
+		return UserStats{}, fmt.Errorf("query user stats: %w", err)
+	}
+	scalar, err := pgx.CollectExactlyOneRow(scalarRows, func(row pgx.CollectableRow) (UserStats, error) {
+		var us UserStats
+		if scanErr := row.Scan(
+			&us.Total,
+			&us.Signups24h, &us.Signups7d, &us.Signups30d,
+			&us.Active24h, &us.Active7d,
+			&us.ZeroWatchZones, &us.NoEmail, &us.TotalWatchZones,
+		); scanErr != nil {
+			return UserStats{}, scanErr
+		}
+		return us, nil
+	})
+	if err != nil {
+		return UserStats{}, fmt.Errorf("scan user stats: %w", err)
+	}
+	scalar.ByTier = stats.ByTier
+	stats = scalar
+
+	tierRows, err := s.db.Query(ctx, pgUserStatsTierQuery)
+	if err != nil {
+		return UserStats{}, fmt.Errorf("query user stats tiers: %w", err)
+	}
+	defer tierRows.Close()
+	for tierRows.Next() {
+		var (
+			tier  string
+			count int
+		)
+		if scanErr := tierRows.Scan(&tier, &count); scanErr != nil {
+			return UserStats{}, fmt.Errorf("scan user stats tier: %w", scanErr)
+		}
+		stats.ByTier[tier] = count
+	}
+	if scanErr := tierRows.Err(); scanErr != nil {
+		return UserStats{}, fmt.Errorf("user stats tier rows: %w", scanErr)
+	}
+
+	recent, err := s.mostRecentSignup(ctx)
+	if err != nil {
+		return UserStats{}, err
+	}
+	stats.MostRecent = recent
+	return stats, nil
+}
+
+// mostRecentSignup reads the newest-created user for the stats "signups" block,
+// returning nil (not an error) when the user base is empty.
+func (s *PostgresAdminStore) mostRecentSignup(ctx context.Context) (*RecentSignup, error) {
+	rows, err := s.db.Query(ctx, pgUserStatsMostRecentQuery)
+	if err != nil {
+		return nil, fmt.Errorf("query most recent signup: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if scanErr := rows.Err(); scanErr != nil {
+			return nil, fmt.Errorf("most recent signup rows: %w", scanErr)
+		}
+		return nil, nil //nolint:nilnil // an empty user base has no most-recent signup
+	}
+	var r RecentSignup
+	if scanErr := rows.Scan(&r.UserID, &r.Email, &r.CreatedAt); scanErr != nil {
+		return nil, fmt.Errorf("scan most recent signup: %w", scanErr)
+	}
+	return &r, nil
+}
+
 // Save upserts the profile (same SQL as PostgresStore.Save). Used by the
 // subscription sweep and admin grant endpoint as the write-back path.
 func (s *PostgresAdminStore) Save(ctx context.Context, p *UserProfile) error {

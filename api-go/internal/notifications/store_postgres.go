@@ -399,6 +399,33 @@ func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (ma
 	return counts, nil
 }
 
+// pgTotalsQuery is the whole-table reach aggregate: total sent and how many are
+// still unread. count(*) with no GROUP BY always returns exactly one row (0 on
+// an empty table), so CollectExactlyOneRow is safe.
+const pgTotalsQuery = "SELECT count(*) AS sent, " +
+	"count(*) FILTER (WHERE read_at IS NULL) AS unread FROM notifications"
+
+// Totals returns the global sent/unread notification tally across all users for
+// the admin stats "reach" block. It is a whole-table aggregate, distinct from
+// the per-user CountsByUsers tally used on the user list.
+func (s *PostgresStore) Totals(ctx context.Context) (NotificationTotals, error) {
+	rows, err := s.db.Query(ctx, pgTotalsQuery)
+	if err != nil {
+		return NotificationTotals{}, fmt.Errorf("query notification totals: %w", err)
+	}
+	totals, err := pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (NotificationTotals, error) {
+		var t NotificationTotals
+		if err := row.Scan(&t.Sent, &t.Unread); err != nil {
+			return NotificationTotals{}, err
+		}
+		return t, nil
+	})
+	if err != nil {
+		return NotificationTotals{}, fmt.Errorf("scan notification totals: %w", err)
+	}
+	return totals, nil
+}
+
 const pgPurgeOlderThanQuery = "DELETE FROM notifications WHERE created_at < $1"
 
 // PurgeOlderThan deletes every notification created before cutoff and returns

@@ -9,7 +9,9 @@ func intptr(n int) *int { return &n }
 
 // TestPrintUsersTable_DynamicWidthsAndColumns verifies the list table aligns
 // regardless of user-id length (Apple IDs are ~49 chars, Auth0 ~13) and renders
-// the watch-zone, last-active, created, and notification columns.
+// the watch-zone, offer, last-active, created, notification, saved, and device
+// columns. Cell values are asserted positionally via strings.Fields so the
+// column ORDER is pinned, not just their presence.
 func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 	t.Parallel()
 
@@ -26,6 +28,9 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 			LastActiveAt:       strptr("2026-03-04T10:00:00Z"),
 			NotificationTotal:  57,
 			NotificationUnread: 2,
+			SavedCount:         17,
+			DeviceCount:        8,
+			OfferCode:          strptr("SUMMER25"),
 		},
 		{
 			UserID:             authID,
@@ -36,6 +41,9 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 			LastActiveAt:       strptr("2026-02-20T08:30:00Z"),
 			NotificationTotal:  0,
 			NotificationUnread: 0,
+			SavedCount:         0,
+			DeviceCount:        0,
+			OfferCode:          nil, // no active offer code -> "-"
 		},
 	}}
 
@@ -50,8 +58,8 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 	row1 := lines[2]
 	row2 := lines[3]
 
-	// All new column headers are present.
-	for _, col := range []string{"UserId", "Email", "Tier", "WatchZones", "LastActive", "Created", "Notifs"} {
+	// All column headers are present, including the three new ones.
+	for _, col := range []string{"UserId", "Email", "Tier", "Offer", "WatchZones", "LastActive", "Created", "Notifs", "Saved", "Devices"} {
 		if !strings.Contains(header, col) {
 			t.Errorf("header missing column %q:\n%s", col, header)
 		}
@@ -67,16 +75,26 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 		t.Errorf("row2 email offset = %d, want %d (aligned with header)\n%s", got, emailOffset, out)
 	}
 
-	// Watch-zone: count when present, "-" when nil.
-	if !strings.Contains(row1, "3") {
-		t.Errorf("row1 should show watch-zone count 3:\n%s", row1)
+	// Alignment holds through the added columns: the Offer header and the row-1
+	// offer code start at the same offset.
+	if got, want := strings.Index(row1, "SUMMER25"), strings.Index(header, "Offer"); got != want {
+		t.Errorf("row1 offer offset = %d, want %d (aligned with header)\n%s", got, want, out)
 	}
-	// Notifs: unread/total.
-	if !strings.Contains(row1, "2/57") {
-		t.Errorf("row1 should show notifs 2/57:\n%s", row1)
+
+	// Column ORDER + values, positionally. Fields splits on whitespace runs; every
+	// cell is a single token, so the slice indexes map to columns:
+	// 0 UserId 1 Email 2 Tier 3 Offer 4 WatchZones 5 LastActive 6 Created 7 Notifs 8 Saved 9 Devices.
+	f1 := strings.Fields(row1)
+	f2 := strings.Fields(row2)
+	if len(f1) != 10 || len(f2) != 10 {
+		t.Fatalf("expected 10 columns per row, got f1=%d f2=%d:\n%s", len(f1), len(f2), out)
 	}
-	if !strings.Contains(row2, "0/0") {
-		t.Errorf("row2 should show notifs 0/0:\n%s", row2)
+	if f1[3] != "SUMMER25" || f1[7] != "2/57" || f1[8] != "17" || f1[9] != "8" {
+		t.Errorf("row1 columns wrong: offer=%q notifs=%q saved=%q devices=%q\n%s", f1[3], f1[7], f1[8], f1[9], out)
+	}
+	// Null offer code renders "-"; zero counts render "0".
+	if f2[3] != "-" || f2[7] != "0/0" || f2[8] != "0" || f2[9] != "0" {
+		t.Errorf("row2 columns wrong: offer=%q notifs=%q saved=%q devices=%q\n%s", f2[3], f2[7], f2[8], f2[9], out)
 	}
 
 	// Dates are truncated to the date portion (no time-of-day / "T").
@@ -85,6 +103,17 @@ func TestPrintUsersTable_DynamicWidthsAndColumns(t *testing.T) {
 	}
 	if strings.Contains(out, "T09:00:00") || strings.Contains(out, "2026-01-01T") {
 		t.Errorf("dates must be truncated to the date portion, got:\n%s", out)
+	}
+}
+
+// TestOfferCell covers the nil-vs-present rendering directly.
+func TestOfferCell(t *testing.T) {
+	t.Parallel()
+	if got := offerCell(nil); got != "-" {
+		t.Errorf("nil offer code: got %q, want -", got)
+	}
+	if got := offerCell(strptr("SPRING10")); got != "SPRING10" {
+		t.Errorf("present offer code: got %q, want SPRING10", got)
 	}
 }
 

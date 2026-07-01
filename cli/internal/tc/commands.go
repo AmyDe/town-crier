@@ -43,6 +43,71 @@ type listUsersItem struct {
 	LastActiveAt       *string `json:"lastActiveAt"`
 	NotificationTotal  int     `json:"notificationTotal"`
 	NotificationUnread int     `json:"notificationUnread"`
+	SavedCount         int     `json:"savedCount"`
+	DeviceCount        int     `json:"deviceCount"`
+	OfferCode          *string `json:"offerCode"`
+}
+
+// statsResponse mirrors the pinned GET /v1/admin/stats JSON contract
+// byte-for-field (api-go/internal/admin/stats.go). Field names and nesting are
+// load-bearing: the API side is authoritative and this type must not drift.
+type statsResponse struct {
+	Users    statsUsers    `json:"users"`
+	Paying   statsPaying   `json:"paying"`
+	Signups  statsSignups  `json:"signups"`
+	Activity statsActivity `json:"activity"`
+	Reach    statsReach    `json:"reach"`
+}
+
+type statsUsers struct {
+	Total  int         `json:"total"`
+	ByTier statsByTier `json:"byTier"`
+}
+
+// statsByTier is an explicit struct (not a map) so the three tier keys always
+// render in a fixed order, matching the API's encoding.
+type statsByTier struct {
+	Free     int `json:"Free"`
+	Personal int `json:"Personal"`
+	Pro      int `json:"Pro"`
+}
+
+type statsPaying struct {
+	EffectivePaid int `json:"effectivePaid"`
+	AppStore      int `json:"appStore"`
+	Comped        int `json:"comped"`
+	Lapsed        int `json:"lapsed"`
+	InGrace       int `json:"inGrace"`
+}
+
+type statsSignups struct {
+	Last24h    int              `json:"last24h"`
+	Last7d     int              `json:"last7d"`
+	Last30d    int              `json:"last30d"`
+	MostRecent *statsMostRecent `json:"mostRecent"`
+}
+
+// statsMostRecent is null when the user base is empty; Email is null when the
+// most-recent account has none (e.g. a Sign-in-with-Apple withheld email).
+type statsMostRecent struct {
+	UserID    string  `json:"userId"`
+	Email     *string `json:"email"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+type statsActivity struct {
+	Active24h      int `json:"active24h"`
+	Active7d       int `json:"active7d"`
+	ZeroWatchZones int `json:"zeroWatchZones"`
+	NoEmail        int `json:"noEmail"`
+}
+
+type statsReach struct {
+	WatchZones          int `json:"watchZones"`
+	SavedApplications   int `json:"savedApplications"`
+	DeviceRegistrations int `json:"deviceRegistrations"`
+	NotificationsSent   int `json:"notificationsSent"`
+	NotificationsUnread int `json:"notificationsUnread"`
 }
 
 // parseStrictInt parses s as a non-negative base-10 integer, accepting only

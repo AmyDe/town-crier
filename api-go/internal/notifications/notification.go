@@ -29,6 +29,15 @@ type NotificationCounts struct {
 	Unread int
 }
 
+// NotificationTotals is the global notification tally across all users: the
+// number sent and how many are still unread (read_at IS NULL). It backs the
+// admin stats "reach" block — a whole-table aggregate, distinct from the
+// per-user NotificationCounts used on the user list.
+type NotificationTotals struct {
+	Sent   int
+	Unread int
+}
+
 // LatestUnread is the per-application unread descriptor surfaced on each row of
 // the applications-by-zone result: the event, the optional PlanIt decision
 // string (decision updates only), and when the notification was raised.

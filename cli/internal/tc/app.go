@@ -17,6 +17,7 @@ Commands:
   generate-offer-codes        Bulk-generate single-use offer codes
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
+  stats                       Show aggregate user-base statistics
   help                        Show this help message
   version                     Print version
 
@@ -73,6 +74,8 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 		return runGrantSubscription(ctx, client, env, args)
 	case "list-users":
 		return runListUsers(ctx, client, env, args)
+	case "stats":
+		return runStats(ctx, client, env, args)
 	default:
 		fmt.Fprintf(env.Err, "Unknown command: %s\n", args.Command)
 		fmt.Fprintln(env.Err, "Run 'tc help' for a list of commands.")

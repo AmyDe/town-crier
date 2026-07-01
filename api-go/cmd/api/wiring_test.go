@@ -164,6 +164,10 @@ func (fakeSavedStore) UserIDsForApplication(context.Context, string, int) ([]str
 	return nil, nil
 }
 func (fakeSavedStore) DeleteAllByUserID(context.Context, string) error { return nil }
+func (fakeSavedStore) CountsByUsers(context.Context, []string) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+func (fakeSavedStore) Count(context.Context) (int, error) { return 0, nil }
 
 // fakeAdminStore is a profiles.AdminProfileStore returning the empty path.
 type fakeAdminStore struct{}
@@ -187,6 +191,12 @@ func (fakeAdminStore) Save(context.Context, *profiles.UserProfile) error { retur
 func (fakeAdminStore) List(context.Context, string, int, string) (profiles.Page, error) {
 	return profiles.Page{}, nil
 }
+func (fakeAdminStore) PaidCandidates(context.Context) ([]*profiles.UserProfile, error) {
+	return nil, nil
+}
+func (fakeAdminStore) UserStats(context.Context, time.Time) (profiles.UserStats, error) {
+	return profiles.UserStats{}, nil
+}
 
 // fakeSubNotifStore is a subscriptions.Store; nothing is ever processed.
 type fakeSubNotifStore struct{}
@@ -206,6 +216,9 @@ func (fakeOfferStore) RedeemWithCAS(context.Context, string, string, time.Time) 
 }
 func (fakeOfferStore) RedeemedByUserID(context.Context, string) ([]offercodes.OfferCode, error) {
 	return nil, nil
+}
+func (fakeOfferStore) RedeemedByUsers(context.Context, []string) (map[string][]offercodes.OfferCode, error) {
+	return map[string][]offercodes.OfferCode{}, nil
 }
 func (fakeOfferStore) AnonymiseRedemptionsByUserID(context.Context, string) error { return nil }
 
@@ -618,6 +631,60 @@ func TestRouter_AdminGate(t *testing.T) {
 	}
 	if got := withKey.Body.String(); got != `{"items":[],"continuationToken":null}` {
 		t.Errorf("with key: body = %s", got)
+	}
+}
+
+// TestRouter_AdminStatsGate confirms GET /v1/admin/stats is wired into the admin
+// router, gated by the same X-Admin-Key, and serves the pinned contract even
+// when the saved/device/notif reach stores are unwired (nil) — the reach block
+// falls back to zeros rather than 500ing.
+func TestRouter_AdminStatsGate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	offerStore := fakeOfferStore{}
+	adminStore := fakeAdminStore{}
+	// notif (pos 9), saved (pos 12), device (pos 7) all nil: the reach stores are
+	// unwired, exercising the nil-safe reach path through the full router chain.
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
+
+	statsReq := func(key string) *httptest.ResponseRecorder {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		t.Cleanup(cancel)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/admin/stats", nil)
+		if key != "" {
+			req.Header.Set("X-Admin-Key", key)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// No key: bodyless 401 with no WWW-Authenticate (admin gate, not Auth0).
+	noKey := statsReq("")
+	if noKey.Code != http.StatusUnauthorized {
+		t.Fatalf("no key: status = %d, want 401", noKey.Code)
+	}
+	if got := noKey.Header().Get("WWW-Authenticate"); got != "" {
+		t.Errorf("no key: WWW-Authenticate = %q, want empty (admin gate)", got)
+	}
+
+	// Correct key: reaches the stats handler; the empty fakeAdminStore yields the
+	// all-zero contract with a null mostRecent.
+	withKey := statsReq("s3cret")
+	if withKey.Code != http.StatusOK {
+		t.Fatalf("with key: status = %d body = %s", withKey.Code, withKey.Body.String())
+	}
+	want := `{` +
+		`"users":{"total":0,"byTier":{"Free":0,"Personal":0,"Pro":0}},` +
+		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0},` +
+		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
+		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
+		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}` +
+		`}`
+	if got := withKey.Body.String(); got != want {
+		t.Errorf("with key: body =\n  %s\nwant\n  %s", got, want)
 	}
 }
 

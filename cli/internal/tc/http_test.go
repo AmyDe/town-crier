@@ -14,6 +14,14 @@ func clientFor(server *httptest.Server) *Client {
 	return NewClient(Config{URL: server.URL, APIKey: "sk-test"})
 }
 
+// testStatsJSON is a minimal but complete GET /v1/admin/stats body, shared by
+// the stats render tests and the list-users summary-header tests.
+const testStatsJSON = `{"users":{"total":2,"byTier":{"Free":1,"Personal":0,"Pro":1}},` +
+	`"paying":{"effectivePaid":1,"appStore":1,"comped":0,"lapsed":0,"inGrace":0},` +
+	`"signups":{"last24h":0,"last7d":1,"last30d":2,"mostRecent":{"userId":"u1","email":"a@b.com","createdAt":"2026-07-01T09:00:00Z"}},` +
+	`"activity":{"active24h":1,"active7d":2,"zeroWatchZones":0,"noEmail":1},` +
+	`"reach":{"watchZones":3,"savedApplications":5,"deviceRegistrations":2,"notificationsSent":10,"notificationsUnread":4}}`
+
 func TestRunGenerateOfferCodes_StreamsCodesOnSuccess(t *testing.T) {
 	t.Parallel()
 	var gotBody generateOfferCodesRequest
@@ -142,8 +150,12 @@ func TestRunGrantSubscription_InvalidTierReturns1(t *testing.T) {
 
 func TestRunListUsers_SinglePageTable(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
 		_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"},{"userId":"u2","email":null,"tier":"Free"}],"continuationToken":null}`)
 	}))
 	defer server.Close()
@@ -171,8 +183,12 @@ func TestRunListUsers_PaginatesOnYes(t *testing.T) {
 	t.Parallel()
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.String())
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		paths = append(paths, r.URL.String())
 		if r.URL.Query().Get("continuationToken") == "" {
 			_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":"TOKEN1"}`)
 			return
@@ -200,9 +216,13 @@ func TestRunListUsers_PaginatesOnYes(t *testing.T) {
 func TestRunListUsers_StopsOnNo(t *testing.T) {
 	t.Parallel()
 	var requests int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests++
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		requests++
 		_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":"TOKEN1"}`)
 	}))
 	defer server.Close()
@@ -214,6 +234,76 @@ func TestRunListUsers_StopsOnNo(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatalf("requests = %d, want 1 (declined next page)", requests)
+	}
+}
+
+// TestRunListUsers_FetchesSummaryOncePerRun asserts the first-page summary
+// header is fetched from /v1/admin/stats exactly once across a two-page list —
+// not re-fetched on page 2 — and is printed above the table.
+func TestRunListUsers_FetchesSummaryOncePerRun(t *testing.T) {
+	t.Parallel()
+	var statsHits, userHits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/admin/stats" {
+			statsHits++
+			_, _ = io.WriteString(w, testStatsJSON)
+			return
+		}
+		userHits++
+		if r.URL.Query().Get("continuationToken") == "" {
+			_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":"TOKEN1"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"items":[{"userId":"u2","email":"c@d.com","tier":"Free"}],"continuationToken":null}`)
+	}))
+	defer server.Close()
+
+	var out strings.Builder
+	env := Env{In: strings.NewReader("y\n"), Out: &out, Err: io.Discard}
+	code := runListUsers(context.Background(), clientFor(server), env, ParseArgs([]string{"list-users", "--page-size", "1"}))
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if statsHits != 1 {
+		t.Fatalf("stats endpoint hit %d times, want exactly 1 (first page only)", statsHits)
+	}
+	if userHits != 2 {
+		t.Fatalf("users endpoint hit %d times, want 2 (both pages)", userHits)
+	}
+	if got := out.String(); !strings.Contains(got, "2 users") || !strings.Contains(got, "paying 1") {
+		t.Fatalf("stdout missing first-page summary header:\n%s", got)
+	}
+}
+
+// TestRunListUsers_SummaryFetchFailureDegradesGracefully asserts a failing stats
+// fetch does not abort the command: the users table still renders and exit is 0.
+func TestRunListUsers_SummaryFetchFailureDegradesGracefully(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/admin/stats" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = io.WriteString(w, "stats boom")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"items":[{"userId":"u1","email":"a@b.com","tier":"Pro"}],"continuationToken":null}`)
+	}))
+	defer server.Close()
+
+	var out strings.Builder
+	env := Env{In: strings.NewReader(""), Out: &out, Err: io.Discard}
+	code := runListUsers(context.Background(), clientFor(server), env, ParseArgs([]string{"list-users"}))
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0 (stats-header failure must not abort)", code)
+	}
+	got := out.String()
+	if !strings.Contains(got, "u1") || !strings.Contains(got, "a@b.com") {
+		t.Fatalf("users table must still render when the summary fetch fails:\n%s", got)
+	}
+	// The convenience header is skipped silently — no summary line.
+	if strings.Contains(got, "paying") {
+		t.Fatalf("summary line must be absent when stats fetch failed:\n%s", got)
 	}
 }
 

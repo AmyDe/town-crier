@@ -225,6 +225,43 @@ func (s *PostgresStore) RedeemedByUserID(ctx context.Context, userID string) ([]
 	return codes, nil
 }
 
+// ─── RedeemedByUsers (batched) ───────────────────────────────────────────────
+
+const pgRedeemedByUsersQuery = "SELECT " + pgCodeColumns +
+	" FROM offer_codes WHERE redeemed_by_user_id = ANY($1)"
+
+// RedeemedByUsers returns, for each user id in the set, the codes that user has
+// redeemed — the batched form of RedeemedByUserID used by the admin user list
+// and stats aggregate. It issues one grouped query instead of N per-user round
+// trips, then buckets the flat result in Go by each code's RedeemedByUserID.
+//
+// Users who never redeemed a code are absent from the map (the caller treats a
+// missing key as "no active offer" via the map zero value). Anonymised codes
+// have a NULL redeemed_by_user_id, so they never match ANY($1) and never leak a
+// GDPR-erased user back into the result. An empty user set returns an empty,
+// non-nil map without issuing a query.
+func (s *PostgresStore) RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]OfferCode, error) {
+	byUser := make(map[string][]OfferCode, len(userIDs))
+	if len(userIDs) == 0 {
+		return byUser, nil
+	}
+	rows, err := s.db.Query(ctx, pgRedeemedByUsersQuery, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query redemptions for users: %w", err)
+	}
+	codes, err := pgx.CollectRows(rows, scanCodeRow)
+	if err != nil {
+		return nil, fmt.Errorf("scan redemptions for users: %w", err)
+	}
+	for _, c := range codes {
+		if c.RedeemedByUserID == nil {
+			continue // defensive: the ANY predicate already excludes NULL redeemers
+		}
+		byUser[*c.RedeemedByUserID] = append(byUser[*c.RedeemedByUserID], c)
+	}
+	return byUser, nil
+}
+
 // ─── AnonymiseRedemptionsByUserID ────────────────────────────────────────────
 
 // pgAnonymiseByUserIDQuery scrubs the redeemer PII from every code the user

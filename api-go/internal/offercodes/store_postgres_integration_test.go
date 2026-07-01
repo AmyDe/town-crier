@@ -338,6 +338,62 @@ func TestPostgresStore_LegacyCoalesceHydration_Integration(t *testing.T) {
 	}
 }
 
+// TestPostgresStore_RedeemedByUsers_Integration seeds redemptions for two users
+// (one with two codes) plus an unredeemed code and an anonymised (scrubbed)
+// redemption, then asserts the batched ANY($1) query returns only the redeemed
+// codes grouped by their redeemer — and never the anonymised NULL-redeemer row.
+func TestPostgresStore_RedeemedByUsers_Integration(t *testing.T) {
+	ctx := context.Background()
+	store := newPGStore(t)
+
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	// u1 redeems two codes; u2 redeems one.
+	for code, user := range map[string]string{
+		"AAAAAAAAAAAA": "auth0|u1",
+		"CCCCCCCCCCCC": "auth0|u1",
+		"BBBBBBBBBBBB": "auth0|u2",
+	} {
+		if err := store.Save(ctx, testCode(t, code)); err != nil {
+			t.Fatalf("Save %s: %v", code, err)
+		}
+		if err := store.RedeemWithCAS(ctx, code, user, now); err != nil {
+			t.Fatalf("Redeem %s: %v", code, err)
+		}
+	}
+	// An unredeemed code must never appear.
+	if err := store.Save(ctx, testCode(t, "DDDDDDDDDDDD")); err != nil {
+		t.Fatalf("Save unredeemed: %v", err)
+	}
+	// An anonymised (GDPR-scrubbed) redemption keeps redeemed=true but NULL
+	// redeemer, so it must never appear in a by-user lookup.
+	if err := store.Save(ctx, testCode(t, "EEEEEEEEEEEE")); err != nil {
+		t.Fatalf("Save anon code: %v", err)
+	}
+	if err := store.RedeemWithCAS(ctx, "EEEEEEEEEEEE", "auth0|erased", now); err != nil {
+		t.Fatalf("Redeem anon code: %v", err)
+	}
+	if err := store.AnonymiseRedemptionsByUserID(ctx, "auth0|erased"); err != nil {
+		t.Fatalf("Anonymise: %v", err)
+	}
+
+	got, err := store.RedeemedByUsers(ctx, []string{"auth0|u1", "auth0|u2", "auth0|erased"})
+	if err != nil {
+		t.Fatalf("RedeemedByUsers: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("map size: got %d, want 2 (erased user absent)", len(got))
+	}
+	if len(got["auth0|u1"]) != 2 {
+		t.Errorf("u1 codes: got %d, want 2", len(got["auth0|u1"]))
+	}
+	if len(got["auth0|u2"]) != 1 || got["auth0|u2"][0].Code != "BBBBBBBBBBBB" {
+		t.Errorf("u2 codes: got %+v, want [BBBBBBBBBBBB]", got["auth0|u2"])
+	}
+	if _, ok := got["auth0|erased"]; ok {
+		t.Error("anonymised redemption (NULL redeemer) must not appear")
+	}
+}
+
 // isErr reports whether err wraps or equals target.
 func isErr(err, target error) bool {
 	if err == nil {

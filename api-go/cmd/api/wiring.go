@@ -48,6 +48,7 @@ var anonymousPatterns = map[string]struct{}{
 	// authenticated solely by the X-Admin-Key gate inside the handlers.
 	"PUT /v1/admin/subscriptions": {},
 	"GET /v1/admin/users":         {},
+	"GET /v1/admin/stats":         {},
 	"POST /v1/admin/offer-codes":  {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
@@ -90,12 +91,51 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // notifStoreReader is the consumer-side slice of the notification store the
-// router wires into two places: the latest-unread lookup for NearbyRoutes and
-// the batched per-user tally for the admin user list. *notifications.PostgresStore
-// (which satisfies the full notifications.Store) satisfies it structurally.
+// router wires into three places: the latest-unread lookup for NearbyRoutes, the
+// batched per-user tally for the admin user list, and the whole-table totals for
+// the admin stats reach block. *notifications.PostgresStore (which satisfies the
+// full notifications.Store) satisfies it structurally.
 type notifStoreReader interface {
 	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 	CountsByUsers(ctx context.Context, userIDs []string) (map[string]notifications.NotificationCounts, error)
+	Totals(ctx context.Context) (notifications.NotificationTotals, error)
+}
+
+// savedStoreReader is the saved-application store the router wires into the
+// feature routes plus the admin surface. It embeds the full savedapplications
+// Store (feature routes) and adds the admin-read batched count + global total.
+// *savedapplications.PostgresStore satisfies it.
+type savedStoreReader interface {
+	savedapplications.Store
+	CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error)
+	Count(ctx context.Context) (int, error)
+}
+
+// deviceStoreReader is the device-registration store the router wires into the
+// device routes plus the admin surface. It embeds the full devicetokens Store
+// and adds the admin-read batched count + global total.
+// *devicetokens.PostgresStore satisfies it.
+type deviceStoreReader interface {
+	devicetokens.Store
+	CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error)
+	Count(ctx context.Context) (int, error)
+}
+
+// offerStoreReader is the offer-code store the router wires into the redeem
+// routes plus the admin surface. It embeds the full offercodes Store and adds
+// the admin-read batched redemption lookup. *offercodes.PostgresStore satisfies it.
+type offerStoreReader interface {
+	offercodes.Store
+	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.OfferCode, error)
+}
+
+// adminUserStore is the admin profile store the router wires into admin.Routes:
+// the full AdminProfileStore plus the two stats aggregates (paid-tier candidates
+// and the whole-base UserStats). *profiles.PostgresAdminStore satisfies it.
+type adminUserStore interface {
+	profiles.AdminProfileStore
+	PaidCandidates(ctx context.Context) ([]*profiles.UserProfile, error)
+	UserStats(ctx context.Context, now time.Time) (profiles.UserStats, error)
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production
@@ -129,16 +169,16 @@ func newRouter(
 	auth0 profiles.Auth0Manager,
 	cascade profiles.CascadeDeleters,
 	exportReaders profiles.ExportReaders,
-	deviceStore devicetokens.Store,
+	deviceStore deviceStoreReader,
 	stateStore notificationstate.Store,
 	notifStore notifStoreReader,
 	watchZoneStore watchzones.Store,
 	appStore applications.Store,
-	savedStore savedapplications.Store,
+	savedStore savedStoreReader,
 	geocodeClient *geocoding.Client,
 	designationClient *designations.Client,
-	offerStore offercodes.Store,
-	adminStore profiles.AdminProfileStore,
+	offerStore offerStoreReader,
+	adminStore adminUserStore,
 	adminKey string,
 	siteBuildKey string,
 	jwsVerifier *subscriptions.JWSVerifier,
@@ -250,9 +290,12 @@ func newRouter(
 	}
 	if adminStore != nil && offerStore != nil {
 		// Admin endpoints are anonymous to Auth0 and gated by the X-Admin-Key. The
-		// cross-user admin store backs grant/list; the offer-code store backs
-		// generate.
-		admin.Routes(mux, adminKey, adminStore, notifStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
+		// cross-user admin store backs grant/list/stats; the offer-code store backs
+		// both generate (writer) and the active-code column + comped-classification
+		// reader (RedeemedByUsers). The notif/saved/device readers enrich the user
+		// list and feed the stats reach block; each may be nil on a store-less boot,
+		// and the handlers treat a nil reader as "metric absent".
+		admin.Routes(mux, adminKey, adminStore, notifStore, savedStore, deviceStore, offerStore, auth0, offerStore, offercodes.NewRandomGenerator(), time.Now, logger)
 	}
 	if store != nil && adminStore != nil && jwsVerifier != nil && appleNotifStore != nil {
 		// Subscriptions: verify (authed, by user id via the profile store) and the

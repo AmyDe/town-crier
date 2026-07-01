@@ -198,6 +198,55 @@ func (s *PostgresStore) UserIDsForApplication(ctx context.Context, applicationUI
 	return userIDs, nil
 }
 
+// pgSavedCountsByUsersQuery tallies each user's saved-application count in one
+// grouped pass. The (user_id, application_uid) primary key makes each row a
+// distinct save, so count(*) per user needs no DISTINCT. Users with no rows
+// produce no row; the caller defaults them to 0.
+const pgSavedCountsByUsersQuery = "SELECT user_id, count(*) FROM saved_applications " +
+	"WHERE user_id = ANY($1) GROUP BY user_id"
+
+// CountsByUsers returns each user's saved-application count in a single grouped
+// query, mirroring notifications.PostgresStore.CountsByUsers. Users absent from
+// the result are absent from the map; the caller treats a missing key as 0 via
+// the map zero value. An empty user set returns an empty map without a query.
+func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (map[string]int, error) {
+	counts := make(map[string]int, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+	rows, err := s.db.Query(ctx, pgSavedCountsByUsersQuery, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query saved application counts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			userID string
+			count  int
+		)
+		if err := rows.Scan(&userID, &count); err != nil {
+			return nil, fmt.Errorf("scan saved application count: %w", err)
+		}
+		counts[userID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("saved application count rows: %w", err)
+	}
+	return counts, nil
+}
+
+const pgSavedCountQuery = "SELECT count(*) FROM saved_applications"
+
+// Count returns the global number of saved applications across all users — the
+// admin stats "reach" total.
+func (s *PostgresStore) Count(ctx context.Context) (int, error) {
+	var total int
+	if err := s.db.QueryRow(ctx, pgSavedCountQuery).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count saved applications: %w", err)
+	}
+	return total, nil
+}
+
 const pgDeleteAllSavedAppsQuery = "DELETE FROM saved_applications WHERE user_id = $1"
 
 // DeleteAllByUserID removes every saved application for the user. Used by the

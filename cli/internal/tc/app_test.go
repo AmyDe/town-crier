@@ -33,6 +33,18 @@ func TestRun_Help(t *testing.T) {
 	}
 }
 
+func TestRun_HelpListsStatsCommand(t *testing.T) {
+	t.Parallel()
+	env, out, _ := captureEnv()
+	code := Run(context.Background(), env, []string{"help"})
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "stats") {
+		t.Fatalf("help must list the stats command:\n%s", out.String())
+	}
+}
+
 func TestRun_UnknownCommand(t *testing.T) {
 	t.Parallel()
 	env, _, errBuf := captureEnv()
