@@ -199,29 +199,47 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		}
 	}
 
-	// Public share page (#738 Slice 3): bind share.towncrierapp.uk as a SECOND custom domain on
-	// the same API ACA app so one app serves JSON on api. and HTML on share.. The origin-lock
-	// ipSecurityRestrictions on the shared ingress are inherited automatically. Managed cert
-	// validates via CNAME (the orchestrator creates the asuid TXT + CNAME in Cloudflare before
-	// this merges). Gated on shareDomain being set, so prod (unset for now) is simply skipped.
+	// Public share page (#738 Slice 3): bind the share host as a SECOND custom domain on the same
+	// API ACA app so one app serves JSON on api. and HTML on share.. The origin-lock
+	// ipSecurityRestrictions on the shared ingress are inherited automatically.
+	//
+	// Azure requires a TWO-PHASE rollout for a brand-new managed cert (RequireCustomHostnameInEnvironment):
+	//   phase 1 — register the hostname on the app with binding Disabled (no cert); validates domain
+	//             ownership via the asuid CNAME/TXT (cut in Cloudflare beforehand) so Azure will mint a cert.
+	//   phase 2 — create the managed cert (now permitted) and flip the binding to SniEnabled.
+	// sharePhase gates this and defaults to 1 whenever shareDomain is set, so a plain shareDomain change
+	// registers the hostname and an explicit sharePhase=2 later binds the cert. Unset shareDomain = skipped.
+	sharePhase := 1
+	if v, err := conf.TryInt("sharePhase"); err == nil {
+		sharePhase = v
+	}
 	if shareDomain != "" {
-		shareCert, err := app.NewManagedCertificate(ctx, fmt.Sprintf("cert-share-%s", env), &app.ManagedCertificateArgs{
-			EnvironmentName:        containerAppsEnvironmentName,
-			ManagedCertificateName: pulumi.String(fmt.Sprintf("cert-share-%s", env)),
-			ResourceGroupName:      sharedResourceGroupName,
-			Properties: &app.ManagedCertificatePropertiesArgs{
-				SubjectName:             pulumi.String(shareDomain),
-				DomainControlValidation: pulumi.String("CNAME"),
-			},
-		})
-		if err != nil {
-			return err
+		if sharePhase >= 2 {
+			shareCert, err := app.NewManagedCertificate(ctx, fmt.Sprintf("cert-share-%s", env), &app.ManagedCertificateArgs{
+				EnvironmentName:        containerAppsEnvironmentName,
+				ManagedCertificateName: pulumi.String(fmt.Sprintf("cert-share-%s", env)),
+				ResourceGroupName:      sharedResourceGroupName,
+				Properties: &app.ManagedCertificatePropertiesArgs{
+					SubjectName:             pulumi.String(shareDomain),
+					DomainControlValidation: pulumi.String("CNAME"),
+				},
+			})
+			if err != nil {
+				return err
+			}
+			goApiCustomDomains = append(goApiCustomDomains, &app.CustomDomainArgs{
+				Name:          pulumi.String(shareDomain),
+				CertificateId: shareCert.ID(),
+				BindingType:   app.BindingTypeSniEnabled,
+			})
+		} else {
+			// Phase 1: register the hostname with the binding disabled so Azure will permit the
+			// managed cert in phase 2. No CertificateId while disabled.
+			goApiCustomDomains = append(goApiCustomDomains, &app.CustomDomainArgs{
+				Name:        pulumi.String(shareDomain),
+				BindingType: app.BindingTypeDisabled,
+			})
 		}
-		goApiCustomDomains = append(goApiCustomDomains, &app.CustomDomainArgs{
-			Name:          pulumi.String(shareDomain),
-			CertificateId: shareCert.ID(),
-			BindingType:   app.BindingTypeSniEnabled,
-		})
 	}
 
 	ec := envContext{
