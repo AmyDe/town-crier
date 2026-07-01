@@ -15,9 +15,11 @@ import (
 )
 
 // fakeNotifCounts is a hand-written notificationCounts double: it records the
-// user ids it was asked about and returns pre-configured tallies.
+// user ids it was asked about and returns pre-configured per-user tallies and
+// whole-table totals.
 type fakeNotifCounts struct {
 	counts map[string]notifications.NotificationCounts
+	totals notifications.NotificationTotals
 	gotIDs []string
 }
 
@@ -26,14 +28,70 @@ func (f *fakeNotifCounts) CountsByUsers(_ context.Context, userIDs []string) (ma
 	return f.counts, nil
 }
 
+func (f *fakeNotifCounts) Totals(_ context.Context) (notifications.NotificationTotals, error) {
+	return f.totals, nil
+}
+
+// fakeSavedCounts is a savedCountReader double: per-user saved counts plus a
+// global total. It records the user ids it was asked about.
+type fakeSavedCounts struct {
+	counts map[string]int
+	total  int
+	gotIDs []string
+}
+
+func (f *fakeSavedCounts) CountsByUsers(_ context.Context, userIDs []string) (map[string]int, error) {
+	f.gotIDs = userIDs
+	return f.counts, nil
+}
+
+func (f *fakeSavedCounts) Count(_ context.Context) (int, error) { return f.total, nil }
+
+// fakeDeviceCounts is a deviceCountReader double: per-user device counts plus a
+// global total. It records the user ids it was asked about.
+type fakeDeviceCounts struct {
+	counts map[string]int
+	total  int
+	gotIDs []string
+}
+
+func (f *fakeDeviceCounts) CountsByUsers(_ context.Context, userIDs []string) (map[string]int, error) {
+	f.gotIDs = userIDs
+	return f.counts, nil
+}
+
+func (f *fakeDeviceCounts) Count(_ context.Context) (int, error) { return f.total, nil }
+
+// fakeRedemptions is an offerRedemptionReader double: it returns pre-configured
+// redeemed codes per user and records the user ids it was asked about.
+type fakeRedemptions struct {
+	byUser map[string][]offercodes.OfferCode
+	gotIDs []string
+}
+
+func (f *fakeRedemptions) RedeemedByUsers(_ context.Context, userIDs []string) (map[string][]offercodes.OfferCode, error) {
+	f.gotIDs = userIDs
+	return f.byUser, nil
+}
+
 type fakeAdminStore struct {
-	byEmail map[string]*profiles.UserProfile
-	saved   *profiles.UserProfile
-	page    profiles.Page
+	byEmail    map[string]*profiles.UserProfile
+	saved      *profiles.UserProfile
+	page       profiles.Page
+	candidates []*profiles.UserProfile
+	stats      profiles.UserStats
 
 	gotSearch   string
 	gotPageSize int
 	gotToken    string
+}
+
+func (f *fakeAdminStore) PaidCandidates(_ context.Context) ([]*profiles.UserProfile, error) {
+	return f.candidates, nil
+}
+
+func (f *fakeAdminStore) UserStats(_ context.Context, _ time.Time) (profiles.UserStats, error) {
+	return f.stats, nil
 }
 
 func (f *fakeAdminStore) GetByEmail(_ context.Context, email string) (*profiles.UserProfile, error) {
@@ -98,6 +156,28 @@ func newTestHandler(store profileAdminStore, notifCounts notificationCounts, aut
 		logger:      slog.New(slog.DiscardHandler),
 	}
 }
+
+// activeCode builds a redeemed OfferCode whose window is still open at the test's
+// clock, so OfferCode.ActiveAt(now) is true.
+func activeCode(code string, redeemedAt time.Time) offercodes.OfferCode {
+	at := redeemedAt
+	return offercodes.OfferCode{
+		Code: code, Tier: profiles.TierPro, DurationDays: 30,
+		Redeemed: true, RedeemedByUserID: strPtr("u"), RedeemedAt: &at,
+	}
+}
+
+// expiredCode builds a redeemed OfferCode whose window has closed at the test's
+// clock, so OfferCode.ActiveAt(now) is false.
+func expiredCode(code string, redeemedAt time.Time) offercodes.OfferCode {
+	at := redeemedAt
+	return offercodes.OfferCode{
+		Code: code, Tier: profiles.TierPro, DurationDays: 30,
+		Redeemed: true, RedeemedByUserID: strPtr("u"), RedeemedAt: &at,
+	}
+}
+
+func strPtr(s string) *string { return &s }
 
 func serve(t *testing.T, hf http.HandlerFunc, method, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -201,12 +281,15 @@ func TestGrant_InvalidTier(t *testing.T) {
 func TestListUsers_ReturnsPage(t *testing.T) {
 	t.Parallel()
 
-	// p1: has a watch-zone count and 2 unread of 57 notifications.
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	// p1: watch-zone count, 2 unread of 57 notifications, 3 saved, 1 device, and
+	// two redeemed offer codes — one expired, one still active.
 	created1 := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
 	p1, _ := profiles.NewProfile("auth0|u1", "u@example.com", created1)
 	wz := 2
 	p1.WatchZoneCount = &wz
-	// p2: legacy nil watch-zone count and no notifications (absent from counts).
+	// p2: legacy nil watch-zone count, no notifications, no saved/devices, and no
+	// offer code (absent from every enrichment map).
 	created2 := time.Date(2026, 2, 2, 10, 0, 0, 0, time.UTC)
 	p2, _ := profiles.NewProfile("auth0|u2", "b@example.com", created2)
 	p2.Tier = profiles.TierPro
@@ -215,7 +298,18 @@ func TestListUsers_ReturnsPage(t *testing.T) {
 	counts := &fakeNotifCounts{counts: map[string]notifications.NotificationCounts{
 		"auth0|u1": {Total: 57, Unread: 2},
 	}}
-	h := newTestHandler(store, counts, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	saved := &fakeSavedCounts{counts: map[string]int{"auth0|u1": 3}}
+	devices := &fakeDeviceCounts{counts: map[string]int{"auth0|u1": 1}}
+	redemptions := &fakeRedemptions{byUser: map[string][]offercodes.OfferCode{
+		"auth0|u1": {
+			expiredCode("OLDEXPIRED", now.Add(-40*24*time.Hour)),
+			activeCode("NOWACTIVE", now.Add(-1*24*time.Hour)),
+		},
+	}}
+	h := newTestHandler(store, counts, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, now)
+	h.savedCounts = saved
+	h.deviceCounts = devices
+	h.redemptions = redemptions
 
 	rec := serve(t, h.listUsers, http.MethodGet, "/v1/admin/users?search=example&pageSize=50", "")
 
@@ -223,8 +317,8 @@ func TestListUsers_ReturnsPage(t *testing.T) {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	want := `{"items":[` +
-		`{"userId":"auth0|u1","email":"u@example.com","tier":"Free","watchZoneCount":2,"createdAt":"2026-01-01T09:00:00Z","lastActiveAt":"2026-01-01T09:00:00Z","notificationTotal":57,"notificationUnread":2},` +
-		`{"userId":"auth0|u2","email":"b@example.com","tier":"Pro","watchZoneCount":null,"createdAt":"2026-02-02T10:00:00Z","lastActiveAt":"2026-02-02T10:00:00Z","notificationTotal":0,"notificationUnread":0}` +
+		`{"userId":"auth0|u1","email":"u@example.com","tier":"Free","watchZoneCount":2,"createdAt":"2026-01-01T09:00:00Z","lastActiveAt":"2026-01-01T09:00:00Z","notificationTotal":57,"notificationUnread":2,"savedCount":3,"deviceCount":1,"offerCode":"NOWACTIVE"},` +
+		`{"userId":"auth0|u2","email":"b@example.com","tier":"Pro","watchZoneCount":null,"createdAt":"2026-02-02T10:00:00Z","lastActiveAt":"2026-02-02T10:00:00Z","notificationTotal":0,"notificationUnread":0,"savedCount":0,"deviceCount":0,"offerCode":null}` +
 		`],"continuationToken":"next"}`
 	if got := rec.Body.String(); got != want {
 		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
@@ -232,9 +326,41 @@ func TestListUsers_ReturnsPage(t *testing.T) {
 	if store.gotSearch != "example" || store.gotPageSize != 50 {
 		t.Errorf("forwarded search=%q pageSize=%d", store.gotSearch, store.gotPageSize)
 	}
-	// The handler batches the whole page's user ids into a single counts lookup.
-	if len(counts.gotIDs) != 2 || counts.gotIDs[0] != "auth0|u1" || counts.gotIDs[1] != "auth0|u2" {
-		t.Errorf("counts lookup ids = %v, want [auth0|u1 auth0|u2]", counts.gotIDs)
+	// Each enrichment batches the whole page's user ids into a single lookup.
+	for name, got := range map[string][]string{
+		"notifs":      counts.gotIDs,
+		"saved":       saved.gotIDs,
+		"devices":     devices.gotIDs,
+		"redemptions": redemptions.gotIDs,
+	} {
+		if len(got) != 2 || got[0] != "auth0|u1" || got[1] != "auth0|u2" {
+			t.Errorf("%s lookup ids = %v, want [auth0|u1 auth0|u2]", name, got)
+		}
+	}
+}
+
+// TestListUsers_NilEnrichmentStores skips every enrichment when its store is
+// unwired (store-less local boot): the row still renders with zero counts and a
+// null offer code, never a panic or 500.
+func TestListUsers_NilEnrichmentStores(t *testing.T) {
+	t.Parallel()
+
+	created := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	p, _ := profiles.NewProfile("auth0|u1", "u@example.com", created)
+	store := &fakeAdminStore{page: profiles.Page{Profiles: []*profiles.UserProfile{p}}}
+	// notifCounts nil too — every enrichment store is unwired.
+	h := newTestHandler(store, nil, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.listUsers, http.MethodGet, "/v1/admin/users", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	want := `{"items":[` +
+		`{"userId":"auth0|u1","email":"u@example.com","tier":"Free","watchZoneCount":null,"createdAt":"2026-01-01T09:00:00Z","lastActiveAt":"2026-01-01T09:00:00Z","notificationTotal":0,"notificationUnread":0,"savedCount":0,"deviceCount":0,"offerCode":null}` +
+		`],"continuationToken":null}`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
 	}
 }
 
@@ -322,5 +448,101 @@ func TestGenerate_ValidationErrors(t *testing.T) {
 				t.Errorf("body = %q\nwant %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// paidCandidate builds a paid-tier UserProfile for the stats classification test.
+func paidCandidate(userID string, tier profiles.SubscriptionTier, expiry *time.Time, grace *time.Time, otid *string) *profiles.UserProfile {
+	return &profiles.UserProfile{
+		UserID:                userID,
+		Tier:                  tier,
+		SubscriptionExpiry:    expiry,
+		GracePeriodExpiry:     grace,
+		OriginalTransactionID: otid,
+	}
+}
+
+// TestStats_ReturnsPinnedContract exercises the full aggregate: the paying
+// buckets classified via EffectiveTier (an App Store, a comped, a lapsed and an
+// in-grace candidate), the user/tier/signup/activity blocks, and the reach
+// totals — asserting the exact pinned JSON contract the CLI mirror depends on.
+func TestStats_ReturnsPinnedContract(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	future := now.Add(30 * 24 * time.Hour)
+	past := now.Add(-1 * time.Hour)
+	txn := "1000000000000001"
+
+	recent := time.Date(2026, 6, 30, 9, 0, 0, 0, time.UTC)
+	recentEmail := "new@example.com"
+	store := &fakeAdminStore{
+		stats: profiles.UserStats{
+			Total:           100,
+			ByTier:          map[string]int{"Free": 70, "Personal": 20, "Pro": 10},
+			Signups24h:      5,
+			Signups7d:       12,
+			Signups30d:      30,
+			MostRecent:      &profiles.RecentSignup{UserID: "auth0|new", Email: &recentEmail, CreatedAt: recent},
+			Active24h:       8,
+			Active7d:        20,
+			ZeroWatchZones:  15,
+			NoEmail:         3,
+			TotalWatchZones: 250,
+		},
+		candidates: []*profiles.UserProfile{
+			paidCandidate("auth0|appstore", profiles.TierPro, &future, nil, &txn),   // effective-paid + appStore
+			paidCandidate("auth0|comped", profiles.TierPersonal, &future, nil, nil), // effective-paid + comped
+			paidCandidate("auth0|lapsed", profiles.TierPro, &past, nil, nil),        // lapsed (expired, no grace)
+			paidCandidate("auth0|grace", profiles.TierPro, &past, &future, nil),     // effective-paid via live grace + comped + inGrace
+		},
+	}
+	counts := &fakeNotifCounts{totals: notifications.NotificationTotals{Sent: 9000, Unread: 1200}}
+	h := newTestHandler(store, counts, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, now)
+	h.savedCounts = &fakeSavedCounts{total: 500}
+	h.deviceCounts = &fakeDeviceCounts{total: 300}
+	h.redemptions = &fakeRedemptions{}
+
+	rec := serve(t, h.stats, http.MethodGet, "/v1/admin/stats", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	want := `{` +
+		`"users":{"total":100,"byTier":{"Free":70,"Personal":20,"Pro":10}},` +
+		`"paying":{"effectivePaid":3,"appStore":1,"comped":2,"lapsed":1,"inGrace":1},` +
+		`"signups":{"last24h":5,"last7d":12,"last30d":30,"mostRecent":{"userId":"auth0|new","email":"new@example.com","createdAt":"2026-06-30T09:00:00Z"}},` +
+		`"activity":{"active24h":8,"active7d":20,"zeroWatchZones":15,"noEmail":3},` +
+		`"reach":{"watchZones":250,"savedApplications":500,"deviceRegistrations":300,"notificationsSent":9000,"notificationsUnread":1200}` +
+		`}`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
+	}
+}
+
+// TestStats_NoUsers_NullMostRecentAndNilStores renders the empty base with a
+// null mostRecent and skips the reach stores when unwired (nil), never panicking.
+func TestStats_NoUsers_NullMostRecentAndNilStores(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAdminStore{stats: profiles.UserStats{}} // Total 0, MostRecent nil, ByTier nil
+	// notifCounts nil and saved/device readers left unset (nil): the reach block
+	// must fall back to zeros without a nil dereference.
+	h := newTestHandler(store, nil, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.stats, http.MethodGet, "/v1/admin/stats", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	want := `{` +
+		`"users":{"total":0,"byTier":{"Free":0,"Personal":0,"Pro":0}},` +
+		`"paying":{"effectivePaid":0,"appStore":0,"comped":0,"lapsed":0,"inGrace":0},` +
+		`"signups":{"last24h":0,"last7d":0,"last30d":0,"mostRecent":null},` +
+		`"activity":{"active24h":0,"active7d":0,"zeroWatchZones":0,"noEmail":0},` +
+		`"reach":{"watchZones":0,"savedApplications":0,"deviceRegistrations":0,"notificationsSent":0,"notificationsUnread":0}` +
+		`}`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
 	}
 }
