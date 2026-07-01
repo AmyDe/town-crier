@@ -384,6 +384,71 @@ func TestPostgresStore_UserIDsWithUnsentEmails_PropagatesQueryError(t *testing.T
 	}
 }
 
+// --- CountsByUsers ---
+
+func TestPostgresStore_CountsByUsers_EmptyUsers(t *testing.T) {
+	t.Parallel()
+	q := &fakeQuerier{}
+	s := NewPostgresStore(q)
+
+	got, err := s.CountsByUsers(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("empty users: got %v, want empty non-nil map", got)
+	}
+	if len(q.recordedSQL) != 0 {
+		t.Error("empty users must not issue any SQL")
+	}
+}
+
+func TestPostgresStore_CountsByUsers_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("counts boom")
+	q := &fakeQuerier{queryResponses: []queryResponse{{err: boom}}}
+	s := NewPostgresStore(q)
+
+	_, err := s.CountsByUsers(context.Background(), []string{"user-1"})
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
+	}
+}
+
+func TestPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
+	t.Parallel()
+	// The GROUP BY query returns one row per user that HAS notifications.
+	// user-C is queried but absent from the result — the caller defaults it to
+	// {0, 0} via the Go map zero value, so it must NOT appear in the map.
+	q := &fakeQuerier{
+		queryResponses: []queryResponse{
+			{rows: newFakeRows([][]any{
+				// user_id, total, unread
+				{"user-A", 57, 2},
+				{"user-B", 3, 0},
+			})},
+		},
+	}
+	s := NewPostgresStore(q)
+
+	got, err := s.CountsByUsers(context.Background(), []string{"user-A", "user-B", "user-C"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("map size: got %d, want 2 (absent users omitted)", len(got))
+	}
+	if got["user-A"] != (NotificationCounts{Total: 57, Unread: 2}) {
+		t.Errorf("user-A: got %+v, want {57 2}", got["user-A"])
+	}
+	if got["user-B"] != (NotificationCounts{Total: 3, Unread: 0}) {
+		t.Errorf("user-B: got %+v, want {3 0}", got["user-B"])
+	}
+	if _, ok := got["user-C"]; ok {
+		t.Errorf("user-C must be absent (defaults to zero at the call site)")
+	}
+}
+
 // --- MarkEmailSent ---
 
 func TestPostgresStore_MarkEmailSent_PropagatesExecError(t *testing.T) {

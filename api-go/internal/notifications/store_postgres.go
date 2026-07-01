@@ -352,6 +352,53 @@ func (s *PostgresStore) DeleteAllByUserID(ctx context.Context, userID string) er
 	return nil
 }
 
+// pgCountsByUsersQuery tallies each user's total and unread (read_at IS NULL)
+// notification counts in one grouped pass. Users with no notifications produce
+// no row — the caller defaults them to {0, 0}.
+const pgCountsByUsersQuery = "SELECT user_id, " +
+	"count(*) AS total, " +
+	"count(*) FILTER (WHERE read_at IS NULL) AS unread " +
+	"FROM notifications WHERE user_id = ANY($1) GROUP BY user_id"
+
+// userCountRow is the scan target for CountsByUsers: (user_id, total, unread).
+type userCountRow struct {
+	userID string
+	total  int
+	unread int
+}
+
+func scanUserCountRow(row pgx.CollectableRow) (userCountRow, error) {
+	var r userCountRow
+	if err := row.Scan(&r.userID, &r.total, &r.unread); err != nil {
+		return userCountRow{}, err
+	}
+	return r, nil
+}
+
+// CountsByUsers returns, for each user id that has at least one notification,
+// the total and unread counts — in a single grouped query instead of N per-user
+// round trips. Users absent from the result are absent from the map; the caller
+// treats a missing key as {0, 0} via the map zero value. An empty user set
+// returns an empty map without issuing a query.
+func (s *PostgresStore) CountsByUsers(ctx context.Context, userIDs []string) (map[string]NotificationCounts, error) {
+	counts := make(map[string]NotificationCounts, len(userIDs))
+	if len(userIDs) == 0 {
+		return counts, nil
+	}
+	rows, err := s.db.Query(ctx, pgCountsByUsersQuery, userIDs)
+	if err != nil {
+		return nil, fmt.Errorf("query notification counts: %w", err)
+	}
+	tallies, err := pgx.CollectRows(rows, scanUserCountRow)
+	if err != nil {
+		return nil, fmt.Errorf("scan notification counts: %w", err)
+	}
+	for _, r := range tallies {
+		counts[r.userID] = NotificationCounts{Total: r.total, Unread: r.unread}
+	}
+	return counts, nil
+}
+
 const pgPurgeOlderThanQuery = "DELETE FROM notifications WHERE created_at < $1"
 
 // PurgeOlderThan deletes every notification created before cutoff and returns
