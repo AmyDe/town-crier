@@ -1,6 +1,7 @@
 package sharepage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -121,14 +122,18 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		// HEAD / meta asserted by the acceptance criteria.
 		`<meta name="robots" content="noindex,follow">`,
 		`<link rel="canonical" href="https://share.towncrierapp.uk/a/croydon/23/03456/FUL">`,
-		`property="og:title"`,
-		`property="og:description"`,
+		// og:/twitter: titles and descriptions asserted by CONTENT, not mere
+		// presence: og:title carries the ref+place headline; og:description carries
+		// the proposal summary. A blank or wrong unfurl would slip past an
+		// attribute-presence check but fails these.
+		`property="og:title" content="23/03456/FUL · 10 Downing Street, London"`,
+		`property="og:description" content="Erection of a two-storey rear extension."`,
 		`property="og:url" content="https://share.towncrierapp.uk/a/croydon/23/03456/FUL"`,
 		`property="og:site_name" content="Town Crier"`,
 		`property="og:type"`,
 		`name="twitter:card" content="summary_large_image"`,
-		`name="twitter:title"`,
-		`name="twitter:description"`,
+		`name="twitter:title" content="23/03456/FUL · 10 Downing Street, London"`,
+		`name="twitter:description" content="Erection of a two-storey rear extension."`,
 		`name="twitter:image"`,
 		`name="apple-itunes-app" content="app-id=6764095657`,
 		// og:image AND twitter:image both point at the Slice-1 branded placeholder.
@@ -137,11 +142,19 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"10 Downing Street, London",
 		"CR0 1AB",
 		"23/03456/FUL",
+		"Full planning permission", // AppType, rendered in the reference row
 		"Erection of a two-storey rear extension.",
-		"2 March 2024", // human-formatted StartDate
 		"Under Consideration",
-		// Official-record links (PlanIt primary, council secondary), each nofollow.
-		`rel="nofollow noopener"`,
+		// Key-dates timeline (doubles as status history): the heading and every
+		// row's LABEL and human-formatted VALUE. fullApp sets all three dates, so a
+		// missing timeline or a mis-formatted date is caught here.
+		"<h2>Key dates</h2>",
+		`<span class="date-label">Started</span><span class="date-value">2 March 2024</span>`,
+		`<span class="date-label">Consulted</span><span class="date-value">10 March 2024</span>`,
+		`<span class="date-label">Decided</span><span class="date-value">15 April 2024</span>`,
+		// Official-record links (PlanIt primary, council secondary): nofollow +
+		// noopener + noreferrer (noreferrer strips the Referer to third-party sites).
+		`rel="nofollow noopener noreferrer"`,
 		"https://planit.org.uk/planapplic/165/23/03456/FUL",
 		"https://www.croydon.gov.uk/planning/123",
 		// Attribution footer — the four ADR-0006 lines, verbatim.
@@ -248,6 +261,69 @@ func TestServe_EscapesUntrustedFields(t *testing.T) {
 	}
 }
 
+// TestServe_NeutralisesJavascriptSchemeInOfficialLinks pins the URL-context
+// escaper (distinct from the text-context escaper above): a hostile
+// "javascript:" scheme in the PlanIt/council record URLs must NOT survive into a
+// clickable href. html/template's URL filter rewrites an unsafe scheme to the
+// sentinel "#ZgotmplZ". Asserting the sentinel (and the absence of the raw scheme)
+// means a future move off html/template cannot silently reintroduce a clickable
+// javascript: link.
+func TestServe_NeutralisesJavascriptSchemeInOfficialLinks(t *testing.T) {
+	t.Parallel()
+	app := fullApp(t)
+	app.URL = ptr("javascript:alert(1)")  // council secondary link
+	app.Link = ptr("javascript:alert(2)") // PlanIt primary link
+	store := &fakeStore{app: app, found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "javascript:alert(1)") {
+		t.Error("council href retained raw javascript: scheme — URL filter bypassed")
+	}
+	if strings.Contains(body, "javascript:alert(2)") {
+		t.Error("PlanIt href retained raw javascript: scheme — URL filter bypassed")
+	}
+	if !strings.Contains(body, "#ZgotmplZ") {
+		t.Error("expected html/template's #ZgotmplZ sentinel for the neutralised javascript: scheme")
+	}
+}
+
+// TestServe_EscapesHostileRefInReflectionPoints guards the attribute/URL-context
+// escaping of the attacker-controlled trailing ref, which is reflected into the
+// canonical <link href>, the og:url content, the <title>, and the
+// apple-itunes-app app-argument. A ref that closes the attribute and injects a
+// <script> must not appear raw in ANY of those places. Rendered directly through
+// the template so the hostile bytes are not mangled by request URL parsing first.
+func TestServe_EscapesHostileRefInReflectionPoints(t *testing.T) {
+	t.Parallel()
+	const hostileRef = `23/03456/FUL"><script>alert(1)</script>`
+	view := buildPageView(fullApp(t), "croydon", hostileRef)
+
+	var buf bytes.Buffer
+	if err := pageTemplates.ExecuteTemplate(&buf, "page", view); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	body := buf.String()
+
+	// The raw break-out sequence must not survive into the output at all.
+	if strings.Contains(body, `"><script>`) {
+		t.Error(`raw "><script> break-out sequence present — attribute/URL escaping failed`)
+	}
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Error("raw <script> injected via ref present in output")
+	}
+	// Sanity: the benign portion of the ref is still rendered (escaping did not
+	// simply drop everything), so the assertion above is meaningful.
+	if !strings.Contains(body, "23/03456/FUL") {
+		t.Error("benign ref prefix missing — render produced nothing to escape")
+	}
+}
+
 func TestServe_NilOptionalFields_Renders200WithoutPanic(t *testing.T) {
 	t.Parallel()
 	app := applications.PlanningApplication{
@@ -277,7 +353,7 @@ func TestServe_NilOptionalFields_Renders200WithoutPanic(t *testing.T) {
 	if strings.Contains(body, `class="chip"`) {
 		t.Error("status chip rendered despite nil AppState")
 	}
-	if strings.Contains(body, `rel="nofollow noopener"`) {
+	if strings.Contains(body, `rel="nofollow noopener noreferrer"`) {
 		t.Error("official-record link rendered despite nil URL/Link")
 	}
 	if strings.Contains(body, ">Key dates<") {
