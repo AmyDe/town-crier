@@ -107,12 +107,15 @@ type azblobAPI struct {
 func (a azblobAPI) download(ctx context.Context, container, key string) (io.ReadCloser, error) {
 	resp, err := a.client.DownloadStream(ctx, container, key, nil)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // raw SDK error preserved for bloberror.HasCode in Store.Get
+		// Return the raw SDK error unwrapped so Store.Get can classify a not-found
+		// via bloberror.HasCode; Store.Get adds the context on a genuine failure.
+		return nil, err
 	}
 	return resp.Body, nil
 }
 
 func (a azblobAPI) upload(ctx context.Context, container, key string, data []byte) error {
+	// Store.Put wraps this with the key context; return it raw here.
 	_, err := a.client.UploadBuffer(ctx, container, key, data, nil)
-	return err //nolint:wrapcheck // wrapped with context by Store.Put
+	return err
 }
