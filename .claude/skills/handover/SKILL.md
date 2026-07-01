@@ -65,9 +65,9 @@ Two non-negotiables, baked into the brief:
 
 **Dev test login (non-sensitive — keep it in this skill and in the brief):** `christy+tctest10@salter.uk` / `StrongPassword1!`. Use it for the password grant above (local authed+seeded web) or to sign in directly against deployed **dev** (iOS DEBUG, or web pointed at the dev API) when no local seed is needed.
 
-### Execution-environment gotchas (carry a terse line into the brief)
+### Execution-environment gotchas (your reference — the brief points at these, it does not inline them)
 
-These each cost a real session a cycle — bake them in so the next one doesn't rediscover them:
+These each cost a real session a cycle. The brief surfaces them by pointing at the two local-stack memories and CLAUDE.md (the worktree-reset one is already spelled out in the template's DELIVERY step); it does **not** inline them, or the brief blows the 3k cap. Keep this list as your own quick reference:
 
 - **RTK mangles shell output.** A shell hook proxies `curl`, `eslint`, `vitest`, `grep`/`rg` through RTK, which can dump output to stdout (it once **leaked an access token** and broke a pipe), invent phantom lint errors, or print a false "SCOPE VIOLATION". For anything whose output you parse, bypass it: `/usr/bin/curl`, `node ./node_modules/eslint/bin/eslint.js src`, `node ./node_modules/vitest/vitest.mjs run`, plain `grep`, or `rtk proxy <cmd>`.
 - **`curl --data-urlencode` for any value with `+`/reserved chars** — the `+` in the test email sent via plain `--data` is form-decoded to a space → `invalid_grant` "wrong email or password".
@@ -80,61 +80,43 @@ Tool limits to flag rather than paper over: mobile-mcp has no pinch/two-finger g
 
 Output the brief to the user as a single fenced block they can copy. Tell them plainly: **run `/goal` in a fresh session and paste this as the goal.** Fill every placeholder from Phase 1–2; drop any line that genuinely doesn't apply rather than leaving a placeholder.
 
-**MUST verify length before you emit.** Write the brief to its temp deliverable file (see Phase 4 — outside the repo) and measure it — e.g. `python3 -c "print(len(open('<file>').read()))"` (do not trust `wc -c`; a shell proxy can mangle it). If the count is **≥ 3000**, condense and re-measure until it is **< 3000**; only then print the fenced block. State the final character count in one line beneath the block so the user can see it cleared the limit. Never emit a brief you have not measured.
+**MUST verify length before you emit.** Write the brief to its temp deliverable file (see Phase 4 — outside the repo) and measure it — e.g. `python3 -c "print(len(open('<file>').read()))"` (do not trust `wc -c`; a shell proxy can mangle it). If the count is **≥ 3000**, condense and re-measure until it is **< 3000**; only then print the fenced block. State the final character count in one line beneath the block so the user can see it cleared the limit. Never emit a brief you have not measured. The empty template runs ~2.1k, so treat the remaining ~900 as your content budget and aim to land **≤ 2600** — margin so a later tweak can't tip it over 3k. If you're over, cut inlined detail and point at the issue/memories; never trim by dropping guardrails.
 
 ````
-GOAL: <one-sentence objective>. Keep working until this is delivered and shipped.
-DONE WHEN: <testable acceptance — what must be true to call it finished>.
+GOAL: <one-sentence objective>. Keep working until it is delivered and shipped.
+DONE WHEN: <testable acceptance>.
 
-SPEC (source of truth): <github-issue-url>
-Read it first: `gh issue view <n>`. The issue body holds the what/how/why and the
-acceptance criteria, and is authoritative — if it conflicts with this brief, the issue
-wins and you flag the discrepancy rather than guessing.
+SPEC (source of truth): <github-issue-url> — read first: `gh issue view <n>`. The issue is
+authoritative; if it conflicts with this brief, the issue wins and you flag it.
 
-BEAD(S): <tc-id> — <title>. Claim before editing: `bd update <tc-id> --status=in_progress`.
-Close it when the acceptance is met. (No bead yet for some slice? Create one — every code
-change needs a bead.)
+BEAD(S): <tc-id> — <title>. Claim before editing (`bd update <tc-id> --status=in_progress`),
+close when acceptance is met. No bead for a slice? Create one — every code change needs a bead.
 
-DELIVERY — you are the orchestrator; you do NOT write code yourself:
-  1. Worktree first. Create an isolated worktree (`bd worktree create <name> --branch <branch>`),
-     apply the two bd worktree workarounds (GH#3421 port symlink + `chmod 700 .beads/`, see
-     CLAUDE.md), then `git -C <wt> reset --hard origin/main` (it bases off the current branch's
-     HEAD, NOT origin/main — verify `log -1` matches). Dispatch the worker with the path in hand.
-  2. Dispatch the matching TDD worker for the tech area:
-       <selected worker(s) and allowed path(s) from Phase 2>
-     The worker consults its coding-standards skill; UI work also consults design-language.
-  3. OUT OF BOUNDARY: <only if applicable> this work has no TDD worker home, so dispatch a
-     raw `general-purpose` subagent with a prompt that names the exact files (<files>), the
-     acceptance, and the guardrails below. Do not force a misfit TDD worker onto it.
-  4. Validate: run the stack's test/build command and confirm it passes (`go test ./...` /
-     `swift test` / `npx vitest run`). UI change? ALSO verify locally (see VERIFY LOCALLY) —
-     do NOT ship until the running app shows the change correct. Then ship via `/ship` — PR +
-     gate, never a direct push to main.
+DELIVERY — you orchestrate; you do NOT write code yourself:
+  1. Worktree-first: `bd worktree create <name> --branch <branch>`, apply the two bd worktree
+     workarounds, then `git -C <wt> reset --hard origin/main` (it bases off current HEAD, not
+     origin/main — verify `log -1`). See CLAUDE.md.
+  2. Dispatch the matching TDD worker: <worker(s) + allowed path(s)>. UI work also consults
+     design-language. <Out of boundary? dispatch a general-purpose subagent naming the exact
+     files + acceptance + these guardrails instead.>
+  3. Validate the stack's tests/build, then ship via `/ship` (PR + gate, never push to main).
 
-CURRENT STATE:
-  - Branch: <branch>
-  - Landed: <what's already done / merged>
-  - Remaining: <the concrete slices left, in order>
+CURRENT STATE: branch <branch>; landed <done>; remaining <slices, in order>.
 
-VERIFY LOCALLY <keep only for an iOS/web UI change; delete for backend/infra>: before the PR,
-drive the running app from a SONNET subagent (agent-browser=web, mobile-mcp=iOS; reports TEXT,
-screenshots bloat context) and eyeball the change. Data-dependent + authed web ⇒ run the FULL
-stack locally (deployed dev has no seed): `make -C api-go db-up` then migrate (goose-as-library,
-lib/pq) + seed, local `cmd/api` (POSTGRES_AUTH unset, CORS localhost:5173), Vite :5173, and an
-Auth0 password-grant token injected into localStorage (dev SPA blocks localhost login). Recipe +
-scripts: memories reference_local_api_stack_and_seed + reference_local_web_browser_verification_auth.
-Test login: christy+tctest10@salter.uk / StrongPassword1! (non-sensitive). Verify each bead on
-its OWN worktree build. ENV: RTK mangles curl/eslint/vitest/grep — use /usr/bin/curl, the
-node_modules bins, plain grep; `curl --data-urlencode` for the `+` in the email.
+VERIFY LOCALLY <keep only for an iOS/web UI change; else delete>: before the PR, drive the
+running app from a SONNET subagent (mobile-mcp=iOS, agent-browser=web; report TEXT — screenshots
+bloat context) and eyeball the change. Data-dependent + authed ⇒ stand up the full local stack;
+the recipe, seed scripts, test creds, and the RTK + auth-wall gotchas live in memories
+reference_local_api_stack_and_seed + reference_local_web_browser_verification_auth.
 
-KEY DECISIONS (already settled — don't reopen): <decisions, or "none">
-BLOCKERS: <blocker, or "none">
-NEXT CONCRETE STEP: <the single first action the new session should take>
+KEY DECISIONS (settled — don't reopen): <decisions, or none>.
+BLOCKERS: <blocker, or none>.
+NEXT STEP: <the single first action>.
 
-GUARDRAILS: worktree-first; bead-first (a bead per code change, closed when done); tests/build
-green before ship; PR-only — no direct deploys via az/pulumi/git push to main; fix-forward
-(pre-revenue, no rollback/soak). Hold and flag anything privacy/GDPR/auth/telemetry-sensitive
-that the issue doesn't explicitly authorise rather than committing it.
+GUARDRAILS: worktree-first; bead-first (closed when done); tests/build green before ship; PR-only
+(no az/pulumi or direct push to main). Paying customers now — prefer rollback-safe, staged change
+over blunt cutovers (CLAUDE.md Business Status). Hold and flag anything privacy/GDPR/auth/telemetry
+the issue doesn't authorise rather than committing it.
 ````
 
 After the block, in one or two lines, point the user at the spec issue URL and the bead id so they can sanity-check before pasting.
@@ -157,12 +139,12 @@ Also remind the user how to confirm it armed: send `/clear` and `/goal` as **sep
 
 ## Rules
 
-- **Under 3000 characters, measured — not estimated.** The brief is hard-capped at <3k chars because `/goal` truncates beyond it. Write it to a file, count it (`python3 -c "print(len(open('f').read()))"`), and condense until it clears. An over-length brief is a defective brief.
+- **Under 3000 characters, measured — not estimated.** The brief is hard-capped at <3k chars because `/goal` truncates beyond it. Write it to a file, count it (`python3 -c "print(len(open('f').read()))"`), and condense until it clears. An over-length brief is a defective brief. The template skeleton alone runs ~2.1k, so the fixed scaffolding must not regrow: if an edit pushes the *empty* template back toward 3k, that content belongs in Phase 2 guidance or a memory, not in the emitted brief.
 - **Reference a real GitHub issue.** The spec is the issue, never a repo file. No issue → tell the user to raise one with `file-issue` first.
 - **One goal, testable.** The brief names a single objective with a concrete "done when". If the scope is really two goals, say so and produce two briefs.
 - **Self-contained.** Assume zero conversation history. Anything the new session needs goes in the brief.
 - **TDD worker by default, raw subagent only out of boundary.** Pick the worker from the table; reach for a `general-purpose` subagent only when nothing fits, and give it a tailored prompt.
 - **Orchestrator never writes code.** The brief always routes implementation through a worker or subagent in a worktree, validated by tests, shipped via PR.
 - **Visual-verify iOS/web UI changes before ship — always via a Sonnet subagent.** Any user-visible iOS or web change in the handover must instruct the new session to drive the running app and eyeball the change locally *before* the PR opens, and that driving (mobile-mcp / agent-browser) must run in a `model: sonnet` subagent that reports findings as text — their screenshots bloat context. Use the local Docker stack (`make -C api-go db-up` + local `cmd/api`) to simulate data-dependent scenarios without remote infra. Omit the VERIFY LOCALLY block entirely for backend/infra/CI/docs handovers.
-- **Carry the execution-environment gotchas.** Any brief that involves a worktree, shell tooling, or local web/iOS verification must surface the gotchas from Phase 2 (RTK mangling → bypass binaries; `bd worktree create` wrong-bases → reset to origin/main; `--data-urlencode` for the `+` email; the localhost auth wall + password-grant injection; verify each bead on its own build). Inline the test creds; lean on the two local-stack memories for the long-form recipe so the brief stays under 3k.
+- **Point at the execution-environment gotchas — don't inline them.** A brief that involves a worktree, shell tooling, or local web/iOS verification must make the gotchas reachable, but by *reference*: the worktree-reset one-liner already sits in the template's DELIVERY step, and the RTK / `--data-urlencode` / auth-wall / password-grant recipe plus the test creds live in the two local-stack memories the VERIFY LOCALLY block names. Inlining that prose is exactly what blew the 3k cap — resist it.
 - **Don't implement.** This skill produces the brief and stops.
