@@ -64,7 +64,7 @@ func (h *handler) serve(w http.ResponseWriter, r *http.Request) {
 
 	app, found, err := h.store.GetByAuthorityAndName(r.Context(), strconv.Itoa(areaID), ref)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "share page read failed", "op", "read application by slug", "slug", slug, "error", err)
+		h.logger.ErrorContext(r.Context(), "share page read failed", "op", "read application by slug", "slug", slug, "ref", ref, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
