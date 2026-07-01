@@ -367,3 +367,44 @@ func TestIntegration_Notifications_PurgeOlderThan(t *testing.T) {
 		t.Errorf("post-purge rows: got %+v, want only n-recent", all)
 	}
 }
+
+// TestIntegration_Notifications_CountsByUsers exercises the grouped
+// count(*) / count(*) FILTER (WHERE read_at IS NULL) tally against a real DB —
+// the read_at FILTER is precisely the SQL a hand-written fake cannot honestly
+// model. user-1 has 3 rows (1 read, 2 unread); user-2 has 1 unread row; user-3
+// is queried but has no rows and must be absent from the result.
+func TestIntegration_Notifications_CountsByUsers(t *testing.T) {
+	s := newPGNotifStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	seed := []DigestNotification{
+		intNotif("u1-a", "user-1", "uid-A", EventNewApplication, base),
+		intNotif("u1-b", "user-1", "uid-B", EventNewApplication, base.Add(time.Hour)),
+		intNotif("u1-c", "user-1", "uid-C", EventNewApplication, base.Add(2*time.Hour)),
+		intNotif("u2-a", "user-2", "uid-A", EventNewApplication, base),
+	}
+	for _, n := range seed {
+		if err := s.Create(ctx, n); err != nil {
+			t.Fatalf("Create %s: %v", n.ID, err)
+		}
+	}
+	// Mark one of user-1's notifications read.
+	if _, err := s.db.Exec(ctx, "UPDATE notifications SET read_at = $1 WHERE id = 'u1-a'", base.Add(3*time.Hour)); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	got, err := s.CountsByUsers(ctx, []string{"user-1", "user-2", "user-3"})
+	if err != nil {
+		t.Fatalf("CountsByUsers: %v", err)
+	}
+	if got["user-1"] != (NotificationCounts{Total: 3, Unread: 2}) {
+		t.Errorf("user-1: got %+v, want {3 2}", got["user-1"])
+	}
+	if got["user-2"] != (NotificationCounts{Total: 1, Unread: 1}) {
+		t.Errorf("user-2: got %+v, want {1 1}", got["user-2"])
+	}
+	if _, ok := got["user-3"]; ok {
+		t.Errorf("user-3 has no notifications and must be absent, got %+v", got["user-3"])
+	}
+}
