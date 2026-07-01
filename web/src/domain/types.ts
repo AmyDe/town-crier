@@ -226,8 +226,8 @@ export interface PlanningApplicationSummary {
  * `createdAt` is strictly after `lastReadAt`. The server returns
  * `totalUnreadCount` precomputed so the client can drive the Unread chip
  * without rescanning the notification list locally. `version` bumps on every
- * successful mark-all-read or advance — useful for detecting out-of-band
- * mutations across devices.
+ * successful read-state mutation (mark-read or mark-all-read) — useful for
+ * detecting out-of-band mutations across devices.
  */
 export interface NotificationStateSnapshot {
   /** ISO-8601 instant; notifications strictly newer than this are unread. */

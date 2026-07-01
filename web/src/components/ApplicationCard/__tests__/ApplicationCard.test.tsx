@@ -171,6 +171,44 @@ describe('ApplicationCard', () => {
   });
 });
 
+describe('ApplicationCard — open callback', () => {
+  it('invokes onOpen with the application when the card is clicked', async () => {
+    const user = userEvent.setup();
+    const app = undecidedApplication();
+    const opened: (typeof app)[] = [];
+    render(
+      <MemoryRouter>
+        <ApplicationCard application={app} onOpen={(a) => opened.push(a)} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('link'));
+
+    expect(opened).toEqual([app]);
+  });
+
+  it('still navigates to the detail page when onOpen is provided', async () => {
+    const user = userEvent.setup();
+    const app = undecidedApplication();
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route
+            path="/"
+            element={<ApplicationCard application={app} onOpen={() => {}} />}
+          />
+          <Route path="/applications/*" element={<LocationStateProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('link'));
+
+    // Navigation proceeded (the probe route rendered with the carried state).
+    expect(screen.getByTestId('state-name')).toHaveTextContent('2026/0042/FUL');
+  });
+});
+
 describe('ApplicationCard — leading unread dot', () => {
   it('renders a visible unread dot when latestUnreadEvent is non-null', () => {
     const app = undecidedApplication({

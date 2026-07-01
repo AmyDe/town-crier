@@ -5,6 +5,13 @@ import styles from './ApplicationCard.module.css';
 
 interface Props {
   application: PlanningApplicationSummary;
+  /**
+   * Called when the card is opened (tap-to-read). Navigation still proceeds —
+   * this fires alongside the link, letting the Applications list mark the
+   * application read. Optional so read-only surfaces (saved list, dashboard)
+   * can render the card without wiring it.
+   */
+  onOpen?: (application: PlanningApplicationSummary) => void;
 }
 
 const MAX_DESCRIPTION_LENGTH = 120;
@@ -16,9 +23,13 @@ function truncate(text: string | null, maxLength: number): string {
   return text.slice(0, maxLength) + '...';
 }
 
-export function ApplicationCard({ application }: Props) {
+export function ApplicationCard({ application, onOpen }: Props) {
   const isUnread = application.latestUnreadEvent !== null;
   const statusClass = statusClassName(application.appState, styles);
+
+  function handleClick() {
+    onOpen?.(application);
+  }
 
   return (
     <Link
@@ -27,6 +38,7 @@ export function ApplicationCard({ application }: Props) {
       className={`${styles.card} ${isUnread ? styles.cardUnread : styles.cardRead}`}
       data-testid="application-card"
       data-unread={isUnread ? 'true' : 'false'}
+      onClick={handleClick}
     >
       <span
         className={styles.unreadDot}

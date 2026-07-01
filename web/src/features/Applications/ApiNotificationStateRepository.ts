@@ -5,10 +5,10 @@ import { notificationStateApi } from '../../api/notification-state';
 
 /**
  * Concrete adapter for {@link NotificationStateRepository} backed by the
- * three watermark endpoints introduced in tc-1nsa.2. The repository is a
- * thin pass-through over {@link notificationStateApi} so the wire shape can
- * be reused by other callers (e.g. the unread-badge polling that lives
- * outside the Applications screen) without going through this class.
+ * notification read-state endpoints (per-application `read_at`, ADR 0035).
+ * The repository is a thin pass-through over {@link notificationStateApi} so
+ * the wire shape can be reused by other callers (e.g. the unread-badge polling
+ * that lives outside the Applications screen) without going through this class.
  */
 export class ApiNotificationStateRepository
   implements NotificationStateRepository
@@ -27,7 +27,10 @@ export class ApiNotificationStateRepository
     return this.api.markAllRead();
   }
 
-  async advance(asOf: string): Promise<void> {
-    return this.api.advance(asOf);
+  async markApplicationRead(
+    applicationUid: string,
+    authorityId: number,
+  ): Promise<void> {
+    return this.api.markApplicationRead(applicationUid, authorityId);
   }
 }

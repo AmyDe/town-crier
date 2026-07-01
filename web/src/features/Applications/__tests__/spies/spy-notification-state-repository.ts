@@ -20,8 +20,8 @@ export class SpyNotificationStateRepository
   markAllReadCalls = 0;
   markAllReadError: Error | null = null;
 
-  advanceCalls: string[] = [];
-  advanceError: Error | null = null;
+  markApplicationReadCalls: Array<{ applicationUid: string; authorityId: number }> = [];
+  markApplicationReadError: Error | null = null;
 
   async getState(): Promise<NotificationStateSnapshot> {
     this.getStateCalls++;
@@ -38,10 +38,13 @@ export class SpyNotificationStateRepository
     }
   }
 
-  async advance(asOf: string): Promise<void> {
-    this.advanceCalls.push(asOf);
-    if (this.advanceError) {
-      throw this.advanceError;
+  async markApplicationRead(
+    applicationUid: string,
+    authorityId: number,
+  ): Promise<void> {
+    this.markApplicationReadCalls.push({ applicationUid, authorityId });
+    if (this.markApplicationReadError) {
+      throw this.markApplicationReadError;
     }
   }
 }
