@@ -85,14 +85,17 @@ func printUsersTable(out io.Writer, page *listUsersResponse) {
 		hUserID     = "UserId"
 		hEmail      = "Email"
 		hTier       = "Tier"
+		hOffer      = "Offer"
 		hWatchZones = "WatchZones"
 		hLastActive = "LastActive"
 		hCreated    = "Created"
 		hNotifs     = "Notifs"
+		hSaved      = "Saved"
+		hDevices    = "Devices"
 	)
 
 	type cells struct {
-		userID, email, tier, watchZones, lastActive, created, notifs string
+		userID, email, tier, offer, watchZones, lastActive, created, notifs, saved, devices string
 	}
 	rows := make([]cells, 0, len(page.Items))
 	for _, item := range page.Items {
@@ -100,34 +103,41 @@ func printUsersTable(out io.Writer, page *listUsersResponse) {
 			userID:     item.UserID,
 			email:      emailCell(item.Email),
 			tier:       item.Tier,
+			offer:      offerCell(item.OfferCode),
 			watchZones: watchZonesCell(item.WatchZoneCount),
 			lastActive: datePart(item.LastActiveAt),
 			created:    datePart(item.CreatedAt),
 			notifs:     fmt.Sprintf("%d/%d", item.NotificationUnread, item.NotificationTotal),
+			saved:      strconv.Itoa(item.SavedCount),
+			devices:    strconv.Itoa(item.DeviceCount),
 		})
 	}
 
 	// Seed widths from the headers, then widen to the longest cell per column.
-	wUserID, wEmail, wTier := len(hUserID), len(hEmail), len(hTier)
+	wUserID, wEmail, wTier, wOffer := len(hUserID), len(hEmail), len(hTier), len(hOffer)
 	wWatch, wLast, wCreated, wNotifs := len(hWatchZones), len(hLastActive), len(hCreated), len(hNotifs)
+	wSaved, wDevices := len(hSaved), len(hDevices)
 	for _, r := range rows {
 		wUserID = max(wUserID, len(r.userID))
 		wEmail = max(wEmail, len(r.email))
 		wTier = max(wTier, len(r.tier))
+		wOffer = max(wOffer, len(r.offer))
 		wWatch = max(wWatch, len(r.watchZones))
 		wLast = max(wLast, len(r.lastActive))
 		wCreated = max(wCreated, len(r.created))
 		wNotifs = max(wNotifs, len(r.notifs))
+		wSaved = max(wSaved, len(r.saved))
+		wDevices = max(wDevices, len(r.devices))
 	}
 
-	format := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n",
-		wUserID, wEmail, wTier, wWatch, wLast, wCreated, wNotifs)
+	format := fmt.Sprintf("%%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds  %%-%ds\n",
+		wUserID, wEmail, wTier, wOffer, wWatch, wLast, wCreated, wNotifs, wSaved, wDevices)
 
-	header := fmt.Sprintf(format, hUserID, hEmail, hTier, hWatchZones, hLastActive, hCreated, hNotifs)
+	header := fmt.Sprintf(format, hUserID, hEmail, hTier, hOffer, hWatchZones, hLastActive, hCreated, hNotifs, hSaved, hDevices)
 	fmt.Fprint(out, header)
 	fmt.Fprintln(out, strings.Repeat("-", len(strings.TrimRight(header, "\n"))))
 	for _, r := range rows {
-		fmt.Fprintf(out, format, r.userID, r.email, r.tier, r.watchZones, r.lastActive, r.created, r.notifs)
+		fmt.Fprintf(out, format, r.userID, r.email, r.tier, r.offer, r.watchZones, r.lastActive, r.created, r.notifs, r.saved, r.devices)
 	}
 }
 
@@ -146,6 +156,16 @@ func watchZonesCell(n *int) string {
 		return "-"
 	}
 	return strconv.Itoa(*n)
+}
+
+// offerCell renders the user's active offer code, or "-" when none is active
+// (the API sends null for no active code, and for an erased user whose
+// redeemed_by_user_id was scrubbed).
+func offerCell(code *string) string {
+	if code == nil {
+		return "-"
+	}
+	return *code
 }
 
 // datePart trims an RFC3339 timestamp to its date portion (YYYY-MM-DD) for
