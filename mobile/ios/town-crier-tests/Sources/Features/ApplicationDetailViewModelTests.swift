@@ -188,4 +188,31 @@ struct ApplicationDetailViewModelTests {
     // No crash and the cached payload is unchanged.
     #expect(sut.reference == "2026/0042")
   }
+
+  // MARK: - Share URL (GH #738 Slice 4)
+
+  @Test func shareURL_whenAuthoritySlugPresent_buildsCanonicalShareURL() {
+    let application = PlanningApplication(
+      id: PlanningApplicationId(authority: "789", name: "Kingston/25/02755/CLC"),
+      reference: ApplicationReference("Kingston/25/02755/CLC"),
+      authority: LocalAuthority(code: "789", name: "Kingston upon Thames", slug: "kingston"),
+      status: .undecided,
+      receivedDate: Date(timeIntervalSince1970: 1_700_000_000),
+      description: "Certificate of lawfulness",
+      address: "1 Market Place, Kingston, KT1 1JS"
+    )
+    let sut = ApplicationDetailViewModel(application: application)
+
+    #expect(
+      sut.shareURL?.absoluteString
+        == "https://share.towncrierapp.uk/a/kingston/Kingston/25/02755/CLC")
+  }
+
+  @Test func shareURL_whenAuthoritySlugAbsent_isNil() {
+    // `.pendingReview` carries no authority slug (list-payload shape), so no
+    // slug-less broken link is ever offered.
+    let sut = ApplicationDetailViewModel(application: .pendingReview)
+
+    #expect(sut.shareURL == nil)
+  }
 }

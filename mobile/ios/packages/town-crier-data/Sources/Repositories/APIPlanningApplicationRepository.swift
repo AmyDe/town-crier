@@ -123,6 +123,29 @@ public final class APIPlanningApplicationRepository: PlanningApplicationReposito
     }
     return dto.toDomain()
   }
+
+  public func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+    -> PlanningApplication {
+    let dto: PlanningApplicationDTO
+    do {
+      // Anonymous public read: /v1/applications/by-slug/{authoritySlug}/{**ref}.
+      // The greedy `{**ref}` segment preserves slashes in the full area-prefixed
+      // PlanIt name, so `ref` interpolates raw exactly like `id.name` does in the
+      // by-id read above (GH #738 Slice 4).
+      dto = try await apiClient.request(
+        .get("/v1/applications/by-slug/\(authoritySlug)/\(ref)")
+      )
+    } catch APIError.notFound {
+      throw DomainError.applicationNotFound(
+        PlanningApplicationId(authority: authoritySlug, name: ref)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+    return dto.toDomain()
+  }
 }
 
 // MARK: - Cluster DTO
@@ -194,6 +217,10 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let link: String?
   let lastDifferent: String
   let latestUnreadEvent: LatestUnreadEventDTO?
+  /// URL-safe authority slug for the public share URL. Present on the by-id
+  /// detail read and the anonymous by-slug read; absent (`omitempty`) on the
+  /// list/zone endpoints, so it decodes as optional (GH #738 Slice 4).
+  let authoritySlug: String?
 
   func toDomain() -> PlanningApplication {
     let status = ApplicationStatus(rawValue: appState ?? "") ?? .unknown
@@ -205,7 +232,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
     return PlanningApplication(
       id: PlanningApplicationId(authority: String(areaId), name: name),
       reference: ApplicationReference(name),
-      authority: LocalAuthority(code: String(areaId), name: areaName),
+      authority: LocalAuthority(code: String(areaId), name: areaName, slug: authoritySlug),
       status: status,
       receivedDate: receivedDate,
       description: description,

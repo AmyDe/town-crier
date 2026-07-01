@@ -9,6 +9,7 @@ import TownCrierDomain
 public struct ApplicationDetailView: View {
   @ObservedObject private var viewModel: ApplicationDetailViewModel
   @State private var showingSafari = false
+  @State private var showingShareSheet = false
 
   public init(viewModel: ApplicationDetailViewModel) {
     _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -51,6 +52,11 @@ public struct ApplicationDetailView: View {
           SafariView(url: url)
         }
       }
+      .sheet(isPresented: $showingShareSheet) {
+        if let shareURL = viewModel.shareURL {
+          ShareSheet(activityItems: [shareURL])
+        }
+      }
     #endif
     .task {
       await viewModel.loadSavedState()
@@ -70,6 +76,21 @@ public struct ApplicationDetailView: View {
               .foregroundStyle(viewModel.isSaved ? Color.tcAmber : Color.tcTextSecondary)
           }
           .accessibilityLabel(viewModel.isSaved ? "Unsave" : "Save")
+        }
+      }
+      // Present the standard iOS share sheet with the canonical public share
+      // link (GH #738 Slice 4). Gated on a non-nil `shareURL` so a slug-less
+      // (broken) link is never offered — the button appears once `refresh()`
+      // has refetched the by-id payload that carries `authoritySlug`.
+      if viewModel.shareURL != nil {
+        ToolbarItem(placement: .automatic) {
+          Button {
+            showingShareSheet = true
+          } label: {
+            Image(systemName: "square.and.arrow.up")
+              .foregroundStyle(Color.tcTextSecondary)
+          }
+          .accessibilityLabel("Share")
         }
       }
     }

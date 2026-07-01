@@ -38,6 +38,16 @@ public final class ApplicationDetailViewModel: ObservableObject {
   public var statusLabel: String { application.status.displayLabel }
   public var statusIcon: String { application.status.displayIcon }
 
+  /// Canonical public share URL for this application (GH #738 Slice 4), built
+  /// from the API-supplied `authoritySlug` and the full PlanIt ref. `nil` when
+  /// the authority carries no slug (e.g. the cached list payload before
+  /// ``refresh()`` refetches by-id), so the view never offers a broken,
+  /// slug-less link.
+  public var shareURL: URL? {
+    guard let slug = application.authority.slug else { return nil }
+    return ShareURL.build(authoritySlug: slug, ref: application.id.name)
+  }
+
   public var timelineItems: [TimelineItem] {
     let events =
       application.statusHistory.isEmpty

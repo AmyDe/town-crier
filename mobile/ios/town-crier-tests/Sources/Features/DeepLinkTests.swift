@@ -98,6 +98,37 @@ struct DeepLinkTests {
 
     #expect(firstTask?.isCancelled == true)
   }
+
+  // MARK: - Share Universal Link (GH #738 Slice 4)
+
+  @Test func handleDeepLink_shareApplication_fetchesBySlugAndSetsDetailApplication() async {
+    let (sut, spy) = makeSUT()
+    spy.fetchApplicationBySlugResult = .success(.permitted)
+
+    sut.handleDeepLink(.shareApplication(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC"))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(sut.detailApplication == .permitted)
+    #expect(sut.selectedTab == .applications)
+    #expect(
+      spy.fetchApplicationBySlugCalls == [
+        .init(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC")
+      ])
+  }
+
+  @Test func handleDeepLink_shareApplicationFailure_setsDeepLinkError() async {
+    let (sut, spy) = makeSUT()
+    let missingId = PlanningApplicationId(authority: "kingston", name: "Kingston/25/GONE")
+    spy.fetchApplicationBySlugResult = .failure(DomainError.applicationNotFound(missingId))
+
+    sut.handleDeepLink(.shareApplication(authoritySlug: "kingston", ref: "Kingston/25/GONE"))
+
+    await sut.waitForPendingDetailLoad()
+
+    #expect(sut.detailApplication == nil)
+    #expect(sut.deepLinkError == .applicationNotFound(missingId))
+  }
 }
 
 @Suite("NotificationPayloadParser")

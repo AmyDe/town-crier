@@ -7,6 +7,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:towncrierapp.uk</string>
+		<string>applinks:share.towncrierapp.uk</string>
 	</array>
 </dict>
 </plist>

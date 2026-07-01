@@ -123,6 +123,26 @@ final class SpyPlanningApplicationRepository: PlanningApplicationRepository, @un
     return try fetchApplicationResult.get()
   }
 
+  // MARK: - By-slug fetch (GH #738 Slice 4)
+
+  /// A recorded `fetchApplication(bySlug:ref:)` invocation — lets tests assert the
+  /// exact slug + ref the coordinator drove for an inbound share Universal Link.
+  struct RecordedBySlugRequest: Sendable, Equatable {
+    let authoritySlug: String
+    let ref: String
+  }
+
+  private(set) var fetchApplicationBySlugCalls: [RecordedBySlugRequest] = []
+  var fetchApplicationBySlugResult: Result<PlanningApplication, Error> = .success(.pendingReview)
+
+  func fetchApplication(bySlug authoritySlug: String, ref: String) async throws
+    -> PlanningApplication {
+    fetchApplicationBySlugCalls.append(
+      RecordedBySlugRequest(authoritySlug: authoritySlug, ref: ref))
+    await waitForGateIfNeeded()
+    return try fetchApplicationBySlugResult.get()
+  }
+
   // MARK: - Cluster fetch (GH#698)
 
   /// A recorded `fetchClusters` invocation — lets tests assert the exact
