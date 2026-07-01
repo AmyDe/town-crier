@@ -61,6 +61,15 @@ type Config struct {
 	ServiceBusNamespace string
 	ServiceBusQueueName string
 
+	// ShareCardsBlobURL is the Azure Blob account URL the baked share-card PNGs
+	// are cached in (the share-cards container, #738 Slice 3 / ADR 0037), e.g.
+	// https://sttowncrierdev.blob.core.windows.net. Loaded from
+	// SHARE_CARDS_BLOB_URL (the exact name infra emits). Empty means the cache is
+	// unwired — mirroring the ServiceBusNamespace empty-means-off convention — so
+	// the API boots normally and the og:image handler regenerates on demand.
+	// Authentication is the pinned user-assigned managed identity (AzureClientID).
+	ShareCardsBlobURL string
+
 	// PostcodesIoBaseURL and GovUkBaseURL address the outbound geocode and
 	// designation upstreams. They default to the live UK services, so the clients
 	// work without any env wiring; an override points them at a stub.
@@ -193,6 +202,8 @@ func LoadConfig() (Config, error) {
 
 		ServiceBusNamespace: os.Getenv("SERVICE_BUS_NAMESPACE"),
 		ServiceBusQueueName: os.Getenv("SERVICE_BUS_QUEUE_NAME"),
+
+		ShareCardsBlobURL: os.Getenv("SHARE_CARDS_BLOB_URL"),
 
 		Auth0M2MClientID:     os.Getenv("AUTH0_M2M_CLIENT_ID"),
 		Auth0M2MClientSecret: NewSecret(os.Getenv("AUTH0_M2M_CLIENT_SECRET")),

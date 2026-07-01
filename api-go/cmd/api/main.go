@@ -14,6 +14,7 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
+	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
@@ -30,6 +31,10 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 	"go.opentelemetry.io/otel"
 )
+
+// shareCardsContainer is the Blob container the baked share-card PNGs are cached
+// in (#738 Slice 3 / ADR 0037). Fixed by the infra contract.
+const shareCardsContainer = "share-cards"
 
 func main() {
 	cfg, err := platform.LoadConfig()
@@ -100,6 +105,20 @@ func main() {
 	offerStore := offercodes.NewPostgresStore(pool)
 	appleNotifStore := subscriptions.NewPostgresNotificationStore(pool, time.Now)
 
+	// The share-card cache is the Azure share-cards Blob container (#738 Slice 3,
+	// ADR 0037), authenticated by the pinned managed identity. It is optional: when
+	// SHARE_CARDS_BLOB_URL is unset the store stays a nil pointer and the og:image
+	// handler regenerates on every request, so the API boots without the env var.
+	// Keep it a *blobstore.Store (not the interface) so newRouter can pass a genuine
+	// nil interface downstream and dodge the typed-nil trap.
+	var shareCardCache *blobstore.Store
+	if cfg.ShareCardsBlobURL != "" {
+		shareCardCache, err = blobstore.NewStore(cfg.ShareCardsBlobURL, shareCardsContainer, cfg.AzureClientID)
+		if err != nil {
+			log.Fatalf("share-cards blob store: %v", err)
+		}
+	}
+
 	// cascade bundles the per-store deleters DELETE /v1/me runs for a complete GDPR
 	// erasure (bead tc-qkf2). The notification store satisfies erasure.ChildDeleter
 	// (DeleteAllByUserID) directly; the other stores satisfy erasure.ChildDeleter or
@@ -169,7 +188,7 @@ func main() {
 		log.Fatalf("designations client: %v", err)
 	}
 
-	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, logger))
+	srv := platform.NewServer(":"+cfg.Port, newRouter(validator, cfg.CorsAllowedOrigins, store, manager, cascade, exportReaders, deviceStore, stateStore, notifStore, watchZoneStore, appStore, savedStore, geocodeClient, designationClient, offerStore, adminStore, cfg.AdminAPIKey, cfg.SiteBuildKey, jwsVerifier, appleNotifStore, cfg.AppleBundleID, cfg.AppleEnvironments, registry, shareCardCache, logger))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -265,7 +265,7 @@ func testDesignationClientWith(t *testing.T, baseURL string, httpClient *http.Cl
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
-	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, slog.New(slog.DiscardHandler))
+	return newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, slog.New(slog.DiscardHandler))
 }
 
 // TestRouter_AnonymousRoutesServedWithoutToken confirms the iteration-0/1
@@ -320,7 +320,7 @@ func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
 	appStore := foundAppStore{app: app}
 	// denyAllValidator rejects every token, so the by-id route can only pass if it
 	// were (wrongly) anonymous.
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, logger)
 
 	// (1) Public HTML share page: anonymous, 200 text/html.
 	page := serveReq(t, h, http.MethodGet, "/a/croydon/23/03456/FUL", "", "")
@@ -445,7 +445,7 @@ func TestRouter_AuthenticatedPipeline(t *testing.T) {
 	appStore := fakeAppStore{}
 	savedStore := fakeSavedStore{}
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, watchZoneStore, appStore, savedStore, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, logger)
 
 	// Create the profile, then read it back through the same chain.
 	rec := serveReq(t, h, http.MethodPost, "/v1/me", "", "Bearer tok")
@@ -543,7 +543,7 @@ func TestRouter_GeocodeAndDesignationsDispatch(t *testing.T) {
 	validator := staticValidator{claims: auth.Claims{Subject: "auth0|wiretest", Email: "wire@example.com", EmailVerified: true}}
 	geocodeClient := testGeocodeClientWith(t, upstream.URL, upstream.Client())
 	designationClient := testDesignationClientWith(t, upstream.URL, upstream.Client())
-	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(validator, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, geocodeClient, designationClient, nil, nil, "", "", nil, nil, "", nil, nil, nil, logger)
 
 	rec := serveReq(t, h, http.MethodGet, "/v1/geocode/SW1A%201AA", "", "Bearer tok")
 	if rec.Code != http.StatusOK {
@@ -582,7 +582,7 @@ func TestRouter_SubscriptionsWired(t *testing.T) {
 		t.Fatalf("NewJWSVerifier: %v", err)
 	}
 
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, store, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), nil, adminStore, "", "", verifier, notifStore, "uk.towncrierapp.mobile", []string{"Production"}, nil, nil, logger)
 
 	// Webhook is anonymous: a malformed body reaches the handler -> 400 with the
 	// malformed_request envelope, not the WWW-Authenticate 401 fallback.
@@ -612,7 +612,7 @@ func TestRouter_AdminGate(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	offerStore := fakeOfferStore{}
 	adminStore := fakeAdminStore{}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, logger)
 
 	// No key: the admin gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).
@@ -646,7 +646,7 @@ func TestRouter_AdminStatsGate(t *testing.T) {
 	adminStore := fakeAdminStore{}
 	// notif (pos 9), saved (pos 12), device (pos 7) all nil: the reach stores are
 	// unwired, exercising the nil-safe reach path through the full router chain.
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, logger)
 
 	statsReq := func(key string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -698,7 +698,7 @@ func TestRouter_RecentApplicationsBuildKeyGate(t *testing.T) {
 
 	logger := slog.New(slog.DiscardHandler)
 	appStore := fakeAppStore{}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, nil, logger)
 
 	// No key: the build gate rejects with a bodyless 401 and NO WWW-Authenticate
 	// (distinguishing it from the Auth0 fallback-deny).
@@ -744,7 +744,7 @@ func TestRouter_NearApplicationsBuildKeyGate(t *testing.T) {
 
 	logger := slog.New(slog.DiscardHandler)
 	appStore := fakeAppStore{}
-	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, logger)
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "buildsecret", nil, nil, "", nil, nil, nil, logger)
 
 	noKey := nearRequest(t, h, "")
 	if noKey.Code != http.StatusUnauthorized {

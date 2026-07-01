@@ -12,6 +12,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
 	"github.com/AmyDe/town-crier/api-go/internal/demoaccount"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
@@ -193,6 +194,7 @@ func newRouter(
 	appleBundleID string,
 	appleEnvironments []string,
 	registry *metrics.Registry,
+	shareCardCache *blobstore.Store,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -264,12 +266,18 @@ func newRouter(
 		// same applications store and resolves the authority slug via the static
 		// authority lookup; it reads no user data and emits only public planning data.
 		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
-		// The og:image map card (#738 Slice 2): an anonymous GET /og/{slug}/{ref}.png
+		// The og:image map card (#738 Slice 2/3): an anonymous GET /og/{slug}/{ref}.png
 		// serving a baked OSM map of the site as the share page's unfurl image. It
 		// reuses the same applications store + authority lookup and the real OSM tile
-		// client. The Blob cache (share-cards container + MI RBAC) is Slice 3 infra, so
-		// the store is nil here — the handler degrades to regenerate-on-every-request.
-		sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil /* Blob cache: Slice 3 */, logger)
+		// client. The cache is the Azure share-cards Blob container (ADR 0037); it is
+		// optional. When SHARE_CARDS_BLOB_URL is unset shareCardCache is a nil pointer,
+		// and we MUST pass a genuine nil interface (not the typed-nil *blobstore.Store)
+		// so the handler's cache==nil check disables caching and regenerates on demand.
+		if shareCardCache != nil {
+			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), shareCardCache, logger)
+		} else {
+			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil, logger)
+		}
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
