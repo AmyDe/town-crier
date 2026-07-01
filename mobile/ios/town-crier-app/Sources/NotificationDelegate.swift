@@ -32,9 +32,8 @@ final class NotificationDelegate: NSObject, @preconcurrency UNUserNotificationCe
 
   /// Called when the user taps a notification (cold launch or background).
   /// Forwards the APNs `userInfo` payload to `AppCoordinator.handlePushTap`,
-  /// which parses the deep link and the watermark instant independently.
-  /// Each branch is no-oppable: digest pushes carry neither field, older
-  /// builds may omit `createdAt`.
+  /// which routes the application deep link and marks that application read
+  /// (ADR 0035). Digest pushes carry no application deep link and no-op.
   func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse

@@ -84,9 +84,9 @@ public final class AppCoordinator: ObservableObject {
   // Internal (not private) so the AppCoordinator+WatchZones extension can drive it.
   var pendingWatchZoneRefresh: Task<Void, Never>?
   var pendingDetailLoad: Task<Void, Never>?
-  // Push-tap watermark advance — fire-and-forget but stored so tests can
-  // await deterministically (tc-1nsa.9).
-  var pendingWatermarkAdvance: Task<Void, Never>?
+  // Push-tap per-application mark-read — fire-and-forget but stored so tests
+  // can await deterministically (tc-0sfx.3, ADR 0035).
+  var pendingApplicationMarkRead: Task<Void, Never>?
   // Foreground badge sync (tc-1nsa.9).
   var pendingBadgeSync: Task<Void, Never>?
   // Post-purchase push-permission prompt — fire-and-forget but stored so

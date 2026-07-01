@@ -14,9 +14,8 @@ public protocol ApplicationCacheStore: Sendable {
   /// Removes every cached entry, regardless of zone.
   ///
   /// Used after a global state mutation that affects every zone's view of
-  /// applications — e.g. mark-all-read, where the server-side watermark
-  /// advance changes each row's `latestUnreadEvent` and a TTL-fresh cache
-  /// hit would otherwise serve stale unread flags for up to the cache TTL
-  /// (tc-e3bu).
+  /// applications — e.g. mark-all-read, which clears each row's
+  /// `latestUnreadEvent`, where a TTL-fresh cache hit would otherwise serve
+  /// stale unread flags for up to the cache TTL (tc-e3bu).
   func invalidateAll() async
 }

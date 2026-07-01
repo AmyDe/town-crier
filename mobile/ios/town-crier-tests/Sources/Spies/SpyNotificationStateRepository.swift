@@ -40,12 +40,4 @@ final class SpyNotificationStateRepository: NotificationStateRepository, @unchec
     )
     try markApplicationReadResult.get()
   }
-
-  private(set) var advanceCalls: [Date] = []
-  var advanceResult: Result<Void, Error> = .success(())
-
-  func advance(asOf: Date) async throws {
-    advanceCalls.append(asOf)
-    try advanceResult.get()
-  }
 }

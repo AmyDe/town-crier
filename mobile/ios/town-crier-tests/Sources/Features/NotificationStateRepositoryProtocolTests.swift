@@ -37,17 +37,6 @@ struct NotificationStateRepositoryProtocolTests {
     #expect(spy.markAllReadCallCount == 1)
   }
 
-  @Test("spy records advance calls with asOf instant")
-  func spy_recordsAdvanceCallsWithAsOf() async throws {
-    let spy = SpyNotificationStateRepository()
-    let asOf = Date(timeIntervalSince1970: 1_712_000_500)
-
-    try await spy.advance(asOf: asOf)
-
-    #expect(spy.advanceCalls.count == 1)
-    #expect(spy.advanceCalls[0] == asOf)
-  }
-
   @Test("spy records markApplicationRead calls with the composite (uid, authorityId)")
   func spy_recordsMarkApplicationReadCalls() async throws {
     let spy = SpyNotificationStateRepository()
