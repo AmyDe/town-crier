@@ -71,7 +71,7 @@ func (c *OSMTileClient) Fetch(ctx context.Context, z, x, y int) (image.Image, er
 	}
 	req.Header.Set("User-Agent", osmUserAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.http.Do(req) //nolint:gosec // constant host, not user input — no SSRF vector
 	if err != nil {
 		return nil, fmt.Errorf("get tile %d/%d/%d: %w", z, x, y, err)
 	}

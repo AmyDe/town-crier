@@ -129,7 +129,9 @@ func (h *imageHandler) writeCache(ctx context.Context, key string, png []byte) {
 func (h *imageHandler) writePNG(ctx context.Context, w http.ResponseWriter, png []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	if _, err := w.Write(png); err != nil {
+	// gosec G705: these are PNG bytes served with Content-Type image/png (a baked
+	// map or the branded fallback), never HTML — not an XSS sink.
+	if _, err := w.Write(png); err != nil { //nolint:gosec // PNG body served as image/png, not HTML
 		h.logger.ErrorContext(ctx, "share card write failed", "error", err)
 	}
 }
