@@ -232,9 +232,11 @@ func TestList_BadCursor_ReturnsError(t *testing.T) {
 
 // --- PaidCandidates ---
 
-// paidUserRow builds a full userSelectCols projection for a paid-tier user with
-// the given expiry and original-transaction id. Order MUST match userSelectCols.
-func paidUserRow(userID, tier string, expiry *time.Time, otid *string) []any {
+// paidUserRow builds a full userSelectCols projection for a paid-tier user. The
+// expiry (time.Time or nil) and original-transaction id (string or nil) are
+// passed as raw column values, matching how fakeScanRow wraps nullable columns.
+// Order MUST match userSelectCols.
+func paidUserRow(userID, tier string, expiry, otid any) []any {
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	return []any{
 		userID, nil, true, 1,
@@ -251,10 +253,9 @@ func paidUserRow(userID, tier string, expiry *time.Time, otid *string) []any {
 func TestPaidCandidates_LoadsAllUnfiltered(t *testing.T) {
 	t.Parallel()
 	expired := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // long past
-	txn := "1000000000000001"
 	q := &recordingQuerier{rows: &fakeUserRows{rows: [][]any{
-		paidUserRow("auth0|active", "Pro", ptrTime(time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)), &txn),
-		paidUserRow("auth0|lapsed", "Personal", &expired, nil),
+		paidUserRow("auth0|active", "Pro", time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), "1000000000000001"),
+		paidUserRow("auth0|lapsed", "Personal", expired, nil),
 	}}}
 	store := NewPostgresAdminStore(q)
 
@@ -269,8 +270,6 @@ func TestPaidCandidates_LoadsAllUnfiltered(t *testing.T) {
 		t.Fatalf("candidates: got %d, want 2 (lapsed NOT filtered out)", len(got))
 	}
 }
-
-func ptrTime(t time.Time) *time.Time { return &t }
 
 // --- UserStats ---
 
