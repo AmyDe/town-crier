@@ -18,6 +18,13 @@ public protocol NotificationStateRepository: Sendable {
   /// Stamps the watermark to the server's current instant.
   func markAllRead() async throws
 
+  /// Marks a single application's notifications read for the current user.
+  /// Scoped by the composite `(applicationUid, authorityId)` — a PlanIt
+  /// reference is unique only within a council, so both fields are required.
+  /// Idempotent and fire-and-forget: a later ``fetchState()`` reconciles any
+  /// drift. See ADR 0035 (`docs/adr/0035-per-application-notification-read-state.md`).
+  func markApplicationRead(applicationUid: String, authorityId: Int) async throws
+
   /// Advances the watermark forward to `asOf`. No-op if `asOf` is at or
   /// before the existing watermark (server-enforced monotonicity).
   func advance(asOf: Date) async throws

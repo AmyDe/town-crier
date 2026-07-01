@@ -1,6 +1,13 @@
 import Foundation
 import TownCrierDomain
 
+/// One recorded `markApplicationRead` invocation, capturing the composite the
+/// spy was called with so tests can assert the exact `(uid, authorityId)` pair.
+struct MarkApplicationReadCall: Equatable {
+  let applicationUid: String
+  let authorityId: Int
+}
+
 final class SpyNotificationStateRepository: NotificationStateRepository, @unchecked Sendable {
   private(set) var fetchStateCallCount = 0
   var fetchStateResult: Result<NotificationState, Error> = .success(
@@ -22,6 +29,16 @@ final class SpyNotificationStateRepository: NotificationStateRepository, @unchec
   func markAllRead() async throws {
     markAllReadCallCount += 1
     try markAllReadResult.get()
+  }
+
+  private(set) var markApplicationReadCalls: [MarkApplicationReadCall] = []
+  var markApplicationReadResult: Result<Void, Error> = .success(())
+
+  func markApplicationRead(applicationUid: String, authorityId: Int) async throws {
+    markApplicationReadCalls.append(
+      MarkApplicationReadCall(applicationUid: applicationUid, authorityId: authorityId)
+    )
+    try markApplicationReadResult.get()
   }
 
   private(set) var advanceCalls: [Date] = []

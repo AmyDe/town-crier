@@ -38,6 +38,26 @@ public final class APINotificationStateRepository: NotificationStateRepository, 
     }
   }
 
+  public func markApplicationRead(applicationUid: String, authorityId: Int) async throws {
+    let body = MarkApplicationsReadRequestDTO(
+      applications: [
+        MarkApplicationsReadRequestDTO.Item(
+          applicationUid: applicationUid,
+          authorityId: authorityId
+        )
+      ]
+    )
+    do {
+      let _: EmptyResponse = try await apiClient.request(
+        .post("/v1/me/applications/mark-read", body: body)
+      )
+    } catch let domainError as DomainError {
+      throw domainError
+    } catch {
+      throw error.toDomainError()
+    }
+  }
+
   public func advance(asOf: Date) async throws {
     let body = AdvanceNotificationStateRequestDTO(asOf: asOf)
     do {
@@ -74,6 +94,19 @@ struct NotificationStateDTO: Decodable, Sendable {
       totalUnreadCount: totalUnreadCount
     )
   }
+}
+
+/// Wire shape of `POST /v1/me/applications/mark-read`. Modelled as an array so
+/// the wire format is forward-compatible (clients send a single element today).
+/// Each item is scoped by the composite `(applicationUid, authorityId)` because
+/// a PlanIt reference is unique only within a council — see ADR 0035.
+struct MarkApplicationsReadRequestDTO: Encodable, Sendable {
+  struct Item: Encodable, Sendable {
+    let applicationUid: String
+    let authorityId: Int
+  }
+
+  let applications: [Item]
 }
 
 /// Wire shape of `POST /v1/me/notification-state/advance`. The server reads
