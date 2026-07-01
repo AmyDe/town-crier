@@ -449,6 +449,41 @@ func TestPostgresStore_CountsByUsers_MapsPerUser(t *testing.T) {
 	}
 }
 
+// --- Totals ---
+
+func TestPostgresStore_Totals_ReturnsSentAndUnread(t *testing.T) {
+	t.Parallel()
+	// count(*) with no GROUP BY always yields exactly one row.
+	q := &fakeQuerier{
+		queryResponses: []queryResponse{
+			{rows: newFakeRows([][]any{
+				// sent, unread
+				{128, 9},
+			})},
+		},
+	}
+	s := NewPostgresStore(q)
+
+	got, err := s.Totals(context.Background())
+	if err != nil {
+		t.Fatalf("Totals: %v", err)
+	}
+	if got != (NotificationTotals{Sent: 128, Unread: 9}) {
+		t.Errorf("Totals: got %+v, want {128 9}", got)
+	}
+}
+
+func TestPostgresStore_Totals_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("totals boom")
+	q := &fakeQuerier{queryResponses: []queryResponse{{err: boom}}}
+	s := NewPostgresStore(q)
+
+	if _, err := s.Totals(context.Background()); !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
+	}
+}
+
 // --- MarkEmailSent ---
 
 func TestPostgresStore_MarkEmailSent_PropagatesExecError(t *testing.T) {

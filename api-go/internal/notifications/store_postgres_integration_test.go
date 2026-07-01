@@ -408,3 +408,45 @@ func TestIntegration_Notifications_CountsByUsers(t *testing.T) {
 		t.Errorf("user-3 has no notifications and must be absent, got %+v", got["user-3"])
 	}
 }
+
+// TestIntegration_Notifications_Totals exercises the whole-table
+// count(*) / count(*) FILTER (WHERE read_at IS NULL) aggregate that backs the
+// admin stats "reach" block. An empty table returns {0, 0}; after seeding four
+// rows across two users with one marked read, the totals are {4, 3}.
+func TestIntegration_Notifications_Totals(t *testing.T) {
+	s := newPGNotifStore(t)
+	ctx := context.Background()
+
+	empty, err := s.Totals(ctx)
+	if err != nil {
+		t.Fatalf("Totals empty: %v", err)
+	}
+	if empty != (NotificationTotals{Sent: 0, Unread: 0}) {
+		t.Errorf("Totals empty: got %+v, want {0 0}", empty)
+	}
+
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	seed := []DigestNotification{
+		intNotif("n1", "user-1", "uid-A", EventNewApplication, base),
+		intNotif("n2", "user-1", "uid-B", EventNewApplication, base.Add(time.Hour)),
+		intNotif("n3", "user-1", "uid-C", EventNewApplication, base.Add(2*time.Hour)),
+		intNotif("n4", "user-2", "uid-A", EventNewApplication, base),
+	}
+	for _, n := range seed {
+		if err := s.Create(ctx, n); err != nil {
+			t.Fatalf("Create %s: %v", n.ID, err)
+		}
+	}
+	// Mark one notification read → unread drops from 4 to 3, sent stays 4.
+	if _, err := s.db.Exec(ctx, "UPDATE notifications SET read_at = $1 WHERE id = 'n1'", base.Add(3*time.Hour)); err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	got, err := s.Totals(ctx)
+	if err != nil {
+		t.Fatalf("Totals: %v", err)
+	}
+	if got != (NotificationTotals{Sent: 4, Unread: 3}) {
+		t.Errorf("Totals: got %+v, want {4 3}", got)
+	}
+}
