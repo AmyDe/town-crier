@@ -7,11 +7,11 @@ import TownCrierDomain
 /// Cache-invalidation contract for `ApplicationListViewModel.markAllRead`
 /// when backed by an `OfflineAwareRepository` (tc-e3bu).
 ///
-/// Mark-all-read is a global mutation: the server advances the watermark
-/// for every zone the user can see. The per-zone applications cache must
-/// be cleared before the refetch, otherwise a TTL-fresh cache hit will
-/// keep serving rows with the old `latestUnreadEvent` and the
-/// `Unread (N)` chip will stay stuck until the cache TTL expires.
+/// Mark-all-read is a global mutation: the server clears unread for every
+/// zone the user can see. The per-zone applications cache must be cleared
+/// before the refetch, otherwise a TTL-fresh cache hit will keep serving
+/// rows with the old `latestUnreadEvent` and the `Unread (N)` chip will
+/// stay stuck until the cache TTL expires.
 @Suite("ApplicationListViewModel.markAllRead — cache invalidation (tc-e3bu)")
 @MainActor
 struct ApplicationListViewModelMarkAllReadCacheTests {
@@ -30,7 +30,7 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
     // deliberately bypasses the offline cache, so the first load and the
     // post-mark-all-read refetch are driven as successive server pages: the
     // first carries the still-unread rows, the second the read rows the server
-    // returns once the watermark has advanced.
+    // returns once mark-all-read has cleared unread.
     remote.pagedResponses = [
       ApplicationPage(applications: cachedApplications, nextCursor: nil),
       ApplicationPage(applications: refetchedApplications, nextCursor: nil),
@@ -62,7 +62,7 @@ struct ApplicationListViewModelMarkAllReadCacheTests {
   /// mark-all-read is a global mutation, so the view-model must clear every
   /// cached zone before refetching. The paged list path bypasses the cache,
   /// but the param-less map path still reads it, so the invalidation keeps that
-  /// cache from serving stale unread flags after the watermark advances.
+  /// cache from serving stale unread flags after mark-all-read.
   @Test func markAllRead_invalidatesEveryCachedZoneBeforeRefetch() async {
     let cachedUnread = PlanningApplication.pendingReview
       .withLatestUnreadEvent(event(at: 1_700_500_000))

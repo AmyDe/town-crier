@@ -13,10 +13,10 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
   public let portalUrl: URL?
   public let statusHistory: [StatusEvent]
   /// Per-row unread descriptor surfaced by the per-zone applications endpoint.
-  /// `nil` when no notification exists strictly after the user's
-  /// `lastReadAt` watermark — drives the muted styling of the row's status
-  /// pill on the Applications screen.
-  /// Spec: `docs/specs/notifications-unread-watermark.md#api-augment-applications`.
+  /// `nil` when the application has no unread notification for the user
+  /// (server-side `read_at IS NULL`) — drives the muted styling of the row's
+  /// status pill on the Applications screen. See ADR 0035
+  /// (`docs/adr/0035-per-application-notification-read-state.md`).
   public let latestUnreadEvent: LatestUnreadEvent?
 
   public init(
@@ -43,5 +43,24 @@ public struct PlanningApplication: Equatable, Identifiable, Sendable {
     self.portalUrl = portalUrl
     self.statusHistory = statusHistory
     self.latestUnreadEvent = latestUnreadEvent
+  }
+
+  /// Returns a copy with `latestUnreadEvent` replaced. Used to optimistically
+  /// clear a row's unread badge on tap-to-read (ADR 0035) without rebuilding
+  /// every field, and by unread-UI tests to flip the read/unread bit.
+  public func withLatestUnreadEvent(_ event: LatestUnreadEvent?) -> PlanningApplication {
+    PlanningApplication(
+      id: id,
+      reference: reference,
+      authority: authority,
+      status: status,
+      receivedDate: receivedDate,
+      description: description,
+      address: address,
+      location: location,
+      portalUrl: portalUrl,
+      statusHistory: statusHistory,
+      latestUnreadEvent: event
+    )
   }
 }

@@ -57,8 +57,7 @@ struct APINotificationStateRepositoryTests {
     #expect(request.httpMethod == "GET")
     let url = try #require(request.url)
     #expect(url.path().contains("/v1/me/notification-state"))
-    // Must NOT match advance/mark-all-read sub-paths.
-    #expect(!url.path().contains("advance"))
+    // Must NOT match the mark-all-read sub-path.
     #expect(!url.path().contains("mark-all-read"))
   }
 
@@ -227,57 +226,53 @@ struct APINotificationStateRepositoryTests {
     }
   }
 
-  // MARK: - advance
+  // MARK: - markApplicationRead
 
-  @Test("advance sends POST /v1/me/notification-state/advance with asOf body")
-  func advance_sendsCorrectRequest() async throws {
+  @Test("markApplicationRead sends POST /v1/me/applications/mark-read with the composite body")
+  func markApplicationRead_sendsCorrectRequest() async throws {
     let (sut, _, transport) = makeSUT(responses: [
       (Data(), httpResponse(statusCode: 204))
     ])
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    let asOf = try #require(formatter.date(from: "2026-05-01T12:00:00Z"))
 
-    try await sut.advance(asOf: asOf)
+    try await sut.markApplicationRead(applicationUid: "22/1234/FUL", authorityId: 42)
 
     #expect(transport.requests.count == 1)
     let request = transport.requests[0]
     #expect(request.httpMethod == "POST")
     let url = try #require(request.url)
-    #expect(url.path().contains("/v1/me/notification-state/advance"))
+    #expect(url.path().contains("/v1/me/applications/mark-read"))
 
     let body = try #require(request.httpBody)
     let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
-    let asOfString = try #require(json["asOf"] as? String)
-    // Server parses ISO-8601; the exact spelling does not matter as long as it
-    // round-trips to the same instant.
-    let parsed = try #require(formatter.date(from: asOfString))
-    #expect(parsed == asOf)
+    let applications = try #require(json["applications"] as? [[String: Any]])
+    #expect(applications.count == 1)
+    #expect(applications[0]["applicationUid"] as? String == "22/1234/FUL")
+    #expect(applications[0]["authorityId"] as? Int == 42)
   }
 
-  @Test("advance sets Content-Type to application/json")
-  func advance_setsContentTypeJson() async throws {
+  @Test("markApplicationRead sets Content-Type to application/json")
+  func markApplicationRead_setsContentTypeJson() async throws {
     let (sut, _, transport) = makeSUT(responses: [
       (Data(), httpResponse(statusCode: 204))
     ])
 
-    try await sut.advance(asOf: Date(timeIntervalSince1970: 1_712_000_000))
+    try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
 
     let request = transport.requests[0]
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
   }
 
-  @Test("advance 204 returns without throwing")
-  func advance_204_succeeds() async throws {
+  @Test("markApplicationRead 204 returns without throwing")
+  func markApplicationRead_204_succeeds() async throws {
     let (sut, _, _) = makeSUT(responses: [
       (Data(), httpResponse(statusCode: 204))
     ])
 
-    try await sut.advance(asOf: Date(timeIntervalSince1970: 1_712_000_000))
+    try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
   }
 
-  @Test("advance with network error throws networkUnavailable")
-  func advance_networkError_throwsNetworkUnavailable() async {
+  @Test("markApplicationRead with network error throws networkUnavailable")
+  func markApplicationRead_networkError_throwsNetworkUnavailable() async {
     let authService = SpyAuthenticationService()
     authService.currentSessionResult = .valid
     let transport = StubHTTPTransport()
@@ -290,7 +285,8 @@ struct APINotificationStateRepositoryTests {
     let sut = APINotificationStateRepository(apiClient: apiClient)
 
     await #expect(throws: DomainError.networkUnavailable) {
-      try await sut.advance(asOf: Date(timeIntervalSince1970: 1_712_000_000))
+      try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
     }
   }
+
 }

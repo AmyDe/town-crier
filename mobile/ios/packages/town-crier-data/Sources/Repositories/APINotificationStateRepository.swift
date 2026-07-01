@@ -1,12 +1,12 @@
 import Foundation
 import TownCrierDomain
 
-/// Hits the three watermark endpoints described in spec
-/// `docs/specs/notifications-unread-watermark.md#api-surface`.
+/// Hits the notification read-state endpoints (see ADR 0035,
+/// `docs/adr/0035-per-application-notification-read-state.md`).
 ///
-/// `fetchState` is the single read; `markAllRead` and `advance` are
-/// fire-and-forget writes returning 204. The server enforces watermark
-/// monotonicity so callers never need to compare timestamps locally.
+/// `fetchState` is the single read; `markAllRead` and `markApplicationRead`
+/// are fire-and-forget writes returning 204. Per-application mark-read is
+/// idempotent, so callers never need to check current state first.
 public final class APINotificationStateRepository: NotificationStateRepository, Sendable {
   private let apiClient: URLSessionAPIClient
 
@@ -38,11 +38,18 @@ public final class APINotificationStateRepository: NotificationStateRepository, 
     }
   }
 
-  public func advance(asOf: Date) async throws {
-    let body = AdvanceNotificationStateRequestDTO(asOf: asOf)
+  public func markApplicationRead(applicationUid: String, authorityId: Int) async throws {
+    let body = MarkApplicationsReadRequestDTO(
+      applications: [
+        MarkApplicationsReadRequestDTO.Item(
+          applicationUid: applicationUid,
+          authorityId: authorityId
+        )
+      ]
+    )
     do {
       let _: EmptyResponse = try await apiClient.request(
-        .post("/v1/me/notification-state/advance", body: body)
+        .post("/v1/me/applications/mark-read", body: body)
       )
     } catch let domainError as DomainError {
       throw domainError
@@ -50,6 +57,7 @@ public final class APINotificationStateRepository: NotificationStateRepository, 
       throw error.toDomainError()
     }
   }
+
 }
 
 // MARK: - DTOs
@@ -76,16 +84,15 @@ struct NotificationStateDTO: Decodable, Sendable {
   }
 }
 
-/// Wire shape of `POST /v1/me/notification-state/advance`. The server reads
-/// `asOf` as ISO-8601, so we encode the `Date` through a formatter rather
-/// than relying on `JSONEncoder.dateEncodingStrategy` (which defaults to
-/// `.deferredToDate` — a numeric reference-date interval, not ISO-8601).
-struct AdvanceNotificationStateRequestDTO: Encodable, Sendable {
-  let asOf: String
-
-  init(asOf: Date) {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    self.asOf = formatter.string(from: asOf)
+/// Wire shape of `POST /v1/me/applications/mark-read`. Modelled as an array so
+/// the wire format is forward-compatible (clients send a single element today).
+/// Each item is scoped by the composite `(applicationUid, authorityId)` because
+/// a PlanIt reference is unique only within a council — see ADR 0035.
+struct MarkApplicationsReadRequestDTO: Encodable, Sendable {
+  struct Item: Encodable, Sendable {
+    let applicationUid: String
+    let authorityId: Int
   }
+
+  let applications: [Item]
 }

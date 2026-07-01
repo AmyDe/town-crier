@@ -119,6 +119,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
+  /// In-flight per-application mark-read fired by ``selectApplication(_:)`` —
+  /// fire-and-forget in production; stored so tests can await it.
+  private var pendingMarkRead: Task<Void, Never>?
+
   /// True when the zone picker should render — i.e. the user has more than one
   /// real watch zone to choose between. Single-zone users have no meaningful
   /// choice; the synthetic 'All' chip that previously kept the picker visible
@@ -290,7 +294,42 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   public func selectApplication(_ id: PlanningApplicationId) {
+    markReadOnOpen(id)
     onApplicationSelected?(id)
+  }
+
+  /// Fires a per-application mark-read when the opened row shows an unread
+  /// badge, optimistically clearing that badge locally so ``unreadCount`` and
+  /// the Unread chip update without a refetch. Already-read/absent rows and
+  /// non-numeric authorities issue no request. Errors are swallowed — a later
+  /// fetch reconciles (ADR 0035). The composite mirrors the deep-link parser:
+  /// `applicationUid` is `id.name`; `authorityId` is `Int(id.authority)`.
+  private func markReadOnOpen(_ id: PlanningApplicationId) {
+    guard let notificationStateRepository,
+      let index = applications.firstIndex(where: { $0.id == id }),
+      applications[index].latestUnreadEvent != nil,
+      let authorityId = Int(id.authority)
+    else {
+      return
+    }
+    let applicationUid = id.name
+    applications[index] = applications[index].withLatestUnreadEvent(nil)
+    pendingMarkRead = Task { [weak self] in
+      do {
+        try await notificationStateRepository.markApplicationRead(
+          applicationUid: applicationUid,
+          authorityId: authorityId
+        )
+      } catch {
+        // Swallow — optimistic UI; a later fetch reconciles (ADR 0035).
+        _ = self
+      }
+    }
+  }
+
+  /// Test-only: await the most recent tap-to-read mark-read.
+  public func waitForPendingMarkRead() async {
+    await pendingMarkRead?.value
   }
 
   /// Stamps the watermark to "now" via the notification-state repository,
