@@ -57,13 +57,19 @@ func backfillReadAt(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
-// seedUnreadNotif inserts one notification for the user via the notifications
-// store (Create leaves read_at NULL — the unread, pre-backfill state).
-func seedUnreadNotif(t *testing.T, pool *pgxpool.Pool, id, userID, uid string, authorityID int, createdAt time.Time) {
+// seedUnreadNotif inserts one unread notification (Create leaves read_at NULL —
+// the pre-backfill state) for the user via the notifications store. The `name`
+// argument is written to application_name (= a.Name, the PlanIt case reference
+// every client and the push payload carry); application_uid is set to a DISTINCT
+// value (name + "/FUL", = a.UID) so the two columns never coincide. This mirrors
+// real PlanIt data (name "24/0001", uid "24/0001/FUL") and is load-bearing: it
+// makes mark-read fixtures fail loudly if the mutation ever matches
+// application_uid again instead of application_name (#733).
+func seedUnreadNotif(t *testing.T, pool *pgxpool.Pool, id, userID, name string, authorityID int, createdAt time.Time) {
 	t.Helper()
 	nStore := notifications.NewPostgresStore(pool)
 	n := notifications.DigestNotification{
-		ID: id, UserID: userID, ApplicationUID: uid, ApplicationName: uid,
+		ID: id, UserID: userID, ApplicationName: name, ApplicationUID: name + "/FUL",
 		AuthorityID: authorityID, EventType: notifications.EventNewApplication,
 		Sources: "Zone", CreatedAt: createdAt,
 	}
@@ -254,17 +260,60 @@ func TestIntegration_NotificationState_MarkAllRead(t *testing.T) {
 
 // --- MarkApplicationsRead ---
 
+// TestIntegration_NotificationState_MarkApplicationsRead_MatchesNameNotUID is the
+// #733 regression guard. The mutation must scope by application_name (= a.Name, the
+// PlanIt case reference every client and the push payload carry), NOT application_uid.
+// The seeded row's name and uid differ ("24-01234" vs "24-01234/FUL"): marking by the
+// uid must clear nothing, marking by the name must clear the row. Under the old
+// application_uid match this was inverted — a silent prod no-op, because the clients
+// never send the uid.
+func TestIntegration_NotificationState_MarkApplicationsRead_MatchesNameNotUID(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// name "24-01234", uid "24-01234/FUL" (seedUnreadNotif derives the distinct uid).
+	seedUnreadNotif(t, pool, "n1", "user-1", "24-01234", 330, t1)
+
+	// The uid is NOT what the clients send: marking by it must clear nothing.
+	clearedByUID, err := s.MarkApplicationsRead(ctx, "user-1", []string{"24-01234/FUL"}, []int{330}, now)
+	if err != nil {
+		t.Fatalf("MarkApplicationsRead(uid): %v", err)
+	}
+	if clearedByUID != 0 {
+		t.Errorf("marking by uid cleared %d rows, want 0 (match must be on application_name)", clearedByUID)
+	}
+	if got := readAtOf(t, pool, "n1"); got != nil {
+		t.Errorf("row must stay unread after a uid-keyed mark-read, got read_at %v", got)
+	}
+
+	// The name (a.Name) is what iOS/web/push carry: marking by it clears the row.
+	clearedByName, err := s.MarkApplicationsRead(ctx, "user-1", []string{"24-01234"}, []int{330}, now)
+	if err != nil {
+		t.Fatalf("MarkApplicationsRead(name): %v", err)
+	}
+	if clearedByName != 1 {
+		t.Errorf("marking by name cleared %d rows, want 1", clearedByName)
+	}
+	if got := readAtOf(t, pool, "n1"); got == nil {
+		t.Error("row must be read (read_at set) after a name-keyed mark-read")
+	}
+}
+
 // TestIntegration_NotificationState_MarkApplicationsRead_CrossAuthorityGuard proves
-// the composite (application_uid, authority_id) scoping: two authorities sharing a
-// bare ref must not cross-contaminate. Marking {uid, authority 330} read clears only
-// authority 330's row and leaves authority 331's same-uid row unread.
+// the composite (application_name, authority_id) scoping: two authorities sharing a
+// case reference must not cross-contaminate. a.Name is unique within a council but
+// collides across councils, so authority_id disambiguates. Marking {name, authority
+// 330} read clears only authority 330's row and leaves authority 331's same-name row
+// unread.
 func TestIntegration_NotificationState_MarkApplicationsRead_CrossAuthorityGuard(t *testing.T) {
 	s, pool := newPGStateStore(t)
 	ctx := context.Background()
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// Same user, same bare uid "24-01234", two different authorities — both unread.
+	// Same user, same case reference name "24-01234", two different authorities — both unread.
 	seedUnreadNotif(t, pool, "n-330", "user-1", "24-01234", 330, t1)
 	seedUnreadNotif(t, pool, "n-331", "user-1", "24-01234", 331, t1)
 
@@ -279,7 +328,7 @@ func TestIntegration_NotificationState_MarkApplicationsRead_CrossAuthorityGuard(
 		t.Error("authority 330's row should be read (read_at set)")
 	}
 	if got := readAtOf(t, pool, "n-331"); got != nil {
-		t.Errorf("authority 331's same-uid row must stay unread, got read_at %v", got)
+		t.Errorf("authority 331's same-name row must stay unread, got read_at %v", got)
 	}
 }
 
