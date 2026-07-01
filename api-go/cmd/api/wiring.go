@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AmyDe/town-crier/api-go/internal/aasa"
 	"github.com/AmyDe/town-crier/api-go/internal/admin"
 	"github.com/AmyDe/town-crier/api-go/internal/api"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
+	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
 	"github.com/AmyDe/town-crier/api-go/internal/demoaccount"
 	"github.com/AmyDe/town-crier/api-go/internal/designations"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
@@ -22,6 +24,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
+	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
 	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
@@ -75,6 +78,11 @@ var anonymousPatterns = map[string]struct{}{
 	// page's unfurl image (#738 Slice 2). The ".png" suffix is enforced in the
 	// handler, so the registered pattern is suffix-free.
 	"GET /og/{authoritySlug}/{ref...}": {},
+	// The Apple App Site Association document is anonymous: Apple's daemon fetches
+	// it without a bearer token to associate the share host with the iOS app for
+	// Universal Links (#738 Slice 3). Content-Type is application/json and the path
+	// carries no ".json" extension.
+	"GET /.well-known/apple-app-site-association": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -186,6 +194,7 @@ func newRouter(
 	appleBundleID string,
 	appleEnvironments []string,
 	registry *metrics.Registry,
+	shareCardCache *blobstore.Store,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -194,6 +203,11 @@ func newRouter(
 	legal.Routes(mux, logger)
 	authorities.Routes(mux, logger)
 	api.Routes(mux, logger)
+	// The Apple App Site Association document (#738 Slice 3) is stateless and needs
+	// no store, so it is registered unconditionally on the share host. The App ID
+	// is composed from the canonical team + bundle constants (fixed contract), not
+	// runtime config.
+	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)
 	// Geocode and designations are authed (absent from anonymousPatterns) and
 	// have no store dependency — they call outbound UK services — so they are
 	// always wired, even on a store-less local boot.
@@ -252,12 +266,18 @@ func newRouter(
 		// same applications store and resolves the authority slug via the static
 		// authority lookup; it reads no user data and emits only public planning data.
 		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
-		// The og:image map card (#738 Slice 2): an anonymous GET /og/{slug}/{ref}.png
+		// The og:image map card (#738 Slice 2/3): an anonymous GET /og/{slug}/{ref}.png
 		// serving a baked OSM map of the site as the share page's unfurl image. It
 		// reuses the same applications store + authority lookup and the real OSM tile
-		// client. The Blob cache (share-cards container + MI RBAC) is Slice 3 infra, so
-		// the store is nil here — the handler degrades to regenerate-on-every-request.
-		sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil /* Blob cache: Slice 3 */, logger)
+		// client. The cache is the Azure share-cards Blob container (ADR 0037); it is
+		// optional. When SHARE_CARDS_BLOB_URL is unset shareCardCache is a nil pointer,
+		// and we MUST pass a genuine nil interface (not the typed-nil *blobstore.Store)
+		// so the handler's cache==nil check disables caching and regenerates on demand.
+		if shareCardCache != nil {
+			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), shareCardCache, logger)
+		} else {
+			sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil, logger)
+		}
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone

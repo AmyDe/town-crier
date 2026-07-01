@@ -45,3 +45,17 @@ func TestAnonymousPatterns_IncludesShareCardImage(t *testing.T) {
 		t.Errorf("anonymousPatterns must include %q", shareCard)
 	}
 }
+
+// TestAnonymousPatterns_IncludesAASA pins the anonymity of the Apple App Site
+// Association document served on the share host (#738 Slice 3). Apple's daemon
+// fetches it without a bearer token, so the exact extensionless well-known path
+// must be present in the map; the auth middleware keys on the registered pattern
+// string byte-for-byte.
+func TestAnonymousPatterns_IncludesAASA(t *testing.T) {
+	t.Parallel()
+
+	const aasa = "GET /.well-known/apple-app-site-association"
+	if _, ok := anonymousPatterns[aasa]; !ok {
+		t.Errorf("anonymousPatterns must include %q", aasa)
+	}
+}
