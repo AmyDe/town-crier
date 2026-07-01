@@ -207,7 +207,7 @@ func TestPostgresNSStore_UnreadCount_ReturnsCount(t *testing.T) {
 	}
 	s := NewPostgresStore(q)
 
-	count, err := s.UnreadCount(context.Background(), "user-1", time.Now())
+	count, err := s.UnreadCount(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestPostgresNSStore_UnreadCount_PropagatesQueryError(t *testing.T) {
 	q := &fakeNSQuerier{queryResponses: []queryResp{{err: boom}}}
 	s := NewPostgresStore(q)
 
-	_, err := s.UnreadCount(context.Background(), "user-1", time.Now())
+	_, err := s.UnreadCount(context.Background(), "user-1")
 	if !errors.Is(err, boom) {
 		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
@@ -234,12 +234,68 @@ func TestPostgresNSStore_UnreadCount_ZeroWhenNoRows(t *testing.T) {
 	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows(nil)}}}
 	s := NewPostgresStore(q)
 
-	count, err := s.UnreadCount(context.Background(), "user-1", time.Now())
+	count, err := s.UnreadCount(context.Background(), "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if count != 0 {
 		t.Errorf("count: got %d, want 0", count)
+	}
+}
+
+// --- MarkAllRead / MarkApplicationsRead (count parsing + error propagation) ---
+
+func TestPostgresNSStore_MarkAllRead_ReturnsClearedCount(t *testing.T) {
+	t.Parallel()
+	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows([][]any{{int64(4)}})}}}
+	s := NewPostgresStore(q)
+
+	cleared, err := s.MarkAllRead(context.Background(), "user-1", time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleared != 4 {
+		t.Errorf("cleared: got %d, want 4", cleared)
+	}
+}
+
+func TestPostgresNSStore_MarkAllRead_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("mark-all boom")
+	q := &fakeNSQuerier{queryResponses: []queryResp{{err: boom}}}
+	s := NewPostgresStore(q)
+
+	_, err := s.MarkAllRead(context.Background(), "user-1", time.Now())
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
+	}
+}
+
+func TestPostgresNSStore_MarkApplicationsRead_ReturnsClearedCount(t *testing.T) {
+	t.Parallel()
+	q := &fakeNSQuerier{queryResponses: []queryResp{{rows: newNSRows([][]any{{int64(1)}})}}}
+	s := NewPostgresStore(q)
+
+	cleared, err := s.MarkApplicationsRead(context.Background(), "user-1",
+		[]string{"24-01234"}, []int{330}, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cleared != 1 {
+		t.Errorf("cleared: got %d, want 1", cleared)
+	}
+}
+
+func TestPostgresNSStore_MarkApplicationsRead_PropagatesQueryError(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("mark-read boom")
+	q := &fakeNSQuerier{queryResponses: []queryResp{{err: boom}}}
+	s := NewPostgresStore(q)
+
+	_, err := s.MarkApplicationsRead(context.Background(), "user-1",
+		[]string{"24-01234"}, []int{330}, time.Now())
+	if !errors.Is(err, boom) {
+		t.Fatalf("got %v, want wrapped %v", err, boom)
 	}
 }
 

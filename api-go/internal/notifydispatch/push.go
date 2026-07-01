@@ -3,7 +3,6 @@ package notifydispatch
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 )
@@ -57,21 +56,11 @@ func sendInstantPush(ctx context.Context, deps instantPushDeps, userID string, n
 	return true
 }
 
-// unreadBadge computes the app-icon badge: notifications created strictly after
-// the read watermark plus 1 for the just-created notification (not yet persisted
-// but unread by construction). A first-touch user (no watermark) starts at the
-// Unix epoch so all existing notifications count.
+// unreadBadge computes the app-icon badge: the user's unread notifications
+// (read_at IS NULL, ADR 0035) plus 1 for the just-created notification (not yet
+// persisted but unread by construction).
 func unreadBadge(ctx context.Context, state stateReader, logger *slog.Logger, userID string) int {
-	lastReadAt := time.Unix(0, 0).UTC()
-	st, err := state.Get(ctx, userID)
-	if err != nil {
-		logger.ErrorContext(ctx, "instant push: load notification state failed", "user", userID, "error", err)
-		return 1
-	}
-	if st != nil {
-		lastReadAt = st.LastReadAt
-	}
-	count, err := state.UnreadCount(ctx, userID, lastReadAt)
+	count, err := state.UnreadCount(ctx, userID)
 	if err != nil {
 		logger.ErrorContext(ctx, "instant push: unread count failed", "user", userID, "error", err)
 		return 1

@@ -108,7 +108,6 @@ func TestIntegration_Notifications_GetLatestUnreadByApplications(t *testing.T) {
 	s := newPGNotifStore(t)
 	ctx := context.Background()
 
-	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t1 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 
@@ -124,8 +123,8 @@ func TestIntegration_Notifications_GetLatestUnreadByApplications(t *testing.T) {
 		t.Fatalf("Create n3: %v", err)
 	}
 
-	// lastReadAt = t0 — all three rows are after the watermark.
-	got, err := s.GetLatestUnreadByApplications(ctx, "user-1", []string{"uid-A", "uid-B"}, t0)
+	// All three rows are unread (read_at IS NULL — Create never sets read_at).
+	got, err := s.GetLatestUnreadByApplications(ctx, "user-1", []string{"uid-A", "uid-B"})
 	if err != nil {
 		t.Fatalf("GetLatestUnreadByApplications: %v", err)
 	}
@@ -141,20 +140,29 @@ func TestIntegration_Notifications_GetLatestUnreadByApplications(t *testing.T) {
 	}
 }
 
-func TestIntegration_Notifications_GetLatestUnreadByApplications_FiltersByLastReadAt(t *testing.T) {
-	s := newPGNotifStore(t)
+// TestIntegration_Notifications_GetLatestUnreadByApplications_ExcludesRead proves a
+// notification with read_at set (read) is excluded — the read_at IS NULL predicate
+// (ADR 0035). This matches what an equivalent watermark past the notification's
+// created_at would have excluded.
+func TestIntegration_Notifications_GetLatestUnreadByApplications_ExcludesRead(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "notifications", "notification_state")
+	s := NewPostgresStore(pool)
 	ctx := context.Background()
 
 	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 
-	// Notification at t1.
+	// Notification at t1, then marked read (read_at = t2) — the equivalent of a
+	// watermark past t1.
 	if err := s.Create(ctx, intNotif("n1", "user-1", "uid-A", EventNewApplication, t1)); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	if _, err := pool.Exec(ctx, "UPDATE notifications SET read_at = $1 WHERE id = 'n1'", t2); err != nil {
+		t.Fatalf("mark n1 read: %v", err)
+	}
 
-	// lastReadAt = t2 (after the notification): should be excluded.
-	got, err := s.GetLatestUnreadByApplications(ctx, "user-1", []string{"uid-A"}, t2)
+	got, err := s.GetLatestUnreadByApplications(ctx, "user-1", []string{"uid-A"})
 	if err != nil {
 		t.Fatalf("GetLatestUnreadByApplications: %v", err)
 	}

@@ -77,7 +77,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // store wired into NearbyRoutes must satisfy. *notifications.PostgresStore (which
 // satisfies the full notifications.Store) satisfies it structurally.
 type notifUnreadReader interface {
-	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production

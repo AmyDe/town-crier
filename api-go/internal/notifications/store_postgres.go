@@ -27,7 +27,7 @@ type querier interface {
 // called only by the maintenance worker, not the common API paths.
 type Store interface {
 	Create(ctx context.Context, n DigestNotification) error
-	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]LatestUnread, error)
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]LatestUnread, error)
 	ByUserSince(ctx context.Context, userID string, since time.Time) ([]DigestNotification, error)
 	AllByUser(ctx context.Context, userID string) ([]DigestNotification, error)
 	UnsentEmailsByUser(ctx context.Context, userID string) ([]DigestNotification, error)
@@ -179,25 +179,24 @@ func (s *PostgresStore) Create(ctx context.Context, n DigestNotification) error 
 }
 
 // pgLatestUnreadQuery uses DISTINCT ON (application_uid) to return the newest
-// notification per uid in one pass — the Postgres equivalent of the Cosmos
-// "first row seen on a newest-first result set" reduction. The 4-column
+// UNREAD notification per uid in one pass. Unread is read_at IS NULL (ADR 0035,
+// replacing the created_at > last_read_at watermark predicate). The 4-column
 // projection avoids reading full document bodies for a display-only badge.
 const pgLatestUnreadQuery = "SELECT DISTINCT ON (application_uid) " +
 	"application_uid, decision, event_type, created_at " +
 	"FROM notifications " +
-	"WHERE user_id = $1 AND application_uid = ANY($2) AND created_at > $3 " +
+	"WHERE user_id = $1 AND application_uid = ANY($2) AND read_at IS NULL " +
 	"ORDER BY application_uid, created_at DESC"
 
 // GetLatestUnreadByApplications returns, for each application uid that has at
-// least one notification created strictly after lastReadAt, the latest such
-// notification — in a single round trip instead of N+1 per-uid queries.
-// An empty uid set returns an empty map without issuing a query, matching the
-// Cosmos early-return guard.
-func (s *PostgresStore) GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]LatestUnread, error) {
+// least one unread notification (read_at IS NULL), the latest such notification
+// — in a single round trip instead of N+1 per-uid queries. An empty uid set
+// returns an empty map without issuing a query.
+func (s *PostgresStore) GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]LatestUnread, error) {
 	if len(applicationUIDs) == 0 {
 		return map[string]LatestUnread{}, nil
 	}
-	rows, err := s.db.Query(ctx, pgLatestUnreadQuery, userID, applicationUIDs, lastReadAt)
+	rows, err := s.db.Query(ctx, pgLatestUnreadQuery, userID, applicationUIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query latest unread for %q: %w", userID, err)
 	}

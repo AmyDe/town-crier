@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +15,18 @@ import (
 )
 
 type fakeStateStore struct {
-	states  map[string]State
-	unread  int
-	getErr  error
-	saveErr error
-	cntErr  error
+	states map[string]State
+	unread int
+
+	getErr      error
+	cntErr      error
+	markAllErr  error
+	markReadErr error
+
+	markAllCalls  int
+	markReadCalls int
+	markReadUIDs  []string
+	markReadAuths []int
 }
 
 func newFakeStateStore() *fakeStateStore {
@@ -36,19 +44,29 @@ func (f *fakeStateStore) Get(_ context.Context, userID string) (*State, error) {
 	return &st, nil
 }
 
-func (f *fakeStateStore) Save(_ context.Context, st State) error {
-	if f.saveErr != nil {
-		return f.saveErr
-	}
-	f.states[st.UserID] = st
-	return nil
-}
-
-func (f *fakeStateStore) UnreadCount(_ context.Context, _ string, _ time.Time) (int, error) {
+func (f *fakeStateStore) UnreadCount(_ context.Context, _ string) (int, error) {
 	if f.cntErr != nil {
 		return 0, f.cntErr
 	}
 	return f.unread, nil
+}
+
+func (f *fakeStateStore) MarkAllRead(_ context.Context, _ string, _ time.Time) (int64, error) {
+	f.markAllCalls++
+	if f.markAllErr != nil {
+		return 0, f.markAllErr
+	}
+	return 0, nil
+}
+
+func (f *fakeStateStore) MarkApplicationsRead(_ context.Context, _ string, uids []string, authorityIDs []int, _ time.Time) (int64, error) {
+	f.markReadCalls++
+	f.markReadUIDs = uids
+	f.markReadAuths = authorityIDs
+	if f.markReadErr != nil {
+		return 0, f.markReadErr
+	}
+	return int64(len(uids)), nil
 }
 
 func testMux(t *testing.T, store stateStore, now time.Time) *http.ServeMux {
@@ -93,7 +111,10 @@ func TestHandler_Get_ExistingState(t *testing.T) {
 	}
 }
 
-func TestHandler_Get_FirstTouchSeedsAndPersists(t *testing.T) {
+// TestHandler_Get_FirstTouchNoSeed proves GET is side-effect-free for a user
+// with no state row: version 0, lastReadAt computed at now (not persisted), and
+// no write to the store (ADR 0035 removed the first-touch watermark seed).
+func TestHandler_Get_FirstTouchNoSeed(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 6, 12, 9, 30, 0, 0, time.UTC)
@@ -103,97 +124,159 @@ func TestHandler_Get_FirstTouchSeedsAndPersists(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	want := `{"lastReadAt":"2026-06-12T09:30:00+00:00","version":1,"totalUnreadCount":0}`
+	want := `{"lastReadAt":"2026-06-12T09:30:00+00:00","version":0,"totalUnreadCount":0}`
 	if rec.Body.String() != want {
 		t.Errorf("body = %s, want %s", rec.Body.String(), want)
 	}
-	// The seed must persist so subsequent reads are idempotent.
-	if st, ok := store.states["auth0|ns1"]; !ok || st.Version != 1 || !st.LastReadAt.Equal(now) {
-		t.Errorf("seed not persisted: %+v", store.states)
+	// No write of any kind: GET must not seed a state row.
+	if len(store.states) != 0 || store.markAllCalls != 0 || store.markReadCalls != 0 {
+		t.Errorf("GET wrote state: states=%v markAll=%d markRead=%d",
+			store.states, store.markAllCalls, store.markReadCalls)
 	}
 }
 
 func TestHandler_MarkAllRead(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
-
-	t.Run("existing state bumps version", func(t *testing.T) {
+	t.Run("clears and returns 204", func(t *testing.T) {
 		t.Parallel()
 		store := newFakeStateStore()
-		store.states["auth0|ns1"] = State{UserID: "auth0|ns1", LastReadAt: now.Add(-time.Hour), Version: 2}
 
-		rec := doReq(t, testMux(t, store, now), http.MethodPost, "/v1/me/notification-state/mark-all-read", "")
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, "/v1/me/notification-state/mark-all-read", "")
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
-		st := store.states["auth0|ns1"]
-		if !st.LastReadAt.Equal(now) || st.Version != 3 {
-			t.Errorf("state = %+v, want lastReadAt=now version=3", st)
+		if store.markAllCalls != 1 {
+			t.Errorf("MarkAllRead calls = %d, want 1", store.markAllCalls)
 		}
 	})
 
-	t.Run("first touch seeds without extra bump", func(t *testing.T) {
+	t.Run("store error is 500", func(t *testing.T) {
 		t.Parallel()
 		store := newFakeStateStore()
+		store.markAllErr = errors.New("db down")
 
-		rec := doReq(t, testMux(t, store, now), http.MethodPost, "/v1/me/notification-state/mark-all-read", "")
-		if rec.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want 204", rec.Code)
-		}
-		st := store.states["auth0|ns1"]
-		if !st.LastReadAt.Equal(now) || st.Version != 1 {
-			t.Errorf("state = %+v, want seeded version=1", st)
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, "/v1/me/notification-state/mark-all-read", "")
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rec.Code)
 		}
 	})
 }
 
-func TestHandler_Advance(t *testing.T) {
+func TestHandler_MarkRead(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
-	baseline := State{UserID: "auth0|ns1", LastReadAt: now.Add(-time.Hour), Version: 2}
+	const path = "/v1/me/applications/mark-read"
 
-	tests := []struct {
-		name        string
-		body        string
-		wantStatus  int
-		wantVersion int
-	}{
-		{"forward advance bumps", `{"asOf":"2026-06-12T09:45:00+00:00"}`, http.StatusNoContent, 3},
-		{"stale asOf is a no-op", `{"asOf":"2026-06-12T08:00:00+00:00"}`, http.StatusNoContent, 2},
-		{"boundary instant is a no-op", `{"asOf":"2026-06-12T09:00:00+00:00"}`, http.StatusNoContent, 2},
-		{"Z suffix accepted on input", `{"asOf":"2026-06-12T09:50:00Z"}`, http.StatusNoContent, 3},
-		{"malformed body", `{"asOf":`, http.StatusBadRequest, 2},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			store := newFakeStateStore()
-			store.states["auth0|ns1"] = baseline
-
-			rec := doReq(t, testMux(t, store, now), http.MethodPost, "/v1/me/notification-state/advance", tc.body)
-			if rec.Code != tc.wantStatus {
-				t.Fatalf("status = %d, want %d", rec.Code, tc.wantStatus)
-			}
-			if got := store.states["auth0|ns1"].Version; got != tc.wantVersion {
-				t.Errorf("version = %d, want %d", got, tc.wantVersion)
-			}
-		})
-	}
-
-	t.Run("first touch seeds at now then advances", func(t *testing.T) {
+	t.Run("single application clears and returns 204", func(t *testing.T) {
 		t.Parallel()
 		store := newFakeStateStore()
 
-		// asOf earlier than the seed: persists the seed untouched (version 1).
-		rec := doReq(t, testMux(t, store, now), http.MethodPost, "/v1/me/notification-state/advance", `{"asOf":"2020-01-01T00:00:00+00:00"}`)
+		body := `{"applications":[{"applicationUid":"24-01234","authorityId":330}]}`
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, body)
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
-		st := store.states["auth0|ns1"]
-		if !st.LastReadAt.Equal(now) || st.Version != 1 {
-			t.Errorf("state = %+v, want seed at now version=1", st)
+		if store.markReadCalls != 1 {
+			t.Fatalf("MarkApplicationsRead calls = %d, want 1", store.markReadCalls)
+		}
+		if !reflect.DeepEqual(store.markReadUIDs, []string{"24-01234"}) ||
+			!reflect.DeepEqual(store.markReadAuths, []int{330}) {
+			t.Errorf("passed uids=%v auths=%v, want [24-01234] [330]", store.markReadUIDs, store.markReadAuths)
+		}
+	})
+
+	t.Run("several applications pass every pair", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+
+		body := `{"applications":[` +
+			`{"applicationUid":"24-01234","authorityId":330},` +
+			`{"applicationUid":"24-05678","authorityId":331}]}`
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, body)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", rec.Code)
+		}
+		if !reflect.DeepEqual(store.markReadUIDs, []string{"24-01234", "24-05678"}) ||
+			!reflect.DeepEqual(store.markReadAuths, []int{330, 331}) {
+			t.Errorf("passed uids=%v auths=%v", store.markReadUIDs, store.markReadAuths)
+		}
+	})
+
+	t.Run("empty array marks nothing and returns 204", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, `{"applications":[]}`)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", rec.Code)
+		}
+		// The store is asked to clear the empty set — never "all".
+		if store.markReadCalls != 1 || len(store.markReadUIDs) != 0 || len(store.markReadAuths) != 0 {
+			t.Errorf("empty array: calls=%d uids=%v auths=%v, want 1 call with empty sets",
+				store.markReadCalls, store.markReadUIDs, store.markReadAuths)
+		}
+	})
+
+	t.Run("idempotent second call is still 204", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+		mux := testMux(t, store, time.Now())
+		body := `{"applications":[{"applicationUid":"24-01234","authorityId":330}]}`
+
+		if rec := doReq(t, mux, http.MethodPost, path, body); rec.Code != http.StatusNoContent {
+			t.Fatalf("first call status = %d, want 204", rec.Code)
+		}
+		if rec := doReq(t, mux, http.MethodPost, path, body); rec.Code != http.StatusNoContent {
+			t.Fatalf("second call status = %d, want 204", rec.Code)
+		}
+	})
+
+	t.Run("malformed body is a bodyless 400", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, `{"applications":`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if store.markReadCalls != 0 {
+			t.Errorf("malformed body must not touch the store: calls=%d", store.markReadCalls)
+		}
+	})
+
+	t.Run("over the cap is a 400", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+
+		var sb strings.Builder
+		sb.WriteString(`{"applications":[`)
+		for i := 0; i <= maxMarkReadApplications; i++ {
+			if i > 0 {
+				sb.WriteByte(',')
+			}
+			sb.WriteString(`{"applicationUid":"u","authorityId":1}`)
+		}
+		sb.WriteString(`]}`)
+
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, sb.String())
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if store.markReadCalls != 0 {
+			t.Errorf("over-cap must not touch the store: calls=%d", store.markReadCalls)
+		}
+	})
+
+	t.Run("store error is 500", func(t *testing.T) {
+		t.Parallel()
+		store := newFakeStateStore()
+		store.markReadErr = errors.New("db down")
+
+		body := `{"applications":[{"applicationUid":"24-01234","authorityId":330}]}`
+		rec := doReq(t, testMux(t, store, time.Now()), http.MethodPost, path, body)
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rec.Code)
 		}
 	})
 }
@@ -201,16 +284,24 @@ func TestHandler_Advance(t *testing.T) {
 func TestHandler_StoreFailures(t *testing.T) {
 	t.Parallel()
 
-	store := newFakeStateStore()
-	store.getErr = errors.New("cosmos down")
-	for _, tc := range []struct{ method, path, body string }{
-		{http.MethodGet, "/v1/me/notification-state", ""},
-		{http.MethodPost, "/v1/me/notification-state/mark-all-read", ""},
-		{http.MethodPost, "/v1/me/notification-state/advance", `{"asOf":"2026-06-12T09:45:00+00:00"}`},
+	markReadBody := `{"applications":[{"applicationUid":"24-01234","authorityId":330}]}`
+	for _, tc := range []struct {
+		name               string
+		method, path, body string
+		configure          func(*fakeStateStore)
+	}{
+		{"get", http.MethodGet, "/v1/me/notification-state", "", func(f *fakeStateStore) { f.getErr = errors.New("boom") }},
+		{"mark-all-read", http.MethodPost, "/v1/me/notification-state/mark-all-read", "", func(f *fakeStateStore) { f.markAllErr = errors.New("boom") }},
+		{"mark-read", http.MethodPost, "/v1/me/applications/mark-read", markReadBody, func(f *fakeStateStore) { f.markReadErr = errors.New("boom") }},
 	} {
-		rec := doReq(t, testMux(t, store, time.Now()), tc.method, tc.path, tc.body)
-		if rec.Code != http.StatusInternalServerError {
-			t.Errorf("%s %s status = %d, want 500", tc.method, tc.path, rec.Code)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeStateStore()
+			tc.configure(store)
+			rec := doReq(t, testMux(t, store, time.Now()), tc.method, tc.path, tc.body)
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("%s %s status = %d, want 500", tc.method, tc.path, rec.Code)
+			}
+		})
 	}
 }

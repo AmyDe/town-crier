@@ -13,7 +13,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -79,15 +78,10 @@ func (f *fakeZones) GetByUserID(_ context.Context, userID string) ([]watchzones.
 }
 
 type fakeState struct {
-	byUser map[string]*notificationstate.State
 	unread map[string]int
 }
 
-func (f *fakeState) Get(_ context.Context, userID string) (*notificationstate.State, error) {
-	return f.byUser[userID], nil
-}
-
-func (f *fakeState) UnreadCount(_ context.Context, userID string, _ time.Time) (int, error) {
+func (f *fakeState) UnreadCount(_ context.Context, userID string) (int, error) {
 	return f.unread[userID], nil
 }
 
@@ -272,9 +266,6 @@ func TestRunWeekly_ProTierGetsPushWithBadgeAndPrunesInvalidTokens(t *testing.T) 
 		"user-1": {zoneNotif("uid-A", "zone-1"), zoneNotif("uid-B", "zone-1")},
 	}}
 	state := &fakeState{
-		byUser: map[string]*notificationstate.State{
-			"user-1": {UserID: "user-1", LastReadAt: time.Unix(0, 0), Version: 1},
-		},
 		unread: map[string]int{"user-1": 5},
 	}
 	devices := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{

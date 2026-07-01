@@ -11,7 +11,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -80,17 +79,12 @@ func (f *fakeDevices) Delete(_ context.Context, _, token string) error {
 	return nil
 }
 
-// fakeState serves the read-watermark and unread count.
+// fakeState serves the unread count (read_at IS NULL, ADR 0035).
 type fakeState struct {
-	state  *notificationstate.State
 	unread int
 }
 
-func (f *fakeState) Get(_ context.Context, _ string) (*notificationstate.State, error) {
-	return f.state, nil
-}
-
-func (f *fakeState) UnreadCount(_ context.Context, _ string, _ time.Time) (int, error) {
+func (f *fakeState) UnreadCount(_ context.Context, _ string) (int, error) {
 	return f.unread, nil
 }
 

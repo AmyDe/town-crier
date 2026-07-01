@@ -570,18 +570,19 @@ func statusCursorOf(last datePageRow) pageCursor {
 }
 
 // activityUnreadSubquery computes, per application, the caller's latest UNREAD
-// notification timestamp. $5 is the caller's userID. The INNER JOIN to
-// notification_state is load-bearing: a user with no watermark row produces no
-// rows here, so "no notification_state ⇒ no unread anywhere" falls out naturally,
-// matching GetLatestUnreadByApplications and the handler's first-touch rule.
-// Unread is the strict created_at > last_read_at. It groups on (application_uid,
-// authority_id) — the same keys the outer LEFT JOIN matches against the
-// application's (uid, area_id) — so the integer authority_id (NOT the text
-// authority_code) is what reconciles a notification to its application.
+// notification timestamp. $5 is the caller's userID. Unread is read_at IS NULL
+// (ADR 0035, replacing the notification_state watermark JOIN). The "no unread
+// for an untouched user" behaviour is preserved by migration 0015's backfill:
+// existing no-watermark users had their history marked read (read_at set), so
+// they contribute no rows here; a genuinely new notification (read_at IS NULL)
+// correctly reads as unread. It groups on (application_uid, authority_id) — the
+// same keys the outer LEFT JOIN matches against the application's (uid, area_id)
+// — so the integer authority_id (NOT the text authority_code) reconciles a
+// notification to its application, and a bare uid shared across authorities
+// cannot cross-contaminate.
 const activityUnreadSubquery = "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
 	" FROM notifications n" +
-	" JOIN notification_state ns ON ns.user_id = n.user_id" +
-	" WHERE n.user_id = $5 AND n.created_at > ns.last_read_at" +
+	" WHERE n.user_id = $5 AND n.read_at IS NULL" +
 	" GROUP BY n.application_uid, n.authority_id"
 
 // activityExpr is the recent-activity sort key: the later of the application's
@@ -755,8 +756,8 @@ func (s *PostgresStore) findFilteredZonePage(ctx context.Context, q InZoneQuery,
 // an optional "AND app_state = $x" status predicate, and an optional unread join.
 // The join is INNER when q.Unread is set (it drops applications with no unread for
 // the caller) and LEFT when only recent-activity needs it for ordering; both reuse
-// the slice-3 unread subquery (created_at > last_read_at, INNER to
-// notification_state so a first-touch caller contributes nothing).
+// the read_at IS NULL unread subquery (ADR 0035), grouped on (application_uid,
+// authority_id) so the outer join stays authority-safe.
 func buildFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error) {
 	b := &argBuilder{}
 	lonP := b.add(q.Longitude)
@@ -786,8 +787,7 @@ func buildFilteredZoneQuery(q InZoneQuery, c *pageCursor) (string, []any, error)
 		userP := b.add(q.UserID)
 		subquery := "SELECT n.application_uid, n.authority_id, MAX(n.created_at) AS created_at" +
 			" FROM notifications n" +
-			" JOIN notification_state ns ON ns.user_id = n.user_id" +
-			" WHERE n.user_id = " + userP + " AND n.created_at > ns.last_read_at" +
+			" WHERE n.user_id = " + userP + " AND n.read_at IS NULL" +
 			" GROUP BY n.application_uid, n.authority_id"
 		sb.WriteString(" " + joinType + " (" + subquery + ") u" +
 			" ON applications.uid = u.application_uid AND applications.area_id = u.authority_id")

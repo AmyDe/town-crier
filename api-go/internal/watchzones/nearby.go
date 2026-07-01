@@ -77,10 +77,10 @@ type watermarkReader interface {
 	Get(ctx context.Context, userID string) (*notificationstate.State, error)
 }
 
-// unreadReader batches the per-application latest-unread lookup.
-// *notifications.CosmosStore satisfies it.
+// unreadReader batches the per-application latest-unread lookup (read_at IS NULL,
+// ADR 0035). *notifications.PostgresStore satisfies it.
 type unreadReader interface {
-	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
 // NearbyRoutes registers POST /v1/me/watch-zones (create, returning nearby
@@ -397,16 +397,19 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only classify rows as unread when the user has a watermark; first-touch
-	// users get null latestUnreadEvent everywhere (the dedicated notification-state
-	// seeder owns watermark creation).
+	// Only classify rows as unread when the user has a notification_state row.
+	// Unread is now read_at IS NULL (ADR 0035); this gate is retained unchanged
+	// from the watermark model to preserve behaviour for existing users. It is
+	// deliberately out of scope for the read_at migration — see the follow-up on
+	// making this display path independent of the state row so brand-new users
+	// (who no longer get a seeded row) also surface per-row unread badges.
 	var unread map[string]notifications.LatestUnread
 	if state != nil {
 		uids := make([]string, 0, len(apps))
 		for _, a := range apps {
 			uids = append(uids, a.UID)
 		}
-		unread, err = h.unread.GetLatestUnreadByApplications(r.Context(), userID, uids, state.LastReadAt)
+		unread, err = h.unread.GetLatestUnreadByApplications(r.Context(), userID, uids)
 		if err != nil {
 			h.serverError(w, r, "load latest unread", err)
 			return

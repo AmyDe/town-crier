@@ -23,6 +23,67 @@ func newPGStateStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
 	return NewPostgresStore(pool), pool
 }
 
+// Backfill SQL mirrors migrations/0015_notifications_read_at.sql. These integration
+// tests seed a pre-migration state (notifications created via the store, all
+// read_at IS NULL, plus a watermark row) and replay the backfill to derive read_at,
+// then assert read_at IS NULL behaviour matches what the watermark model gave — the
+// explicit equivalence acceptance criterion (ADR 0035). Keep in sync with 0015.
+const (
+	backfillWatermarkedSQL = `
+UPDATE notifications n
+SET read_at = ns.last_read_at
+FROM notification_state ns
+WHERE n.user_id = ns.user_id
+  AND n.created_at <= ns.last_read_at
+  AND n.read_at IS NULL`
+
+	backfillNoWatermarkSQL = `
+UPDATE notifications n
+SET read_at = n.created_at
+WHERE n.read_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM notification_state ns WHERE ns.user_id = n.user_id)`
+)
+
+// backfillReadAt replays migration 0015's two backfill UPDATEs, deriving read_at
+// from the seeded watermark rows.
+func backfillReadAt(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, backfillWatermarkedSQL); err != nil {
+		t.Fatalf("backfill watermarked: %v", err)
+	}
+	if _, err := pool.Exec(ctx, backfillNoWatermarkSQL); err != nil {
+		t.Fatalf("backfill no-watermark: %v", err)
+	}
+}
+
+// seedUnreadNotif inserts one notification for the user via the notifications
+// store (Create leaves read_at NULL — the unread, pre-backfill state).
+func seedUnreadNotif(t *testing.T, pool *pgxpool.Pool, id, userID, uid string, authorityID int, createdAt time.Time) {
+	t.Helper()
+	nStore := notifications.NewPostgresStore(pool)
+	n := notifications.DigestNotification{
+		ID: id, UserID: userID, ApplicationUID: uid, ApplicationName: uid,
+		AuthorityID: authorityID, EventType: notifications.EventNewApplication,
+		Sources: "Zone", CreatedAt: createdAt,
+	}
+	if err := nStore.Create(context.Background(), n); err != nil {
+		t.Fatalf("seed notification %q: %v", id, err)
+	}
+}
+
+// unreadCountFor reads the raw read_at-IS-NULL count for a user (independent of the
+// store method under test).
+func unreadCountFor(t *testing.T, pool *pgxpool.Pool, userID string) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL", userID).Scan(&n); err != nil {
+		t.Fatalf("count unread for %q: %v", userID, err)
+	}
+	return n
+}
+
 // --- Get / Save round-trip ---
 
 func TestIntegration_NotificationState_GetSave(t *testing.T) {
@@ -92,52 +153,207 @@ func TestIntegration_NotificationState_Save_Idempotent(t *testing.T) {
 	}
 }
 
-// --- UnreadCount cross-reads the notifications table ---
+// --- UnreadCount over read_at IS NULL, equivalent to a watermark fixture ---
 
+// TestIntegration_NotificationState_UnreadCount proves UnreadCount under
+// read_at IS NULL equals the count an equivalent watermark fixture (created_at >
+// last_read_at, backfilled per migration 0015) would give. Watermark at t1 → the
+// two later notifications count; watermark at t3 (the boundary) → nothing counts.
 func TestIntegration_NotificationState_UnreadCount(t *testing.T) {
-	s, pool := newPGStateStore(t)
-	ctx := context.Background()
-
-	// Seed two notifications for user-1 using the notifications PostgresStore
-	// (same pool — correct cross-table read).
-	nStore := notifications.NewPostgresStore(pool)
 	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	t3 := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 
-	for _, n := range []notifications.DigestNotification{
-		{ID: "n1", UserID: "user-1", ApplicationUID: "uid-A", ApplicationName: "A",
-			AuthorityID: 100, EventType: notifications.EventNewApplication,
-			Sources: "Zone", CreatedAt: t1},
-		{ID: "n2", UserID: "user-1", ApplicationUID: "uid-B", ApplicationName: "B",
-			AuthorityID: 100, EventType: notifications.EventNewApplication,
-			Sources: "Zone", CreatedAt: t2},
-		{ID: "n3", UserID: "user-1", ApplicationUID: "uid-C", ApplicationName: "C",
-			AuthorityID: 100, EventType: notifications.EventNewApplication,
-			Sources: "Zone", CreatedAt: t3},
-	} {
-		if err := nStore.Create(ctx, n); err != nil {
-			t.Fatalf("seed notification %s: %v", n.ID, err)
+	t.Run("watermark at t1 -> 2 unread", func(t *testing.T) {
+		s, pool := newPGStateStore(t)
+		ctx := context.Background()
+		seedUnreadNotif(t, pool, "n1", "user-1", "uid-A", 100, t1)
+		seedUnreadNotif(t, pool, "n2", "user-1", "uid-B", 100, t2)
+		seedUnreadNotif(t, pool, "n3", "user-1", "uid-C", 100, t3)
+		if err := s.Save(ctx, State{UserID: "user-1", LastReadAt: t1, Version: 1}); err != nil {
+			t.Fatalf("seed watermark: %v", err)
 		}
+		backfillReadAt(t, pool) // read_at = t1 for n1 (created_at <= t1); n2, n3 stay NULL.
+
+		count, err := s.UnreadCount(ctx, "user-1")
+		if err != nil {
+			t.Fatalf("UnreadCount: %v", err)
+		}
+		if count != 2 {
+			t.Errorf("unread count: got %d, want 2", count)
+		}
+	})
+
+	t.Run("watermark at t3 (boundary, inclusive) -> 0 unread", func(t *testing.T) {
+		s, pool := newPGStateStore(t)
+		ctx := context.Background()
+		seedUnreadNotif(t, pool, "n1", "user-1", "uid-A", 100, t1)
+		seedUnreadNotif(t, pool, "n2", "user-1", "uid-B", 100, t2)
+		seedUnreadNotif(t, pool, "n3", "user-1", "uid-C", 100, t3)
+		if err := s.Save(ctx, State{UserID: "user-1", LastReadAt: t3, Version: 1}); err != nil {
+			t.Fatalf("seed watermark: %v", err)
+		}
+		backfillReadAt(t, pool) // all created_at <= t3 → all read.
+
+		count, err := s.UnreadCount(ctx, "user-1")
+		if err != nil {
+			t.Fatalf("UnreadCount: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("unread count at boundary: got %d, want 0", count)
+		}
+	})
+}
+
+// --- MarkAllRead ---
+
+// TestIntegration_NotificationState_MarkAllRead proves mark-all clears every unread
+// notification (a subsequent UnreadCount is 0) and bumps the version change token,
+// upserting the state row when the user has none.
+func TestIntegration_NotificationState_MarkAllRead(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	seedUnreadNotif(t, pool, "n1", "user-1", "uid-A", 100, t1)
+	seedUnreadNotif(t, pool, "n2", "user-1", "uid-B", 100, t1)
+
+	cleared, err := s.MarkAllRead(ctx, "user-1", now)
+	if err != nil {
+		t.Fatalf("MarkAllRead: %v", err)
+	}
+	if cleared != 2 {
+		t.Errorf("cleared: got %d, want 2", cleared)
+	}
+	if got := unreadCountFor(t, pool, "user-1"); got != 0 {
+		t.Errorf("unread after mark-all: got %d, want 0", got)
 	}
 
-	// lastReadAt = t1 → n2 (t2) and n3 (t3) are unread.
-	count, err := s.UnreadCount(ctx, "user-1", t1)
+	// First-touch user: mark-all upserts the state row at version 1.
+	st, err := s.Get(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("UnreadCount: %v", err)
+		t.Fatalf("Get after mark-all: %v", err)
 	}
-	if count != 2 {
-		t.Errorf("unread count: got %d, want 2", count)
+	if st == nil || st.Version != 1 {
+		t.Fatalf("state after first mark-all: got %+v, want version 1", st)
 	}
 
-	// lastReadAt = t3 (at the boundary) → 0 unread (strictly after, t3 itself is read).
-	countAtBoundary, err := s.UnreadCount(ctx, "user-1", t3)
+	// A second mark-all (nothing unread) still bumps the version token.
+	if _, err := s.MarkAllRead(ctx, "user-1", now); err != nil {
+		t.Fatalf("second MarkAllRead: %v", err)
+	}
+	st, err = s.Get(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("UnreadCount at boundary: %v", err)
+		t.Fatalf("Get after second mark-all: %v", err)
 	}
-	if countAtBoundary != 0 {
-		t.Errorf("unread count at boundary: got %d, want 0", countAtBoundary)
+	if st == nil || st.Version != 2 {
+		t.Errorf("version after second mark-all: got %+v, want 2", st)
 	}
+}
+
+// --- MarkApplicationsRead ---
+
+// TestIntegration_NotificationState_MarkApplicationsRead_CrossAuthorityGuard proves
+// the composite (application_uid, authority_id) scoping: two authorities sharing a
+// bare ref must not cross-contaminate. Marking {uid, authority 330} read clears only
+// authority 330's row and leaves authority 331's same-uid row unread.
+func TestIntegration_NotificationState_MarkApplicationsRead_CrossAuthorityGuard(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Same user, same bare uid "24-01234", two different authorities — both unread.
+	seedUnreadNotif(t, pool, "n-330", "user-1", "24-01234", 330, t1)
+	seedUnreadNotif(t, pool, "n-331", "user-1", "24-01234", 331, t1)
+
+	cleared, err := s.MarkApplicationsRead(ctx, "user-1", []string{"24-01234"}, []int{330}, now)
+	if err != nil {
+		t.Fatalf("MarkApplicationsRead: %v", err)
+	}
+	if cleared != 1 {
+		t.Fatalf("cleared: got %d, want 1 (only authority 330)", cleared)
+	}
+	if got := readAtOf(t, pool, "n-330"); got == nil {
+		t.Error("authority 330's row should be read (read_at set)")
+	}
+	if got := readAtOf(t, pool, "n-331"); got != nil {
+		t.Errorf("authority 331's same-uid row must stay unread, got read_at %v", got)
+	}
+}
+
+// TestIntegration_NotificationState_MarkApplicationsRead_Idempotent proves a second
+// mark-read clears zero rows (idempotent) and does not bump the version a second
+// time, while the first (cleared > 0) does bump it.
+func TestIntegration_NotificationState_MarkApplicationsRead_Idempotent(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	seedUnreadNotif(t, pool, "n1", "user-1", "24-01234", 330, t1)
+
+	first, err := s.MarkApplicationsRead(ctx, "user-1", []string{"24-01234"}, []int{330}, now)
+	if err != nil {
+		t.Fatalf("first MarkApplicationsRead: %v", err)
+	}
+	if first != 1 {
+		t.Errorf("first call cleared: got %d, want 1", first)
+	}
+	st, _ := s.Get(ctx, "user-1")
+	if st == nil || st.Version != 1 {
+		t.Fatalf("version after first clear: got %+v, want 1", st)
+	}
+
+	second, err := s.MarkApplicationsRead(ctx, "user-1", []string{"24-01234"}, []int{330}, now)
+	if err != nil {
+		t.Fatalf("second MarkApplicationsRead: %v", err)
+	}
+	if second != 0 {
+		t.Errorf("second call cleared: got %d, want 0 (idempotent)", second)
+	}
+	// Zero cleared → no version bump.
+	st, _ = s.Get(ctx, "user-1")
+	if st == nil || st.Version != 1 {
+		t.Errorf("version after zero-clear: got %+v, want unchanged 1", st)
+	}
+}
+
+// TestIntegration_NotificationState_MarkApplicationsRead_EmptyClearsNothing proves an
+// empty request clears nothing (never "all") and does not create or bump a state row.
+func TestIntegration_NotificationState_MarkApplicationsRead_EmptyClearsNothing(t *testing.T) {
+	s, pool := newPGStateStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	t1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	seedUnreadNotif(t, pool, "n1", "user-1", "24-01234", 330, t1)
+
+	cleared, err := s.MarkApplicationsRead(ctx, "user-1", []string{}, []int{}, now)
+	if err != nil {
+		t.Fatalf("MarkApplicationsRead(empty): %v", err)
+	}
+	if cleared != 0 {
+		t.Errorf("empty request cleared: got %d, want 0", cleared)
+	}
+	if got := unreadCountFor(t, pool, "user-1"); got != 1 {
+		t.Errorf("unread after empty mark-read: got %d, want 1 (nothing cleared)", got)
+	}
+	if st, _ := s.Get(ctx, "user-1"); st != nil {
+		t.Errorf("empty mark-read must not create a state row, got %+v", st)
+	}
+}
+
+// readAtOf returns the (nullable) read_at for the notification with the given id.
+func readAtOf(t *testing.T, pool *pgxpool.Pool, id string) *time.Time {
+	t.Helper()
+	var readAt *time.Time
+	if err := pool.QueryRow(context.Background(),
+		"SELECT read_at FROM notifications WHERE id = $1", id).Scan(&readAt); err != nil {
+		t.Fatalf("scan read_at for %q: %v", id, err)
+	}
+	return readAt
 }
 
 // --- DeleteByUserID ---

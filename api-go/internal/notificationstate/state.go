@@ -1,7 +1,14 @@
-// Package notificationstate owns the per-user read-watermark feature: the
-// State domain value, its Cosmos document shape, the store (watermark document
-// + unread count over the Notifications container), and the
-// GET/mark-all-read/advance HTTP handlers (GH#418 iteration 4).
+// Package notificationstate owns the per-user notification read-state feature:
+// the State value (a version change token plus a vestigial last-read instant),
+// the mark-read / mark-all-read read-state mutations over the notifications
+// table, the unread count, and the GET/mark-all-read/mark-read HTTP handlers.
+//
+// Read state is per-application, keyed on notifications.read_at (ADR 0035,
+// superseding the last-read watermark). A notification is unread iff
+// read_at IS NULL; opening an application clears its rows (mark-read); mark-all
+// clears every unread row. The notification_state.version is retained as an
+// opaque change token that bumps on any read-state mutation so the client's
+// BadgeSync still detects change; last_read_at no longer drives unread.
 package notificationstate
 
 import (
@@ -10,18 +17,20 @@ import (
 	"time"
 )
 
-// State is one user's notification read watermark. LastReadAt is the cutoff
-// (notifications created at exactly that instant count as read); Version
-// increments on every change.
+// State is one user's notification read-state row. Version is the opaque change
+// token that increments on every read-state mutation (mark-read that cleared at
+// least one row, and mark-all-read). LastReadAt is retained for GET DTO shape
+// stability only; it no longer drives the unread computation (that is
+// read_at IS NULL on the notifications table — ADR 0035).
 type State struct {
 	UserID     string
 	LastReadAt time.Time
 	Version    int
 }
 
-// NewState seeds a first-touch watermark at the given instant with version 1,
-// matching NotificationStateAggregate.Create: all existing notifications count
-// as already read ("clean slate", spec pre-resolved decision #13).
+// NewState seeds a first-touch state row at the given instant with version 1.
+// LastReadAt is vestigial (kept for DTO shape); the meaningful field is Version,
+// the change token BadgeSync observes.
 func NewState(userID string, lastReadAt time.Time) (State, error) {
 	if strings.TrimSpace(userID) == "" {
 		return State{}, errors.New("user id is required")
@@ -29,21 +38,8 @@ func NewState(userID string, lastReadAt time.Time) (State, error) {
 	return State{UserID: userID, LastReadAt: lastReadAt, Version: 1}, nil
 }
 
-// MarkAllReadAt moves the watermark to now unconditionally and bumps the
-// version, mirroring MarkAllReadAt.
+// MarkAllReadAt stamps LastReadAt to now and bumps the version change token.
 func (s *State) MarkAllReadAt(now time.Time) {
 	s.LastReadAt = now
 	s.Version++
-}
-
-// AdvanceTo moves the watermark forward to asOf, reporting whether anything
-// changed. A stale asOf (<= the current watermark) is a no-op returning false,
-// mirroring AdvanceTo's redundant-write guard.
-func (s *State) AdvanceTo(asOf time.Time) bool {
-	if !asOf.After(s.LastReadAt) {
-		return false
-	}
-	s.LastReadAt = asOf
-	s.Version++
-	return true
 }

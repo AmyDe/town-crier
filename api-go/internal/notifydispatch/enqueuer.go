@@ -27,7 +27,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -53,11 +52,10 @@ type deviceReader interface {
 	Delete(ctx context.Context, userID, token string) error
 }
 
-// stateReader supplies the unread-badge inputs: the read watermark and the
-// strictly-after-watermark count. *notificationstate.CosmosStore satisfies it.
+// stateReader supplies the unread-badge input: the total unread tally
+// (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore satisfies it.
 type stateReader interface {
-	Get(ctx context.Context, userID string) (*notificationstate.State, error)
-	UnreadCount(ctx context.Context, userID string, lastReadAt time.Time) (int, error)
+	UnreadCount(ctx context.Context, userID string) (int, error)
 }
 
 // pushSender is the consumer-side push contract; apns.PushSender (the real

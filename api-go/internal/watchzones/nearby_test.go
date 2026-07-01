@@ -122,7 +122,7 @@ type fakeUnread struct {
 	lastUIDs []string
 }
 
-func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, uids []string, _ time.Time) (map[string]notifications.LatestUnread, error) {
+func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, uids []string) (map[string]notifications.LatestUnread, error) {
 	f.called = true
 	f.lastUIDs = uids
 	return f.result, f.err
