@@ -25,7 +25,7 @@ type fakeStateStore struct {
 
 	markAllCalls  int
 	markReadCalls int
-	markReadUIDs  []string
+	markReadRefs  []string
 	markReadAuths []int
 }
 
@@ -59,14 +59,14 @@ func (f *fakeStateStore) MarkAllRead(_ context.Context, _ string, _ time.Time) (
 	return 0, nil
 }
 
-func (f *fakeStateStore) MarkApplicationsRead(_ context.Context, _ string, uids []string, authorityIDs []int, _ time.Time) (int64, error) {
+func (f *fakeStateStore) MarkApplicationsRead(_ context.Context, _ string, refs []string, authorityIDs []int, _ time.Time) (int64, error) {
 	f.markReadCalls++
-	f.markReadUIDs = uids
+	f.markReadRefs = refs
 	f.markReadAuths = authorityIDs
 	if f.markReadErr != nil {
 		return 0, f.markReadErr
 	}
-	return int64(len(uids)), nil
+	return int64(len(refs)), nil
 }
 
 func testMux(t *testing.T, store stateStore, now time.Time) *http.ServeMux {
@@ -180,9 +180,9 @@ func TestHandler_MarkRead(t *testing.T) {
 		if store.markReadCalls != 1 {
 			t.Fatalf("MarkApplicationsRead calls = %d, want 1", store.markReadCalls)
 		}
-		if !reflect.DeepEqual(store.markReadUIDs, []string{"24-01234"}) ||
+		if !reflect.DeepEqual(store.markReadRefs, []string{"24-01234"}) ||
 			!reflect.DeepEqual(store.markReadAuths, []int{330}) {
-			t.Errorf("passed uids=%v auths=%v, want [24-01234] [330]", store.markReadUIDs, store.markReadAuths)
+			t.Errorf("passed refs=%v auths=%v, want [24-01234] [330]", store.markReadRefs, store.markReadAuths)
 		}
 	})
 
@@ -197,9 +197,9 @@ func TestHandler_MarkRead(t *testing.T) {
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
-		if !reflect.DeepEqual(store.markReadUIDs, []string{"24-01234", "24-05678"}) ||
+		if !reflect.DeepEqual(store.markReadRefs, []string{"24-01234", "24-05678"}) ||
 			!reflect.DeepEqual(store.markReadAuths, []int{330, 331}) {
-			t.Errorf("passed uids=%v auths=%v", store.markReadUIDs, store.markReadAuths)
+			t.Errorf("passed refs=%v auths=%v", store.markReadRefs, store.markReadAuths)
 		}
 	})
 
@@ -212,9 +212,9 @@ func TestHandler_MarkRead(t *testing.T) {
 			t.Fatalf("status = %d, want 204", rec.Code)
 		}
 		// The store is asked to clear the empty set — never "all".
-		if store.markReadCalls != 1 || len(store.markReadUIDs) != 0 || len(store.markReadAuths) != 0 {
-			t.Errorf("empty array: calls=%d uids=%v auths=%v, want 1 call with empty sets",
-				store.markReadCalls, store.markReadUIDs, store.markReadAuths)
+		if store.markReadCalls != 1 || len(store.markReadRefs) != 0 || len(store.markReadAuths) != 0 {
+			t.Errorf("empty array: calls=%d refs=%v auths=%v, want 1 call with empty sets",
+				store.markReadCalls, store.markReadRefs, store.markReadAuths)
 		}
 	})
 

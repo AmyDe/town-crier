@@ -27,7 +27,7 @@ type Store interface {
 	Save(ctx context.Context, st State) error
 	UnreadCount(ctx context.Context, userID string) (int, error)
 	MarkAllRead(ctx context.Context, userID string, now time.Time) (int64, error)
-	MarkApplicationsRead(ctx context.Context, userID string, uids []string, authorityIDs []int, now time.Time) (int64, error)
+	MarkApplicationsRead(ctx context.Context, userID string, refs []string, authorityIDs []int, now time.Time) (int64, error)
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
@@ -42,10 +42,11 @@ var _ Store = (*PostgresStore)(nil)
 //   - Unread is read_at IS NULL (ADR 0035); UnreadCount is a SELECT count(*)
 //     over the partial index idx_notifications_unread.
 //   - MarkApplicationsRead clears the caller's unread rows for a set of
-//     (application_uid, authority_id) pairs — the composite is load-bearing:
-//     application_uid is the bare per-council PlanIt ref and is NOT unique
-//     across authorities, so matching on uid alone would clear the wrong
-//     council's rows. It bumps the version token only when it cleared a row.
+//     (application_name, authority_id) pairs — it matches application_name (=
+//     a.Name, the PlanIt case reference the clients and push payload carry), NOT
+//     application_uid (#733). The composite is load-bearing: a.Name is unique
+//     within a council but collides across councils, so authority_id disambiguates.
+//     It bumps the version token only when it cleared a row.
 //   - MarkAllRead clears every unread row for the user and always bumps the
 //     version token (upserting the state row when absent).
 type PostgresStore struct {
@@ -172,20 +173,28 @@ func (s *PostgresStore) MarkAllRead(ctx context.Context, userID string, now time
 }
 
 // pgMarkApplicationsReadQuery clears the caller's unread notifications for a set
-// of (application_uid, authority_id) pairs supplied as two parallel arrays, and
+// of (application_name, authority_id) pairs supplied as two parallel arrays, and
 // bumps the version change token only when it actually cleared a row (upserting
-// the state row when absent). Scoping by the composite pair is load-bearing:
-// application_uid is the bare per-council PlanIt ref and collides across
-// authorities, so authority_id disambiguates. Empty arrays match nothing (a
-// 204 no-op), never "all". Both tables mutate atomically in one CTE statement;
-// the top-level SELECT returns the cleared count.
+// the state row when absent).
+//
+// It matches application_name, NOT application_uid — this is the #733 fix and is
+// load-bearing. The `ref` values in $3 are PlanIt CASE REFERENCES (= a.Name, e.g.
+// "24/0001"), which is what every caller carries: the push payload sets
+// applicationRef = n.ApplicationName (notifydispatch/payload.go), iOS sends id.name,
+// and web sends summary.name. The `application_uid` column instead holds a.UID (e.g.
+// "24/0001/FUL") and no client ever sends it, so the previous application_uid match
+// silently cleared zero rows in production. a.Name is unique within a council but
+// collides across councils, so authority_id disambiguates — the composite pair is
+// therefore load-bearing. Empty arrays match nothing (a 204 no-op), never "all".
+// Both tables mutate atomically in one CTE statement; the top-level SELECT returns
+// the cleared count.
 const pgMarkApplicationsReadQuery = `
 WITH cleared AS (
     UPDATE notifications n
     SET read_at = $2
-    FROM unnest($3::text[], $4::int[]) AS t(uid, aid)
+    FROM unnest($3::text[], $4::int[]) AS t(ref, aid)
     WHERE n.user_id = $1
-      AND n.application_uid = t.uid
+      AND n.application_name = t.ref
       AND n.authority_id = t.aid
       AND n.read_at IS NULL
     RETURNING 1
@@ -199,12 +208,14 @@ WITH cleared AS (
 SELECT count(*) FROM cleared`
 
 // MarkApplicationsRead clears the caller's unread notifications for the given
-// (uid, authorityID) pairs and bumps the version change token when it cleared at
+// (ref, authorityID) pairs and bumps the version change token when it cleared at
 // least one row (leaving the token untouched on a zero-row no-op, so mark-read
-// stays idempotent). uids and authorityIDs are parallel: the i-th pair is
-// (uids[i], authorityIDs[i]). It returns the number of notifications cleared.
-func (s *PostgresStore) MarkApplicationsRead(ctx context.Context, userID string, uids []string, authorityIDs []int, now time.Time) (int64, error) {
-	rows, err := s.db.Query(ctx, pgMarkApplicationsReadQuery, userID, now, uids, authorityIDs)
+// stays idempotent). refs and authorityIDs are parallel: the i-th pair is
+// (refs[i], authorityIDs[i]). Each ref is a PlanIt case reference (= a.Name),
+// matched against application_name — see pgMarkApplicationsReadQuery for why it is
+// NOT application_uid. It returns the number of notifications cleared.
+func (s *PostgresStore) MarkApplicationsRead(ctx context.Context, userID string, refs []string, authorityIDs []int, now time.Time) (int64, error) {
+	rows, err := s.db.Query(ctx, pgMarkApplicationsReadQuery, userID, now, refs, authorityIDs)
 	if err != nil {
 		return 0, fmt.Errorf("mark applications read for %q: %w", userID, err)
 	}
