@@ -31,9 +31,17 @@ type Result struct {
 	Link              *string             `json:"link"`
 	LastDifferent     platform.DotNetTime `json:"lastDifferent"`
 	LatestUnreadEvent json.RawMessage     `json:"latestUnreadEvent"`
+	// AuthoritySlug is the URL slug of the application's authority, emitted by the
+	// single-application detail (by-id) and by-slug handlers so clients can build
+	// share URLs (#738). It is DELIBERATELY omitempty and NOT set by ResultOf: the
+	// savedapplications and watchzones responses that embed Result via ResultOf
+	// leave it "" and so stay byte-identical on the wire.
+	AuthoritySlug string `json:"authoritySlug,omitempty"`
 }
 
-// ResultOf maps a domain snapshot to its wire shape.
+// ResultOf maps a domain snapshot to its wire shape. It deliberately leaves
+// AuthoritySlug empty (see the field comment); only the detail and by-slug
+// handlers set it.
 func ResultOf(a PlanningApplication) Result {
 	return Result{
 		Name:          a.Name,

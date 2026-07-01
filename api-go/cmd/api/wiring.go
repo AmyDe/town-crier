@@ -24,6 +24,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/savedapplications"
+	"github.com/AmyDe/town-crier/api-go/internal/sharepage"
 	"github.com/AmyDe/town-crier/api-go/internal/subscriptions"
 	"github.com/AmyDe/town-crier/api-go/internal/versionconfig"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -58,6 +59,16 @@ var anonymousPatterns = map[string]struct{}{
 	// authority pages; the second feeds town pages (bounded geo query).
 	"GET /v1/authorities/{id}/applications": {},
 	"GET /v1/applications/near":             {},
+	// The by-slug application read is anonymous (public planning data only, no
+	// user/subscriber data, no refresh-on-tap): it resolves an authority slug to
+	// its area id and point-reads the application, feeding the public share page
+	// and iOS inbound deep-link resolution (#738). The sibling by-id read stays
+	// authed (absent from this map).
+	"GET /v1/applications/by-slug/{authoritySlug}/{ref...}": {},
+	// The public share page is anonymous (public planning data only; no user data,
+	// no cookies, no client-IP logging): a server-rendered HTML page for a single
+	// application, the tracer surface of the shareable-page epic (#738).
+	"GET /a/{authoritySlug}/{ref...}": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -177,9 +188,9 @@ func newRouter(
 		// (not a typed-nil pointer) when saving isn't wired, so the handler's
 		// nil-check disables the side effect cleanly.
 		if savedStore != nil {
-			applications.Routes(mux, appStore, savedapplications.NewSnapshotRefresher(savedStore, time.Now), logger)
+			applications.Routes(mux, appStore, savedapplications.NewSnapshotRefresher(savedStore, time.Now), authorities.NewLookup(), logger)
 		} else {
-			applications.Routes(mux, appStore, nil, logger)
+			applications.Routes(mux, appStore, nil, authorities.NewLookup(), logger)
 		}
 		// The build-time SEO endpoints (anonymous to Auth0, gated by the dedicated
 		// X-Build-Key) read recent applications from the same store: RecentRoutes by
@@ -189,6 +200,11 @@ func newRouter(
 		// 401 fallback.
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
+		// The public share page (#738): an anonymous, server-rendered HTML page for a
+		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
+		// same applications store and resolves the authority slug via the static
+		// authority lookup; it reads no user data and emits only public planning data.
+		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone

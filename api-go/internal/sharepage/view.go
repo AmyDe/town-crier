@@ -1,0 +1,156 @@
+package sharepage
+
+import (
+	"strings"
+	"time"
+
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
+)
+
+const (
+	// shareOrigin is the intended public origin for the share page. Canonical and
+	// og:url point here even though this slice serves on the API/localhost host —
+	// the page moves behind share.towncrierapp.uk in Slice 3 (#738). The canonical
+	// path is always built from the slug + ref, never from the raw request host.
+	shareOrigin = "https://share.towncrierapp.uk"
+
+	// appleAppID is the Town Crier App Store numeric id. It drives the Smart App
+	// Banner meta so iOS Safari offers "Open in app" / "Download".
+	appleAppID = "6764095657"
+
+	// ogImageFallback is the Slice-1 branded PLACEHOLDER unfurl image (the app
+	// icon). The real 1200x630 OSM map card — a baked map of the site with a pin —
+	// arrives in Slice 2; until then both og:image and twitter:image point here.
+	// This slice adds no image route and no binary asset.
+	ogImageFallback = "https://towncrierapp.uk/android-chrome-512x512.png"
+
+	// App Store deep link, mirroring the web appStoreUrl('share-page') shape: the
+	// campaign-free base, the share-page campaign token, and mt=8.
+	appStoreBaseURL    = "https://apps.apple.com/gb/app/town-crier-planning-alerts/id6764095657"
+	shareCampaignToken = "share-page"
+	appStoreMediaType  = "8"
+
+	// ogDescriptionMaxRunes bounds the og:/twitter:description so a long proposal
+	// does not overrun a social unfurl card. Counted in runes, not bytes, so a
+	// multibyte character is never split.
+	ogDescriptionMaxRunes = 200
+)
+
+// ctaURL is the sticky-CTA App Store link carrying the share-page campaign token,
+// e.g. .../id6764095657?ct=share-page&mt=8.
+func ctaURL() string {
+	return appStoreBaseURL + "?ct=" + shareCampaignToken + "&mt=" + appStoreMediaType
+}
+
+// pageView is the pre-formatted, template-ready projection of a
+// PlanningApplication. All optional sections are already resolved to empty
+// strings / empty slices here so the template stays logic-light: an empty field
+// means "omit this section". Dates are human-formatted in Go.
+type pageView struct {
+	Title         string
+	OGTitle       string
+	OGDescription string
+	OGImage       string
+	CanonicalURL  string
+	AppleAppID    string
+	CTAHref       string
+
+	Ref         string
+	Address     string
+	Postcode    string
+	AppType     string
+	StatusChip  string
+	Description string
+	Dates       []dateEntry
+	PlanItLink  string
+	CouncilLink string
+}
+
+// dateEntry is one row of the key-dates timeline (which doubles as the status
+// history — the snapshot carries no richer feed).
+type dateEntry struct {
+	Label string
+	Value string
+}
+
+// buildPageView projects an application into its template-ready view. slug and
+// ref come from the resolved request path and are used verbatim to build the
+// canonical URL. Every pointer field is nil-guarded: an absent value collapses
+// to an empty string and the template omits the corresponding section.
+func buildPageView(app applications.PlanningApplication, slug, ref string) pageView {
+	place := strings.TrimSpace(app.Address)
+	if place == "" {
+		place = strings.TrimSpace(app.AreaName)
+	}
+
+	headline := ref
+	if place != "" {
+		headline = ref + " · " + place
+	}
+
+	canonical := shareOrigin + "/a/" + slug + "/" + ref
+
+	v := pageView{
+		Title:         headline + " · Town Crier",
+		OGTitle:       headline,
+		OGDescription: summarise(app.Description, place),
+		OGImage:       ogImageFallback,
+		CanonicalURL:  canonical,
+		AppleAppID:    appleAppID,
+		CTAHref:       ctaURL(),
+		Ref:           ref,
+		Address:       app.Address,
+		Description:   app.Description,
+	}
+
+	if app.Postcode != nil {
+		v.Postcode = *app.Postcode
+	}
+	if app.AppType != nil {
+		v.AppType = *app.AppType
+	}
+	if app.AppState != nil {
+		// Render the RAW PlanIt status verbatim — mapping it to a friendly label or
+		// a status colour is a web/iOS concern, deliberately not invented here.
+		v.StatusChip = *app.AppState
+	}
+	if app.StartDate != nil {
+		v.Dates = append(v.Dates, dateEntry{Label: "Started", Value: formatDate(*app.StartDate)})
+	}
+	if app.ConsultedDate != nil {
+		v.Dates = append(v.Dates, dateEntry{Label: "Consulted", Value: formatDate(*app.ConsultedDate)})
+	}
+	if app.DecidedDate != nil {
+		v.Dates = append(v.Dates, dateEntry{Label: "Decided", Value: formatDate(*app.DecidedDate)})
+	}
+	if app.Link != nil {
+		v.PlanItLink = *app.Link
+	}
+	if app.URL != nil {
+		v.CouncilLink = *app.URL
+	}
+	return v
+}
+
+// formatDate renders a date as "2 March 2024".
+func formatDate(t time.Time) string {
+	return t.Format("2 January 2006")
+}
+
+// summarise builds the og:/twitter:description from the proposal text, trimmed to
+// a concise length on a whole-rune boundary with an ellipsis. It falls back to a
+// place-based sentence when the record carries no proposal text.
+func summarise(description, place string) string {
+	d := strings.TrimSpace(description)
+	if d == "" {
+		if place != "" {
+			return "Planning application at " + place + ". View the details on Town Crier."
+		}
+		return "View this planning application on Town Crier."
+	}
+	runes := []rune(d)
+	if len(runes) <= ogDescriptionMaxRunes {
+		return d
+	}
+	return strings.TrimSpace(string(runes[:ogDescriptionMaxRunes])) + "…"
+}
