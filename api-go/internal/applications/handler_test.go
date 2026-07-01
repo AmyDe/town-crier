@@ -6,10 +6,47 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 )
+
+// capturingHandler is a hand-written slog.Handler that records emitted records so
+// a test can assert a specific log line (and its attributes) was produced.
+type capturingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
+
+// find returns the attributes of the first record matching level and message.
+func (h *capturingHandler) find(level slog.Level, msg string) (map[string]any, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if r.Level == level && r.Message == msg {
+			attrs := map[string]any{}
+			r.Attrs(func(a slog.Attr) bool {
+				attrs[a.Key] = a.Value.Any()
+				return true
+			})
+			return attrs, true
+		}
+	}
+	return nil, false
+}
 
 type fakeAppStore struct {
 	app   PlanningApplication
@@ -220,6 +257,66 @@ func TestHandler_GetByAuthorityAndName_AuthoritySlugFallsBackToSlugifyAreaName(t
 	}
 	if got["authoritySlug"] != "city-of-london" {
 		t.Errorf("authoritySlug fallback: got %v, want city-of-london", got["authoritySlug"])
+	}
+}
+
+// TestHandler_GetByAuthorityAndName_AuthoritySlugFallback_WarnLogged guards the
+// observability of the fallback branch: when PlanIt returns an area id absent from
+// the static authorities data, the emitted slug may not round-trip through
+// SlugToAreaID (so a share/by-slug link built from it could 404). That must not be
+// silent — the branch warns, carrying the area id, area name and uid needed to
+// diagnose the missing authority. Regression guard against the branch going quiet.
+func TestHandler_GetByAuthorityAndName_AuthoritySlugFallback_WarnLogged(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t) // AreaName "City of London", AreaID 471, UID "ABC-24-0123"
+	resolver := &fakeResolver{slugToID: map[string]int{}, idToSlug: map[int]string{}}
+	capture := &capturingHandler{}
+
+	mux := http.NewServeMux()
+	Routes(mux, &fakeAppStore{app: a, found: true}, nil, resolver, slog.New(capture))
+	ctx := auth.WithSubject(context.Background(), "auth0|u")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/applications/471/24/0123/FUL", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	attrs, ok := capture.find(slog.LevelWarn, "authority slug fallback: area id not in static authorities")
+	if !ok {
+		t.Fatal("expected a warn log for the authority-slug fallback, got none")
+	}
+	if attrs["areaId"] != int64(471) {
+		t.Errorf("areaId attr: got %v (%T), want int64 471", attrs["areaId"], attrs["areaId"])
+	}
+	if attrs["areaName"] != "City of London" {
+		t.Errorf("areaName attr: got %v, want City of London", attrs["areaName"])
+	}
+	if attrs["uid"] != "ABC-24-0123" {
+		t.Errorf("uid attr: got %v, want ABC-24-0123", attrs["uid"])
+	}
+}
+
+// TestHandler_GetByAuthorityAndName_ResolvedSlug_NoWarn is the negative control:
+// when the resolver knows the area id the fallback branch is NOT taken, so no warn
+// is emitted — the warn is specific to the genuinely-missing-authority case.
+func TestHandler_GetByAuthorityAndName_ResolvedSlug_NoWarn(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	capture := &capturingHandler{}
+
+	mux := http.NewServeMux()
+	Routes(mux, &fakeAppStore{app: a, found: true}, nil, testResolver(), slog.New(capture))
+	ctx := auth.WithSubject(context.Background(), "auth0|u")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/applications/471/24/0123/FUL", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if _, ok := capture.find(slog.LevelWarn, "authority slug fallback: area id not in static authorities"); ok {
+		t.Error("resolver knew the area id; fallback warn must not fire")
 	}
 }
 
