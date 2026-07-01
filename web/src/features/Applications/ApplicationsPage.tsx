@@ -72,6 +72,7 @@ export function ApplicationsPage({
     loadMore,
     reload,
     markAllRead,
+    onOpenApplication,
   } = useApplications({
     browsePort,
     zones: zones ?? [],
@@ -230,7 +231,7 @@ export function ApplicationsPage({
               <ul className={styles.list}>
                 {applications.map((app) => (
                   <li key={app.uid}>
-                    <ApplicationCard application={app} />
+                    <ApplicationCard application={app} onOpen={onOpenApplication} />
                   </li>
                 ))}
               </ul>
