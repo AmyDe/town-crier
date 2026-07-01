@@ -603,8 +603,13 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		)
 	}
 
-	// digest / hourly-digest: APNs push + ACS email.
-	if workerMode == "digest" || workerMode == "hourly-digest" {
+	// APNs push: poll-sb sends the instant new-application / decision alerts
+	// (notifydispatch fan-out, #456); digest / hourly-digest send the weekly
+	// digest push. The apns-auth-key secret is on every worker job (see the
+	// shared secrets above). Without these env vars buildPushSender falls back to
+	// the NoOp sender and silently drops every push — which is exactly why the
+	// poll worker delivered no instant pushes in prod (tc-wjbm).
+	if workerMode == "poll-sb" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_AUTH_KEY"), SecretRef: pulumi.String("apns-auth-key")},
@@ -612,6 +617,12 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_TEAM_ID"), Value: pulumi.String("4574VQ7N2X")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_BUNDLE_ID"), Value: pulumi.String(apnsBundleID)},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_USE_SANDBOX"), Value: pulumi.String(ec.apnsUseSandbox)},
+		)
+	}
+
+	// digest / hourly-digest: ACS email transport (the poll worker sends no email).
+	if workerMode == "digest" || workerMode == "hourly-digest" {
+		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string")},
 		)
 	}
