@@ -5,6 +5,7 @@ config:
   town-crier:frontendDomain: towncrierapp.uk
   town-crier:apiDomain: api.towncrierapp.uk
   town-crier:shareDomain: share.towncrierapp.uk
+  town-crier:sharePhase: "2"
   town-crier:auth0Domain: towncrierapp.uk.auth0.com
   town-crier:auth0Audience: https://api.towncrierapp.uk
   town-crier:customDomainPhase: "2"
