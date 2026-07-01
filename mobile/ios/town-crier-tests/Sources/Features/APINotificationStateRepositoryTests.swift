@@ -227,6 +227,69 @@ struct APINotificationStateRepositoryTests {
     }
   }
 
+  // MARK: - markApplicationRead
+
+  @Test("markApplicationRead sends POST /v1/me/applications/mark-read with the composite body")
+  func markApplicationRead_sendsCorrectRequest() async throws {
+    let (sut, _, transport) = makeSUT(responses: [
+      (Data(), httpResponse(statusCode: 204))
+    ])
+
+    try await sut.markApplicationRead(applicationUid: "22/1234/FUL", authorityId: 42)
+
+    #expect(transport.requests.count == 1)
+    let request = transport.requests[0]
+    #expect(request.httpMethod == "POST")
+    let url = try #require(request.url)
+    #expect(url.path().contains("/v1/me/applications/mark-read"))
+
+    let body = try #require(request.httpBody)
+    let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let applications = try #require(json["applications"] as? [[String: Any]])
+    #expect(applications.count == 1)
+    #expect(applications[0]["applicationUid"] as? String == "22/1234/FUL")
+    #expect(applications[0]["authorityId"] as? Int == 42)
+  }
+
+  @Test("markApplicationRead sets Content-Type to application/json")
+  func markApplicationRead_setsContentTypeJson() async throws {
+    let (sut, _, transport) = makeSUT(responses: [
+      (Data(), httpResponse(statusCode: 204))
+    ])
+
+    try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
+
+    let request = transport.requests[0]
+    #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+  }
+
+  @Test("markApplicationRead 204 returns without throwing")
+  func markApplicationRead_204_succeeds() async throws {
+    let (sut, _, _) = makeSUT(responses: [
+      (Data(), httpResponse(statusCode: 204))
+    ])
+
+    try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
+  }
+
+  @Test("markApplicationRead with network error throws networkUnavailable")
+  func markApplicationRead_networkError_throwsNetworkUnavailable() async {
+    let authService = SpyAuthenticationService()
+    authService.currentSessionResult = .valid
+    let transport = StubHTTPTransport()
+    transport.error = URLError(.notConnectedToInternet)
+    let apiClient = URLSessionAPIClient(
+      baseURL: baseURL,
+      authService: authService,
+      transport: transport
+    )
+    let sut = APINotificationStateRepository(apiClient: apiClient)
+
+    await #expect(throws: DomainError.networkUnavailable) {
+      try await sut.markApplicationRead(applicationUid: "APP-1", authorityId: 7)
+    }
+  }
+
   // MARK: - advance
 
   @Test("advance sends POST /v1/me/notification-state/advance with asOf body")

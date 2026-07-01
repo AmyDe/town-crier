@@ -48,6 +48,19 @@ struct NotificationStateRepositoryProtocolTests {
     #expect(spy.advanceCalls[0] == asOf)
   }
 
+  @Test("spy records markApplicationRead calls with the composite (uid, authorityId)")
+  func spy_recordsMarkApplicationReadCalls() async throws {
+    let spy = SpyNotificationStateRepository()
+
+    try await spy.markApplicationRead(applicationUid: "22/1234/FUL", authorityId: 42)
+
+    #expect(
+      spy.markApplicationReadCalls == [
+        MarkApplicationReadCall(applicationUid: "22/1234/FUL", authorityId: 42)
+      ]
+    )
+  }
+
   @Test("spy throws configured error from fetchState")
   func spy_throwsConfiguredFetchStateError() async {
     let spy = SpyNotificationStateRepository()
