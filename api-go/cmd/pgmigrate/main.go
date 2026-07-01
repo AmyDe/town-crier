@@ -16,10 +16,18 @@
 // single stdlib connection and runs well within the token's validity, so no
 // per-connection refresh is needed (unlike the long-lived API pool).
 //
+// After the migrations apply, pgmigrate runs an idempotent grant sweep on the
+// same server, reusing the token already fetched: it re-grants the DML-only app
+// role (-grant-role, default towncrier_api; env POSTGRES_APP_ROLE) SELECT /
+// INSERT / UPDATE / DELETE on ALL TABLES and USAGE / SELECT on ALL SEQUENCES in
+// schema public. This keeps the app role's DML on tables created by future
+// migrations regardless of which identity owns them, closing the
+// table-ownership hazard in ADR 0036. An empty -grant-role skips the sweep.
+//
 // Usage:
 //
 //	pgmigrate -host <fqdn> -admin-user <aad-admin-upn> [-db town_crier_dev] \
-//	    [-sslmode require] [-timeout 60s]
+//	    [-sslmode require] [-timeout 60s] [-grant-role towncrier_api]
 package main
 
 import (
@@ -56,6 +64,7 @@ func run(args []string) int {
 		host      = fs.String("host", os.Getenv("POSTGRES_HOST"), "Postgres server FQDN")
 		adminUser = fs.String("admin-user", os.Getenv("POSTGRES_ADMIN_USER"), "Entra admin principal name (UPN) to connect as")
 		db        = fs.String("db", envOr("POSTGRES_DB", "town_crier_dev"), "app database to migrate")
+		grantRole = fs.String("grant-role", envOr("POSTGRES_APP_ROLE", "towncrier_api"), "app role to re-grant DML/sequence access after migrating; empty skips the grant sweep")
 		sslMode   = fs.String("sslmode", envOr("POSTGRES_SSLMODE", defaultSSLMode), "sslmode")
 		timeout   = fs.Duration("timeout", 60*time.Second, "overall timeout")
 	)
@@ -91,8 +100,18 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "pgmigrate: migrate %q: %v\n", *db, err)
 		return 1
 	}
-
 	fmt.Printf("pgmigrate: migrations applied to %q on %s\n", *db, *host)
+
+	// Immediately re-grant the DML-only app role on everything the migrations
+	// just created, on the same privileged identity (the token already in dsn).
+	// New tables owned by the migrator would otherwise fall outside the app
+	// role's ALTER DEFAULT PRIVILEGES coverage and silently lose DML — the same
+	// drift class this whole change closes, one layer down. See ADR 0036.
+	if err := grantAppRole(ctx, dsn, *grantRole); err != nil {
+		fmt.Fprintf(os.Stderr, "pgmigrate: grant sweep on %q: %v\n", *db, err)
+		return 1
+	}
+
 	return 0
 }
 
