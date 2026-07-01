@@ -3,7 +3,6 @@ package sharepage
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -85,9 +84,9 @@ func fullApp(t *testing.T) applications.PlanningApplication {
 func serve(t *testing.T, store appStore, resolver slugResolver, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Routes(mux, store, resolver, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	Routes(mux, store, resolver, slog.New(slog.DiscardHandler))
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 	mux.ServeHTTP(rec, req)
 	return rec
 }
