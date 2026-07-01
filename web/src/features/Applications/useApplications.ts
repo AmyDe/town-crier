@@ -322,6 +322,34 @@ export function useApplications(options: UseApplicationsOptions) {
     ]);
   }, [browsePort, notificationStateRepository]);
 
+  // Tap-to-read: opening an application marks its notifications read server-side
+  // (ADR 0035). Fired from the card's onClick; navigation proceeds regardless.
+  const onOpenApplication = useCallback(
+    (application: PlanningApplicationSummary) => {
+      // Guardrail: only round-trip for a genuinely-unread card — an already-read
+      // application (no unread event) needs no mark-read call.
+      if (application.latestUnreadEvent === null) return;
+      // Fire-and-forget: a later list/count fetch reconciles read state, so a
+      // failure here is swallowed rather than surfaced on a navigation. The
+      // wire field `applicationUid` carries the app's NAME (PlanIt case
+      // reference), NOT its uid; `areaId` disambiguates same-name refs across
+      // councils — see the notification-state API contract note.
+      void notificationStateRepository
+        .markApplicationRead(application.name, application.areaId)
+        .catch(() => {
+          // Intentionally ignored — the next fetch is the source of truth.
+        });
+      // Optimistically drop the whole-zone "Unread (N)" chip so it updates
+      // immediately without a full count refetch (mirrors markAllRead's count
+      // refresh). Clamp at zero so repeat opens can't drive it negative.
+      setState((prev) => ({
+        ...prev,
+        unreadCount: Math.max(0, prev.unreadCount - 1),
+      }));
+    },
+    [notificationStateRepository],
+  );
+
   // Whole-zone unread total for the chip, sourced from `browsePort.countUnread`
   // (see the count-fetch effect above) rather than the loaded rows — so it
   // reflects the zone, not how far the user has paged (GH#716, Problem 2).
@@ -356,5 +384,6 @@ export function useApplications(options: UseApplicationsOptions) {
     loadMore,
     reload,
     markAllRead,
+    onOpenApplication,
   };
 }
