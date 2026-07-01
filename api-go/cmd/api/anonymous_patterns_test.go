@@ -32,3 +32,16 @@ func TestAnonymousPatterns_IncludesSharePage(t *testing.T) {
 		t.Errorf("anonymousPatterns must include %q", sharePage)
 	}
 }
+
+// TestAnonymousPatterns_IncludesShareCardImage pins the anonymity of the public
+// og:image map-card route (#738 Slice 2). The ".png" suffix is enforced inside
+// the handler, not in the mux pattern (the {ref...} wildcard must be final), so
+// the registered pattern is suffix-free and must match this byte-for-byte.
+func TestAnonymousPatterns_IncludesShareCardImage(t *testing.T) {
+	t.Parallel()
+
+	const shareCard = "GET /og/{authoritySlug}/{ref...}"
+	if _, ok := anonymousPatterns[shareCard]; !ok {
+		t.Errorf("anonymousPatterns must include %q", shareCard)
+	}
+}

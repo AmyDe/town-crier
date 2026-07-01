@@ -69,6 +69,11 @@ var anonymousPatterns = map[string]struct{}{
 	// no cookies, no client-IP logging): a server-rendered HTML page for a single
 	// application, the tracer surface of the shareable-page epic (#738).
 	"GET /a/{authoritySlug}/{ref...}": {},
+	// The public og:image card is anonymous (public planning data only; no user
+	// data/cookies/IP-logging): a baked OSM map of the site served as the share
+	// page's unfurl image (#738 Slice 2). The ".png" suffix is enforced in the
+	// handler, so the registered pattern is suffix-free.
+	"GET /og/{authoritySlug}/{ref...}": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -207,6 +212,12 @@ func newRouter(
 		// same applications store and resolves the authority slug via the static
 		// authority lookup; it reads no user data and emits only public planning data.
 		sharepage.Routes(mux, appStore, authorities.NewLookup(), logger)
+		// The og:image map card (#738 Slice 2): an anonymous GET /og/{slug}/{ref}.png
+		// serving a baked OSM map of the site as the share page's unfurl image. It
+		// reuses the same applications store + authority lookup and the real OSM tile
+		// client. The Blob cache (share-cards container + MI RBAC) is Slice 3 infra, so
+		// the store is nil here — the handler degrades to regenerate-on-every-request.
+		sharepage.ImageRoutes(mux, appStore, authorities.NewLookup(), sharepage.NewOSMTileClient(), nil /* Blob cache: Slice 3 */, logger)
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone

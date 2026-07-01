@@ -4,7 +4,22 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/AmyDe/town-crier/api-go/internal/applications"
 )
+
+// TestBuildPageView_OGImagePointsAtGeneratedCard pins the Slice-2 repoint: the
+// unfurl image is the generated OSM map-card route for this exact (slug, ref),
+// built from the share origin — not a static placeholder. The route itself
+// decides map vs branded fallback, so the page always points here.
+func TestBuildPageView_OGImagePointsAtGeneratedCard(t *testing.T) {
+	t.Parallel()
+	v := buildPageView(applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}, "croydon", "23/03456/FUL")
+	want := "https://share.towncrierapp.uk/og/croydon/23/03456/FUL.png"
+	if v.OGImage != want {
+		t.Errorf("OGImage = %q, want %q", v.OGImage, want)
+	}
+}
 
 // TestSummarise_TruncatesMultibyteRuneSafe pins the truncation branch on a
 // proposal built entirely from 3-byte CJK runes and well over the cap. A byte-wise
