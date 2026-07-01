@@ -25,6 +25,9 @@ type stateStore interface {
 	UnreadCount(ctx context.Context, userID string) (int, error)
 	MarkAllRead(ctx context.Context, userID string, now time.Time) (int64, error)
 	MarkApplicationsRead(ctx context.Context, userID string, refs []string, authorityIDs []int, now time.Time) (int64, error)
+	// MarkReadUpTo backs the TEMPORARY advance compat shim (tc-ekii); see the
+	// advance handler. REMOVE per tc-v5w8 once the new iOS build is live.
+	MarkReadUpTo(ctx context.Context, userID string, asOf, now time.Time) (int64, error)
 }
 
 // stateResult is the GET /v1/me/notification-state response body:
@@ -61,6 +64,17 @@ type markReadRequest struct {
 	Applications []applicationRef `json:"applications"`
 }
 
+// advanceRequest is the POST /v1/me/notification-state/advance request body.
+//
+// TEMPORARY BACKWARD-COMPAT SHIM (tc-ekii). This is the exact byte-identical shape
+// the old (pre-ADR-0035) server parsed, so fire-and-forget requests from App Store
+// iOS builds that predate the per-application read-state change still bind. New
+// iOS/web clients do NOT send this — they call POST /v1/me/applications/mark-read.
+// REMOVE per bead tc-v5w8 once the new iOS build is live.
+type advanceRequest struct {
+	AsOf platform.DotNetTime `json:"asOf"`
+}
+
 // Routes registers the notification read-state endpoints on mux. All are
 // authenticated: the auth middleware guarantees a subject in context.
 func Routes(mux *http.ServeMux, store stateStore, now func() time.Time, logger *slog.Logger) {
@@ -68,6 +82,16 @@ func Routes(mux *http.ServeMux, store stateStore, now func() time.Time, logger *
 	mux.HandleFunc("GET /v1/me/notification-state", h.get)
 	mux.HandleFunc("POST /v1/me/notification-state/mark-all-read", h.markAllRead)
 	mux.HandleFunc("POST /v1/me/applications/mark-read", h.markRead)
+	// TEMPORARY BACKWARD-COMPAT SHIM (tc-ekii). ADR 0035 (#733) removed advance in
+	// favour of per-application read_at, so new iOS/web clients do NOT call it (they
+	// use POST /v1/me/applications/mark-read above). This route is re-added only so
+	// the App Store iOS builds that predate the change (live + one in Apple review)
+	// keep clearing their push badge on tap during the review window — against the new
+	// server those old fire-and-forget calls would 404 and silently stop clearing the
+	// badge. It translates the retired watermark advance to a read_at mark (see the
+	// advance handler). REMOVE per bead tc-v5w8 once the new iOS build is live; advance
+	// 404-ing again is the #733/ADR-0035 end-state.
+	mux.HandleFunc("POST /v1/me/notification-state/advance", h.advance)
 }
 
 type handler struct {
@@ -157,6 +181,41 @@ func (h handler) markRead(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := h.store.MarkApplicationsRead(r.Context(), userID, refs, authorityIDs, h.now()); err != nil {
 		h.logger.ErrorContext(r.Context(), "mark applications read", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// advance is a TEMPORARY backward-compat shim (tc-ekii) for the retired
+// scroll-to-clear watermark endpoint. ADR 0035 (#733) removed advance in favour of
+// per-application read_at, so new iOS/web clients do NOT call it (they use
+// POST /v1/me/applications/mark-read). This handler is re-added only so the App Store
+// iOS builds that predate the change (live + one in Apple review) keep clearing their
+// push badge on tap during the review window — those old builds fire advance on
+// push-tap and a 404 would silently stop the badge clearing.
+//
+// It parses the old {asOf} body byte-identically (advanceRequest) and translates the
+// watermark advance-to-asOf into a read_at mark: every unread notification created at
+// or before asOf is marked read (MarkReadUpTo). It is idempotent (a repeat is a 204
+// that clears nothing) and returns a bodyless 400 on a malformed body. The retired
+// watermark / State.AdvanceTo / first-touch seeding logic is deliberately NOT restored.
+//
+// REMOVE per bead tc-v5w8 once the new iOS build is live; advance 404-ing again is the
+// #733/ADR-0035 end-state.
+func (h handler) advance(w http.ResponseWriter, r *http.Request) {
+	userID := auth.Subject(r.Context())
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req advanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	asOf := time.Time(req.AsOf)
+	if _, err := h.store.MarkReadUpTo(r.Context(), userID, asOf, h.now()); err != nil {
+		h.logger.ErrorContext(r.Context(), "advance (mark read up to)", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
