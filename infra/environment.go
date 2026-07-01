@@ -109,6 +109,10 @@ type envContext struct {
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
 	frontendDomain := conf.Require("frontendDomain")
 	apiDomain := conf.Require("apiDomain")
+	// Optional public share-page host (#738 Slice 3). When set, it is bound as a SECOND custom
+	// domain on the existing API ACA app (managed cert, CNAME validation). Unset (empty) skips
+	// the cert + binding entirely — prod is a later staged step, so only dev sets it for now.
+	shareDomain := conf.Get("shareDomain")
 	auth0Domain := conf.Require("auth0Domain")
 	// CI OIDC identity (the town-crier-github-actions service principal) object ID. Granted
 	// Storage Blob Data Contributor on the SEO snapshot account below. Same principal the
@@ -195,6 +199,31 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		}
 	}
 
+	// Public share page (#738 Slice 3): bind share.towncrierapp.uk as a SECOND custom domain on
+	// the same API ACA app so one app serves JSON on api. and HTML on share.. The origin-lock
+	// ipSecurityRestrictions on the shared ingress are inherited automatically. Managed cert
+	// validates via CNAME (the orchestrator creates the asuid TXT + CNAME in Cloudflare before
+	// this merges). Gated on shareDomain being set, so prod (unset for now) is simply skipped.
+	if shareDomain != "" {
+		shareCert, err := app.NewManagedCertificate(ctx, fmt.Sprintf("cert-share-%s", env), &app.ManagedCertificateArgs{
+			EnvironmentName:        containerAppsEnvironmentName,
+			ManagedCertificateName: pulumi.String(fmt.Sprintf("cert-share-%s", env)),
+			ResourceGroupName:      sharedResourceGroupName,
+			Properties: &app.ManagedCertificatePropertiesArgs{
+				SubjectName:             pulumi.String(shareDomain),
+				DomainControlValidation: pulumi.String("CNAME"),
+			},
+		})
+		if err != nil {
+			return err
+		}
+		goApiCustomDomains = append(goApiCustomDomains, &app.CustomDomainArgs{
+			Name:          pulumi.String(shareDomain),
+			CertificateId: shareCert.ID(),
+			BindingType:   app.BindingTypeSniEnabled,
+		})
+	}
+
 	ec := envContext{
 		env:                        env,
 		resourceGroupName:          resourceGroup.Name,
@@ -265,6 +294,12 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
 		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
 		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
+		// Blob endpoint for the share-cards container (#738 Slice 3): the share-page OG handler
+		// caches baked map cards here. Computed directly from env because the account name is
+		// deterministic (sttowncrier{env}); this avoids a cross-resource dependency on the storage
+		// account, which is created later in this stack (after apiEnvVars is built). Always set for
+		// both dev and prod (DNS-independent); empty-safe on the consumer side.
+		app.EnvironmentVarArgs{Name: pulumi.String("SHARE_CARDS_BLOB_URL"), Value: pulumi.String(fmt.Sprintf("https://sttowncrier%s.blob.core.windows.net", env))},
 	}
 	// Both env stacks (dev + prod — the only environment stacks) run on Postgres
 	// single-store (memo 0010 / GH #669 prod, GH #681 dev). The API authenticates to
@@ -446,7 +481,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// SEO snapshot storage (epic tc-w5w9 / GH #598): a per-environment Storage Account +
 	// seo-snapshot blob container, with the CI OIDC identity granted Storage Blob Data
 	// Contributor (weekly seo-refresh writes the snapshot; every build reads it).
-	seoSnapshotAccountName, seoSnapshotContainerName, err := createSeoSnapshotStorage(ctx, env, resourceGroup.Name, ciServicePrincipalID, tags)
+	seoSnapshotAccountName, seoSnapshotContainerName, err := createSeoSnapshotStorage(ctx, env, resourceGroup.Name, ciServicePrincipalID,
+		shared.GetStringOutput(pulumi.String("cosmosDataIdentityPrincipalId")), tags)
 	if err != nil {
 		return err
 	}
@@ -717,13 +753,16 @@ func createServiceBusPollingInfra(ctx *pulumi.Context, env string, resourceGroup
 // createSeoSnapshotStorage provisions the per-environment Storage Account + seo-snapshot blob
 // container that holds the weekly SEO prerender snapshot (seo-snapshot.json), and grants the CI
 // OIDC identity Storage Blob Data Contributor so the weekly seo-refresh job can write it and
-// every build can read it (epic tc-w5w9 / GH #598). Returns the account + container names so the
-// caller can export them for the workflows to reference.
+// every build can read it (epic tc-w5w9 / GH #598). It also provisions the share-cards container
+// for the public share-page OG images and grants the API's user-assigned managed identity
+// (cosmosDataIdentity) Storage Blob Data Contributor so it can cache-once baked cards (#738
+// Slice 3). Returns the account + seo container names so the caller can export them for the
+// workflows to reference.
 //
 // This is the project's first Storage Account. It uses the smallest/cheapest profile:
 // StorageV2, Standard_LRS, Hot. Shared-key access is disabled, so all data-plane access is
 // AAD/RBAC only — CI authenticates via OIDC and must use `--auth-mode login` for blob I/O.
-func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, tags pulumi.StringMap) (accountName, containerName pulumi.StringOutput, err error) {
+func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName pulumi.StringOutput, ciServicePrincipalID string, cosmosDataIdentityPrincipalID pulumi.StringOutput, tags pulumi.StringMap) (accountName, containerName pulumi.StringOutput, err error) {
 	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
 	// follows the resource-type naming convention; the hyphens from the usual "-town-crier-"
 	// pattern are dropped because they are invalid in a storage account name.
@@ -755,6 +794,18 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
 	}
 
+	// Second container on the same account: share-cards holds the cache-once baked OG map cards
+	// for the public share page (#738 Slice 3). Same private-access profile as seo-snapshot.
+	_, err = storage.NewBlobContainer(ctx, fmt.Sprintf("share-cards-%s", env), &storage.BlobContainerArgs{
+		AccountName:       account.Name,
+		ResourceGroupName: resourceGroupName,
+		ContainerName:     pulumi.String("share-cards"),
+		PublicAccess:      storage.PublicAccessNone,
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+	}
+
 	// Built-in role: Storage Blob Data Contributor — data-plane read+write of blobs. Scoped to
 	// the account (it holds only this one container). PrincipalId is the CI service principal
 	// (town-crier-github-actions) object ID.
@@ -765,6 +816,21 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		RoleDefinitionId: pulumi.Sprintf(
 			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, storageBlobDataContributorRoleID),
 		PrincipalId:   pulumi.String(ciServicePrincipalID),
+		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
+	})
+	if err != nil {
+		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
+	}
+
+	// Same built-in role for the API's user-assigned managed identity (cosmosDataIdentity, whose
+	// client id is injected as AZURE_CLIENT_ID). The share-page OG handler runs as the API app and
+	// needs data-plane read+write to cache-once baked cards into the share-cards container (#738
+	// Slice 3). Scoped to the whole account, mirroring the CI grant above.
+	_, err = authorization.NewRoleAssignment(ctx, fmt.Sprintf("share-cards-blob-contributor-%s", env), &authorization.RoleAssignmentArgs{
+		Scope: account.ID(),
+		RoleDefinitionId: pulumi.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, storageBlobDataContributorRoleID),
+		PrincipalId:   cosmosDataIdentityPrincipalID,
 		PrincipalType: pulumi.String(string(authorization.PrincipalTypeServicePrincipal)),
 	})
 	if err != nil {
