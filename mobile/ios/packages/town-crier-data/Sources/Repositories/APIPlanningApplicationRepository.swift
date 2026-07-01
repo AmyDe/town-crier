@@ -194,6 +194,10 @@ struct PlanningApplicationDTO: Decodable, Sendable {
   let link: String?
   let lastDifferent: String
   let latestUnreadEvent: LatestUnreadEventDTO?
+  /// URL-safe authority slug for the public share URL. Present on the by-id
+  /// detail read and the anonymous by-slug read; absent (`omitempty`) on the
+  /// list/zone endpoints, so it decodes as optional (GH #738 Slice 4).
+  let authoritySlug: String?
 
   func toDomain() -> PlanningApplication {
     let status = ApplicationStatus(rawValue: appState ?? "") ?? .unknown
@@ -205,7 +209,7 @@ struct PlanningApplicationDTO: Decodable, Sendable {
     return PlanningApplication(
       id: PlanningApplicationId(authority: String(areaId), name: name),
       reference: ApplicationReference(name),
-      authority: LocalAuthority(code: String(areaId), name: areaName),
+      authority: LocalAuthority(code: String(areaId), name: areaName, slug: authoritySlug),
       status: status,
       receivedDate: receivedDate,
       description: description,
