@@ -351,7 +351,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// so `cmd/pgbootstrap` (Slice B of GH #653) can run locally under `az login` credentials
 	// to create the towncrier_api role and grant least-privilege DML rights. The CI service
 	// principal can be added as a second Administrator later if CI bootstrap is needed.
-	_, err = dbforpostgresql.NewAdministrator(ctx, "psql-town-crier-shared-aad-admin", &dbforpostgresql.AdministratorArgs{
+	aadAdmin, err := dbforpostgresql.NewAdministrator(ctx, "psql-town-crier-shared-aad-admin", &dbforpostgresql.AdministratorArgs{
 		ResourceGroupName: resourceGroup.Name,
 		ServerName:        postgresServer.Name,
 		ObjectId:          pulumi.String(conf.Require("postgresAadAdminObjectId")),
@@ -359,6 +359,30 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		PrincipalType:     pulumi.String("User"),
 		TenantId:          pulumi.String(tenantID),
 	}, pulumi.DependsOn([]pulumi.Resource{postgresServer}))
+	if err != nil {
+		return err
+	}
+
+	// Second Entra administrator: the CI service principal (town-crier-github-actions,
+	// objectId in ciServicePrincipalID). This is the identity half of ADR 0036 — it lets the
+	// gated CD migrate job run `pgmigrate` (goose DDL) against the shared server as itself,
+	// authenticating passwordlessly over OIDC. For a Flexible-Server service-principal admin the
+	// Postgres login username equals this PrincipalName, and the CD migrate job connects with
+	// exactly "town-crier-github-actions", so this literal must stay in lockstep with the
+	// workflow's `-admin-user` value.
+	//
+	// Two Entra-admin writes to the same server can collide with "ServerIsBusy" (the same
+	// class of failure the azure.extensions Configuration guards against by serialising after
+	// the firewall). DependsOn both the server AND the human admin above so the two admin
+	// writes serialise rather than race.
+	_, err = dbforpostgresql.NewAdministrator(ctx, "psql-town-crier-shared-ci-admin", &dbforpostgresql.AdministratorArgs{
+		ResourceGroupName: resourceGroup.Name,
+		ServerName:        postgresServer.Name,
+		ObjectId:          pulumi.String(ciServicePrincipalID),
+		PrincipalName:     pulumi.String("town-crier-github-actions"),
+		PrincipalType:     pulumi.String("ServicePrincipal"),
+		TenantId:          pulumi.String(tenantID),
+	}, pulumi.DependsOn([]pulumi.Resource{postgresServer, aadAdmin}))
 	if err != nil {
 		return err
 	}

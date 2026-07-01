@@ -114,6 +114,42 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: pulumi up --yes --non-interactive
 
+  # ── Database: run migrations ─────────────────────────
+  # Applies pending goose migrations (and the app-role grant sweep) BEFORE the
+  # API and worker deploy jobs, so the new image never serves against a stale
+  # schema. Authenticates as the CI service principal — a Postgres Entra admin
+  # on psql-town-crier-shared — via the OIDC azure-login session, so
+  # DefaultAzureCredential yields a passwordless ossrdbms token; no stored DB
+  # secret is involved. A non-zero exit fails the deploy loudly (never a silent
+  # skip); goose.Up is idempotent, so an up-to-date DB is a no-op. See ADR 0036.
+  migrate-dev:
+    name: "Database: Run migrations (dev)"
+    needs: infra-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api-go/go.mod
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply migrations
+        working-directory: api-go
+        run: |
+          go run ./cmd/pgmigrate \
+            -host psql-town-crier-shared.postgres.database.azure.com \
+            -admin-user town-crier-github-actions \
+            -db town_crier_dev \
+            -timeout 120s
+
   # ── Go API: build & push image ──────────────────────
   api-go-image:
     name: "Go API: Build & push image"
@@ -162,7 +198,7 @@ jobs:
   # ── Go API: deploy to dev ───────────────────────────
   api-go-deploy:
     name: "Go API: Deploy to dev"
-    needs: [api-go-image, infra-dev]
+    needs: [api-go-image, infra-dev, migrate-dev]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -184,7 +220,7 @@ jobs:
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
     name: "Worker: Deploy to dev"
-    needs: [worker-go-image, infra-dev]
+    needs: [worker-go-image, infra-dev, migrate-dev]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
