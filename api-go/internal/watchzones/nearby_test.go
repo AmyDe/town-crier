@@ -15,7 +15,6 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
 
@@ -106,15 +105,6 @@ func (f *fakeAppFinder) FindClustersInZone(_ context.Context, q applications.Clu
 	return f.clusters, nil
 }
 
-type fakeWatermark struct {
-	state *notificationstate.State
-	err   error
-}
-
-func (f *fakeWatermark) Get(_ context.Context, _ string) (*notificationstate.State, error) {
-	return f.state, f.err
-}
-
 type fakeUnread struct {
 	result   map[string]notifications.LatestUnread
 	err      error
@@ -122,7 +112,7 @@ type fakeUnread struct {
 	lastUIDs []string
 }
 
-func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, uids []string, _ time.Time) (map[string]notifications.LatestUnread, error) {
+func (f *fakeUnread) GetLatestUnreadByApplications(_ context.Context, _ string, uids []string) (map[string]notifications.LatestUnread, error) {
 	f.called = true
 	f.lastUIDs = uids
 	return f.result, f.err
@@ -133,7 +123,6 @@ type nearbyDeps struct {
 	profiles *fakeProfileReader
 	resolver *fakeResolver
 	apps     *fakeAppFinder
-	state    *fakeWatermark
 	unread   *fakeUnread
 }
 
@@ -146,7 +135,7 @@ func newNearbyMux(t *testing.T, d nearbyDeps) *http.ServeMux {
 	// the existing quota assertions (Free at limit -> 403, Pro -> unlimited)
 	// continue to hold.
 	cas := newFakeProfileCAS(d.profiles.profile)
-	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.state, d.unread,
+	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.unread,
 		func() string { return "zone-123" }, func() time.Time { return nearbyNow },
 		slog.New(slog.DiscardHandler), WithProfileCAS(cas))
 	return mux
@@ -210,7 +199,6 @@ func TestCreate_PersistsZoneAndReturnsNearbyApplications(t *testing.T) {
 			testAppInAuthority("uid-1", "24/001", 471),
 			testAppInAuthority("uid-2", "24/002", 246),
 		}},
-		state:  &fakeWatermark{},
 		unread: &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -265,7 +253,6 @@ func TestCreate_ResolvesAuthorityWhenAbsent(t *testing.T) {
 		profiles: &fakeProfileReader{profile: proProfile(t)},
 		resolver: &fakeResolver{id: 326},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -292,7 +279,6 @@ func TestCreate_QuotaExceededIs403(t *testing.T) {
 		profiles: &fakeProfileReader{profile: freeProfile(t)},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -326,7 +312,6 @@ func TestCreate_ProTierBypassesQuota(t *testing.T) {
 		profiles: &fakeProfileReader{profile: proProfile(t)},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -357,7 +342,6 @@ func TestCreate_ExpiredProTierQuotaIs403(t *testing.T) {
 		profiles: &fakeProfileReader{profile: lapsed},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -388,7 +372,7 @@ func TestCreate_InvalidPayloadIs400(t *testing.T) {
 			d := nearbyDeps{
 				store:    &fakeZoneStore{},
 				profiles: &fakeProfileReader{profile: proProfile(t)},
-				resolver: &fakeResolver{}, apps: &fakeAppFinder{}, state: &fakeWatermark{}, unread: &fakeUnread{},
+				resolver: &fakeResolver{}, apps: &fakeAppFinder{}, unread: &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
 			rec := doReq(t, mux, http.MethodPost, "/v1/me/watch-zones", body)
@@ -407,7 +391,7 @@ func TestCreate_MissingProfileIs500(t *testing.T) {
 	d := nearbyDeps{
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: nil},
-		resolver: &fakeResolver{}, apps: &fakeAppFinder{}, state: &fakeWatermark{}, unread: &fakeUnread{},
+		resolver: &fakeResolver{}, apps: &fakeAppFinder{}, unread: &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000,"authorityId":471}`
@@ -423,7 +407,7 @@ func TestCreate_ResolverErrorIs500(t *testing.T) {
 		store:    &fakeZoneStore{},
 		profiles: &fakeProfileReader{profile: proProfile(t)},
 		resolver: &fakeResolver{err: errors.New("upstream down")},
-		apps:     &fakeAppFinder{}, state: &fakeWatermark{}, unread: &fakeUnread{},
+		apps:     &fakeAppFinder{}, unread: &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
 	body := `{"name":"Z","latitude":51.5,"longitude":-0.12,"radiusMetres":1000}`
@@ -444,7 +428,6 @@ func TestApplications_AugmentsUnreadAndNullsTheRest(t *testing.T) {
 		}},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{state: &notificationstate.State{UserID: testUser, LastReadAt: time.Unix(0, 0), Version: 1}},
 		unread: &fakeUnread{result: map[string]notifications.LatestUnread{
 			"uid-1": {ApplicationUID: "uid-1", EventType: notifications.EventDecisionUpdate, Decision: &decision, CreatedAt: unreadAt},
 		}},
@@ -490,7 +473,6 @@ func TestApplications_DefaultsLimitTo500(t *testing.T) {
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -527,7 +509,6 @@ func TestApplications_LimitParsing(t *testing.T) {
 				apps:     &fakeAppFinder{},
 				profiles: &fakeProfileReader{},
 				resolver: &fakeResolver{},
-				state:    &fakeWatermark{},
 				unread:   &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
@@ -549,7 +530,6 @@ func TestApplications_SetsNextCursorHeaderWhenMorePagesExist(t *testing.T) {
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}, next: "raw-token-123"},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -572,7 +552,6 @@ func TestApplications_OmitsNextCursorHeaderWhenExhausted(t *testing.T) {
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}}, // next == ""
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -593,7 +572,6 @@ func TestApplications_ResumesFromCursorParam(t *testing.T) {
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -616,7 +594,6 @@ func TestApplications_RejectsUndecodableCursorWith400(t *testing.T) {
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -642,7 +619,6 @@ func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
 		apps:     &fakeAppFinder{apps: manyApps(600)},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{state: &notificationstate.State{UserID: testUser, LastReadAt: time.Unix(0, 0), Version: 1}},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -652,7 +628,7 @@ func TestApplications_BoundsUnreadLookupToReturnedPage(t *testing.T) {
 		t.Fatalf("status: got %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	if !d.unread.called {
-		t.Fatal("unread lookup must run when the user has a watermark")
+		t.Fatal("unread lookup must always run (read_at IS NULL, independent of any state row)")
 	}
 	if got := len(d.unread.lastUIDs); got != 500 {
 		t.Errorf("unread lookup UID set: got %d, want 500 (bounded to the returned page)", got)
@@ -672,7 +648,6 @@ func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
 		}},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -696,15 +671,22 @@ func TestApplications_SurfacesNeighbourAuthorityApps(t *testing.T) {
 	}
 }
 
-func TestApplications_NoWatermarkSkipsUnreadLookup(t *testing.T) {
+// TestApplications_UnreadSurfacesWithoutStateRow proves the ADR 0035 flip: a
+// brand-new user with NO notification_state row (GET no longer seeds one) still
+// gets per-application unread badges, because unread is purely read_at IS NULL.
+// The lookup runs unconditionally and its result is mapped onto the row.
+func TestApplications_UnreadSurfacesWithoutStateRow(t *testing.T) {
 	t.Parallel()
+	decision := "Permitted"
+	unreadAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	d := nearbyDeps{
 		store:    &fakeZoneStore{zones: []WatchZone{mustZone(t, "zone-1", 471)}},
 		apps:     &fakeAppFinder{apps: []applications.PlanningApplication{testApp("uid-1", "24/001")}},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{state: nil}, // first touch: no watermark
-		unread:   &fakeUnread{},
+		unread: &fakeUnread{result: map[string]notifications.LatestUnread{
+			"uid-1": {ApplicationUID: "uid-1", EventType: notifications.EventNewApplication, CreatedAt: unreadAt, Decision: &decision},
+		}},
 	}
 	mux := newNearbyMux(t, d)
 
@@ -712,8 +694,18 @@ func TestApplications_NoWatermarkSkipsUnreadLookup(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	if d.unread.called {
-		t.Error("unread lookup must be skipped when the user has no watermark")
+	if !d.unread.called {
+		t.Fatal("unread lookup must run even without a notification_state row (read_at IS NULL)")
+	}
+	var rows []struct {
+		UID               string          `json:"uid"`
+		LatestUnreadEvent json.RawMessage `json:"latestUnreadEvent"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+		t.Fatalf("decode rows: %v; raw=%s", err, rec.Body.String())
+	}
+	if len(rows) != 1 || rows[0].UID != "uid-1" || rows[0].LatestUnreadEvent == nil {
+		t.Errorf("uid-1 must carry latestUnreadEvent without a state row: got %+v", rows)
 	}
 }
 
@@ -724,7 +716,6 @@ func TestApplications_ZoneNotFoundIs404(t *testing.T) {
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -742,7 +733,6 @@ func TestApplications_EmptyZoneReturnsEmptyArray(t *testing.T) {
 		apps:     &fakeAppFinder{},
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMux(t, d)
@@ -775,7 +765,6 @@ func TestCreate_RejectsOversizedRadius(t *testing.T) {
 				profiles: &fakeProfileReader{profile: proProfile(t)},
 				resolver: &fakeResolver{},
 				apps:     &fakeAppFinder{},
-				state:    &fakeWatermark{},
 				unread:   &fakeUnread{},
 			}
 			mux := newNearbyMux(t, d)
@@ -820,7 +809,6 @@ func sortDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
 		apps:     apps,
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 }
@@ -1278,7 +1266,6 @@ func clusterDeps(t *testing.T, apps *fakeAppFinder) nearbyDeps {
 		apps:     apps,
 		profiles: &fakeProfileReader{},
 		resolver: &fakeResolver{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 }

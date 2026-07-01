@@ -184,7 +184,7 @@ func TestPostgresStore_GetLatestUnreadByApplications_EmptyUIDs(t *testing.T) {
 	q := &fakeQuerier{}
 	s := NewPostgresStore(q)
 
-	got, err := s.GetLatestUnreadByApplications(context.Background(), "user-1", nil, time.Now())
+	got, err := s.GetLatestUnreadByApplications(context.Background(), "user-1", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestPostgresStore_GetLatestUnreadByApplications_PropagatesQueryError(t *tes
 	s := NewPostgresStore(q)
 
 	_, err := s.GetLatestUnreadByApplications(
-		context.Background(), "user-1", []string{"uid-A"}, time.Now())
+		context.Background(), "user-1", []string{"uid-A"})
 	if !errors.Is(err, boom) {
 		t.Fatalf("got err %v, want wrapped %v", err, boom)
 	}
@@ -230,7 +230,7 @@ func TestPostgresStore_GetLatestUnreadByApplications_ReturnsLatestPerUID(t *test
 	s := NewPostgresStore(q)
 
 	got, err := s.GetLatestUnreadByApplications(
-		context.Background(), "user-1", []string{"uid-A", "uid-B"}, time.Unix(0, 0))
+		context.Background(), "user-1", []string{"uid-A", "uid-B"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -762,10 +762,10 @@ func newActivityPGStore(t *testing.T) (*PostgresStore, *pgxpool.Pool) {
 	return NewPostgresStore(pool), pool
 }
 
-// seedWatermark inserts the caller's notification read-watermark. Without a
-// watermark row the recent-activity join classifies nothing as unread (the
-// INNER JOIN to notification_state yields no rows), matching the handler's
-// first-touch rule.
+// seedWatermark inserts the caller's notification_state row. Under read_at (ADR
+// 0035) the recent-activity/unread queries no longer JOIN this table; the row is
+// seeded so backfillReadAt can derive read_at from it, exactly reproducing the
+// old watermark semantics for the equivalence assertions.
 func seedWatermark(t *testing.T, pool *pgxpool.Pool, userID string, lastReadAt time.Time) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(),
@@ -775,8 +775,9 @@ func seedWatermark(t *testing.T, pool *pgxpool.Pool, userID string, lastReadAt t
 	}
 }
 
-// seedNotification inserts one notification for the caller. authorityID is the
-// INTEGER authority_id that the recent-activity join matches against the
+// seedNotification inserts one UNREAD notification for the caller (read_at NULL —
+// the pre-backfill state). authorityID is the INTEGER authority_id the
+// recent-activity subquery groups on and the outer join matches against the
 // application's area_id (NOT the text authority_code).
 func seedNotification(t *testing.T, pool *pgxpool.Pool, id, userID, appUID string, authorityID int, createdAt time.Time) {
 	t.Helper()
@@ -785,6 +786,33 @@ func seedNotification(t *testing.T, pool *pgxpool.Pool, id, userID, appUID strin
 			"VALUES ($1, $2, $3, $4, $5, $6)",
 		id, userID, appUID, authorityID, "NewApplication", createdAt); err != nil {
 		t.Fatalf("seed notification %q: %v", id, err)
+	}
+}
+
+// backfillReadAt replays migration 0015's two backfill UPDATEs, deriving read_at
+// from the seeded watermark rows. Calling it after a watermark+notification
+// fixture makes read_at IS NULL reproduce the old created_at > last_read_at unread
+// set exactly — the equivalence acceptance criterion (ADR 0035). A notification for
+// a user with NO watermark row is marked read (read_at = created_at), matching the
+// old "no notification_state ⇒ no unread" behaviour for existing users.
+func backfillReadAt(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `
+UPDATE notifications n
+SET read_at = ns.last_read_at
+FROM notification_state ns
+WHERE n.user_id = ns.user_id
+  AND n.created_at <= ns.last_read_at
+  AND n.read_at IS NULL`); err != nil {
+		t.Fatalf("backfill watermarked: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+UPDATE notifications n
+SET read_at = n.created_at
+WHERE n.read_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM notification_state ns WHERE ns.user_id = n.user_id)`); err != nil {
+		t.Fatalf("backfill no-watermark: %v", err)
 	}
 }
 
@@ -817,6 +845,8 @@ func activityFixture(t *testing.T, store *PostgresStore, pool *pgxpool.Pool, use
 	seedWatermark(t, pool, userID, jan)
 	// AA's unread event, later than BB's newest start_date, floats AA to the top.
 	seedNotification(t, pool, "n-AA", userID, "uid-AA", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	// Derive read_at from the watermark: n-AA (after jan) stays unread (read_at NULL).
+	backfillReadAt(t, pool)
 }
 
 // TestPostgresStore_FindInZonePage_RecentActivity proves the GREATEST(start_date,
@@ -870,6 +900,7 @@ func TestPostgresStore_FindInZonePage_RecentActivity_JoinKey(t *testing.T) {
 	// A fresh unread for X's uid but under the WRONG authority (999 != 100). The
 	// join requires area_id = authority_id, so this must not touch X's activity.
 	seedNotification(t, pool, "n-wrong", userID, "uid-X", 999, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	backfillReadAt(t, pool) // n-wrong (after jan) stays unread, but under authority 999.
 
 	want := []string{"Y", "X"} // Y(feb) > X(jan); the wrong-authority unread is ignored.
 	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
@@ -877,11 +908,12 @@ func TestPostgresStore_FindInZonePage_RecentActivity_JoinKey(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_FindInZonePage_RecentActivity_FirstTouch proves a caller with
-// NO notification_state row has no unread anywhere (the INNER JOIN to
-// notification_state yields nothing), so recent-activity orders by start_date
-// alone — even when a matching notification exists.
-func TestPostgresStore_FindInZonePage_RecentActivity_FirstTouch(t *testing.T) {
+// TestPostgresStore_FindInZonePage_RecentActivity_ExistingNoWatermark proves an
+// existing (pre-migration) caller with NO notification_state row has no unread: the
+// 0015 backfill marked their history read (read_at = created_at), so read_at IS NULL
+// yields nothing and recent-activity orders by start_date alone. This is the
+// equivalence to the old "no notification_state ⇒ no unread" behaviour (ADR 0035).
+func TestPostgresStore_FindInZonePage_RecentActivity_ExistingNoWatermark(t *testing.T) {
 	store, pool := newActivityPGStore(t)
 	ctx := context.Background()
 	const userID = "user-firsttouch"
@@ -897,17 +929,47 @@ func TestPostgresStore_FindInZonePage_RecentActivity_FirstTouch(t *testing.T) {
 	}
 	// NOTE: no seedWatermark — the user has never read, so has no state row.
 	seedNotification(t, pool, "n-P", userID, "uid-P", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	backfillReadAt(t, pool) // no-watermark backfill marks n-P read (read_at = created_at).
 
-	want := []string{"Q", "P"} // Q(feb) > P(jan); no watermark means P's notification is not unread.
+	want := []string{"Q", "P"} // Q(feb) > P(jan); the backfilled notification is read.
 	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
-		t.Fatalf("recent-activity first-touch: got %v, want %v (no watermark means no unread influence)", got, want)
+		t.Fatalf("recent-activity existing-no-watermark: got %v, want %v (backfilled history is read)", got, want)
 	}
 }
 
-// TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread proves the unread
-// predicate is a STRICT created_at > last_read_at: a notification created exactly
-// at the watermark is read, not unread, so it does not contribute to activity.
-func TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread(t *testing.T) {
+// TestPostgresStore_FindInZonePage_RecentActivity_NewUnreadSurfaces proves the new
+// semantic: a genuinely-new caller (no watermark, no backfill) whose notification is
+// unread (read_at IS NULL) DOES surface it — the unread event floats the app above a
+// newer-start_date app with no unread. This is the behaviour change GET-no-seed
+// enables (ADR 0035).
+func TestPostgresStore_FindInZonePage_RecentActivity_NewUnreadSurfaces(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-new"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	feb := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	for _, a := range []PlanningApplication{
+		withStart(at(pgApp("P", 100), 100), jan), // oldest start, fresh unread
+		withStart(at(pgApp("Q", 100), 200), feb), // newer start, no notification
+	} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+	// No watermark, no backfill: the notification stays unread (read_at IS NULL).
+	seedNotification(t, pool, "n-P", userID, "uid-P", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	want := []string{"P", "Q"} // P's unread (jun15) floats it above Q(feb).
+	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
+		t.Fatalf("recent-activity new-unread: got %v, want %v (a new unread must surface)", got, want)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_RecentActivity_AtWatermarkIsRead proves a
+// notification created exactly at the watermark is read after backfill (the 0015
+// UPDATE uses created_at <= last_read_at), so read_at IS NULL excludes it — the
+// equivalence of the old strict created_at > last_read_at predicate (ADR 0035).
+func TestPostgresStore_FindInZonePage_RecentActivity_AtWatermarkIsRead(t *testing.T) {
 	store, pool := newActivityPGStore(t)
 	ctx := context.Background()
 	const userID = "user-strict"
@@ -923,13 +985,14 @@ func TestPostgresStore_FindInZonePage_RecentActivity_StrictUnread(t *testing.T) 
 		}
 	}
 	seedWatermark(t, pool, userID, watermark)
-	// created_at == last_read_at: read, not unread (strict >), so M's activity is
-	// its start_date, not this timestamp.
+	// created_at == last_read_at: backfilled read (created_at <= last_read_at), so
+	// M's activity is its start_date, not this timestamp.
 	seedNotification(t, pool, "n-M", userID, "uid-M", 100, watermark)
+	backfillReadAt(t, pool)
 
 	want := []string{"N", "M"} // N(feb) > M(jan); the at-watermark notification is read.
 	if got := pageAllInZoneAs(t, store, userID, SortRecentActivity, 6000, 100); !reflect.DeepEqual(got, want) {
-		t.Fatalf("recent-activity strict-unread: got %v, want %v (a notification exactly at the watermark is read)", got, want)
+		t.Fatalf("recent-activity at-watermark: got %v, want %v (a notification exactly at the watermark is read)", got, want)
 	}
 }
 
@@ -1010,6 +1073,8 @@ func unreadFixture(t *testing.T, store *PostgresStore, pool *pgxpool.Pool, userI
 	seedNotification(t, pool, "n-U1", userID, "uid-U1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) // > watermark: unread
 	seedNotification(t, pool, "n-U2", userID, "uid-U2", 100, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))  // < watermark: read
 	seedNotification(t, pool, "n-U4", userID, "uid-U4", 100, time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)) // > watermark: unread
+	// Backfill derives read_at: n-U2 (<= watermark) becomes read; n-U1/n-U4 stay unread.
+	backfillReadAt(t, pool)
 }
 
 // TestPostgresStore_FindInZonePage_UnreadFilter proves ?unread=true (the INNER
@@ -1042,11 +1107,11 @@ func TestPostgresStore_FindInZonePage_UnreadFilter(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_FindInZonePage_UnreadFilter_FirstTouch proves a caller with NO
-// notification_state row (never read) gets the empty set under ?unread=true — the
-// INNER JOIN to notification_state yields nothing, even though matching
-// notifications exist.
-func TestPostgresStore_FindInZonePage_UnreadFilter_FirstTouch(t *testing.T) {
+// TestPostgresStore_FindInZonePage_UnreadFilter_ExistingNoWatermark proves an
+// existing (pre-migration) caller with NO notification_state row gets the empty set
+// under ?unread=true: the 0015 backfill marked their history read, so read_at IS NULL
+// yields nothing (ADR 0035 equivalence to the old INNER-JOIN behaviour).
+func TestPostgresStore_FindInZonePage_UnreadFilter_ExistingNoWatermark(t *testing.T) {
 	store, pool := newActivityPGStore(t)
 	ctx := context.Background()
 	const userID = "user-firsttouch"
@@ -1055,16 +1120,40 @@ func TestPostgresStore_FindInZonePage_UnreadFilter_FirstTouch(t *testing.T) {
 	if err := store.Upsert(ctx, app); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
-	// A notification exists, but with no watermark row the user has read nothing,
-	// so the unread subquery (INNER to notification_state) contributes nothing.
 	seedNotification(t, pool, "n-Z1", userID, "uid-Z1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	backfillReadAt(t, pool) // no-watermark backfill marks n-Z1 read.
 
 	got := pageAllFiltered(t, store, InZoneQuery{
 		UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
 		Sort: SortNewest, Unread: true, Limit: 10,
 	})
 	if len(got) != 0 {
-		t.Fatalf("first-touch unread=true: got %v, want empty (no notification_state ⇒ no unread)", got)
+		t.Fatalf("existing-no-watermark unread=true: got %v, want empty (backfilled history is read)", got)
+	}
+}
+
+// TestPostgresStore_FindInZonePage_UnreadFilter_NewUnreadSurfaces proves the new
+// semantic through the dynamic filtered-query builder: a genuinely-new caller (no
+// watermark, no backfill) whose notification is unread (read_at IS NULL) keeps the
+// app under ?unread=true.
+func TestPostgresStore_FindInZonePage_UnreadFilter_NewUnreadSurfaces(t *testing.T) {
+	store, pool := newActivityPGStore(t)
+	ctx := context.Background()
+	const userID = "user-new"
+	jan := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	app := withStart(at(pgApp("Z1", 100), 100), jan)
+	if err := store.Upsert(ctx, app); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	// No watermark, no backfill: the notification stays unread (read_at IS NULL).
+	seedNotification(t, pool, "n-Z1", userID, "uid-Z1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+
+	got := pageAllFiltered(t, store, InZoneQuery{
+		UserID: userID, Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,
+		Sort: SortNewest, Unread: true, Limit: 10,
+	})
+	if want := []string{"Z1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("new-unread unread=true: got %v, want %v (a new unread must be kept)", got, want)
 	}
 }
 
@@ -1091,6 +1180,7 @@ func TestPostgresStore_FindInZonePage_UnreadFilter_RecentActivity(t *testing.T) 
 	seedWatermark(t, pool, userID, jan)
 	seedNotification(t, pool, "n-AA", userID, "uid-AA", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)) // activity jun15
 	seedNotification(t, pool, "n-CC", userID, "uid-CC", 100, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))  // activity mar1
+	backfillReadAt(t, pool)                                                                                // both after jan → stay unread.
 
 	want := []string{"AA", "CC"} // AA(jun15) > CC(mar1); BB dropped (no unread).
 	for _, limit := range []int{100, 1} {
@@ -1116,6 +1206,7 @@ func TestPostgresStore_FindInZonePage_CursorFilterMismatch(t *testing.T) {
 	const userID = "user-cursor"
 	seedWatermark(t, pool, userID, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	seedNotification(t, pool, "n-P1", userID, "uid-P1", 100, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	backfillReadAt(t, pool)
 
 	permitted := InZoneQuery{
 		Latitude: pgCentreLat, Longitude: pgCentreLon, RadiusMetres: 6000,

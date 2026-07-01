@@ -116,7 +116,6 @@ func TestCreate_ConcurrentCreatesRespectQuota(t *testing.T) {
 		profiles: &fakeProfileReader{profile: p},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMuxWithCAS(t, d, casFake)
@@ -188,7 +187,6 @@ func TestCreate_DeleteFreesQuota(t *testing.T) {
 		profiles: &fakeProfileReader{profile: casFake.profile},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	createMux := newNearbyMuxWithCAS(t, d, casFake)
@@ -223,7 +221,6 @@ func TestCreate_LegacyProfileLazyInit(t *testing.T) {
 		profiles: &fakeProfileReader{profile: p},
 		resolver: &fakeResolver{},
 		apps:     &fakeAppFinder{},
-		state:    &fakeWatermark{},
 		unread:   &fakeUnread{},
 	}
 	mux := newNearbyMuxWithCAS(t, d, casFake)
@@ -245,7 +242,7 @@ func TestCreate_FailsClosedWhenCASNotWired(t *testing.T) {
 	mux := http.NewServeMux()
 	// NearbyRoutes WITHOUT WithProfileCAS — profileCAS is nil.
 	NearbyRoutes(mux, &fakeZoneStore{}, &fakeProfileReader{profile: freeProfile(t)},
-		&fakeResolver{}, &fakeAppFinder{}, &fakeWatermark{}, &fakeUnread{},
+		&fakeResolver{}, &fakeAppFinder{}, &fakeUnread{},
 		func() string { return "zone-x" }, func() time.Time { return nearbyNow },
 		slog.New(slog.DiscardHandler))
 
@@ -260,7 +257,7 @@ func TestCreate_FailsClosedWhenCASNotWired(t *testing.T) {
 func newNearbyMuxWithCAS(t *testing.T, d nearbyDeps, cas profileCAS) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.state, d.unread,
+	NearbyRoutes(mux, d.store, d.profiles, d.resolver, d.apps, d.unread,
 		func() string { return "zone-cas-" + time.Now().Format("150405.000000000") },
 		func() time.Time { return nearbyNow },
 		slog.New(slog.DiscardHandler),

@@ -20,7 +20,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
@@ -52,12 +51,11 @@ type zoneReader interface {
 	GetByUserID(ctx context.Context, userID string) ([]watchzones.WatchZone, error)
 }
 
-// stateReader supplies the unread-count badge inputs for the weekly push:
-// the watermark and the strictly-after-watermark count. notificationstate.CosmosStore
+// stateReader supplies the unread-count badge for the weekly push: the total
+// unread tally (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore
 // satisfies it.
 type stateReader interface {
-	Get(ctx context.Context, userID string) (*notificationstate.State, error)
-	UnreadCount(ctx context.Context, userID string, lastReadAt time.Time) (int, error)
+	UnreadCount(ctx context.Context, userID string) (int, error)
 }
 
 // deviceReader lists a user's device tokens for a push and prunes the ones APNs
@@ -164,8 +162,8 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 
 // sendWeeklyPush builds and sends the weekly digest push, then prunes any device
 // tokens APNs reports invalid. A user with no devices is a no-op. The badge is
-// the total unread count derived from the watermark (first-touch users start at
-// the zero instant), distinct from the digest application count.
+// the total unread count (read_at IS NULL, ADR 0035), distinct from the digest
+// application count.
 func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProfile, applicationCount int) {
 	devices, err := h.devices.ListByUser(ctx, profile.UserID)
 	if err != nil {
@@ -176,16 +174,7 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 		return
 	}
 
-	lastReadAt := time.Unix(0, 0).UTC()
-	st, err := h.state.Get(ctx, profile.UserID)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "weekly digest: load notification state failed", "user", profile.UserID, "error", err)
-		return
-	}
-	if st != nil {
-		lastReadAt = st.LastReadAt
-	}
-	totalUnread, err := h.state.UnreadCount(ctx, profile.UserID, lastReadAt)
+	totalUnread, err := h.state.UnreadCount(ctx, profile.UserID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "weekly digest: unread count failed", "user", profile.UserID, "error", err)
 		return

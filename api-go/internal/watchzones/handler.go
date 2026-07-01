@@ -84,7 +84,6 @@ type handler struct {
 	profileCAS profileCAS
 	resolver   authorityResolver
 	apps       appFinder
-	state      watermarkReader
 	unread     unreadReader
 	newID      func() string
 	now        func() time.Time

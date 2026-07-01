@@ -77,7 +77,7 @@ func (d *dispatchMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // store wired into NearbyRoutes must satisfy. *notifications.PostgresStore (which
 // satisfies the full notifications.Store) satisfies it structurally.
 type notifUnreadReader interface {
-	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
 // newRouter wires the feature routes onto a mux and wraps it in the production
@@ -190,7 +190,7 @@ func newRouter(
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
 	}
-	if store != nil && watchZoneStore != nil && appStore != nil && stateStore != nil && notifStore != nil {
+	if store != nil && watchZoneStore != nil && appStore != nil && notifStore != nil {
 		// Watch-zone create (returns nearby applications) + the per-zone
 		// applications list. Create enforces the tier's zone quota atomically via
 		// CAS on the profile counter (WithProfileCAS) — this is the only create
@@ -198,8 +198,8 @@ func newRouter(
 		// store is non-nil here (guarded above), so no typed-nil concern. It
 		// resolves the authority from coordinates via the geocode client when the
 		// request omits one; the applications list augments each row with its
-		// latest unread notification.
-		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, stateStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
+		// latest unread notification (read_at IS NULL, ADR 0035).
+		watchzones.NearbyRoutes(mux, watchZoneStore, store, geocodeClient, appStore, notifStore, uuid.NewString, time.Now, logger, watchzones.WithMetricsRecorder(registry), watchzones.WithProfileCAS(store))
 	}
 	if store != nil && watchZoneStore != nil && appStore != nil {
 		// Demo account (anonymous): seeds a Pro profile, a Westminster watch zone,

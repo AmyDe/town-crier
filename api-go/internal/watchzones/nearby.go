@@ -18,7 +18,6 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/httputil"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
-	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
@@ -70,17 +69,10 @@ type appFinder interface {
 	FindClustersInZone(ctx context.Context, q applications.ClusterQuery) ([]applications.Cluster, error)
 }
 
-// watermarkReader reads the caller's notification read-watermark. A nil return
-// is the first-touch signal (no watermark yet). *notificationstate.CosmosStore
-// satisfies it.
-type watermarkReader interface {
-	Get(ctx context.Context, userID string) (*notificationstate.State, error)
-}
-
-// unreadReader batches the per-application latest-unread lookup.
-// *notifications.CosmosStore satisfies it.
+// unreadReader batches the per-application latest-unread lookup (read_at IS NULL,
+// ADR 0035). *notifications.PostgresStore satisfies it.
 type unreadReader interface {
-	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string, lastReadAt time.Time) (map[string]notifications.LatestUnread, error)
+	GetLatestUnreadByApplications(ctx context.Context, userID string, applicationUIDs []string) (map[string]notifications.LatestUnread, error)
 }
 
 // NearbyRoutes registers POST /v1/me/watch-zones (create, returning nearby
@@ -92,7 +84,6 @@ func NearbyRoutes(
 	profileReader profileReader,
 	resolver authorityResolver,
 	apps appFinder,
-	state watermarkReader,
 	unread unreadReader,
 	newID func() string,
 	now func() time.Time,
@@ -104,7 +95,6 @@ func NearbyRoutes(
 		profiles: profileReader,
 		resolver: resolver,
 		apps:     apps,
-		state:    state,
 		unread:   unread,
 		newID:    newID,
 		now:      now,
@@ -391,26 +381,18 @@ func (h *handler) applications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	state, err := h.state.Get(r.Context(), userID)
-	if err != nil {
-		h.serverError(w, r, "load notification state", err)
-		return
+	// Classify each row's latest unread notification. Unread is purely
+	// read_at IS NULL (ADR 0035), independent of any notification_state row, so
+	// this runs unconditionally — a brand-new user (who no longer gets a seeded
+	// state row) still surfaces per-application unread badges.
+	uids := make([]string, 0, len(apps))
+	for _, a := range apps {
+		uids = append(uids, a.UID)
 	}
-
-	// Only classify rows as unread when the user has a watermark; first-touch
-	// users get null latestUnreadEvent everywhere (the dedicated notification-state
-	// seeder owns watermark creation).
-	var unread map[string]notifications.LatestUnread
-	if state != nil {
-		uids := make([]string, 0, len(apps))
-		for _, a := range apps {
-			uids = append(uids, a.UID)
-		}
-		unread, err = h.unread.GetLatestUnreadByApplications(r.Context(), userID, uids, state.LastReadAt)
-		if err != nil {
-			h.serverError(w, r, "load latest unread", err)
-			return
-		}
+	unread, err := h.unread.GetLatestUnreadByApplications(r.Context(), userID, uids)
+	if err != nil {
+		h.serverError(w, r, "load latest unread", err)
+		return
 	}
 
 	results := make([]applications.Result, 0, len(apps))
