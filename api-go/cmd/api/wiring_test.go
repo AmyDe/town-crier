@@ -134,6 +134,23 @@ func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, f
 	return nil, nil
 }
 
+// foundAppStore is a fakeAppStore that returns one populated application for the
+// Croydon area id (301) — the real id, so authorities.NewLookup().SlugForAreaID(301)
+// round-trips to "croydon". Every other read stays the empty (not-found) path. It
+// gives the anonymous share-page and by-slug routes a real record to render and
+// serialise in the end-to-end wiring test.
+type foundAppStore struct {
+	fakeAppStore
+	app applications.PlanningApplication
+}
+
+func (f foundAppStore) GetByAuthorityAndName(_ context.Context, authorityCode, _ string) (applications.PlanningApplication, bool, error) {
+	if authorityCode == "301" {
+		return f.app, true, nil
+	}
+	return applications.PlanningApplication{}, false, nil
+}
+
 // fakeSavedStore is a savedapplications.Store returning the empty path.
 type fakeSavedStore struct{}
 
@@ -261,6 +278,68 @@ func TestRouter_AnonymousRoutesServedWithoutToken(t *testing.T) {
 				t.Errorf("status = %d, want %d", rec.Code, tc.wantStatus)
 			}
 		})
+	}
+}
+
+// TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed is the end-to-end wiring
+// guard for the share surface (#738 Slice 1). It boots the FULL router with a
+// store that returns a real Croydon application, then proves:
+//
+//   - GET /a/{slug}/{ref}                       -> 200 text/html, no token
+//   - GET /v1/applications/by-slug/{slug}/{ref} -> 200 application/json, no token
+//   - GET /v1/applications/{authorityCode}/{ref} -> 401, no token (stays authed)
+//
+// The two new routes serve anonymously only if their anonymousPatterns strings
+// match the registered mux patterns byte-for-byte; a drift in either pattern string
+// would silently 401 the public page. The by-id contrast (denyAllValidator, no
+// token) proves the by-id read did NOT accidentally become anonymous.
+func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	app := applications.PlanningApplication{
+		Name:     "23/03456/FUL",
+		UID:      "croydon-23-03456-FUL",
+		AreaName: "Croydon",
+		AreaID:   301, // the real Croydon id, so SlugForAreaID(301) == "croydon"
+		Address:  "10 Downing Street, London",
+	}
+	appStore := foundAppStore{app: app}
+	// denyAllValidator rejects every token, so the by-id route can only pass if it
+	// were (wrongly) anonymous.
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, logger)
+
+	// (1) Public HTML share page: anonymous, 200 text/html.
+	page := serveReq(t, h, http.MethodGet, "/a/croydon/23/03456/FUL", "", "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("GET /a/croydon/... status = %d, want 200 (anonymous); body = %s", page.Code, page.Body.String())
+	}
+	if ct := page.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("share page Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(page.Body.String(), "10 Downing Street, London") {
+		t.Errorf("share page did not render the application address; body = %s", page.Body.String())
+	}
+
+	// (2) By-slug JSON read: anonymous, 200 application/json, carries authoritySlug.
+	bySlug := serveReq(t, h, http.MethodGet, "/v1/applications/by-slug/croydon/23/03456/FUL", "", "")
+	if bySlug.Code != http.StatusOK {
+		t.Fatalf("GET /v1/applications/by-slug/... status = %d, want 200 (anonymous); body = %s", bySlug.Code, bySlug.Body.String())
+	}
+	if ct := bySlug.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("by-slug Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(bySlug.Body.String(), `"authoritySlug":"croydon"`) {
+		t.Errorf("by-slug body missing authoritySlug croydon; body = %s", bySlug.Body.String())
+	}
+
+	// (3) By-id read stays authed: same application, NO token -> 401 + Bearer.
+	byID := serveReq(t, h, http.MethodGet, "/v1/applications/301/23/03456/FUL", "", "")
+	if byID.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /v1/applications/301/... status = %d, want 401 (authed, no token); body = %s", byID.Code, byID.Body.String())
+	}
+	if got := byID.Header().Get("WWW-Authenticate"); got != "Bearer" {
+		t.Errorf("by-id WWW-Authenticate = %q, want Bearer", got)
 	}
 }
 
