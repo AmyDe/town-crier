@@ -134,9 +134,7 @@ struct UniversalLinkParserTests {
     #expect(result == .shareApplication(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC"))
   }
 
-  @Test func parse_browsingWebActivityWithLegacyApplicationURL_returnsApplicationDetailDeepLink()
-    throws
-  {
+  @Test func parse_browsingWebActivityWithLegacyURL_returnsApplicationDetailDeepLink() throws {
     let url = try #require(URL(string: "https://towncrierapp.uk/applications/19/00123/FUL"))
     let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
     activity.webpageURL = url
