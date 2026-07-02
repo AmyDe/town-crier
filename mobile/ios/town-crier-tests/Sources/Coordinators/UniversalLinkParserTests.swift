@@ -113,4 +113,55 @@ struct UniversalLinkParserTests {
 
     #expect(result == nil)
   }
+
+  // MARK: - NSUserActivity convenience overload (tc-28x2)
+  //
+  // Both SwiftUI's `.onContinueUserActivity` (TownCrierApp.swift) and the
+  // UIKit-level `application(_:continue:restorationHandler:)` fallback
+  // (AppDelegate) hand this parser a raw `NSUserActivity` rather than a
+  // bare `URL`. This overload is the single place that guards the activity
+  // type and unwraps `webpageURL` before delegating to `parse(_:URL)`, so
+  // neither call site re-implements that guard.
+
+  @Test func parse_browsingWebActivityWithShareURL_returnsShareApplicationDeepLink() throws {
+    let url = try #require(
+      URL(string: "https://share.towncrierapp.uk/a/kingston/Kingston/25/02755/CLC"))
+    let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
+    activity.webpageURL = url
+
+    let result = UniversalLinkParser.parse(activity)
+
+    #expect(result == .shareApplication(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC"))
+  }
+
+  @Test func parse_browsingWebActivityWithLegacyApplicationURL_returnsApplicationDetailDeepLink()
+    throws
+  {
+    let url = try #require(URL(string: "https://towncrierapp.uk/applications/19/00123/FUL"))
+    let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
+    activity.webpageURL = url
+
+    let result = UniversalLinkParser.parse(activity)
+
+    #expect(
+      result == .applicationDetail(PlanningApplicationId(authority: "19", name: "00123/FUL")))
+  }
+
+  @Test func parse_activityOfWrongType_returnsNil() throws {
+    let url = try #require(URL(string: "https://share.towncrierapp.uk/a/kingston/23/03456/FUL"))
+    let activity = NSUserActivity(activityType: "uk.towncrierapp.mobile.someOtherActivity")
+    activity.webpageURL = url
+
+    let result = UniversalLinkParser.parse(activity)
+
+    #expect(result == nil)
+  }
+
+  @Test func parse_browsingWebActivityWithoutWebpageURL_returnsNil() {
+    let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
+
+    let result = UniversalLinkParser.parse(activity)
+
+    #expect(result == nil)
+  }
 }
