@@ -22,8 +22,6 @@ private struct UniversalLinkModifier: ViewModifier {
         guard let url = activity.webpageURL, let deepLink = UniversalLinkParser.parse(url) else {
           return
         }
-        UniversalLinkDeliveryLogger.logDelivery(
-          source: "SwiftUI onContinueUserActivity", url: url, deepLink: deepLink)
         coordinator.handleDeepLink(deepLink)
       }
       // `TownCrierApp` has one `WindowGroup` and no iPad multi-window

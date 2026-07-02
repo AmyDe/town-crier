@@ -26,8 +26,6 @@ private struct OpenURLModifier: ViewModifier {
       .onOpenURL { url in
         switch OpenURLRoute.resolve(url) {
         case .universalLink(let deepLink):
-          UniversalLinkDeliveryLogger.logDelivery(
-            source: "SwiftUI onOpenURL", url: url, deepLink: deepLink)
           coordinator.handleDeepLink(deepLink)
         case .other(let url):
           AuthCallbackHandler.handle(url: url)
