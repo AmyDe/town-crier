@@ -11,7 +11,7 @@ enum UniversalLinkDeliveryLogger {
   private static let logger = Logger(subsystem: "uk.towncrierapp", category: "UniversalLink")
 
   static func logDelivery(source: String, url: URL?, deepLink: DeepLink) {
-    logger.debug(
+    logger.notice(
       "UL via \(source): \(url?.absoluteString ?? "nil") -> \(String(describing: deepLink))")
   }
 }
