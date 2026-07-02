@@ -26,17 +26,20 @@ struct OpenURLRouteTests {
 
     #expect(
       result
-        == .universalLink(.shareApplication(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC"))
+        == .universalLink(
+          .shareApplication(authoritySlug: "kingston", ref: "Kingston/25/02755/CLC"))
     )
   }
 
-  @Test func resolve_legacyApplicationURL_returnsUniversalLinkWithApplicationDetailDeepLink() throws {
+  @Test func resolve_legacyURL_returnsUniversalLinkWithApplicationDetailDeepLink() throws {
     let url = try #require(URL(string: "https://towncrierapp.uk/applications/19/00123/FUL"))
 
     let result = OpenURLRoute.resolve(url)
 
     #expect(
-      result == .universalLink(.applicationDetail(PlanningApplicationId(authority: "19", name: "00123/FUL"))))
+      result
+        == .universalLink(
+          .applicationDetail(PlanningApplicationId(authority: "19", name: "00123/FUL"))))
   }
 
   @Test func resolve_auth0CallbackURL_returnsOther() throws {
