@@ -124,6 +124,9 @@ struct TownCrierApp: App {
     // callbacks (didRegisterForRemoteNotificationsWithDeviceToken /
     // didFailToRegisterForRemoteNotificationsWithError) can forward to it.
     appDelegate.registrar = registrar
+    // Mirrors the registrar wiring above: lets the AppDelegate's Universal
+    // Link fallback forward to the coordinator (tc-28x2, GH #763 Problem 1).
+    appDelegate.coordinator = appCoordinator
   }
 
   var body: some Scene {
@@ -142,12 +145,9 @@ struct TownCrierApp: App {
       .onOpenURL { url in
         AuthCallbackHandler.handle(url: url)
       }
-      .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-        guard let url = activity.webpageURL,
-          let deepLink = UniversalLinkParser.parse(url)
-        else { return }
-        coordinator.handleDeepLink(deepLink)
-      }
+      // Inbound Universal Link entry point — see UniversalLinkModifier.swift
+      // (tc-28x2, GH #763 Problem 1).
+      .handlingUniversalLinks(coordinator: coordinator)
       // Keyed on auth state (not a bare `.task`) so profile-ensure RE-RUNS on
       // the unauthenticated->authenticated transition. On a fresh install the
       // launch-time task fires while still signed out (no token -> the
