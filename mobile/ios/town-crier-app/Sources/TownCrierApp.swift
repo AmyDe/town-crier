@@ -142,11 +142,10 @@ struct TownCrierApp: App {
           LoginView(viewModel: loginViewModel)
         }
       }
-      .onOpenURL { url in
-        AuthCallbackHandler.handle(url: url)
-      }
-      // Inbound Universal Link entry point — see UniversalLinkModifier.swift
-      // (tc-28x2, GH #763 Problem 1).
+      // Primary inbound UL + Auth0-callback entry point — OpenURLModifier.swift.
+      // `.handlingUniversalLinks` below is a belt-and-braces fallback —
+      // UniversalLinkModifier.swift (tc-28x2, GH #763 Problem 1).
+      .handlingOpenURL(coordinator: coordinator)
       .handlingUniversalLinks(coordinator: coordinator)
       // Keyed on auth state (not a bare `.task`) so profile-ensure RE-RUNS on
       // the unauthenticated->authenticated transition. On a fresh install the
