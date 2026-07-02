@@ -22,6 +22,7 @@
 </head>
 <body>
 <main class="page">
+<img class="hero" src="{{.OGImage}}" alt="Map showing the approximate location of {{if .Address}}{{.Address}}{{else}}this planning application{{end}}" width="1200" height="630" loading="eager">
 <div class="brand"><span class="dot"></span>Town Crier</div>
 <article class="card">
 <div class="ref-row">Reference {{.Ref}}{{if .AppType}} &middot; {{.AppType}}{{end}}</div>

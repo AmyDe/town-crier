@@ -177,6 +177,30 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 	}
 }
 
+// TestServe_RendersMapHeroInBody pins Problem 2 (#763, tc-9ui9): the baked OSM
+// map card was previously emitted ONLY as og:image/twitter:image in <head>, so
+// browsers never showed it — only social unfurls did. The page body must carry
+// a visible hero <img> pointing at the SAME cached card URL as the unfurl meta.
+func TestServe_RendersMapHeroInBody(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<img class="hero"`) {
+		t.Error("body missing a hero <img> — the map must render in the page body, not just og:image")
+	}
+	wantSrc := `src="https://share.towncrierapp.uk/og/croydon/23/03456/FUL.png"`
+	if !strings.Contains(body, wantSrc) {
+		t.Errorf("hero <img> src missing or wrong; body should contain %q", wantSrc)
+	}
+}
+
 func TestServe_UnknownSlug_RendersBranded404(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}
