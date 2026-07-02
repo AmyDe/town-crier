@@ -24,6 +24,12 @@ const (
 	shareCampaignToken = "share-page"
 	appStoreMediaType  = "8"
 
+	// homeURL is the Town Crier marketing homepage. The share page has no
+	// per-application web destination, so the always-present homepage link
+	// (Problem 3, #763) points here regardless of device or which application is
+	// being viewed.
+	homeURL = "https://towncrierapp.uk"
+
 	// ogDescriptionMaxRunes bounds the og:/twitter:description so a long proposal
 	// does not overrun a social unfurl card. Counted in runes, not bytes, so a
 	// multibyte character is never split.
@@ -48,6 +54,7 @@ type pageView struct {
 	CanonicalURL  string
 	AppleAppID    string
 	CTAHref       string
+	HomeURL       string
 
 	Ref         string
 	Address     string
@@ -95,6 +102,7 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		CanonicalURL: canonical,
 		AppleAppID:   appleAppID,
 		CTAHref:      ctaURL(),
+		HomeURL:      homeURL,
 		Ref:          ref,
 		Address:      app.Address,
 		Description:  app.Description,
