@@ -11,13 +11,15 @@ You implement Go beads using strict Test-Driven Development in an isolated workt
 
 ## MANDATORY first step
 
-**You MUST invoke `/go-coding-standards` before reading, writing, or editing any Go file.** This is not optional and not a suggestion. The skill defines the idiomatic Go layout, error model, testing conventions, HTTP and concurrency rules, and security primitives this worker is required to follow. Without it loaded, you will produce code that violates project rules and the PR will be rejected.
+**You MUST invoke `/go-coding-standards` before reading, writing, or editing any Go file.** This is not optional and not a suggestion. The skill's `SKILL.md` is a slim **core** — the idiomatic layout, the full forbidden list, and the test-double conventions this worker is required to follow. Without it loaded, you will produce code that violates project rules and the PR will be rejected.
+
+The core ends with a **"References (load on demand)"** index. The detailed rules (HTTP hardening profile, security primitives, Azure SDK usage, the full `pgtest` harness API, config/DI/cold-start, workflow & naming) live in `references/*.md`. **Before writing code that touches one of those areas, read the matching reference file** named in the index — e.g. `references/http-hardening.md` for a handler/server/outbound-client bead, `references/testing-and-integration.md` for a Postgres store port, `references/azure-sdk.md` for a store/messaging bead. Don't guess a rule the reference states.
 
 If you are about to call `Read`, `Write`, or `Edit` on a `.go` file and have not yet invoked `/go-coding-standards` this session, STOP and invoke it first.
 
 ## Setup
 
-1. **Invoke `/go-coding-standards`** — required, see above. Do this before anything else.
+1. **Invoke `/go-coding-standards`** — required, see above. Do this before anything else, then pull the reference file(s) the bead's area maps to (per the core's "References (load on demand)" index).
 2. `/beads:show <bead-id>` — read what needs building and why
 3. `/beads:update <bead-id> --status=in_progress`
 4. Invoke `/escalation-protocol` — learn when and how to escalate decisions
@@ -48,7 +50,7 @@ For each cycle:
 - **Green code** uses consumer-side interfaces (defined where used), concrete struct constructors, sentinel errors with `%w` wrapping, and `ctx context.Context` as the first parameter on every I/O-touching function.
 - **Refactors** preserve behaviour; if test names start lying, rename them before changing code.
 
-**Postgres store ports (Cosmos → Postgres + PostGIS migration, epic #645).** When the bead ports a store to Postgres, the untagged `go test ./...` loop is not enough — you MUST also write real-DB integration tests behind `//go:build integration` using the `internal/platform/postgres/pgtest` harness (`pgtest.New(t)` + `Truncate`; see `/go-coding-standards`). Boot the local DB once with `make -C api-go db-up` (Docker must be running), drive the cycle with `cd api-go && go test -tags=integration ./...`, and add that command to pre-flight. Real-DB tests cover the spatial/SQL behaviour fakes cannot model; a port that only passes the untagged suite is incomplete.
+**Postgres store ports (Cosmos → Postgres + PostGIS migration, epic #645).** When the bead ports a store to Postgres, the untagged `go test ./...` loop is not enough — you MUST also write real-DB integration tests behind `//go:build integration` using the `internal/platform/postgres/pgtest` harness (`pgtest.New(t)` + `Truncate`; **read `references/testing-and-integration.md` for the full harness API**). Boot the local DB once with `make -C api-go db-up` (Docker must be running), drive the cycle with `cd api-go && go test -tags=integration ./...`, and add that command to pre-flight. Real-DB tests cover the spatial/SQL behaviour fakes cannot model; a port that only passes the untagged suite is incomplete.
 
 ## Pre-flight
 

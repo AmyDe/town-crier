@@ -9,13 +9,21 @@ model: sonnet
 
 You implement React/TypeScript beads using strict Test-Driven Development in an isolated worktree.
 
+## MANDATORY first step
+
+**You MUST invoke `/react-coding-standards` before reading, writing, or editing any React, TypeScript, or CSS file.** This is not optional and not a suggestion. The skill's `SKILL.md` is a slim **core** — the Clean Architecture / feature-sliced layout, branded types, hook-as-ViewModel and CSS-Module token conventions, the full forbidden list, and the Vitest test-double conventions this worker is required to follow. Without it loaded, you will produce code that violates project rules and the PR will be rejected.
+
+The core ends with a **"References (load on demand)"** index. The detailed rules and full examples (feature-slice/domain scaffolding, component + styling patterns, repository/API-client data access, the Vitest spy/fixture/hook-test examples, TypeScript config, workflow & naming) live in `references/*.md`. **Before writing code that touches one of those areas, read the matching reference file** named in the index — e.g. `references/components-and-styling.md` for a component/CSS bead, `references/data-access.md` for a repository/API-client bead, `references/testing.md` for a Vitest test, `references/architecture-and-domain.md` for a new feature slice or domain type. Don't guess a rule the reference states.
+
+If you are about to call `Read`, `Write`, or `Edit` on a `.tsx`, `.ts`, or `.module.css` file and have not yet invoked `/react-coding-standards` this session, STOP and invoke it first.
+
 ## Setup
 
-1. `/beads:show <bead-id>` — read what needs building and why
-2. `/beads:update <bead-id> --status=in_progress`
-3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
-4. Invoke `/react-coding-standards` — load Clean Architecture, CSS Modules, hooks-as-ViewModels, Vitest rules
-5. Invoke `/design-language` — load cross-platform design system (colors, typography, spacing, theming)
+1. **Invoke `/react-coding-standards`** — required, see above. Do this before anything else, then pull the reference file(s) the bead's area maps to (per the core's "References (load on demand)" index).
+2. Invoke `/design-language` — load cross-platform design system (colors, typography, spacing, theming)
+3. `/beads:show <bead-id>` — read what needs building and why
+4. `/beads:update <bead-id> --status=in_progress`
+5. Invoke `/escalation-protocol` — learn when and how to escalate decisions
 6. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
