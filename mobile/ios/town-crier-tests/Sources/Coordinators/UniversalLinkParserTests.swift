@@ -162,4 +162,25 @@ struct UniversalLinkParserTests {
 
     #expect(result == nil)
   }
+
+  // MARK: - Auth0 callback regression guard (tc-28x2, second attempt)
+  //
+  // `.onOpenURL` (TownCrierApp.swift) now tries `UniversalLinkParser.parse`
+  // before falling through to `AuthCallbackHandler.handle`, which resumes
+  // Auth0's `WebAuthentication`. Auth0.swift's default (non-universal-link)
+  // redirect URL is `{bundleId}://{domain}/ios/{bundleId}/callback` — this
+  // MUST NOT parse as a Universal Link, or the login/logout round-trip would
+  // be swallowed instead of reaching Auth0.
+
+  @Test func parse_auth0CallbackURL_returnsNil() throws {
+    let url = try #require(
+      URL(
+        string:
+          "uk.towncrierapp.mobile://towncrierapp.uk.auth0.com/ios/uk.towncrierapp.mobile/callback"
+      ))
+
+    let result = UniversalLinkParser.parse(url)
+
+    #expect(result == nil)
+  }
 }
