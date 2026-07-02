@@ -23,6 +23,19 @@ public enum UniversalLinkParser {
     return parseApplications(path)
   }
 
+  /// Convenience overload for the raw `NSUserActivity` continuation object
+  /// both SwiftUI's `.onContinueUserActivity` and the UIKit-level
+  /// `application(_:continue:restorationHandler:)` fallback receive
+  /// (tc-28x2). Guards the activity type and unwraps `webpageURL` before
+  /// delegating to ``parse(_:URL)`` — the URL-path parsing logic is not
+  /// duplicated.
+  public static func parse(_ activity: NSUserActivity) -> DeepLink? {
+    guard activity.activityType == NSUserActivityTypeBrowsingWeb,
+      let url = activity.webpageURL
+    else { return nil }
+    return parse(url)
+  }
+
   /// Parses `/a/{authoritySlug}/{ref...}`: the first segment after `/a/` is the
   /// slug, everything after it (verbatim, slashes preserved) is the ref. A bare
   /// `/a` or `/a/`, or a slug with no ref, returns `nil`. The `/a/` separator is
