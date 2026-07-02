@@ -71,8 +71,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     restorationHandler: @escaping ([any UIUserActivityRestoring]?) -> Void
   ) -> Bool {
     guard let deepLink = UniversalLinkParser.parse(userActivity) else { return false }
-    UniversalLinkDeliveryLogger.logDelivery(
-      source: "AppDelegate.continue:", url: userActivity.webpageURL, deepLink: deepLink)
     Task { @MainActor [weak self] in
       self?.coordinator?.handleDeepLink(deepLink)
     }
