@@ -11,7 +11,7 @@ You implement Azure infrastructure using Pulumi with Go in an isolated worktree.
 
 ## Setup
 
-1. **Invoke `/go-coding-standards`** — required. `/infra` is Go; the same idiomatic-Go, error-handling, and security rules apply. Do this before reading, writing, or editing any `.go` file.
+1. **Invoke `/go-coding-standards`** — required. `/infra` is Go; the same idiomatic-Go, error-handling, and security rules apply. Do this before reading, writing, or editing any `.go` file. The skill's `SKILL.md` is a slim **core** (layout, forbidden list, test-double conventions); its detailed rules live in `references/*.md` listed under the core's **"References (load on demand)"** index. Pull the matching reference when the bead touches that area — most infra beads want `references/layout-and-wiring.md` (errors, context, config) and `references/security-and-logging.md` (secrets, TLS); read `references/workflow-and-naming.md` for build/format and naming.
 2. `/beads:show <bead-id>` — read what infrastructure is needed and why
 3. `/beads:update <bead-id> --status=in_progress`
 4. Invoke `/escalation-protocol` — learn when and how to escalate decisions
