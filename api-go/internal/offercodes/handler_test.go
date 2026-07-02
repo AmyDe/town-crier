@@ -221,17 +221,71 @@ func TestRedeem_AlreadyRedeemed(t *testing.T) {
 	}
 }
 
+// TestRedeem_AlreadySubscribed covers a currently-active paid subscription
+// (SubscriptionExpiry strictly after now): EffectiveTier reports the raw paid
+// tier unchanged, so the guard still blocks redemption.
 func TestRedeem_AlreadySubscribed(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
 	paid := freeProfile(t)
-	paid.ActivateSubscription(profiles.TierPersonal, time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC))
+	paid.ActivateSubscription(profiles.TierPersonal, now.AddDate(0, 6, 0)) // expiry well in the future
 
 	rec := serveRedeem(t, seededCode(t), &fakeProfileStore{profile: paid}, &fakeTierSync{},
-		time.Now(), `{"code":"ABCDEFGHJKMN"}`)
+		now, `{"code":"ABCDEFGHJKMN"}`)
 
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := rec.Body.String(); got != `{"error":"already_subscribed","message":"User already has an active subscription; offer codes are only available to free-tier users."}` {
+		t.Errorf("body = %s", got)
+	}
+}
+
+// TestRedeem_LapsedSubscriptionCanRedeem is the regression test for tc-jh0o:
+// the profile's raw Tier is still paid but SubscriptionExpiry is in the past
+// with no grace period, so EffectiveTier collapses to Free and the guard must
+// allow the redemption to proceed (and succeed).
+func TestRedeem_LapsedSubscriptionCanRedeem(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	lapsed := freeProfile(t)
+	lapsed.ActivateSubscription(profiles.TierPro, now.AddDate(0, 0, -1)) // expired yesterday, no grace period
+
+	codes := seededCode(t)
+	profile := &fakeProfileStore{profile: lapsed}
+	auth0 := &fakeTierSync{}
+
+	rec := serveRedeem(t, codes, profile, auth0, now, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if codes.saved == nil || !codes.saved.IsRedeemed() || *codes.saved.RedeemedByUserID != "auth0|u1" {
+		t.Errorf("code not saved redeemed: %+v", codes.saved)
+	}
+	if profile.saved == nil || profile.saved.Tier != profiles.TierPro || profile.saved.SubscriptionExpiry == nil {
+		t.Errorf("profile not activated to the newly granted tier: %+v", profile.saved)
+	}
+}
+
+// TestRedeem_ActiveGracePeriodBlocksRedeem covers the App Store billing-retry
+// window: SubscriptionExpiry has passed but GracePeriodExpiry is still in the
+// future, so EffectiveTier keeps the paid tier and the guard must still block.
+func TestRedeem_ActiveGracePeriodBlocksRedeem(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	inGrace := freeProfile(t)
+	inGrace.ActivateSubscription(profiles.TierPro, now.AddDate(0, 0, -1)) // expired yesterday
+	inGrace.EnterGracePeriod(now.AddDate(0, 0, 1))                        // grace period active until tomorrow
+
+	rec := serveRedeem(t, seededCode(t), &fakeProfileStore{profile: inGrace}, &fakeTierSync{},
+		now, `{"code":"ABCDEFGHJKMN"}`)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	if got := rec.Body.String(); got != `{"error":"already_subscribed","message":"User already has an active subscription; offer codes are only available to free-tier users."}` {
 		t.Errorf("body = %s", got)
