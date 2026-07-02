@@ -2,7 +2,7 @@
 name: github-actions-worker
 description: CI/CD pipeline worker for GitHub Actions beads. Implements and validates workflows, stays within .github/.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # GitHub Actions Worker

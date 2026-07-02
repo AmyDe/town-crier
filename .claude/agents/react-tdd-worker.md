@@ -2,7 +2,7 @@
 name: react-tdd-worker
 description: TDD implementation worker for React/TypeScript beads. Reads the bead, follows Red-Green-Refactor, commits with conventional prefixes, and stays within web/.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # React TDD Worker

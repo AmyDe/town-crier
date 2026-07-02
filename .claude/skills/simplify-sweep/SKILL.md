@@ -1,6 +1,7 @@
 ---
 name: simplify-sweep
 description: "Aggressive autonomous code simplification auditor — scans the entire codebase hunting for dead code, over-abstraction, duplication, and unnecessary complexity, then raises one lightweight bead per finding. Designed for daily `/loop`. MUST use this skill whenever the user says 'simplify', 'simplification sweep', 'find dead code', 'reduce complexity', 'code audit', 'refactoring opportunities', or any variation."
+disable-model-invocation: true
 ---
 
 # Simplify Sweep

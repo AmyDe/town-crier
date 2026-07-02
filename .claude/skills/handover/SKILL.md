@@ -30,18 +30,7 @@ Pull together everything a context-free session needs. Use what's already in thi
 
 Work out how the new session should deliver, and bake the answer into the brief.
 
-**Matching TDD worker** — route by where the code lives:
-
-| Work area | Worker agent | Allowed path |
-|-----------|--------------|--------------|
-| iOS / Swift | `ios-tdd-worker` | `mobile/ios/` |
-| Go API / CLI | `go-tdd-worker` | `api-go/`, `cli/` |
-| React / TypeScript / web | `react-tdd-worker` | `web/` |
-| Pulumi infra (Go) | `pulumi-infra-worker` | `infra/` |
-| GitHub Actions / CI | `github-actions-worker` | `.github/` |
-| Delete/remove + tech area | `delete-worker` | *(by tech area)* |
-
-UI work in any stack also consults the `design-language` skill alongside the platform skill.
+**Matching TDD worker** — route by where the code lives, using the stack → worker → allowed-path table in CLAUDE.md ("Coding Standards Skills and Workers"). `delete-worker` handles removals in any tech area; UI work in any stack also consults the `design-language` skill alongside the platform skill. Workers are Sonnet-first (see CLAUDE.md "Worker model policy") and the goal-runner escalates to Opus only on gate failure — don't hardcode a model in the brief.
 
 **Out-of-boundary fallback** — if the work does **not** fit any TDD worker (docs, ADRs/memos under `/docs`, root-level scripts, cross-cutting tooling, `.claude/` config, anything with no `*-tdd-worker` home), say so in the brief and instruct the new session to dispatch a **raw `general-purpose` subagent** with a tailored prompt: name the exact files, the acceptance, and the same guardrails (bead-first, worktree, green tests/build). Never force a misfit worker onto out-of-boundary work.
 
@@ -93,9 +82,8 @@ BEAD(S): <tc-id> — <title>. Claim before editing (`bd update <tc-id> --status=
 close when acceptance is met. No bead for a slice? Create one — every code change needs a bead.
 
 DELIVERY — you orchestrate; you do NOT write code yourself:
-  1. Worktree-first: `bd worktree create <name> --branch <branch>`, apply the two bd worktree
-     workarounds, then `git -C <wt> reset --hard origin/main` (it bases off current HEAD, not
-     origin/main — verify `log -1`). See CLAUDE.md.
+  1. Worktree-first: `scripts/wf/worktree-setup.sh <name> --branch <branch>` — creates it, applies
+     the bd workarounds, resets to origin/main, and prints the path. See CLAUDE.md.
   2. Dispatch the matching TDD worker: <worker(s) + allowed path(s)>. UI work also consults
      design-language. <Out of boundary? dispatch a general-purpose subagent naming the exact
      files + acceptance + these guardrails instead.>

@@ -1,6 +1,7 @@
 ---
 name: cost-forecast
 description: "Bottom-up Azure cost forecaster for Town Crier subscription ae5e40cd-96ef-48d8-950a-2e22cf8f991a. Reconciles Pulumi state, recent /infra git history, and Azure Cost Management telemetry to produce a forecast that beats Azure's linear projection — and explains every delta with evidence. Also recommends cost reductions, filed as beads. MUST use this skill whenever the user says 'cost forecast', 'forecast costs', 'azure spend', 'infra costs', 'how much will we spend', 'are we over budget', 'cloud bill', '/cost-forecast', or any variation of wanting to know what Azure is going to cost. Also trigger proactively when the user mentions a recent infra change and asks about its cost impact, or wonders why the Azure portal projection looks off."
+disable-model-invocation: true
 ---
 
 # Cost Forecast

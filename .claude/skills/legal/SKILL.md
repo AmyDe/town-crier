@@ -1,6 +1,7 @@
 ---
 name: legal
 description: "Autonomous UK GDPR auditor for Town Crier — scans the codebase to inventory personal data collected, third-party processors, cross-border data flows, and cookies, then compares against the live Terms of Service and Privacy Policy (served from `api-go/internal/legal/handler.go`). Produces a gap report, files a bead, updates the copy, and files separate beads for any code-level compliance gaps found. MUST use this skill whenever the user says 'legal audit', 'privacy audit', 'privacy review', 'GDPR check', 'compliance check', 'update terms', 'update privacy policy', 'data audit', 'check data processors', 'privacy policy is stale', 'terms are stale', '/legal', or any variation of wanting to ensure the Terms of Service and Privacy Policy accurately reflect the codebase and meet UK GDPR transparency requirements. Also trigger proactively whenever a new third-party integration, new personal data field, or new data flow is added to the codebase."
+disable-model-invocation: true
 ---
 
 # Legal Audit
@@ -209,7 +210,7 @@ bd create --title="<compliance gap>" \
   --type=<feature|bug> --priority=<1|2>
 ```
 
-Leave these open. The `/legal` skill's job is to surface them, not to implement them. A follow-up conversation or `/autopilot` run will pick them up.
+Leave these open. The `/legal` skill's job is to surface them, not to implement them. A follow-up conversation or `/goal` run will pick them up.
 
 ## Idempotency
 
@@ -222,15 +223,9 @@ This skill will be re-run. To avoid churn:
 
 For the full UK GDPR Article 13/14 transparency checklist and Chapter V transfer obligations, see `references/uk-gdpr-checklist.md`. Read it during Phase 3 — don't try to remember all the requirements from training data.
 
-## Voice Guide for the Copy
+## Voice for the Copy
 
-The existing copy is plain English. Preserve that. Guidelines:
-- Short sentences. Active voice.
-- "We" and "you", not "the data controller" and "the data subject".
-- No Latin (no "inter alia", "pro rata", etc.).
-- Explain the why when the reader might wonder. E.g., "We store coordinates rather than your exact address so we don't hold your home address on our servers."
-- Where a law is the reason for a sentence, it's fine to cite it inline: "Under UK GDPR, you have the right to…".
-- Do **not** copy-paste boilerplate from other policies. Every sentence should be about Town Crier specifically.
+Write and edit the privacy/terms copy with the `voice` skill (product-copy register) — invoke `/voice` before drafting. The rules that matter most here: plain English, short active sentences; "we"/"you", never "the data controller"/"the data subject"; no Latin; explain the *why* where a reader might wonder (e.g. "We store coordinates rather than your exact address so we don't hold your home address on our servers"); cite the law inline where it's the reason for a sentence ("Under UK GDPR, you have the right to…"); and never paste boilerplate from other policies — every sentence is about Town Crier specifically.
 
 ## Output Summary
 

@@ -1,13 +1,13 @@
 ---
 name: file-issue
-description: "Research a bug or feature description, resolve all design decisions, then raise a deeply detailed GitHub issue ready for autonomous implementation. The output issue must be self-contained — downstream triage and autopilot sessions implement it without any further questions. TRIGGER on: 'file an issue', 'raise an issue', 'create a github issue', 'log a bug', 'file a feature request', or when the user describes something they want built or fixed."
+description: "Research a bug or feature description, resolve all design decisions, then raise a deeply detailed GitHub issue ready for autonomous implementation. The output issue must be self-contained — downstream implementation sessions implement it without any further questions. TRIGGER on: 'file an issue', 'raise an issue', 'create a github issue', 'log a bug', 'file a feature request', or when the user describes something they want built or fixed."
 ---
 
 # File Issue
 
 You are a senior engineer who has just received a human-language description of a bug or feature. Your job is to transform it into a GitHub issue so detailed and so complete that an autonomous agent can implement it correctly with zero follow-up questions.
 
-Downstream sessions (triage-inbox, autopilot) run without human oversight. Every implementation ambiguity you leave open will either block the worker or produce the wrong thing. **Ambiguity is a defect. Resolve it here.**
+Downstream implementation sessions (e.g. a `/goal` run driving a TDD worker) run without human oversight. Every implementation ambiguity you leave open will either block the worker or produce the wrong thing. **Ambiguity is a defect. Resolve it here.**
 
 ## Execution Flow
 
@@ -271,7 +271,7 @@ Determine the correct labels:
 | New capability | `enhancement` |
 | Internal improvement (no user-visible change) | (none, just describe it) |
 
-Do NOT add area labels — `triage-inbox` assigns those from the issue body when it creates the bead.
+Area labels are optional — add one matching the stack (`go`, `ios`, `web`, `infra`, `ci`) if it helps route the work to the right worker later.
 
 ---
 
@@ -291,7 +291,7 @@ After creating, print:
 ```
 Filed: <issue URL>
 Title: <title>
-Triage-inbox will pick this up on its next loop tick.
+Turn it into beads with `plan-to-beads`, or reference it directly from a `/goal` handover.
 ```
 
 ---

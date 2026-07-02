@@ -121,6 +121,16 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 
 Skills live in `.claude/skills/` as `SKILL.md` files. Agents live in `.claude/agents/`. Skills are auto-triggered when writing code in their target path; consult the skill before writing, reviewing, or scaffolding code for that stack.
 
+### Worker model policy
+
+Worker agents default to `model: sonnet` (set in each agent's frontmatter) — most beads don't need Opus, and Sonnet-first with a retry is cheaper than Opus-always. The orchestrator escalates deliberately:
+
+- **Re-dispatch a bead once with `model: opus`** only after a Sonnet worker fails its pre-flight gates (tests/lint/build) or the PR gate rejects the work — the TDD loop, lint hooks, and pr-gate make a weaker first attempt a bounded retry, not a broken main.
+- **Read-only fan-out** (`Explore`, locating code) can use `model: haiku`; **read-and-summarise** subagents use `model: sonnet`.
+- Reserve the premium default model for design/spec sessions (discussing, `file-issue`, ADRs) — a goal-runner session that only dispatches, watches gates, and merges can itself run on Sonnet.
+
+Do not pin `model:` at the `Agent()` call site for workers; the frontmatter is the single control.
+
 ## Key Architectural Constraints
 
 Per-stack architecture and patterns live in that stack's coding-standards skill (see the table above). Cross-cutting constraints:
@@ -193,16 +203,16 @@ A PreToolUse hook (`.claude/require-bead.sh`) enforces this — Write/Edit on co
 
 **All code changes must happen in a worktree — never in the main working tree.** Multiple conversations often run in parallel; editing the main tree causes conflicts.
 
-Before editing code, create and enter an isolated worktree:
+Before editing code, create and enter an isolated worktree. **`scripts/wf/worktree-setup.sh <name> [--branch <branch>]` runs the whole recipe below** — resets local main to `origin/main`, creates the worktree, applies both bd workarounds, resets it to `origin/main`, and prints the path. Prefer it; the manual steps document what it does and are the fallback:
 1. `bd worktree create <name>` (optionally `--branch <branch>`) — wraps `git worktree add`, keeps the shared beads DB visible, and avoids beads bug [GH#3311](https://github.com/gastownhall/beads/issues/3311).
-2. **Apply two bd worktree workarounds.** Autopilot's Phase 2 does both automatically; humans creating worktrees by hand must run them manually.
+2. **Apply two bd worktree workarounds.** The setup helper does both automatically; humans creating worktrees by hand must run them manually.
 
    **a. GH#3421 — `.beads/dolt-server.port` not propagated.** Without the symlink, `bd` commands inside the worktree fail with "database not found". The relative path depth depends on where the worktree lives:
    ```bash
    # Human layout: `bd worktree create <name>` places it at <repo>/<name>/
    ln -sf ../../.beads/dolt-server.port <name>/.beads/dolt-server.port
 
-   # Autopilot layout: worktrees live at <repo>/.claude/worktrees/<name>/
+   # Nested layout: worktrees under <repo>/.claude/worktrees/<name>/
    ln -sf ../../../../.beads/dolt-server.port .claude/worktrees/<name>/.beads/dolt-server.port
    ```
 
@@ -218,7 +228,7 @@ Before editing code, create and enter an isolated worktree:
 
 A PreToolUse hook (`.claude/require-worktree.sh`) enforces this — Write/Edit on code files is blocked when the session is not inside a worktree. A second hook blocks raw `git worktree add` and directs you to `bd worktree create`. Do not try to work around them.
 
-**Who creates the worktree?** The orchestrator (top-level agent), not the subagent. Dispatch workers with the worktree path already in hand — this matches how `autopilot` and the TDD workers are wired and keeps worktree lifecycle (create, verify, remove) in one place.
+**Who creates the worktree?** The orchestrator (top-level agent), not the subagent. Dispatch workers with the worktree path already in hand — this matches how the TDD workers are wired and keeps worktree lifecycle (create, verify, remove) in one place.
 
 ### Cleanup Discipline
 

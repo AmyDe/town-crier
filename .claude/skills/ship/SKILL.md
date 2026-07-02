@@ -102,7 +102,7 @@ The **PR Gate** (`gate` job in `pr-gate.yml`) is the sole required status check.
 
 The `gate` job passes if every triggered check passes (skipped checks are fine).
 
-**Watch for checks to complete** — use `--watch` to block until done instead of manual sleep loops:
+**Watch for checks to complete.** Preferred: run `scripts/wf/watch-pr.sh <pr-number>` as a **background** Bash task — it blocks on the gate and prints one verdict (`MERGED` / `MERGED_PENDING` / `FAILED: <checks>` / `TIMEOUT`), so you don't hold a live model turn babysitting the watch; re-engage only on the result and diagnose only on `FAILED`. It wraps the same underlying command, which stays the direct fallback:
 
 ```bash
 gh pr checks <pr-number> --watch --fail-fast

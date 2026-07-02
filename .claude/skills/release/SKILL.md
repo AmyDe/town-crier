@@ -37,12 +37,16 @@ Parse the latest `vX.Y.Z` tag. If no tags exist, start from `v0.0.0`.
 
 ### Step 2: Compute the next version
 
+**Preferred: run `scripts/wf/next-version.sh [patch|minor|major]`** — with no argument it auto-detects the bump from conventional commits since the latest tag (`type!:`/`BREAKING CHANGE` → major, any `feat` → minor, else patch) and prints the next `vX.Y.Z`. The manual rules below are the fallback and the explanation:
+
 Apply semver rules to the current version:
 - **patch**: `vX.Y.Z` → `vX.Y.(Z+1)`
 - **minor**: `vX.Y.Z` → `vX.(Y+1).0`
 - **major**: `vX.Y.Z` → `v(X+1).0.0`
 
 ### Step 3: Collect and categorize commits
+
+**Preferred: run `scripts/wf/release-notes.sh [previous-tag]`** — it emits the categorized markdown skeleton (Features / Bug Fixes / Performance / … / Other) in the exact format Step 4 describes, grouping every `type(scope): desc (#PR)` commit. Add the optional dash-explanations by hand where a subject alone isn't clear, then use it as the release body. The manual rules below are the fallback:
 
 ```bash
 git log <previous-tag>..HEAD --oneline
@@ -120,43 +124,9 @@ The Dolt DB is the source of truth — never hand-edit `.beads/issues.jsonl` to 
 
 ### Step 7: Close resolved GitHub issues
 
-Sweep open GitHub issues whose linked beads are all closed, and close them with a pointer to the release. The `bead-created` label (added by the `triage-inbox` skill) marks issues that have been converted into beads; the linkage lives in a triage comment of the form `Triaged → bead **tc-xxxx**` (and optionally `, child tasks: tc-aaaa, tc-bbbb`).
+**Run `scripts/wf/close-released-issues.sh <version> <release-url>`.** It sweeps open issues labelled `bead-created`, extracts linked `tc-*` bead IDs from their triage comments, and closes an issue only when *every* linked bead is `closed` — leaving alone any issue with an open/in-progress bead, an unresolvable bead, or no discoverable linkage (surfaced for manual review). It prints a one-line tally (`Closed N GH issue(s) …` or `No GH issues ready to close.`).
 
-```bash
-gh issue list --state=open --label=bead-created --limit=200 --json=number,title,url
-```
-
-If empty, skip the step.
-
-For each issue:
-
-1. **Extract linked bead IDs** from the comment trail:
-   ```bash
-   gh issue view <number> --json comments --jq '[.comments[].body] | join(" ")' \
-     | grep -oE 'tc-[a-z0-9]+' | sort -u
-   ```
-2. **Skip if no bead IDs are found.** Don't close issues whose linkage can't be confirmed — surface them for manual review instead.
-3. **Check each bead's status:**
-   ```bash
-   bd show <bead-id> --json | jq -r '.[0].status'
-   ```
-   Treat a missing bead (no JSON returned) as still-open and skip the issue — a deleted bead shouldn't auto-close an issue.
-4. **If every linked bead is `closed`**, close the GitHub issue:
-   ```bash
-   gh issue close <number> --comment "All linked beads are closed; shipped in [<version>](<release-url>)."
-   ```
-   If at least one linked bead is still `open` or `in_progress`, leave the issue alone.
-
-Report a one-line tally:
-```
-Closed 3 GH issue(s) whose beads all shipped: #358, #360, #362
-```
-or
-```
-No GH issues ready to close.
-```
-
-This step is best-effort — failures here must not roll back the release. Log and continue.
+This step is best-effort — failures here must not roll back the release. The `bead-created` label is a legacy triage marker on older issues, so the sweep is a no-op when nothing matches.
 
 ## Edge cases
 

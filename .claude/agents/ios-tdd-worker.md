@@ -2,7 +2,7 @@
 name: ios-tdd-worker
 description: TDD implementation worker for iOS/Swift beads. Reads the bead, follows Red-Green-Refactor, commits with conventional prefixes, and stays within mobile/ios/.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # iOS TDD Worker
