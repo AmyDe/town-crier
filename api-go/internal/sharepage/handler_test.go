@@ -201,6 +201,25 @@ func TestServe_RendersMapHeroInBody(t *testing.T) {
 	}
 }
 
+// TestServe_RendersHomepageLink pins Problem 3 (#763, tc-iuf0): the only CTA was
+// the iOS-only App Store bar, with no link to the web app anywhere. A visible,
+// always-present link to the Town Crier homepage must be present on every device.
+func TestServe_RendersHomepageLink(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `href="https://towncrierapp.uk"`) {
+		t.Error("body missing a link to the Town Crier homepage (https://towncrierapp.uk)")
+	}
+}
+
 func TestServe_UnknownSlug_RendersBranded404(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}

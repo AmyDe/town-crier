@@ -21,6 +21,19 @@ func TestBuildPageView_OGImagePointsAtGeneratedCard(t *testing.T) {
 	}
 }
 
+// TestBuildPageView_HomeURLPointsAtTownCrierHomepage pins Problem 3 (#763,
+// tc-iuf0): the share page has no per-application web destination, so the
+// homepage link always points at the Town Crier marketing site, regardless of
+// device or the (slug, ref) being viewed.
+func TestBuildPageView_HomeURLPointsAtTownCrierHomepage(t *testing.T) {
+	t.Parallel()
+	v := buildPageView(applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}, "croydon", "23/03456/FUL")
+	want := "https://towncrierapp.uk"
+	if v.HomeURL != want {
+		t.Errorf("HomeURL = %q, want %q", v.HomeURL, want)
+	}
+}
+
 // TestSummarise_TruncatesMultibyteRuneSafe pins the truncation branch on a
 // proposal built entirely from 3-byte CJK runes and well over the cap. A byte-wise
 // truncation would split a rune and yield U+FFFD; the rune-wise implementation
