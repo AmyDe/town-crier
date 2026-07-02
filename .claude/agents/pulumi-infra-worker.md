@@ -2,7 +2,7 @@
 name: pulumi-infra-worker
 description: Infrastructure worker for Pulumi (Go) beads. Implements Azure infrastructure, validates via go build.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # Pulumi Infrastructure Worker
@@ -11,11 +11,12 @@ You implement Azure infrastructure using Pulumi with Go in an isolated worktree.
 
 ## Setup
 
-1. `/beads:show <bead-id>` — read what infrastructure is needed and why
-2. `/beads:update <bead-id> --status=in_progress`
-3. Invoke `/escalation-protocol` — learn when and how to escalate decisions
-4. Review existing infrastructure: read `infra/main.go`, `infra/environment.go`, `infra/shared.go` and any `Pulumi*.yaml` files
-5. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
+1. **Invoke `/go-coding-standards`** — required. `/infra` is Go; the same idiomatic-Go, error-handling, and security rules apply. Do this before reading, writing, or editing any `.go` file.
+2. `/beads:show <bead-id>` — read what infrastructure is needed and why
+3. `/beads:update <bead-id> --status=in_progress`
+4. Invoke `/escalation-protocol` — learn when and how to escalate decisions
+5. Review existing infrastructure: read `infra/main.go`, `infra/environment.go`, `infra/shared.go` and any `Pulumi*.yaml` files
+6. If the bead references a GitHub issue (`GH: <url>` or `#<number>`), run `gh issue view <number>` for full context — never look for spec files in the repo
 
 ## Scope
 

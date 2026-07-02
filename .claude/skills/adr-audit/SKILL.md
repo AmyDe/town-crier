@@ -1,6 +1,7 @@
 ---
 name: adr-audit
 description: "Autonomous ADR auditor — scans the entire codebase (API, iOS, web, infra, CI/CD) and compares what's actually built against what's documented in /docs/adr/. Amends stale ADRs and drafts new ones for undocumented decisions. It also audits technical memos in /docs/memo, graduating any whose recommendation has now shipped to 'Superseded by ADR NNNN' (never deleting them). On the same scan it verifies the root README.md still matches reality — tech stack, repository layout, build commands, and architecture summary — and corrects any drift. Then commits the changes. Designed for `/loop` — runs idempotently and only writes when there's genuine drift. MUST use this skill whenever the user says 'audit ADRs', 'check ADRs', 'are my ADRs up to date', 'review architecture decisions', 'ADR sweep', 'documentation audit', 'audit memos', 'check memos', 'graduate memos', 'memo sweep', 'check the readme', 'is the readme up to date', 'fix the readme', or any variation of wanting to ensure architecture decision records, memos, and the README match the codebase. Also trigger when used via `/loop` with this skill."
+disable-model-invocation: true
 ---
 
 # ADR Audit

@@ -1,6 +1,7 @@
 ---
 name: sre-observatory
 description: "Autonomous SRE analysis of App Insights telemetry — queries logs, traces, exceptions, dependencies, and request metrics to find performance regressions, bugs, and user frustration patterns. Files beads for anything actionable. Trigger on: 'check production health', 'look at app insights', 'what's happening in prod', 'any errors lately', 'SRE review', 'observatory', 'analyze telemetry', 'production issues', 'check logs', 'performance review', 'error analysis'. Also trigger proactively when the user mentions slowness, outages, error spikes, or user complaints."
+disable-model-invocation: true
 ---
 
 # SRE Observatory

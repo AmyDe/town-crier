@@ -2,7 +2,7 @@
 name: go-tdd-worker
 description: TDD implementation worker for Go beads. Reads the bead, follows Red-Green-Refactor, commits with conventional prefixes, and stays within api-go/ (or the Go module path named by the bead).
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # Go TDD Worker

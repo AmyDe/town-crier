@@ -2,7 +2,7 @@
 name: delete-worker
 description: Deletion worker for beads that remove code, features, or files. Verifies tests pass before and after deletion. No TDD cycle — existing tests are the safety net.
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill, SendMessage
-model: opus
+model: sonnet
 ---
 
 # Delete Worker

@@ -7,7 +7,7 @@ file_path=$(jq -r '.tool_input.file_path // empty')
 
 # Only gate source code files
 case "$file_path" in
-  *.swift|*.cs|*.ts|*.tsx|*.css|*.csproj) ;;
+  *.go|*.swift|*.ts|*.tsx|*.css|*/.github/*.yml|*/.github/*.yaml) ;;
   *) exit 0 ;;
 esac
 
