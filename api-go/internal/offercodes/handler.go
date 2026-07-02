@@ -125,13 +125,18 @@ func (h *handler) redeem(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, "load profile", err)
 		return
 	}
-	if profile.Tier != profiles.TierFree {
+
+	now := h.now()
+
+	// Gate on the EFFECTIVE tier, not the raw stored one: a lapsed paid grant
+	// (Tier still Pro/Personal but SubscriptionExpiry — and any grace period —
+	// in the past) is entitled to Free, so it must be allowed to redeem a new
+	// code. Only a currently-active paid tier blocks redemption.
+	if profile.EffectiveTier(now).IsPaid() {
 		h.writeError(r, w, http.StatusConflict, "already_subscribed",
 			"User already has an active subscription; offer codes are only available to free-tier users.")
 		return
 	}
-
-	now := h.now()
 
 	// CAS retry loop: RedeemWithCAS does read→redeem-in-memory→etag-conditional
 	// replace, making the redemption atomic. On ErrCASPreconditionFailed (412 — a
