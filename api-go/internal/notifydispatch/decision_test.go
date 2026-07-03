@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
-	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -79,23 +78,18 @@ func newDecisionHarness(
 	zones *fakeZones,
 	saved *fakeSaved,
 	profs *fakeProfiles,
-) (*DecisionDispatcher, *fakeNotifications, *fakePush) {
+) (*DecisionDispatcher, *fakeNotifications, *fakePushQueue) {
 	t.Helper()
 	notifs := newFakeNotifications()
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
-		"auth0|alice": {{Token: "tok-1"}},
-		"auth0|bob":   {{Token: "tok-2"}},
-	}}
-	st := &fakeState{}
-	push := &fakePush{}
-	d := NewDecisionDispatcher(notifs, zones, saved, profs, devs, st, push,
+	queue := &fakePushQueue{}
+	d := NewDecisionDispatcher(notifs, zones, saved, profs, queue,
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	return d, notifs, push
+	return d, notifs, queue
 }
 
-func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.T) {
+func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndQueuesPush(t *testing.T) {
 	t.Parallel()
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
@@ -103,7 +97,7 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
 		"auth0|alice": proWithZonePrefs(t, true),
 	}}
-	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -125,8 +119,11 @@ func TestDecisionDispatcher_ZoneMatch_CreatesDecisionRecordAndPushes(t *testing.
 	if rec.Sources != sourceZone {
 		t.Errorf("sources: got %q, want Zone", rec.Sources)
 	}
-	if push.calls != 1 {
-		t.Errorf("paid tier with decision push opted in should push, got %d", push.calls)
+	if !rec.PushSent {
+		t.Error("PushSent should be true once queued for a push-eligible user")
+	}
+	if len(queue.queued) != 1 {
+		t.Errorf("paid tier with decision push opted in should queue exactly one push, got %d", len(queue.queued))
 	}
 }
 
@@ -167,7 +164,7 @@ func TestDecisionDispatcher_ZoneMatch_DecisionPushOptedOut_RecordButNoPush(t *te
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
 		"auth0|alice": proWithZonePrefs(t, false),
 	}}
-	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Rejected", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -176,8 +173,8 @@ func TestDecisionDispatcher_ZoneMatch_DecisionPushOptedOut_RecordButNoPush(t *te
 	if len(notifs.created) != 1 {
 		t.Errorf("record must be written even when decision push is opted out, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("decision-push opt-out must suppress the push, got %d", push.calls)
+	if len(queue.queued) != 0 {
+		t.Errorf("decision-push opt-out must suppress the queued push, got %d", len(queue.queued))
 	}
 }
 
@@ -188,7 +185,7 @@ func TestDecisionDispatcher_FreeTier_RecordNoPush(t *testing.T) {
 	free := profileWithTier(t, "auth0|alice", profiles.TierFree)
 	free.ZonePreferences["zone-1"] = profiles.ZonePreferences{DecisionPush: true}
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": free}}
-	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -197,8 +194,8 @@ func TestDecisionDispatcher_FreeTier_RecordNoPush(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Errorf("free tier must still get the decision record, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("free tier must NOT push, got %d", push.calls)
+	if len(queue.queued) != 0 {
+		t.Errorf("free tier must NOT queue a push, got %d", len(queue.queued))
 	}
 }
 
@@ -212,7 +209,7 @@ func TestDecisionDispatcher_ExpiredPaidTier_RecordNoPush(t *testing.T) {
 	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the harness clock
 	lapsed.SubscriptionExpiry = &past
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": lapsed}}
-	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -221,8 +218,8 @@ func TestDecisionDispatcher_ExpiredPaidTier_RecordNoPush(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Errorf("lapsed paid tier must still get the decision record, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("lapsed paid tier must NOT push, got %d", push.calls)
+	if len(queue.queued) != 0 {
+		t.Errorf("lapsed paid tier must NOT queue a push, got %d", len(queue.queued))
 	}
 }
 
@@ -233,7 +230,7 @@ func TestDecisionDispatcher_SavedOnly_NilZoneSourcesSaved(t *testing.T) {
 	bob := profileWithTier(t, "auth0|bob", profiles.TierPro)
 	bob.Preferences.SavedDecisionPush = true
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|bob": bob}}
-	d, notifs, push := newDecisionHarness(t, zones, saved, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, saved, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -249,8 +246,8 @@ func TestDecisionDispatcher_SavedOnly_NilZoneSourcesSaved(t *testing.T) {
 	if rec.Sources != sourceSaved {
 		t.Errorf("sources: got %q, want Saved", rec.Sources)
 	}
-	if push.calls != 1 {
-		t.Errorf("saved-decision push opted in should push, got %d", push.calls)
+	if len(queue.queued) != 1 {
+		t.Errorf("saved-decision push opted in should queue exactly one push, got %d", len(queue.queued))
 	}
 }
 
@@ -286,7 +283,7 @@ func TestDecisionDispatcher_Idempotent_SkipsExisting(t *testing.T) {
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{
 		"auth0|alice": proWithZonePrefs(t, true),
 	}}
-	d, notifs, push := newDecisionHarness(t, zones, &fakeSaved{}, profs)
+	d, notifs, queue := newDecisionHarness(t, zones, &fakeSaved{}, profs)
 	app := decisionApp(t, "Permitted", coord(51.5), coord(-0.1))
 
 	if err := d.Dispatch(context.Background(), app); err != nil {
@@ -298,8 +295,8 @@ func TestDecisionDispatcher_Idempotent_SkipsExisting(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Errorf("re-dispatch must not double-create, got %d records", len(notifs.created))
 	}
-	if push.calls != 1 {
-		t.Errorf("re-dispatch must not double-push, got %d", push.calls)
+	if len(queue.queued) != 1 {
+		t.Errorf("re-dispatch must not double-queue a push, got %d", len(queue.queued))
 	}
 }
 

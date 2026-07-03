@@ -5,9 +5,29 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
+
+// deviceReader lists a user's device tokens for a push and prunes the ones APNs
+// reports permanently invalid. *devicetokens.PostgresStore satisfies it.
+type deviceReader interface {
+	ListByUser(ctx context.Context, userID string) ([]devicetokens.DeviceRegistration, error)
+	Delete(ctx context.Context, userID, token string) error
+}
+
+// stateReader supplies the unread-badge input: the total unread tally
+// (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore satisfies it.
+type stateReader interface {
+	UnreadCount(ctx context.Context, userID string) (int, error)
+}
+
+// pushSender is the consumer-side push contract; apns.PushSender (the real
+// Client or the NoOpSender) satisfies it structurally.
+type pushSender interface {
+	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
+}
 
 // zoneNameReader resolves a user's watch zones so the coalescer can name a
 // zone's summary push at flush time. watchzones.Store satisfies it — the same

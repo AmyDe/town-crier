@@ -29,9 +29,15 @@ type DigestNotification struct {
 	Decision               *string
 	EventType              EventType
 	Sources                string
-	PushSent               bool
-	EmailSent              bool
-	CreatedAt              time.Time
+	// PushSent records whether an instant push was queued (optimistically —
+	// set once the user was determined push-eligible, not once APNs actually
+	// delivered) for this notification during its poll cycle. The poll-cycle
+	// coalescer (GH#784) flushes queued pushes as at most one per (user, watch
+	// zone) after this record is written, so a device-less or later-failed send
+	// still reads true here. Audit-only: no business logic reads this field.
+	PushSent  bool
+	EmailSent bool
+	CreatedAt time.Time
 }
 
 // HasSavedSource reports whether the notification was produced (in part) by the

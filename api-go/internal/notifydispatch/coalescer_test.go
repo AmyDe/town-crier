@@ -11,6 +11,58 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
 )
 
+// fakeDevices serves device tokens and records pruned ones. listCalls counts
+// ListByUser invocations per user so the tests can assert devices are loaded
+// exactly once per flushed user.
+type fakeDevices struct {
+	byUser    map[string][]devicetokens.DeviceRegistration
+	deleted   []string
+	listCalls map[string]int
+}
+
+func (f *fakeDevices) ListByUser(_ context.Context, userID string) ([]devicetokens.DeviceRegistration, error) {
+	if f.listCalls == nil {
+		f.listCalls = map[string]int{}
+	}
+	f.listCalls[userID]++
+	return f.byUser[userID], nil
+}
+
+func (f *fakeDevices) Delete(_ context.Context, _, token string) error {
+	f.deleted = append(f.deleted, token)
+	return nil
+}
+
+// fakeState serves the unread count (read_at IS NULL, ADR 0035).
+type fakeState struct {
+	unread int
+}
+
+func (f *fakeState) UnreadCount(_ context.Context, _ string) (int, error) {
+	return f.unread, nil
+}
+
+// fakePush records the payloads it was asked to send and which devices it
+// returns as invalid. sendErr, when set, is returned instead so tests can
+// assert a send failure is swallowed rather than propagated.
+type fakePush struct {
+	calls    int
+	tokens   []string
+	payloads []json.RawMessage
+	invalid  []string
+	sendErr  error
+}
+
+func (f *fakePush) Send(_ context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
+	f.calls++
+	f.tokens = append(f.tokens, tokens...)
+	f.payloads = append(f.payloads, payload)
+	if f.sendErr != nil {
+		return nil, f.sendErr
+	}
+	return f.invalid, nil
+}
+
 // fakeZoneNames serves the zone list the coalescer resolves names from at
 // flush time, counting calls per user so tests can assert "loaded once".
 type fakeZoneNames struct {

@@ -35,9 +35,7 @@ type DecisionDispatcher struct {
 	zones         zoneMatcher
 	saved         savedMatcher
 	profiles      profileReader
-	devices       deviceReader
-	state         stateReader
-	push          pushSender
+	push          pushQueue
 	newID         func() string
 	now           func() time.Time
 	logger        *slog.Logger
@@ -61,9 +59,7 @@ func NewDecisionDispatcher(
 	zones zoneMatcher,
 	saved savedMatcher,
 	profs profileReader,
-	devices deviceReader,
-	state stateReader,
-	push pushSender,
+	push pushQueue,
 	newID func() string,
 	now func() time.Time,
 	logger *slog.Logger,
@@ -73,8 +69,6 @@ func NewDecisionDispatcher(
 		zones:         zones,
 		saved:         saved,
 		profiles:      profs,
-		devices:       devices,
-		state:         state,
 		push:          push,
 		newID:         newID,
 		now:           now,
@@ -171,13 +165,11 @@ func (d *DecisionDispatcher) dispatchForUser(ctx context.Context, app applicatio
 		now:         d.now().UTC(),
 	})
 
+	// PushSent is set optimistically (queued, not delivered) the moment the user
+	// is push-eligible; the coalescer flushes the actual send at cycle end.
 	if d.canPush(profile, m) {
-		n.PushSent = sendInstantPush(ctx, instantPushDeps{
-			devices: d.devices,
-			state:   d.state,
-			push:    d.push,
-			logger:  d.logger,
-		}, userID, n)
+		n.PushSent = true
+		d.push.Add(userID, n)
 	}
 
 	if err := d.notifications.Create(ctx, n); err != nil {
