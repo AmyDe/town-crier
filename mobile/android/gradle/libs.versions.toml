@@ -1,6 +1,6 @@
 [versions]
 # Toolchain
-agp = "9.2.1"
+agp = "8.13.2"
 kotlin = "2.4.0"
 javaToolchain = "21"
 
