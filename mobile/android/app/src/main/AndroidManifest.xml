@@ -8,8 +8,13 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!-- Fully-qualified deliberately: the Kotlin source package
+             (uk.towncrierapp.app, matching the module-naming convention) is
+             not the manifest namespace (uk.towncrierapp.mobile, the branding
+             applicationId). A relative ".MainActivity" would resolve against
+             the namespace and silently point at a class that doesn't exist. -->
         <activity
-            android:name=".MainActivity"
+            android:name="uk.towncrierapp.app.MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
