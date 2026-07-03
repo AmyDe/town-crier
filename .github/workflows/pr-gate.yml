@@ -37,6 +37,7 @@ jobs:
     outputs:
       cli: ${{ steps.detect.outputs.cli }}
       ios: ${{ steps.detect.outputs.ios }}
+      android: ${{ steps.detect.outputs.android }}
       web: ${{ steps.detect.outputs.web }}
       infra: ${{ steps.detect.outputs.infra }}
       go: ${{ steps.detect.outputs.go }}
@@ -50,9 +51,9 @@ jobs:
         with:
           mode: ${{ github.event_name == 'merge_group' && 'merge_group' || 'pr' }}
           base-ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.base_ref }}
-          categories: cli,ios,web,infra,go
+          categories: cli,ios,android,web,infra,go
           trigger-files: |
-            .github/workflows/pr-gate.yml:cli,ios,web,infra,go
+            .github/workflows/pr-gate.yml:cli,ios,android,web,infra,go
             .github/workflows/cd-dev.yml:web,infra,go
             .github/workflows/cd-prod.yml:infra
             .github/workflows/cd-ios-testflight.yml:ios
@@ -284,6 +285,89 @@ jobs:
           echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(ios):/fix(ios): for user-facing changes, or chore(ios):/test(ios): etc. to opt out."
           exit 1
 
+  # ── Android ──────────────────────────────────────────
+
+  android-lint:
+    name: "Android: Lint"
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          # Matches mobile/android/README.md's local toolchain-setup packages
+          # (minus the emulator/system-image, which CI never needs — no
+          # instrumented tests run here, JVM unit tests only).
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew ktlintCheck detekt
+        working-directory: mobile/android
+
+  android-build-test:
+    name: "Android: Build & test"
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew test :app:assembleDevDebug
+        working-directory: mobile/android
+
+  android-release-note-guard:
+    name: "Android: Release-note guard"
+    needs: changes
+    if: needs.changes.outputs.android == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Ensure Android changes carry a user-note signal
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Mirrors ios-release-note-guard. There's no Play Store changelog
+          # generator yet (Android CD/signing lands in #779), but enforcing the
+          # same Release-Note:/conventional-title discipline now means no
+          # mobile/android/ PR needs retrofitting once that automation exists.
+
+          # Signal 1: any Release-Note: trailer in the PR's commits.
+          if git log --format='%B' "origin/${BASE_REF}..HEAD" | grep -qiE '^Release-Note:'; then
+            echo "✓ Release-Note: trailer present — Play Store note authored verbatim."
+            exit 0
+          fi
+
+          # Signal 2: PR title carries a recognised conventional-commit type.
+          #   feat/fix   → generates a cleaned user note (Tier 2)
+          #   chore/ci/… → explicit, intentional opt-out (no note, by design)
+          if printf '%s' "$PR_TITLE" \
+              | grep -qiE '^(feat|fix|chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:'; then
+            echo "✓ PR title has a conventional-commit type prefix: $PR_TITLE"
+            exit 0
+          fi
+
+          echo "::error::Android-touching PR has no Release-Note: trailer and the PR title has no conventional-commit type prefix: '$PR_TITLE'"
+          echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(android):/fix(android): for user-facing changes, or chore(android):/test(android): etc. to opt out."
+          exit 1
+
   # ── Web ──────────────────────────────────────────────
 
   web-lint:
@@ -405,7 +489,7 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, web-lint, web-build-test, infra-preview]
+    needs: [go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, android-lint, android-build-test, android-release-note-guard, web-lint, web-build-test, infra-preview]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -421,6 +505,9 @@ jobs:
             "${{ needs.ios-lint.result }}"
             "${{ needs.ios-build-test.result }}"
             "${{ needs.ios-release-note-guard.result }}"
+            "${{ needs.android-lint.result }}"
+            "${{ needs.android-build-test.result }}"
+            "${{ needs.android-release-note-guard.result }}"
             "${{ needs.web-lint.result }}"
             "${{ needs.web-build-test.result }}"
             "${{ needs.infra-preview.result }}"

@@ -22,7 +22,7 @@ inputs:
     required: false
     default: ""
   categories:
-    description: "Comma-separated list of categories to detect (e.g., go,web,infra,ios)"
+    description: "Comma-separated list of categories to detect (e.g., go,web,infra,ios,android)"
     required: true
   trigger-files:
     description: |
@@ -41,6 +41,9 @@ outputs:
   ios:
     description: "true if mobile/ios/ changed"
     value: ${{ steps.detect.outputs.ios }}
+  android:
+    description: "true if mobile/android/ changed"
+    value: ${{ steps.detect.outputs.android }}
   web:
     description: "true if web/ changed"
     value: ${{ steps.detect.outputs.web }}
@@ -105,6 +108,7 @@ runs:
             api-go/*) [[ -v "flags[go]" ]] && flags[go]=true ;;
             cli/*) [[ -v "flags[cli]" ]] && flags[cli]=true ;;
             mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
+            mobile/android/*) [[ -v "flags[android]" ]] && flags[android]=true ;;
             web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
             infra/*) [[ -v "flags[infra]" ]] && flags[infra]=true ;;
           esac
