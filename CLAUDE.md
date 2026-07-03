@@ -75,6 +75,8 @@ When looking up user data or entity information, query our own Postgres database
 
 ## Release Process
 
+**The iOS beta lane is fastlane.** `cd-ios-testflight` runs `xcodegen generate` then `bundle exec fastlane beta` (`mobile/ios/fastlane/Fastfile`, signing via match). The `.xcodeproj` is generated output — edit `mobile/ios/project.yml`, never the project file.
+
 iOS patch releases keep tripping on the same two snags — bake the checks in:
 
 - **The version train can close.** After an App Store release, the `MARKETING_VERSION` train closes and the next TestFlight upload fails with an altool **409**. The CD beta lane bumps the *build* number, never `MARKETING_VERSION`. On a 409 — or pre-emptively when the last release shipped to the App Store — bump `MARKETING_VERSION` in `mobile/ios/project.yml` and re-release.
@@ -97,6 +99,15 @@ When diagnosing issues, ask the user for the data source or context before explo
 ## Testing & CI
 
 When fixing CI failures, always check for ALL root causes before declaring the fix complete. Run the full test suite and verify end-to-end, not just the first failure.
+
+## UI Verification — Agent-Run, No Human in the Loop
+
+Front-end changes are verified by the agent itself, live, before the work is declared done:
+
+- **Web** — the `agent-browser` CLI drives a real browser (screenshot paths must be absolute).
+- **iOS / Android** — the `mobile-mcp` MCP server drives the iOS simulator and the Android emulator (AVD `towncrier` on the dev machine): install, launch, tap, type, screenshot.
+
+Never ask the human to click through a UI to confirm a change; drive it yourself and attach screenshots.
 
 ## Development Commands
 
