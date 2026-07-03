@@ -140,12 +140,13 @@ When a bead targets a given tech stack, use the matching skill and worker agent.
 |---------------------|------------------|---------------------------|------------------------|
 | Go                  | `/api-go`, `/cli` | `go-coding-standards`    | `go-tdd-worker`        |
 | iOS / Swift         | `/mobile/ios`    | `ios-coding-standards`    | `ios-tdd-worker`       |
+| Android / Kotlin    | `/mobile/android`| `android-coding-standards`| `android-tdd-worker`   |
 | Web / React / TS    | `/web`           | `react-coding-standards`  | `react-tdd-worker`     |
 | Pulumi infra (Go)   | `/infra`         | `go-coding-standards`     | `pulumi-infra-worker`  |
 | GitHub Actions      | `.github/`       | —                         | `github-actions-worker`|
 | UI (any platform)   | UI code in any of the above | `design-language` (in addition to the platform skill) | — |
 
-Consult the skill before writing, reviewing, or scaffolding code for that stack. Standard lint configs ship as skill assets (`.golangci.yml` under `go-coding-standards`, `.swiftlint.yml` under `ios-coding-standards`).
+Consult the skill before writing, reviewing, or scaffolding code for that stack. Standard lint configs ship as skill assets (`.golangci.yml` under `go-coding-standards`, `.swiftlint.yml` under `ios-coding-standards`, `.editorconfig` + `detekt.yml` under `android-coding-standards`).
 
 ### Worker model policy
 
