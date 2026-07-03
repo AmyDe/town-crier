@@ -79,7 +79,7 @@ func TestEnqueuer_FindZonesContainingFlowsThroughInterface(t *testing.T) {
 
 	spy := newSpyZoneStore()
 	enqueuer := notifydispatch.NewEnqueuer(
-		nil, spy, nil, nil, nil, nil,
+		nil, spy, nil, nil,
 		func() string { return "id" },
 		func() time.Time { return time.Unix(0, 0).UTC() },
 		discardLogger(),

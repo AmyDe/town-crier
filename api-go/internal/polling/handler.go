@@ -70,6 +70,15 @@ type NotificationEnqueuer interface {
 	EnqueueForApplication(ctx context.Context, app applications.PlanningApplication) error
 }
 
+// pushFlusher drives the poll-cycle push coalescer's lifecycle (GH#784):
+// Reset clears any pushes queued by a prior cycle, and Flush sends this
+// cycle's coalesced pushes (at most one per user per watch zone, plus one
+// per-user saved bucket). *notifydispatch.PushCoalescer satisfies it.
+type pushFlusher interface {
+	Reset()
+	Flush(ctx context.Context) error
+}
+
 // metricsRecorder is the consumer-side slice of the metrics registry the handler
 // records the per-cycle / per-authority polling KPIs on. *metrics.Registry
 // satisfies it; a nil recorder no-ops every call, so the handler records nothing
@@ -136,6 +145,11 @@ type PollPlanItHandler struct {
 	decision DecisionDispatcher
 	enqueuer NotificationEnqueuer
 
+	// flusher drives the poll-cycle push coalescer, wired via WithPushFlusher.
+	// nil in ingestion-only mode and in the many tests that don't wire one — the
+	// nil guard at each call site keeps those call sites unaffected.
+	flusher pushFlusher
+
 	// metrics records the towncrier.polling.* business KPIs, wired via WithMetrics.
 	// nil until wired (the no-metrics default), so the handler records nothing
 	// during the many ingestion-only tests and call sites that don't supply one.
@@ -169,6 +183,16 @@ func (h *PollPlanItHandler) recorder() metricsRecorder {
 func (h *PollPlanItHandler) WithFanOut(decision DecisionDispatcher, enqueuer NotificationEnqueuer) *PollPlanItHandler {
 	h.decision = decision
 	h.enqueuer = enqueuer
+	return h
+}
+
+// WithPushFlusher wires the poll-cycle push coalescer (GH#784): Handle calls
+// Reset before the authority loop and Flush immediately after it. A
+// post-construction setter, additive to WithFanOut, so ingestion-only call
+// sites and tests are unaffected; cmd/worker calls it once after building the
+// handler. Returns the handler for chaining.
+func (h *PollPlanItHandler) WithPushFlusher(f pushFlusher) *PollPlanItHandler {
+	h.flusher = f
 	return h
 }
 
@@ -207,6 +231,9 @@ func (h *PollPlanItHandler) CurrentCycle() CycleType {
 // itself fails (e.g. the cross-partition LRU query errored).
 func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error) {
 	now := h.now().UTC()
+	if h.flusher != nil {
+		h.flusher.Reset()
+	}
 
 	var deadline time.Time
 	hasDeadline := h.opts.HandlerBudget > 0
@@ -284,6 +311,16 @@ func (h *PollPlanItHandler) Handle(ctx context.Context) (PollPlanItResult, error
 		// A 429 stops the whole cycle so the scheduler can back off via Retry-After.
 		if outcome.rateLimited {
 			break
+		}
+	}
+
+	// Flush the cycle's coalesced pushes on every exit path out of the loop above
+	// (natural end, 429, budget/ctx timeout) — a single flush point covers all of
+	// them. A flush failure is logged and swallowed: a push problem must never
+	// fail the poll cycle or change its result.
+	if h.flusher != nil {
+		if err := h.flusher.Flush(ctx); err != nil {
+			h.logger.ErrorContext(ctx, "push flush failed", "error", err)
 		}
 	}
 

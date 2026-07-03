@@ -303,10 +303,12 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 }
 
 // wirePollFanOut builds the poll-path notification fan-out collaborators — the
-// decision-event dispatcher and the watch-zone enqueuer — and attaches them to
-// the ingestion handler. They share the WatchZones store with the poll's
-// authority provider (the same watchzones.Store satisfies the zone-containment
-// lookup) and the Postgres Notifications / Users / NotificationState /
+// decision-event dispatcher, the watch-zone enqueuer, and the push coalescer
+// that batches the cycle's queued pushes into at most one per (user, watch
+// zone) — and attaches them to the ingestion handler (GH#784). They share the
+// WatchZones store with the poll's authority provider (the same watchzones.Store
+// satisfies the zone-containment lookup and the coalescer's zone-name
+// resolution) and the Postgres Notifications / Users / NotificationState /
 // DeviceRegistrations / SavedApplications stores. zoneStore is the same Postgres
 // watchzones.Store from buildPollOrchestrator so FindZonesContaining already runs
 // against the right backend. The APNs push sender is real when its credentials
@@ -333,18 +335,20 @@ func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zon
 	}
 
 	pushSender := buildPushSender(cfg, logger)
+	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushSender, zoneStore, logger)
 
 	// Record towncrier.notifications.created on each dispatcher (tc-21np).
 	enqueuer := notifydispatch.NewEnqueuer(
-		notifStore, zoneStore, profileStore, deviceStore, statePushStore, pushSender,
+		notifStore, zoneStore, profileStore, coalescer,
 		uuid.NewString, time.Now, logger,
 	).WithMetrics(registry)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
-		notifStore, zoneStore, savedStore, profileStore, deviceStore, statePushStore, pushSender,
+		notifStore, zoneStore, savedStore, profileStore, coalescer,
 		uuid.NewString, time.Now, logger,
 	).WithMetrics(registry)
 
 	handler.WithFanOut(dispatcher, enqueuer)
+	handler.WithPushFlusher(coalescer)
 }
 
 // pollOrchestratorAdapter flattens polling.OrchestratorRunResult into the
