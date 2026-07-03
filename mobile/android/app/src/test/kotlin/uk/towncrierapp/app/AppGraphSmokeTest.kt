@@ -10,7 +10,6 @@ import kotlin.test.assertEquals
  * skill, architecture-and-modules.md).
  */
 class AppGraphSmokeTest {
-
     @Test
     fun `constructs the composition root without throwing`() {
         val graph = AppGraph(baseUrl = "https://api-dev.towncrierapp.uk")

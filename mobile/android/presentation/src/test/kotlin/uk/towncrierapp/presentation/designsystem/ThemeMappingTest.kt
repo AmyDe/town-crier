@@ -12,7 +12,6 @@ import kotlin.test.assertEquals
  * device needed (android-coding-standards skill, testing.md).
  */
 class ThemeMappingTest {
-
     @Nested
     inner class LightMapping {
         private val scheme = colorScheme(LightPalette, isDark = false)
@@ -117,7 +116,6 @@ class ThemeMappingTest {
 
     @Nested
     inner class AppearanceResolution {
-
         @Test
         fun `System appearance follows the system dark flag`() {
             assertEquals(false, resolveIsDark(Appearance.System, systemInDarkTheme = false))

@@ -47,25 +47,37 @@ private val LocalTownCrierColors = staticCompositionLocalOf { extendedColors(Lig
  * [Appearance.Dark] resolves OLED only when the separate `oled` preference
  * (e.g. a "True Black" settings toggle) is set. Never true when not dark.
  */
-internal fun resolveIsDark(appearance: Appearance, systemInDarkTheme: Boolean): Boolean =
+internal fun resolveIsDark(
+    appearance: Appearance,
+    systemInDarkTheme: Boolean,
+): Boolean =
     when (appearance) {
         Appearance.System -> systemInDarkTheme
         Appearance.Light -> false
         Appearance.Dark, Appearance.OledDark -> true
     }
 
-internal fun resolveIsOled(appearance: Appearance, oled: Boolean?, isDark: Boolean): Boolean =
-    isDark && (appearance == Appearance.OledDark || oled == true)
+internal fun resolveIsOled(
+    appearance: Appearance,
+    oled: Boolean?,
+    isDark: Boolean,
+): Boolean = isDark && (appearance == Appearance.OledDark || oled == true)
 
 /** The formula the epic specifies: `isDark ? (isOled ? oled : dark) : light`. */
-internal fun resolvePalette(isDark: Boolean, isOled: Boolean): TcPalette =
+internal fun resolvePalette(
+    isDark: Boolean,
+    isOled: Boolean,
+): TcPalette =
     if (isDark) {
         if (isOled) OledPalette else DarkPalette
     } else {
         LightPalette
     }
 
-internal fun colorScheme(palette: TcPalette, isDark: Boolean): ColorScheme {
+internal fun colorScheme(
+    palette: TcPalette,
+    isDark: Boolean,
+): ColorScheme {
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     return base.copy(
         primary = palette.amber,
@@ -86,16 +98,17 @@ internal fun colorScheme(palette: TcPalette, isDark: Boolean): ColorScheme {
     )
 }
 
-internal fun extendedColors(palette: TcPalette): TownCrierColors = TownCrierColors(
-    statusPermitted = palette.statusPermitted,
-    statusConditions = palette.statusConditions,
-    statusRejected = palette.statusRejected,
-    statusPending = palette.statusPending,
-    statusWithdrawn = palette.statusWithdrawn,
-    statusAppealed = palette.statusAppealed,
-    amberMuted = palette.amberMuted,
-    overlay = palette.overlay,
-)
+internal fun extendedColors(palette: TcPalette): TownCrierColors =
+    TownCrierColors(
+        statusPermitted = palette.statusPermitted,
+        statusConditions = palette.statusConditions,
+        statusRejected = palette.statusRejected,
+        statusPending = palette.statusPending,
+        statusWithdrawn = palette.statusWithdrawn,
+        statusAppealed = palette.statusAppealed,
+        amberMuted = palette.amberMuted,
+        overlay = palette.overlay,
+    )
 
 /**
  * Town Crier's Material 3 theme. Maps the epic's color tokens onto a

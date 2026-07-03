@@ -30,8 +30,9 @@ public object TownCrierRadius {
 }
 
 /** Overrides Material 3's default corner radii per the design-language skill. */
-internal val TownCrierShapes = Shapes(
-    extraSmall = RoundedCornerShape(TownCrierRadius.sm),
-    medium = RoundedCornerShape(TownCrierRadius.md),
-    large = RoundedCornerShape(TownCrierRadius.lg),
-)
+internal val TownCrierShapes =
+    Shapes(
+        extraSmall = RoundedCornerShape(TownCrierRadius.sm),
+        medium = RoundedCornerShape(TownCrierRadius.md),
+        large = RoundedCornerShape(TownCrierRadius.lg),
+    )

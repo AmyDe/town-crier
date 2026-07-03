@@ -57,7 +57,8 @@ tasks.register("verifyModuleGraph") {
 
     doLast {
         fun declaredProjectDeps(path: String): Set<String> =
-            project(path).configurations
+            project(path)
+                .configurations
                 .matching { it.name == "api" || it.name == "implementation" }
                 .flatMap { it.dependencies.withType(ProjectDependency::class.java) }
                 .map { it.path }

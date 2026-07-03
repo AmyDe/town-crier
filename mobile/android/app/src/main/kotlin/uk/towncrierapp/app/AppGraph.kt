@@ -1,7 +1,5 @@
 package uk.towncrierapp.app
 
-import java.time.Clock
-
 /**
  * Town Crier's composition root: the single place `:app` hand-wires the
  * dependency graph from `:domain` ports to `:data` implementations, via
@@ -11,12 +9,12 @@ import java.time.Clock
  * lets [AppGraphSmokeTest] construct it in a plain JVM test.
  *
  * Empty today; each later phase of the Android parity epic adds one `val`
- * per port the UI layer consumes (see android-coding-standards skill,
- * architecture-and-modules.md).
+ * per port the UI layer consumes, plus whatever shared leaves those ports
+ * need (a `java.time.Clock`, an `OkHttp.Call.Factory`, ...) — see
+ * android-coding-standards skill, architecture-and-modules.md.
  */
 public class AppGraph(
     public val baseUrl: String,
-    private val clock: Clock = Clock.systemUTC(),
 ) {
     // Wiring lands feature-by-feature, e.g.:
     // val watchZoneRepository: WatchZoneRepository = HttpWatchZoneRepository(apiClient)

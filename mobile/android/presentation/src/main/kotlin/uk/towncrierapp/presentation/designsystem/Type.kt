@@ -12,12 +12,13 @@ import uk.towncrierapp.presentation.R
  * static-weight TTFs (Regular/Medium/SemiBold/Bold — the four weights the
  * type scale below uses). See `presentation/licenses/Inter-OFL.txt`.
  */
-internal val InterFontFamily = FontFamily(
-    Font(R.font.inter_regular, FontWeight.Normal),
-    Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_bold, FontWeight.Bold),
-)
+internal val InterFontFamily =
+    FontFamily(
+        Font(R.font.inter_regular, FontWeight.Normal),
+        Font(R.font.inter_medium, FontWeight.Medium),
+        Font(R.font.inter_semibold, FontWeight.SemiBold),
+        Font(R.font.inter_bold, FontWeight.Bold),
+    )
 
 private val baseTypography = Typography()
 
@@ -40,23 +41,24 @@ private val baseTypography = Typography()
  * a heavier weight) — see [bodyEmphasisTextStyle], exposed as
  * `TownCrierTheme.bodyEmphasis`.
  */
-internal val TownCrierTypography = Typography(
-    headlineLarge = baseTypography.headlineLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Bold),
-    titleLarge = baseTypography.titleLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
-    titleMedium = baseTypography.titleMedium.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
-    bodyLarge = baseTypography.bodyLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
-    bodyMedium = baseTypography.bodyMedium.copy(fontFamily = InterFontFamily),
-    bodySmall = baseTypography.bodySmall.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
-    labelLarge = baseTypography.labelLarge.copy(fontFamily = InterFontFamily),
-    labelMedium = baseTypography.labelMedium.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Medium),
-    labelSmall = baseTypography.labelSmall.copy(fontFamily = InterFontFamily),
-    displayLarge = baseTypography.displayLarge.copy(fontFamily = InterFontFamily),
-    displayMedium = baseTypography.displayMedium.copy(fontFamily = InterFontFamily),
-    displaySmall = baseTypography.displaySmall.copy(fontFamily = InterFontFamily),
-    headlineMedium = baseTypography.headlineMedium.copy(fontFamily = InterFontFamily),
-    headlineSmall = baseTypography.headlineSmall.copy(fontFamily = InterFontFamily),
-    titleSmall = baseTypography.titleSmall.copy(fontFamily = InterFontFamily),
-)
+internal val TownCrierTypography =
+    Typography(
+        headlineLarge = baseTypography.headlineLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Bold),
+        titleLarge = baseTypography.titleLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
+        titleMedium = baseTypography.titleMedium.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.SemiBold),
+        bodyLarge = baseTypography.bodyLarge.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
+        bodyMedium = baseTypography.bodyMedium.copy(fontFamily = InterFontFamily),
+        bodySmall = baseTypography.bodySmall.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Normal),
+        labelLarge = baseTypography.labelLarge.copy(fontFamily = InterFontFamily),
+        labelMedium = baseTypography.labelMedium.copy(fontFamily = InterFontFamily, fontWeight = FontWeight.Medium),
+        labelSmall = baseTypography.labelSmall.copy(fontFamily = InterFontFamily),
+        displayLarge = baseTypography.displayLarge.copy(fontFamily = InterFontFamily),
+        displayMedium = baseTypography.displayMedium.copy(fontFamily = InterFontFamily),
+        displaySmall = baseTypography.displaySmall.copy(fontFamily = InterFontFamily),
+        headlineMedium = baseTypography.headlineMedium.copy(fontFamily = InterFontFamily),
+        headlineSmall = baseTypography.headlineSmall.copy(fontFamily = InterFontFamily),
+        titleSmall = baseTypography.titleSmall.copy(fontFamily = InterFontFamily),
+    )
 
 /** tcBodyEmphasis: bodyLarge's metrics at SemiBold — see [TownCrierTypography] doc. */
 internal val bodyEmphasisTextStyle = TownCrierTypography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)

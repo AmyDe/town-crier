@@ -28,7 +28,11 @@ android {
 }
 
 kotlin {
-    jvmToolchain(libs.versions.javaToolchain.get().toInt())
+    jvmToolchain(
+        libs.versions.javaToolchain
+            .get()
+            .toInt(),
+    )
     // No explicitApi() here: explicit-API mode fights Compose ergonomics
     // (android-coding-standards skill, workflow-and-naming.md). `internal`
     // stays a review discipline in this module.
