@@ -1,0 +1,18 @@
+# Canonical ktlint/editor config for mobile/android — owned by the
+# android-coding-standards skill. Copy to mobile/android/.editorconfig and keep
+# the two files identical (the skill asset is the source of truth).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+max_line_length = 120
+# Composables are PascalCase by design; exempt them from function-naming.
+ktlint_function_naming_ignore_when_annotated_with = Composable

@@ -1,0 +1,26 @@
+*.class
+
+# Gradle
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# Local configuration (never commit machine-specific SDK paths)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystores (signing lands in #779 — never commit real keys if added early)
+*.jks
+*.keystore
+
+# macOS
+.DS_Store

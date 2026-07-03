@@ -1,0 +1,89 @@
+# Canonical detekt config for mobile/android — owned by the android-coding-standards
+# skill. Copy to mobile/android/detekt.yml and apply with buildUponDefaultConfig = true,
+# so this file holds ONLY deliberate deviations from the detekt defaults.
+#
+# Philosophy (mirrors the Go skill's .golangci.yml): bug-catching rules on,
+# style-opinion rules off — ktlint owns formatting (.editorconfig).
+#
+# NOTE: rules marked "requires type resolution" only run under the type-resolving
+# Gradle tasks (detektMain/detektTest on JVM modules, detekt<Variant> on Android
+# modules) — the plain `detekt` task silently skips them. CI must run both.
+
+coroutines:
+  GlobalCoroutineUsage:
+    active: true
+  SuspendFunSwallowedCancellation:
+    active: true # requires type resolution
+  SuspendFunWithFlowReturnType:
+    active: true # requires type resolution
+
+exceptions:
+  # Both default-active; pinned here because they enforce the skill's
+  # cancellation-safety rule (no blanket catches around suspend code).
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable'] # composables are PascalCase by design
+
+complexity:
+  LongParameterList:
+    ignoreAnnotated: ['Composable'] # state-hoisted screens legitimately take many params
+
+style:
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview', 'PreviewLightDark'] # private preview functions are the convention
+  MagicNumber:
+    active: false # style opinion; noisy in UI code, ktlint/review catch real cases
+  ReturnCount:
+    active: false # early returns are idiomatic Kotlin
+  MaxLineLength:
+    active: false # ktlint owns line length (120, .editorconfig)
+  ForbiddenImport:
+    active: true
+    imports:
+      - value: 'io.mockk.*'
+        reason: 'No mocking libraries — hand-written fakes (android-coding-standards).'
+      - value: 'org.mockito.*'
+        reason: 'No mocking libraries — hand-written fakes (android-coding-standards).'
+      - value: 'org.robolectric.*'
+        reason: 'No Robolectric — JVM units behind interfaces; emulator for real-device flows.'
+      - value: 'retrofit2.*'
+        reason: 'Hand-rolled ApiClient over OkHttp (epic #770 pre-resolved decision).'
+      - value: 'androidx.room.*'
+        reason: 'No Room — DataStore + in-memory TTL cache (epic #770).'
+      - value: 'io.reactivex.*'
+        reason: 'Coroutines + Flow, not RxJava.'
+      - value: 'androidx.lifecycle.LiveData'
+        reason: 'StateFlow, not LiveData.'
+      - value: 'androidx.lifecycle.MutableLiveData'
+        reason: 'StateFlow, not LiveData.'
+      - value: 'androidx.fragment.*'
+        reason: 'Single-activity Compose — no Fragments.'
+      - value: 'android.os.AsyncTask'
+        reason: 'Coroutines, not AsyncTask.'
+      - value: 'kotlinx.coroutines.GlobalScope'
+        reason: 'Structured concurrency — every coroutine has an owning scope.'
+      - value: 'kotlinx.coroutines.runBlocking'
+        reason: 'Never block a thread on coroutines; tests use runTest.'
+      - value: 'com.google.gson.*'
+        reason: 'kotlinx.serialization only.'
+      - value: 'com.squareup.moshi.*'
+        reason: 'kotlinx.serialization only.'
+      - value: 'java.util.Date'
+        reason: 'java.time only.'
+      - value: 'java.util.Calendar'
+        reason: 'java.time only.'
+      - value: 'java.text.SimpleDateFormat'
+        reason: 'java.time.format.DateTimeFormatter only.'
+      - value: 'javax.inject.*'
+        reason: 'Manual constructor injection at the composition root — no DI framework.'
+      - value: 'dagger.*'
+        reason: 'Manual constructor injection at the composition root — no DI framework.'
+      - value: 'org.koin.*'
+        reason: 'Manual constructor injection at the composition root — no DI framework.'
+      - value: 'me.tatarka.inject.*'
+        reason: 'Manual constructor injection at the composition root — no DI framework.'
