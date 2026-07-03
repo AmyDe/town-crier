@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -23,11 +22,10 @@ func TestEnqueuer_CreatedRecordIsDigestReadable(t *testing.T) {
 
 	profile := profileWithTier(t, "auth0|alice", profiles.TierFree) // Free: record only, no push
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	zones := &fakeZones{zones: []watchzones.WatchZone{zone}}
 
-	enq := NewEnqueuer(notifs, zones, profs, devs, &fakeState{}, &fakePush{},
+	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{},
 		func() string { return "n-roundtrip" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))

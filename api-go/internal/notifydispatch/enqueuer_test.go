@@ -2,14 +2,12 @@ package notifydispatch
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
-	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -64,44 +62,22 @@ func (f *fakeProfiles) Get(_ context.Context, userID string) (*profiles.UserProf
 	return nil, profiles.ErrNotFound
 }
 
-// fakeDevices serves device tokens and records pruned ones.
-type fakeDevices struct {
-	byUser  map[string][]devicetokens.DeviceRegistration
-	deleted []string
+// queuedPush is one Add call a fakePushQueue recorded.
+type queuedPush struct {
+	userID       string
+	notification notifications.DigestNotification
 }
 
-func (f *fakeDevices) ListByUser(_ context.Context, userID string) ([]devicetokens.DeviceRegistration, error) {
-	return f.byUser[userID], nil
+// fakePushQueue stands in for the coalescer from the dispatchers' side: it just
+// records what it was asked to queue, so the enqueuer/decision tests assert
+// "queued when eligible" without exercising the coalescer's own send/flush
+// behaviour (covered separately in coalescer_test.go).
+type fakePushQueue struct {
+	queued []queuedPush
 }
 
-func (f *fakeDevices) Delete(_ context.Context, _, token string) error {
-	f.deleted = append(f.deleted, token)
-	return nil
-}
-
-// fakeState serves the unread count (read_at IS NULL, ADR 0035).
-type fakeState struct {
-	unread int
-}
-
-func (f *fakeState) UnreadCount(_ context.Context, _ string) (int, error) {
-	return f.unread, nil
-}
-
-// fakePush records the payloads it was asked to send and which devices it
-// returns as invalid.
-type fakePush struct {
-	calls    int
-	tokens   []string
-	payloads []json.RawMessage
-	invalid  []string
-}
-
-func (f *fakePush) Send(_ context.Context, tokens []string, payload json.RawMessage) ([]string, error) {
-	f.calls++
-	f.tokens = append(f.tokens, tokens...)
-	f.payloads = append(f.payloads, payload)
-	return f.invalid, nil
+func (f *fakePushQueue) Add(userID string, n notifications.DigestNotification) {
+	f.queued = append(f.queued, queuedPush{userID: userID, notification: n})
 }
 
 func profileWithTier(t *testing.T, userID string, tier profiles.SubscriptionTier) *profiles.UserProfile {
@@ -141,30 +117,26 @@ func testZoneAt(t *testing.T, id, userID string, createdAt time.Time) watchzones
 	return z
 }
 
-func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer, *fakeNotifications, *fakePush) {
+func newEnqueuerHarness(t *testing.T, tier profiles.SubscriptionTier) (*Enqueuer, *fakeNotifications, *fakePushQueue) {
 	t.Helper()
-	enq, notifs, push, _ := newEnqueuerHarnessWithZones(t, tier, nil)
-	return enq, notifs, push
+	enq, notifs, queue, _ := newEnqueuerHarnessWithZones(t, tier, nil)
+	return enq, notifs, queue
 }
 
-func newEnqueuerHarnessWithZones(t *testing.T, tier profiles.SubscriptionTier, zones *fakeZones) (*Enqueuer, *fakeNotifications, *fakePush, *fakeZones) {
+func newEnqueuerHarnessWithZones(t *testing.T, tier profiles.SubscriptionTier, zones *fakeZones) (*Enqueuer, *fakeNotifications, *fakePushQueue, *fakeZones) {
 	t.Helper()
 	notifs := newFakeNotifications()
 	profile := profileWithTier(t, "auth0|alice", tier)
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
-		"auth0|alice": {{Token: "tok-1"}},
-	}}
-	st := &fakeState{unread: 2}
-	push := &fakePush{}
+	queue := &fakePushQueue{}
 	if zones == nil {
 		zones = &fakeZones{}
 	}
-	enq := NewEnqueuer(notifs, zones, profs, devs, st, push,
+	enq := NewEnqueuer(notifs, zones, profs, queue,
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
-	return enq, notifs, push, zones
+	return enq, notifs, queue, zones
 }
 
 func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
@@ -179,9 +151,8 @@ func TestEnqueuer_EnqueueForApplication_FansOutToContainingZones(t *testing.T) {
 		"auth0|alice": profileWithTier(t, "auth0|alice", profiles.TierPro),
 		"auth0|bob":   profileWithTier(t, "auth0|bob", profiles.TierPro),
 	}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
 	fz := zones
-	enq := NewEnqueuer(notifs, zones, profs, devs, &fakeState{}, &fakePush{},
+	enq := NewEnqueuer(notifs, zones, profs, &fakePushQueue{},
 		func() string { return "n-fixed" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -320,9 +291,9 @@ func TestEnqueuer_EnqueueForApplication_NoCoordsSkipsLookup(t *testing.T) {
 	}
 }
 
-func TestEnqueuer_PaidTier_CreatesRecordAndPushes(t *testing.T) {
+func TestEnqueuer_PaidTier_CreatesRecordAndQueuesPush(t *testing.T) {
 	t.Parallel()
-	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
+	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierPro)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
@@ -342,17 +313,20 @@ func TestEnqueuer_PaidTier_CreatesRecordAndPushes(t *testing.T) {
 	if rec.EventType != notifications.EventNewApplication {
 		t.Errorf("event type: got %q, want NewApplication", rec.EventType)
 	}
-	if push.calls != 1 {
-		t.Errorf("paid tier should push exactly once, got %d", push.calls)
+	if !rec.PushSent {
+		t.Error("PushSent should be true once the notification is queued for a push-eligible user")
 	}
-	if len(push.tokens) != 1 || push.tokens[0] != "tok-1" {
-		t.Errorf("push tokens: got %v", push.tokens)
+	if len(queue.queued) != 1 {
+		t.Fatalf("paid tier should queue exactly one push, got %d", len(queue.queued))
+	}
+	if queue.queued[0].userID != "auth0|alice" {
+		t.Errorf("queued push user: got %q, want auth0|alice", queue.queued[0].userID)
 	}
 }
 
 func TestEnqueuer_FreeTier_CreatesRecordNoPush(t *testing.T) {
 	t.Parallel()
-	enq, notifs, push := newEnqueuerHarness(t, profiles.TierFree)
+	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierFree)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
@@ -362,8 +336,11 @@ func TestEnqueuer_FreeTier_CreatesRecordNoPush(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Fatalf("free tier must still create the digest record, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("free tier must NOT push, got %d calls", push.calls)
+	if notifs.created[0].PushSent {
+		t.Error("free tier record must not read PushSent=true")
+	}
+	if len(queue.queued) != 0 {
+		t.Errorf("free tier must NOT queue a push, got %d", len(queue.queued))
 	}
 }
 
@@ -376,11 +353,8 @@ func TestEnqueuer_ExpiredPaidTier_CreatesRecordNoPush(t *testing.T) {
 	past := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // before the harness clock
 	profile.SubscriptionExpiry = &past
 	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
-		"auth0|alice": {{Token: "tok-1"}},
-	}}
-	push := &fakePush{}
-	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, &fakeState{}, push,
+	queue := &fakePushQueue{}
+	enq := NewEnqueuer(notifs, &fakeZones{}, profs, queue,
 		func() string { return "n-1" },
 		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
 		testLogger(t))
@@ -393,14 +367,14 @@ func TestEnqueuer_ExpiredPaidTier_CreatesRecordNoPush(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Fatalf("lapsed paid tier must still create the digest record, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("lapsed paid tier must NOT push, got %d calls", push.calls)
+	if len(queue.queued) != 0 {
+		t.Errorf("lapsed paid tier must NOT queue a push, got %d", len(queue.queued))
 	}
 }
 
 func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 	t.Parallel()
-	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
+	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierPro)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
@@ -413,14 +387,14 @@ func TestEnqueuer_Dedup_SkipsWhenAlreadyNotified(t *testing.T) {
 	if len(notifs.created) != 1 {
 		t.Errorf("re-enqueue must not double-create, got %d records", len(notifs.created))
 	}
-	if push.calls != 1 {
-		t.Errorf("re-enqueue must not double-push, got %d calls", push.calls)
+	if len(queue.queued) != 1 {
+		t.Errorf("re-enqueue must not double-queue a push, got %d", len(queue.queued))
 	}
 }
 
 func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 	t.Parallel()
-	enq, notifs, push := newEnqueuerHarness(t, profiles.TierPro)
+	enq, notifs, queue := newEnqueuerHarness(t, profiles.TierPro)
 	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
 	zone := testZoneAt(t, "zone-1", "auth0|stranger", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 
@@ -430,58 +404,7 @@ func TestEnqueuer_UnknownProfile_NoRecord(t *testing.T) {
 	if len(notifs.created) != 0 {
 		t.Errorf("unknown profile must not create a record, got %d", len(notifs.created))
 	}
-	if push.calls != 0 {
-		t.Errorf("unknown profile must not push, got %d", push.calls)
-	}
-}
-
-func TestEnqueuer_PaidTier_NoDevicesStillWritesRecord(t *testing.T) {
-	t.Parallel()
-	notifs := newFakeNotifications()
-	profile := profileWithTier(t, "auth0|alice", profiles.TierPersonal)
-	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{}}
-	st := &fakeState{}
-	push := &fakePush{}
-	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, st, push,
-		func() string { return "n-1" },
-		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
-		testLogger(t))
-	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
-	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
-
-	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
-		t.Fatalf("Enqueue: %v", err)
-	}
-	if len(notifs.created) != 1 {
-		t.Errorf("record must be written even when there are no devices to push to, got %d", len(notifs.created))
-	}
-	if push.calls != 0 {
-		t.Errorf("no devices means no push call, got %d", push.calls)
-	}
-}
-
-func TestEnqueuer_PrunesInvalidTokens(t *testing.T) {
-	t.Parallel()
-	notifs := newFakeNotifications()
-	profile := profileWithTier(t, "auth0|alice", profiles.TierPro)
-	profs := &fakeProfiles{byID: map[string]*profiles.UserProfile{"auth0|alice": profile}}
-	devs := &fakeDevices{byUser: map[string][]devicetokens.DeviceRegistration{
-		"auth0|alice": {{Token: "good"}, {Token: "stale"}},
-	}}
-	st := &fakeState{}
-	push := &fakePush{invalid: []string{"stale"}}
-	enq := NewEnqueuer(notifs, &fakeZones{}, profs, devs, st, push,
-		func() string { return "n-1" },
-		func() time.Time { return time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC) },
-		testLogger(t))
-	app := testApplication(t, time.Date(2026, 6, 13, 8, 0, 0, 0, time.UTC))
-	zone := testZoneAt(t, "zone-1", "auth0|alice", time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
-
-	if err := enq.Enqueue(context.Background(), app, zone); err != nil {
-		t.Fatalf("Enqueue: %v", err)
-	}
-	if len(devs.deleted) != 1 || devs.deleted[0] != "stale" {
-		t.Errorf("invalid token should be pruned: got %v", devs.deleted)
+	if len(queue.queued) != 0 {
+		t.Errorf("unknown profile must not queue a push, got %d", len(queue.queued))
 	}
 }

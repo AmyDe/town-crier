@@ -16,16 +16,20 @@
 // an unchanged application never double-notifies. Free-tier users get the
 // notification record (which feeds the weekly digest) but no instant push —
 // matching the server-enforced tier entitlement.
+//
+// Neither dispatcher sends a push itself: a push-eligible notification is
+// handed to a pushQueue (*PushCoalescer in production), which coalesces the
+// whole poll cycle's queued notifications into at most one push per (user,
+// watch zone) — plus one per-user "saved" bucket — at cycle end (GH#784). The
+// dispatchers do the gating; the coalescer does no gating of its own.
 package notifydispatch
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
-	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 	"github.com/AmyDe/town-crier/api-go/internal/watchzones"
@@ -45,23 +49,13 @@ type profileReader interface {
 	Get(ctx context.Context, userID string) (*profiles.UserProfile, error)
 }
 
-// deviceReader lists a user's device tokens for a push and prunes the ones APNs
-// reports permanently invalid. *devicetokens.CosmosStore satisfies it.
-type deviceReader interface {
-	ListByUser(ctx context.Context, userID string) ([]devicetokens.DeviceRegistration, error)
-	Delete(ctx context.Context, userID, token string) error
-}
-
-// stateReader supplies the unread-badge input: the total unread tally
-// (read_at IS NULL, ADR 0035). *notificationstate.PostgresStore satisfies it.
-type stateReader interface {
-	UnreadCount(ctx context.Context, userID string) (int, error)
-}
-
-// pushSender is the consumer-side push contract; apns.PushSender (the real
-// Client or the NoOpSender) satisfies it structurally.
-type pushSender interface {
-	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
+// pushQueue is the consumer-side contract the dispatchers hand an already
+// push-eligible notification to, in place of sending inline. *PushCoalescer
+// satisfies it. The coalescer does no gating of its own — a dispatcher must
+// only ever call Add for a notification it has already determined is
+// push-eligible (paid tier, push preference, per-source opt-in).
+type pushQueue interface {
+	Add(userID string, n notifications.DigestNotification)
 }
 
 // notificationMetricsRecorder is the consumer-side slice of the metrics registry
@@ -74,16 +68,14 @@ type notificationMetricsRecorder interface {
 
 // Enqueuer handles new-application zone fan-out: for a new application that
 // matched a watch zone, it dedups, creates the notification record (which feeds
-// the digest pipeline), and — for paid tiers with devices — sends an instant
-// push, pruning any device tokens APNs reports invalid. The higher-level
+// the digest pipeline), and — for paid tiers with push enabled — queues an
+// instant push for the poll cycle's coalescer to flush. The higher-level
 // EnqueueForApplication runs the per-app zone fan-out the poll handler calls.
 type Enqueuer struct {
 	notifications notificationWriter
 	zones         zoneMatcher
 	profiles      profileReader
-	devices       deviceReader
-	state         stateReader
-	push          pushSender
+	push          pushQueue
 	newID         func() string
 	now           func() time.Time
 	logger        *slog.Logger
@@ -106,9 +98,7 @@ func NewEnqueuer(
 	notifs notificationWriter,
 	zones zoneMatcher,
 	profs profileReader,
-	devices deviceReader,
-	state stateReader,
-	push pushSender,
+	push pushQueue,
 	newID func() string,
 	now func() time.Time,
 	logger *slog.Logger,
@@ -117,8 +107,6 @@ func NewEnqueuer(
 		notifications: notifs,
 		zones:         zones,
 		profiles:      profs,
-		devices:       devices,
-		state:         state,
 		push:          push,
 		newID:         newID,
 		now:           now,
@@ -188,14 +176,12 @@ func (e *Enqueuer) Enqueue(ctx context.Context, app applications.PlanningApplica
 
 	// Instant push is a paid-tier entitlement. Free-tier users — including a paid
 	// tier whose subscription has lapsed (EffectiveTier) — still get the
-	// notification record (picked up by the weekly digest) but no push.
+	// notification record (picked up by the weekly digest) but no push. PushSent
+	// is set optimistically (queued, not delivered) the moment the user is
+	// push-eligible; the coalescer flushes the actual send at cycle end.
 	if profile.EffectiveTier(e.now()).IsPaid() && profile.Preferences.PushEnabled {
-		n.PushSent = sendInstantPush(ctx, instantPushDeps{
-			devices: e.devices,
-			state:   e.state,
-			push:    e.push,
-			logger:  e.logger,
-		}, zone.UserID, n)
+		n.PushSent = true
+		e.push.Add(zone.UserID, n)
 	}
 
 	if err := e.notifications.Create(ctx, n); err != nil {
