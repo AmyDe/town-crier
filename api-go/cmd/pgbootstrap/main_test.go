@@ -80,7 +80,7 @@ func TestBuildPrincipalSQL_GrantsNoElevatedPrivilege(t *testing.T) {
 
 func TestBuildGrantsSQL_ContainsDMLGrants(t *testing.T) {
 	t.Parallel()
-	sql, err := buildGrantsSQL(validParams())
+	sql, err := buildGrantsSQL(validParams(), false)
 	if err != nil {
 		t.Fatalf("buildGrantsSQL() error = %v", err)
 	}
@@ -101,7 +101,7 @@ func TestBuildGrantsSQL_ContainsDMLGrants(t *testing.T) {
 
 func TestBuildGrantsSQL_DoesNotContainPrincipalCreate(t *testing.T) {
 	t.Parallel()
-	sql, err := buildGrantsSQL(validParams())
+	sql, err := buildGrantsSQL(validParams(), false)
 	if err != nil {
 		t.Fatalf("buildGrantsSQL() error = %v", err)
 	}
@@ -113,7 +113,7 @@ func TestBuildGrantsSQL_DoesNotContainPrincipalCreate(t *testing.T) {
 
 func TestBuildGrantsSQL_GrantsNoElevatedPrivilege(t *testing.T) {
 	t.Parallel()
-	sql, err := buildGrantsSQL(validParams())
+	sql, err := buildGrantsSQL(validParams(), false)
 	if err != nil {
 		t.Fatalf("buildGrantsSQL() error = %v", err)
 	}
@@ -125,6 +125,45 @@ func TestBuildGrantsSQL_GrantsNoElevatedPrivilege(t *testing.T) {
 		if strings.Contains(upper, bad) {
 			t.Errorf("Phase 2 SQL must not contain %q (least-privilege only)\n---\n%s", bad, sql)
 		}
+	}
+}
+
+func TestBuildGrantsSQL_ReadonlyTrue_SelectsReadonlyTemplate(t *testing.T) {
+	t.Parallel()
+	sql, err := buildGrantsSQL(validParams(), true)
+	if err != nil {
+		t.Fatalf("buildGrantsSQL() error = %v", err)
+	}
+
+	wantSubstrings := []string{
+		"GRANT USAGE ON SCHEMA public TO towncrier_api",
+		"GRANT SELECT ON applications TO towncrier_api",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(sql, want) {
+			t.Errorf("readonly Phase 2 SQL missing %q\n---\n%s", want, sql)
+		}
+	}
+
+	// Scan executable SQL only: -- comment lines document withheld privileges and
+	// must not trip the guard.
+	upper := strings.ToUpper(stripSQLComments(sql))
+	absent := []string{"INSERT", "UPDATE", "DELETE", "ALTER DEFAULT PRIVILEGES", "SEQUENCE"}
+	for _, bad := range absent {
+		if strings.Contains(upper, bad) {
+			t.Errorf("readonly Phase 2 SQL must not contain %q (read-only role)\n---\n%s", bad, sql)
+		}
+	}
+}
+
+func TestBuildGrantsSQL_ReadonlyFalse_SelectsDefaultDMLTemplate(t *testing.T) {
+	t.Parallel()
+	sql, err := buildGrantsSQL(validParams(), false)
+	if err != nil {
+		t.Fatalf("buildGrantsSQL() error = %v", err)
+	}
+	if !strings.Contains(sql, "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO towncrier_api") {
+		t.Errorf("non-readonly Phase 2 SQL should retain full DML grants\n---\n%s", sql)
 	}
 }
 
