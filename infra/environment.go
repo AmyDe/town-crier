@@ -88,22 +88,28 @@ type serviceBusPollingInfra struct {
 
 // envContext holds the shared inputs every worker job and the container app need.
 type envContext struct {
-	env                         string
-	resourceGroupName           pulumi.StringOutput
-	environmentID               pulumi.StringOutput
-	acrLoginServer              pulumi.StringOutput
-	acrPullIdentityID           pulumi.StringOutput
-	cosmosDataIdentityID        pulumi.StringOutput
-	cosmosDataIdentityClientID  pulumi.StringOutput
-	postgresServerFqdn          pulumi.StringOutput
-	appInsightsConnectionString pulumi.StringOutput
-	acsConnectionString         pulumi.StringOutput
-	apnsAuthKey                 pulumi.StringOutput
-	apnsUseSandbox              string
-	auth0Domain                 string
-	auth0M2mClientID            pulumi.StringOutput
-	auth0M2mClientSecret        pulumi.StringOutput
-	tags                        pulumi.StringMap
+	env                        string
+	resourceGroupName          pulumi.StringOutput
+	environmentID              pulumi.StringOutput
+	acrLoginServer             pulumi.StringOutput
+	acrPullIdentityID          pulumi.StringOutput
+	cosmosDataIdentityID       pulumi.StringOutput
+	cosmosDataIdentityClientID pulumi.StringOutput
+	// devSeedReaderIdentityID/ClientID are the dedicated least-privilege identity for the
+	// dev-only dev-seed job's read-only pool against town_crier_prod (tc-grvu.1, ADR 0038).
+	// Attached ONLY to the dev-seed job (see createWorkerJob) — never to any other Container
+	// App or Job.
+	devSeedReaderIdentityID       pulumi.StringOutput
+	devSeedReaderIdentityClientID pulumi.StringOutput
+	postgresServerFqdn            pulumi.StringOutput
+	appInsightsConnectionString   pulumi.StringOutput
+	acsConnectionString           pulumi.StringOutput
+	apnsAuthKey                   pulumi.StringOutput
+	apnsUseSandbox                string
+	auth0Domain                   string
+	auth0M2mClientID              pulumi.StringOutput
+	auth0M2mClientSecret          pulumi.StringOutput
+	tags                          pulumi.StringMap
 }
 
 func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, tags pulumi.StringMap) error {
@@ -147,6 +153,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	containerAppsEnvironmentID := shared.GetStringOutput(pulumi.String("containerAppsEnvironmentId"))
 	cosmosDataIdentityID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityId"))
 	cosmosDataIdentityClientID := shared.GetStringOutput(pulumi.String("cosmosDataIdentityClientId"))
+	devSeedReaderIdentityID := shared.GetStringOutput(pulumi.String("devSeedReaderIdentityId"))
+	devSeedReaderIdentityClientID := shared.GetStringOutput(pulumi.String("devSeedReaderIdentityClientId"))
 	appInsightsConnectionString := shared.GetStringOutput(pulumi.String("appInsightsConnectionString"))
 	acsConnectionString := shared.GetStringOutput(pulumi.String("acsConnectionString"))
 	sharedResourceGroupName := shared.GetStringOutput(pulumi.String("resourceGroupName"))
@@ -243,13 +251,15 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 
 	ec := envContext{
-		env:                        env,
-		resourceGroupName:          resourceGroup.Name,
-		environmentID:              containerAppsEnvironmentID,
-		acrLoginServer:             acrLoginServer,
-		acrPullIdentityID:          acrPullIdentityID,
-		cosmosDataIdentityID:       cosmosDataIdentityID,
-		cosmosDataIdentityClientID: cosmosDataIdentityClientID,
+		env:                           env,
+		resourceGroupName:             resourceGroup.Name,
+		environmentID:                 containerAppsEnvironmentID,
+		acrLoginServer:                acrLoginServer,
+		acrPullIdentityID:             acrPullIdentityID,
+		cosmosDataIdentityID:          cosmosDataIdentityID,
+		cosmosDataIdentityClientID:    cosmosDataIdentityClientID,
+		devSeedReaderIdentityID:       devSeedReaderIdentityID,
+		devSeedReaderIdentityClientID: devSeedReaderIdentityClientID,
 		// Postgres FQDN threaded through so the worker-job path (createWorkerJob /
 		// addGoWorkerEnv, which only receives ec) can build the prod Postgres connection
 		// env. The API container reaches `shared` directly, so it doesn't need this.
@@ -461,6 +471,16 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		return err
 	}
 
+	// Dev-seed — hourly, dev-only (epic tc-grvu / GH #808). Mirrors a small slice of
+	// recently-changed prod applications into dev so a TestFlight build pointed at dev
+	// gets real push notifications to test against; dev otherwise runs no PlanIt poller
+	// (ADR 0024).
+	if env == "dev" {
+		if err = createWorkerJob(ctx, ec, "dev-seed", "0 * * * *", 300, "dev-seed", nil); err != nil {
+			return err
+		}
+	}
+
 	// Static Web App (Landing Page)
 	staticWebApp, err := web.NewStaticSite(ctx, fmt.Sprintf("swa-town-crier-%s", env), &web.StaticSiteArgs{
 		Name:              pulumi.String(fmt.Sprintf("swa-town-crier-%s", env)),
@@ -589,17 +609,26 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		}
 	}
 
+	// The dev-seed job additionally gets the dedicated devSeedReaderIdentity (tc-grvu.1,
+	// ADR 0038) for its read-only pool against town_crier_prod. This is the critical
+	// security property: that identity must be attached ONLY to this one job, never to any
+	// other Container App or Job.
+	jobIdentities := pulumi.StringArray{
+		ec.acrPullIdentityID,
+		ec.cosmosDataIdentityID,
+	}
+	if workerMode == "dev-seed" {
+		jobIdentities = append(jobIdentities, ec.devSeedReaderIdentityID)
+	}
+
 	_, err := app.NewJob(ctx, fmt.Sprintf("job-tc-%s-%s", nameSuffix, ec.env), &app.JobArgs{
 		JobName:           pulumi.String(fmt.Sprintf("job-tc-%s-%s", nameSuffix, ec.env)),
 		ResourceGroupName: ec.resourceGroupName,
 		EnvironmentId:     ec.environmentID,
 		Configuration:     configuration,
 		Identity: &app.ManagedServiceIdentityArgs{
-			Type: pulumi.String(string(app.ManagedServiceIdentityTypeUserAssigned)),
-			UserAssignedIdentities: pulumi.StringArray{
-				ec.acrPullIdentityID,
-				ec.cosmosDataIdentityID,
-			},
+			Type:                   pulumi.String(string(app.ManagedServiceIdentityTypeUserAssigned)),
+			UserAssignedIdentities: jobIdentities,
 		},
 		Template: &app.JobTemplateArgs{
 			Containers: app.ContainerArray{
@@ -678,6 +707,20 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	if workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string")},
+		)
+	}
+
+	// dev-seed: prod-read config for the second, read-only Postgres pool (tc-grvu.5
+	// consumes these in cmd/worker/main.go's buildDevSeeder). DEV_SEED_PROD_AZURE_CLIENT_ID
+	// pins the dedicated id-town-crier-dev-seed-reader identity (tc-grvu.1, ADR 0038) — a
+	// separate identity from AZURE_CLIENT_ID above, which stays scoped to this job's own
+	// (dev) Postgres pool.
+	if workerMode == "dev-seed" {
+		envVars = append(envVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_LIMIT"), Value: pulumi.String("5")},
+			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_POSTGRES_DB"), Value: pulumi.String("town_crier_prod")},
+			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_POSTGRES_USER"), Value: pulumi.String("towncrier_dev_seed_reader")},
+			app.EnvironmentVarArgs{Name: pulumi.String("DEV_SEED_PROD_AZURE_CLIENT_ID"), Value: ec.devSeedReaderIdentityClientID},
 		)
 	}
 
