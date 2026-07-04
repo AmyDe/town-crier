@@ -15,7 +15,11 @@ import TownCrierDomain
 /// - an Unread filter chip (visible only when `hasUnread`) that mirrors the
 ///   web bead's single-select behaviour with the existing status chips,
 /// - a sort menu in the toolbar with the four sort modes from the spec,
-/// - a Mark-All-Read toolbar action (visible only when `hasUnread`).
+/// - a Mark-All-Read toolbar action, visible whenever the app-icon badge has
+///   something to clear (`hasClearableUnread`, the GLOBAL unread count) —
+///   deliberately decoupled from the per-zone `hasUnread` chip so the badge
+///   stays reachable even when the active zone has no unread rows of its own
+///   (tc-c5m1, GH#793).
 public struct ApplicationListView: View {
   @StateObject private var viewModel: ApplicationListViewModel
 
@@ -80,7 +84,7 @@ public struct ApplicationListView: View {
 
   @ToolbarContentBuilder
   private var markAllReadToolbarItem: some ToolbarContent {
-    if viewModel.hasUnread {
+    if viewModel.hasClearableUnread {
       ToolbarItem(placement: sortToolbarPlacement) {
         Button("Mark all read") {
           Task { await viewModel.markAllRead() }
