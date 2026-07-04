@@ -36,10 +36,17 @@ body{
 }
 .brand-link:hover{color:var(--text-primary);}
 .page{max-width:600px;margin:0 auto;padding:var(--space-lg) var(--space-md) 148px;}
+/* Hero (tc-r4n9.7): this reuses the SAME cached OSM map-card PNG served as
+   og:image (card.go bakes it once per application; ogimage.go caches it) — this
+   treatment is pure CSS and fetches ZERO additional OSM tiles per page-view.
+   The `border` here frames it deliberately, matching .card's "border, not a
+   floating edgeless image" convention (design-language: cards are framed, not
+   bare). Dark mode below recolours it via `filter` rather than a second
+   tile-fetch/render pipeline. */
 .hero{
   display:block;width:100%;height:auto;aspect-ratio:1200/630;
-  border-radius:var(--radius-md);margin-bottom:var(--space-lg);
-  object-fit:cover;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:var(--space-lg);
+  object-fit:cover;background:var(--border);box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }
 .brand{
   display:flex;align-items:center;gap:var(--space-sm);
@@ -53,6 +60,16 @@ body{
   box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }
 @media (prefers-color-scheme:dark){.card{box-shadow:none;}}
+/* Standard OSM tiles render on a near-white/cream basemap, so the raw hero PNG
+   would sit as a jarring bright rectangle on the dark canvas. invert+hue-rotate
+   is the well-known technique for showing a light raster map acceptably on a
+   dark surface: it flips overall lightness (light basemap -> dark) while
+   approximately restoring each feature's original hue (the brand-amber pin
+   stays amber-ish; water/greenery keep a recognisable, distinct tint), so
+   street context stays legible. 90% (not a full 100%) avoids the flat pure
+   black/white clipping a total inversion would give the baked-in pin/attribution
+   strip. Still zero extra OSM tile fetches — same cached PNG, CSS only. */
+@media (prefers-color-scheme:dark){.hero{box-shadow:none;filter:invert(90%) hue-rotate(180deg);}}
 .meta-list{margin-bottom:var(--space-sm);}
 .meta-row{
   display:flex;gap:var(--space-xs);font-size:14px;
@@ -132,7 +149,7 @@ h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--spac
   body{padding:var(--space-xl) var(--space-md);}
   .site-header{max-width:720px;padding:0;margin:0 auto var(--space-md);}
   .page{max-width:720px;margin:0 auto;padding:0;}
-  .hero{margin-bottom:var(--space-xl);}
+  .hero{margin-bottom:var(--space-xl);box-shadow:0 4px 24px rgba(0,0,0,0.06);}
   .card{padding:var(--space-lg);box-shadow:0 4px 24px rgba(0,0,0,0.06);}
   .cta-bar{
     position:static;flex-direction:row;justify-content:flex-start;align-items:center;
@@ -147,5 +164,5 @@ h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--spac
     color:var(--text-secondary);opacity:1;font-size:15px;text-align:left;
   }
 }
-@media (min-width:720px) and (prefers-color-scheme:dark){.card{box-shadow:none;}}
+@media (min-width:720px) and (prefers-color-scheme:dark){.card{box-shadow:none;}.hero{box-shadow:none;}}
 </style>{{end}}
