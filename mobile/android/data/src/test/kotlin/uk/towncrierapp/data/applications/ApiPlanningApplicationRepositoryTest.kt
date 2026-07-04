@@ -31,15 +31,16 @@ class ApiPlanningApplicationRepositoryTest {
         return ApiPlanningApplicationRepository(apiClient)
     }
 
+    // name/areaId never vary across this file's tests — dropped as parameters
+    // (rather than left as unused-in-practice knobs) to keep this fixture
+    // under detekt's LongParameterList budget.
     private fun row(
-        name: String = "24/0001",
-        areaId: Int = 42,
         appState: String? = "Undecided",
         startDate: String? = "2026-01-10",
         decidedDate: String? = null,
         latestUnreadEvent: String? = null,
     ): String =
-        """{"name":"$name","uid":"uid-1","areaName":"Camden","areaId":$areaId,"address":"1 Example Street",""" +
+        """{"name":"24/0001","uid":"uid-1","areaName":"Camden","areaId":42,"address":"1 Example Street",""" +
             """"description":"Extension","appState":${appState?.let { "\"$it\"" }},""" +
             """"startDate":${startDate?.let { "\"$it\"" }},"decidedDate":${decidedDate?.let { "\"$it\"" }},""" +
             """"lastDifferent":"2026-01-11T09:00:00Z","latestUnreadEvent":$latestUnreadEvent}"""
@@ -142,7 +143,7 @@ class ApiPlanningApplicationRepositoryTest {
     fun `a row decodes its identity, authority and address fields`() =
         runTest {
             val transport = FakeHttpTransport()
-            transport.enqueueResponse(200, "[${row(name = "24/0001", areaId = 42)}]")
+            transport.enqueueResponse(200, "[${row()}]")
             val sut = makeSut(transport)
 
             val application = sut.applications(zoneId, ApplicationSortOrder.NEWEST).applications.single()

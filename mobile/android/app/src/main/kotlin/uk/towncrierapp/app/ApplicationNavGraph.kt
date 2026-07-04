@@ -1,3 +1,10 @@
+// ApplicationNavGraph.kt is the bead-mandated file name for every
+// applications-browsing nav destination + composable (mirrors
+// WatchZoneNavGraph.kt) — ApplicationDetailDestination below is only ONE of
+// several top-level declarations this file thematically groups, not its sole
+// declaration in spirit.
+@file:Suppress("MatchingDeclarationName")
+
 package uk.towncrierapp.app
 
 import androidx.compose.runtime.Composable

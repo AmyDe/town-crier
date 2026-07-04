@@ -16,13 +16,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,9 +30,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -45,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uk.towncrierapp.domain.applications.ApplicationFilter
 import uk.towncrierapp.domain.applications.ApplicationSortOrder
-import uk.towncrierapp.domain.applications.ApplicationStatus
 import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.WatchZone
@@ -102,23 +94,12 @@ internal fun ApplicationListScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.applications_title)) },
-                actions = {
-                    if (state.unreadCount > 0) {
-                        IconButton(onClick = onMarkAllReadClick) {
-                            Icon(
-                                imageVector = Icons.Filled.DoneAll,
-                                contentDescription = stringResource(R.string.applications_mark_all_read),
-                            )
-                        }
-                    }
-                    SortMenu(
-                        currentSort = state.sort,
-                        availableSorts = state.availableSorts,
-                        onSortSelected = onSortSelected,
-                    )
-                },
+            ApplicationListTopBar(
+                unreadCount = state.unreadCount,
+                sort = state.sort,
+                availableSorts = state.availableSorts,
+                onMarkAllReadClick = onMarkAllReadClick,
+                onSortSelected = onSortSelected,
             )
         },
     ) { contentPadding ->
@@ -163,6 +144,31 @@ internal fun ApplicationListScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ApplicationListTopBar(
+    unreadCount: Int,
+    sort: ApplicationSortOrder,
+    availableSorts: List<ApplicationSortOrder>,
+    onMarkAllReadClick: () -> Unit,
+    onSortSelected: (ApplicationSortOrder) -> Unit,
+) {
+    TopAppBar(
+        title = { Text(stringResource(R.string.applications_title)) },
+        actions = {
+            if (unreadCount > 0) {
+                IconButton(onClick = onMarkAllReadClick) {
+                    Icon(
+                        imageVector = Icons.Filled.DoneAll,
+                        contentDescription = stringResource(R.string.applications_mark_all_read),
+                    )
+                }
+            }
+            SortMenu(currentSort = sort, availableSorts = availableSorts, onSortSelected = onSortSelected)
+        },
+    )
 }
 
 @Composable
@@ -212,103 +218,6 @@ private fun ZoneChipsRow(
         }
     }
 }
-
-private val FILTERABLE_STATUSES =
-    listOf(
-        ApplicationStatus.Undecided,
-        ApplicationStatus.Permitted,
-        ApplicationStatus.Conditions,
-        ApplicationStatus.Rejected,
-        ApplicationStatus.Withdrawn,
-        ApplicationStatus.Appealed,
-    )
-
-@Composable
-private fun FilterChipsRow(
-    filter: ApplicationFilter,
-    unreadCount: Int,
-    onFilterSelected: (ApplicationFilter) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyRow(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
-        contentPadding = PaddingValues(horizontal = TownCrierSpacing.md),
-    ) {
-        item {
-            CapsuleChip(
-                label = stringResource(R.string.applications_filter_all),
-                selected = filter == ApplicationFilter.All,
-                onClick = { onFilterSelected(ApplicationFilter.All) },
-            )
-        }
-        items(FILTERABLE_STATUSES) { status ->
-            CapsuleChip(
-                label = statusFilterLabel(status),
-                selected = filter == ApplicationFilter.Status(status),
-                onClick = { onFilterSelected(ApplicationFilter.Status(status)) },
-            )
-        }
-        item {
-            CapsuleChip(
-                label = "${stringResource(R.string.applications_filter_unread)} ($unreadCount)",
-                selected = filter == ApplicationFilter.Unread,
-                onClick = { onFilterSelected(ApplicationFilter.Unread) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun statusFilterLabel(status: ApplicationStatus): String =
-    when (status) {
-        ApplicationStatus.Undecided -> stringResource(R.string.application_status_pending)
-        ApplicationStatus.Permitted -> stringResource(R.string.application_status_permitted)
-        ApplicationStatus.Conditions -> stringResource(R.string.application_status_conditions)
-        ApplicationStatus.Rejected -> stringResource(R.string.application_status_rejected)
-        ApplicationStatus.Withdrawn -> stringResource(R.string.application_status_withdrawn)
-        ApplicationStatus.Appealed -> stringResource(R.string.application_status_appealed)
-        else -> stringResource(R.string.application_status_unknown)
-    }
-
-@Composable
-private fun SortMenu(
-    currentSort: ApplicationSortOrder,
-    availableSorts: List<ApplicationSortOrder>,
-    onSortSelected: (ApplicationSortOrder) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    IconButton(onClick = { expanded = true }) {
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.Sort,
-            contentDescription = stringResource(R.string.applications_sort_content_description),
-        )
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        availableSorts.forEach { sort ->
-            DropdownMenuItem(
-                text = { Text(sortLabel(sort)) },
-                onClick = {
-                    onSortSelected(sort)
-                    expanded = false
-                },
-                trailingIcon = {
-                    if (sort == currentSort) Icon(imageVector = Icons.Filled.Check, contentDescription = null)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun sortLabel(sort: ApplicationSortOrder): String =
-    when (sort) {
-        ApplicationSortOrder.DISTANCE -> stringResource(R.string.applications_sort_distance)
-        ApplicationSortOrder.NEWEST -> stringResource(R.string.applications_sort_newest)
-        ApplicationSortOrder.OLDEST -> stringResource(R.string.applications_sort_oldest)
-        ApplicationSortOrder.STATUS -> stringResource(R.string.applications_sort_status)
-        ApplicationSortOrder.RECENT_ACTIVITY -> stringResource(R.string.applications_sort_recent_activity)
-    }
 
 @Composable
 private fun NoZonesEmptyState(

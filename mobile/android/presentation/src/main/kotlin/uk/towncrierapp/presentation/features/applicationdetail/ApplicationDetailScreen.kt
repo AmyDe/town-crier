@@ -5,12 +5,9 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -24,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -34,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import uk.towncrierapp.domain.applications.ApplicationStatus
 import uk.towncrierapp.domain.applications.LocalAuthority
@@ -42,7 +37,6 @@ import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.applications.PlanningApplicationId
 import uk.towncrierapp.domain.applications.StatusEvent
 import uk.towncrierapp.presentation.R
-import uk.towncrierapp.presentation.designsystem.DateDisplayFormatter
 import uk.towncrierapp.presentation.designsystem.TownCrierSpacing
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.designsystem.components.PrimaryButton
@@ -105,118 +99,98 @@ internal fun ApplicationDetailScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSaveToggleClick) {
-                        Icon(
-                            imageVector = if (state.isSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                            contentDescription =
-                                stringResource(
-                                    if (state.isSaved) {
-                                        R.string.application_detail_unsave_content_description
-                                    } else {
-                                        R.string.application_detail_save_content_description
-                                    },
-                                ),
-                        )
-                    }
-                    val authoritySlug = state.authoritySlug
-                    if (authoritySlug != null) {
-                        IconButton(onClick = { onShareClick(shareUrlFor(authoritySlug, application.id.name)) }) {
-                            Icon(
-                                imageVector = Icons.Filled.Share,
-                                contentDescription =
-                                    stringResource(
-                                        R.string.application_detail_share_content_description,
-                                    ),
-                            )
-                        }
-                    }
-                },
+            ApplicationDetailTopBar(
+                isSaved = state.isSaved,
+                authoritySlug = state.authoritySlug,
+                applicationName = application.id.name,
+                onBack = onBack,
+                onSaveToggleClick = onSaveToggleClick,
+                onShareClick = onShareClick,
             )
         },
     ) { contentPadding ->
-        Column(
-            modifier =
-                Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(TownCrierSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.lg),
-        ) {
-            val display = statusDisplay(application.status)
-            StatusBadge(label = display.label, color = display.color, icon = display.icon)
-            Text(text = application.description, style = MaterialTheme.typography.titleLarge)
-            FieldsCard(application)
-            if (application.statusHistory.isNotEmpty()) {
-                StatusTimeline(events = application.statusHistory)
-            }
-            application.portalUrl?.let { url ->
-                PrimaryButton(
-                    text = stringResource(R.string.application_detail_portal_button),
-                    onClick = { onPortalClick(url) },
-                )
-            }
-            state.error?.let { error ->
-                Text(
-                    text = stringResource(applicationErrorMessageRes(error)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun FieldsCard(
-    application: PlanningApplication,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-    ) {
-        Column(
-            modifier = Modifier.padding(TownCrierSpacing.md),
-            verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
-        ) {
-            FieldRow(label = stringResource(R.string.application_detail_address_label), value = application.address)
-            FieldRow(label = stringResource(R.string.application_detail_reference_label), value = application.reference)
-            FieldRow(
-                label = stringResource(R.string.application_detail_authority_label),
-                value = application.authority.name,
-            )
-            FieldRow(
-                label = stringResource(R.string.application_detail_received_label),
-                value = DateDisplayFormatter.format(application.receivedDate),
-            )
-        }
-    }
-}
-
-@Composable
-private fun FieldRow(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        ApplicationDetailContent(
+            state = state,
+            onPortalClick = onPortalClick,
+            modifier = Modifier.padding(contentPadding).fillMaxSize(),
         )
-        Text(text = value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ApplicationDetailTopBar(
+    isSaved: Boolean,
+    authoritySlug: String?,
+    applicationName: String,
+    onBack: () -> Unit,
+    onSaveToggleClick: () -> Unit,
+    onShareClick: (String) -> Unit,
+) {
+    TopAppBar(
+        title = {},
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            }
+        },
+        actions = {
+            IconButton(onClick = onSaveToggleClick) {
+                Icon(
+                    imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                    contentDescription =
+                        stringResource(
+                            if (isSaved) {
+                                R.string.application_detail_unsave_content_description
+                            } else {
+                                R.string.application_detail_save_content_description
+                            },
+                        ),
+                )
+            }
+            if (authoritySlug != null) {
+                IconButton(onClick = { onShareClick(shareUrlFor(authoritySlug, applicationName)) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = stringResource(R.string.application_detail_share_content_description),
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ApplicationDetailContent(
+    state: ApplicationDetailUiState,
+    onPortalClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val application = state.application
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(TownCrierSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.lg),
+    ) {
+        val display = statusDisplay(application.status)
+        StatusBadge(label = display.label, color = display.color, icon = display.icon)
+        Text(text = application.description, style = MaterialTheme.typography.titleLarge)
+        FieldsCard(application)
+        if (application.statusHistory.isNotEmpty()) {
+            StatusTimeline(events = application.statusHistory)
+        }
+        application.portalUrl?.let { url ->
+            PrimaryButton(
+                text = stringResource(R.string.application_detail_portal_button),
+                onClick = { onPortalClick(url) },
+            )
+        }
+        state.error?.let { error ->
+            Text(
+                text = stringResource(applicationErrorMessageRes(error)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 

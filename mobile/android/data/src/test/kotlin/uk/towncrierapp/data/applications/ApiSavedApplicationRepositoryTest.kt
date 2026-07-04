@@ -28,13 +28,12 @@ class ApiSavedApplicationRepositoryTest {
     fun `savedApplications GETs the flat list and decodes each row`() =
         runTest {
             val transport = FakeHttpTransport()
-            transport.enqueueResponse(
-                200,
-                """[{"applicationUid":"42/24/0001","savedAt":"2026-01-16T09:00:00Z","application":{"name":"24/0001",""" +
-                    """"uid":"uid-1","areaName":"Camden","areaId":42,"address":"1 Example Street",""" +
-                    """"description":"Extension","appState":"Undecided","startDate":"2026-01-10",""" +
-                    """"lastDifferent":"2026-01-11T09:00:00Z"}}]""",
-            )
+            val savedRowJson =
+                """[{"applicationUid":"42/24/0001","savedAt":"2026-01-16T09:00:00Z",""" +
+                    """"application":{"name":"24/0001","uid":"uid-1","areaName":"Camden","areaId":42,""" +
+                    """"address":"1 Example Street","description":"Extension","appState":"Undecided",""" +
+                    """"startDate":"2026-01-10","lastDifferent":"2026-01-11T09:00:00Z"}}]"""
+            transport.enqueueResponse(200, savedRowJson)
             val sut = makeSut(transport)
 
             val saved = sut.savedApplications()
