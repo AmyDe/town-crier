@@ -56,4 +56,44 @@ class AppGraphSmokeTest {
         assertNotNull(graph.zonePreferencesRepository)
         assertNotNull(graph.postcodeGeocoder)
     }
+
+    @Test
+    fun `authAudience defaults to baseUrl when not overridden`() {
+        val graph =
+            AppGraph(
+                baseUrl = "https://api-dev.towncrierapp.uk",
+                auth0Tenant = Auth0Tenant(clientId = "client-id", domain = "towncrierapp.uk.auth0.com"),
+                androidLeaves =
+                    AndroidLeaves(
+                        credentialsStore = NoOpCredentialsStore,
+                        activityProvider = CurrentActivityProvider { null },
+                        tierCache = FakeSubscriptionTierCache(),
+                    ),
+                currentVersion = "0.1.0",
+                options = AppGraphOptions(callFactory = noOpCallFactory),
+            )
+
+        assertEquals("https://api-dev.towncrierapp.uk", graph.authAudience)
+    }
+
+    @Test
+    fun `authAudience can be overridden independently of baseUrl — the local flavor talks to a local API but requests dev-audience JWTs`() {
+        val graph =
+            AppGraph(
+                baseUrl = "http://10.0.2.2:8080",
+                authAudience = "https://api-dev.towncrierapp.uk",
+                auth0Tenant = Auth0Tenant(clientId = "client-id", domain = "towncrierapp.uk.auth0.com"),
+                androidLeaves =
+                    AndroidLeaves(
+                        credentialsStore = NoOpCredentialsStore,
+                        activityProvider = CurrentActivityProvider { null },
+                        tierCache = FakeSubscriptionTierCache(),
+                    ),
+                currentVersion = "0.1.0",
+                options = AppGraphOptions(callFactory = noOpCallFactory),
+            )
+
+        assertEquals("http://10.0.2.2:8080", graph.baseUrl)
+        assertEquals("https://api-dev.towncrierapp.uk", graph.authAudience)
+    }
 }
