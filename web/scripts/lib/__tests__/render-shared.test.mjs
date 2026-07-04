@@ -6,7 +6,6 @@ import {
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
 
-const SHARE_CAPTION = 'View on Town Crier';
 const PLANIT_CAPTION = 'View full record on PlanIt';
 const COUNCIL_CAPTION = 'View on the council website';
 
@@ -102,22 +101,30 @@ describe('renderApplicationsList per-application links', () => {
 });
 
 describe('renderApplicationsList share links', () => {
-  it('leads each card with a share link built from the slug and the app ref', () => {
+  it('links the reference heading to the share page built from the slug and ref', () => {
     const html = renderApplicationsList([application()], SLUG);
-    // The share URL uses the app.name (planit_name) verbatim, slashes preserved.
-    expect(captionForHref(html, SHARE_HREF)).toBe(SHARE_CAPTION);
-    // It is the FIRST link on the card, before the PlanIt/council links.
-    expect(html.indexOf(SHARE_HREF)).toBeLessThan(html.indexOf(PLANIT_HREF));
+    // The <h3> reference heading itself is the share link; the ref (app.name /
+    // planit_name) is used verbatim in the URL, slashes preserved.
+    expect(html).toContain(
+      `<h3 class="appCard__ref"><a class="appCard__refLink" href="${SHARE_HREF}">26/0001/FUL</a></h3>`,
+    );
   });
 
-  it('makes the share link do-follow and same-tab (an internal Town Crier page)', () => {
+  it('makes the heading link do-follow and same-tab (an internal Town Crier page)', () => {
     const html = renderApplicationsList([application()], SLUG);
     const anchor = html.match(
-      new RegExp(`<a class="appLink" href="${SHARE_HREF.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*>`),
+      new RegExp(`<a class="appCard__refLink" href="${SHARE_HREF.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*>`),
     );
     expect(anchor).not.toBeNull();
     expect(anchor[0]).not.toContain('nofollow');
     expect(anchor[0]).not.toContain('target="_blank"');
+  });
+
+  it('leaves the meta row with only the two external links (no third action link)', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    const anchors = html.match(/<a class="appLink"[^>]*>/g) ?? [];
+    expect(anchors).toHaveLength(2);
+    expect(html).not.toContain('View on Town Crier');
   });
 
   it('percent-encodes unsafe ref characters per segment while preserving slashes', () => {
@@ -126,20 +133,21 @@ describe('renderApplicationsList share links', () => {
       SLUG,
     );
     expect(html).toContain(
-      `https://share.towncrierapp.uk/a/${SLUG}/DC/2026/0001%20A%26B`,
+      `href="https://share.towncrierapp.uk/a/${SLUG}/DC/2026/0001%20A%26B"`,
     );
   });
 
-  it('omits the share link when no slug is supplied', () => {
+  it('renders the reference as plain heading text when no slug is supplied', () => {
     const html = renderApplicationsList([application()]);
-    expect(html).not.toContain(SHARE_CAPTION);
+    expect(html).toContain('<h3 class="appCard__ref">26/0001/FUL</h3>');
     expect(html).not.toContain('share.towncrierapp.uk');
+    expect(html).not.toContain('appCard__refLink');
   });
 
-  it('omits the share link when the app carries no ref', () => {
+  it('renders a plain heading when the app carries no ref', () => {
     const html = renderApplicationsList([application({ name: '' })], SLUG);
-    expect(html).not.toContain(SHARE_CAPTION);
     expect(html).not.toContain('share.towncrierapp.uk');
+    expect(html).not.toContain('appCard__refLink');
   });
 });
 
@@ -161,6 +169,16 @@ describe('renderAttributionList', () => {
     // HTML in a line is escaped so data can never inject markup.
     expect(html).toContain('<li>Line two &amp; &lt;b&gt;bold&lt;/b&gt;</li>');
     expect((html.match(/<li>/g) ?? []).length).toBe(2);
+  });
+});
+
+describe('pageStyles appCard__refLink', () => {
+  it('styles the heading link to inherit the heading colour and reveal amber on hover', () => {
+    const css = pageStyles();
+    expect(css).toContain('.appCard__refLink');
+    // Neutral by default (inherits the heading colour), amber on hover.
+    expect(css).toMatch(/\.appCard__refLink \{[^}]*color: inherit/);
+    expect(css).toMatch(/\.appCard__refLink:hover \{[^}]*var\(--tc-amber\)/);
   });
 });
 

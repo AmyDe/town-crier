@@ -103,11 +103,12 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('https://planit.org.uk/planapplic/26-0001-FUL');
   });
 
-  it('links each application to its share page using the authority slug and ref', () => {
+  it('links each application heading to its share page using the authority slug and ref', () => {
     const html = renderPlanningPage(pageData());
-    // app.name (26/0001/FUL) is the share ref; slashes are kept as separators.
+    // The reference heading is the share link; app.name (26/0001/FUL) is the ref,
+    // slashes kept as separators.
     expect(html).toContain(
-      '<a class="appLink" href="https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL">View on Town Crier</a>',
+      '<h3 class="appCard__ref"><a class="appCard__refLink" href="https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL">26/0001/FUL</a></h3>',
     );
     // The share page is the item URL in the ItemList structured data too.
     expect(html).toContain(
