@@ -18,11 +18,17 @@
 // Both phases are idempotent: the principal create is guarded by a pg_roles
 // existence check, and every GRANT is idempotent by design.
 //
+// -readonly selects grants_readonly.sql instead of grants.sql for Phase 2:
+// SELECT on applications only, no INSERT/UPDATE/DELETE, no sequence grants,
+// no ALTER DEFAULT PRIVILEGES. Use it to map a managed identity to a
+// least-privilege reader role, e.g. a dev-only job reading prod
+// (docs/adr/0038-dev-seed-least-privilege-prod-read.md).
+//
 // Usage:
 //
 //	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> \
 //	    [-admin-db postgres] [-db town_crier_dev] \
-//	    -mi-oid <managed-identity-object-id> [-role towncrier_api]
+//	    -mi-oid <managed-identity-object-id> [-role towncrier_api] [-readonly]
 //	pgbootstrap -host <fqdn> -admin-user <aad-admin-upn> -db town_crier_dev -verify
 //
 // -verify connects to the app DB (as the admin) and prints SELECT current_user so
@@ -57,6 +63,13 @@ var principalSQLTemplate string
 //
 //go:embed grants.sql
 var grantsSQLTemplate string
+
+// grantsReadonlySQLTemplate is the read-only variant of the Phase 2 SQL (app
+// DB): SELECT-only on applications, for a least-privilege reader role.
+// Selected in place of grantsSQLTemplate when -readonly is set.
+//
+//go:embed grants_readonly.sql
+var grantsReadonlySQLTemplate string
 
 // identifierPattern matches a safe, unquoted SQL identifier (role / database
 // name). OID values must be a UUID. Both are validated before being templated
@@ -96,8 +109,13 @@ func buildPrincipalSQL(p bootstrapParams) (string, error) {
 
 // buildGrantsSQL validates identifiers and renders the Phase 2 template.
 // Phase 2 must run against the app database (default: town_crier_dev).
-// Returning the SQL keeps rendering fully unit-testable without a live database.
-func buildGrantsSQL(p bootstrapParams) (string, error) {
+// When readonly is true, the SELECT-only grants_readonly.sql template is
+// rendered instead of the full-DML grants.sql. Returning the SQL keeps
+// rendering fully unit-testable without a live database.
+func buildGrantsSQL(p bootstrapParams, readonly bool) (string, error) {
+	if readonly {
+		return renderTemplate("grants_readonly", grantsReadonlySQLTemplate, p)
+	}
 	return renderTemplate("grants", grantsSQLTemplate, p)
 }
 
@@ -135,6 +153,7 @@ func run(args []string) int {
 		sslMode   = fs.String("sslmode", envOr("POSTGRES_SSLMODE", "require"), "sslmode")
 		timeout   = fs.Duration("timeout", 30*time.Second, "overall timeout")
 		verify    = fs.Bool("verify", false, "connect to the app DB and print SELECT current_user, then exit (no bootstrap)")
+		readonly  = fs.Bool("readonly", false, "grant SELECT-only access (grants_readonly.sql) instead of full DML (grants.sql) in Phase 2")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -200,9 +219,10 @@ func run(args []string) int {
 	}
 	fmt.Printf("pgbootstrap: phase 1 complete — role %q mapped to OID %s\n", *role, *miOID)
 
-	// Phase 2: grant DML on the app database. Roles are cluster-global, so the
-	// role created in Phase 1 is visible here immediately.
-	grantsSQL, err := buildGrantsSQL(params)
+	// Phase 2: grant on the app database (full DML, or SELECT-only when
+	// -readonly is set). Roles are cluster-global, so the role created in
+	// Phase 1 is visible here immediately.
+	grantsSQL, err := buildGrantsSQL(params, *readonly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgbootstrap: %v\n", err)
 		return 2
@@ -211,7 +231,11 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "pgbootstrap: phase 2 (grants): %v\n", err)
 		return 1
 	}
-	fmt.Printf("pgbootstrap: phase 2 complete — DML grants applied on %q\n", *db)
+	if *readonly {
+		fmt.Printf("pgbootstrap: phase 2 complete — read-only (SELECT) grants applied on %q\n", *db)
+	} else {
+		fmt.Printf("pgbootstrap: phase 2 complete — DML grants applied on %q\n", *db)
+	}
 
 	return verifyConnection(ctx, appPool)
 }
