@@ -154,7 +154,7 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		`<span class="date-label">Started</span><span class="date-value">2 March 2024</span>`,
 		`<span class="date-label">Consulted</span><span class="date-value">10 March 2024</span>`,
 		`<span class="date-label">Decided</span><span class="date-value">15 April 2024</span>`,
-		// Official-record links (PlanIt primary, council secondary): nofollow +
+		// Official-record links (PlanIt secondary, council tertiary): nofollow +
 		// noopener + noreferrer (noreferrer strips the Referer to third-party sites).
 		`rel="nofollow noopener noreferrer"`,
 		"https://planit.org.uk/planapplic/165/23/03456/FUL",
@@ -164,8 +164,10 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Contains public sector information licensed under the Open Government Licence. Crown Copyright.",
 		"Contains Ordnance Survey data © Crown Copyright and database right.",
 		"Map data © OpenStreetMap contributors.",
-		// Sticky CTA: exact copy + the campaign-tagged App Store URL.
-		"Download the app for instant notifications about planning updates",
+		// Sticky CTA: short verb-first label + supporting sentence, plus the
+		// campaign-tagged App Store URL.
+		"Get the app",
+		"Instant notifications about planning updates like this one.",
 		"town-crier-planning-alerts",
 		"ct=share-page",
 		"mt=8",
@@ -217,6 +219,128 @@ func TestServe_RendersHomepageLink(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `href="https://towncrierapp.uk"`) {
 		t.Error("body missing a link to the Town Crier homepage (https://towncrierapp.uk)")
+	}
+}
+
+// TestServe_RendersHeaderAboveHeroWithBrandLockup pins Phase 5 (#794): the
+// floating "• Town Crier" legend-dot below the map is replaced by a real
+// header element above the hero, whose brand lockup links to the marketing
+// homepage.
+func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	headerIdx := strings.Index(body, `<header class="site-header">`)
+	if headerIdx == -1 {
+		t.Fatal(`body missing <header class="site-header">`)
+	}
+	brandWant := `<a class="brand-link" href="https://towncrierapp.uk">Town Crier</a>`
+	if !strings.Contains(body, brandWant) {
+		t.Errorf("body missing brand lockup %q", brandWant)
+	}
+	heroIdx := strings.Index(body, `<img class="hero"`)
+	if heroIdx == -1 {
+		t.Fatal("body missing hero image")
+	}
+	if headerIdx > heroIdx {
+		t.Error("header must render above the hero image, not below it")
+	}
+}
+
+// TestServe_AppCTAIsPrimaryInCardAction pins decision 2 (#794): the App Store
+// CTA is the visually primary action inside the card, rendered above the
+// "Official record" section — whose PlanIt/council links are restyled
+// secondary/tertiary so an external link never outweighs our own CTA.
+func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	ctaIdx := strings.Index(body, `<div class="app-cta">`)
+	if ctaIdx == -1 {
+		t.Fatal(`body missing <div class="app-cta">`)
+	}
+	officialIdx := strings.Index(body, ">Official record<")
+	if officialIdx == -1 {
+		t.Fatal("body missing Official record section")
+	}
+	if ctaIdx > officialIdx {
+		t.Fatal("in-card app CTA must render above the Official record section")
+	}
+
+	appCTASection := body[ctaIdx:officialIdx]
+	if !strings.Contains(appCTASection, `class="btn-primary"`) {
+		t.Error(`in-card app CTA missing a "btn-primary" button`)
+	}
+	if !strings.Contains(appCTASection, ">Get the app<") {
+		t.Error(`in-card app CTA button must use the short, verb-first label "Get the app"`)
+	}
+	if !strings.Contains(appCTASection, "apps.apple.com") {
+		t.Error("in-card app CTA must link to the App Store")
+	}
+
+	if !strings.Contains(body, `class="record-link secondary"`) {
+		t.Error(`PlanIt link must carry class "record-link secondary"`)
+	}
+	if !strings.Contains(body, `class="record-link tertiary"`) {
+		t.Error(`council link must carry class "record-link tertiary"`)
+	}
+	if strings.Contains(body, `class="record-link primary"`) {
+		t.Error(`no official-record link may carry the "primary" class — that is now reserved for the app CTA`)
+	}
+}
+
+// TestServe_CTABarShortLabelNoRedundantSecondLink pins Phase 5 (#794): the
+// cta-bar drops the redundant second "Get Town Crier at towncrierapp.uk" link
+// (now covered by the header brand lockup) in favour of a short, verb-first
+// label plus a one-line supporting sentence rendered as plain text.
+func TestServe_CTABarShortLabelNoRedundantSecondLink(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	barIdx := strings.Index(body, `<div class="cta-bar">`)
+	if barIdx == -1 {
+		t.Fatal(`body missing <div class="cta-bar">`)
+	}
+	bar := body[barIdx:]
+
+	if !strings.Contains(bar, `class="cta"`) {
+		t.Error("cta-bar missing the short-label CTA button")
+	}
+	if !strings.Contains(bar, ">Get the app<") {
+		t.Error(`cta-bar CTA button must use the short, verb-first label "Get the app"`)
+	}
+	if !strings.Contains(bar, `class="cta-sub"`) {
+		t.Error("cta-bar missing the one-line supporting sentence")
+	}
+	if strings.Contains(bar, "home-link") {
+		t.Error("cta-bar must drop the redundant second (home) link — the header brand lockup already covers it")
+	}
+	if strings.Contains(bar, "Get Town Crier at towncrierapp.uk") {
+		t.Error("cta-bar must drop the redundant duplicate homepage copy")
 	}
 }
 
@@ -316,8 +440,8 @@ func TestServe_EscapesUntrustedFields(t *testing.T) {
 func TestServe_NeutralisesJavascriptSchemeInOfficialLinks(t *testing.T) {
 	t.Parallel()
 	app := fullApp(t)
-	app.URL = ptr("javascript:alert(1)")  // council secondary link
-	app.Link = ptr("javascript:alert(2)") // PlanIt primary link
+	app.URL = ptr("javascript:alert(1)")  // council tertiary link
+	app.Link = ptr("javascript:alert(2)") // PlanIt secondary link
 	store := &fakeStore{app: app, found: true}
 	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
 
@@ -405,7 +529,7 @@ func TestServe_NilOptionalFields_Renders200WithoutPanic(t *testing.T) {
 		t.Error("key-dates section rendered despite no dates")
 	}
 	// Attribution + CTA still present.
-	if !strings.Contains(body, "Download the app for instant notifications about planning updates") {
+	if !strings.Contains(body, "Get the app") {
 		t.Error("sticky CTA missing")
 	}
 	if !strings.Contains(body, "Map data © OpenStreetMap contributors.") {
