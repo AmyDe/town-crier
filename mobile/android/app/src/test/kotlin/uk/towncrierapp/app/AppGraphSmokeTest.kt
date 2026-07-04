@@ -5,6 +5,7 @@ import okhttp3.Call
 import org.junit.jupiter.api.Test
 import uk.towncrierapp.data.auth.CredentialsStore
 import uk.towncrierapp.data.auth.CurrentActivityProvider
+import uk.towncrierapp.domain.applications.FakeApplicationListPreferencesStore
 import uk.towncrierapp.domain.subscriptions.FakeSubscriptionTierCache
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -42,6 +43,7 @@ class AppGraphSmokeTest {
                         credentialsStore = NoOpCredentialsStore,
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
+                        applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),
@@ -55,6 +57,11 @@ class AppGraphSmokeTest {
         assertNotNull(graph.watchZoneRepository)
         assertNotNull(graph.zonePreferencesRepository)
         assertNotNull(graph.postcodeGeocoder)
+        assertNotNull(graph.applicationCacheStore)
+        assertNotNull(graph.planningApplicationRepository)
+        assertNotNull(graph.savedApplicationRepository)
+        assertNotNull(graph.notificationStateRepository)
+        assertNotNull(graph.applicationListPreferencesStore)
     }
 
     @Test
@@ -68,6 +75,7 @@ class AppGraphSmokeTest {
                         credentialsStore = NoOpCredentialsStore,
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
+                        applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),
@@ -88,6 +96,7 @@ class AppGraphSmokeTest {
                         credentialsStore = NoOpCredentialsStore,
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
+                        applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),
