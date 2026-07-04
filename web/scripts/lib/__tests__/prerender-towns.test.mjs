@@ -282,13 +282,18 @@ describe('runPrerender — town live mode', () => {
       join(outDir, 'planning', 'cornwall', 'truro', 'index.html'),
       'utf-8',
     );
-    // The freshest card (20 Jun) appears BEFORE the oldest (1 Jun) — recency DESC,
-    // even though the API fed them distance-order (oldest first).
-    expect(html).toContain('Last updated 20 Jun 2026');
-    expect(html).toContain('Last updated 1 Jun 2026');
-    expect(html.indexOf('Last updated 20 Jun 2026')).toBeLessThan(
-      html.indexOf('Last updated 1 Jun 2026'),
+    // The freshest card (Farther, changed 20 Jun) appears BEFORE the oldest
+    // (Nearest, changed 1 Jun) - recency DESC, even though the API fed them
+    // distance-order (nearest/oldest first). The per-card date is gone
+    // (tc-r4n9.3), so address text is the proxy for card order here; the
+    // single page-level "Data updated" line is asserted separately below.
+    expect(html).toContain('Farther, Truro');
+    expect(html).toContain('Nearest, Truro');
+    expect(html.indexOf('Farther, Truro')).toBeLessThan(
+      html.indexOf('Nearest, Truro'),
     );
+    // The page-level "Data updated" line reflects the freshest shown date.
+    expect(html).toContain('Data updated 20 Jun 2026');
 
     // The page's sitemap lastmod is the freshest shown app (20 Jun), proving the
     // lastmod is derived AFTER the recency sort and matches what the cards show.

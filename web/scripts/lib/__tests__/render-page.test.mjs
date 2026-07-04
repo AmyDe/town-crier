@@ -89,7 +89,7 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('"@type":"ItemList"');
   });
 
-  it('renders each application address as the headline, status label and Last updated date', () => {
+  it('renders each application address as the headline and status label', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain(
       '<h3 class="appCard__address">12 Mill Road, Basingstoke, RG21 1AA</h3>',
@@ -97,8 +97,6 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('Erection of two-storey rear extension');
     expect(html).toContain('Granted'); // Permitted -> Granted
     expect(html).toContain('Refused'); // Rejected -> Refused
-    // The visible card date is the lastDifferent date, labelled "Last updated".
-    expect(html).toContain('Last updated 12 Jun 2026');
   });
 
   it('demotes the reference to small card metadata and removes per-card external links (decisions 5 & 6)', () => {
@@ -127,13 +125,28 @@ describe('renderPlanningPage', () => {
     );
   });
 
-  it('orders the visible Last updated dates to match the lastDifferent DESC sort', () => {
+  it('renders the cards in the order the applications were supplied (already lastDifferent DESC upstream)', () => {
     const html = renderPlanningPage(pageData());
-    expect(html).toContain('Last updated 12 Jun 2026');
-    expect(html).toContain('Last updated 10 Jun 2026');
-    expect(html.indexOf('Last updated 12 Jun 2026')).toBeLessThan(
-      html.indexOf('Last updated 10 Jun 2026'),
+    expect(html.indexOf('12 Mill Road, Basingstoke, RG21 1AA')).toBeLessThan(
+      html.indexOf('5 High Street, Basingstoke, RG21 7QN'),
     );
+  });
+
+  describe('single "Data updated" line (tc-r4n9.3, replacing the per-card repetition)', () => {
+    it('renders exactly one "Data updated" line, near the H1, from the freshest shown application date', () => {
+      const html = renderPlanningPage(pageData());
+      const occurrences = (html.match(/class="dataUpdated"/g) ?? []).length;
+      expect(occurrences).toBe(1);
+      expect(html).toContain('<p class="dataUpdated">Data updated 12 Jun 2026</p>');
+      expect(html.indexOf('<h1>')).toBeLessThan(html.indexOf('class="dataUpdated"'));
+      expect(html.indexOf('class="dataUpdated"')).toBeLessThan(html.indexOf('class="lead"'));
+    });
+
+    it('no longer repeats a "Last updated" line once per card', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).not.toContain('Last updated');
+      expect(html).not.toContain('appCard__date');
+    });
   });
 
   it('shows the exact total in the lead line', () => {
@@ -143,13 +156,15 @@ describe('renderPlanningPage', () => {
     );
   });
 
-  it('renders a stats block from the server breakdown, not the visible cards', () => {
+  it('renders a compact status summary from the server breakdown, not the visible cards', () => {
     const html = renderPlanningPage(pageData());
     // 30 Granted comes from the server breakdown over the bounded read; only two
-    // cards are rendered, so a count of 30 proves the stats are server-driven.
-    expect(html).toMatch(/Granted[\s\S]*?30/);
-    expect(html).toMatch(/Refused[\s\S]*?8/);
-    expect(html).toMatch(/Unknown[\s\S]*?4/);
+    // cards are rendered, so a count of 30 proves the summary is server-driven.
+    expect(html).toContain('<h2 class="statusSummary__heading">Status breakdown</h2>');
+    expect(html).toMatch(/30[\s\S]{0,20}Granted/);
+    expect(html).toMatch(/8[\s\S]{0,20}Refused/);
+    expect(html).toMatch(/4[\s\S]{0,20}Undecided/);
+    expect(html).toMatch(/42[\s\S]{0,20}total/);
   });
 
   it('includes the evergreen how-to-comment explainer for the area', () => {
