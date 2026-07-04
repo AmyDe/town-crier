@@ -24,6 +24,15 @@ class DomainErrorTest {
         assertFalse(DomainError.NotFound.isRetryable)
         assertFalse(DomainError.InsufficientEntitlement("personal").isRetryable)
         assertFalse(DomainError.AuthenticationFailed("cancelled").isRetryable)
+        assertFalse(DomainError.GeocodingFailed("NOTAPOSTCODE").isRetryable)
+    }
+
+    @Test
+    fun `GeocodingFailed carries the postcode that failed`() {
+        val error = DomainError.GeocodingFailed("NOTAPOSTCODE")
+
+        assertEquals("NOTAPOSTCODE", error.postcode)
+        assertEquals(DomainError.GeocodingFailed("NOTAPOSTCODE"), error)
     }
 
     @Test
