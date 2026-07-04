@@ -67,7 +67,7 @@ public class LoginViewModel(
      */
     public fun checkExistingSession() {
         viewModelScope.launch {
-            val existing = authService.currentSession() ?: return@launch
+            authService.currentSession() ?: return@launch
             _uiState.update { it.copy(isAuthenticated = true) }
             onAuthenticated?.invoke()
         }

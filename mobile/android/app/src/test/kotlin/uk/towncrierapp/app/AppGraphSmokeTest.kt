@@ -36,13 +36,15 @@ class AppGraphSmokeTest {
         val graph =
             AppGraph(
                 baseUrl = "https://api-dev.towncrierapp.uk",
-                auth0ClientId = "client-id",
-                auth0Domain = "towncrierapp.uk.auth0.com",
-                credentialsStore = NoOpCredentialsStore,
-                activityProvider = CurrentActivityProvider { null },
-                tierCache = FakeSubscriptionTierCache(),
+                auth0Tenant = Auth0Tenant(clientId = "client-id", domain = "towncrierapp.uk.auth0.com"),
+                androidLeaves =
+                    AndroidLeaves(
+                        credentialsStore = NoOpCredentialsStore,
+                        activityProvider = CurrentActivityProvider { null },
+                        tierCache = FakeSubscriptionTierCache(),
+                    ),
                 currentVersion = "0.1.0",
-                callFactory = noOpCallFactory,
+                options = AppGraphOptions(callFactory = noOpCallFactory),
             )
 
         assertEquals("https://api-dev.towncrierapp.uk", graph.baseUrl)

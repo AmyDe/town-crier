@@ -1,6 +1,5 @@
 package uk.towncrierapp.data.auth
 
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -63,15 +62,17 @@ public object JwtClaims {
     }
 
     /** Decodes the base64url JSON payload segment of [token] into a [JsonObject], or `null` if malformed. */
+    @Suppress("SwallowedException")
+    // Malformed/foreign tokens are expected, routine input here (not a bug to
+    // diagnose) — every caller's contract is "null means fail open" (#680).
     internal fun decodePayload(token: String): JsonObject? {
         val segments = token.split(".")
         if (segments.size < 2) return null
         return try {
             val bytes = Base64.getUrlDecoder().decode(padBase64Url(segments[1]))
+            // SerializationException extends IllegalArgumentException.
             Json.parseToJsonElement(String(bytes, Charsets.UTF_8)) as? JsonObject
         } catch (e: IllegalArgumentException) {
-            null
-        } catch (e: SerializationException) {
             null
         }
     }

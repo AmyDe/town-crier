@@ -29,6 +29,10 @@ public class AuthCoordinator(
     public val subscriptionTier: StateFlow<SubscriptionTier> = _subscriptionTier.asStateFlow()
 
     /** Runs the full signed-in sequence: ensure profile → resolve tier → persist. Call on every signed-out→signed-in transition, including cold-start session restore. */
+    @Suppress("SwallowedException")
+    // Both catches below are deliberate degrade paths (epic #770): a refresh
+    // failure keeps the pre-refresh jwtTier; an ensure-profile failure yields
+    // "server tier unknown" to resolveTier — neither cares WHY, just THAT.
     public suspend fun onSignedIn() {
         val cachedTier = tierCache.read() ?: SubscriptionTier.FREE
         val jwtTier = authService.currentSession()?.subscriptionTier ?: SubscriptionTier.FREE
@@ -54,6 +58,7 @@ public class AuthCoordinator(
     }
 
     /** `null` on failure — [resolveTier] treats that as "server tier unknown", falling back to `max(cachedTier, jwtTier)` rather than Free. */
+    @Suppress("SwallowedException")
     private suspend fun ensureProfileTier(): SubscriptionTier? =
         try {
             userProfileRepository.ensureProfile().tier

@@ -50,7 +50,7 @@ public class Auth0AuthenticationService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: AuthenticationException) {
-            throw DomainError.AuthenticationFailed(e.getDescription())
+            throw DomainError.AuthenticationFailed(e.getDescription(), cause = e)
         }
     }
 
@@ -65,10 +65,13 @@ public class Auth0AuthenticationService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: AuthenticationException) {
-            throw DomainError.LogoutFailed(e.getDescription())
+            throw DomainError.LogoutFailed(e.getDescription(), cause = e)
         }
     }
 
+    @Suppress("SwallowedException")
+    // The Unrecoverable case doesn't need e's contents: any unrecoverable
+    // failure means "wipe and force re-login", regardless of which one it was.
     override suspend fun refreshSession(): AuthSession {
         val credentials =
             try {
@@ -100,6 +103,10 @@ public class Auth0AuthenticationService(
         return sessionCache.currentOrLoad(clock) { loadFromStore() }
     }
 
+    @Suppress("SwallowedException")
+    // Any credentials-store failure here degrades to "signed out" (matches
+    // iOS's blanket catch in the equivalent slow path) — the specific
+    // failure reason doesn't change the outcome.
     private suspend fun loadFromStore(): AuthSession? {
         // hasValidCredentials() on the real SDK already folds in refresh-token
         // renewability — an expired access token with a valid, non-expired

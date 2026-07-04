@@ -47,4 +47,14 @@ class DomainErrorTest {
         assertEquals(DomainError.ServerError(404, "x"), DomainError.ServerError(404, "x"))
         assertEquals(DomainError.SessionExpired, DomainError.SessionExpired)
     }
+
+    @Test
+    fun `Unexpected preserves the original throwable as its cause without affecting equality`() {
+        val original = IllegalStateException("boom")
+
+        val error = DomainError.Unexpected("wrapped", cause = original)
+
+        assertEquals(original, error.cause)
+        assertEquals(DomainError.Unexpected("wrapped"), error)
+    }
 }

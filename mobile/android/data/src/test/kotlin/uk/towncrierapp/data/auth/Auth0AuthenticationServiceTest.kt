@@ -2,7 +2,7 @@ package uk.towncrierapp.data.auth
 
 import com.auth0.android.result.Credentials
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.auth.DomainError
@@ -10,7 +10,6 @@ import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import java.util.Date
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -38,7 +37,11 @@ class Auth0AuthenticationServiceTest {
         accessToken,
         "Bearer",
         refreshToken,
-        Date.from(expiresAt),
+        // Not `import java.util.Date` (forbidden — java.time only): the Auth0
+        // SDK's own Credentials constructor mandates java.util.Date, so this
+        // fully-qualified reference is a one-off interop conversion, not our
+        // own date type creeping in.
+        java.util.Date.from(expiresAt),
         "openid profile email offline_access",
     )
 
@@ -52,7 +55,7 @@ class Auth0AuthenticationServiceTest {
         // currentSession()/refreshSession() never touch auth0 — only login()/logout() do
         // (verified on-device, see class doc), so a real Auth0 instance is never needed here.
         auth0 = lazy { error("not used by currentSession()/refreshSession()") },
-        sessionCache = SessionCache(scope = CoroutineScope(Dispatchers.Unconfined)),
+        sessionCache = SessionCache(scope = CoroutineScope(UnconfinedTestDispatcher())),
         clock = Clock.fixed(Instant.parse("2026-07-20T10:00:00Z"), ZoneOffset.UTC),
     )
 

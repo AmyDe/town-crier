@@ -23,6 +23,14 @@ public class ApiVersionConfigService(
     private val transport: HttpTransport,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) : VersionConfigService {
+    @Suppress("SwallowedException", "UnreachableCode")
+    // SwallowedException: DomainError.NetworkUnavailable carries no payload
+    // by design (matches every other transport-failure mapping in this
+    // codebase) — nothing to preserve from the underlying IOException.
+    // UnreachableCode: false positive on the `val dto = try {...}` and
+    // `return ... ?: throw ...` statements below — both are genuinely
+    // reachable on the success path; detekt 1.23.8's type-resolution against
+    // Kotlin 2.4.0 misreports them (tracked: tc side-quest bead).
     override suspend fun fetchMinimumVersion(): AppVersion {
         val url =
             baseUrl
@@ -57,7 +65,7 @@ public class ApiVersionConfigService(
             try {
                 json.decodeFromString(VersionConfigDto.serializer(), bodyText)
             } catch (e: SerializationException) {
-                throw DomainError.Unexpected("Invalid version config response")
+                throw DomainError.Unexpected("Invalid version config response: ${e.message}", cause = e)
             }
 
         return AppVersion.parse(dto.minimumVersion)

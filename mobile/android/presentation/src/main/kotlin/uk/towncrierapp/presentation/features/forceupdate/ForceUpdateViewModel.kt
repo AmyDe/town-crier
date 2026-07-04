@@ -26,6 +26,9 @@ public class ForceUpdateViewModel(
     private val _uiState = MutableStateFlow(ForceUpdateUiState())
     public val uiState: StateFlow<ForceUpdateUiState> = _uiState.asStateFlow()
 
+    @Suppress("SwallowedException")
+    // Fail open by design — a version-config outage must never lock users
+    // out, regardless of which DomainError case it was (matches iOS).
     public fun checkVersion() {
         val runningVersion = AppVersion.parse(currentVersion) ?: return
         viewModelScope.launch {
@@ -36,7 +39,6 @@ public class ForceUpdateViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DomainError) {
-                // Fail open — a version-config outage must never lock users out.
                 _uiState.update { it.copy(isChecking = false) }
             }
         }

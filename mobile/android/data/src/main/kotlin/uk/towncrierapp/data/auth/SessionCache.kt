@@ -32,6 +32,10 @@ public class SessionCache(
     private var inFlight: Deferred<AuthSession?>? = null
 
     /** A cached session, or `null` if none is held or it's within [leadTimeSeconds] of expiry. Never triggers a load. */
+    @Suppress("RedundantSuspendModifier")
+    // False positive: this genuinely suspends via mutex.withLock (suspend
+    // inline fun) — detekt 1.23.8's type-resolution against Kotlin 2.4.0
+    // doesn't see through the inline call (tracked: tc side-quest bead).
     public suspend fun current(clock: Clock): AuthSession? = mutex.withLock { validOrNull(clock) }
 
     private fun validOrNull(clock: Clock): AuthSession? =
@@ -60,11 +64,15 @@ public class SessionCache(
     }
 
     /** Stores [session] directly — used after a successful login or refresh round-trip. */
+    @Suppress("RedundantSuspendModifier")
+    // False positive — see current() above.
     public suspend fun store(session: AuthSession) {
         mutex.withLock { cached = session }
     }
 
     /** Drops the cached session and cancels any in-flight load — used on logout and unrecoverable refresh failures. */
+    @Suppress("RedundantSuspendModifier")
+    // False positive — see current() above.
     public suspend fun clear() {
         mutex.withLock {
             cached = null

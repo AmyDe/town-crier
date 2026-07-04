@@ -46,13 +46,10 @@ public class TownCrierApplication : Application() {
         appGraph =
             AppGraph(
                 baseUrl = BuildConfig.API_BASE_URL,
-                auth0ClientId = AUTH0_CLIENT_ID,
-                auth0Domain = AUTH0_DOMAIN,
-                credentialsStore = credentialsStore,
-                activityProvider = activityTracker,
-                tierCache = tierCache,
+                auth0Tenant = Auth0Tenant(clientId = AUTH0_CLIENT_ID, domain = AUTH0_DOMAIN),
+                androidLeaves = AndroidLeaves(credentialsStore, activityTracker, tierCache),
                 currentVersion = BuildConfig.VERSION_NAME,
-                enableDebugLogging = BuildConfig.DEBUG,
+                options = AppGraphOptions(enableDebugLogging = BuildConfig.DEBUG),
             )
     }
 }

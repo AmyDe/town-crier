@@ -25,6 +25,10 @@ public class OkHttpTransport(
     override suspend fun execute(request: Request): Response = callFactory.newCall(request).await()
 }
 
+@Suppress("RedundantSuspendModifier")
+// False positive: this is the textbook suspendCancellableCoroutine bridge —
+// detekt 1.23.8's type-resolution against Kotlin 2.4.0 doesn't recognise it
+// as a suspending call (tracked: tc side-quest bead).
 private suspend fun Call.await(): Response =
     suspendCancellableCoroutine { continuation ->
         enqueue(

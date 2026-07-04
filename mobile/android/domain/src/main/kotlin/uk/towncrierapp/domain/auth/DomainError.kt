@@ -33,20 +33,40 @@ public sealed class DomainError : Exception() {
         public val body: String?,
     ) : DomainError()
 
-    /** Sign-in itself failed (cancelled, provider error, ...). */
+    /**
+     * Sign-in itself failed (cancelled, provider error, ...). The optional
+     * [cause] overload calls [initCause] rather than becoming a stored
+     * property — a data class's primary constructor can only declare
+     * properties, and threading `cause` through as one would fold it into
+     * `equals`/`copy`, breaking `AuthenticationFailed(reason)` comparisons in
+     * tests. This is purely so the original SDK exception isn't lost from
+     * the stack trace / crash report.
+     */
     public data class AuthenticationFailed(
         public val reason: String,
-    ) : DomainError()
+    ) : DomainError() {
+        public constructor(reason: String, cause: Throwable) : this(reason) {
+            initCause(cause)
+        }
+    }
 
-    /** Sign-out failed to fully clear the remote session. */
+    /** Sign-out failed to fully clear the remote session. See [AuthenticationFailed] on the [cause] overload. */
     public data class LogoutFailed(
         public val reason: String,
-    ) : DomainError()
+    ) : DomainError() {
+        public constructor(reason: String, cause: Throwable) : this(reason) {
+            initCause(cause)
+        }
+    }
 
-    /** A failure that doesn't fit the cases above (e.g. a malformed response body). */
+    /** A failure that doesn't fit the cases above (e.g. a malformed response body). See [AuthenticationFailed] on the [cause] overload. */
     public data class Unexpected(
         public val reason: String,
-    ) : DomainError()
+    ) : DomainError() {
+        public constructor(reason: String, cause: Throwable) : this(reason) {
+            initCause(cause)
+        }
+    }
 }
 
 /** Whether the error is transient and retrying may succeed. */
