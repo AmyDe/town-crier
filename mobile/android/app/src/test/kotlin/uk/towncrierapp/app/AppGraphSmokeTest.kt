@@ -77,7 +77,7 @@ class AppGraphSmokeTest {
     }
 
     @Test
-    fun `authAudience can be overridden independently of baseUrl — the local flavor talks to a local API but requests dev-audience JWTs`() {
+    fun `authAudience overrides independently of baseUrl for the local-flavor dev-audience case`() {
         val graph =
             AppGraph(
                 baseUrl = "http://10.0.2.2:8080",

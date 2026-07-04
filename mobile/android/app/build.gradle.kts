@@ -36,16 +36,47 @@ android {
 
     // API_BASE_URL via buildConfigField is the ONLY environment mechanism
     // (epic #770, decision D5) — no .env files, no per-flavor secrets.
+    //
+    // AUTH0_AUDIENCE is normally identical to API_BASE_URL (the flavor talks
+    // to its own API and requests a matching-audience token), but the `local`
+    // flavor below decouples them: it talks to a local API over cleartext
+    // HTTP but still requests a *dev*-audience token, because the local API
+    // is configured to validate that audience (tc-z95t).
     flavorDimensions += "environment"
     productFlavors {
         create("dev") {
             dimension = "environment"
             applicationIdSuffix = ".dev"
             buildConfigField("String", "API_BASE_URL", "\"https://api-dev.towncrierapp.uk\"")
+            buildConfigField("String", "AUTH0_AUDIENCE", "\"https://api-dev.towncrierapp.uk\"")
         }
         create("prod") {
             dimension = "environment"
             buildConfigField("String", "API_BASE_URL", "\"https://api.towncrierapp.uk\"")
+            buildConfigField("String", "AUTH0_AUDIENCE", "\"https://api.towncrierapp.uk\"")
+        }
+        // Points at a locally-running containerised Go API (docker-compose,
+        // not this Gradle build) via 10.0.2.2 — the Android emulator's alias
+        // for the host machine's localhost. Debug-only in practice (no
+        // release signing config targets it); see
+        // src/local/res/xml/network_security_config.xml for the narrowly-
+        // scoped cleartext exception this flavor alone needs.
+        //
+        // applicationIdSuffix deliberately REUSES ".dev" rather than adding a
+        // new ".local" suffix: the Auth0 Native application's allowed
+        // callback URLs are keyed off applicationId
+        // (.../android/{applicationId}/callback), and only the ".dev"
+        // package is registered there. Reusing it means Universal Login
+        // works out of the box with zero Auth0 tenant reconfiguration; the
+        // trade-off is that installing `local` replaces a `dev` install (and
+        // vice versa) on the same device, same as any other same-applicationId
+        // variant swap — expected, not a bug (see the emulator walkthrough's
+        // full-uninstall step).
+        create("local") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+            buildConfigField("String", "AUTH0_AUDIENCE", "\"https://api-dev.towncrierapp.uk\"")
         }
     }
 

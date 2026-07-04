@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  local flavor ONLY (tc-z95t): permits cleartext HTTP traffic to the literal
+  host 10.0.2.2 — the Android emulator's alias for the host machine's
+  localhost, where a locally-running containerised Go API listens during
+  development. This file lives under src/local/res/, so it is never packaged
+  into the dev or prod flavors — they get no cleartext capability at all.
+  The explicit base-config below documents (and enforces) that every other
+  domain stays HTTPS-only, matching the platform default.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

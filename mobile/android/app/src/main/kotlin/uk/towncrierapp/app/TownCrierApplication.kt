@@ -12,7 +12,7 @@ import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
 import uk.towncrierapp.data.subscriptions.DataStoreSubscriptionTierCache
 import uk.towncrierapp.mobile.BuildConfig
 
-/** Auth0 tenant — same for both flavors; only the audience (`BuildConfig.API_BASE_URL`) differs (epic #770 D4). */
+/** Auth0 tenant — same across flavors; only the audience (`BuildConfig.AUTH0_AUDIENCE`) differs per flavor (epic #770 D4). */
 internal const val AUTH0_CLIENT_ID = "2HHUYWnJ3q37a6Elv0cqyFVGbGIbqx34"
 internal const val AUTH0_DOMAIN = "towncrierapp.uk.auth0.com"
 
@@ -46,6 +46,7 @@ public class TownCrierApplication : Application() {
         appGraph =
             AppGraph(
                 baseUrl = BuildConfig.API_BASE_URL,
+                authAudience = BuildConfig.AUTH0_AUDIENCE,
                 auth0Tenant = Auth0Tenant(clientId = AUTH0_CLIENT_ID, domain = AUTH0_DOMAIN),
                 androidLeaves = AndroidLeaves(credentialsStore, activityTracker, tierCache),
                 currentVersion = BuildConfig.VERSION_NAME,
