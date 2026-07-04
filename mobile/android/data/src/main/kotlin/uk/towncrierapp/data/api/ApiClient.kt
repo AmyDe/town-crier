@@ -198,7 +198,14 @@ private fun buildRequest(
         .trim('/')
         .split("/")
         .filter { it.isNotEmpty() }
-        .forEach { urlBuilder.addPathSegment(it) }
+        // addEncodedPathSegment (not addPathSegment): a caller that has
+        // pre-percent-encoded a literal "/" it needs preserved WITHIN one
+        // segment (e.g. ApiSavedApplicationRepository's "%2F"-escaped id)
+        // would otherwise have that escape's "%" itself re-encoded to "%25"
+        // (double-encoding it into mush). Every OTHER unsafe character still
+        // gets encoded either way, so existing callers passing plain,
+        // unencoded segments (UUIDs, postcodes with a space) are unaffected.
+        .forEach { urlBuilder.addEncodedPathSegment(it) }
     endpoint.query.forEach { (name, value) -> urlBuilder.addQueryParameter(name, value) }
 
     val builder =
