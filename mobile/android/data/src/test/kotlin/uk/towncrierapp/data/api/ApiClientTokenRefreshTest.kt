@@ -5,14 +5,10 @@ import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.Serializable
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-
-@Serializable
-private data class TestResponse(val id: String, val name: String)
 
 /**
  * The single 401-refresh-retry policy (epic #770 "API contract essentials",

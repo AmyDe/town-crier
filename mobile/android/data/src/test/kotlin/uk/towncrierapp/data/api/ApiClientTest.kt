@@ -5,19 +5,12 @@ import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-
-@Serializable
-private data class TestResponse(val id: String, val name: String)
-
-@Serializable
-private data class TestBody(val title: String)
 
 /**
  * Core `ApiClient` behaviour: headers, JSON decoding, and HTTP status
@@ -76,7 +69,7 @@ class ApiClientTest {
             assertEquals(TestResponse("new", "Created"), result)
             val request = transport.requests.single()
             assertEquals("POST", request.method)
-            assertEquals("application/json; charset=utf-8", request.header("Content-Type"))
+            assertEquals("application/json", request.header("Content-Type"))
         }
 
     @Test
