@@ -10,7 +10,10 @@ import com.auth0.android.authentication.storage.SecureCredentialsManager
 import com.auth0.android.authentication.storage.SharedPreferencesStorage
 import uk.towncrierapp.data.applications.DataStoreApplicationListPreferencesStore
 import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
+import uk.towncrierapp.data.legal.LegalDocumentAssetReader
 import uk.towncrierapp.data.onboarding.DataStoreOnboardingRepository
+import uk.towncrierapp.data.reviewprompt.DataStoreReviewPromptStore
+import uk.towncrierapp.data.settings.DataStoreAppearanceStore
 import uk.towncrierapp.data.subscriptions.DataStoreSubscriptionTierCache
 import uk.towncrierapp.mobile.BuildConfig
 
@@ -49,6 +52,10 @@ public class TownCrierApplication : Application() {
         // file; a second file per feature isn't warranted (GH#775 / tc-7ttz).
         val applicationListPreferencesStore = DataStoreApplicationListPreferencesStore(tierPreferencesDataStore)
         val onboardingRepository = DataStoreOnboardingRepository(tierPreferencesDataStore)
+        val appearanceStore = DataStoreAppearanceStore(tierPreferencesDataStore)
+        val reviewPromptStore = DataStoreReviewPromptStore(tierPreferencesDataStore)
+        val legalDocumentAssetReader =
+            LegalDocumentAssetReader { assetPath -> assets.open(assetPath).bufferedReader().use { it.readText() } }
 
         appGraph =
             AppGraph(
@@ -57,11 +64,14 @@ public class TownCrierApplication : Application() {
                 auth0Tenant = Auth0Tenant(clientId = AUTH0_CLIENT_ID, domain = AUTH0_DOMAIN),
                 androidLeaves =
                     AndroidLeaves(
-                        credentialsStore,
-                        activityTracker,
-                        tierCache,
-                        applicationListPreferencesStore,
-                        onboardingRepository,
+                        credentialsStore = credentialsStore,
+                        activityProvider = activityTracker,
+                        tierCache = tierCache,
+                        applicationListPreferencesStore = applicationListPreferencesStore,
+                        onboardingRepository = onboardingRepository,
+                        appearanceStore = appearanceStore,
+                        reviewPromptStore = reviewPromptStore,
+                        legalDocumentAssetReader = legalDocumentAssetReader,
                     ),
                 currentVersion = BuildConfig.VERSION_NAME,
                 options = AppGraphOptions(enableDebugLogging = BuildConfig.DEBUG),

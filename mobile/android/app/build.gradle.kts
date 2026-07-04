@@ -131,6 +131,11 @@ dependencies {
     implementation(libs.auth0)
     implementation(libs.okhttp)
     implementation(libs.androidx.datastore.preferences)
+    // Play In-App Review ("Rate the App", tc-4jjw / #778) — needs a real
+    // Activity, so it's wired here rather than in `:presentation`.
+    implementation(libs.play.review.ktx)
+    // The Settings gear glyph isn't in material-icons-core's small default subset.
+    implementation(libs.compose.material.icons.extended)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
