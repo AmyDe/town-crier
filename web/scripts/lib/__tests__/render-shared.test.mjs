@@ -34,97 +34,80 @@ function application(overrides = {}) {
   };
 }
 
-/**
- * Extract the caption (anchor text) for the `appLink` whose href matches `href`.
- *
- * @param {string} html
- * @param {string} href
- * @returns {string | null}
- */
-function captionForHref(html, href) {
-  const escaped = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = html.match(
-    new RegExp(`<a class="appLink" href="${escaped}"[^>]*>([^<]*)</a>`),
-  );
-  return match ? match[1] : null;
-}
-
-describe('renderApplicationsList per-application links', () => {
-  it('captions the PlanIt permalink and the council website honestly when both are present', () => {
-    const html = renderApplicationsList([application()]);
-
-    // The PlanIt permalink (app.link) is captioned for PlanIt.
-    expect(captionForHref(html, PLANIT_HREF)).toBe(PLANIT_CAPTION);
-    // The council website (app.url) is captioned for the council site.
-    expect(captionForHref(html, COUNCIL_HREF)).toBe(COUNCIL_CAPTION);
-
-    // And the now-retired dishonest captions are gone.
-    expect(html).not.toContain('View on the council portal');
-    expect(html).not.toContain('Application details');
+describe('renderApplicationsList card structure (decision 5: address is the human hook)', () => {
+  it('renders the address as the <h3> headline', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    expect(html).toContain(
+      '<h3 class="appCard__address">12 Mill Road, Basingstoke, RG21 1AA</h3>',
+    );
   });
 
-  it('emits only the PlanIt caption when only link is present', () => {
-    const html = renderApplicationsList([application({ url: null })]);
-
-    expect(html).toContain(PLANIT_CAPTION);
-    expect(captionForHref(html, PLANIT_HREF)).toBe(PLANIT_CAPTION);
-    expect(html).not.toContain(COUNCIL_CAPTION);
+  it('demotes the council reference to small metadata text, not a heading', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    expect(html).toContain('<p class="appCard__ref">26/0001/FUL</p>');
+    expect(html).not.toContain('<h3 class="appCard__ref">');
+    expect(html).not.toContain('appCard__refLink');
   });
 
-  it('emits only the council caption when only url is present', () => {
-    const html = renderApplicationsList([application({ link: null })]);
-
-    expect(html).toContain(COUNCIL_CAPTION);
-    expect(captionForHref(html, COUNCIL_HREF)).toBe(COUNCIL_CAPTION);
-    expect(html).not.toContain(PLANIT_CAPTION);
+  it('omits the reference metadata line entirely when the app carries no ref', () => {
+    const html = renderApplicationsList([application({ name: '' })], SLUG);
+    expect(html).not.toContain('appCard__ref');
   });
 
-  it('emits no appLink anchors when neither link nor url is present', () => {
-    const html = renderApplicationsList([
-      application({ link: null, url: null }),
-    ]);
-
-    expect(html).not.toContain('class="appLink"');
-    expect(html).not.toContain(PLANIT_CAPTION);
-    expect(html).not.toContain(COUNCIL_CAPTION);
-  });
-
-  it('keeps the link safety attributes on the external anchors', () => {
-    const html = renderApplicationsList([application()]);
-    const anchors = html.match(/<a class="appLink"[^>]*>/g) ?? [];
-    expect(anchors).toHaveLength(2);
-    for (const anchor of anchors) {
-      expect(anchor).toContain('rel="nofollow noopener"');
-      expect(anchor).toContain('target="_blank"');
-    }
+  it('HTML-escapes the address', () => {
+    const html = renderApplicationsList(
+      [application({ address: '<script>alert(1)</script>' })],
+      SLUG,
+    );
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 });
 
-describe('renderApplicationsList share links', () => {
-  it('links the reference heading to the share page built from the slug and ref', () => {
+describe('renderApplicationsList description truncation (word boundary)', () => {
+  it('truncates a long description on a word boundary with an ellipsis, never mid-word', () => {
+    const longDescription =
+      'Erection of a two-storey rear extension and associated landscaping works to an existing dwelling house with a new detached garage and altered vehicular access from the existing driveway';
+    const html = renderApplicationsList(
+      [application({ description: longDescription })],
+      SLUG,
+    );
+    const match = html.match(/<p class="appCard__desc">([^<]*)<\/p>/);
+    expect(match).not.toBeNull();
+    const rendered = match[1];
+    expect(rendered.endsWith('…')).toBe(true);
+    const withoutEllipsis = rendered.slice(0, -1);
+    expect(longDescription.startsWith(withoutEllipsis)).toBe(true);
+    // No trailing space before the ellipsis, and the next source character is a
+    // space (or end of string) — proof the cut landed on a word boundary.
+    expect(withoutEllipsis.endsWith(' ')).toBe(false);
+    const nextChar = longDescription[withoutEllipsis.length];
+    expect(nextChar === ' ' || nextChar === undefined).toBe(true);
+  });
+
+  it('leaves a short description unchanged with no ellipsis', () => {
     const html = renderApplicationsList([application()], SLUG);
-    // The <h3> reference heading itself is the share link; the ref (app.name /
-    // planit_name) is used verbatim in the URL, slashes preserved.
     expect(html).toContain(
-      `<h3 class="appCard__ref"><a class="appCard__refLink" href="${SHARE_HREF}">26/0001/FUL</a></h3>`,
+      '<p class="appCard__desc">Erection of two-storey rear extension</p>',
     );
   });
+});
 
-  it('makes the heading link do-follow and same-tab (an internal Town Crier page)', () => {
+describe('renderApplicationsList share-page affordance (decision 6)', () => {
+  it('wraps the whole card in a real anchor pointing at the share page', () => {
     const html = renderApplicationsList([application()], SLUG);
-    const anchor = html.match(
-      new RegExp(`<a class="appCard__refLink" href="${SHARE_HREF.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*>`),
-    );
-    expect(anchor).not.toBeNull();
-    expect(anchor[0]).not.toContain('nofollow');
-    expect(anchor[0]).not.toContain('target="_blank"');
+    expect(html).toContain(`<a class="appCard__link" href="${SHARE_HREF}">`);
   });
 
-  it('leaves the meta row with only the two external links (no third action link)', () => {
+  it('includes a visible "View details" affordance inside the card link', () => {
     const html = renderApplicationsList([application()], SLUG);
-    const anchors = html.match(/<a class="appLink"[^>]*>/g) ?? [];
-    expect(anchors).toHaveLength(2);
-    expect(html).not.toContain('View on Town Crier');
+    expect(html).toContain('<span class="appCard__cta">View details →</span>');
+  });
+
+  it('never relies on a JS-only click handler for the share-page target', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    expect(html).not.toContain('onclick');
+    expect(html).toContain(`href="${SHARE_HREF}"`);
   });
 
   it('percent-encodes unsafe ref characters per segment while preserving slashes', () => {
@@ -137,17 +120,95 @@ describe('renderApplicationsList share links', () => {
     );
   });
 
-  it('renders the reference as plain heading text when no slug is supplied', () => {
+  it('falls back to a non-linked card when no share URL can be built (no slug supplied)', () => {
     const html = renderApplicationsList([application()]);
-    expect(html).toContain('<h3 class="appCard__ref">26/0001/FUL</h3>');
+    expect(html).not.toContain('appCard__link');
+    expect(html).not.toContain('View details');
     expect(html).not.toContain('share.towncrierapp.uk');
-    expect(html).not.toContain('appCard__refLink');
   });
 
-  it('renders a plain heading when the app carries no ref', () => {
+  it('falls back to a non-linked card when the app carries no ref', () => {
     const html = renderApplicationsList([application({ name: '' })], SLUG);
+    expect(html).not.toContain('appCard__link');
+    expect(html).not.toContain('View details');
     expect(html).not.toContain('share.towncrierapp.uk');
-    expect(html).not.toContain('appCard__refLink');
+  });
+});
+
+describe('renderApplicationsList external link removal (decision 6)', () => {
+  it('renders no per-card links to PlanIt or the council website', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    expect(html).not.toContain(PLANIT_CAPTION);
+    expect(html).not.toContain(COUNCIL_CAPTION);
+    expect(html).not.toContain(PLANIT_HREF);
+    expect(html).not.toContain(COUNCIL_HREF);
+    expect(html).not.toContain('class="appLink"');
+  });
+
+  it('renders no external links even when the app carries neither link nor url', () => {
+    const html = renderApplicationsList(
+      [application({ link: null, url: null })],
+      SLUG,
+    );
+    expect(html).not.toContain('class="appLink"');
+  });
+});
+
+describe('renderApplicationsList status chip vocabulary (decision 4: shared vocabulary)', () => {
+  it('colours a Granted (Permitted) application with the granted chip', () => {
+    const html = renderApplicationsList(
+      [application({ appState: 'Permitted' })],
+      SLUG,
+    );
+    expect(html).toContain('class="status status--granted"');
+    expect(html).toContain('>Granted<');
+  });
+
+  it('colours a Refused (Rejected) application with the refused chip', () => {
+    const html = renderApplicationsList(
+      [application({ appState: 'Rejected' })],
+      SLUG,
+    );
+    expect(html).toContain('class="status status--refused"');
+    expect(html).toContain('>Refused<');
+  });
+
+  it.each([
+    ['Conditions', 'Granted with conditions'],
+    ['Withdrawn', 'Withdrawn'],
+    ['Appealed', 'Appealed'],
+    ['Undecided', 'Undecided'],
+    [null, 'Unknown'],
+  ])(
+    'buckets the long-tail / undecided state %s under the shared neutral chip',
+    (appState, label) => {
+      const html = renderApplicationsList(
+        [application({ appState })],
+        SLUG,
+      );
+      expect(html).toContain('class="status status--neutral"');
+      expect(html).toContain(`>${label}<`);
+    },
+  );
+
+  it('only ever emits the three canonical chip modifiers, never the old per-state ones', () => {
+    const states = [
+      'Permitted',
+      'Rejected',
+      'Conditions',
+      'Withdrawn',
+      'Appealed',
+      null,
+      'SomeFutureState',
+    ];
+    const html = renderApplicationsList(
+      states.map((appState) => application({ appState })),
+      SLUG,
+    );
+    const modifiers = [...html.matchAll(/class="status status--(\w+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(new Set(modifiers)).toEqual(new Set(['granted', 'refused', 'neutral']));
   });
 });
 
@@ -172,13 +233,18 @@ describe('renderAttributionList', () => {
   });
 });
 
-describe('pageStyles appCard__refLink', () => {
-  it('styles the heading link to inherit the heading colour and reveal amber on hover', () => {
+describe('pageStyles appCard__link (whole-card share-page affordance)', () => {
+  it('styles the whole-card link to inherit colour with no underline', () => {
     const css = pageStyles();
-    expect(css).toContain('.appCard__refLink');
-    // Neutral by default (inherits the heading colour), amber on hover.
-    expect(css).toMatch(/\.appCard__refLink \{[^}]*color: inherit/);
-    expect(css).toMatch(/\.appCard__refLink:hover \{[^}]*var\(--tc-amber\)/);
+    expect(css).toContain('.appCard__link');
+    expect(css).toMatch(/\.appCard__link \{[^}]*color: inherit/);
+    expect(css).toMatch(/\.appCard__link \{[^}]*text-decoration: none/);
+  });
+
+  it('styles the "View details" affordance in the amber accent colour', () => {
+    const css = pageStyles();
+    expect(css).toContain('.appCard__cta');
+    expect(css).toMatch(/\.appCard__cta \{[^}]*var\(--tc-amber\)/);
   });
 });
 
@@ -189,6 +255,75 @@ describe('pageStyles townLinks', () => {
     expect(css).toContain('.townLinks__list a');
     // Uses design tokens (var(--tc-*)), never hard-coded colours/spacing.
     expect(css).toMatch(/\.townLinks__list a \{[^}]*var\(--tc-/);
+  });
+});
+
+describe('pageStyles status chip vocabulary (decision 4: shared palette, filled style)', () => {
+  /**
+   * @param {string} css
+   * @returns {string} the declarations inside the top-level `:root { ... }`
+   *   block (i.e. NOT the one nested inside a @media query).
+   */
+  function rootDeclarations(css) {
+    const match = css.match(/^\s*:root \{([^}]*)\}/m);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * @param {string} css
+   * @returns {string} the declarations inside `:root { ... }` nested within
+   *   `@media (prefers-color-scheme: dark)`.
+   */
+  function darkMediaDeclarations(css) {
+    const match = css.match(
+      /@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/,
+    );
+    return match ? match[1] : '';
+  }
+
+  it('defines the three canonical status colour tokens, light-first, plus their fill backgrounds', () => {
+    const root = rootDeclarations(pageStyles());
+    expect(root).toMatch(/--tc-status-granted: #1A7D37;/);
+    expect(root).toMatch(/--tc-status-refused: #C42B2B;/);
+    expect(root).toMatch(/--tc-status-neutral: #6B6560;/);
+    expect(root).toMatch(/--tc-status-granted-bg:/);
+    expect(root).toMatch(/--tc-status-refused-bg:/);
+    expect(root).toMatch(/--tc-status-neutral-bg:/);
+  });
+
+  it('moves the dark variants of the status tokens into the dark media query', () => {
+    const dark = darkMediaDeclarations(pageStyles());
+    expect(dark).toMatch(/--tc-status-granted: #34C759;/);
+    expect(dark).toMatch(/--tc-status-refused: #FF453A;/);
+    expect(dark).toMatch(/--tc-status-neutral: #9B9590;/);
+  });
+
+  it('no longer defines the old ad-hoc per-state status tokens', () => {
+    const css = pageStyles();
+    expect(css).not.toContain('--tc-status-permitted');
+    expect(css).not.toContain('--tc-status-conditions');
+    expect(css).not.toContain('--tc-status-rejected');
+    expect(css).not.toContain('--tc-status-withdrawn');
+    expect(css).not.toContain('--tc-status-appealed');
+    expect(css).not.toContain('--tc-status-default');
+  });
+
+  it('styles each chip as a filled badge (background fill + full-opacity text) per design-language, not outlined', () => {
+    const css = pageStyles();
+    expect(css).toMatch(
+      /\.status--granted \{[^}]*background: var\(--tc-status-granted-bg\)/,
+    );
+    expect(css).toMatch(
+      /\.status--granted \{[^}]*color: var\(--tc-status-granted\)/,
+    );
+    expect(css).toMatch(
+      /\.status--refused \{[^}]*background: var\(--tc-status-refused-bg\)/,
+    );
+    expect(css).toMatch(
+      /\.status--neutral \{[^}]*background: var\(--tc-status-neutral-bg\)/,
+    );
+    // The base .status rule no longer draws the old outlined-chip border.
+    expect(css).not.toMatch(/\.status \{[^}]*border: 1px solid currentColor/);
   });
 });
 
@@ -224,12 +359,6 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
     expect(root).toMatch(/--tc-text-primary: #1C1917;/);
     expect(root).toMatch(/--tc-text-secondary: #6B6560;/);
     expect(root).toMatch(/--tc-text-on-accent: #FFFFFF;/);
-    expect(root).toMatch(/--tc-status-permitted: #1A7D37;/);
-    expect(root).toMatch(/--tc-status-conditions: #A85A0A;/);
-    expect(root).toMatch(/--tc-status-rejected: #C42B2B;/);
-    expect(root).toMatch(/--tc-status-withdrawn: #7A7570;/);
-    expect(root).toMatch(/--tc-status-appealed: #7C3AED;/);
-    expect(root).toMatch(/--tc-status-default: #6B6560;/);
     expect(root).toMatch(/--tc-border: #E8E4DF;/);
   });
 
@@ -242,12 +371,6 @@ describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
     expect(dark).toMatch(/--tc-text-primary: #F1EFE9;/);
     expect(dark).toMatch(/--tc-text-secondary: #9B9590;/);
     expect(dark).toMatch(/--tc-text-on-accent: #1C1917;/);
-    expect(dark).toMatch(/--tc-status-permitted: #34C759;/);
-    expect(dark).toMatch(/--tc-status-conditions: #FF9500;/);
-    expect(dark).toMatch(/--tc-status-rejected: #FF453A;/);
-    expect(dark).toMatch(/--tc-status-withdrawn: #8E8A85;/);
-    expect(dark).toMatch(/--tc-status-appealed: #A78BFA;/);
-    expect(dark).toMatch(/--tc-status-default: #9B9590;/);
     expect(dark).toMatch(/--tc-border: #3A3A3F;/);
   });
 

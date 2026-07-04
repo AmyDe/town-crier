@@ -27,84 +27,93 @@ import {
  * @property {string | null} appState
  * @property {string | null} startDate      yyyy-MM-dd
  * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
- * @property {string | null} link           PlanIt permalink (always a reliable per-application record)
- * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link)
+ * @property {string | null} link           PlanIt permalink (always a reliable per-application record). No longer rendered
+ *   as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
+ * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link). No longer
+ *   rendered as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
  */
 
 const MAX_DESCRIPTION_LENGTH = 160;
 
-const STATUS_MODIFIER = {
-  Permitted: 'permitted',
-  Conditions: 'conditions',
-  Rejected: 'rejected',
-  Withdrawn: 'withdrawn',
-  Appealed: 'appealed',
+/**
+ * Shared status→colour vocabulary (decision 4, punch-list #794): only three
+ * chip buckets across the SEO and share-page families. `Permitted` reads as
+ * "granted" (green) and `Rejected` as "refused" (red); every other state —
+ * the long tail (`Conditions`/"Granted with conditions", `Withdrawn`,
+ * `Appealed`), a genuinely undecided wire state, an unrecognised future state,
+ * or no state at all — buckets under the shared neutral chip. The resident-
+ * facing *label* text is unaffected (still `statusDisplayLabel`); this only
+ * consolidates which of the three canonical *colours* a state renders in.
+ * @type {Record<string, 'granted' | 'refused'>}
+ */
+const STATUS_COLOR_MODIFIER = {
+  Permitted: 'granted',
+  Rejected: 'refused',
 };
 
 /**
- * @param {string | null} appState
- * @returns {string}
+ * @param {string | null | undefined} appState
+ * @returns {'granted' | 'refused' | 'neutral'}
  */
-function statusModifier(appState) {
+function statusColorModifier(appState) {
   if (appState === null || appState === undefined) {
-    return 'default';
+    return 'neutral';
   }
-  return STATUS_MODIFIER[appState] ?? 'default';
+  return STATUS_COLOR_MODIFIER[appState] ?? 'neutral';
 }
 
 /**
  * @param {PlanningApplicationItem} app
- * @param {string} [authoritySlug] the page's authority slug; when present (and the
- *   app carries a ref), the card's reference heading becomes a do-follow link to
- *   our own public share page for the application. Every application on a page
- *   belongs to this one authority (authority pages read one partition; town pages
- *   scope the near query to a single authority), so the slug is correct for every
- *   card.
+ * @param {string} [authoritySlug] the page's authority slug; when present (and
+ *   the app carries a ref), the whole card becomes a do-follow link to our own
+ *   public share page for the application (decision 6). Every application on a
+ *   page belongs to this one authority (authority pages read one partition;
+ *   town pages scope the near query to a single authority), so the slug is
+ *   correct for every card.
  * @returns {string}
  */
 function renderApplication(app, authoritySlug) {
   const label = escapeHtml(statusDisplayLabel(app.appState));
-  const modifier = statusModifier(app.appState);
+  const modifier = statusColorModifier(app.appState);
   // The visible date is lastDifferent (the bounded read's DESC sort key), so the
   // dates read top-to-bottom in the same order the cards are listed.
   const date = formatDate(app.lastDifferent);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
-  // The reference heading is the card's title and doubles as the link to our own
-  // share page for the application — a do-follow, same-tab internal link we want
-  // crawled and clicked. It stays plain text when the page has no authority slug
-  // or the app carries no ref. The external PlanIt/council links stay in the meta
-  // row; keeping our link on the title (not a third meta link) avoids a lopsided,
-  // wrapping action row.
+  // Address is the human hook (decision 5): it is the card's heading. The
+  // council reference is demoted to small metadata underneath, and omitted
+  // entirely when the app carries none.
+  const address = escapeHtml(app.address);
   const ref = escapeHtml(app.name);
+
+  // Per-card external links to PlanIt/the council are retired (decision 6):
+  // the card's one click target is our own share page, surfaced as a real,
+  // crawlable <a href> around the whole card plus a visible "View details"
+  // affordance — never a JS-only click handler. Falls back to a plain,
+  // non-linked card when no share URL can be built (no slug, or no ref).
   const share = shareUrl(authoritySlug, app.name);
-  const heading = share
-    ? `<a class="appCard__refLink" href="${escapeHtml(share)}">${ref}</a>`
-    : ref;
 
-  const links = [];
-  if (app.link) {
-    links.push(
-      `<a class="appLink" href="${escapeHtml(app.link)}" rel="nofollow noopener" target="_blank">View full record on PlanIt</a>`,
-    );
-  }
-  if (app.url) {
-    links.push(
-      `<a class="appLink" href="${escapeHtml(app.url)}" rel="nofollow noopener" target="_blank">View on the council website</a>`,
-    );
-  }
-
-  return `      <li class="appCard">
-        <div class="appCard__head">
-          <h3 class="appCard__ref">${heading}</h3>
+  const body = `        <div class="appCard__head">
+          <h3 class="appCard__address">${address}</h3>
           <span class="status status--${modifier}">${label}</span>
         </div>
-        <p class="appCard__address">${escapeHtml(app.address)}</p>
+        ${ref ? `<p class="appCard__ref">${ref}</p>` : ''}
         <p class="appCard__desc">${description}</p>
         <div class="appCard__meta">
           ${date ? `<span class="appCard__date">Last updated ${escapeHtml(date)}</span>` : ''}
-          ${links.join('\n          ')}
-        </div>
+          ${share ? `<span class="appCard__cta">View details →</span>` : ''}
+        </div>`;
+
+  if (share) {
+    return `      <li class="appCard">
+        <a class="appCard__link" href="${escapeHtml(share)}">
+${body}
+        </a>
+      </li>`;
+  }
+
+  return `      <li class="appCard">
+${body}
       </li>`;
 }
 
@@ -113,8 +122,9 @@ function renderApplication(app, authoritySlug) {
  *
  * @param {PlanningApplicationItem[]} applications
  * @param {string} [authoritySlug] the page's authority slug, threaded through so
- *   each card can link to its share page. Omitted -> no share links (the external
- *   PlanIt/council links still render).
+ *   each card can link to its share page. Omitted (or no ref on the app) -> the
+ *   card renders without a link at all (decision 6 retired the external
+ *   PlanIt/council per-card links, so there is no other href to fall back to).
  * @returns {string}
  */
 export function renderApplicationsList(applications, authoritySlug) {
@@ -185,12 +195,18 @@ export function pageStyles() {
       --tc-text-primary: #1C1917;
       --tc-text-secondary: #6B6560;
       --tc-text-on-accent: #FFFFFF;
-      --tc-status-permitted: #1A7D37;
-      --tc-status-conditions: #A85A0A;
-      --tc-status-rejected: #C42B2B;
-      --tc-status-withdrawn: #7A7570;
-      --tc-status-appealed: #7C3AED;
-      --tc-status-default: #6B6560;
+      /* Shared status chip vocabulary (decision 4, punch-list #794): three
+         canonical buckets — granted (green), refused (red), neutral (the
+         undecided/long-tail catch-all) — converged with the design-language
+         tcStatusApproved/tcStatusRefused/tcTextSecondary tokens, replacing the
+         previous five-way ad-hoc per-appState palette. The *-bg tokens are the
+         foreground colour at 15% opacity, for the filled badge style. */
+      --tc-status-granted: #1A7D37;
+      --tc-status-granted-bg: #1A7D3726;
+      --tc-status-refused: #C42B2B;
+      --tc-status-refused-bg: #C42B2B26;
+      --tc-status-neutral: #6B6560;
+      --tc-status-neutral-bg: #6B656026;
       --tc-border: #E8E4DF;
       --tc-radius-md: 12px;
       --tc-radius-full: 9999px;
@@ -211,12 +227,12 @@ export function pageStyles() {
         --tc-text-primary: #F1EFE9;
         --tc-text-secondary: #9B9590;
         --tc-text-on-accent: #1C1917;
-        --tc-status-permitted: #34C759;
-        --tc-status-conditions: #FF9500;
-        --tc-status-rejected: #FF453A;
-        --tc-status-withdrawn: #8E8A85;
-        --tc-status-appealed: #A78BFA;
-        --tc-status-default: #9B9590;
+        --tc-status-granted: #34C759;
+        --tc-status-granted-bg: #34C75926;
+        --tc-status-refused: #FF453A;
+        --tc-status-refused-bg: #FF453A26;
+        --tc-status-neutral: #9B9590;
+        --tc-status-neutral-bg: #9B959026;
         --tc-border: #3A3A3F;
       }
     }
@@ -276,16 +292,28 @@ export function pageStyles() {
       border-radius: var(--tc-radius-md);
       padding: var(--tc-space-md);
     }
+    /* The whole card is the share-page click target (decision 6): a real,
+       crawlable <a href> wraps every card that has a share URL, styled to
+       read as plain card content rather than a traditional blue link. */
+    .appCard__link { display: block; color: inherit; text-decoration: none; }
+    .appCard__link:focus-visible {
+      outline: 2px solid var(--tc-amber);
+      outline-offset: 2px;
+      border-radius: var(--tc-radius-md);
+    }
+    .appCard__link:hover .appCard__address { color: var(--tc-amber); }
+    .appCard__link:hover .appCard__cta { color: var(--tc-amber-hover); text-decoration: underline; }
     .appCard__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
-    .appCard__ref { overflow-wrap: anywhere; }
-    .appCard__refLink { color: inherit; text-decoration: none; }
-    .appCard__refLink:hover { color: var(--tc-amber); text-decoration: underline; }
-    .appCard__address { margin: var(--tc-space-sm) 0 var(--tc-space-sm); font-weight: 600; }
+    /* Address is the human hook (decision 5): the card headline. */
+    .appCard__address { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+    /* The council reference is demoted to small metadata under the headline. */
+    .appCard__ref { margin: var(--tc-space-sm) 0; font-size: 0.8125rem; color: var(--tc-text-secondary); overflow-wrap: anywhere; }
     .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
     .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
     .appCard__date { color: var(--tc-text-secondary); }
-    .appLink { color: var(--tc-amber); text-decoration: none; font-weight: 600; }
-    .appLink:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    /* Visible share-page affordance (decision 6) — a real anchor, not a
+       JS-only click handler; this is the text cue, the href is the whole card. */
+    .appCard__cta { color: var(--tc-amber); font-weight: 600; }
     .status {
       display: inline-flex;
       align-items: center;
@@ -294,14 +322,13 @@ export function pageStyles() {
       font-size: 0.8125rem;
       font-weight: 600;
       white-space: nowrap;
-      color: var(--tc-status-default);
-      border: 1px solid currentColor;
     }
-    .status--permitted { color: var(--tc-status-permitted); }
-    .status--conditions { color: var(--tc-status-conditions); }
-    .status--rejected { color: var(--tc-status-rejected); }
-    .status--withdrawn { color: var(--tc-status-withdrawn); }
-    .status--appealed { color: var(--tc-status-appealed); }
+    /* Shared filled-chip vocabulary (decision 4): three canonical buckets,
+       background = foreground colour at 15% opacity, converged with the
+       design-language Status Badge pattern. */
+    .status--granted { color: var(--tc-status-granted); background: var(--tc-status-granted-bg); }
+    .status--refused { color: var(--tc-status-refused); background: var(--tc-status-refused-bg); }
+    .status--neutral { color: var(--tc-status-neutral); background: var(--tc-status-neutral-bg); }
     .statRow { display: flex; justify-content: space-between; background: var(--tc-surface); border: 1px solid var(--tc-border); border-radius: var(--tc-radius-md); padding: var(--tc-space-sm) var(--tc-space-md); }
     .statRow__count { font-weight: 700; }
     .townLinks__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }

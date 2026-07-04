@@ -89,27 +89,38 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('"@type":"ItemList"');
   });
 
-  it('renders each application address, status label, Last updated date and links', () => {
+  it('renders each application address as the headline, status label and Last updated date', () => {
     const html = renderPlanningPage(pageData());
-    expect(html).toContain('12 Mill Road, Basingstoke, RG21 1AA');
+    expect(html).toContain(
+      '<h3 class="appCard__address">12 Mill Road, Basingstoke, RG21 1AA</h3>',
+    );
     expect(html).toContain('Erection of two-storey rear extension');
     expect(html).toContain('Granted'); // Permitted -> Granted
     expect(html).toContain('Refused'); // Rejected -> Refused
     // The visible card date is the lastDifferent date, labelled "Last updated".
     expect(html).toContain('Last updated 12 Jun 2026');
-    expect(html).toContain(
-      'https://www.basingstoke.gov.uk/planning/26-0001-FUL',
-    );
-    expect(html).toContain('https://planit.org.uk/planapplic/26-0001-FUL');
   });
 
-  it('links each application heading to its share page using the authority slug and ref', () => {
+  it('demotes the reference to small card metadata and removes per-card external links (decisions 5 & 6)', () => {
     const html = renderPlanningPage(pageData());
-    // The reference heading is the share link; app.name (26/0001/FUL) is the ref,
-    // slashes kept as separators.
-    expect(html).toContain(
-      '<h3 class="appCard__ref"><a class="appCard__refLink" href="https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL">26/0001/FUL</a></h3>',
+    expect(html).toContain('<p class="appCard__ref">26/0001/FUL</p>');
+    expect(html).not.toContain('<h3 class="appCard__ref">');
+    // The per-card PlanIt/council links are gone (decision 6) — official-record
+    // links now live on the share page only.
+    expect(html).not.toContain(
+      'https://www.basingstoke.gov.uk/planning/26-0001-FUL',
     );
+    expect(html).not.toContain('https://planit.org.uk/planapplic/26-0001-FUL');
+    expect(html).not.toContain('class="appLink"');
+  });
+
+  it('makes the whole card a real anchor to its share page, with a visible "View details" affordance', () => {
+    const html = renderPlanningPage(pageData());
+    // app.name (26/0001/FUL) is the ref, slashes kept as separators.
+    expect(html).toContain(
+      '<a class="appCard__link" href="https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL">',
+    );
+    expect(html).toContain('<span class="appCard__cta">View details →</span>');
     // The share page is the item URL in the ItemList structured data too.
     expect(html).toContain(
       '"url":"https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL"',

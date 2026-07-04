@@ -24,8 +24,11 @@ export function escapeHtml(value) {
 }
 
 /**
- * Truncate text to `maxLength` characters, appending a single ellipsis when
- * cut. Null/undefined coerce to an empty string.
+ * Truncate text to at most `maxLength` characters, cutting on the last word
+ * boundary within that limit so the result never ends mid-word, then
+ * appending a single ellipsis. Falls back to a hard cut at `maxLength` when no
+ * space exists within the limit (e.g. a single word longer than `maxLength`).
+ * Null/undefined coerce to an empty string.
  *
  * @param {string | null | undefined} text
  * @param {number} maxLength
@@ -38,7 +41,10 @@ export function truncate(text, maxLength) {
   if (text.length <= maxLength) {
     return text;
   }
-  return text.slice(0, maxLength) + '…';
+  const cut = text.slice(0, maxLength);
+  const lastSpace = cut.lastIndexOf(' ');
+  const boundary = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+  return boundary + '…';
 }
 
 /**

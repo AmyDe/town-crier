@@ -26,15 +26,32 @@ describe('truncate', () => {
     expect(truncate('short', 160)).toBe('short');
   });
 
-  it('cuts long text and appends an ellipsis', () => {
+  it('treats null as empty', () => {
+    expect(truncate(null, 160)).toBe('');
+  });
+
+  it('cuts on the last word boundary rather than mid-word', () => {
+    const text =
+      'Erection of a two-storey rear extension and associated landscaping works to an existing dwelling house with a new detached garage';
+    const result = truncate(text, 60);
+    // Every character up to the cut is a whole word from the source text — no
+    // word is sliced in half.
+    const withoutEllipsis = result.slice(0, -1);
+    expect(text.startsWith(withoutEllipsis)).toBe(true);
+    expect(withoutEllipsis.endsWith(' ')).toBe(false);
+    const nextChar = text[withoutEllipsis.length];
+    expect(nextChar === ' ' || nextChar === undefined).toBe(true);
+    expect(result.endsWith('…')).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(61);
+  });
+
+  it('falls back to a hard cut when the maxLength falls inside the first word', () => {
+    // No space within maxLength characters, so there is no word boundary to cut
+    // on — this preserves the pre-existing hard-cut behaviour for that edge case.
     const long = 'a'.repeat(200);
     const result = truncate(long, 160);
     expect(result.length).toBe(161);
     expect(result.endsWith('…')).toBe(true);
-  });
-
-  it('treats null as empty', () => {
-    expect(truncate(null, 160)).toBe('');
   });
 });
 
