@@ -220,6 +220,39 @@ func TestServe_RendersHomepageLink(t *testing.T) {
 	}
 }
 
+// TestServe_RendersHeaderAboveHeroWithBrandLockup pins Phase 5 (#794): the
+// floating "• Town Crier" legend-dot below the map is replaced by a real
+// header element above the hero, whose brand lockup links to the marketing
+// homepage.
+func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	headerIdx := strings.Index(body, `<header class="site-header">`)
+	if headerIdx == -1 {
+		t.Fatal(`body missing <header class="site-header">`)
+	}
+	brandWant := `<a class="brand-link" href="https://towncrierapp.uk">Town Crier</a>`
+	if !strings.Contains(body, brandWant) {
+		t.Errorf("body missing brand lockup %q", brandWant)
+	}
+	heroIdx := strings.Index(body, `<img class="hero"`)
+	if heroIdx == -1 {
+		t.Fatal("body missing hero image")
+	}
+	if headerIdx > heroIdx {
+		t.Error("header must render above the hero image, not below it")
+	}
+}
+
 func TestServe_UnknownSlug_RendersBranded404(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}
