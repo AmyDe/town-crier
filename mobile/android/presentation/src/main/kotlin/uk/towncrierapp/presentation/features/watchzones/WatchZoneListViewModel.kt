@@ -29,12 +29,18 @@ public class WatchZoneListViewModel(
     private val _uiState = MutableStateFlow(WatchZoneListUiState().deriveFromGate())
     public val uiState: StateFlow<WatchZoneListUiState> = _uiState.asStateFlow()
 
+    // Guards against the spurious refetch-on-every-tab-revisit (tc-hlbx) —
+    // see SavedListViewModel's matching field doc for the full rationale.
+    private var hasLoadedSuccessfully = false
+
     public fun load() {
+        if (hasLoadedSuccessfully) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val zones = repository.zones()
                 _uiState.update { it.copy(zones = zones, isLoading = false, error = null).deriveFromGate() }
+                hasLoadedSuccessfully = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DomainError) {
