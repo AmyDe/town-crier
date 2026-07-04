@@ -27,8 +27,10 @@ import {
  * @property {string | null} appState
  * @property {string | null} startDate      yyyy-MM-dd
  * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
- * @property {string | null} link           PlanIt permalink (always a reliable per-application record)
- * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link)
+ * @property {string | null} link           PlanIt permalink (always a reliable per-application record). No longer rendered
+ *   as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
+ * @property {string | null} url            council website (may be a generic portal page, not always a per-application deep link). No longer
+ *   rendered as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
  */
 
 const MAX_DESCRIPTION_LENGTH = 160;
@@ -120,8 +122,9 @@ ${body}
  *
  * @param {PlanningApplicationItem[]} applications
  * @param {string} [authoritySlug] the page's authority slug, threaded through so
- *   each card can link to its share page. Omitted -> no share links (the external
- *   PlanIt/council links still render).
+ *   each card can link to its share page. Omitted (or no ref on the app) -> the
+ *   card renders without a link at all (decision 6 retired the external
+ *   PlanIt/council per-card links, so there is no other href to fall back to).
  * @returns {string}
  */
 export function renderApplicationsList(applications, authoritySlug) {
