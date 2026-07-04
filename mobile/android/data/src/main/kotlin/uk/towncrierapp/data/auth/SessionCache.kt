@@ -23,7 +23,7 @@ import kotlinx.coroutines.sync.withLock
  * — the in-flight load must outlive whichever individual caller's coroutine
  * happens to create it, so every concurrent caller observes the same result.
  */
-internal class SessionCache(
+public class SessionCache(
     private val scope: CoroutineScope,
     private val leadTimeSeconds: Long = 60,
 ) {
@@ -32,12 +32,12 @@ internal class SessionCache(
     private var inFlight: Deferred<AuthSession?>? = null
 
     /** A cached session, or `null` if none is held or it's within [leadTimeSeconds] of expiry. Never triggers a load. */
-    suspend fun current(clock: Clock): AuthSession? = mutex.withLock { validOrNull(clock) }
+    public suspend fun current(clock: Clock): AuthSession? = mutex.withLock { validOrNull(clock) }
 
     private fun validOrNull(clock: Clock): AuthSession? = cached?.takeIf { it.expiresAt.minusSeconds(leadTimeSeconds).isAfter(clock.instant()) }
 
     /** Returns the cached session if valid, otherwise runs [loader] — sharing one in-flight call across concurrent cold callers. */
-    suspend fun currentOrLoad(
+    public suspend fun currentOrLoad(
         clock: Clock,
         loader: suspend () -> AuthSession?,
     ): AuthSession? {
@@ -57,12 +57,12 @@ internal class SessionCache(
     }
 
     /** Stores [session] directly — used after a successful login or refresh round-trip. */
-    suspend fun store(session: AuthSession) {
+    public suspend fun store(session: AuthSession) {
         mutex.withLock { cached = session }
     }
 
     /** Drops the cached session and cancels any in-flight load — used on logout and unrecoverable refresh failures. */
-    suspend fun clear() {
+    public suspend fun clear() {
         mutex.withLock {
             cached = null
             inFlight?.cancel()

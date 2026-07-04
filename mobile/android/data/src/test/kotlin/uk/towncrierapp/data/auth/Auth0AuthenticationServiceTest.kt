@@ -1,7 +1,6 @@
 package uk.towncrierapp.data.auth
 
 import uk.towncrierapp.domain.auth.DomainError
-import com.auth0.android.Auth0
 import com.auth0.android.result.Credentials
 import java.io.IOException
 import java.time.Clock
@@ -43,7 +42,9 @@ class Auth0AuthenticationServiceTest {
         config = Auth0Config(clientId = "client-id", domain = "towncrierapp.uk.auth0.com", audience = audience),
         credentialsStore = credentialsStore,
         activityProvider = CurrentActivityProvider { null },
-        auth0 = Auth0.getInstance("client-id", "towncrierapp.uk.auth0.com"),
+        // currentSession()/refreshSession() never touch auth0 — only login()/logout() do
+        // (verified on-device, see class doc), so a real Auth0 instance is never needed here.
+        auth0 = lazy { error("not used by currentSession()/refreshSession()") },
         sessionCache = SessionCache(scope = CoroutineScope(Dispatchers.Unconfined)),
         clock = Clock.fixed(Instant.parse("2026-07-20T10:00:00Z"), ZoneOffset.UTC),
     )
