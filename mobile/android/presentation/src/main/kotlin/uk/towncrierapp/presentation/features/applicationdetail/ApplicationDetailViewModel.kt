@@ -27,6 +27,11 @@ public class ApplicationDetailViewModel(
     private val repository: PlanningApplicationRepository,
     private val savedApplicationRepository: SavedApplicationRepository,
     initial: PlanningApplication,
+    // Defaults to a no-op so every pre-existing call site (tests, and any
+    // caller with nothing to notify) keeps compiling unchanged; the
+    // composition root wires the real review-prompt signal explicitly
+    // (GH #628 / tc-4jjw) — see ApplicationNavGraph.kt.
+    private val onSaved: suspend () -> Unit = {},
 ) : ViewModel() {
     private val _uiState =
         MutableStateFlow(ApplicationDetailUiState(application = initial, authoritySlug = initial.authority.slug))
@@ -77,14 +82,24 @@ public class ApplicationDetailViewModel(
         }
     }
 
-    /** Optimistically flips [ApplicationDetailUiState.isSaved], reverting and surfacing an error on failure. */
+    /**
+     * Optimistically flips [ApplicationDetailUiState.isSaved], reverting and
+     * surfacing an error on failure. Fires [onSaved] only on a successful
+     * false-to-true save — never on unsave, never on failure — driving the
+     * review-prompt `savedApplication` signal (GH #628).
+     */
     public fun toggleSave() {
         val id = _uiState.value.application.id
         val wasSaved = _uiState.value.isSaved
         _uiState.update { it.copy(isSaved = !wasSaved, error = null) }
         viewModelScope.launch {
             try {
-                if (wasSaved) savedApplicationRepository.unsave(id) else savedApplicationRepository.save(id)
+                if (wasSaved) {
+                    savedApplicationRepository.unsave(id)
+                } else {
+                    savedApplicationRepository.save(id)
+                    onSaved()
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DomainError) {
