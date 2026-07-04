@@ -68,7 +68,10 @@ class SettingsViewModelTest {
     fun `a blank SIWA email renders gracefully rather than as an error`() {
         val authService =
             FakeAuthenticationService(
-                currentSessionResult = anAuthSession(userProfile = UserProfile(userId = "apple|1", email = "", name = null)),
+                currentSessionResult =
+                    anAuthSession(
+                        userProfile = UserProfile(userId = "apple|1", email = "", name = null),
+                    ),
             )
         val viewModel = makeSut(authService = authService)
 
@@ -129,7 +132,10 @@ class SettingsViewModelTest {
         val userProfileRepository =
             FakeUserProfileRepository(deleteAccountResult = Result.failure(DomainError.NetworkUnavailable))
         var signedOutCallCount = 0
-        val viewModel = makeSut(authService = authService, userProfileRepository = userProfileRepository, onSignedOut = { signedOutCallCount++ })
+        val viewModel =
+            makeSut(authService = authService, userProfileRepository = userProfileRepository, onSignedOut = {
+                signedOutCallCount++
+            })
 
         viewModel.confirmDeleteAccount()
 
@@ -145,7 +151,9 @@ class SettingsViewModelTest {
         val deviceTokenRepository = FakeDeviceTokenRepository()
         var signedOutCallCount = 0
         val viewModel =
-            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = { signedOutCallCount++ })
+            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = {
+                signedOutCallCount++
+            })
 
         viewModel.confirmDeleteAccount()
 
@@ -162,7 +170,9 @@ class SettingsViewModelTest {
             FakeDeviceTokenRepository(removeDeviceTokenResult = Result.failure(DomainError.NetworkUnavailable))
         var signedOutCallCount = 0
         val viewModel =
-            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = { signedOutCallCount++ })
+            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = {
+                signedOutCallCount++
+            })
 
         viewModel.confirmDeleteAccount()
 
@@ -174,7 +184,8 @@ class SettingsViewModelTest {
     fun `deletion succeeds when no device-token repository has been wired yet (777 not landed)`() {
         val authService = FakeAuthenticationService()
         var signedOutCallCount = 0
-        val viewModel = makeSut(authService = authService, deviceTokenRepository = null, onSignedOut = { signedOutCallCount++ })
+        val viewModel =
+            makeSut(authService = authService, deviceTokenRepository = null, onSignedOut = { signedOutCallCount++ })
 
         viewModel.confirmDeleteAccount()
 
@@ -208,7 +219,9 @@ class SettingsViewModelTest {
         val deviceTokenRepository = FakeDeviceTokenRepository()
         var signedOutCallCount = 0
         val viewModel =
-            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = { signedOutCallCount++ })
+            makeSut(authService = authService, deviceTokenRepository = deviceTokenRepository, onSignedOut = {
+                signedOutCallCount++
+            })
 
         viewModel.signOut()
 
@@ -236,7 +249,8 @@ class SettingsViewModelTest {
 
     @Test
     fun `exportData failure surfaces an error and produces no artifact`() {
-        val userProfileRepository = FakeUserProfileRepository(exportDataResult = Result.failure(DomainError.NetworkUnavailable))
+        val userProfileRepository =
+            FakeUserProfileRepository(exportDataResult = Result.failure(DomainError.NetworkUnavailable))
         val viewModel = makeSut(userProfileRepository = userProfileRepository)
 
         viewModel.exportData()
@@ -258,7 +272,8 @@ class SettingsViewModelTest {
 
     @Test
     fun `dismissExportError clears the export error`() {
-        val userProfileRepository = FakeUserProfileRepository(exportDataResult = Result.failure(DomainError.NetworkUnavailable))
+        val userProfileRepository =
+            FakeUserProfileRepository(exportDataResult = Result.failure(DomainError.NetworkUnavailable))
         val viewModel = makeSut(userProfileRepository = userProfileRepository)
         viewModel.exportData()
 

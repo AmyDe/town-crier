@@ -96,7 +96,13 @@ class NotificationPreferencesViewModelTest {
     @Test
     fun `setSavedDecisionPush PATCHes the full five-field body and round-trips other fields`() {
         val initial =
-            aProfile(pushEnabled = true, digestDay = DigestDay.FRIDAY, emailDigestEnabled = false, savedDecisionPush = true, savedDecisionEmail = true)
+            aProfile(
+                pushEnabled = true,
+                digestDay = DigestDay.FRIDAY,
+                emailDigestEnabled = false,
+                savedDecisionPush = true,
+                savedDecisionEmail = true,
+            )
         val repository = FakeUserProfileRepository(fetchProfileResult = Result.success(initial))
         repository.updatePreferencesResult =
             Result.success(initial.copy(savedDecisionPush = false))
@@ -122,7 +128,13 @@ class NotificationPreferencesViewModelTest {
     @Test
     fun `setSavedDecisionEmail PATCHes the full five-field body and round-trips other fields`() {
         val initial =
-            aProfile(pushEnabled = false, digestDay = DigestDay.WEDNESDAY, emailDigestEnabled = true, savedDecisionPush = true, savedDecisionEmail = true)
+            aProfile(
+                pushEnabled = false,
+                digestDay = DigestDay.WEDNESDAY,
+                emailDigestEnabled = true,
+                savedDecisionPush = true,
+                savedDecisionEmail = true,
+            )
         val repository = FakeUserProfileRepository(fetchProfileResult = Result.success(initial))
         repository.updatePreferencesResult = Result.success(initial.copy(savedDecisionEmail = false))
         val viewModel = NotificationPreferencesViewModel(repository)
@@ -146,7 +158,13 @@ class NotificationPreferencesViewModelTest {
     @Test
     fun `setEmailDigestEnabled PATCHes the full five-field body and round-trips other fields`() {
         val initial =
-            aProfile(pushEnabled = true, digestDay = DigestDay.TUESDAY, emailDigestEnabled = true, savedDecisionPush = false, savedDecisionEmail = true)
+            aProfile(
+                pushEnabled = true,
+                digestDay = DigestDay.TUESDAY,
+                emailDigestEnabled = true,
+                savedDecisionPush = false,
+                savedDecisionEmail = true,
+            )
         val repository = FakeUserProfileRepository(fetchProfileResult = Result.success(initial))
         repository.updatePreferencesResult = Result.success(initial.copy(emailDigestEnabled = false))
         val viewModel = NotificationPreferencesViewModel(repository)
@@ -170,7 +188,13 @@ class NotificationPreferencesViewModelTest {
     @Test
     fun `setDigestDay PATCHes the full five-field body and round-trips other fields`() {
         val initial =
-            aProfile(pushEnabled = true, digestDay = DigestDay.MONDAY, emailDigestEnabled = true, savedDecisionPush = true, savedDecisionEmail = false)
+            aProfile(
+                pushEnabled = true,
+                digestDay = DigestDay.MONDAY,
+                emailDigestEnabled = true,
+                savedDecisionPush = true,
+                savedDecisionEmail = false,
+            )
         val repository = FakeUserProfileRepository(fetchProfileResult = Result.success(initial))
         repository.updatePreferencesResult = Result.success(initial.copy(digestDay = DigestDay.SATURDAY))
         val viewModel = NotificationPreferencesViewModel(repository)

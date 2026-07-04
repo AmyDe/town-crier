@@ -72,17 +72,25 @@ public class ReviewPromptPolicy(
         isReactivation: Boolean,
     ): Pair<ReviewPromptState, Boolean> =
         when (signal) {
-            ReviewSignal.TappedPortal ->
+            ReviewSignal.TappedPortal -> {
                 state.copy(engagementScore = state.engagementScore + PORTAL_WEIGHT) to true
+            }
 
-            ReviewSignal.OpenedAlert ->
+            ReviewSignal.OpenedAlert -> {
                 state.copy(engagementScore = state.engagementScore + OPENED_ALERT_WEIGHT) to true
+            }
 
-            ReviewSignal.SavedApplication -> applySavedApplication(state)
+            ReviewSignal.SavedApplication -> {
+                applySavedApplication(state)
+            }
 
-            ReviewSignal.ActiveDay -> applyActiveDay(state, isReactivation)
+            ReviewSignal.ActiveDay -> {
+                applyActiveDay(state, isReactivation)
+            }
 
-            ReviewSignal.Upgraded -> applyUpgraded(state)
+            ReviewSignal.Upgraded -> {
+                applyUpgraded(state)
+            }
         }
 
     /** The first save is not counted; only the 2nd and later saves contribute. */

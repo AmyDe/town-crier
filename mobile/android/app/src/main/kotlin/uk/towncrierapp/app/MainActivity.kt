@@ -204,7 +204,8 @@ private fun AuthedShell(
     val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val isTabRoute = currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
+    val isTabRoute =
+        currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
 
     Scaffold(
         modifier = modifier,

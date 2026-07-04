@@ -181,7 +181,10 @@ private fun DigestSection(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.xs)) {
-        Text(text = stringResource(R.string.notification_prefs_digest_header), style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = stringResource(R.string.notification_prefs_digest_header),
+            style = MaterialTheme.typography.labelMedium,
+        )
         ToggleRow(
             label = stringResource(R.string.notification_prefs_email_digest_label),
             checked = emailDigestEnabled,

@@ -188,7 +188,8 @@ public class AppGraph(
 
     public val appearanceCoordinator: AppearanceCoordinator = AppearanceCoordinator(androidLeaves.appearanceStore)
 
-    public val legalDocumentRepository: LegalDocumentRepository = LegalDocumentLoader(androidLeaves.legalDocumentAssetReader)
+    public val legalDocumentRepository: LegalDocumentRepository =
+        LegalDocumentLoader(androidLeaves.legalDocumentAssetReader)
 
     public val reviewPromptTracker: ReviewPromptTracker =
         ReviewPromptTracker(

@@ -19,7 +19,10 @@ class LegalDocumentViewModelTest {
         val viewModel = LegalDocumentViewModel(FakeLegalDocumentRepository(), LegalDocumentType.PRIVACY_POLICY)
 
         assertTrue(viewModel.uiState.value.isLoading)
-        assertTrue(viewModel.uiState.value.sections.isEmpty())
+        assertTrue(
+            viewModel.uiState.value.sections
+                .isEmpty(),
+        )
     }
 
     @Test
@@ -60,9 +63,21 @@ class LegalDocumentViewModelTest {
         viewModel.load()
 
         assertEquals(2, viewModel.uiState.value.sections.size)
-        assertEquals("Who We Are", viewModel.uiState.value.sections[0].heading)
-        assertEquals("Town Crier.", viewModel.uiState.value.sections[0].body)
-        assertEquals("What We Collect", viewModel.uiState.value.sections[1].heading)
+        assertEquals(
+            "Who We Are",
+            viewModel.uiState.value.sections[0]
+                .heading,
+        )
+        assertEquals(
+            "Town Crier.",
+            viewModel.uiState.value.sections[0]
+                .body,
+        )
+        assertEquals(
+            "What We Collect",
+            viewModel.uiState.value.sections[1]
+                .heading,
+        )
     }
 
     @Test

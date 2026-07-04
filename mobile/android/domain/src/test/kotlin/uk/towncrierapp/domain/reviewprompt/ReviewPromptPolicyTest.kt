@@ -21,7 +21,8 @@ class ReviewPromptPolicyTest {
     private val reference: Instant = Instant.ofEpochSecond(1_700_000_000)
     private val day: Duration = Duration.ofDays(1)
 
-    private fun makePolicy(now: Instant = reference): ReviewPromptPolicy = ReviewPromptPolicy(Clock.fixed(now, ZoneOffset.UTC))
+    private fun makePolicy(now: Instant = reference): ReviewPromptPolicy =
+        ReviewPromptPolicy(Clock.fixed(now, ZoneOffset.UTC))
 
     /** A state whose account is comfortably older than the 7-day age guard and never prompted. */
     private fun eligibleState(

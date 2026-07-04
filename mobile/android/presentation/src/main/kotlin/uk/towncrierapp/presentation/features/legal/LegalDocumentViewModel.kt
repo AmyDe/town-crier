@@ -35,7 +35,10 @@ public class LegalDocumentViewModel(
                     isLoading = false,
                     title = document.title,
                     formattedLastUpdated = document.lastUpdated.format(LAST_UPDATED_FORMATTER),
-                    sections = document.sections.map { section -> LegalDocumentSectionUi(section.heading, section.body) },
+                    sections =
+                        document.sections.map { section ->
+                            LegalDocumentSectionUi(section.heading, section.body)
+                        },
                 )
             }
         }

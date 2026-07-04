@@ -133,7 +133,11 @@ internal fun NotificationPreferencesRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SettingsRow(label = stringResource(R.string.settings_notification_preferences_row), onClick = onClick, modifier = modifier)
+    SettingsRow(
+        label = stringResource(R.string.settings_notification_preferences_row),
+        onClick = onClick,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -145,7 +149,10 @@ internal fun SubscriptionSection(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(TownCrierSpacing.xs)) {
         SectionHeader(stringResource(R.string.settings_subscription_header))
         Text(text = stringResource(tierLabelRes(tier)), style = MaterialTheme.typography.bodyLarge)
-        SettingsRow(label = stringResource(R.string.settings_subscription_manage_row), onClick = onManageSubscriptionClick)
+        SettingsRow(
+            label = stringResource(R.string.settings_subscription_manage_row),
+            onClick = onManageSubscriptionClick,
+        )
     }
 }
 
@@ -173,7 +180,10 @@ private val ATTRIBUTION_ITEMS =
             R.string.settings_attribution_ordnance_survey_detail,
         ),
         // Google Maps, not Apple Maps — Android attribution set (Maps SDK legal requirement).
-        AttributionItem(R.string.settings_attribution_google_maps_name, R.string.settings_attribution_google_maps_detail),
+        AttributionItem(
+            R.string.settings_attribution_google_maps_name,
+            R.string.settings_attribution_google_maps_detail,
+        ),
     )
 
 @Composable

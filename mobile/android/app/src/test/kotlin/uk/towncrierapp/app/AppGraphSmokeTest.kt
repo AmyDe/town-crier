@@ -45,7 +45,12 @@ class AppGraphSmokeTest {
             onboardingRepository = FakeOnboardingRepository(),
             appearanceStore = FakeAppearanceStore(),
             reviewPromptStore = FakeReviewPromptStore(),
-            legalDocumentAssetReader = LegalDocumentAssetReader { error("not used in the composition-root smoke test") },
+            legalDocumentAssetReader =
+                LegalDocumentAssetReader {
+                    error(
+                        "not used in the composition-root smoke test",
+                    )
+                },
         )
 
     @Test
