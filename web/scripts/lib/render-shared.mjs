@@ -163,27 +163,35 @@ export function renderAttributionList(lines = ATTRIBUTION_LINES) {
 /**
  * Inline stylesheet for the standalone static pages. Self-contained (no external
  * CSS request) for first-byte readability and strong Core Web Vitals. Uses the
- * Town Crier design tokens — dark by default, light via prefers-color-scheme —
- * mirroring `src/styles/tokens.css`.
+ * Town Crier design tokens — light by default, dark via prefers-color-scheme —
+ * mirroring `src/styles/tokens.css`. Light-first (rather than gating the light
+ * values behind a media query) means a renderer/webview/reader-mode/print
+ * pipeline that never evaluates prefers-color-scheme still gets the paper-like
+ * default, not the dark palette (tc-r4n9.1).
  *
  * @returns {string}
  */
 export function pageStyles() {
   return `    :root {
-      --tc-amber: #E9A620;
-      --tc-amber-hover: #F0B83A;
-      --tc-background: #1A1A1E;
-      --tc-surface: #242428;
-      --tc-text-primary: #F1EFE9;
-      --tc-text-secondary: #9B9590;
-      --tc-text-on-accent: #1C1917;
-      --tc-status-permitted: #34C759;
-      --tc-status-conditions: #FF9500;
-      --tc-status-rejected: #FF453A;
-      --tc-status-withdrawn: #8E8A85;
-      --tc-status-appealed: #A78BFA;
-      --tc-status-default: #9B9590;
-      --tc-border: #3A3A3F;
+      /* Background scale converged with the share-page family (see
+         api-go/internal/sharepage/templates/styles.gohtml): a warm cream field
+         (--tc-background: #FAF8F5) behind a white card (--tc-surface:
+         #FFFFFF) in light mode, so SEO pages and share pages read as one
+         product rather than two differently-themed properties. */
+      --tc-amber: #D4910A;
+      --tc-amber-hover: #B87A08;
+      --tc-background: #FAF8F5;
+      --tc-surface: #FFFFFF;
+      --tc-text-primary: #1C1917;
+      --tc-text-secondary: #6B6560;
+      --tc-text-on-accent: #FFFFFF;
+      --tc-status-permitted: #1A7D37;
+      --tc-status-conditions: #A85A0A;
+      --tc-status-rejected: #C42B2B;
+      --tc-status-withdrawn: #7A7570;
+      --tc-status-appealed: #7C3AED;
+      --tc-status-default: #6B6560;
+      --tc-border: #E8E4DF;
       --tc-radius-md: 12px;
       --tc-radius-full: 9999px;
       --tc-space-sm: 8px;
@@ -194,22 +202,22 @@ export function pageStyles() {
       --tc-font-family: 'Inter', system-ui, -apple-system, sans-serif;
       --tc-content-max-width: 760px;
     }
-    @media (prefers-color-scheme: light) {
+    @media (prefers-color-scheme: dark) {
       :root {
-        --tc-amber: #D4910A;
-        --tc-amber-hover: #B87A08;
-        --tc-background: #FAF8F5;
-        --tc-surface: #FFFFFF;
-        --tc-text-primary: #1C1917;
-        --tc-text-secondary: #6B6560;
-        --tc-text-on-accent: #FFFFFF;
-        --tc-status-permitted: #1A7D37;
-        --tc-status-conditions: #A85A0A;
-        --tc-status-rejected: #C42B2B;
-        --tc-status-withdrawn: #7A7570;
-        --tc-status-appealed: #7C3AED;
-        --tc-status-default: #6B6560;
-        --tc-border: #E8E4DF;
+        --tc-amber: #E9A620;
+        --tc-amber-hover: #F0B83A;
+        --tc-background: #1A1A1E;
+        --tc-surface: #242428;
+        --tc-text-primary: #F1EFE9;
+        --tc-text-secondary: #9B9590;
+        --tc-text-on-accent: #1C1917;
+        --tc-status-permitted: #34C759;
+        --tc-status-conditions: #FF9500;
+        --tc-status-rejected: #FF453A;
+        --tc-status-withdrawn: #8E8A85;
+        --tc-status-appealed: #A78BFA;
+        --tc-status-default: #9B9590;
+        --tc-border: #3A3A3F;
       }
     }
     @font-face {
