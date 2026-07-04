@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   renderApplicationsList,
   renderAttributionList,
+  renderStatusSummary,
+  renderDataUpdated,
   pageStyles,
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
@@ -209,6 +211,81 @@ describe('renderApplicationsList status chip vocabulary (decision 4: shared voca
       (m) => m[1],
     );
     expect(new Set(modifiers)).toEqual(new Set(['granted', 'refused', 'neutral']));
+  });
+});
+
+describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided strip)', () => {
+  const BREAKDOWN = [
+    { appState: 'Permitted', count: 20 },
+    { appState: 'Rejected', count: 12 },
+    { appState: 'Undecided', count: 8 },
+    { appState: null, count: 2 },
+  ];
+
+  it('renders a single compact strip with the three headline buckets and the total', () => {
+    const html = renderStatusSummary(BREAKDOWN);
+    expect(html).toContain('<h2 class="statusSummary__heading">Status breakdown</h2>');
+    expect(html).toMatch(/20[\s\S]{0,20}Granted/);
+    expect(html).toMatch(/12[\s\S]{0,20}Refused/);
+    expect(html).toMatch(/10[\s\S]{0,20}Undecided/);
+    expect(html).toMatch(/42[\s\S]{0,20}total/);
+  });
+
+  it('reuses the shared per-card status chip vocabulary/colours for the strip items', () => {
+    const html = renderStatusSummary(BREAKDOWN);
+    expect(html).toContain('status--granted');
+    expect(html).toContain('status--refused');
+    expect(html).toContain('status--neutral');
+  });
+
+  it('does not enumerate every top-level status as its own row (compact, not a wall of lines)', () => {
+    const html = renderStatusSummary(BREAKDOWN);
+    // No long tail in this breakdown, so no "Other" disclosure at all.
+    expect(html).not.toContain('statusSummary__other');
+  });
+
+  it('folds long-tail states behind a details disclosure instead of listing them top-level', () => {
+    const withLongTail = [
+      ...BREAKDOWN,
+      { appState: 'Conditions', count: 5 },
+      { appState: 'Withdrawn', count: 3 },
+    ];
+    const html = renderStatusSummary(withLongTail);
+    expect(html).toContain('<details class="statusSummary__other">');
+    expect(html).toContain('<summary>Other (8)</summary>');
+    expect(html).toContain('Granted with conditions');
+    expect(html).toContain('Withdrawn');
+    // The long-tail states are inside the disclosure, not top-level chips.
+    expect(html).not.toMatch(/status--\w+">\s*5 Granted with conditions/);
+  });
+
+  it('omits the Other disclosure entirely when there is no long tail', () => {
+    const html = renderStatusSummary(BREAKDOWN);
+    expect(html).not.toContain('<details');
+    expect(html).not.toContain('Other (');
+  });
+
+  it('HTML-escapes long-tail labels', () => {
+    const html = renderStatusSummary([
+      { appState: '<script>alert(1)</script>', count: 1 },
+    ]);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+});
+
+describe('renderDataUpdated (tc-r4n9.3: single line replacing per-card repetition)', () => {
+  it('renders one "Data updated" line from the freshest application date', () => {
+    const html = renderDataUpdated([
+      { lastDifferent: '2026-06-12T09:30:00+00:00' },
+      { lastDifferent: '2026-06-15T10:00:00+00:00' },
+    ]);
+    expect(html).toBe('<p class="dataUpdated">Data updated 15 Jun 2026</p>');
+  });
+
+  it('renders nothing when no application carries a parseable date', () => {
+    expect(renderDataUpdated([])).toBe('');
+    expect(renderDataUpdated([{ lastDifferent: null }])).toBe('');
   });
 });
 
