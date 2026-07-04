@@ -102,12 +102,12 @@ When fixing CI failures, always check for ALL root causes before declaring the f
 
 ## UI Verification — Agent-Run, No Human in the Loop
 
-Front-end changes are verified by the agent itself, live, before the work is declared done:
+Front-end changes are verified live before the work is declared done — but never drive the UI directly from the main/parent session. Screenshots are expensive to load into context, so always dispatch a `model: sonnet` subagent (`Agent` tool) to do the driving and inspect its own screenshots, then have it report back a concise pass/fail summary and any defects found — not the raw images:
 
-- **Web** — the `agent-browser` CLI drives a real browser (screenshot paths must be absolute).
-- **iOS / Android** — the `mobile-mcp` MCP server drives the iOS simulator and the Android emulator (AVD `towncrier` on the dev machine): install, launch, tap, type, screenshot.
+- **Web** — subagent drives the `agent-browser` CLI (screenshot paths must be absolute).
+- **iOS / Android** — subagent drives the `mobile-mcp` MCP server against the iOS simulator and the Android emulator (AVD `towncrier` on the dev machine): install, launch, tap, type, screenshot.
 
-Never ask the human to click through a UI to confirm a change; drive it yourself and attach screenshots.
+Never ask the human to click through a UI to confirm a change, and never call `agent-browser` or `mobile-mcp` tools directly from the main session — always through a dispatched subagent.
 
 ## Development Commands
 
