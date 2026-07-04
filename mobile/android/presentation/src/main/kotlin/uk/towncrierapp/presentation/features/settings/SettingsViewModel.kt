@@ -19,6 +19,21 @@ import uk.towncrierapp.presentation.appearance.AppearanceCoordinator
 import uk.towncrierapp.presentation.designsystem.Appearance
 
 /**
+ * Bundles the two sign-out-adjacent dependencies so [SettingsViewModel]'s own
+ * constructor parameter list stays under detekt's threshold (same rationale
+ * as `AppGraphOptions`/`SettingsLeaves` in `:app`). [deviceTokenRepository]
+ * defaults to `null` since #777 hasn't landed a real device-token
+ * registration yet — every removal attempt is a true no-op until it does.
+ * [onSignedOut] defaults to a no-op so every pre-existing call site (tests)
+ * keeps compiling unchanged; the composition root wires it to
+ * `LoginViewModel.markSignedOut()` so the shell routes back to Login.
+ */
+public class SettingsSignOutSupport(
+    public val deviceTokenRepository: DeviceTokenRepository? = null,
+    public val onSignedOut: () -> Unit = {},
+)
+
+/**
  * Drives the Settings screen: account display, the four-way appearance
  * picker, sign-out, and account deletion (UK GDPR Art. 17 ordering — see
  * [confirmDeleteAccount]). Notification preferences, legal documents, and
@@ -32,15 +47,11 @@ public class SettingsViewModel(
     private val appearanceCoordinator: AppearanceCoordinator,
     tier: SubscriptionTier,
     appVersion: String,
-    // #777 hasn't landed a real device-token registration yet — `null` in
-    // production today means every removal attempt below is a true no-op;
-    // wiring a real implementation needs no other change here.
-    private val deviceTokenRepository: DeviceTokenRepository? = null,
-    // Defaults to a no-op so every pre-existing call site (tests) keeps
-    // compiling unchanged; the composition root wires this to
-    // `LoginViewModel.markSignedOut()` so the shell routes back to Login.
-    private val onSignedOut: () -> Unit = {},
+    signOutSupport: SettingsSignOutSupport = SettingsSignOutSupport(),
 ) : ViewModel() {
+    private val deviceTokenRepository = signOutSupport.deviceTokenRepository
+    private val onSignedOut = signOutSupport.onSignedOut
+
     private val _uiState =
         MutableStateFlow(SettingsUiState(subscriptionTier = tier, appVersion = appVersion))
     public val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()

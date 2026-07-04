@@ -54,13 +54,25 @@ public data class Auth0Tenant(
 )
 
 /**
+ * The tc-4jjw (#778) Android-touching leaves — grouped separately from
+ * [AndroidLeaves] so that constructor's own parameter list stays under
+ * detekt's threshold, same rationale as [AppGraphOptions].
+ */
+public class SettingsLeaves(
+    public val appearanceStore: AppearanceStore,
+    public val reviewPromptStore: ReviewPromptStore,
+    public val legalDocumentAssetReader: LegalDocumentAssetReader,
+)
+
+/**
  * The leaves that genuinely need a real `Context` —
  * `TownCrierApplication` builds them (`SecureCredentialsManagerStore` over a
  * real `SecureCredentialsManager`, an `Application.ActivityLifecycleCallbacks`
  * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`,
- * a `DataStoreOnboardingRepository`, a `DataStoreAppearanceStore`, a
- * `DataStoreReviewPromptStore`, an `AssetManager`-backed [LegalDocumentAssetReader])
- * and hands them to the otherwise Context-free [AppGraph].
+ * a `DataStoreOnboardingRepository`, and — via [SettingsLeaves] — a
+ * `DataStoreAppearanceStore`, a `DataStoreReviewPromptStore`, and an
+ * `AssetManager`-backed [LegalDocumentAssetReader]) and hands them to the
+ * otherwise Context-free [AppGraph].
  */
 public class AndroidLeaves(
     public val credentialsStore: CredentialsStore,
@@ -68,9 +80,7 @@ public class AndroidLeaves(
     public val tierCache: SubscriptionTierCache,
     public val applicationListPreferencesStore: ApplicationListPreferencesStore,
     public val onboardingRepository: OnboardingRepository,
-    public val appearanceStore: AppearanceStore,
-    public val reviewPromptStore: ReviewPromptStore,
-    public val legalDocumentAssetReader: LegalDocumentAssetReader,
+    public val settingsLeaves: SettingsLeaves,
 )
 
 /** Rarely-overridden technical knobs, grouped so [AppGraph]'s own constructor stays short. */
@@ -186,14 +196,15 @@ public class AppGraph(
 
     public val onboardingRepository: OnboardingRepository = androidLeaves.onboardingRepository
 
-    public val appearanceCoordinator: AppearanceCoordinator = AppearanceCoordinator(androidLeaves.appearanceStore)
+    public val appearanceCoordinator: AppearanceCoordinator =
+        AppearanceCoordinator(androidLeaves.settingsLeaves.appearanceStore)
 
     public val legalDocumentRepository: LegalDocumentRepository =
-        LegalDocumentLoader(androidLeaves.legalDocumentAssetReader)
+        LegalDocumentLoader(androidLeaves.settingsLeaves.legalDocumentAssetReader)
 
     public val reviewPromptTracker: ReviewPromptTracker =
         ReviewPromptTracker(
-            store = androidLeaves.reviewPromptStore,
+            store = androidLeaves.settingsLeaves.reviewPromptStore,
             requester = PlayReviewRequester(activityProvider),
             clock = options.clock,
         )

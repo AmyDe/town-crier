@@ -26,6 +26,7 @@ import uk.towncrierapp.presentation.features.login.LoginViewModel
 import uk.towncrierapp.presentation.features.notificationprefs.NotificationPreferencesRoute
 import uk.towncrierapp.presentation.features.notificationprefs.NotificationPreferencesViewModel
 import uk.towncrierapp.presentation.features.settings.SettingsRoute
+import uk.towncrierapp.presentation.features.settings.SettingsSignOutSupport
 import uk.towncrierapp.presentation.features.settings.SettingsViewModel
 
 /** The Settings destination — reachable from the settings icon on every bottom-nav-hosting screen. */
@@ -72,11 +73,14 @@ internal fun SettingsDestinationContent(
                             appearanceCoordinator = appGraph.appearanceCoordinator,
                             tier = subscriptionTier,
                             appVersion = appGraph.currentVersion,
-                            deviceTokenRepository = appGraph.deviceTokenRepository,
-                            // Resets the shell's own auth state WITHOUT a second
-                            // AuthenticationService.logout() call — see
-                            // LoginViewModel.markSignedOut's doc (tc-4jjw).
-                            onSignedOut = loginViewModel::markSignedOut,
+                            signOutSupport =
+                                SettingsSignOutSupport(
+                                    deviceTokenRepository = appGraph.deviceTokenRepository,
+                                    // Resets the shell's own auth state WITHOUT a second
+                                    // AuthenticationService.logout() call — see
+                                    // LoginViewModel.markSignedOut's doc (tc-4jjw).
+                                    onSignedOut = loginViewModel::markSignedOut,
+                                ),
                         )
                     }
                 },

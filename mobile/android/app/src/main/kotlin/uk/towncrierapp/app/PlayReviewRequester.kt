@@ -58,7 +58,11 @@ internal class PlayReviewRequester(
  * to opening the Play Store listing directly. Distinct from
  * [PlayReviewRequester], which must never surface failure.
  */
-@Suppress("TooGenericExceptionCaught")
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+// Deliberately broad and deliberately not re-thrown/logged: ANY failure here
+// (no foreground Activity, Play Services unavailable, no listing yet, ...)
+// falls back to the store listing — the specific cause doesn't change the
+// fallback, and there's nowhere useful to surface it from a settings-row tap.
 internal suspend fun requestReviewOrOpenStoreListing(
     context: Context,
     activityProvider: CurrentActivityProvider,

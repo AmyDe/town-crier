@@ -25,6 +25,10 @@ class ReviewPromptPolicyTest {
         ReviewPromptPolicy(Clock.fixed(now, ZoneOffset.UTC))
 
     /** A state whose account is comfortably older than the 7-day age guard and never prompted. */
+    @Suppress("LongParameterList")
+    // Mirrors every field of ReviewPromptState (bar firstLaunchDate, fixed
+    // here) — a fixture builder class is exactly what android-coding-
+    // standards forbids in favour of default-argument factory functions.
     private fun eligibleState(
         engagementScore: Int = 0,
         saveCount: Int = 0,

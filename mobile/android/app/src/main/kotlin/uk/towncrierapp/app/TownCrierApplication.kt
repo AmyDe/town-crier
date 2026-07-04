@@ -69,9 +69,12 @@ public class TownCrierApplication : Application() {
                         tierCache = tierCache,
                         applicationListPreferencesStore = applicationListPreferencesStore,
                         onboardingRepository = onboardingRepository,
-                        appearanceStore = appearanceStore,
-                        reviewPromptStore = reviewPromptStore,
-                        legalDocumentAssetReader = legalDocumentAssetReader,
+                        settingsLeaves =
+                            SettingsLeaves(
+                                appearanceStore = appearanceStore,
+                                reviewPromptStore = reviewPromptStore,
+                                legalDocumentAssetReader = legalDocumentAssetReader,
+                            ),
                     ),
                 currentVersion = BuildConfig.VERSION_NAME,
                 options = AppGraphOptions(enableDebugLogging = BuildConfig.DEBUG),

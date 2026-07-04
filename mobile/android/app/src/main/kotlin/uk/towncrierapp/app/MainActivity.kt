@@ -193,7 +193,6 @@ private fun AuthedContent(
  * `SettingsNavGraph.kt`, to keep every file under detekt's per-file
  * function-count budget.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AuthedShell(
     appGraph: AppGraph,
@@ -204,79 +203,49 @@ private fun AuthedShell(
     val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val isTabRoute =
-        currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
 
     Scaffold(
         modifier = modifier,
-        topBar = {
-            // Only the three bottom-nav tabs get this shared top bar (with the
-            // settings icon, per the epic's Material-native-idiom chapter);
-            // every other destination (detail/editor/settings screens) renders
-            // its own Scaffold + back-navigating TopAppBar internally.
-            if (isTabRoute || currentRoute == null) {
-                TopAppBar(
-                    title = { Text(stringResource(tabTitleRes(currentRoute))) },
-                    actions = {
-                        IconButton(onClick = { navController.navigate(SettingsDestination) }) {
-                            Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = stringResource(PresentationR.string.settings_content_description),
-                            )
-                        }
-                    },
-                )
-            }
-        },
-        bottomBar = {
-            AuthedBottomBar(currentRoute = currentRoute, navController = navController)
-        },
+        topBar = { AuthedTopBar(currentRoute = currentRoute, navController = navController) },
+        bottomBar = { AuthedBottomBar(currentRoute = currentRoute, navController = navController) },
     ) { contentPadding ->
-        NavHost(
+        AuthedNavHost(
+            appGraph = appGraph,
             navController = navController,
-            startDestination = Applications,
+            loginViewModel = loginViewModel,
+            subscriptionTier = subscriptionTier,
             modifier = Modifier.padding(contentPadding),
-        ) {
-            composable<Applications> { ApplicationsTab(appGraph = appGraph, navController = navController) }
-            composable<WatchZones> {
-                WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
-            }
-            composable<Saved> { SavedTab(appGraph = appGraph, navController = navController) }
-            composable<WatchZoneEditorDestination> { entry ->
-                WatchZoneEditorDestinationContent(
-                    entry = entry,
-                    appGraph = appGraph,
-                    subscriptionTier = subscriptionTier,
-                    navController = navController,
-                )
-            }
-            composable<ZonePreferencesDestination> { entry ->
-                ZonePreferencesDestinationContent(
-                    entry = entry,
-                    appGraph = appGraph,
-                    subscriptionTier = subscriptionTier,
-                    navController = navController,
-                )
-            }
-            composable<ApplicationDetailDestination> { entry ->
-                ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
-            }
-            composable<SettingsDestination> {
-                SettingsDestinationContent(
-                    appGraph = appGraph,
-                    subscriptionTier = subscriptionTier,
-                    loginViewModel = loginViewModel,
-                    navController = navController,
-                )
-            }
-            composable<NotificationPreferencesDestination> {
-                NotificationPreferencesDestinationContent(appGraph = appGraph, navController = navController)
-            }
-            composable<LegalDocumentDestination> { entry ->
-                LegalDocumentDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
-            }
-        }
+        )
     }
+}
+
+/**
+ * Only the three bottom-nav tabs get this shared top bar (with the settings
+ * icon, per the epic's Material-native-idiom chapter); every other
+ * destination (detail/editor/settings screens) renders its own Scaffold +
+ * back-navigating `TopAppBar` internally.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AuthedTopBar(
+    currentRoute: String?,
+    navController: NavHostController,
+) {
+    val isTabRoute =
+        currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
+    if (!isTabRoute && currentRoute != null) return
+
+    TopAppBar(
+        title = { Text(stringResource(tabTitleRes(currentRoute))) },
+        actions = {
+            IconButton(onClick = { navController.navigate(SettingsDestination) }) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = stringResource(PresentationR.string.settings_content_description),
+                )
+            }
+        },
+    )
 }
 
 /** The bottom-nav tabs each carry their own top-app-bar title; every other destination supplies its own inside its Screen. */
@@ -286,6 +255,56 @@ private fun tabTitleRes(route: String?): Int =
         SAVED_ROUTE -> PresentationR.string.bottom_nav_saved
         else -> PresentationR.string.bottom_nav_applications
     }
+
+@Composable
+private fun AuthedNavHost(
+    appGraph: AppGraph,
+    navController: NavHostController,
+    loginViewModel: LoginViewModel,
+    subscriptionTier: SubscriptionTier,
+    modifier: Modifier = Modifier,
+) {
+    NavHost(navController = navController, startDestination = Applications, modifier = modifier) {
+        composable<Applications> { ApplicationsTab(appGraph = appGraph, navController = navController) }
+        composable<WatchZones> {
+            WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
+        }
+        composable<Saved> { SavedTab(appGraph = appGraph, navController = navController) }
+        composable<WatchZoneEditorDestination> { entry ->
+            WatchZoneEditorDestinationContent(
+                entry = entry,
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+            )
+        }
+        composable<ZonePreferencesDestination> { entry ->
+            ZonePreferencesDestinationContent(
+                entry = entry,
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+            )
+        }
+        composable<ApplicationDetailDestination> { entry ->
+            ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
+        }
+        composable<SettingsDestination> {
+            SettingsDestinationContent(
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                loginViewModel = loginViewModel,
+                navController = navController,
+            )
+        }
+        composable<NotificationPreferencesDestination> {
+            NotificationPreferencesDestinationContent(appGraph = appGraph, navController = navController)
+        }
+        composable<LegalDocumentDestination> { entry ->
+            LegalDocumentDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
+        }
+    }
+}
 
 @Composable
 private fun AuthedBottomBar(

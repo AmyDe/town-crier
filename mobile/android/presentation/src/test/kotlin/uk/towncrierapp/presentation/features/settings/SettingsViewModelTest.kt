@@ -38,8 +38,11 @@ class SettingsViewModelTest {
         appearanceCoordinator = AppearanceCoordinator(FakeAppearanceStore()),
         tier = tier,
         appVersion = "1.2.3",
-        deviceTokenRepository = deviceTokenRepository,
-        onSignedOut = onSignedOut,
+        signOutSupport =
+            SettingsSignOutSupport(
+                deviceTokenRepository = deviceTokenRepository,
+                onSignedOut = onSignedOut,
+            ),
     )
 
     // region Account
