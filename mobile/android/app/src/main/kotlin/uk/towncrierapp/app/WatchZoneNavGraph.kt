@@ -84,6 +84,7 @@ internal fun WatchZonesTab(
     appGraph: AppGraph,
     subscriptionTier: SubscriptionTier,
     navController: NavHostController,
+    onSettingsClick: () -> Unit,
 ) {
     val listViewModel: WatchZoneListViewModel =
         key(subscriptionTier) {
@@ -107,6 +108,7 @@ internal fun WatchZonesTab(
             navController.navigate(ZonePreferencesDestination(zoneId = zone.id.value, zoneName = zone.name))
         },
         onAddZone = { navController.navigate(WatchZoneEditorDestination()) },
+        onSettingsClick = onSettingsClick,
     )
 }
 

@@ -11,18 +11,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -185,13 +181,15 @@ private fun AuthedContent(
 
 /**
  * The signed-in shell: bottom navigation (Applications, Zones, Saved)
- * wrapping the NavHost, with a top app bar carrying the settings icon every
- * bottom-nav-hosting screen gets (epic #770's Material-native-idiom
- * chapter). The watch-zone destinations' content lives in
- * `WatchZoneNavGraph.kt`, the applications-browsing destinations' in
- * `ApplicationNavGraph.kt`, and the settings-area destinations' in
- * `SettingsNavGraph.kt`, to keep every file under detekt's per-file
- * function-count budget.
+ * wrapping the NavHost. Each of the three bottom-nav tabs' own existing top
+ * app bar gets a settings action (epic #770's Material-native-idiom
+ * chapter) via [onSettingsClick] — not a second, wrapping top bar, which
+ * would double up with `ApplicationListScreen`/`WatchZoneListScreen`/
+ * `SavedListScreen`'s already-present `TopAppBar`s. The watch-zone
+ * destinations' content lives in `WatchZoneNavGraph.kt`, the
+ * applications-browsing destinations' in `ApplicationNavGraph.kt`, and the
+ * settings-area destinations' in `SettingsNavGraph.kt`, to keep every file
+ * under detekt's per-file function-count budget.
  */
 @Composable
 private fun AuthedShell(
@@ -206,7 +204,6 @@ private fun AuthedShell(
 
     Scaffold(
         modifier = modifier,
-        topBar = { AuthedTopBar(currentRoute = currentRoute, navController = navController) },
         bottomBar = { AuthedBottomBar(currentRoute = currentRoute, navController = navController) },
     ) { contentPadding ->
         AuthedNavHost(
@@ -219,43 +216,6 @@ private fun AuthedShell(
     }
 }
 
-/**
- * Only the three bottom-nav tabs get this shared top bar (with the settings
- * icon, per the epic's Material-native-idiom chapter); every other
- * destination (detail/editor/settings screens) renders its own Scaffold +
- * back-navigating `TopAppBar` internally.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AuthedTopBar(
-    currentRoute: String?,
-    navController: NavHostController,
-) {
-    val isTabRoute =
-        currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
-    if (!isTabRoute && currentRoute != null) return
-
-    TopAppBar(
-        title = { Text(stringResource(tabTitleRes(currentRoute))) },
-        actions = {
-            IconButton(onClick = { navController.navigate(SettingsDestination) }) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = stringResource(PresentationR.string.settings_content_description),
-                )
-            }
-        },
-    )
-}
-
-/** The bottom-nav tabs each carry their own top-app-bar title; every other destination supplies its own inside its Screen. */
-private fun tabTitleRes(route: String?): Int =
-    when (route) {
-        WATCH_ZONES_ROUTE -> PresentationR.string.bottom_nav_zones
-        SAVED_ROUTE -> PresentationR.string.bottom_nav_saved
-        else -> PresentationR.string.bottom_nav_applications
-    }
-
 @Composable
 private fun AuthedNavHost(
     appGraph: AppGraph,
@@ -264,12 +224,22 @@ private fun AuthedNavHost(
     subscriptionTier: SubscriptionTier,
     modifier: Modifier = Modifier,
 ) {
+    val onSettingsClick: () -> Unit = { navController.navigate(SettingsDestination) }
     NavHost(navController = navController, startDestination = Applications, modifier = modifier) {
-        composable<Applications> { ApplicationsTab(appGraph = appGraph, navController = navController) }
-        composable<WatchZones> {
-            WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
+        composable<Applications> {
+            ApplicationsTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
         }
-        composable<Saved> { SavedTab(appGraph = appGraph, navController = navController) }
+        composable<WatchZones> {
+            WatchZonesTab(
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+                onSettingsClick = onSettingsClick,
+            )
+        }
+        composable<Saved> {
+            SavedTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
+        }
         composable<WatchZoneEditorDestination> { entry ->
             WatchZoneEditorDestinationContent(
                 entry = entry,

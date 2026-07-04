@@ -109,6 +109,7 @@ private fun ApplicationDetailDestination.toInitialApplication(): PlanningApplica
 internal fun ApplicationsTab(
     appGraph: AppGraph,
     navController: NavHostController,
+    onSettingsClick: () -> Unit,
 ) {
     val listViewModel: ApplicationListViewModel =
         viewModel(
@@ -130,6 +131,7 @@ internal fun ApplicationsTab(
         viewModel = listViewModel,
         onApplicationSelected = { application -> navController.navigate(applicationDetailDestinationFor(application)) },
         onAddZoneClick = { navController.navigate(WatchZoneEditorDestination()) },
+        onSettingsClick = onSettingsClick,
     )
 }
 
@@ -138,6 +140,7 @@ internal fun ApplicationsTab(
 internal fun SavedTab(
     appGraph: AppGraph,
     navController: NavHostController,
+    onSettingsClick: () -> Unit,
 ) {
     val savedViewModel: SavedListViewModel =
         viewModel(
@@ -147,6 +150,7 @@ internal fun SavedTab(
     SavedListRoute(
         viewModel = savedViewModel,
         onApplicationSelected = { application -> navController.navigate(applicationDetailDestinationFor(application)) },
+        onSettingsClick = onSettingsClick,
     )
 }
 

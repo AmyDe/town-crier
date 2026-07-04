@@ -14,10 +14,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -50,6 +52,7 @@ import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMes
 public fun SavedListRoute(
     viewModel: SavedListViewModel,
     onApplicationSelected: (PlanningApplication) -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -57,6 +60,7 @@ public fun SavedListRoute(
         state = state,
         onFilterSelected = viewModel::selectFilter,
         onApplicationClick = onApplicationSelected,
+        onSettingsClick = onSettingsClick,
         modifier = modifier,
     )
 }
@@ -67,11 +71,24 @@ internal fun SavedListScreen(
     state: SavedListUiState,
     onFilterSelected: (ApplicationStatus?) -> Unit,
     onApplicationClick: (PlanningApplication) -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
         modifier = modifier,
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.saved_title)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.saved_title)) },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = stringResource(R.string.settings_content_description),
+                        )
+                    }
+                },
+            )
+        },
     ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
             SavedFilterChipsRow(
@@ -195,6 +212,11 @@ private fun SavedEmptyState(modifier: Modifier = Modifier) {
 @Composable
 private fun SavedListScreenEmptyPreview() {
     TownCrierTheme {
-        SavedListScreen(state = SavedListUiState(), onFilterSelected = {}, onApplicationClick = {})
+        SavedListScreen(
+            state = SavedListUiState(),
+            onFilterSelected = {},
+            onApplicationClick = {},
+            onSettingsClick = {},
+        )
     }
 }
