@@ -212,6 +212,59 @@ func TestServe_RendersMapHeroInBody(t *testing.T) {
 	}
 }
 
+// TestServe_HeroFramedWithBorderConsistentWithCard pins Phase 7 (#794, tc-r4n9.7):
+// the hero gets the same deliberate border treatment as .card (design-language's
+// "frame with tcBorder" convention) rather than floating as a bare, edgeless
+// image — part of the "deliberate framed treatment" this phase requires instead
+// of a raw, untreated reuse of the OG card.
+func TestServe_HeroFramedWithBorderConsistentWithCard(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `.hero{display:block;width:100%;height:auto;aspect-ratio:1200/630;border:1px solid var(--border);`) {
+		t.Error("hero rule missing the card-style border frame")
+	}
+}
+
+// TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle pins Phase 7 (#794,
+// tc-r4n9.7): stop reusing the raw OG card PNG as the hero with no dark-mode
+// treatment. Standard 256px OSM tiles render on a near-white/cream basemap, so
+// dropping the 1200x630 card straight onto the dark canvas would show a jarring
+// bright rectangle. The fix recolours the SAME cached PNG with a CSS filter
+// (invert+hue-rotate is the well-known technique for showing a light raster map
+// image acceptably on a dark background — it approximately restores each
+// feature's original hue while flipping overall lightness) — it fetches ZERO
+// additional OSM tiles per page-view; see the tile-budget comment beside the
+// rule in styles.gohtml.
+func TestServe_HeroDarkModeFilterAvoidsJarringBrightRectangle(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `@media (prefers-color-scheme:dark){.hero{box-shadow:none;filter:invert(90%) hue-rotate(180deg);}}`) {
+		t.Error("dark-mode hero filter rule missing")
+	}
+	// The hero must still be the identical cached OG-card route — proof this is a
+	// CSS-only treatment, not a second render pipeline / extra tile fetch.
+	wantSrc := `src="https://share.towncrierapp.uk/og/croydon/23/03456/FUL.png"`
+	if !strings.Contains(body, wantSrc) {
+		t.Errorf("hero must keep reusing the cached OG card route; body should contain %q", wantSrc)
+	}
+}
+
 // TestServe_RendersHomepageLink pins Problem 3 (#763, tc-iuf0): the only CTA was
 // the iOS-only App Store bar, with no link to the web app anywhere. A visible,
 // always-present link to the Town Crier homepage must be present on every device.
