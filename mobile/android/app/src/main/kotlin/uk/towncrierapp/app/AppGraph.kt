@@ -104,6 +104,12 @@ public class AppGraph(
 ) {
     private val transport = OkHttpTransport(options.callFactory)
 
+    // Surfaced publicly (not just used to build authenticationService below)
+    // because the "Rate the App" settings row also needs a foreground
+    // Activity for its own, differently-failure-handled Play In-App Review
+    // attempt — see PlayReviewRequester.kt's `requestReviewOrOpenStoreListing`.
+    public val activityProvider: CurrentActivityProvider = androidLeaves.activityProvider
+
     // dev and prod share one Auth0 Native application; only the audience (and
     // therefore the access-token claims) differ per flavor (epic #770 D4).
     public val authenticationService: AuthenticationService =
@@ -187,7 +193,7 @@ public class AppGraph(
     public val reviewPromptTracker: ReviewPromptTracker =
         ReviewPromptTracker(
             store = androidLeaves.reviewPromptStore,
-            requester = PlayReviewRequester(androidLeaves.activityProvider),
+            requester = PlayReviewRequester(activityProvider),
             clock = options.clock,
         )
 

@@ -11,14 +11,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,7 +56,12 @@ public class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val appGraph = (application as TownCrierApplication).appGraph
         setContent {
-            TownCrierTheme {
+            // The four-way appearance picker (tc-4jjw / #778): restyles the
+            // whole app the instant `SettingsViewModel.setAppearance` writes
+            // a new value, since this StateFlow IS what feeds TownCrierTheme.
+            val appearance by appGraph.appearanceCoordinator.appearance.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) { appGraph.appearanceCoordinator.load() }
+            TownCrierTheme(appearance = appearance) {
                 TownCrierApp(appGraph = appGraph)
             }
         }
@@ -135,6 +144,7 @@ public fun TownCrierApp(
                     navController = navController,
                     onboardingPresentation = onboardingPresentation,
                     subscriptionTier = subscriptionTier,
+                    loginViewModel = loginViewModel,
                 )
             }
 
@@ -152,6 +162,7 @@ private fun AuthedContent(
     navController: NavHostController,
     onboardingPresentation: OnboardingPresentation,
     subscriptionTier: SubscriptionTier,
+    loginViewModel: LoginViewModel,
 ) {
     when (onboardingPresentation) {
         OnboardingPresentation.Undetermined -> {
@@ -167,31 +178,57 @@ private fun AuthedContent(
         }
 
         OnboardingPresentation.NotRequired -> {
-            AuthedShell(appGraph = appGraph, navController = navController)
+            AuthedShell(appGraph = appGraph, navController = navController, loginViewModel = loginViewModel)
         }
     }
 }
 
 /**
  * The signed-in shell: bottom navigation (Applications, Zones, Saved)
- * wrapping the NavHost. The watch-zone destinations' content lives in
- * `WatchZoneNavGraph.kt`, and the applications-browsing destinations' in
- * `ApplicationNavGraph.kt`, to keep every file under detekt's per-file
+ * wrapping the NavHost, with a top app bar carrying the settings icon every
+ * bottom-nav-hosting screen gets (epic #770's Material-native-idiom
+ * chapter). The watch-zone destinations' content lives in
+ * `WatchZoneNavGraph.kt`, the applications-browsing destinations' in
+ * `ApplicationNavGraph.kt`, and the settings-area destinations' in
+ * `SettingsNavGraph.kt`, to keep every file under detekt's per-file
  * function-count budget.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AuthedShell(
     appGraph: AppGraph,
     navController: NavHostController,
+    loginViewModel: LoginViewModel,
     modifier: Modifier = Modifier,
 ) {
     val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+    val isTabRoute = currentRoute == APPLICATIONS_ROUTE || currentRoute == WATCH_ZONES_ROUTE || currentRoute == SAVED_ROUTE
 
     Scaffold(
         modifier = modifier,
+        topBar = {
+            // Only the three bottom-nav tabs get this shared top bar (with the
+            // settings icon, per the epic's Material-native-idiom chapter);
+            // every other destination (detail/editor/settings screens) renders
+            // its own Scaffold + back-navigating TopAppBar internally.
+            if (isTabRoute || currentRoute == null) {
+                TopAppBar(
+                    title = { Text(stringResource(tabTitleRes(currentRoute))) },
+                    actions = {
+                        IconButton(onClick = { navController.navigate(SettingsDestination) }) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = stringResource(PresentationR.string.settings_content_description),
+                            )
+                        }
+                    },
+                )
+            }
+        },
         bottomBar = {
-            AuthedBottomBar(currentRoute = backStackEntry?.destination?.route, navController = navController)
+            AuthedBottomBar(currentRoute = currentRoute, navController = navController)
         },
     ) { contentPadding ->
         NavHost(
@@ -223,9 +260,31 @@ private fun AuthedShell(
             composable<ApplicationDetailDestination> { entry ->
                 ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
             }
+            composable<SettingsDestination> {
+                SettingsDestinationContent(
+                    appGraph = appGraph,
+                    subscriptionTier = subscriptionTier,
+                    loginViewModel = loginViewModel,
+                    navController = navController,
+                )
+            }
+            composable<NotificationPreferencesDestination> {
+                NotificationPreferencesDestinationContent(appGraph = appGraph, navController = navController)
+            }
+            composable<LegalDocumentDestination> { entry ->
+                LegalDocumentDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
+            }
         }
     }
 }
+
+/** The bottom-nav tabs each carry their own top-app-bar title; every other destination supplies its own inside its Screen. */
+private fun tabTitleRes(route: String?): Int =
+    when (route) {
+        WATCH_ZONES_ROUTE -> PresentationR.string.bottom_nav_zones
+        SAVED_ROUTE -> PresentationR.string.bottom_nav_saved
+        else -> PresentationR.string.bottom_nav_applications
+    }
 
 @Composable
 private fun AuthedBottomBar(

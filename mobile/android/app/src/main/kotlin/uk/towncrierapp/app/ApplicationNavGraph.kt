@@ -23,6 +23,7 @@ import uk.towncrierapp.domain.applications.PlanningApplicationId
 import uk.towncrierapp.domain.applications.StatusEvent
 import uk.towncrierapp.domain.applications.isDecided
 import uk.towncrierapp.domain.applications.wireValue
+import uk.towncrierapp.domain.reviewprompt.ReviewSignal
 import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.presentation.features.applicationdetail.ApplicationDetailRoute
 import uk.towncrierapp.presentation.features.applicationdetail.ApplicationDetailViewModel
@@ -166,6 +167,10 @@ internal fun ApplicationDetailDestinationContent(
                             appGraph.planningApplicationRepository,
                             appGraph.savedApplicationRepository,
                             route.toInitialApplication(),
+                            // The review-prompt savedApplication signal call site
+                            // (GH #628 / tc-4jjw): fires only on a successful
+                            // false-to-true save, see ApplicationDetailViewModel.toggleSave.
+                            onSaved = { appGraph.reviewPromptTracker.recordSignal(ReviewSignal.SavedApplication) },
                         )
                     }
                 },

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider path spec for the GDPR data-export share sheet (tc-4jjw / #778).
+     Matches SettingsScreen.kt's `File(context.cacheDir, "exports")` write location. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="exports" path="exports/" />
+</paths>
