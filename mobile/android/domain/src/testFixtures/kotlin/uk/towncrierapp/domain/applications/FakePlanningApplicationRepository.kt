@@ -21,6 +21,15 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
     public var detailFailWith: DomainError? = null
     public val detailCalls: MutableList<Pair<String, String>> = mutableListOf()
 
+    /**
+     * A cooperative gate hook run before [detail] returns — the "iOS
+     * spy-gate idiom" (testing.md) for re-entrancy tests. A test sets this to
+     * `{ someDeferred.await() }` to hold a call in flight until it explicitly
+     * releases it, so it can assert a second concurrent call was suppressed.
+     * A no-op by default.
+     */
+    public var beforeDetail: suspend () -> Unit = {}
+
     override suspend fun applications(
         zoneId: WatchZoneId,
         sort: ApplicationSortOrder,
@@ -37,6 +46,7 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
         name: String,
     ): PlanningApplication {
         detailCalls += authority to name
+        beforeDetail()
         detailFailWith?.let { throw it }
         return detailResult
     }
