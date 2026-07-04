@@ -27,6 +27,17 @@ public sealed class DomainError : Exception() {
         public val required: String,
     ) : DomainError()
 
+    /**
+     * [postcode] failed local format validation (never reached the network)
+     * or its geocode lookup itself failed remotely - either way, the fix is
+     * the user editing the postcode and resubmitting, so this is presented
+     * the same way as any other geocoding inline error (tc-7ttz, onboarding
+     * wizard's postcode step).
+     */
+    public data class GeocodingFailed(
+        public val postcode: String,
+    ) : DomainError()
+
     /** Any other HTTP error (>= 400 and not one of the cases above). [body] is the raw response text. */
     public data class ServerError(
         public val status: Int,
@@ -83,5 +94,6 @@ public val DomainError.isRetryable: Boolean
             DomainError.NotFound,
             is DomainError.InsufficientEntitlement,
             is DomainError.AuthenticationFailed,
+            is DomainError.GeocodingFailed,
             -> false
         }
