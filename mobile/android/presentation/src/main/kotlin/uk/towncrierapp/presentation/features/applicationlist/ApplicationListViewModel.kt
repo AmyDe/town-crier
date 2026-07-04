@@ -34,7 +34,15 @@ public class ApplicationListViewModel(
     private val _uiState = MutableStateFlow(ApplicationListUiState())
     public val uiState: StateFlow<ApplicationListUiState> = _uiState.asStateFlow()
 
+    // Guards against the spurious refetch-on-every-tab-revisit (tc-hlbx) —
+    // see SavedListViewModel's matching field doc for the full rationale.
+    // markAllRead()/selectZone()/selectSort()/selectFilter() call
+    // fetchFirstPage() directly and are unaffected by this guard, so their
+    // explicit refresh behaviour (tc-cnme) is unchanged.
+    private var hasLoadedSuccessfully = false
+
     public fun load() {
+        if (hasLoadedSuccessfully) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -43,6 +51,7 @@ public class ApplicationListViewModel(
                 val selected = zones.firstOrNull { it.id == persistedZoneId }?.id ?: zones.firstOrNull()?.id
                 val sort = preferencesStore.readSort() ?: ApplicationSortOrder.DEFAULT
                 _uiState.update { it.copy(zones = zones, sort = sort, selectedZoneId = selected) }
+                hasLoadedSuccessfully = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DomainError) {

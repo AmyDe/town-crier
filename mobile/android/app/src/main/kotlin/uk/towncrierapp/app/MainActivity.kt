@@ -229,12 +229,13 @@ private fun AuthedNavHost(
         composable<Applications> {
             ApplicationsTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
         }
-        composable<WatchZones> {
+        composable<WatchZones> { backStackEntry ->
             WatchZonesTab(
                 appGraph = appGraph,
                 subscriptionTier = subscriptionTier,
                 navController = navController,
                 onSettingsClick = onSettingsClick,
+                backStackEntry = backStackEntry,
             )
         }
         composable<Saved> {

@@ -49,6 +49,64 @@ class WatchZoneListViewModelTest {
     }
 
     @Test
+    fun `load does not refetch once it has already succeeded — tc-hlbx`() {
+        val repository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.PERSONAL))
+        viewModel.load()
+
+        viewModel.load()
+
+        assertEquals(1, repository.zonesCallCount)
+    }
+
+    @Test
+    fun `load retries after a previous attempt failed — tc-hlbx`() {
+        val repository = FakeWatchZoneRepository().apply { zonesFailWith = DomainError.NetworkUnavailable }
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.FREE))
+        viewModel.load()
+        assertEquals(1, repository.zonesCallCount)
+
+        repository.zonesFailWith = null
+        viewModel.load()
+
+        assertEquals(2, repository.zonesCallCount)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
+    fun `reload refetches even though load has already succeeded — tc-yg0q`() {
+        val zone = aWatchZone()
+        val repository = FakeWatchZoneRepository(mutableListOf(zone))
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.PERSONAL))
+        viewModel.load()
+        assertEquals(1, repository.zonesCallCount)
+
+        repository.stored = mutableListOf(zone.copy(radiusMetres = zone.radiusMetres + 400.0))
+        viewModel.reload()
+
+        assertEquals(2, repository.zonesCallCount)
+        assertEquals(
+            zone.radiusMetres + 400.0,
+            viewModel.uiState.value.zones
+                .single()
+                .radiusMetres,
+        )
+    }
+
+    @Test
+    fun `a later load call after reload is still a no-op — tc-yg0q`() {
+        val repository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.PERSONAL))
+        viewModel.load()
+        viewModel.reload()
+        assertEquals(2, repository.zonesCallCount)
+
+        viewModel.load()
+
+        assertEquals(2, repository.zonesCallCount)
+    }
+
+    @Test
     fun `free tier at quota shows the inline upsell card and the upgrade badge`() {
         val repository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
         val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.FREE))

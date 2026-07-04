@@ -30,13 +30,17 @@ import uk.towncrierapp.presentation.designsystem.TownCrierTheme
  * slider → static map placeholder (#776's job, see [ZoneMapPlaceholder]) →
  * gated instant-alert toggles → save. Section composables live in
  * `WatchZoneEditorSections.kt`. Port of iOS `WatchZoneEditorView`.
- * [onDismiss]/[onUpgradeRequired] are one-shot navigation reconciliations
- * driven by [WatchZoneEditorUiState.saveCompleted]/`navigateToPaywall` —
- * ViewModels never navigate (compose-ui.md).
+ * [onSaveSuccess]/[onDismiss]/[onUpgradeRequired] are one-shot navigation
+ * reconciliations driven by
+ * [WatchZoneEditorUiState.saveCompleted]/`navigateToPaywall` — ViewModels
+ * never navigate (compose-ui.md). [onSaveSuccess] is distinct from
+ * [onDismiss] (Cancel/back) so the nav layer can signal the zone list to
+ * refetch only on an actual save (tc-yg0q) — see `WatchZoneNavGraph.kt`.
  */
 @Composable
 public fun WatchZoneEditorRoute(
     viewModel: WatchZoneEditorViewModel,
+    onSaveSuccess: () -> Unit,
     onDismiss: () -> Unit,
     onUpgradeRequired: () -> Unit,
     modifier: Modifier = Modifier,
@@ -46,7 +50,7 @@ public fun WatchZoneEditorRoute(
     LaunchedEffect(state.saveCompleted) {
         if (state.saveCompleted) {
             viewModel.consumeSaveCompleted()
-            onDismiss()
+            onSaveSuccess()
         }
     }
     LaunchedEffect(state.navigateToPaywall) {

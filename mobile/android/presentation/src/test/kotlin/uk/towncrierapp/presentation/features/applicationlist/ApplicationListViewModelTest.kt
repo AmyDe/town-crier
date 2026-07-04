@@ -60,6 +60,39 @@ class ApplicationListViewModelTest {
     }
 
     @Test
+    fun `load does not refetch once it has already succeeded — tc-hlbx`() {
+        val watchZoneRepository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
+        val applicationRepository = FakePlanningApplicationRepository()
+        val viewModel =
+            makeSut(applicationRepository = applicationRepository, watchZoneRepository = watchZoneRepository)
+        viewModel.load()
+        val zonesCallsAfterFirstLoad = watchZoneRepository.zonesCallCount
+        val applicationsCallsAfterFirstLoad = applicationRepository.applicationsCalls.size
+
+        viewModel.load()
+
+        assertEquals(zonesCallsAfterFirstLoad, watchZoneRepository.zonesCallCount)
+        assertEquals(applicationsCallsAfterFirstLoad, applicationRepository.applicationsCalls.size)
+    }
+
+    @Test
+    fun `load retries after a previous attempt failed — tc-hlbx`() {
+        val watchZoneRepository =
+            FakeWatchZoneRepository(mutableListOf(aWatchZone())).apply {
+                zonesFailWith = DomainError.NetworkUnavailable
+            }
+        val viewModel = makeSut(watchZoneRepository = watchZoneRepository)
+        viewModel.load()
+        assertEquals(1, watchZoneRepository.zonesCallCount)
+
+        watchZoneRepository.zonesFailWith = null
+        viewModel.load()
+
+        assertEquals(2, watchZoneRepository.zonesCallCount)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
     fun `selecting a sort persists it and refetches the first page`() {
         val preferences = FakeApplicationListPreferencesStore()
         val applicationRepository = FakePlanningApplicationRepository()
