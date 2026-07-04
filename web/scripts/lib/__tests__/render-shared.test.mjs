@@ -4,6 +4,7 @@ import {
   renderAttributionList,
   renderStatusSummary,
   renderDataUpdated,
+  renderInlineCta,
   pageStyles,
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
@@ -286,6 +287,28 @@ describe('renderDataUpdated (tc-r4n9.3: single line replacing per-card repetitio
   it('renders nothing when no application carries a parseable date', () => {
     expect(renderDataUpdated([])).toBe('');
     expect(renderDataUpdated([{ lastDifferent: null }])).toBe('');
+  });
+});
+
+describe('renderInlineCta (tc-r4n9.3: alerts CTA pulled above the list)', () => {
+  it('renders a real anchor to the App Store with the area-specific alert copy', () => {
+    const html = renderInlineCta('Basingstoke and Deane', 'https://apps.apple.com/x?ct=seo-lpa');
+    expect(html).toContain('class="ctaInline"');
+    expect(html).toContain('href="https://apps.apple.com/x?ct=seo-lpa"');
+    expect(html).toContain('Get push alerts for Basingstoke and Deane');
+  });
+
+  it('HTML-escapes the area name', () => {
+    const html = renderInlineCta('<script>alert(1)</script>', 'https://apps.apple.com/x');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  it('is a real crawlable link, never a JS-only click handler', () => {
+    const html = renderInlineCta('Truro', 'https://apps.apple.com/x');
+    expect(html).not.toContain('onclick');
+    expect(html).toContain('rel="noopener"');
+    expect(html).toContain('target="_blank"');
   });
 });
 

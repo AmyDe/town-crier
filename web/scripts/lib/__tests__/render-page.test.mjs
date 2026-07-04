@@ -192,9 +192,10 @@ describe('renderPlanningPage', () => {
   it('tags every download CTA with the ct=seo-lpa campaign token', () => {
     const html = renderPlanningPage(pageData());
     const tagged = appStoreUrl('seo-lpa');
-    // Both CTAs (header "Get the app" + bottom "Download on the App Store").
+    // Header "Get the app" + inline CTA above the list + bottom banner CTA
+    // (tc-r4n9.3 adds the inline one, on top of the pre-existing two).
     const occurrences = html.split(`href="${tagged}"`).length - 1;
-    expect(occurrences).toBe(2);
+    expect(occurrences).toBe(3);
     expect(html).toContain('ct=seo-lpa');
     // Never the bare, campaign-free URL in a CTA href.
     expect(html).not.toContain(`href="${APP_DOWNLOAD_URL}"`);
@@ -204,6 +205,23 @@ describe('renderPlanningPage', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain('Get push alerts for Basingstoke and Deane');
     expect(html).toContain(APP_DOWNLOAD_URL);
+  });
+
+  describe('inline alerts CTA above the list (tc-r4n9.3)', () => {
+    it('renders an inline "Get push alerts" CTA directly after the intro, above the applications list', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).toContain('class="ctaInline"');
+      // Directly after the lead paragraph...
+      expect(html.indexOf('class="lead"')).toBeLessThan(html.indexOf('class="ctaInline"'));
+      // ...and above the applications list.
+      expect(html.indexOf('class="ctaInline"')).toBeLessThan(html.indexOf('class="appList"'));
+    });
+
+    it('keeps the existing bottom banner CTA in addition to the inline one (not a replacement)', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).toContain('<section class="cta">');
+      expect(html.indexOf('class="appList"')).toBeLessThan(html.indexOf('<section class="cta">'));
+    });
   });
 
   it('renders an above-the-fold download button in the site header', () => {

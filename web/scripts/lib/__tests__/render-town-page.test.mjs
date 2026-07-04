@@ -197,12 +197,28 @@ describe('renderTownPage', () => {
   it('tags every download CTA with the ct=seo-town campaign token', () => {
     const html = renderTownPage(townData());
     const tagged = appStoreUrl('seo-town');
-    // Both CTAs (header "Get the app" + bottom "Download on the App Store").
+    // Header "Get the app" + inline CTA above the list + bottom banner CTA
+    // (tc-r4n9.3 adds the inline one, on top of the pre-existing two).
     const occurrences = html.split(`href="${tagged}"`).length - 1;
-    expect(occurrences).toBe(2);
+    expect(occurrences).toBe(3);
     expect(html).toContain('ct=seo-town');
     // Never the bare, campaign-free URL in a CTA href.
     expect(html).not.toContain(`href="${APP_DOWNLOAD_URL}"`);
+  });
+
+  describe('inline alerts CTA above the list (tc-r4n9.3)', () => {
+    it('renders an inline "Get push alerts" CTA directly after the intro, above the applications list', () => {
+      const html = renderTownPage(townData());
+      expect(html).toContain('class="ctaInline"');
+      expect(html.indexOf('class="lead"')).toBeLessThan(html.indexOf('class="ctaInline"'));
+      expect(html.indexOf('class="ctaInline"')).toBeLessThan(html.indexOf('class="appList"'));
+    });
+
+    it('keeps the existing bottom banner CTA in addition to the inline one (not a replacement)', () => {
+      const html = renderTownPage(townData());
+      expect(html).toContain('<section class="cta">');
+      expect(html.indexOf('class="appList"')).toBeLessThan(html.indexOf('<section class="cta">'));
+    });
   });
 
   it('includes a CTA to the App Store for the town', () => {
