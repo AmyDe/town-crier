@@ -147,4 +147,75 @@
     <string name="onboarding_notifications_enable_button">Enable notifications</string>
     <string name="onboarding_notifications_skip_button">Skip for now</string>
     <string name="onboarding_notifications_finish_button">Finish</string>
+
+    <!-- Settings (tc-4jjw / #778) -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_content_description">Settings</string>
+    <string name="settings_account_header">Account</string>
+    <string name="settings_signin_method_email_password">Signed in with email</string>
+    <string name="settings_signin_method_google">Signed in with Google</string>
+    <string name="settings_signin_method_apple">Signed in with Apple</string>
+    <string name="settings_signin_method_unknown">Signed in</string>
+
+    <string name="settings_appearance_header">Appearance</string>
+    <string name="settings_appearance_system">System</string>
+    <string name="settings_appearance_light">Light</string>
+    <string name="settings_appearance_dark">Dark</string>
+    <string name="settings_appearance_oled_dark">OLED Dark</string>
+
+    <string name="settings_notification_preferences_row">Notification Preferences</string>
+
+    <string name="settings_subscription_header">Subscription</string>
+    <string name="settings_subscription_tier_free">Free</string>
+    <string name="settings_subscription_tier_personal">Personal</string>
+    <string name="settings_subscription_tier_pro">Pro</string>
+    <string name="settings_subscription_manage_row">Manage Subscription</string>
+    <string name="settings_subscription_manage_coming_soon_title">Coming soon</string>
+    <string name="settings_subscription_manage_coming_soon_message">Managing your subscription from within the app is coming soon. For now, manage it from the Play Store.</string>
+    <string name="settings_subscription_manage_coming_soon_dismiss">OK</string>
+
+    <string name="settings_attribution_header">Data Attribution</string>
+    <string name="settings_attribution_planit_name">PlanIt</string>
+    <string name="settings_attribution_planit_detail">Planning application data</string>
+    <string name="settings_attribution_crown_copyright_name">Crown Copyright</string>
+    <string name="settings_attribution_crown_copyright_detail">Contains public sector information</string>
+    <string name="settings_attribution_ordnance_survey_name">Ordnance Survey</string>
+    <string name="settings_attribution_ordnance_survey_detail">Mapping data</string>
+    <string name="settings_attribution_google_maps_name">Google Maps</string>
+    <string name="settings_attribution_google_maps_detail">Map rendering and geocoding</string>
+
+    <string name="settings_legal_header">Legal</string>
+    <string name="settings_legal_privacy_row">Privacy Policy</string>
+    <string name="settings_legal_terms_row">Terms of Service</string>
+    <string name="settings_export_row">Export your data</string>
+    <string name="settings_export_error_generic">We couldn\'t export your data. Please try again.</string>
+
+    <string name="settings_danger_header">Danger Zone</string>
+    <string name="settings_sign_out_row">Sign Out</string>
+    <string name="settings_delete_account_row">Delete Account</string>
+    <string name="settings_delete_confirm_title">Delete account?</string>
+    <string name="settings_delete_confirm_message">This will permanently delete your account and all associated data. This action cannot be undone.</string>
+    <string name="settings_delete_confirm_button">Delete</string>
+    <string name="settings_delete_cancel_button">Cancel</string>
+    <string name="settings_delete_error_generic">We couldn\'t delete your account. Please try again.</string>
+    <string name="settings_delete_retry_button">Retry</string>
+
+    <string name="settings_about_header">About</string>
+    <string name="settings_rate_app_row">Rate the App</string>
+    <string name="settings_version_row">Version %1$s</string>
+
+    <!-- Notification preferences (tc-4jjw / #778) -->
+    <string name="notification_prefs_title">Notification Preferences</string>
+    <string name="notification_prefs_permission_banner_title">Notifications are off</string>
+    <string name="notification_prefs_permission_banner_body">Turn on notifications in system settings to receive push alerts.</string>
+    <string name="notification_prefs_permission_banner_button">Open Settings</string>
+    <string name="notification_prefs_saved_applications_header">Saved Applications</string>
+    <string name="notification_prefs_saved_decision_push_label">Push when a decision is made</string>
+    <string name="notification_prefs_saved_decision_email_label">Email when a decision is made</string>
+    <string name="notification_prefs_digest_header">Weekly Digest</string>
+    <string name="notification_prefs_email_digest_label">Email digest</string>
+    <string name="notification_prefs_digest_day_label">Digest day</string>
+
+    <!-- Legal documents (tc-4jjw / #778) -->
+    <string name="legal_back_content_description">Back</string>
 </resources>
