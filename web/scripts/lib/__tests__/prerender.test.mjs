@@ -68,11 +68,12 @@ describe('runPrerender — fixture mode', () => {
     );
     expect(html).toContain('PlanIt');
     expect(html).toContain('Get push alerts for Basingstoke and Deane');
-    // The lastDifferent date threads through to a "Last updated" card label.
-    expect(html).toContain('Last updated 15 Jun 2026');
+    // The freshest shown lastDifferent threads through to the single
+    // "Data updated" line near the H1 (tc-r4n9.3), not a per-card repeat.
+    expect(html).toContain('Data updated 15 Jun 2026');
     // The server breakdown (20 Granted) is threaded through and exceeds the three
     // cards rendered — proving the stats are server-driven, not card-counted.
-    expect(html).toMatch(/Granted[\s\S]*?20/);
+    expect(html).toMatch(/20[\s\S]{0,20}Granted/);
   });
 
   it('excludes a non-qualifying areaType (English County) and a below-gate authority', async () => {

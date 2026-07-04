@@ -13,9 +13,9 @@ import { ATTRIBUTION_LINES, shareUrl } from './constants.mjs';
 import {
   escapeHtml,
   truncate,
-  formatDate,
   statusDisplayLabel,
-  aggregateBreakdown,
+  aggregateStatusSummary,
+  dataUpdatedLine,
 } from './format.mjs';
 
 /**
@@ -75,9 +75,6 @@ function statusColorModifier(appState) {
 function renderApplication(app, authoritySlug) {
   const label = escapeHtml(statusDisplayLabel(app.appState));
   const modifier = statusColorModifier(app.appState);
-  // The visible date is lastDifferent (the bounded read's DESC sort key), so the
-  // dates read top-to-bottom in the same order the cards are listed.
-  const date = formatDate(app.lastDifferent);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
   // Address is the human hook (decision 5): it is the card's heading. The
@@ -100,7 +97,6 @@ function renderApplication(app, authoritySlug) {
         ${ref ? `<p class="appCard__ref">${ref}</p>` : ''}
         <p class="appCard__desc">${description}</p>
         <div class="appCard__meta">
-          ${date ? `<span class="appCard__date">Last updated ${escapeHtml(date)}</span>` : ''}
           ${share ? `<span class="appCard__cta">View details →</span>` : ''}
         </div>`;
 
@@ -132,27 +128,92 @@ export function renderApplicationsList(applications, authoritySlug) {
 }
 
 /**
- * Render the status-breakdown block from the server-provided per-`appState`
- * distribution (computed over the bounded read), folded into resident-facing
- * labels. This is intentionally NOT derived from the handful of cards rendered
- * on the page, so the counts reflect the wider bounded set.
+ * Render the compact "Status breakdown" strip (tc-r4n9.3, punch-list #794
+ * Phase 3): one line of three headline buckets (Granted / Refused /
+ * Undecided) plus the total, using the SAME `.status--granted` /
+ * `.status--refused` / `.status--neutral` chip vocabulary and colours as the
+ * per-card chips (decision 4) for visual consistency between the aggregate
+ * summary and the individual cards. Replaces the old one-row-per-appState
+ * `renderStats` list, which advertised every long-tail state as its own
+ * top-level row.
+ *
+ * Any state that doesn't fit the three headline buckets (the long tail —
+ * `Conditions`/"Granted with conditions", `Withdrawn`, `Appealed`, `Referred`,
+ * `Unresolved`, any future/unrecognised state) is folded behind a `<details>`
+ * disclosure labelled "Other (N)" instead of being enumerated top-level.
+ * Omitted entirely when there is no long tail at all.
  *
  * @param {ReadonlyArray<{ appState: string | null, count: number }>} statusBreakdown
  * @returns {string}
  */
-export function renderStats(statusBreakdown) {
-  const rows = aggregateBreakdown(statusBreakdown)
-    .map(
-      (s) =>
-        `        <li class="statRow"><span class="statRow__label">${escapeHtml(s.label)}</span><span class="statRow__count">${s.count}</span></li>`,
-    )
-    .join('\n');
-  return `    <section class="stats" aria-label="Application status breakdown">
-      <h2 class="stats__heading">Status breakdown</h2>
-      <ul class="statList">
-${rows}
-      </ul>
+export function renderStatusSummary(statusBreakdown) {
+  const { granted, refused, undecided, total, other } = aggregateStatusSummary(statusBreakdown);
+  const otherTotal = other.reduce((sum, o) => sum + o.count, 0);
+  const otherDisclosure =
+    otherTotal > 0
+      ? `
+      <details class="statusSummary__other">
+        <summary>Other (${otherTotal})</summary>
+        <ul class="statusSummary__otherList">
+${other
+  .map(
+    (o) =>
+      `          <li><span class="statusSummary__otherLabel">${escapeHtml(o.label)}</span><span class="statusSummary__otherCount">${o.count}</span></li>`,
+  )
+  .join('\n')}
+        </ul>
+      </details>`
+      : '';
+  return `    <section class="statusSummary" aria-label="Application status summary">
+      <h2 class="statusSummary__heading">Status breakdown</h2>
+      <div class="statusSummary__strip">
+        <span class="statusSummary__item status status--granted">${granted} Granted</span>
+        <span class="statusSummary__item status status--refused">${refused} Refused</span>
+        <span class="statusSummary__item status status--neutral">${undecided} Undecided</span>
+        <span class="statusSummary__total">${total} total</span>
+      </div>${otherDisclosure}
     </section>`;
+}
+
+/**
+ * Render the single "Data updated {date}" line (tc-r4n9.3, punch-list #794
+ * Phase 3) that replaces the old per-card "Last updated {date}" line, which
+ * repeated the same handful of snapshot dates once per card (up to 30 times
+ * on a full page) under a "Recent applications" heading — reading as
+ * snapshot staleness rather than a freshness signal. Placed once, near the
+ * H1, using the freshest `lastDifferent` among the applications actually
+ * shown. Returns '' (renders nothing) when no shown application carries a
+ * parseable date.
+ *
+ * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications
+ * @returns {string}
+ */
+export function renderDataUpdated(applications) {
+  const line = dataUpdatedLine(applications);
+  return line ? `<p class="dataUpdated">${escapeHtml(line)}</p>` : '';
+}
+
+/**
+ * Render the inline "Get push alerts" CTA pulled above the applications list
+ * (tc-r4n9.3, punch-list #794 Phase 3): a single real, crawlable link placed
+ * directly after the intro, in addition to (not replacing) the existing rich
+ * banner CTA at the bottom of the page. Shares the exact "Get push alerts for
+ * {area}" copy with the bottom banner's heading so the two read as the same
+ * offer, just surfaced twice.
+ *
+ * @param {string} area   the area name (authority or town), the resident-facing
+ *   display name — HTML-escaped here
+ * @param {string} storeHref   the campaign-tagged App Store link for this page;
+ *   build-time constructed from a hardcoded campaign literal (never
+ *   user/data-derived), so — matching the header and bottom-banner CTAs — it is
+ *   interpolated as-is rather than through `escapeHtml`, which would otherwise
+ *   mangle the `&` in its query string into `&amp;`
+ * @returns {string}
+ */
+export function renderInlineCta(area, storeHref) {
+  return `        <p class="ctaInline">
+          <a class="ctaInline__button" href="${storeHref}" rel="noopener" target="_blank">Get push alerts for ${escapeHtml(area)} →</a>
+        </p>`;
 }
 
 /**
@@ -284,8 +345,10 @@ export function pageStyles() {
     h1 { font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
     h2 { font-size: 1.5rem; margin: var(--tc-space-xl) 0 var(--tc-space-md); }
     h3 { font-size: 1.125rem; margin: 0; }
+    /* Single freshness line (tc-r4n9.3), placed near the H1. */
+    .dataUpdated { margin: 0 0 var(--tc-space-sm); font-size: 0.875rem; color: var(--tc-text-secondary); }
     .lead { font-size: 1.125rem; color: var(--tc-text-secondary); margin: 0 0 var(--tc-space-lg); }
-    .appList, .statList { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-md); }
+    .appList { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-md); }
     .appCard {
       background: var(--tc-surface);
       border: 1px solid var(--tc-border);
@@ -310,7 +373,6 @@ export function pageStyles() {
     .appCard__ref { margin: var(--tc-space-sm) 0; font-size: 0.8125rem; color: var(--tc-text-secondary); overflow-wrap: anywhere; }
     .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
     .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
-    .appCard__date { color: var(--tc-text-secondary); }
     /* Visible share-page affordance (decision 6) — a real anchor, not a
        JS-only click handler; this is the text cue, the href is the whole card. */
     .appCard__cta { color: var(--tc-amber); font-weight: 600; }
@@ -329,8 +391,17 @@ export function pageStyles() {
     .status--granted { color: var(--tc-status-granted); background: var(--tc-status-granted-bg); }
     .status--refused { color: var(--tc-status-refused); background: var(--tc-status-refused-bg); }
     .status--neutral { color: var(--tc-status-neutral); background: var(--tc-status-neutral-bg); }
-    .statRow { display: flex; justify-content: space-between; background: var(--tc-surface); border: 1px solid var(--tc-border); border-radius: var(--tc-radius-md); padding: var(--tc-space-sm) var(--tc-space-md); }
-    .statRow__count { font-weight: 700; }
+    /* Compact "Status breakdown" strip (tc-r4n9.3): one row of chip-style
+       headline buckets (reusing the .status--granted/refused/neutral chip
+       vocabulary above) plus the total, with any long tail folded behind the
+       .statusSummary__other <details> instead of a one-row-per-state list. */
+    .statusSummary__strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tc-space-sm); }
+    .statusSummary__total { color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other { margin-top: var(--tc-space-sm); color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other summary { cursor: pointer; color: var(--tc-amber); font-weight: 600; }
+    .statusSummary__otherList { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .statusSummary__otherList li { display: flex; justify-content: space-between; gap: var(--tc-space-md); }
+    .statusSummary__otherCount { font-weight: 700; }
     .townLinks__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
     .townLinks__list a {
       display: inline-block;
@@ -344,6 +415,19 @@ export function pageStyles() {
     }
     .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
     .explainer p { color: var(--tc-text-secondary); }
+    /* Inline alerts CTA pulled above the list (tc-r4n9.3): a lighter pill,
+       visually distinct from the rectangular bottom banner button below. */
+    .ctaInline { margin: 0 0 var(--tc-space-lg); }
+    .ctaInline__button {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-full);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .ctaInline__button:hover { background: var(--tc-amber-hover); }
     .cta {
       margin: var(--tc-space-xl) 0;
       padding: var(--tc-space-lg);

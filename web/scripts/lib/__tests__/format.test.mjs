@@ -4,7 +4,8 @@ import {
   truncate,
   formatDate,
   statusDisplayLabel,
-  aggregateBreakdown,
+  aggregateStatusSummary,
+  dataUpdatedLine,
   leadLine,
 } from '../format.mjs';
 
@@ -81,58 +82,135 @@ describe('statusDisplayLabel', () => {
   });
 });
 
-describe('aggregateBreakdown', () => {
-  it('maps each raw appState to its resident label and re-aggregates by label', () => {
+describe('aggregateStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided strip)', () => {
+  it('buckets Permitted as granted and Rejected as refused', () => {
     const breakdown = [
-      { appState: 'Permitted', count: 5 },
-      { appState: 'Conditions', count: 2 },
-      { appState: 'Rejected', count: 3 },
-      { appState: null, count: 1 },
-      { appState: '', count: 1 },
-      { appState: 'Unknown', count: 2 },
+      { appState: 'Permitted', count: 20 },
+      { appState: 'Rejected', count: 12 },
     ];
+    expect(aggregateStatusSummary(breakdown)).toEqual({
+      granted: 20,
+      refused: 12,
+      undecided: 0,
+      total: 32,
+      other: [],
+    });
+  });
 
-    // null, '' and a literal "Unknown" all collapse to the "Unknown" label and
-    // their counts sum (1 + 1 + 2 = 4). Sorted by count DESC, then label ASC.
-    expect(aggregateBreakdown(breakdown)).toEqual([
-      { label: 'Granted', count: 5 },
-      { label: 'Unknown', count: 4 },
-      { label: 'Refused', count: 3 },
-      { label: 'Granted with conditions', count: 2 },
+  it('folds the literal "Undecided" wire state and a null/absent state together into the undecided headline bucket', () => {
+    const breakdown = [
+      { appState: 'Permitted', count: 20 },
+      { appState: 'Rejected', count: 12 },
+      { appState: 'Undecided', count: 8 },
+      { appState: null, count: 2 },
+    ];
+    expect(aggregateStatusSummary(breakdown)).toEqual({
+      granted: 20,
+      refused: 12,
+      undecided: 10,
+      total: 42,
+      other: [],
+    });
+  });
+
+  it('folds long-tail decided-but-different states into "other", not the headline buckets', () => {
+    const breakdown = [
+      { appState: 'Permitted', count: 20 },
+      { appState: 'Rejected', count: 12 },
+      { appState: 'Conditions', count: 5 },
+      { appState: 'Withdrawn', count: 3 },
+      { appState: 'Referred', count: 1 },
+    ];
+    const summary = aggregateStatusSummary(breakdown);
+    expect(summary.granted).toBe(20);
+    expect(summary.refused).toBe(12);
+    expect(summary.undecided).toBe(0);
+    expect(summary.total).toBe(41);
+    // Most-common first, ties broken alphabetically by label — same ordering
+    // rule as the old per-card aggregation.
+    expect(summary.other).toEqual([
+      { label: 'Granted with conditions', count: 5 },
+      { label: 'Withdrawn', count: 3 },
+      { label: 'Referred', count: 1 },
     ]);
   });
 
-  it('breaks count ties alphabetically by label', () => {
+  it('re-aggregates repeated long-tail labels (e.g. two raw states mapping to the same label) into one other row', () => {
     const breakdown = [
-      { appState: 'Rejected', count: 2 },
-      { appState: 'Permitted', count: 2 },
+      { appState: 'Appealed', count: 2 },
+      { appState: 'Unresolved', count: 1 },
     ];
-
-    expect(aggregateBreakdown(breakdown)).toEqual([
-      { label: 'Granted', count: 2 },
-      { label: 'Refused', count: 2 },
+    expect(aggregateStatusSummary(breakdown).other).toEqual([
+      { label: 'Appealed', count: 2 },
+      { label: 'Unresolved', count: 1 },
     ]);
   });
 
-  it('returns an empty array for an empty breakdown', () => {
-    expect(aggregateBreakdown([])).toEqual([]);
+  it('returns all-zero buckets and an empty other list for an empty breakdown', () => {
+    expect(aggregateStatusSummary([])).toEqual({
+      granted: 0,
+      refused: 0,
+      undecided: 0,
+      total: 0,
+      other: [],
+    });
   });
 });
 
-describe('leadLine', () => {
+describe('dataUpdatedLine (tc-r4n9.3: single "Data updated" line replacing the per-card repetition)', () => {
+  it('reports the freshest lastDifferent among the applications shown, formatted en-GB', () => {
+    const applications = [
+      { lastDifferent: '2026-06-12T09:30:00+00:00' },
+      { lastDifferent: '2026-06-15T10:00:00+00:00' },
+      { lastDifferent: '2026-06-09T08:00:00+00:00' },
+    ];
+    expect(dataUpdatedLine(applications)).toBe('Data updated 15 Jun 2026');
+  });
+
+  it('ignores applications with no parseable lastDifferent when finding the max', () => {
+    const applications = [
+      { lastDifferent: null },
+      { lastDifferent: '2026-06-01T08:00:00+00:00' },
+      { lastDifferent: '' },
+    ];
+    expect(dataUpdatedLine(applications)).toBe('Data updated 1 Jun 2026');
+  });
+
+  it('returns an empty string when no application carries a parseable date', () => {
+    expect(dataUpdatedLine([{ lastDifferent: null }, { lastDifferent: '' }])).toBe('');
+  });
+
+  it('returns an empty string for an empty application list', () => {
+    expect(dataUpdatedLine([])).toBe('');
+  });
+});
+
+describe('leadLine (tc-r4n9.3: warmed-up one-sentence intro)', () => {
   it('shows the exact total and the area name', () => {
     expect(leadLine('Adur', 42)).toBe(
-      'Town Crier is tracking 42 planning applications in Adur.',
+      "See what's happening with planning in Adur: 42 planning applications tracked so far.",
     );
   });
 
   it('uses the singular noun for a single application', () => {
     expect(leadLine('Tiny', 1)).toBe(
-      'Town Crier is tracking 1 planning application in Tiny.',
+      "See what's happening with planning in Tiny: 1 planning application tracked so far.",
     );
   });
 
   it('does not describe the count as "recent"', () => {
     expect(leadLine('Adur', 42)).not.toContain('recent');
+  });
+
+  it('is a single sentence (one full stop, at the end)', () => {
+    const line = leadLine('Adur', 42);
+    expect(line.match(/\./g)).toHaveLength(1);
+    expect(line.endsWith('.')).toBe(true);
+  });
+
+  it('never uses an em dash or en dash (voice skill hard rule)', () => {
+    const line = leadLine('Adur', 42);
+    expect(line).not.toContain('—');
+    expect(line).not.toContain('–');
   });
 });

@@ -90,7 +90,8 @@ function maxLastmod(applications) {
  * Sort applications by `lastDifferent` DESC (freshest first) for DISPLAY. Town
  * nearby data arrives distance-ordered (the build requests `order=distance` to
  * minimise overlap between adjacent town pages), so the renderer must re-sort it
- * by recency to read newest-first and match the "Last updated" date order.
+ * by recency so the cards read newest-first (matching the single page-level
+ * "Data updated" line, which reports the freshest of the same shown set).
  * Authority data already arrives recency-ordered, so this is only applied on the
  * town path. Returns a new array; undated rows sort last, original order is kept
  * among equal dates (stable).

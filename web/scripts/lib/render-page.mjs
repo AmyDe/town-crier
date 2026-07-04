@@ -4,7 +4,9 @@ import { townPagePath } from './town-path.mjs';
 import {
   pageStyles,
   renderApplicationsList,
-  renderStats,
+  renderStatusSummary,
+  renderDataUpdated,
+  renderInlineCta,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -121,6 +123,7 @@ export function renderPlanningPage(data) {
   const applicationsList = renderApplicationsList(data.applications, data.slug);
   const townLinks = renderTownLinks(data);
   const attribution = renderAttributionList();
+  const dataUpdated = renderDataUpdated(data.applications);
 
   return `<!doctype html>
 <html lang="en">
@@ -154,9 +157,11 @@ ${pageStyles()}
       </header>
       <main>
         <h1>Planning applications in ${area}</h1>
+        ${dataUpdated}
         <p class="lead">${lead}</p>
+${renderInlineCta(data.areaName, appStoreUrl('seo-lpa'))}
 
-${renderStats(data.statusBreakdown)}
+${renderStatusSummary(data.statusBreakdown)}
 
         <h2>Recent applications</h2>
         <ul class="appList">
