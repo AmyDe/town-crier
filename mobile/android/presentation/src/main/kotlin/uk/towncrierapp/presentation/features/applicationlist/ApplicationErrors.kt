@@ -25,5 +25,6 @@ internal fun applicationErrorMessageRes(error: DomainError): Int =
         is DomainError.AuthenticationFailed,
         is DomainError.LogoutFailed,
         is DomainError.Unexpected,
+        is DomainError.GeocodingFailed,
         -> R.string.applications_error_generic
     }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import uk.towncrierapp.data.auth.CredentialsStore
 import uk.towncrierapp.data.auth.CurrentActivityProvider
 import uk.towncrierapp.domain.applications.FakeApplicationListPreferencesStore
+import uk.towncrierapp.domain.onboarding.FakeOnboardingRepository
 import uk.towncrierapp.domain.subscriptions.FakeSubscriptionTierCache
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -44,6 +45,7 @@ class AppGraphSmokeTest {
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
                         applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
+                        onboardingRepository = FakeOnboardingRepository(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),
@@ -63,6 +65,7 @@ class AppGraphSmokeTest {
         assertNotNull(graph.savedApplicationRepository)
         assertNotNull(graph.notificationStateRepository)
         assertNotNull(graph.applicationListPreferencesStore)
+        assertNotNull(graph.onboardingRepository)
     }
 
     @Test
@@ -77,6 +80,7 @@ class AppGraphSmokeTest {
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
                         applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
+                        onboardingRepository = FakeOnboardingRepository(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),
@@ -98,6 +102,7 @@ class AppGraphSmokeTest {
                         activityProvider = CurrentActivityProvider { null },
                         tierCache = FakeSubscriptionTierCache(),
                         applicationListPreferencesStore = FakeApplicationListPreferencesStore(),
+                        onboardingRepository = FakeOnboardingRepository(),
                     ),
                 currentVersion = "0.1.0",
                 options = AppGraphOptions(callFactory = noOpCallFactory),

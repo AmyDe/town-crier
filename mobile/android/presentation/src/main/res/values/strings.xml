@@ -120,4 +120,31 @@
     <string name="application_detail_save_content_description">Save application</string>
     <string name="application_detail_unsave_content_description">Remove from saved</string>
     <string name="application_detail_share_content_description">Share application</string>
+
+    <!-- Onboarding wizard (tc-7ttz) -->
+    <string name="onboarding_back_content_description">Back</string>
+    <string name="onboarding_welcome_title">Town Crier</string>
+    <string name="onboarding_welcome_subtitle">Know about planning applications near you, the day they\'re published.</string>
+    <string name="onboarding_welcome_get_started">Get started</string>
+
+    <string name="onboarding_postcode_title">Where should we watch?</string>
+    <string name="onboarding_postcode_subtitle">Enter a postcode. It doesn\'t have to be home, anywhere you care about works.</string>
+    <string name="onboarding_postcode_placeholder">Postcode</string>
+    <string name="onboarding_postcode_lookup_button">Look up</string>
+    <string name="onboarding_postcode_continue_button">Continue</string>
+    <string name="onboarding_postcode_error_invalid">That doesn\'t look like a UK postcode. Check it and try again.</string>
+    <string name="onboarding_postcode_error_not_found">We couldn\'t find that postcode. Check it and try again.</string>
+    <string name="onboarding_postcode_error_network">Check your internet connection and try again.</string>
+    <string name="onboarding_postcode_error_generic">Something went wrong. Try again.</string>
+
+    <string name="onboarding_radius_title">Set your watch zone size</string>
+    <string name="onboarding_radius_subtitle">Drag to choose how far out to watch. You can change this any time.</string>
+    <string name="onboarding_radius_confirm_button">Confirm</string>
+
+    <string name="onboarding_notifications_title">Stay in the loop</string>
+    <string name="onboarding_notifications_paid_body">Turn on notifications and we\'ll tell you the moment something changes nearby.</string>
+    <string name="onboarding_notifications_free_body">Free gives you a weekly email digest. Upgrade any time for instant alerts by push and email.</string>
+    <string name="onboarding_notifications_enable_button">Enable notifications</string>
+    <string name="onboarding_notifications_skip_button">Skip for now</string>
+    <string name="onboarding_notifications_finish_button">Finish</string>
 </resources>

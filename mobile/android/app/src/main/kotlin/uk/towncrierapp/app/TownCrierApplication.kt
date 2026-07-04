@@ -10,6 +10,7 @@ import com.auth0.android.authentication.storage.SecureCredentialsManager
 import com.auth0.android.authentication.storage.SharedPreferencesStorage
 import uk.towncrierapp.data.applications.DataStoreApplicationListPreferencesStore
 import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
+import uk.towncrierapp.data.onboarding.DataStoreOnboardingRepository
 import uk.towncrierapp.data.subscriptions.DataStoreSubscriptionTierCache
 import uk.towncrierapp.mobile.BuildConfig
 
@@ -45,8 +46,9 @@ public class TownCrierApplication : Application() {
         val tierCache = DataStoreSubscriptionTierCache(tierPreferencesDataStore)
         // Same shared "town_crier_preferences" DataStore file as tierCache —
         // DataStore Preferences is designed for several unrelated keys in one
-        // file; a second file per feature isn't warranted (GH#775).
+        // file; a second file per feature isn't warranted (GH#775 / tc-7ttz).
         val applicationListPreferencesStore = DataStoreApplicationListPreferencesStore(tierPreferencesDataStore)
+        val onboardingRepository = DataStoreOnboardingRepository(tierPreferencesDataStore)
 
         appGraph =
             AppGraph(
@@ -59,6 +61,7 @@ public class TownCrierApplication : Application() {
                         activityTracker,
                         tierCache,
                         applicationListPreferencesStore,
+                        onboardingRepository,
                     ),
                 currentVersion = BuildConfig.VERSION_NAME,
                 options = AppGraphOptions(enableDebugLogging = BuildConfig.DEBUG),
