@@ -60,6 +60,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     // Chrome Custom Tabs for the application-detail "View on Council Portal" button (GH#775).
     implementation(libs.androidx.browser)
+    // rememberLauncherForActivityResult for the onboarding wizard's POST_NOTIFICATIONS
+    // request (tc-7ttz) - needs a composable scope, so it lives in OnboardingRoute
+    // rather than :app's wiring layer.
+    implementation(libs.androidx.activity.compose)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(platform(libs.junit.bom))
