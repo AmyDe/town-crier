@@ -13,9 +13,10 @@
     <string name="force_update_message">A newer version of Town Crier is available. Please update to continue using the app.</string>
     <string name="force_update_button">Update Now</string>
 
-    <!-- Bottom navigation (tc-z95t) -->
-    <string name="bottom_nav_home">Home</string>
+    <!-- Bottom navigation (tc-z95t / GH#775: Applications replaces the Home placeholder as the first destination) -->
+    <string name="bottom_nav_applications">Applications</string>
     <string name="bottom_nav_zones">Zones</string>
+    <string name="bottom_nav_saved">Saved</string>
 
     <!-- Shared gating copy (tc-z95t) -->
     <string name="upgrade_badge_label">Upgrade</string>
@@ -76,4 +77,46 @@
     <string name="zone_preferences_email_label">Email</string>
     <string name="zone_preferences_save_button">Save</string>
     <string name="zone_preferences_cancel_button">Cancel</string>
+
+    <!-- Application status display mapping (GH#775, ported byte-exact from the spec table) -->
+    <string name="application_status_pending">Pending</string>
+    <string name="application_status_permitted">Granted</string>
+    <string name="application_status_conditions">Granted with conditions</string>
+    <string name="application_status_rejected">Refused</string>
+    <string name="application_status_withdrawn">Withdrawn</string>
+    <string name="application_status_appealed">Appealed</string>
+    <string name="application_status_unknown">Unknown</string>
+
+    <!-- Application list (GH#775) -->
+    <string name="applications_title">Applications</string>
+    <string name="applications_filter_all">All</string>
+    <string name="applications_filter_unread">Unread</string>
+    <string name="applications_sort_content_description">Sort</string>
+    <string name="applications_sort_distance">Distance</string>
+    <string name="applications_sort_newest">Newest</string>
+    <string name="applications_sort_oldest">Oldest</string>
+    <string name="applications_sort_status">Status</string>
+    <string name="applications_sort_recent_activity">Recent activity</string>
+    <string name="applications_mark_all_read">Mark all read</string>
+    <string name="applications_empty_title">No applications yet</string>
+    <string name="applications_empty_message">We haven\'t seen any planning applications in this watch zone yet. Check back soon.</string>
+    <string name="applications_no_zones_title">No watch zones yet</string>
+    <string name="applications_no_zones_message">Add a watch zone to start browsing planning applications near you.</string>
+    <string name="applications_no_zones_cta">Add Watch Zone</string>
+    <string name="applications_error_network">Check your internet connection and try again.</string>
+    <string name="applications_error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Saved applications (GH#775) -->
+    <string name="saved_title">Saved</string>
+    <string name="saved_empty_title">No saved applications</string>
+    <string name="saved_empty_message">Applications you save will show up here.</string>
+
+    <!-- Application detail (GH#775) -->
+    <string name="application_detail_reference_label">Reference</string>
+    <string name="application_detail_authority_label">Authority</string>
+    <string name="application_detail_received_label">Received</string>
+    <string name="application_detail_portal_button">View on Council Portal</string>
+    <string name="application_detail_save_content_description">Save application</string>
+    <string name="application_detail_unsave_content_description">Remove from saved</string>
+    <string name="application_detail_share_content_description">Share application</string>
 </resources>
