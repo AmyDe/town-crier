@@ -296,18 +296,38 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 
 // TestPostgresStore_RecentByAuthority orders by last_different DESC, bounds by
 // cap, and scopes to the authority.
-func TestPostgresStore_RecentByAuthority(t *testing.T) {
+// TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast proves the
+// #819 fix directly: ordering is GREATEST(decided_date, start_date) DESC NULLS
+// LAST, NOT last_different (a PlanIt re-index marker that can bump to "now" on
+// an old application and float it to the top). A stale-but-recently-reindexed
+// application (bumped LastDifferent, real dates from years ago) must sort
+// behind a genuinely newer one, and an application with neither date set sorts
+// last rather than erroring or vanishing.
+func TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast(t *testing.T) {
 	ctx := context.Background()
 	store := newAppPGStore(t)
 
-	older := pgApp("OLD", 100)
-	older.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	mid := pgApp("MID", 100)
-	mid.LastDifferent = time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	newer := pgApp("NEW", 100)
-	newer.LastDifferent = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	decidedRecent := pgApp("DECIDED-RECENT", 100)
+	decidedRecent.StartDate = pgPtr(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.DecidedDate = pgPtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // NOT the sort key
+
+	startedOnly := pgApp("STARTED-ONLY", 100)
+	startedOnly.StartDate = pgPtr(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	// Stale application: real dates from 2021, but PlanIt re-indexed it, bumping
+	// LastDifferent to "now" — exactly the Croydon DISC bug (#819). It must NOT
+	// float to the top under the fixed ordering.
+	staleReindexed := pgApp("STALE-REINDEXED", 100)
+	staleReindexed.StartDate = pgPtr(time.Date(2021, 5, 28, 0, 0, 0, 0, time.UTC))
+	staleReindexed.DecidedDate = pgPtr(time.Date(2021, 7, 9, 0, 0, 0, 0, time.UTC))
+	staleReindexed.LastDifferent = time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC) // bumped "now"
+
+	noDates := pgApp("NO-DATES", 100) // neither start nor decided set
+
 	other := pgApp("OTHER-AUTH", 200) // must not appear for authority 100
-	for _, a := range []PlanningApplication{older, mid, newer, other} {
+
+	for _, a := range []PlanningApplication{decidedRecent, startedOnly, staleReindexed, noDates, other} {
 		if err := store.Upsert(ctx, a); err != nil {
 			t.Fatalf("Upsert %s: %v", a.Name, err)
 		}
@@ -317,13 +337,61 @@ func TestPostgresStore_RecentByAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentByAuthority: %v", err)
 	}
-	assertNames(t, appNames(got), []string{"NEW", "MID", "OLD"})
+	// DECIDED-RECENT (2026-05-01) > STARTED-ONLY (2026-02-01) > STALE-REINDEXED
+	// (2021-07-09, despite the "now" LastDifferent) > NO-DATES (NULL, NULLS LAST).
+	assertNames(t, appNames(got), []string{"DECIDED-RECENT", "STARTED-ONLY", "STALE-REINDEXED", "NO-DATES"})
 
 	capped, err := store.RecentByAuthority(ctx, "100", 2)
 	if err != nil {
 		t.Fatalf("RecentByAuthority capped: %v", err)
 	}
-	assertNames(t, appNames(capped), []string{"NEW", "MID"})
+	assertNames(t, appNames(capped), []string{"DECIDED-RECENT", "STARTED-ONLY"})
+}
+
+// TestPostgresStore_RecentByAuthority_TieBreakIsDeterministic proves the
+// decision-1 tie-break (start_date DESC NULLS LAST, then planit_name ASC) when
+// two or more applications share the exact same GREATEST(decided_date,
+// start_date) value.
+func TestPostgresStore_RecentByAuthority_TieBreakIsDeterministic(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	decidedDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Same GREATEST (both decided 2026-01-01) but different start_date: the later
+	// start_date breaks the tie and sorts first.
+	laterStart := pgApp("LATER-START", 100)
+	laterStart.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	laterStart.DecidedDate = pgPtr(decidedDate)
+
+	earlierStart := pgApp("EARLIER-START", 100)
+	earlierStart.StartDate = pgPtr(time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
+	earlierStart.DecidedDate = pgPtr(decidedDate)
+
+	// Same GREATEST AND same start_date: falls through to planit_name ASC.
+	sameEverythingA := pgApp("AAA-SAME", 100)
+	sameEverythingA.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	sameEverythingA.DecidedDate = pgPtr(decidedDate)
+
+	sameEverythingZ := pgApp("ZZZ-SAME", 100)
+	sameEverythingZ.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	sameEverythingZ.DecidedDate = pgPtr(decidedDate)
+
+	for _, a := range []PlanningApplication{laterStart, earlierStart, sameEverythingA, sameEverythingZ} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentByAuthority(ctx, "100", 10)
+	if err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	// LATER-START and AAA-SAME/ZZZ-SAME share start_date 2025-07-01 (all later than
+	// EARLIER-START's 2025-06-01), so EARLIER-START sorts last of the four. Among
+	// the tied 2025-07-01 trio, planit_name ASC orders AAA-SAME, LATER-START,
+	// ZZZ-SAME.
+	assertNames(t, appNames(got), []string{"AAA-SAME", "LATER-START", "ZZZ-SAME", "EARLIER-START"})
 }
 
 // TestPostgresStore_RecentInAuthorities orders by last_different DESC across
