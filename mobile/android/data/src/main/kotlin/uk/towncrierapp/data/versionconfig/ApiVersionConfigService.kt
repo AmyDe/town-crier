@@ -36,7 +36,7 @@ public class ApiVersionConfigService(
                 throw DomainError.NetworkUnavailable
             }
 
-        val bodyText = response.body.string()
+        val bodyText = response.body?.string().orEmpty()
         if (response.code !in 200..299) {
             throw DomainError.ServerError(response.code, bodyText.ifBlank { null })
         }

@@ -21,7 +21,11 @@ coroutines = "1.11.0"
 serialization = "1.11.0"
 
 # Networking / auth / persistence (tc-f2il, epic #770 "API contract essentials")
-okhttp = "5.4.0"
+# okhttp pinned to the 4.x line deliberately: 5.x's "okhttp-android" variant
+# artifact declares a compileSdk-36 AAR-metadata floor (see the compileSdk-35
+# comment above) — 4.12.0 is also what the Auth0 SDK itself depends on
+# (its own POM), so there is no version conflict either way.
+okhttp = "4.12.0"
 auth0 = "3.20.0"
 datastorePreferences = "1.2.1"
 
@@ -56,7 +60,6 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
-okhttp-coroutines = { module = "com.squareup.okhttp3:okhttp-coroutines", version.ref = "okhttp" }
 auth0 = { module = "com.auth0.android:auth0", version.ref = "auth0" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 

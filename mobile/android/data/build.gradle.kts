@@ -38,7 +38,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
-    implementation(libs.okhttp.coroutines)
     implementation(libs.auth0)
     implementation(libs.androidx.datastore.preferences)
 

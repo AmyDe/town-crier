@@ -138,7 +138,7 @@ public class ApiClient(
         serializer: KSerializer<T>,
     ): PagedResult<T> {
         val response = executeRaw(endpoint, accessToken)
-        val bodyText = response.body.string()
+        val bodyText = response.body?.string().orEmpty()
         mapHttpStatus(response.code, bodyText)
         return PagedResult(decode(bodyText, serializer), response.header("X-Next-Cursor"))
     }
@@ -148,7 +148,7 @@ public class ApiClient(
         accessToken: String,
     ): ByteArray {
         val response = executeRaw(endpoint, accessToken)
-        val bytes = response.body.bytes()
+        val bytes = response.body?.bytes() ?: ByteArray(0)
         mapHttpStatus(response.code, String(bytes, Charsets.UTF_8))
         return bytes
     }
