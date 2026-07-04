@@ -249,6 +249,24 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
+	// User-assigned managed identity for the dev-only dev-seed job's read-only
+	// access to town_crier_prod. Deliberately separate from cosmosDataIdentity
+	// (which every other Container App/Job in both dev and prod shares, and
+	// which already holds full DML on both databases): a bug in this job's SQL
+	// must not be able to write to prod. Mapped to a SELECT-only Postgres role
+	// via `pgbootstrap -readonly` — see
+	// docs/adr/0038-dev-seed-least-privilege-prod-read.md. Consumed by the
+	// dev-seed Container Apps Job created in infra/environment.go (tc-grvu.6);
+	// not wired into any resource in this file.
+	devSeedReaderIdentity, err := managedidentity.NewUserAssignedIdentity(ctx, "id-town-crier-dev-seed-reader", &managedidentity.UserAssignedIdentityArgs{
+		ResourceName:      pulumi.String("id-town-crier-dev-seed-reader"),
+		ResourceGroupName: resourceGroup.Name,
+		Tags:              tags,
+	})
+	if err != nil {
+		return err
+	}
+
 	// Azure Database for PostgreSQL — Flexible Server (shared across environments; this single
 	// server hosts both the dev and prod databases long-term). First infra step of the Cosmos →
 	// Postgres + PostGIS migration (memo 0010, epic tc-hpd2 / GH #645). Pre-revenue profile:
@@ -530,6 +548,12 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 	// PrincipalId is required by env-stack role assignments (Service Bus Data Owner on the
 	// polling namespace) because RBAC grants are keyed to the principal (object) ID.
 	ctx.Export("cosmosDataIdentityPrincipalId", cosmosDataIdentity.PrincipalId)
+	ctx.Export("devSeedReaderIdentityId", devSeedReaderIdentity.ID())
+	ctx.Export("devSeedReaderIdentityClientId", devSeedReaderIdentity.ClientId)
+	// PrincipalId is the OID pgbootstrap maps to the SELECT-only Postgres role
+	// (pgaadauth_create_principal_with_oid) — see
+	// docs/adr/0038-dev-seed-least-privilege-prod-read.md.
+	ctx.Export("devSeedReaderIdentityPrincipalId", devSeedReaderIdentity.PrincipalId)
 	ctx.Export("containerAppsEnvironmentId", containerAppsEnv.ID())
 	// Postgres Flexible Server (Cosmos → Postgres migration, epic tc-hpd2). The admin password
 	// is a Pulumi secret (RandomPassword.Result); env stacks read these to build per-env
