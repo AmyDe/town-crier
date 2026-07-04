@@ -156,4 +156,63 @@ class ApplicationDetailViewModelTest {
         assertFalse(viewModel.uiState.value.isSaved)
         assertEquals(DomainError.NetworkUnavailable, viewModel.uiState.value.error)
     }
+
+    // region onSaved — the review-prompt savedApplication signal call site (GH #628 / tc-4jjw)
+
+    @Test
+    fun `toggleSave fires onSaved on a successful false-to-true save`() {
+        var onSavedCallCount = 0
+        val viewModel =
+            ApplicationDetailViewModel(
+                FakePlanningApplicationRepository(),
+                FakeSavedApplicationRepository(),
+                aPlanningApplication(),
+                onSaved = { onSavedCallCount++ },
+            )
+
+        viewModel.toggleSave()
+
+        assertTrue(viewModel.uiState.value.isSaved)
+        assertEquals(1, onSavedCallCount)
+    }
+
+    @Test
+    fun `toggleSave never fires onSaved when unsaving`() {
+        var onSavedCallCount = 0
+        val id = aPlanningApplicationId()
+        val application = aPlanningApplication(id = id)
+        val savedRepository = FakeSavedApplicationRepository(mutableListOf(aSavedApplication(applicationUid = id)))
+        val viewModel =
+            ApplicationDetailViewModel(
+                FakePlanningApplicationRepository(),
+                savedRepository,
+                application,
+                onSaved = { onSavedCallCount++ },
+            )
+        viewModel.checkSavedState()
+
+        viewModel.toggleSave()
+
+        assertFalse(viewModel.uiState.value.isSaved)
+        assertEquals(0, onSavedCallCount)
+    }
+
+    @Test
+    fun `toggleSave never fires onSaved when the save call fails`() {
+        var onSavedCallCount = 0
+        val savedRepository = FakeSavedApplicationRepository().apply { saveFailWith = DomainError.NetworkUnavailable }
+        val viewModel =
+            ApplicationDetailViewModel(
+                FakePlanningApplicationRepository(),
+                savedRepository,
+                aPlanningApplication(),
+                onSaved = { onSavedCallCount++ },
+            )
+
+        viewModel.toggleSave()
+
+        assertEquals(0, onSavedCallCount)
+    }
+
+    // endregion
 }

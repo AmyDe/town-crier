@@ -52,7 +52,12 @@ public class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val appGraph = (application as TownCrierApplication).appGraph
         setContent {
-            TownCrierTheme {
+            // The four-way appearance picker (tc-4jjw / #778): restyles the
+            // whole app the instant `SettingsViewModel.setAppearance` writes
+            // a new value, since this StateFlow IS what feeds TownCrierTheme.
+            val appearance by appGraph.appearanceCoordinator.appearance.collectAsStateWithLifecycle()
+            LaunchedEffect(Unit) { appGraph.appearanceCoordinator.load() }
+            TownCrierTheme(appearance = appearance) {
                 TownCrierApp(appGraph = appGraph)
             }
         }
@@ -135,6 +140,7 @@ public fun TownCrierApp(
                     navController = navController,
                     onboardingPresentation = onboardingPresentation,
                     subscriptionTier = subscriptionTier,
+                    loginViewModel = loginViewModel,
                 )
             }
 
@@ -152,6 +158,7 @@ private fun AuthedContent(
     navController: NavHostController,
     onboardingPresentation: OnboardingPresentation,
     subscriptionTier: SubscriptionTier,
+    loginViewModel: LoginViewModel,
 ) {
     when (onboardingPresentation) {
         OnboardingPresentation.Undetermined -> {
@@ -167,62 +174,104 @@ private fun AuthedContent(
         }
 
         OnboardingPresentation.NotRequired -> {
-            AuthedShell(appGraph = appGraph, navController = navController)
+            AuthedShell(appGraph = appGraph, navController = navController, loginViewModel = loginViewModel)
         }
     }
 }
 
 /**
  * The signed-in shell: bottom navigation (Applications, Zones, Saved)
- * wrapping the NavHost. The watch-zone destinations' content lives in
- * `WatchZoneNavGraph.kt`, and the applications-browsing destinations' in
- * `ApplicationNavGraph.kt`, to keep every file under detekt's per-file
- * function-count budget.
+ * wrapping the NavHost. Each of the three bottom-nav tabs' own existing top
+ * app bar gets a settings action (epic #770's Material-native-idiom
+ * chapter) via [onSettingsClick] — not a second, wrapping top bar, which
+ * would double up with `ApplicationListScreen`/`WatchZoneListScreen`/
+ * `SavedListScreen`'s already-present `TopAppBar`s. The watch-zone
+ * destinations' content lives in `WatchZoneNavGraph.kt`, the
+ * applications-browsing destinations' in `ApplicationNavGraph.kt`, and the
+ * settings-area destinations' in `SettingsNavGraph.kt`, to keep every file
+ * under detekt's per-file function-count budget.
  */
 @Composable
 private fun AuthedShell(
     appGraph: AppGraph,
     navController: NavHostController,
+    loginViewModel: LoginViewModel,
     modifier: Modifier = Modifier,
 ) {
     val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
 
     Scaffold(
         modifier = modifier,
-        bottomBar = {
-            AuthedBottomBar(currentRoute = backStackEntry?.destination?.route, navController = navController)
-        },
+        bottomBar = { AuthedBottomBar(currentRoute = currentRoute, navController = navController) },
     ) { contentPadding ->
-        NavHost(
+        AuthedNavHost(
+            appGraph = appGraph,
             navController = navController,
-            startDestination = Applications,
+            loginViewModel = loginViewModel,
+            subscriptionTier = subscriptionTier,
             modifier = Modifier.padding(contentPadding),
-        ) {
-            composable<Applications> { ApplicationsTab(appGraph = appGraph, navController = navController) }
-            composable<WatchZones> {
-                WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
-            }
-            composable<Saved> { SavedTab(appGraph = appGraph, navController = navController) }
-            composable<WatchZoneEditorDestination> { entry ->
-                WatchZoneEditorDestinationContent(
-                    entry = entry,
-                    appGraph = appGraph,
-                    subscriptionTier = subscriptionTier,
-                    navController = navController,
-                )
-            }
-            composable<ZonePreferencesDestination> { entry ->
-                ZonePreferencesDestinationContent(
-                    entry = entry,
-                    appGraph = appGraph,
-                    subscriptionTier = subscriptionTier,
-                    navController = navController,
-                )
-            }
-            composable<ApplicationDetailDestination> { entry ->
-                ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
-            }
+        )
+    }
+}
+
+@Composable
+private fun AuthedNavHost(
+    appGraph: AppGraph,
+    navController: NavHostController,
+    loginViewModel: LoginViewModel,
+    subscriptionTier: SubscriptionTier,
+    modifier: Modifier = Modifier,
+) {
+    val onSettingsClick: () -> Unit = { navController.navigate(SettingsDestination) }
+    NavHost(navController = navController, startDestination = Applications, modifier = modifier) {
+        composable<Applications> {
+            ApplicationsTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
+        }
+        composable<WatchZones> {
+            WatchZonesTab(
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+                onSettingsClick = onSettingsClick,
+            )
+        }
+        composable<Saved> {
+            SavedTab(appGraph = appGraph, navController = navController, onSettingsClick = onSettingsClick)
+        }
+        composable<WatchZoneEditorDestination> { entry ->
+            WatchZoneEditorDestinationContent(
+                entry = entry,
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+            )
+        }
+        composable<ZonePreferencesDestination> { entry ->
+            ZonePreferencesDestinationContent(
+                entry = entry,
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                navController = navController,
+            )
+        }
+        composable<ApplicationDetailDestination> { entry ->
+            ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
+        }
+        composable<SettingsDestination> {
+            SettingsDestinationContent(
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                loginViewModel = loginViewModel,
+                navController = navController,
+            )
+        }
+        composable<NotificationPreferencesDestination> {
+            NotificationPreferencesDestinationContent(appGraph = appGraph, navController = navController)
+        }
+        composable<LegalDocumentDestination> { entry ->
+            LegalDocumentDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
         }
     }
 }

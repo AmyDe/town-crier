@@ -1,6 +1,5 @@
 package uk.towncrierapp.presentation.features.watchzones
 
-import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -36,10 +36,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import uk.towncrierapp.domain.watchzones.Coordinate
 import uk.towncrierapp.domain.watchzones.WatchZone
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.presentation.R
@@ -61,6 +59,7 @@ public fun WatchZonesRoute(
     onZoneSelected: (WatchZone) -> Unit,
     onZonePreferencesSelected: (WatchZone) -> Unit,
     onAddZone: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -71,6 +70,7 @@ public fun WatchZonesRoute(
         onDeleteZone = viewModel::deleteZone,
         onAddZoneClick = { if (state.canAddZone) onAddZone() },
         onViewPlansClick = { /* no-op until #783 ships the paywall */ },
+        onSettingsClick = onSettingsClick,
         modifier = modifier,
     )
 }
@@ -84,37 +84,16 @@ internal fun WatchZoneListScreen(
     onDeleteZone: (WatchZone) -> Unit,
     onAddZoneClick: () -> Unit,
     onViewPlansClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.watch_zones_title)) },
-                actions = {
-                    if (state.showUpgradeBadge) {
-                        // Not an IconButton: its fixed-size (40dp) content box
-                        // clips a wider pill-shaped badge with a text label,
-                        // squeezing "Upgrade" into a vertical wrap — verified
-                        // live on-device (tc-z95t). A clickable Box lets the
-                        // badge size itself naturally while staying tappable.
-                        Box(
-                            modifier =
-                                Modifier
-                                    .clickable(onClick = onAddZoneClick)
-                                    .padding(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
-                        ) {
-                            UpgradeBadge()
-                        }
-                    } else {
-                        IconButton(onClick = onAddZoneClick) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = stringResource(R.string.watch_zones_add_content_description),
-                            )
-                        }
-                    }
-                },
+            WatchZoneListTopBar(
+                showUpgradeBadge = state.showUpgradeBadge,
+                onAddZoneClick = onAddZoneClick,
+                onSettingsClick = onSettingsClick,
             )
         },
     ) { contentPadding ->
@@ -148,6 +127,48 @@ internal fun WatchZoneListScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WatchZoneListTopBar(
+    showUpgradeBadge: Boolean,
+    onAddZoneClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text(stringResource(R.string.watch_zones_title)) },
+        actions = {
+            if (showUpgradeBadge) {
+                // Not an IconButton: its fixed-size (40dp) content box clips a
+                // wider pill-shaped badge with a text label, squeezing
+                // "Upgrade" into a vertical wrap — verified live on-device
+                // (tc-z95t). A clickable Box lets the badge size itself
+                // naturally while staying tappable.
+                Box(
+                    modifier =
+                        Modifier
+                            .clickable(onClick = onAddZoneClick)
+                            .padding(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
+                ) {
+                    UpgradeBadge()
+                }
+            } else {
+                IconButton(onClick = onAddZoneClick) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.watch_zones_add_content_description),
+                    )
+                }
+            }
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.settings_content_description),
+                )
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -274,100 +295,4 @@ private fun EmptyState(
     }
 }
 
-// Preview-only sample data — cannot reuse :domain's testFixtures from the
-// main source set (compose-ui.md: previews can't see test/testFixtures
-// source sets), so a small duplicate lives here instead.
-private val previewHomeZone =
-    WatchZone(
-        id = WatchZoneId("preview-home"),
-        name = "Home",
-        centre = Coordinate(51.5074, -0.1278),
-        radiusMetres = 500.0,
-    )
-private val previewOfficeZone =
-    WatchZone(
-        id = WatchZoneId("preview-office"),
-        name = "Office",
-        centre = Coordinate(51.5155, -0.0922),
-        radiusMetres = 1_500.0,
-    )
-private val previewParentsZone =
-    WatchZone(
-        id = WatchZoneId("preview-parents"),
-        name = "Parents",
-        centre = Coordinate(52.2053, 0.1218),
-        radiusMetres = 2_000.0,
-    )
-
-@Preview(name = "light")
-@Preview(name = "dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-private fun WatchZoneListScreenPreview() {
-    TownCrierTheme {
-        WatchZoneListScreen(
-            state = WatchZoneListUiState(zones = listOf(previewHomeZone, previewOfficeZone)),
-            onZoneSelected = {},
-            onZonePreferencesSelected = {},
-            onDeleteZone = {},
-            onAddZoneClick = {},
-            onViewPlansClick = {},
-        )
-    }
-}
-
-@Preview(name = "empty")
-@Composable
-private fun WatchZoneListScreenEmptyPreview() {
-    TownCrierTheme {
-        WatchZoneListScreen(
-            state = WatchZoneListUiState(),
-            onZoneSelected = {},
-            onZonePreferencesSelected = {},
-            onDeleteZone = {},
-            onAddZoneClick = {},
-            onViewPlansClick = {},
-        )
-    }
-}
-
-@Preview(name = "free tier at cap — badge + inline upsell")
-@Composable
-private fun WatchZoneListScreenFreeAtCapPreview() {
-    TownCrierTheme {
-        WatchZoneListScreen(
-            state =
-                WatchZoneListUiState(
-                    zones = listOf(previewHomeZone),
-                    canAddZone = false,
-                    showUpgradeBadge = true,
-                    showsFreeTierUpsell = true,
-                ),
-            onZoneSelected = {},
-            onZonePreferencesSelected = {},
-            onDeleteZone = {},
-            onAddZoneClick = {},
-            onViewPlansClick = {},
-        )
-    }
-}
-
-@Preview(name = "personal tier at cap — badge only")
-@Composable
-private fun WatchZoneListScreenPersonalAtCapPreview() {
-    TownCrierTheme {
-        WatchZoneListScreen(
-            state =
-                WatchZoneListUiState(
-                    zones = listOf(previewHomeZone, previewOfficeZone, previewParentsZone),
-                    canAddZone = false,
-                    showUpgradeBadge = true,
-                    showsFreeTierUpsell = false,
-                ),
-            onZoneSelected = {},
-            onZonePreferencesSelected = {},
-            onDeleteZone = {},
-            onAddZoneClick = {},
-            onViewPlansClick = {},
-        )
-    }
-}
+// Previews live in WatchZoneListPreviews.kt (detekt per-file function-count budget).

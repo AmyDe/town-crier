@@ -7,6 +7,7 @@ import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import uk.towncrierapp.domain.profile.FakeUserProfileRepository
 import uk.towncrierapp.domain.profile.ServerProfile
+import uk.towncrierapp.domain.profile.UserPreferences
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.profile.aServerProfile
 import uk.towncrierapp.domain.subscriptions.FakeSubscriptionTierCache
@@ -221,6 +222,15 @@ class AuthCoordinatorTest {
                         callOrder += "ensureProfile"
                         return aServerProfile(tier = SubscriptionTier.PRO)
                     }
+
+                    override suspend fun fetchProfile(): ServerProfile? = error("not used by this test")
+
+                    override suspend fun updatePreferences(preferences: UserPreferences): ServerProfile =
+                        error("not used by this test")
+
+                    override suspend fun deleteAccount(): Unit = error("not used by this test")
+
+                    override suspend fun exportData(): ByteArray = error("not used by this test")
                 }
             val watchZoneRepository =
                 object : WatchZoneRepository {

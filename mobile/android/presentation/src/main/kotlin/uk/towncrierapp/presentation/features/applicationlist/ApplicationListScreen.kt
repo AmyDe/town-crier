@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -59,6 +60,7 @@ public fun ApplicationListRoute(
     viewModel: ApplicationListViewModel,
     onApplicationSelected: (PlanningApplication) -> Unit,
     onAddZoneClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -74,6 +76,7 @@ public fun ApplicationListRoute(
         },
         onMarkAllReadClick = viewModel::markAllRead,
         onAddZoneClick = onAddZoneClick,
+        onSettingsClick = onSettingsClick,
         modifier = modifier,
     )
 }
@@ -89,6 +92,7 @@ internal fun ApplicationListScreen(
     onApplicationClick: (PlanningApplication) -> Unit,
     onMarkAllReadClick: () -> Unit,
     onAddZoneClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -100,6 +104,7 @@ internal fun ApplicationListScreen(
                 availableSorts = state.availableSorts,
                 onMarkAllReadClick = onMarkAllReadClick,
                 onSortSelected = onSortSelected,
+                onSettingsClick = onSettingsClick,
             )
         },
     ) { contentPadding ->
@@ -154,6 +159,7 @@ private fun ApplicationListTopBar(
     availableSorts: List<ApplicationSortOrder>,
     onMarkAllReadClick: () -> Unit,
     onSortSelected: (ApplicationSortOrder) -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
     TopAppBar(
         title = { Text(stringResource(R.string.applications_title)) },
@@ -167,6 +173,12 @@ private fun ApplicationListTopBar(
                 }
             }
             SortMenu(currentSort = sort, availableSorts = availableSorts, onSortSelected = onSortSelected)
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.settings_content_description),
+                )
+            }
         },
     )
 }
@@ -291,6 +303,7 @@ private fun ApplicationListScreenEmptyPreview() {
             onApplicationClick = {},
             onMarkAllReadClick = {},
             onAddZoneClick = {},
+            onSettingsClick = {},
         )
     }
 }
@@ -308,6 +321,7 @@ private fun ApplicationListScreenNoZonesPreview() {
             onApplicationClick = {},
             onMarkAllReadClick = {},
             onAddZoneClick = {},
+            onSettingsClick = {},
         )
     }
 }

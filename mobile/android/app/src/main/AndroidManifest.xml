@@ -28,6 +28,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The GDPR data-export share sheet's content:// bridge (tc-4jjw / #778).
+             authorities uses ${applicationId} so the dev/prod/local flavors
+             (different applicationIdSuffix) each get their own non-clashing
+             authority. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

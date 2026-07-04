@@ -33,6 +33,10 @@ okhttp = "4.12.0"
 auth0 = "3.20.0"
 datastorePreferences = "1.2.1"
 
+# Play In-App Review ("Rate the App" — best-effort, falls back to the store
+# listing on failure; tc-4jjw / #778).
+playReview = "2.0.2"
+
 # Lint (pinned like SwiftLint's curl-pinned-binary precedent — reproducibility over convenience)
 ktlintGradle = "14.2.0"
 ktlintCli = "1.8.0"
@@ -71,6 +75,7 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 auth0 = { module = "com.auth0.android:auth0", version.ref = "auth0" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
+play-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playReview" }
 
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junitBom" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

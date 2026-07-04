@@ -17,6 +17,8 @@ import uk.towncrierapp.data.auth.Auth0Config
 import uk.towncrierapp.data.auth.CredentialsStore
 import uk.towncrierapp.data.auth.CurrentActivityProvider
 import uk.towncrierapp.data.auth.SessionCache
+import uk.towncrierapp.data.legal.LegalDocumentAssetReader
+import uk.towncrierapp.data.legal.LegalDocumentLoader
 import uk.towncrierapp.data.profile.ApiUserProfileRepository
 import uk.towncrierapp.data.versionconfig.ApiVersionConfigService
 import uk.towncrierapp.data.watchzones.ApiPostcodeGeocoder
@@ -29,14 +31,20 @@ import uk.towncrierapp.domain.applications.OfflineAwareRepository
 import uk.towncrierapp.domain.applications.PlanningApplicationRepository
 import uk.towncrierapp.domain.applications.SavedApplicationRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
+import uk.towncrierapp.domain.devicetoken.DeviceTokenRepository
+import uk.towncrierapp.domain.legal.LegalDocumentRepository
 import uk.towncrierapp.domain.onboarding.OnboardingRepository
 import uk.towncrierapp.domain.profile.UserProfileRepository
+import uk.towncrierapp.domain.reviewprompt.ReviewPromptStore
+import uk.towncrierapp.domain.settings.AppearanceStore
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.versionconfig.VersionConfigService
 import uk.towncrierapp.domain.watchzones.PostcodeGeocoder
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
 import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
+import uk.towncrierapp.presentation.appearance.AppearanceCoordinator
 import uk.towncrierapp.presentation.auth.AuthCoordinator
+import uk.towncrierapp.presentation.reviewprompt.ReviewPromptTracker
 import java.time.Clock
 
 /** Auth0 tenant identity — same across build flavors (epic #770 D4); only the audience differs, via [AppGraph.authAudience]. */
@@ -46,12 +54,25 @@ public data class Auth0Tenant(
 )
 
 /**
+ * The tc-4jjw (#778) Android-touching leaves — grouped separately from
+ * [AndroidLeaves] so that constructor's own parameter list stays under
+ * detekt's threshold, same rationale as [AppGraphOptions].
+ */
+public class SettingsLeaves(
+    public val appearanceStore: AppearanceStore,
+    public val reviewPromptStore: ReviewPromptStore,
+    public val legalDocumentAssetReader: LegalDocumentAssetReader,
+)
+
+/**
  * The leaves that genuinely need a real `Context` —
  * `TownCrierApplication` builds them (`SecureCredentialsManagerStore` over a
  * real `SecureCredentialsManager`, an `Application.ActivityLifecycleCallbacks`
  * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`,
- * a `DataStoreOnboardingRepository`) and hands them to the otherwise
- * Context-free [AppGraph].
+ * a `DataStoreOnboardingRepository`, and — via [SettingsLeaves] — a
+ * `DataStoreAppearanceStore`, a `DataStoreReviewPromptStore`, and an
+ * `AssetManager`-backed [LegalDocumentAssetReader]) and hands them to the
+ * otherwise Context-free [AppGraph].
  */
 public class AndroidLeaves(
     public val credentialsStore: CredentialsStore,
@@ -59,6 +80,7 @@ public class AndroidLeaves(
     public val tierCache: SubscriptionTierCache,
     public val applicationListPreferencesStore: ApplicationListPreferencesStore,
     public val onboardingRepository: OnboardingRepository,
+    public val settingsLeaves: SettingsLeaves,
 )
 
 /** Rarely-overridden technical knobs, grouped so [AppGraph]'s own constructor stays short. */
@@ -91,6 +113,12 @@ public class AppGraph(
     public val authAudience: String = baseUrl,
 ) {
     private val transport = OkHttpTransport(options.callFactory)
+
+    // Surfaced publicly (not just used to build authenticationService below)
+    // because the "Rate the App" settings row also needs a foreground
+    // Activity for its own, differently-failure-handled Play In-App Review
+    // attempt — see PlayReviewRequester.kt's `requestReviewOrOpenStoreListing`.
+    public val activityProvider: CurrentActivityProvider = androidLeaves.activityProvider
 
     // dev and prod share one Auth0 Native application; only the audience (and
     // therefore the access-token claims) differ per flavor (epic #770 D4).
@@ -167,4 +195,22 @@ public class AppGraph(
         androidLeaves.applicationListPreferencesStore
 
     public val onboardingRepository: OnboardingRepository = androidLeaves.onboardingRepository
+
+    public val appearanceCoordinator: AppearanceCoordinator =
+        AppearanceCoordinator(androidLeaves.settingsLeaves.appearanceStore)
+
+    public val legalDocumentRepository: LegalDocumentRepository =
+        LegalDocumentLoader(androidLeaves.settingsLeaves.legalDocumentAssetReader)
+
+    public val reviewPromptTracker: ReviewPromptTracker =
+        ReviewPromptTracker(
+            store = androidLeaves.settingsLeaves.reviewPromptStore,
+            requester = PlayReviewRequester(activityProvider),
+            clock = options.clock,
+        )
+
+    // #777 hasn't landed a real device-token registration yet — `null` here
+    // means Settings' sign-out/deletion device-token removal is a true no-op
+    // in production today; wiring a real implementation needs no other change.
+    public val deviceTokenRepository: DeviceTokenRepository? = null
 }

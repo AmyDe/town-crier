@@ -6,6 +6,7 @@ on:
     paths:
       - 'api-go/internal/legal/resources/**'
       - 'mobile/ios/packages/town-crier-presentation/Sources/Resources/legal/**'
+      - 'mobile/android/presentation/src/main/assets/legal/**'
       - 'scripts/check-legal-drift.sh'
       - 'scripts/sync-legal.sh'
       - '.github/workflows/legal-drift-check.yml'
@@ -15,7 +16,7 @@ permissions:
 
 jobs:
   check:
-    name: Verify API and iOS legal JSON match
+    name: Verify API, iOS, and Android legal JSON match
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
