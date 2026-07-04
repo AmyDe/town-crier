@@ -52,5 +52,8 @@ class AppGraphSmokeTest {
         assertNotNull(graph.userProfileRepository)
         assertNotNull(graph.versionConfigService)
         assertNotNull(graph.authCoordinator)
+        assertNotNull(graph.watchZoneRepository)
+        assertNotNull(graph.zonePreferencesRepository)
+        assertNotNull(graph.postcodeGeocoder)
     }
 }
