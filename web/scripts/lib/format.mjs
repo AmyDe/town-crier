@@ -96,31 +96,6 @@ export function statusDisplayLabel(appState) {
  */
 
 /**
- * Collapse the server's raw per-`appState` distribution into resident-facing
- * labels. Each wire `appState` is translated via `statusDisplayLabel` and then
- * RE-AGGREGATED by that label, so null, "" and a literal "Unknown" all fold into
- * a single "Unknown" row whose count is the sum. Sorted most common first, then
- * alphabetically by label for a stable order.
- *
- * The breakdown is computed server-side over the bounded read (~200 docs), so it
- * can legitimately total more than the handful of cards rendered on the page.
- *
- * @param {ReadonlyArray<{ appState: string | null | undefined, count: number }>} statusBreakdown
- * @returns {LabelCount[]}
- */
-export function aggregateBreakdown(statusBreakdown) {
-  /** @type {Map<string, number>} */
-  const counts = new Map();
-  for (const { appState, count } of statusBreakdown) {
-    const label = statusDisplayLabel(appState);
-    counts.set(label, (counts.get(label) ?? 0) + count);
-  }
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-}
-
-/**
  * @typedef {Object} StatusSummary
  * @property {number} granted
  * @property {number} refused

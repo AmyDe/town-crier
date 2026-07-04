@@ -14,7 +14,6 @@ import {
   escapeHtml,
   truncate,
   statusDisplayLabel,
-  aggregateBreakdown,
   aggregateStatusSummary,
   dataUpdatedLine,
 } from './format.mjs';
@@ -126,30 +125,6 @@ ${body}
  */
 export function renderApplicationsList(applications, authoritySlug) {
   return applications.map((app) => renderApplication(app, authoritySlug)).join('\n');
-}
-
-/**
- * Render the status-breakdown block from the server-provided per-`appState`
- * distribution (computed over the bounded read), folded into resident-facing
- * labels. This is intentionally NOT derived from the handful of cards rendered
- * on the page, so the counts reflect the wider bounded set.
- *
- * @param {ReadonlyArray<{ appState: string | null, count: number }>} statusBreakdown
- * @returns {string}
- */
-export function renderStats(statusBreakdown) {
-  const rows = aggregateBreakdown(statusBreakdown)
-    .map(
-      (s) =>
-        `        <li class="statRow"><span class="statRow__label">${escapeHtml(s.label)}</span><span class="statRow__count">${s.count}</span></li>`,
-    )
-    .join('\n');
-  return `    <section class="stats" aria-label="Application status breakdown">
-      <h2 class="stats__heading">Status breakdown</h2>
-      <ul class="statList">
-${rows}
-      </ul>
-    </section>`;
 }
 
 /**
