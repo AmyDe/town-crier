@@ -22,7 +22,8 @@ class ApplicationDetailViewModelTest {
     @Test
     fun `the passed-in application renders instantly, before any refresh completes`() {
         val initial = aPlanningApplication(description = "Initial description")
-        val viewModel = ApplicationDetailViewModel(FakePlanningApplicationRepository(), FakeSavedApplicationRepository(), initial)
+        val viewModel =
+            ApplicationDetailViewModel(FakePlanningApplicationRepository(), FakeSavedApplicationRepository(), initial)
 
         assertEquals(initial, viewModel.uiState.value.application)
         assertFalse(viewModel.uiState.value.isRefreshing)
@@ -77,7 +78,10 @@ class ApplicationDetailViewModelTest {
     fun `share is disabled until the by-id refresh supplies an authoritySlug`() {
         val initial = aPlanningApplication(authority = aLocalAuthority(slug = null))
         val repository =
-            FakePlanningApplicationRepository().apply { detailResult = aPlanningApplication(authority = aLocalAuthority(slug = "camden")) }
+            FakePlanningApplicationRepository().apply {
+                detailResult =
+                    aPlanningApplication(authority = aLocalAuthority(slug = "camden"))
+            }
         val viewModel = ApplicationDetailViewModel(repository, FakeSavedApplicationRepository(), initial)
 
         assertFalse(viewModel.uiState.value.canShare)
@@ -104,7 +108,9 @@ class ApplicationDetailViewModelTest {
     fun `checkSavedState is false when no saved row's reconstructed id matches`() {
         val application = aPlanningApplication(id = aPlanningApplicationId(name = "24/0001"))
         val savedRepository =
-            FakeSavedApplicationRepository(mutableListOf(aSavedApplication(applicationUid = aPlanningApplicationId(name = "24/9999"))))
+            FakeSavedApplicationRepository(
+                mutableListOf(aSavedApplication(applicationUid = aPlanningApplicationId(name = "24/9999"))),
+            )
         val viewModel = ApplicationDetailViewModel(FakePlanningApplicationRepository(), savedRepository, application)
 
         viewModel.checkSavedState()

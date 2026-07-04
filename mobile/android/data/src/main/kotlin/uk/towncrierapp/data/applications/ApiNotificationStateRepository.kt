@@ -28,7 +28,9 @@ public class ApiNotificationStateRepository(
             val body =
                 json.encodeToString(
                     MarkReadRequestDto.serializer(),
-                    MarkReadRequestDto(batch.map { MarkReadItemDto(applicationUid = it.name, authorityId = it.authority.toInt()) }),
+                    MarkReadRequestDto(
+                        batch.map { MarkReadItemDto(applicationUid = it.name, authorityId = it.authority.toInt()) },
+                    ),
                 )
             apiClient.requestBytes(ApiEndpoint.post("/v1/me/applications/mark-read", body = body))
         }

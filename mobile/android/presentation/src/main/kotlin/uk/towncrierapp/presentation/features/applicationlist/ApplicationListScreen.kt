@@ -113,7 +113,11 @@ internal fun ApplicationListScreen(
                             )
                         }
                     }
-                    SortMenu(currentSort = state.sort, availableSorts = state.availableSorts, onSortSelected = onSortSelected)
+                    SortMenu(
+                        currentSort = state.sort,
+                        availableSorts = state.availableSorts,
+                        onSortSelected = onSortSelected,
+                    )
                 },
             )
         },
@@ -138,19 +142,22 @@ internal fun ApplicationListScreen(
                 )
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     when {
-                        state.isLoading && state.applications.isEmpty() ->
+                        state.isLoading && state.applications.isEmpty() -> {
                             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        }
 
-                        state.applications.isEmpty() ->
+                        state.applications.isEmpty() -> {
                             EmptyApplicationsState(modifier = Modifier.align(Alignment.Center))
+                        }
 
-                        else ->
+                        else -> {
                             ApplicationsList(
                                 applications = state.applications,
                                 isLoadingMore = state.isLoadingMore,
                                 onItemVisible = onItemVisible,
                                 onApplicationClick = onApplicationClick,
                             )
+                        }
                     }
                 }
             }
@@ -177,7 +184,10 @@ private fun ApplicationsList(
         }
         if (isLoadingMore) {
             item {
-                Box(modifier = Modifier.fillMaxWidth().padding(TownCrierSpacing.md), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(TownCrierSpacing.md),
+                    contentAlignment = Alignment.Center,
+                ) {
                     CircularProgressIndicator()
                 }
             }
@@ -269,7 +279,10 @@ private fun SortMenu(
 ) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }) {
-        Icon(imageVector = Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.applications_sort_content_description))
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Sort,
+            contentDescription = stringResource(R.string.applications_sort_content_description),
+        )
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         availableSorts.forEach { sort ->
@@ -314,7 +327,10 @@ private fun NoZonesEmptyState(
                 tint = TownCrierTheme.colors.textTertiary,
                 modifier = Modifier.size(48.dp),
             )
-            Text(text = stringResource(R.string.applications_no_zones_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = stringResource(R.string.applications_no_zones_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
             Text(
                 text = stringResource(R.string.applications_no_zones_message),
                 style = MaterialTheme.typography.bodyLarge,
@@ -349,7 +365,8 @@ private fun EmptyApplicationsState(modifier: Modifier = Modifier) {
 
 // Preview-only sample data — cannot reuse :domain's testFixtures from the
 // main source set (compose-ui.md).
-private val previewZone = WatchZone(id = WatchZoneId("wz-1"), name = "Home", centre = Coordinate(51.5074, -0.1278), radiusMetres = 500.0)
+private val previewZone =
+    WatchZone(id = WatchZoneId("wz-1"), name = "Home", centre = Coordinate(51.5074, -0.1278), radiusMetres = 500.0)
 
 @Preview(name = "light")
 @Preview(name = "dark", uiMode = Configuration.UI_MODE_NIGHT_YES)

@@ -82,18 +82,28 @@ internal fun SavedListScreen(
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 val displayed = state.displayed
                 when {
-                    state.isLoading && displayed.isEmpty() -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    displayed.isEmpty() -> SavedEmptyState(modifier = Modifier.align(Alignment.Center))
-                    else ->
+                    state.isLoading && displayed.isEmpty() -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+
+                    displayed.isEmpty() -> {
+                        SavedEmptyState(modifier = Modifier.align(Alignment.Center))
+                    }
+
+                    else -> {
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(displayed, key = { it.applicationUid.value }) { saved ->
                                 val application = saved.application
                                 if (application != null) {
-                                    ApplicationRow(application = application, onClick = { onApplicationClick(application) })
+                                    ApplicationRow(
+                                        application = application,
+                                        onClick = { onApplicationClick(application) },
+                                    )
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 }
                             }
                         }
+                    }
                 }
             }
             state.error?.let { error ->
@@ -137,7 +147,11 @@ private fun SavedFilterChipsRow(
             )
         }
         items(SAVED_FILTERABLE_STATUSES) { status ->
-            CapsuleChip(label = savedStatusLabel(status), selected = filter == status, onClick = { onFilterSelected(status) })
+            CapsuleChip(
+                label = savedStatusLabel(status),
+                selected = filter == status,
+                onClick = { onFilterSelected(status) },
+            )
         }
     }
 }

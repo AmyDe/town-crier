@@ -65,7 +65,11 @@ internal fun applicationDetailDestinationFor(application: PlanningApplication): 
         // At most 2 statusHistory points by construction (GH#775): index 0 is
         // always the Undecided/submitted event, index 1 (if present) is the
         // decided one.
-        decidedDate = application.statusHistory.getOrNull(1)?.date?.toString(),
+        decidedDate =
+            application.statusHistory
+                .getOrNull(1)
+                ?.date
+                ?.toString(),
     )
 
 private fun ApplicationDetailDestination.toInitialApplication(): PlanningApplication {
@@ -128,7 +132,9 @@ internal fun SavedTab(
     navController: NavHostController,
 ) {
     val savedViewModel: SavedListViewModel =
-        viewModel(factory = viewModelFactory { initializer { SavedListViewModel(appGraph.savedApplicationRepository) } })
+        viewModel(
+            factory = viewModelFactory { initializer { SavedListViewModel(appGraph.savedApplicationRepository) } },
+        )
     LaunchedEffect(savedViewModel) { savedViewModel.load() }
     SavedListRoute(
         viewModel = savedViewModel,

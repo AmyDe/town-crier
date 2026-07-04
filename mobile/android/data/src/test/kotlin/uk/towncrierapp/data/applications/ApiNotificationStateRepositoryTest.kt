@@ -40,7 +40,12 @@ class ApiNotificationStateRepositoryTest {
 
             val state = sut.state()
 
-            assertEquals("/v1/me/notification-state", transport.requests.single().url.encodedPath)
+            assertEquals(
+                "/v1/me/notification-state",
+                transport.requests
+                    .single()
+                    .url.encodedPath,
+            )
             assertEquals(3, state.version)
             assertEquals(7, state.totalUnreadCount)
         }

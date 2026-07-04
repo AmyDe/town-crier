@@ -39,7 +39,12 @@ public fun StatusTimeline(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(TownCrierSpacing.sm),
             ) {
-                Icon(imageVector = display.icon, contentDescription = null, tint = display.color, modifier = Modifier.size(20.dp))
+                Icon(
+                    imageVector = display.icon,
+                    contentDescription = null,
+                    tint = display.color,
+                    modifier = Modifier.size(20.dp),
+                )
                 Column {
                     Text(text = display.label, style = MaterialTheme.typography.bodyLarge)
                     Text(

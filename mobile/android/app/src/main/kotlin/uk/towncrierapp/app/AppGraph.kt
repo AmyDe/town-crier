@@ -142,5 +142,6 @@ public class AppGraph(
 
     public val notificationStateRepository: NotificationStateRepository = ApiNotificationStateRepository(apiClient)
 
-    public val applicationListPreferencesStore: ApplicationListPreferencesStore = androidLeaves.applicationListPreferencesStore
+    public val applicationListPreferencesStore: ApplicationListPreferencesStore =
+        androidLeaves.applicationListPreferencesStore
 }

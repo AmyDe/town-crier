@@ -4,8 +4,8 @@ import uk.towncrierapp.domain.applications.ApplicationFilter
 import uk.towncrierapp.domain.applications.ApplicationSortOrder
 import uk.towncrierapp.domain.applications.PlanningApplication
 import uk.towncrierapp.domain.auth.DomainError
-import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.WatchZone
+import uk.towncrierapp.domain.watchzones.WatchZoneId
 
 /**
  * `ApplicationListScreen` state. [unreadCount] is CLIENT-derived from

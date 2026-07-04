@@ -36,21 +36,64 @@ public data class StatusDisplay(
 public fun statusDisplay(status: ApplicationStatus): StatusDisplay {
     val colors = TownCrierTheme.colors
     return when (status) {
-        ApplicationStatus.Undecided ->
-            StatusDisplay(stringResource(R.string.application_status_pending), colors.statusPending, Icons.Filled.Schedule)
-        ApplicationStatus.Permitted ->
-            StatusDisplay(stringResource(R.string.application_status_permitted), colors.statusPermitted, Icons.Filled.CheckCircle)
-        ApplicationStatus.Conditions ->
-            StatusDisplay(stringResource(R.string.application_status_conditions), colors.statusConditions, Icons.Filled.CheckCircle)
-        ApplicationStatus.Rejected ->
-            StatusDisplay(stringResource(R.string.application_status_rejected), colors.statusRejected, Icons.Filled.Cancel)
-        ApplicationStatus.Withdrawn ->
-            StatusDisplay(stringResource(R.string.application_status_withdrawn), colors.statusWithdrawn, Icons.AutoMirrored.Filled.Undo)
-        ApplicationStatus.Appealed ->
-            StatusDisplay(stringResource(R.string.application_status_appealed), colors.statusAppealed, Icons.Filled.Warning)
-        ApplicationStatus.Unresolved, ApplicationStatus.Referred, ApplicationStatus.NotAvailable ->
+        ApplicationStatus.Undecided -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_pending),
+                colors.statusPending,
+                Icons.Filled.Schedule,
+            )
+        }
+
+        ApplicationStatus.Permitted -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_permitted),
+                colors.statusPermitted,
+                Icons.Filled.CheckCircle,
+            )
+        }
+
+        ApplicationStatus.Conditions -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_conditions),
+                colors.statusConditions,
+                Icons.Filled.CheckCircle,
+            )
+        }
+
+        ApplicationStatus.Rejected -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_rejected),
+                colors.statusRejected,
+                Icons.Filled.Cancel,
+            )
+        }
+
+        ApplicationStatus.Withdrawn -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_withdrawn),
+                colors.statusWithdrawn,
+                Icons.AutoMirrored.Filled.Undo,
+            )
+        }
+
+        ApplicationStatus.Appealed -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_appealed),
+                colors.statusAppealed,
+                Icons.Filled.Warning,
+            )
+        }
+
+        ApplicationStatus.Unresolved, ApplicationStatus.Referred, ApplicationStatus.NotAvailable -> {
             StatusDisplay(status.wireValue, colors.textTertiary, Icons.AutoMirrored.Filled.HelpOutline)
-        is ApplicationStatus.Unknown ->
-            StatusDisplay(stringResource(R.string.application_status_unknown), colors.textTertiary, Icons.AutoMirrored.Filled.HelpOutline)
+        }
+
+        is ApplicationStatus.Unknown -> {
+            StatusDisplay(
+                stringResource(R.string.application_status_unknown),
+                colors.textTertiary,
+                Icons.AutoMirrored.Filled.HelpOutline,
+            )
+        }
     }
 }

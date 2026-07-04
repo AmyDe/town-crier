@@ -55,7 +55,8 @@ public class OfflineAwareRepository(
         name: String,
     ): PlanningApplication = remote.detail(authority, name)
 
-    private fun isFresh(cached: CachedApplicationPage): Boolean = Duration.between(cached.cachedAt, clock.instant()) < TTL
+    private fun isFresh(cached: CachedApplicationPage): Boolean =
+        Duration.between(cached.cachedAt, clock.instant()) < TTL
 
     public companion object {
         public val TTL: Duration = Duration.ofSeconds(900)

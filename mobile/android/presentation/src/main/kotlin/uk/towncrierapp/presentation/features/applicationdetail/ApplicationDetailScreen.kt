@@ -131,7 +131,10 @@ internal fun ApplicationDetailScreen(
                         IconButton(onClick = { onShareClick(shareUrlFor(authoritySlug, application.id.name)) }) {
                             Icon(
                                 imageVector = Icons.Filled.Share,
-                                contentDescription = stringResource(R.string.application_detail_share_content_description),
+                                contentDescription =
+                                    stringResource(
+                                        R.string.application_detail_share_content_description,
+                                    ),
                             )
                         }
                     }
@@ -189,7 +192,10 @@ private fun FieldsCard(
         ) {
             FieldRow(label = stringResource(R.string.application_detail_address_label), value = application.address)
             FieldRow(label = stringResource(R.string.application_detail_reference_label), value = application.reference)
-            FieldRow(label = stringResource(R.string.application_detail_authority_label), value = application.authority.name)
+            FieldRow(
+                label = stringResource(R.string.application_detail_authority_label),
+                value = application.authority.name,
+            )
             FieldRow(
                 label = stringResource(R.string.application_detail_received_label),
                 value = DateDisplayFormatter.format(application.receivedDate),
@@ -205,7 +211,11 @@ private fun FieldRow(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(text = value, style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -254,7 +264,12 @@ private val previewApplication =
 private fun ApplicationDetailScreenPreview() {
     TownCrierTheme {
         ApplicationDetailScreen(
-            state = ApplicationDetailUiState(application = previewApplication, isSaved = true, authoritySlug = "camden"),
+            state =
+                ApplicationDetailUiState(
+                    application = previewApplication,
+                    isSaved = true,
+                    authoritySlug = "camden",
+                ),
             onBack = {},
             onSaveToggleClick = {},
             onPortalClick = {},

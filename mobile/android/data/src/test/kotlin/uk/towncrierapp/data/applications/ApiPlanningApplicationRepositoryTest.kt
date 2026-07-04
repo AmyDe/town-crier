@@ -70,7 +70,11 @@ class ApiPlanningApplicationRepositoryTest {
             transport.enqueueResponse(200, "[]")
             val sut = makeSut(transport)
 
-            sut.applications(zoneId, ApplicationSortOrder.NEWEST, filter = ApplicationFilter.Status(ApplicationStatus.Permitted))
+            sut.applications(
+                zoneId,
+                ApplicationSortOrder.NEWEST,
+                filter = ApplicationFilter.Status(ApplicationStatus.Permitted),
+            )
 
             val url = transport.requests.single().url
             assertEquals("Permitted", url.queryParameter("status"))
@@ -100,7 +104,13 @@ class ApiPlanningApplicationRepositoryTest {
 
             sut.applications(zoneId, ApplicationSortOrder.NEWEST, cursor = "cursor-abc")
 
-            assertEquals("cursor-abc", transport.requests.single().url.queryParameter("cursor"))
+            assertEquals(
+                "cursor-abc",
+                transport.requests
+                    .single()
+                    .url
+                    .queryParameter("cursor"),
+            )
         }
 
     @Test
@@ -176,12 +186,23 @@ class ApiPlanningApplicationRepositoryTest {
     fun `statusHistory has only an Undecided event when there is no decidedDate`() =
         runTest {
             val transport = FakeHttpTransport()
-            transport.enqueueResponse(200, "[${row(appState = "Undecided", startDate = "2026-01-10", decidedDate = null)}]")
+            transport.enqueueResponse(
+                200,
+                "[${row(appState = "Undecided", startDate = "2026-01-10", decidedDate = null)}]",
+            )
             val sut = makeSut(transport)
 
             val application = sut.applications(zoneId, ApplicationSortOrder.NEWEST).applications.single()
 
-            assertEquals(listOf(uk.towncrierapp.domain.applications.StatusEvent(ApplicationStatus.Undecided, LocalDate.of(2026, 1, 10))), application.statusHistory)
+            assertEquals(
+                listOf(
+                    uk.towncrierapp.domain.applications.StatusEvent(
+                        ApplicationStatus.Undecided,
+                        LocalDate.of(2026, 1, 10),
+                    ),
+                ),
+                application.statusHistory,
+            )
         }
 
     @Test
@@ -235,13 +256,17 @@ class ApiPlanningApplicationRepositoryTest {
     fun `latestUnreadEvent decodes type, decision and createdAt when present`() =
         runTest {
             val transport = FakeHttpTransport()
-            transport.enqueueResponse(
-                200,
-                "[${row(latestUnreadEvent = """{"type":"DecisionUpdate","decision":"Permitted","createdAt":"2026-02-02T10:00:00Z"}""")}]",
-            )
+            val unreadEventJson =
+                """{"type":"DecisionUpdate","decision":"Permitted","createdAt":"2026-02-02T10:00:00Z"}"""
+            transport.enqueueResponse(200, "[${row(latestUnreadEvent = unreadEventJson)}]")
             val sut = makeSut(transport)
 
-            val event = sut.applications(zoneId, ApplicationSortOrder.NEWEST).applications.single().latestUnreadEvent
+            val event =
+                sut
+                    .applications(zoneId, ApplicationSortOrder.NEWEST)
+                    .applications
+                    .single()
+                    .latestUnreadEvent
             assertEquals("DecisionUpdate", event?.type)
             assertEquals("Permitted", event?.decision)
         }
@@ -304,6 +329,11 @@ class ApiPlanningApplicationRepositoryTest {
 
             sut.applications(zoneId, ApplicationSortOrder.DEFAULT)
 
-            assertTrue(transport.requests.single().url.queryParameterNames.contains("sort"))
+            assertTrue(
+                transport.requests
+                    .single()
+                    .url.queryParameterNames
+                    .contains("sort"),
+            )
         }
 }

@@ -43,12 +43,20 @@ class SavedListViewModelTest {
         val permitted =
             aSavedApplication(
                 applicationUid = aPlanningApplicationId(name = "24/0001"),
-                application = aPlanningApplication(id = aPlanningApplicationId(name = "24/0001"), status = ApplicationStatus.Permitted),
+                application =
+                    aPlanningApplication(
+                        id = aPlanningApplicationId(name = "24/0001"),
+                        status = ApplicationStatus.Permitted,
+                    ),
             )
         val rejected =
             aSavedApplication(
                 applicationUid = aPlanningApplicationId(name = "24/0002"),
-                application = aPlanningApplication(id = aPlanningApplicationId(name = "24/0002"), status = ApplicationStatus.Rejected),
+                application =
+                    aPlanningApplication(
+                        id = aPlanningApplicationId(name = "24/0002"),
+                        status = ApplicationStatus.Rejected,
+                    ),
             )
         val repository = FakeSavedApplicationRepository(mutableListOf(permitted, rejected))
         val viewModel = SavedListViewModel(repository)
@@ -91,6 +99,15 @@ class SavedListViewModelTest {
         viewModel.load()
 
         assertEquals(listOf(newer, older), viewModel.uiState.value.displayed)
-        assertTrue(viewModel.uiState.value.displayed.first().savedAt.isAfter(viewModel.uiState.value.displayed.last().savedAt))
+        assertTrue(
+            viewModel.uiState.value.displayed
+                .first()
+                .savedAt
+                .isAfter(
+                    viewModel.uiState.value.displayed
+                        .last()
+                        .savedAt,
+                ),
+        )
     }
 }

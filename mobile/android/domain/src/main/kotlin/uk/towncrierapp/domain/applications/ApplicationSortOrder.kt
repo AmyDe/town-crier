@@ -23,6 +23,7 @@ public enum class ApplicationSortOrder(
         public val DEFAULT: ApplicationSortOrder = RECENT_ACTIVITY
 
         /** Decodes a persisted/wire sort token; anything unrecognised falls back to [DEFAULT]. */
-        public fun fromWireValue(value: String): ApplicationSortOrder = entries.firstOrNull { it.wireValue == value } ?: DEFAULT
+        public fun fromWireValue(value: String): ApplicationSortOrder =
+            entries.firstOrNull { it.wireValue == value } ?: DEFAULT
     }
 }

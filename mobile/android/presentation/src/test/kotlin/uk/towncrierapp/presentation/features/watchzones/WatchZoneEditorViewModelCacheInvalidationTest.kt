@@ -10,8 +10,8 @@ import uk.towncrierapp.domain.watchzones.FakeWatchZoneRepository
 import uk.towncrierapp.domain.watchzones.aCoordinate
 import uk.towncrierapp.domain.watchzones.aWatchZone
 import uk.towncrierapp.presentation.MainDispatcherExtension
-import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * tc-cnme: closes #774's cache-invalidation loop now that #775 introduces the
@@ -29,7 +29,13 @@ class WatchZoneEditorViewModelCacheInvalidationTest {
         val geocoder = FakePostcodeGeocoder(Result.success(aCoordinate()))
         val cacheStore = FakeApplicationCacheStore()
         val viewModel =
-            WatchZoneEditorViewModel(geocoder, repository, SubscriptionTier.PRO, editingZone = zone, applicationCacheStore = cacheStore)
+            WatchZoneEditorViewModel(
+                geocoder,
+                repository,
+                SubscriptionTier.PRO,
+                editingZone = zone,
+                applicationCacheStore = cacheStore,
+            )
 
         viewModel.save()
 
@@ -41,7 +47,8 @@ class WatchZoneEditorViewModelCacheInvalidationTest {
         val repository = FakeWatchZoneRepository()
         val geocoder = FakePostcodeGeocoder(Result.success(aCoordinate()))
         val cacheStore = FakeApplicationCacheStore()
-        val viewModel = WatchZoneEditorViewModel(geocoder, repository, SubscriptionTier.FREE, applicationCacheStore = cacheStore)
+        val viewModel =
+            WatchZoneEditorViewModel(geocoder, repository, SubscriptionTier.FREE, applicationCacheStore = cacheStore)
         viewModel.updateName("Home")
         viewModel.updatePostcode("CB1 2AD")
         viewModel.submitPostcode()
@@ -54,11 +61,21 @@ class WatchZoneEditorViewModelCacheInvalidationTest {
     @Test
     fun `a failed edit-save does not invalidate the cache`() {
         val zone = aWatchZone()
-        val repository = FakeWatchZoneRepository(mutableListOf(zone)).apply { updateFailWith = DomainError.NetworkUnavailable }
+        val repository =
+            FakeWatchZoneRepository(mutableListOf(zone)).apply {
+                updateFailWith =
+                    DomainError.NetworkUnavailable
+            }
         val geocoder = FakePostcodeGeocoder(Result.success(aCoordinate()))
         val cacheStore = FakeApplicationCacheStore()
         val viewModel =
-            WatchZoneEditorViewModel(geocoder, repository, SubscriptionTier.PRO, editingZone = zone, applicationCacheStore = cacheStore)
+            WatchZoneEditorViewModel(
+                geocoder,
+                repository,
+                SubscriptionTier.PRO,
+                editingZone = zone,
+                applicationCacheStore = cacheStore,
+            )
 
         viewModel.save()
 

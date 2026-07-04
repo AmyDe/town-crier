@@ -45,7 +45,10 @@ class OfflineAwareRepositoryTest {
             val remote = FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage() }
             val cache = FakeApplicationCacheStore()
             cache.entries[zoneId] =
-                CachedApplicationPage(anApplicationPage(applications = emptyList()), cachedAt = fixedNow.minusSeconds(900))
+                CachedApplicationPage(
+                    anApplicationPage(applications = emptyList()),
+                    cachedAt = fixedNow.minusSeconds(900),
+                )
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
 
             sut.applications(zoneId, ApplicationSortOrder.RECENT_ACTIVITY)
@@ -60,7 +63,10 @@ class OfflineAwareRepositoryTest {
             val remote = FakePlanningApplicationRepository().apply { applicationsResult = freshPage }
             val cache = FakeApplicationCacheStore()
             cache.entries[zoneId] =
-                CachedApplicationPage(anApplicationPage(applications = emptyList()), cachedAt = fixedNow.minusSeconds(901))
+                CachedApplicationPage(
+                    anApplicationPage(applications = emptyList()),
+                    cachedAt = fixedNow.minusSeconds(901),
+                )
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
 
             val result = sut.applications(zoneId, ApplicationSortOrder.RECENT_ACTIVITY)
@@ -74,7 +80,11 @@ class OfflineAwareRepositoryTest {
     fun `a stale cache entry is served when the remote fetch fails offline (stale-offline)`() =
         runTest {
             val stalePage = anApplicationPage()
-            val remote = FakePlanningApplicationRepository().apply { applicationsFailWith = DomainError.NetworkUnavailable }
+            val remote =
+                FakePlanningApplicationRepository().apply {
+                    applicationsFailWith =
+                        DomainError.NetworkUnavailable
+                }
             val cache = FakeApplicationCacheStore()
             cache.entries[zoneId] = CachedApplicationPage(stalePage, cachedAt = fixedNow.minusSeconds(901))
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
@@ -87,7 +97,11 @@ class OfflineAwareRepositoryTest {
     @Test
     fun `no cache entry and an offline remote failure throws NetworkUnavailable (no-cache-offline)`() =
         runTest {
-            val remote = FakePlanningApplicationRepository().apply { applicationsFailWith = DomainError.NetworkUnavailable }
+            val remote =
+                FakePlanningApplicationRepository().apply {
+                    applicationsFailWith =
+                        DomainError.NetworkUnavailable
+                }
             val cache = FakeApplicationCacheStore()
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
 
@@ -100,7 +114,11 @@ class OfflineAwareRepositoryTest {
     fun `a cached entry is served when an online (non-network) remote failure occurs`() =
         runTest {
             val cachedPage = anApplicationPage()
-            val remote = FakePlanningApplicationRepository().apply { applicationsFailWith = DomainError.ServerError(500, "boom") }
+            val remote =
+                FakePlanningApplicationRepository().apply {
+                    applicationsFailWith =
+                        DomainError.ServerError(500, "boom")
+                }
             val cache = FakeApplicationCacheStore()
             cache.entries[zoneId] = CachedApplicationPage(cachedPage, cachedAt = fixedNow.minusSeconds(901))
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
@@ -113,7 +131,11 @@ class OfflineAwareRepositoryTest {
     @Test
     fun `no cache entry and a non-network remote failure propagates the original error`() =
         runTest {
-            val remote = FakePlanningApplicationRepository().apply { applicationsFailWith = DomainError.ServerError(500, "boom") }
+            val remote =
+                FakePlanningApplicationRepository().apply {
+                    applicationsFailWith =
+                        DomainError.ServerError(500, "boom")
+                }
             val cache = FakeApplicationCacheStore()
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
 
@@ -129,7 +151,8 @@ class OfflineAwareRepositoryTest {
         runTest {
             val remote = FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage() }
             val cache = FakeApplicationCacheStore()
-            cache.entries[zoneId] = CachedApplicationPage(anApplicationPage(applications = emptyList()), cachedAt = fixedNow)
+            cache.entries[zoneId] =
+                CachedApplicationPage(anApplicationPage(applications = emptyList()), cachedAt = fixedNow)
             val sut = OfflineAwareRepository(remote, cache, clockAt(fixedNow))
 
             sut.applications(zoneId, ApplicationSortOrder.RECENT_ACTIVITY, cursor = "next-page-cursor")
@@ -137,7 +160,12 @@ class OfflineAwareRepositoryTest {
             assertEquals(1, remote.applicationsCalls.size)
             assertEquals("next-page-cursor", remote.applicationsCalls.single().cursor)
             // The cache is untouched by a paged fetch — still holds only the original first-page entry.
-            assertEquals(0, cache.entries.getValue(zoneId).page.applications.size)
+            assertEquals(
+                0,
+                cache.entries
+                    .getValue(zoneId)
+                    .page.applications.size,
+            )
         }
 
     @Test

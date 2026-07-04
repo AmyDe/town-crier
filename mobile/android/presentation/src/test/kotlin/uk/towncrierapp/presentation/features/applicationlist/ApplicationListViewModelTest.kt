@@ -107,7 +107,10 @@ class ApplicationListViewModelTest {
 
         viewModel.load()
 
-        assertFalse(viewModel.uiState.value.availableSorts.contains(ApplicationSortOrder.DISTANCE))
+        assertFalse(
+            viewModel.uiState.value.availableSorts
+                .contains(ApplicationSortOrder.DISTANCE),
+        )
     }
 
     @Test
@@ -116,7 +119,10 @@ class ApplicationListViewModelTest {
 
         viewModel.load()
 
-        assertTrue(viewModel.uiState.value.availableSorts.contains(ApplicationSortOrder.DISTANCE))
+        assertTrue(
+            viewModel.uiState.value.availableSorts
+                .contains(ApplicationSortOrder.DISTANCE),
+        )
     }
 
     @Test
@@ -141,7 +147,12 @@ class ApplicationListViewModelTest {
     @Test
     fun `unreadCount counts only currently-loaded rows with an unread event`() {
         val unread = aPlanningApplication(latestUnreadEvent = aLatestUnreadEvent())
-        val read = aPlanningApplication(id = uk.towncrierapp.domain.applications.aPlanningApplicationId(name = "24/0002"))
+        val read =
+            aPlanningApplication(
+                id =
+                    uk.towncrierapp.domain.applications
+                        .aPlanningApplicationId(name = "24/0002"),
+            )
         val applicationRepository =
             FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage(listOf(unread, read)) }
         val viewModel = makeSut(applicationRepository = applicationRepository)
@@ -154,28 +165,56 @@ class ApplicationListViewModelTest {
     @Test
     fun `markAsRead optimistically clears the row's unread state and fires-and-forgets the request`() {
         val unread = aPlanningApplication(latestUnreadEvent = aLatestUnreadEvent())
-        val applicationRepository = FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage(listOf(unread)) }
+        val applicationRepository =
+            FakePlanningApplicationRepository().apply {
+                applicationsResult =
+                    anApplicationPage(listOf(unread))
+            }
         val notificationStateRepository = FakeNotificationStateRepository()
-        val viewModel = makeSut(applicationRepository = applicationRepository, notificationStateRepository = notificationStateRepository)
+        val viewModel =
+            makeSut(
+                applicationRepository = applicationRepository,
+                notificationStateRepository = notificationStateRepository,
+            )
         viewModel.load()
 
         viewModel.markAsRead(unread)
 
-        assertNull(viewModel.uiState.value.applications.single().latestUnreadEvent)
+        assertNull(
+            viewModel.uiState.value.applications
+                .single()
+                .latestUnreadEvent,
+        )
         assertEquals(listOf(unread.id), notificationStateRepository.markReadCalls.single())
     }
 
     @Test
     fun `markAsRead swallows a mark-read failure — the optimistic clear stands and no error surfaces`() {
         val unread = aPlanningApplication(latestUnreadEvent = aLatestUnreadEvent())
-        val applicationRepository = FakePlanningApplicationRepository().apply { applicationsResult = anApplicationPage(listOf(unread)) }
-        val notificationStateRepository = FakeNotificationStateRepository().apply { markReadFailWith = DomainError.NetworkUnavailable }
-        val viewModel = makeSut(applicationRepository = applicationRepository, notificationStateRepository = notificationStateRepository)
+        val applicationRepository =
+            FakePlanningApplicationRepository().apply {
+                applicationsResult =
+                    anApplicationPage(listOf(unread))
+            }
+        val notificationStateRepository =
+            FakeNotificationStateRepository().apply {
+                markReadFailWith =
+                    DomainError.NetworkUnavailable
+            }
+        val viewModel =
+            makeSut(
+                applicationRepository = applicationRepository,
+                notificationStateRepository = notificationStateRepository,
+            )
         viewModel.load()
 
         viewModel.markAsRead(unread)
 
-        assertNull(viewModel.uiState.value.applications.single().latestUnreadEvent)
+        assertNull(
+            viewModel.uiState.value.applications
+                .single()
+                .latestUnreadEvent,
+        )
         assertNull(viewModel.uiState.value.error)
     }
 

@@ -150,7 +150,13 @@ internal fun ApplicationDetailDto.toDomain(): PlanningApplication {
     return PlanningApplication(
         id = PlanningApplicationId(authority = areaId.toString(), name = name),
         reference = name,
-        authority = LocalAuthority(code = areaId.toString(), name = areaName, areaType = areaType, slug = authoritySlug),
+        authority =
+            LocalAuthority(
+                code = areaId.toString(),
+                name = areaName,
+                areaType = areaType,
+                slug = authoritySlug,
+            ),
         status = status,
         receivedDate = resolveReceivedDate(startDate, lastDifferent),
         description = description,
@@ -170,7 +176,8 @@ internal fun LatestUnreadEventDto.toDomain(): LatestUnreadEvent? =
 
 // An absent appState is wire-legitimate (optional field) — treated the same
 // as any other unrecognised raw value: Unknown, never a crash.
-private fun resolveStatus(appState: String?): ApplicationStatus = appState?.let(ApplicationStatus::fromWireValue) ?: ApplicationStatus.Unknown("")
+private fun resolveStatus(appState: String?): ApplicationStatus =
+    appState?.let(ApplicationStatus::fromWireValue) ?: ApplicationStatus.Unknown("")
 
 // startDate is the primary source; lastDifferent (always present) is the
 // fallback for the rare row missing it — receivedDate is non-nullable

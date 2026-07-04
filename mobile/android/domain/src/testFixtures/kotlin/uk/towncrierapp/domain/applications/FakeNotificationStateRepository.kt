@@ -5,7 +5,8 @@ import java.time.OffsetDateTime
 
 /** Hand-written fake for [NotificationStateRepository] — state-based, per testing.md conventions. */
 public class FakeNotificationStateRepository(
-    public var stateResult: NotificationState = NotificationState(lastReadAt = OffsetDateTime.now(), version = 1, totalUnreadCount = 0),
+    public var stateResult: NotificationState =
+        NotificationState(lastReadAt = OffsetDateTime.now(), version = 1, totalUnreadCount = 0),
 ) : NotificationStateRepository {
     public var stateFailWith: DomainError? = null
     public var markReadFailWith: DomainError? = null

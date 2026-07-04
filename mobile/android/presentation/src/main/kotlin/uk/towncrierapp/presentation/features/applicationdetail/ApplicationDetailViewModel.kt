@@ -28,7 +28,8 @@ public class ApplicationDetailViewModel(
     private val savedApplicationRepository: SavedApplicationRepository,
     initial: PlanningApplication,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(ApplicationDetailUiState(application = initial, authoritySlug = initial.authority.slug))
+    private val _uiState =
+        MutableStateFlow(ApplicationDetailUiState(application = initial, authoritySlug = initial.authority.slug))
     public val uiState: StateFlow<ApplicationDetailUiState> = _uiState.asStateFlow()
 
     private var refreshJob: Job? = null
@@ -42,7 +43,13 @@ public class ApplicationDetailViewModel(
                 val id = _uiState.value.application.id
                 try {
                     val fresh = repository.detail(id.authority, id.name)
-                    _uiState.update { it.copy(application = fresh, authoritySlug = fresh.authority.slug, isRefreshing = false) }
+                    _uiState.update {
+                        it.copy(
+                            application = fresh,
+                            authoritySlug = fresh.authority.slug,
+                            isRefreshing = false,
+                        )
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: DomainError) {

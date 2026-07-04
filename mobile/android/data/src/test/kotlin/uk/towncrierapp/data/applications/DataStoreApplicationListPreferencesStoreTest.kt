@@ -17,7 +17,8 @@ import kotlin.test.assertNull
  * `DataStoreSubscriptionTierCacheTest` (GH#775).
  */
 class DataStoreApplicationListPreferencesStoreTest {
-    private fun aDataStore(directory: File) = PreferenceDataStoreFactory.create { File(directory, "test.preferences_pb") }
+    private fun aDataStore(directory: File) =
+        PreferenceDataStoreFactory.create { File(directory, "test.preferences_pb") }
 
     @Test
     fun `readSort returns null when nothing has been written yet`(

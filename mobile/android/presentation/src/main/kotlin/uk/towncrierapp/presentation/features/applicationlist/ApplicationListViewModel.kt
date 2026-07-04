@@ -131,7 +131,13 @@ public class ApplicationListViewModel(
             try {
                 val state = _uiState.value
                 val page = applicationRepository.applications(zoneId, state.sort, state.filter)
-                _uiState.update { it.copy(applications = page.applications, nextCursor = page.nextCursor, isLoading = false) }
+                _uiState.update {
+                    it.copy(
+                        applications = page.applications,
+                        nextCursor = page.nextCursor,
+                        isLoading = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: DomainError) {
