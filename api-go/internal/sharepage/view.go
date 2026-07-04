@@ -108,7 +108,7 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		Description:  app.Description,
 	}
 
-	if app.Postcode != nil {
+	if app.Postcode != nil && !addressIncludesPostcode(app.Address, *app.Postcode) {
 		v.Postcode = *app.Postcode
 	}
 	if app.AppType != nil {
@@ -135,6 +135,21 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		v.CouncilLink = *app.URL
 	}
 	return v
+}
+
+// addressIncludesPostcode reports whether address already ends with postcode,
+// compared case-insensitively after trimming surrounding whitespace from
+// both. PlanIt addresses commonly already carry the postcode as their tail
+// (e.g. "2 High Street, Croydon, CR2 7DY"), so appending it again in the h1
+// would render "... CR2 7DY, CR2 7DY" — the duplication this check guards
+// against (tc-r4n9.6).
+func addressIncludesPostcode(address, postcode string) bool {
+	a := strings.TrimSpace(address)
+	p := strings.TrimSpace(postcode)
+	if a == "" || p == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(a), strings.ToLower(p))
 }
 
 // formatDate renders a date as "2 March 2024".
