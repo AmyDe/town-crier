@@ -144,9 +144,14 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"10 Downing Street, London",
 		"CR0 1AB",
 		"23/03456/FUL",
-		"Full planning permission", // AppType, rendered in the reference row
 		"Erection of a two-storey rear extension.",
-		"Under Consideration",
+		// Reference and application type each get their own explicit metadata row
+		// (tc-r4n9.6) — no longer squashed into a cryptic "Reference … · Type" line.
+		`<span class="meta-label">Reference</span><span class="meta-value">23/03456/FUL</span>`,
+		`<span class="meta-label">Type</span><span class="meta-value">Full planning permission</span>`,
+		// "Under Consideration" is not in the shared status vocabulary, so it passes
+		// through as its own label with the neutral colour bucket — never dropped.
+		`class="chip chip--neutral">Under Consideration</span>`,
 		// Key-dates timeline (doubles as status history): the heading and every
 		// row's LABEL and human-formatted VALUE. fullApp sets all three dates, so a
 		// missing timeline or a mis-formatted date is caught here.
@@ -164,6 +169,10 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Contains public sector information licensed under the Open Government Licence. Crown Copyright.",
 		"Contains Ordnance Survey data © Crown Copyright and database right.",
 		"Map data © OpenStreetMap contributors.",
+		// Authority backlink (tc-r4n9.6): points at the SEO planning page for the
+		// same authority, built from the identical Slugify-derived slug.
+		`href="https://towncrierapp.uk/planning/croydon"`,
+		"More planning applications in Croydon",
 		// Sticky CTA: short verb-first label + supporting sentence, plus the
 		// campaign-tagged App Store URL.
 		"Get the app",

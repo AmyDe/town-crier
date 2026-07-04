@@ -92,3 +92,209 @@ func TestSummarise_EmptyDescriptionNoPlace(t *testing.T) {
 		t.Errorf("summary = %q, want %q", got, want)
 	}
 }
+
+// TestAddressIncludesPostcode pins the case/whitespace-insensitive suffix check
+// behind the postcode-duplication fix (tc-r4n9.6): PlanIt addresses usually
+// already end with the postcode, so appending it again in the h1 would render
+// "... CR2 7DY, CR2 7DY".
+func TestAddressIncludesPostcode(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		address  string
+		postcode string
+		want     bool
+	}{
+		{
+			name:     "address already ends with postcode",
+			address:  "2 High Street, Croydon, CR2 7DY",
+			postcode: "CR2 7DY",
+			want:     true,
+		},
+		{
+			name:     "address does not contain postcode",
+			address:  "2 High Street, Croydon",
+			postcode: "CR2 7DY",
+			want:     false,
+		},
+		{
+			name:     "case-insensitive match",
+			address:  "2 High Street, Croydon, cr2 7dy",
+			postcode: "CR2 7DY",
+			want:     true,
+		},
+		{
+			name:     "trailing whitespace on address is ignored",
+			address:  "2 High Street, Croydon, CR2 7DY   ",
+			postcode: "CR2 7DY",
+			want:     true,
+		},
+		{
+			name:     "trailing whitespace on postcode is ignored",
+			address:  "2 High Street, Croydon, CR2 7DY",
+			postcode: "  CR2 7DY  ",
+			want:     true,
+		},
+		{
+			name:     "empty postcode never matches",
+			address:  "2 High Street, Croydon",
+			postcode: "",
+			want:     false,
+		},
+		{
+			name:     "empty address never matches",
+			address:  "",
+			postcode: "CR2 7DY",
+			want:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := addressIncludesPostcode(tt.address, tt.postcode); got != tt.want {
+				t.Errorf("addressIncludesPostcode(%q, %q) = %v, want %v", tt.address, tt.postcode, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBuildPageView_PostcodeDeduplication pins buildPageView's use of
+// addressIncludesPostcode: the view's Postcode field (the h1's ", {postcode}"
+// suffix) is suppressed when the address already carries it, and populated
+// unchanged otherwise.
+func TestBuildPageView_PostcodeDeduplication(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		address      string
+		postcode     *string
+		wantPostcode string
+	}{
+		{
+			name:         "address already includes postcode: suffix suppressed",
+			address:      "2 High Street, Croydon, CR2 7DY",
+			postcode:     ptr("CR2 7DY"),
+			wantPostcode: "",
+		},
+		{
+			name:         "address does not include postcode: unchanged",
+			address:      "2 High Street, Croydon",
+			postcode:     ptr("CR2 7DY"),
+			wantPostcode: "CR2 7DY",
+		},
+		{
+			name:         "nil postcode: unchanged (empty)",
+			address:      "2 High Street, Croydon",
+			postcode:     nil,
+			wantPostcode: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app := applications.PlanningApplication{
+				Name:     "23/03456/FUL",
+				AreaID:   165,
+				Address:  tt.address,
+				Postcode: tt.postcode,
+			}
+			v := buildPageView(app, "croydon", "23/03456/FUL")
+			if v.Postcode != tt.wantPostcode {
+				t.Errorf("Postcode = %q, want %q", v.Postcode, tt.wantPostcode)
+			}
+		})
+	}
+}
+
+// TestStatusChip pins the shared status vocabulary/palette (tc-r4n9 decision
+// 4): the resident-facing label mirrors web/scripts/lib/format.mjs's
+// STATUS_DISPLAY_LABEL_MAP, and the colour modifier deliberately collapses to
+// three buckets — granted (green), refused (red), neutral for everything else
+// including "Undecided" and every long-tail state — rather than a five-way
+// traffic light.
+func TestStatusChip(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		appState     string
+		wantLabel    string
+		wantModifier string
+	}{
+		{appState: "Permitted", wantLabel: "Granted", wantModifier: "granted"},
+		// "Granted with conditions" is explicitly a long-tail state per issue #794
+		// Phase 3 ("fold the long tail: Withdrawn, Unresolved, Granted with
+		// conditions, Referred") and per tc-r4n9.2's web-side implementation
+		// (Permitted->granted/green, Rejected->refused/red, everything else
+		// including Conditions->neutral/grey) — it is NOT a green "granted" bucket.
+		{appState: "Conditions", wantLabel: "Granted with conditions", wantModifier: "neutral"},
+		{appState: "Rejected", wantLabel: "Refused", wantModifier: "refused"},
+		{appState: "Undecided", wantLabel: "Undecided", wantModifier: "neutral"},
+		{appState: "Withdrawn", wantLabel: "Withdrawn", wantModifier: "neutral"},
+		{appState: "Appealed", wantLabel: "Appealed", wantModifier: "neutral"},
+		{appState: "Unresolved", wantLabel: "Unresolved", wantModifier: "neutral"},
+		{appState: "Referred", wantLabel: "Referred", wantModifier: "neutral"},
+		{appState: "Some Future PlanIt State", wantLabel: "Some Future PlanIt State", wantModifier: "neutral"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.appState, func(t *testing.T) {
+			t.Parallel()
+			gotLabel, gotModifier := statusChip(tt.appState)
+			if gotLabel != tt.wantLabel || gotModifier != tt.wantModifier {
+				t.Errorf("statusChip(%q) = (%q, %q), want (%q, %q)", tt.appState, gotLabel, gotModifier, tt.wantLabel, tt.wantModifier)
+			}
+		})
+	}
+}
+
+// TestBuildPageView_StatusChip pins buildPageView's wiring of the mapped
+// vocabulary: a nil AppState leaves both fields empty (so the template omits
+// the chip entirely); a set AppState is run through statusChip.
+func TestBuildPageView_StatusChip(t *testing.T) {
+	t.Parallel()
+	t.Run("nil AppState omits the chip", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.StatusLabel != "" || v.StatusModifier != "" {
+			t.Errorf("StatusLabel/StatusModifier = %q/%q, want empty/empty", v.StatusLabel, v.StatusModifier)
+		}
+	})
+	t.Run("set AppState is mapped, not passed through raw", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AppState: ptr("Permitted")}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.StatusLabel != "Granted" || v.StatusModifier != "granted" {
+			t.Errorf("StatusLabel/StatusModifier = %q/%q, want Granted/granted", v.StatusLabel, v.StatusModifier)
+		}
+	})
+}
+
+// TestBuildPageView_AuthorityBacklink pins the "More planning applications in
+// {area} ->" backlink (tc-r4n9.6): it points at the SEO planning page for the
+// application's authority, built from the SAME slug the share page itself was
+// resolved by — the two page families share one Slugify implementation
+// (api-go/internal/authorities/slug.go, byte-equal ported from
+// web/scripts/lib/slug.mjs), so this is the correct authority-page path
+// whenever that authority actually has a published SEO page (see the worker
+// report for the coverage-gate/area-type caveat).
+func TestBuildPageView_AuthorityBacklink(t *testing.T) {
+	t.Parallel()
+	t.Run("area name present: link built from slug", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AreaName: "Croydon"}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.AuthorityURL != "https://towncrierapp.uk/planning/croydon" {
+			t.Errorf("AuthorityURL = %q, want https://towncrierapp.uk/planning/croydon", v.AuthorityURL)
+		}
+		if v.AuthorityName != "Croydon" {
+			t.Errorf("AuthorityName = %q, want Croydon", v.AuthorityName)
+		}
+	})
+	t.Run("blank area name: backlink omitted", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AreaName: "   "}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.AuthorityURL != "" || v.AuthorityName != "" {
+			t.Errorf("AuthorityURL/AuthorityName = %q/%q, want empty/empty", v.AuthorityURL, v.AuthorityName)
+		}
+	})
+}
