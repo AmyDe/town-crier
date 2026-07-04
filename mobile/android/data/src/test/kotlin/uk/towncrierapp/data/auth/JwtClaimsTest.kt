@@ -1,8 +1,8 @@
 package uk.towncrierapp.data.auth
 
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import java.util.Base64
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue

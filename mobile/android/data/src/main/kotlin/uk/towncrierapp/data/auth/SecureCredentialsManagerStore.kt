@@ -24,7 +24,14 @@ public class SecureCredentialsManagerStore(
         try {
             manager.awaitCredentials()
         } catch (e: CredentialsManagerException) {
-            throw if (isUnrecoverable(e)) CredentialsStoreException.Unrecoverable else CredentialsStoreException.Transient(e)
+            throw if (isUnrecoverable(
+                    e,
+                )
+            ) {
+                CredentialsStoreException.Unrecoverable
+            } else {
+                CredentialsStoreException.Transient(e)
+            }
         }
 
     override fun saveCredentials(credentials: Credentials): Unit = manager.saveCredentials(credentials)
@@ -33,12 +40,22 @@ public class SecureCredentialsManagerStore(
 
     private fun isUnrecoverable(error: CredentialsManagerException): Boolean =
         when {
-            error == CredentialsManagerException.NO_REFRESH_TOKEN -> true
-            error == CredentialsManagerException.NO_CREDENTIALS -> true
-            error == CredentialsManagerException.RENEW_FAILED || error == CredentialsManagerException.SSO_EXCHANGE_FAILED -> {
+            error == CredentialsManagerException.NO_REFRESH_TOKEN -> {
+                true
+            }
+
+            error == CredentialsManagerException.NO_CREDENTIALS -> {
+                true
+            }
+
+            error == CredentialsManagerException.RENEW_FAILED ||
+                error == CredentialsManagerException.SSO_EXCHANGE_FAILED -> {
                 val cause = error.cause as? AuthenticationException
                 cause?.isInvalidRefreshToken == true || cause?.isRefreshTokenDeleted == true
             }
-            else -> false
+
+            else -> {
+                false
+            }
         }
 }

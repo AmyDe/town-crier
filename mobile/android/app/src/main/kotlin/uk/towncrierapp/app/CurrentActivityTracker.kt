@@ -13,7 +13,9 @@ import uk.towncrierapp.data.auth.CurrentActivityProvider
  * that a real `Context`/Activity lifecycle can supply (auth `login()`/
  * `logout()` need an Activity to launch Custom Tabs).
  */
-public class CurrentActivityTracker : Application.ActivityLifecycleCallbacks, CurrentActivityProvider {
+public class CurrentActivityTracker :
+    Application.ActivityLifecycleCallbacks,
+    CurrentActivityProvider {
     @Volatile
     private var resumedActivity: Activity? = null
 

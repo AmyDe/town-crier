@@ -6,7 +6,12 @@ import kotlinx.serialization.Serializable
 // occupy the package namespace, so duplicate per-file declarations of the
 // same name genuinely collide; one shared internal DTO avoids that.
 @Serializable
-internal data class TestResponse(val id: String, val name: String)
+internal data class TestResponse(
+    val id: String,
+    val name: String,
+)
 
 @Serializable
-internal data class TestBody(val title: String)
+internal data class TestBody(
+    val title: String,
+)

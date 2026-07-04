@@ -1,8 +1,5 @@
 package uk.towncrierapp.presentation.features.login
 
-import uk.towncrierapp.domain.auth.AuthenticationService
-import uk.towncrierapp.domain.auth.DomainError
-import uk.towncrierapp.presentation.R
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uk.towncrierapp.domain.auth.AuthenticationService
+import uk.towncrierapp.domain.auth.DomainError
+import uk.towncrierapp.presentation.R
 
 /**
  * Sign in, sign out, and cold-start session restore — port of iOS

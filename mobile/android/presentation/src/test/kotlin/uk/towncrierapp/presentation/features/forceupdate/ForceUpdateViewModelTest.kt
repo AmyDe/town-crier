@@ -1,11 +1,11 @@
 package uk.towncrierapp.presentation.features.forceupdate
 
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.versionconfig.AppVersion
 import uk.towncrierapp.domain.versionconfig.FakeVersionConfigService
 import uk.towncrierapp.presentation.MainDispatcherExtension
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -49,7 +49,8 @@ class ForceUpdateViewModelTest {
 
     @Test
     fun `a version-config failure never blocks the user`() {
-        val service = FakeVersionConfigService(fetchMinimumVersionResult = Result.failure(DomainError.NetworkUnavailable))
+        val service =
+            FakeVersionConfigService(fetchMinimumVersionResult = Result.failure(DomainError.NetworkUnavailable))
         val viewModel = ForceUpdateViewModel(service, currentVersion = "1.0.0")
 
         viewModel.checkVersion()

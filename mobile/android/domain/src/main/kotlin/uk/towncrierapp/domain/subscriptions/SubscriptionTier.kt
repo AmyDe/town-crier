@@ -22,6 +22,7 @@ public enum class SubscriptionTier(
          * Returns `null` for anything unrecognised — callers decide the
          * fallback (never silently default to FREE here, see tc-exg6).
          */
-        public fun fromWireValue(value: String): SubscriptionTier? = entries.firstOrNull { it.wireValue.equals(value, ignoreCase = true) }
+        public fun fromWireValue(value: String): SubscriptionTier? =
+            entries.firstOrNull { it.wireValue.equals(value, ignoreCase = true) }
     }
 }

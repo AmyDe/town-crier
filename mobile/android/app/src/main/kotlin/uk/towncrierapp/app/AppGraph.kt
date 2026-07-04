@@ -1,5 +1,11 @@
 package uk.towncrierapp.app
 
+import com.auth0.android.Auth0
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import okhttp3.Call
+import okhttp3.OkHttpClient
 import uk.towncrierapp.data.api.ApiClient
 import uk.towncrierapp.data.api.OkHttpTransport
 import uk.towncrierapp.data.auth.Auth0AuthenticationService
@@ -14,13 +20,7 @@ import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.versionconfig.VersionConfigService
 import uk.towncrierapp.presentation.auth.AuthCoordinator
-import com.auth0.android.Auth0
 import java.time.Clock
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import okhttp3.Call
-import okhttp3.OkHttpClient
 
 /**
  * Town Crier's composition root: the single place `:app` hand-wires the
@@ -78,5 +78,6 @@ public class AppGraph(
     // through ApiClient (which always requires a session first).
     public val versionConfigService: VersionConfigService = ApiVersionConfigService(baseUrl, transport)
 
-    public val authCoordinator: AuthCoordinator = AuthCoordinator(authenticationService, userProfileRepository, tierCache)
+    public val authCoordinator: AuthCoordinator =
+        AuthCoordinator(authenticationService, userProfileRepository, tierCache)
 }

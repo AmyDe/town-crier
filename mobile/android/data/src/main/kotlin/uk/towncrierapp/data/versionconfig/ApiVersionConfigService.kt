@@ -1,16 +1,16 @@
 package uk.towncrierapp.data.versionconfig
 
-import uk.towncrierapp.data.api.HttpTransport
-import uk.towncrierapp.domain.auth.DomainError
-import uk.towncrierapp.domain.versionconfig.AppVersion
-import uk.towncrierapp.domain.versionconfig.VersionConfigService
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
+import uk.towncrierapp.data.api.HttpTransport
+import uk.towncrierapp.domain.auth.DomainError
+import uk.towncrierapp.domain.versionconfig.AppVersion
+import uk.towncrierapp.domain.versionconfig.VersionConfigService
+import java.io.IOException
 
 /**
  * Fetches the minimum supported app version — the one endpoint that must
@@ -24,8 +24,20 @@ public class ApiVersionConfigService(
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) : VersionConfigService {
     override suspend fun fetchMinimumVersion(): AppVersion {
-        val url = baseUrl.toHttpUrl().newBuilder().addPathSegment("v1").addPathSegment("version-config").build()
-        val request = Request.Builder().url(url).header("Accept", "application/json").get().build()
+        val url =
+            baseUrl
+                .toHttpUrl()
+                .newBuilder()
+                .addPathSegment("v1")
+                .addPathSegment("version-config")
+                .build()
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .header("Accept", "application/json")
+                .get()
+                .build()
 
         val response =
             try {
@@ -48,7 +60,8 @@ public class ApiVersionConfigService(
                 throw DomainError.Unexpected("Invalid version config response")
             }
 
-        return AppVersion.parse(dto.minimumVersion) ?: throw DomainError.Unexpected("Invalid version string: ${dto.minimumVersion}")
+        return AppVersion.parse(dto.minimumVersion)
+            ?: throw DomainError.Unexpected("Invalid version string: ${dto.minimumVersion}")
     }
 }
 

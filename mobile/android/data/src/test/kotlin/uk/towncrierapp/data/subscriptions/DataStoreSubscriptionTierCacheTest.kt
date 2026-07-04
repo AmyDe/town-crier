@@ -1,11 +1,11 @@
 package uk.towncrierapp.data.subscriptions
 
-import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
-import java.io.File
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import uk.towncrierapp.domain.subscriptions.SubscriptionTier
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -17,7 +17,8 @@ import kotlin.test.assertNull
  * — no Robolectric needed.
  */
 class DataStoreSubscriptionTierCacheTest {
-    private fun aDataStore(directory: File) = PreferenceDataStoreFactory.create { File(directory, "test.preferences_pb") }
+    private fun aDataStore(directory: File) =
+        PreferenceDataStoreFactory.create { File(directory, "test.preferences_pb") }
 
     @Test
     fun `read returns null when nothing has been written yet`(

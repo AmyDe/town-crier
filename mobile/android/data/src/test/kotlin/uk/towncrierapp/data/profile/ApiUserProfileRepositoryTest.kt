@@ -1,12 +1,12 @@
 package uk.towncrierapp.data.profile
 
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.data.api.ApiClient
 import uk.towncrierapp.data.api.FakeHttpTransport
 import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.profile.ServerProfile
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 

@@ -1,15 +1,15 @@
 package uk.towncrierapp.data.auth
 
-import uk.towncrierapp.domain.auth.AuthSession
-import uk.towncrierapp.domain.auth.anAuthSession
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import uk.towncrierapp.domain.auth.AuthSession
+import uk.towncrierapp.domain.auth.anAuthSession
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -62,7 +62,11 @@ class SessionCacheTest {
             cache.store(session)
             var loaderCalls = 0
 
-            val result = cache.currentOrLoad(clockAt(expiresAt.minusSeconds(120))) { loaderCalls++; anAuthSession() }
+            val result =
+                cache.currentOrLoad(clockAt(expiresAt.minusSeconds(120))) {
+                    loaderCalls++
+                    anAuthSession()
+                }
 
             assertEquals(session, result)
             assertEquals(0, loaderCalls)

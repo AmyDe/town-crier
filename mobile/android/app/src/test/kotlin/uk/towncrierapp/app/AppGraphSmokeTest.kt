@@ -1,11 +1,11 @@
 package uk.towncrierapp.app
 
-import uk.towncrierapp.data.auth.CredentialsStore
-import uk.towncrierapp.data.auth.CurrentActivityProvider
-import uk.towncrierapp.domain.subscriptions.FakeSubscriptionTierCache
 import com.auth0.android.result.Credentials
 import okhttp3.Call
 import org.junit.jupiter.api.Test
+import uk.towncrierapp.data.auth.CredentialsStore
+import uk.towncrierapp.data.auth.CurrentActivityProvider
+import uk.towncrierapp.domain.subscriptions.FakeSubscriptionTierCache
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 

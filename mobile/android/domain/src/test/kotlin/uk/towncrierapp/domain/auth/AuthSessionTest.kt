@@ -1,10 +1,10 @@
 package uk.towncrierapp.domain.auth
 
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import org.junit.jupiter.api.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 

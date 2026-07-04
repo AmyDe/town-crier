@@ -4,12 +4,12 @@ import com.auth0.android.Auth0
 import com.auth0.android.authentication.AuthenticationException
 import com.auth0.android.provider.WebAuthProvider
 import com.auth0.android.result.Credentials
+import kotlinx.coroutines.CancellationException
 import uk.towncrierapp.domain.auth.AuthSession
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.auth.UserProfile
 import java.time.Clock
-import kotlinx.coroutines.CancellationException
 
 /**
  * Auth0 Android SDK implementation of [AuthenticationService] — port of iOS

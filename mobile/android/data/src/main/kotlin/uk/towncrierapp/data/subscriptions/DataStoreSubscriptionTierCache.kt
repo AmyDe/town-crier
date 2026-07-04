@@ -1,13 +1,13 @@
 package uk.towncrierapp.data.subscriptions
 
-import uk.towncrierapp.domain.subscriptions.SubscriptionTier
-import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import uk.towncrierapp.domain.subscriptions.SubscriptionTier
+import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 
 private val CACHED_SUBSCRIPTION_TIER_KEY = stringPreferencesKey("cachedSubscriptionTier")
 
@@ -22,8 +22,9 @@ public class DataStoreSubscriptionTierCache(
 ) : SubscriptionTierCache {
     override suspend fun read(): SubscriptionTier? =
         dataStore.data
-            .map { preferences -> preferences[CACHED_SUBSCRIPTION_TIER_KEY]?.let { SubscriptionTier.fromWireValue(it) } }
-            .first()
+            .map { preferences ->
+                preferences[CACHED_SUBSCRIPTION_TIER_KEY]?.let { SubscriptionTier.fromWireValue(it) }
+            }.first()
 
     override suspend fun write(tier: SubscriptionTier) {
         dataStore.edit { preferences -> preferences[CACHED_SUBSCRIPTION_TIER_KEY] = tier.wireValue }

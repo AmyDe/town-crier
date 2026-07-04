@@ -1,13 +1,13 @@
 package uk.towncrierapp.data.auth
 
-import uk.towncrierapp.domain.subscriptions.SubscriptionTier
-import java.util.Base64
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import uk.towncrierapp.domain.subscriptions.SubscriptionTier
+import java.util.Base64
 
 /**
  * Decodes JWT payloads and extracts the individual claims

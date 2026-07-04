@@ -1,15 +1,17 @@
 package uk.towncrierapp.data.api
 
-import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import org.junit.jupiter.api.Test
+import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 @Serializable
-private data class PagedRow(val id: String)
+private data class PagedRow(
+    val id: String,
+)
 
 /**
  * `requestPaged` surfaces the opaque `X-Next-Cursor` response header

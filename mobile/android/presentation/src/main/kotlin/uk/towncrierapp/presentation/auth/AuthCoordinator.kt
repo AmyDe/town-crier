@@ -1,15 +1,15 @@
 package uk.towncrierapp.presentation.auth
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.subscriptions.resolveTier
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Owns the signed-in transition's ordering (#549): ensure the server profile

@@ -56,7 +56,11 @@ internal fun LoginScreen(
 
 @Composable
 private fun BrandingSection(modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Text(
             text = stringResource(R.string.login_branding_title),
             style = MaterialTheme.typography.headlineLarge,
@@ -78,7 +82,10 @@ private fun SignInSection(
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (state.isLoading) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(TownCrierSpacing.md))
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(TownCrierSpacing.md),
+            )
         } else {
             PrimaryButton(text = stringResource(R.string.login_sign_in_button), onClick = onSignInClick)
         }
@@ -114,6 +121,9 @@ private fun LoginScreenLoadingPreview() {
 @Composable
 private fun LoginScreenErrorPreview() {
     TownCrierTheme {
-        LoginScreen(state = LoginUiState(errorMessageRes = R.string.login_error_authentication_failed), onSignInClick = {})
+        LoginScreen(
+            state = LoginUiState(errorMessageRes = R.string.login_error_authentication_failed),
+            onSignInClick = {},
+        )
     }
 }

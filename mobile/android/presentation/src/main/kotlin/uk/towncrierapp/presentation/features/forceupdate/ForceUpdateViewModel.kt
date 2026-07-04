@@ -1,8 +1,5 @@
 package uk.towncrierapp.presentation.features.forceupdate
 
-import uk.towncrierapp.domain.auth.DomainError
-import uk.towncrierapp.domain.versionconfig.AppVersion
-import uk.towncrierapp.domain.versionconfig.VersionConfigService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -11,6 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uk.towncrierapp.domain.auth.DomainError
+import uk.towncrierapp.domain.versionconfig.AppVersion
+import uk.towncrierapp.domain.versionconfig.VersionConfigService
 
 /**
  * Blocking pre-login version gate: unauthenticated `GET /v1/version-config`

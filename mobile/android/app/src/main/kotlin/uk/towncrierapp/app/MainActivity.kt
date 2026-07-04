@@ -3,12 +3,6 @@ package uk.towncrierapp.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import uk.towncrierapp.presentation.designsystem.TownCrierTheme
-import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateScreen
-import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
-import uk.towncrierapp.presentation.features.forceupdate.PLAY_STORE_URL
-import uk.towncrierapp.presentation.features.login.LoginRoute
-import uk.towncrierapp.presentation.features.login.LoginViewModel
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -34,6 +28,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
 import uk.towncrierapp.mobile.R
+import uk.towncrierapp.presentation.designsystem.TownCrierTheme
+import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateScreen
+import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
+import uk.towncrierapp.presentation.features.forceupdate.PLAY_STORE_URL
+import uk.towncrierapp.presentation.features.login.LoginRoute
+import uk.towncrierapp.presentation.features.login.LoginViewModel
 
 /** Town Crier's single activity — see android-coding-standards skill: single-activity Compose, no Fragments. */
 public class MainActivity : ComponentActivity() {
@@ -89,15 +89,21 @@ public fun TownCrierApp(
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
-            forceUpdateState.requiresUpdate ->
+            forceUpdateState.requiresUpdate -> {
                 ForceUpdateScreen(
                     onUpdateClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PLAY_STORE_URL))) },
                 )
-            loginState.isAuthenticated ->
+            }
+
+            loginState.isAuthenticated -> {
                 NavHost(navController = navController, startDestination = Home) {
                     composable<Home> { HomeRoute() }
                 }
-            else -> LoginRoute(viewModel = loginViewModel)
+            }
+
+            else -> {
+                LoginRoute(viewModel = loginViewModel)
+            }
         }
     }
 }

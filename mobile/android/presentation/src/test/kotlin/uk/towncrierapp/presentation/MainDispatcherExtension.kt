@@ -14,7 +14,9 @@ import org.junit.jupiter.api.extension.ExtensionContext
  * coding-standards: testing.md). Shared across every ViewModel test in
  * `:presentation`.
  */
-internal class MainDispatcherExtension : BeforeEachCallback, AfterEachCallback {
+internal class MainDispatcherExtension :
+    BeforeEachCallback,
+    AfterEachCallback {
     override fun beforeEach(context: ExtensionContext) {
         Dispatchers.setMain(UnconfinedTestDispatcher())
     }

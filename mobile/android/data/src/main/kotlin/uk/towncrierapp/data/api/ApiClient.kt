@@ -1,20 +1,20 @@
 package uk.towncrierapp.data.api
 
 import android.util.Log
-import uk.towncrierapp.domain.auth.AuthenticationService
-import uk.towncrierapp.domain.auth.AuthSession
-import uk.towncrierapp.domain.auth.DomainError
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import uk.towncrierapp.domain.auth.AuthSession
+import uk.towncrierapp.domain.auth.AuthenticationService
+import uk.towncrierapp.domain.auth.DomainError
+import java.io.IOException
 
 /** `requestPaged`'s result: the decoded body plus the opaque `X-Next-Cursor` continuation token (`null` on the last page). */
 internal data class PagedResult<T>(
@@ -169,11 +169,16 @@ public class ApiClient(
         accessToken: String,
     ): Request {
         val urlBuilder = baseUrl.toHttpUrl().newBuilder()
-        endpoint.path.trim('/').split("/").filter { it.isNotEmpty() }.forEach { urlBuilder.addPathSegment(it) }
+        endpoint.path
+            .trim('/')
+            .split("/")
+            .filter { it.isNotEmpty() }
+            .forEach { urlBuilder.addPathSegment(it) }
         endpoint.query.forEach { (name, value) -> urlBuilder.addQueryParameter(name, value) }
 
         val builder =
-            Request.Builder()
+            Request
+                .Builder()
                 .url(urlBuilder.build())
                 .header("Authorization", "Bearer $accessToken")
                 .header("Accept", "application/json")
@@ -208,7 +213,13 @@ public class ApiClient(
 
     private fun mapForbidden(body: String): DomainError {
         val required = insufficientEntitlementRequired(body)
-        return if (required != null) DomainError.InsufficientEntitlement(required) else DomainError.ServerError(403, body.ifBlank { null })
+        return if (required !=
+            null
+        ) {
+            DomainError.InsufficientEntitlement(required)
+        } else {
+            DomainError.ServerError(403, body.ifBlank { null })
+        }
     }
 
     private fun insufficientEntitlementRequired(body: String): String? =

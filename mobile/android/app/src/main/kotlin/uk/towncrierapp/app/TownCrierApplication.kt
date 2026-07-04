@@ -2,21 +2,23 @@ package uk.towncrierapp.app
 
 import android.app.Application
 import android.content.Context
-import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
-import uk.towncrierapp.data.subscriptions.DataStoreSubscriptionTierCache
-import uk.towncrierapp.mobile.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.auth0.android.Auth0
 import com.auth0.android.authentication.storage.SecureCredentialsManager
 import com.auth0.android.authentication.storage.SharedPreferencesStorage
+import uk.towncrierapp.data.auth.SecureCredentialsManagerStore
+import uk.towncrierapp.data.subscriptions.DataStoreSubscriptionTierCache
+import uk.towncrierapp.mobile.BuildConfig
 
 /** Auth0 tenant — same for both flavors; only the audience (`BuildConfig.API_BASE_URL`) differs (epic #770 D4). */
 internal const val AUTH0_CLIENT_ID = "2HHUYWnJ3q37a6Elv0cqyFVGbGIbqx34"
 internal const val AUTH0_DOMAIN = "towncrierapp.uk.auth0.com"
 
-private val Context.tierPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(name = "town_crier_preferences")
+private val Context.tierPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "town_crier_preferences",
+)
 
 /**
  * Constructs [AppGraph] — the one place `:app` builds the Android-touching

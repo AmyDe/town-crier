@@ -1,12 +1,12 @@
 package uk.towncrierapp.data.auth
 
-import uk.towncrierapp.domain.auth.AuthSession
-import java.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import uk.towncrierapp.domain.auth.AuthSession
+import java.time.Clock
 
 /**
  * In-memory cache for the current [AuthSession] (iOS tc-3d7b). Concurrent
@@ -34,7 +34,10 @@ public class SessionCache(
     /** A cached session, or `null` if none is held or it's within [leadTimeSeconds] of expiry. Never triggers a load. */
     public suspend fun current(clock: Clock): AuthSession? = mutex.withLock { validOrNull(clock) }
 
-    private fun validOrNull(clock: Clock): AuthSession? = cached?.takeIf { it.expiresAt.minusSeconds(leadTimeSeconds).isAfter(clock.instant()) }
+    private fun validOrNull(clock: Clock): AuthSession? =
+        cached?.takeIf {
+            it.expiresAt.minusSeconds(leadTimeSeconds).isAfter(clock.instant())
+        }
 
     /** Returns the cached session if valid, otherwise runs [loader] — sharing one in-flight call across concurrent cold callers. */
     public suspend fun currentOrLoad(

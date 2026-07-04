@@ -1,11 +1,11 @@
 package uk.towncrierapp.data.versionconfig
 
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.data.api.FakeHttpTransport
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.versionconfig.AppVersion
 import java.io.IOException
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs

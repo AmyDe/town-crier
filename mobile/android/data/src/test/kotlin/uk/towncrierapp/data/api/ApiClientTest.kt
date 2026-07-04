@@ -1,12 +1,12 @@
 package uk.towncrierapp.data.api
 
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import java.io.IOException
-import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -30,7 +30,8 @@ class ApiClientTest {
     fun `GET request attaches the Bearer token and Accept header, and no Content-Type without a body`() =
         runTest {
             val transport = FakeHttpTransport()
-            val authService = FakeAuthenticationService(currentSessionResult = anAuthSession(accessToken = "test-token"))
+            val authService =
+                FakeAuthenticationService(currentSessionResult = anAuthSession(accessToken = "test-token"))
             transport.enqueueResponse(200, """{"id":"1","name":"Test"}""")
             val sut = makeSut(transport, authService)
 
@@ -111,7 +112,12 @@ class ApiClientTest {
             val sut = makeSut(transport, authService)
 
             assertIs<DomainError.SessionExpired>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
             assertEquals(0, transport.requests.size)
         }
@@ -124,7 +130,12 @@ class ApiClientTest {
             val sut = makeSut(transport)
 
             assertIs<DomainError.NotFound>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications/999"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications/999"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
         }
 
@@ -137,7 +148,12 @@ class ApiClientTest {
 
             val error =
                 assertIs<DomainError.ServerError>(
-                    assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                    assertFailsWith<DomainError> {
+                        sut.request(
+                            ApiEndpoint.get("/applications"),
+                            TestResponse.serializer(),
+                        )
+                    },
                 )
 
             assertEquals(500, error.status)
@@ -154,7 +170,12 @@ class ApiClientTest {
 
             val error =
                 assertIs<DomainError.InsufficientEntitlement>(
-                    assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/notifications"), TestResponse.serializer()) },
+                    assertFailsWith<DomainError> {
+                        sut.request(
+                            ApiEndpoint.get("/notifications"),
+                            TestResponse.serializer(),
+                        )
+                    },
                 )
 
             assertEquals("personal", error.required)
@@ -183,7 +204,12 @@ class ApiClientTest {
             val sut = makeSut(transport)
 
             assertIs<DomainError.NetworkUnavailable>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
         }
 }

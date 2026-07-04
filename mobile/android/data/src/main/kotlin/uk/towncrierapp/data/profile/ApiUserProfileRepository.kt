@@ -1,17 +1,18 @@
 package uk.towncrierapp.data.profile
 
+import kotlinx.serialization.Serializable
 import uk.towncrierapp.data.api.ApiClient
 import uk.towncrierapp.data.api.ApiEndpoint
 import uk.towncrierapp.domain.profile.ServerProfile
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
-import kotlinx.serialization.Serializable
 
 /** `UserProfileRepository` over the Town Crier API — `POST /v1/me` (ensure-profile) only; fetch/update/delete/export land with #778. */
 public class ApiUserProfileRepository(
     private val apiClient: ApiClient,
 ) : UserProfileRepository {
-    override suspend fun ensureProfile(): ServerProfile = apiClient.request(ApiEndpoint.post("/v1/me"), ServerProfileDto.serializer()).toDomain()
+    override suspend fun ensureProfile(): ServerProfile =
+        apiClient.request(ApiEndpoint.post("/v1/me"), ServerProfileDto.serializer()).toDomain()
 }
 
 @Serializable

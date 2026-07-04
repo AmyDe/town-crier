@@ -1,11 +1,11 @@
 package uk.towncrierapp.data.api
 
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import java.io.IOException
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -54,7 +54,12 @@ class ApiClientTokenRefreshTest {
             val sut = ApiClient(baseUrl, transport, authService)
 
             assertIs<DomainError.NetworkUnavailable>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
         }
 
@@ -70,7 +75,12 @@ class ApiClientTokenRefreshTest {
             val sut = ApiClient(baseUrl, transport, authService)
 
             assertIs<DomainError.SessionExpired>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
         }
 
@@ -103,7 +113,12 @@ class ApiClientTokenRefreshTest {
             val sut = ApiClient(baseUrl, transport, authService)
 
             assertIs<DomainError.NetworkUnavailable>(
-                assertFailsWith<DomainError> { sut.request(ApiEndpoint.get("/applications"), TestResponse.serializer()) },
+                assertFailsWith<DomainError> {
+                    sut.request(
+                        ApiEndpoint.get("/applications"),
+                        TestResponse.serializer(),
+                    )
+                },
             )
         }
 

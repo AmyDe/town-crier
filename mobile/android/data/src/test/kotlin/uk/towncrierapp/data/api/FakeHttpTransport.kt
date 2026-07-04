@@ -1,11 +1,11 @@
 package uk.towncrierapp.data.api
 
-import java.io.IOException
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import java.io.IOException
 
 /**
  * Hand-written [HttpTransport] fake: a queue of scripted per-request
@@ -44,7 +44,8 @@ private fun fakeResponse(
     headers: Map<String, String>,
 ): Response {
     val builder =
-        Response.Builder()
+        Response
+            .Builder()
             .request(request)
             .protocol(Protocol.HTTP_1_1)
             .code(code)

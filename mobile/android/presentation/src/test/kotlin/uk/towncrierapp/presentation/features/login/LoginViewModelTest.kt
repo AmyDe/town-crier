@@ -1,12 +1,12 @@
 package uk.towncrierapp.presentation.features.login
 
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.auth.FakeAuthenticationService
 import uk.towncrierapp.domain.auth.anAuthSession
 import uk.towncrierapp.presentation.MainDispatcherExtension
 import uk.towncrierapp.presentation.R
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -47,7 +47,11 @@ class LoginViewModelTest {
 
     @Test
     fun `login failure surfaces the sign-in-failed caption and does not authenticate`() {
-        val authService = FakeAuthenticationService().apply { loginResult = Result.failure(DomainError.AuthenticationFailed("cancelled")) }
+        val authService =
+            FakeAuthenticationService().apply {
+                loginResult =
+                    Result.failure(DomainError.AuthenticationFailed("cancelled"))
+            }
         val viewModel = LoginViewModel(authService)
         var authenticatedCalls = 0
         viewModel.onAuthenticated = { authenticatedCalls++ }

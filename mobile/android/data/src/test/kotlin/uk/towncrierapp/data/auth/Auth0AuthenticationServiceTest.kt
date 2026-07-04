@@ -1,16 +1,16 @@
 package uk.towncrierapp.data.auth
 
-import uk.towncrierapp.domain.auth.DomainError
 import com.auth0.android.result.Credentials
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Test
+import uk.towncrierapp.domain.auth.DomainError
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Date
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -33,7 +33,14 @@ class Auth0AuthenticationServiceTest {
         idToken: String = fakeJwt("""{"sub":"auth0|1","email":"resident@example.test"}"""),
         expiresAt: Instant = Instant.parse("2026-07-20T15:00:00Z"),
         refreshToken: String? = "refresh-token",
-    ) = Credentials(idToken, accessToken, "Bearer", refreshToken, Date.from(expiresAt), "openid profile email offline_access")
+    ) = Credentials(
+        idToken,
+        accessToken,
+        "Bearer",
+        refreshToken,
+        Date.from(expiresAt),
+        "openid profile email offline_access",
+    )
 
     private fun makeSut(
         credentialsStore: FakeCredentialsStore = FakeCredentialsStore(),
@@ -103,7 +110,9 @@ class Auth0AuthenticationServiceTest {
                     hasValidCredentialsResult = true,
                     credentialsResult =
                         Result.success(
-                            aCredentials(accessToken = fakeJwt("""{"sub":"auth0|1","aud":"https://api.towncrierapp.uk"}""")),
+                            aCredentials(
+                                accessToken = fakeJwt("""{"sub":"auth0|1","aud":"https://api.towncrierapp.uk"}"""),
+                            ),
                         ),
                 )
             val sut = makeSut(store, audience = DEV_AUDIENCE)
@@ -136,7 +145,10 @@ class Auth0AuthenticationServiceTest {
             val store =
                 FakeCredentialsStore(
                     hasValidCredentialsResult = true,
-                    credentialsResult = Result.failure(CredentialsStoreException.Transient(IOException("keystore hiccup"))),
+                    credentialsResult =
+                        Result.failure(
+                            CredentialsStoreException.Transient(IOException("keystore hiccup")),
+                        ),
                 )
             val sut = makeSut(store)
 
@@ -159,7 +171,8 @@ class Auth0AuthenticationServiceTest {
     @Test
     fun `refreshSession wipes credentials and throws SessionExpired on an unrecoverable failure`() =
         runTest {
-            val store = FakeCredentialsStore(credentialsResult = Result.failure(CredentialsStoreException.Unrecoverable))
+            val store =
+                FakeCredentialsStore(credentialsResult = Result.failure(CredentialsStoreException.Unrecoverable))
             val sut = makeSut(store)
 
             assertIs<DomainError.SessionExpired>(assertFailsWith<DomainError> { sut.refreshSession() })
@@ -170,7 +183,10 @@ class Auth0AuthenticationServiceTest {
     fun `refreshSession surfaces a transient IOException without wiping credentials`() =
         runTest {
             val networkFailure = IOException("no connection")
-            val store = FakeCredentialsStore(credentialsResult = Result.failure(CredentialsStoreException.Transient(networkFailure)))
+            val store =
+                FakeCredentialsStore(
+                    credentialsResult = Result.failure(CredentialsStoreException.Transient(networkFailure)),
+                )
             val sut = makeSut(store)
 
             val thrown = assertFailsWith<IOException> { sut.refreshSession() }
@@ -186,7 +202,9 @@ class Auth0AuthenticationServiceTest {
                 FakeCredentialsStore(
                     credentialsResult =
                         Result.success(
-                            aCredentials(accessToken = fakeJwt("""{"sub":"auth0|1","aud":"https://api.towncrierapp.uk"}""")),
+                            aCredentials(
+                                accessToken = fakeJwt("""{"sub":"auth0|1","aud":"https://api.towncrierapp.uk"}"""),
+                            ),
                         ),
                 )
             val sut = makeSut(store, audience = DEV_AUDIENCE)
