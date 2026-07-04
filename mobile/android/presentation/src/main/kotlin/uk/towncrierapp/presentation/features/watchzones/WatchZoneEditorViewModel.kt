@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uk.towncrierapp.domain.applications.ApplicationCacheStore
+import uk.towncrierapp.domain.applications.CachedApplicationPage
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.subscriptions.Entitlement
 import uk.towncrierapp.domain.subscriptions.FeatureGate
@@ -31,6 +33,10 @@ public class WatchZoneEditorViewModel(
     private val repository: WatchZoneRepository,
     tier: SubscriptionTier,
     private val editingZone: WatchZone? = null,
+    // Defaults to a no-op so every pre-existing call site (tests, and any
+    // future caller with nothing to invalidate) keeps compiling unchanged;
+    // the composition root wires the real cache seam explicitly (tc-cnme).
+    private val applicationCacheStore: ApplicationCacheStore = NoOpApplicationCacheStore,
 ) : ViewModel() {
     private val limits = WatchZoneLimits(tier)
 
@@ -113,7 +119,16 @@ public class WatchZoneEditorViewModel(
                     emailInstantEnabled = state.emailInstantEnabled,
                 )
             try {
-                if (editingZone != null) repository.update(zone) else repository.create(zone)
+                if (editingZone != null) {
+                    repository.update(zone)
+                    // Only the edit path invalidates (tc-cnme): a brand-new
+                    // zone has no prior applications-list cache entry to
+                    // invalidate, mirroring iOS AppCoordinator+WatchZones.swift's
+                    // onSave callback.
+                    applicationCacheStore.invalidate(zone.id)
+                } else {
+                    repository.create(zone)
+                }
                 _uiState.update { it.copy(saveCompleted = true) }
             } catch (e: CancellationException) {
                 throw e
@@ -140,6 +155,21 @@ public class WatchZoneEditorViewModel(
 // count under detekt's TooManyFunctions budget — it needs no instance state.
 private fun WatchZoneEditorUiState.withSaveEnabled(): WatchZoneEditorUiState =
     copy(isSaveEnabled = geocodedCoordinate != null && name.isNotBlank())
+
+// The default ApplicationCacheStore (tc-cnme) — genuinely stateless, so a
+// shared `object` (not a hidden mutable global) is the right shape here.
+private object NoOpApplicationCacheStore : ApplicationCacheStore {
+    override suspend fun get(zoneId: WatchZoneId): CachedApplicationPage? = null
+
+    override suspend fun put(
+        zoneId: WatchZoneId,
+        entry: CachedApplicationPage,
+    ) = Unit
+
+    override suspend fun invalidate(zoneId: WatchZoneId) = Unit
+
+    override suspend fun invalidateAll() = Unit
+}
 
 private fun initialState(
     tier: SubscriptionTier,

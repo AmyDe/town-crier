@@ -6,12 +6,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -36,7 +35,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
-import uk.towncrierapp.mobile.R
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateScreen
 import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
@@ -59,20 +57,28 @@ public class MainActivity : ComponentActivity() {
     }
 }
 
-/** The placeholder destination from #771 — a real Home/dashboard lands in a later phase of epic #770. */
+/**
+ * The Applications tab (GH#775) — first bottom-nav destination, replacing the
+ * #771 Home placeholder now that there's a real daily-use surface to land on.
+ */
 @Serializable
-internal data object Home
+internal data object Applications
 
-/** The watch-zones tab (tc-z95t) — 2nd bottom-nav destination alongside [Home]; more tabs land with #775/#776. */
+/** The watch-zones tab (tc-z95t) — 2nd bottom-nav destination. */
 @Serializable
 internal data object WatchZones
+
+/** The Saved tab (GH#775) — 3rd bottom-nav destination. */
+@Serializable
+internal data object Saved
 
 // A no-arg `@Serializable data object` route's KSerializer serialName is its
 // fully qualified class name — comparing against it is a simpler, equally
 // reliable way to tell "is this bottom-nav tab currently selected" than the
 // generic `NavDestination.hasRoute<T>()` extension.
-private val HOME_ROUTE = Home::class.qualifiedName
+private val APPLICATIONS_ROUTE = Applications::class.qualifiedName
 private val WATCH_ZONES_ROUTE = WatchZones::class.qualifiedName
+private val SAVED_ROUTE = Saved::class.qualifiedName
 
 /**
  * Root routing: pre-login force-update gate, then Login or the authed
@@ -128,9 +134,11 @@ public fun TownCrierApp(
 }
 
 /**
- * The signed-in shell: bottom navigation (Home, Zones) wrapping the NavHost.
- * The watch-zone destinations' content lives in `WatchZoneNavGraph.kt` to
- * keep both files under detekt's per-file function-count budget.
+ * The signed-in shell: bottom navigation (Applications, Zones, Saved)
+ * wrapping the NavHost. The watch-zone destinations' content lives in
+ * `WatchZoneNavGraph.kt`, and the applications-browsing destinations' in
+ * `ApplicationNavGraph.kt`, to keep every file under detekt's per-file
+ * function-count budget.
  */
 @Composable
 private fun AuthedShell(
@@ -149,13 +157,14 @@ private fun AuthedShell(
     ) { contentPadding ->
         NavHost(
             navController = navController,
-            startDestination = Home,
+            startDestination = Applications,
             modifier = Modifier.padding(contentPadding),
         ) {
-            composable<Home> { HomeRoute() }
+            composable<Applications> { ApplicationsTab(appGraph = appGraph, navController = navController) }
             composable<WatchZones> {
                 WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
             }
+            composable<Saved> { SavedTab(appGraph = appGraph, navController = navController) }
             composable<WatchZoneEditorDestination> { entry ->
                 WatchZoneEditorDestinationContent(
                     entry = entry,
@@ -172,6 +181,9 @@ private fun AuthedShell(
                     navController = navController,
                 )
             }
+            composable<ApplicationDetailDestination> { entry ->
+                ApplicationDetailDestinationContent(entry = entry, appGraph = appGraph, navController = navController)
+            }
         }
     }
 }
@@ -183,16 +195,22 @@ private fun AuthedBottomBar(
 ) {
     NavigationBar {
         NavigationBarItem(
-            selected = currentRoute == HOME_ROUTE,
-            onClick = { navController.navigateToTab(Home) },
-            icon = { Icon(imageVector = Icons.Filled.Home, contentDescription = null) },
-            label = { Text(stringResource(PresentationR.string.bottom_nav_home)) },
+            selected = currentRoute == APPLICATIONS_ROUTE,
+            onClick = { navController.navigateToTab(Applications) },
+            icon = { Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = null) },
+            label = { Text(stringResource(PresentationR.string.bottom_nav_applications)) },
         )
         NavigationBarItem(
             selected = currentRoute == WATCH_ZONES_ROUTE,
             onClick = { navController.navigateToTab(WatchZones) },
             icon = { Icon(imageVector = Icons.Filled.Place, contentDescription = null) },
             label = { Text(stringResource(PresentationR.string.bottom_nav_zones)) },
+        )
+        NavigationBarItem(
+            selected = currentRoute == SAVED_ROUTE,
+            onClick = { navController.navigateToTab(Saved) },
+            icon = { Icon(imageVector = Icons.Filled.Star, contentDescription = null) },
+            label = { Text(stringResource(PresentationR.string.bottom_nav_saved)) },
         )
     }
 }
@@ -203,21 +221,5 @@ internal fun NavHostController.navigateToTab(route: Any) {
         popUpTo(graph.startDestinationId) { saveState = true }
         launchSingleTop = true
         restoreState = true
-    }
-}
-
-@Composable
-private fun HomeRoute(modifier: Modifier = Modifier) {
-    HomeScreen(modifier = modifier)
-}
-
-@Composable
-internal fun HomeScreen(modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
     }
 }

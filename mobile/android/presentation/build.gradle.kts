@@ -53,8 +53,13 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.core)
+    // The status-glyph set GH#775 needs (Schedule, Cancel, Undo, HelpOutline,
+    // ...) isn't in core's small default subset.
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    // Chrome Custom Tabs for the application-detail "View on Council Portal" button (GH#775).
+    implementation(libs.androidx.browser)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(platform(libs.junit.bom))

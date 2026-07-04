@@ -130,6 +130,10 @@ internal fun WatchZoneEditorDestinationContent(
                             appGraph.watchZoneRepository,
                             subscriptionTier,
                             editingZone,
+                            // Closes the #774/#775 cache-invalidation loop (tc-cnme):
+                            // a successful edit-save invalidates this zone's
+                            // applications cache entry.
+                            appGraph.applicationCacheStore,
                         )
                     }
                 },

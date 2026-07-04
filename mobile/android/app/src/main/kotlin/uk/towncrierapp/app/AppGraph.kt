@@ -8,6 +8,10 @@ import okhttp3.Call
 import okhttp3.OkHttpClient
 import uk.towncrierapp.data.api.ApiClient
 import uk.towncrierapp.data.api.OkHttpTransport
+import uk.towncrierapp.data.applications.ApiNotificationStateRepository
+import uk.towncrierapp.data.applications.ApiPlanningApplicationRepository
+import uk.towncrierapp.data.applications.ApiSavedApplicationRepository
+import uk.towncrierapp.data.applications.InMemoryApplicationCacheStore
 import uk.towncrierapp.data.auth.Auth0AuthenticationService
 import uk.towncrierapp.data.auth.Auth0Config
 import uk.towncrierapp.data.auth.CredentialsStore
@@ -18,6 +22,12 @@ import uk.towncrierapp.data.versionconfig.ApiVersionConfigService
 import uk.towncrierapp.data.watchzones.ApiPostcodeGeocoder
 import uk.towncrierapp.data.watchzones.ApiWatchZoneRepository
 import uk.towncrierapp.data.watchzones.ApiZonePreferencesRepository
+import uk.towncrierapp.domain.applications.ApplicationCacheStore
+import uk.towncrierapp.domain.applications.ApplicationListPreferencesStore
+import uk.towncrierapp.domain.applications.NotificationStateRepository
+import uk.towncrierapp.domain.applications.OfflineAwareRepository
+import uk.towncrierapp.domain.applications.PlanningApplicationRepository
+import uk.towncrierapp.domain.applications.SavedApplicationRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
@@ -35,16 +45,17 @@ public data class Auth0Tenant(
 )
 
 /**
- * The three leaves that genuinely need a real `Context` —
+ * The four leaves that genuinely need a real `Context` —
  * `TownCrierApplication` builds them (`SecureCredentialsManagerStore` over a
  * real `SecureCredentialsManager`, an `Application.ActivityLifecycleCallbacks`
- * tracker, a `DataStoreSubscriptionTierCache`) and hands them to the
- * otherwise Context-free [AppGraph].
+ * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`)
+ * and hands them to the otherwise Context-free [AppGraph].
  */
 public class AndroidLeaves(
     public val credentialsStore: CredentialsStore,
     public val activityProvider: CurrentActivityProvider,
     public val tierCache: SubscriptionTierCache,
+    public val applicationListPreferencesStore: ApplicationListPreferencesStore,
 )
 
 /** Rarely-overridden technical knobs, grouped so [AppGraph]'s own constructor stays short. */
@@ -112,4 +123,43 @@ public class AppGraph(
     public val zonePreferencesRepository: ZonePreferencesRepository = ApiZonePreferencesRepository(apiClient)
 
     public val postcodeGeocoder: PostcodeGeocoder = ApiPostcodeGeocoder(apiClient)
+
+    // The offline cache seam (GH#775 / tc-cnme): a single InMemoryApplicationCacheStore
+    // instance backs BOTH the (currently dormant — see offlineAwareApplicationRepository
+    // below) OfflineAwareRepository decorator AND the explicit
+    // invalidate(zoneId)/invalidateAll() hooks a watch-zone edit and a
+    // mark-all-read fire — same object, so an invalidation is always visible.
+    public val applicationCacheStore: ApplicationCacheStore = InMemoryApplicationCacheStore()
+
+    // The interactive Applications tab/detail screen's every fetch — first
+    // page included — goes straight to the network, matching iOS parity: on
+    // iOS every current sort is server-driven, so ApplicationListViewModel's
+    // `fetchPage` always calls `offlineRepository.fetchApplicationsPage`
+    // (network-only) and the OfflineAwareRepository-cached
+    // `fetchApplications(for:)` path is DORMANT plumbing "kept generic
+    // should a future client-only sort ever be added" (iOS
+    // ApplicationListViewModel+Pagination.swift) — it is never reached in
+    // practice. Routing the interactive screen through the cache instead
+    // would silently freeze filter/sort changes for the 900s TTL, since the
+    // cache key is zone-only (verified live on-device, GH#775).
+    public val planningApplicationRepository: PlanningApplicationRepository =
+        ApiPlanningApplicationRepository(apiClient)
+
+    // Built and available (mirrors iOS's own dormant `OfflineAwareRepository`
+    // — kept for a hypothetical future non-server-sorted mode) but not
+    // currently consumed by any ViewModel; see planningApplicationRepository's
+    // doc above.
+    public val offlineAwareApplicationRepository: OfflineAwareRepository =
+        OfflineAwareRepository(
+            remote = planningApplicationRepository,
+            cache = applicationCacheStore,
+            clock = options.clock,
+        )
+
+    public val savedApplicationRepository: SavedApplicationRepository = ApiSavedApplicationRepository(apiClient)
+
+    public val notificationStateRepository: NotificationStateRepository = ApiNotificationStateRepository(apiClient)
+
+    public val applicationListPreferencesStore: ApplicationListPreferencesStore =
+        androidLeaves.applicationListPreferencesStore
 }
