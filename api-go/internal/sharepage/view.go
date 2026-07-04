@@ -56,15 +56,16 @@ type pageView struct {
 	CTAHref       string
 	HomeURL       string
 
-	Ref         string
-	Address     string
-	Postcode    string
-	AppType     string
-	StatusChip  string
-	Description string
-	Dates       []dateEntry
-	PlanItLink  string
-	CouncilLink string
+	Ref            string
+	Address        string
+	Postcode       string
+	AppType        string
+	StatusLabel    string
+	StatusModifier string
+	Description    string
+	Dates          []dateEntry
+	PlanItLink     string
+	CouncilLink    string
 }
 
 // dateEntry is one row of the key-dates timeline (which doubles as the status
@@ -115,9 +116,7 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		v.AppType = *app.AppType
 	}
 	if app.AppState != nil {
-		// Render the RAW PlanIt status verbatim — mapping it to a friendly label or
-		// a status colour is a web/iOS concern, deliberately not invented here.
-		v.StatusChip = *app.AppState
+		v.StatusLabel, v.StatusModifier = statusChip(*app.AppState)
 	}
 	if app.StartDate != nil {
 		v.Dates = append(v.Dates, dateEntry{Label: "Started", Value: formatDate(*app.StartDate)})
@@ -135,6 +134,40 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 		v.CouncilLink = *app.URL
 	}
 	return v
+}
+
+// statusLabels maps a raw PlanIt appState string to the resident-facing label
+// shared across both public surfaces: mirrors STATUS_DISPLAY_LABEL_MAP in
+// web/scripts/lib/format.mjs, so the share pages and the SEO planning pages
+// speak one vocabulary (tc-r4n9 decision 4). A state absent from this map
+// (e.g. "Undecided", "Withdrawn", "Appealed", "Unresolved", "Referred", or any
+// PlanIt string not seen at design time) passes through unchanged in
+// statusChip below — it is real PlanIt data, not wording we invent.
+var statusLabels = map[string]string{
+	"Permitted":  "Granted",
+	"Conditions": "Granted with conditions",
+	"Rejected":   "Refused",
+}
+
+// statusModifiers maps the same raw appState to a broad CSS colour bucket.
+// Deliberately three buckets, not a five-way traffic light: granted (green),
+// refused (red), and neutral for everything else — including "Undecided" and
+// every long-tail state (Withdrawn, Appealed, Unresolved, Referred, unknown).
+// Per decision 4, long-tail states are neutral, not individually coloured.
+var statusModifiers = map[string]string{
+	"Permitted":  "granted",
+	"Conditions": "granted",
+	"Rejected":   "refused",
+}
+
+// statusChip translates a raw PlanIt appState into its (label, CSS modifier)
+// pair. An unrecognised appState renders as itself with the neutral modifier,
+// so an unmapped PlanIt string is still visible rather than silently dropped.
+func statusChip(appState string) (label, modifier string) {
+	if l, ok := statusLabels[appState]; ok {
+		return l, statusModifiers[appState]
+	}
+	return appState, "neutral"
 }
 
 // addressIncludesPostcode reports whether address already ends with postcode,

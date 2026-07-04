@@ -28,7 +28,7 @@
 <img class="hero" src="{{.OGImage}}" alt="Map showing the approximate location of {{if .Address}}{{.Address}}{{else}}this planning application{{end}}" width="1200" height="630" loading="eager">
 <article class="card">
 <div class="ref-row">Reference {{.Ref}}{{if .AppType}} &middot; {{.AppType}}{{end}}</div>
-{{if .StatusChip}}<span class="chip">{{.StatusChip}}</span>{{end}}
+{{if .StatusLabel}}<span class="chip chip--{{.StatusModifier}}">{{.StatusLabel}}</span>{{end}}
 <h1 class="address">{{.Address}}{{if .Postcode}}, {{.Postcode}}{{end}}</h1>
 {{if .Description}}<h2>Proposal</h2><p class="proposal">{{.Description}}</p>{{end}}
 {{if .Dates}}<h2>Key dates</h2><ol class="timeline">{{range .Dates}}<li><span class="date-label">{{.Label}}</span><span class="date-value">{{.Value}}</span></li>{{end}}</ol>{{end}}
