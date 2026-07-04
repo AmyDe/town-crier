@@ -163,11 +163,16 @@ var statusLabels = map[string]string{
 // statusModifiers maps the same raw appState to a broad CSS colour bucket.
 // Deliberately three buckets, not a five-way traffic light: granted (green),
 // refused (red), and neutral for everything else — including "Undecided" and
-// every long-tail state (Withdrawn, Appealed, Unresolved, Referred, unknown).
-// Per decision 4, long-tail states are neutral, not individually coloured.
+// every long-tail state. "Conditions" ("Granted with conditions") is
+// explicitly one of those long-tail states per issue #794 Phase 3 ("fold the
+// long tail: Withdrawn, Unresolved, Granted with conditions, Referred") and
+// per tc-r4n9.2's web-side bucketing, so it is neutral here too, matching the
+// label lookup in statusLabels (which still spells it out in full) but NOT
+// colouring it green like an unconditional grant. Per decision 4, long-tail
+// states are neutral, not individually coloured.
 var statusModifiers = map[string]string{
 	"Permitted":  "granted",
-	"Conditions": "granted",
+	"Conditions": "neutral",
 	"Rejected":   "refused",
 }
 
