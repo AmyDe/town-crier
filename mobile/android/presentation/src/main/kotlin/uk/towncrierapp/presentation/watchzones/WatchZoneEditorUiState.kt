@@ -37,13 +37,5 @@ public data class WatchZoneEditorUiState(
     public companion object {
         public const val MIN_RADIUS_METRES: Float = 100f
         public const val DEFAULT_RADIUS_METRES: Float = 1_000f
-
-        /**
-         * Threshold (metres) at or above which the large-radius warning shows.
-         * Set just above the free tier's 2 km cap so a free user pinned at
-         * their maximum never trips it — only paid tiers, which can exceed
-         * 2 km, see it. Port of iOS `LargeRadiusWarning.thresholdMetres`.
-         */
-        public const val LARGE_RADIUS_WARNING_THRESHOLD_METRES: Float = 2_100f
     }
 }

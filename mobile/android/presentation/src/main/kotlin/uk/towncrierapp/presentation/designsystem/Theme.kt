@@ -37,6 +37,7 @@ public data class TownCrierColors(
     val statusAppealed: Color,
     val amberMuted: Color,
     val overlay: Color,
+    val textTertiary: Color,
 )
 
 private val LocalTownCrierColors = staticCompositionLocalOf { extendedColors(LightPalette) }
@@ -108,6 +109,7 @@ internal fun extendedColors(palette: TcPalette): TownCrierColors =
         statusAppealed = palette.statusAppealed,
         amberMuted = palette.amberMuted,
         overlay = palette.overlay,
+        textTertiary = palette.textTertiary,
     )
 
 /**

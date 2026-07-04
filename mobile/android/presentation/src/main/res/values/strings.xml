@@ -12,4 +12,67 @@
     <string name="force_update_title">Update Required</string>
     <string name="force_update_message">A newer version of Town Crier is available. Please update to continue using the app.</string>
     <string name="force_update_button">Update Now</string>
+
+    <!-- Bottom navigation (tc-z95t) -->
+    <string name="bottom_nav_home">Home</string>
+    <string name="bottom_nav_zones">Zones</string>
+
+    <!-- Shared gating copy (tc-z95t) -->
+    <string name="upgrade_badge_label">Upgrade</string>
+
+    <!-- Watch zone errors (tc-z95t) -->
+    <string name="watch_zone_error_network">Check your internet connection and try again.</string>
+    <string name="watch_zone_error_not_found">We couldn\'t find that postcode. Please check and try again.</string>
+    <string name="watch_zone_error_upgrade_required">This feature is on a higher plan. Upgrade to use it.</string>
+    <string name="watch_zone_error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Watch zone list (tc-z95t) -->
+    <string name="watch_zones_title">Watch Zones</string>
+    <string name="watch_zones_add_content_description">Add watch zone</string>
+    <string name="watch_zones_delete_content_description">Delete watch zone</string>
+    <string name="watch_zones_empty_title">No Watch Zones</string>
+    <string name="watch_zones_empty_message">Add a watch zone to start monitoring planning applications in your area.</string>
+    <string name="watch_zones_empty_cta">Add Watch Zone</string>
+
+    <!-- Watch zone free-tier inline upsell card (tc-t8hc / tc-z95t, copy verbatim from iOS) -->
+    <string name="watch_zone_upsell_title">Do more with a plan</string>
+    <string name="watch_zone_upsell_bigger_zones">Bigger watch zones, up to 10 km</string>
+    <string name="watch_zone_upsell_more_than_one_zone">More than one watch zone</string>
+    <string name="watch_zone_upsell_instant_alerts">Instant alerts by push and email</string>
+    <string name="watch_zone_upsell_free_clarifier">Free gives you a weekly digest.</string>
+    <string name="watch_zone_upsell_view_plans">View Plans</string>
+
+    <!-- Watch zone editor (tc-z95t) -->
+    <string name="watch_zone_editor_title_new">New Watch Zone</string>
+    <string name="watch_zone_editor_title_edit">Edit Watch Zone</string>
+    <string name="watch_zone_editor_name_label">Zone Name</string>
+    <string name="watch_zone_editor_name_placeholder">e.g. My Home, Office</string>
+    <string name="watch_zone_editor_postcode_label">Postcode</string>
+    <string name="watch_zone_editor_postcode_placeholder">Postcode</string>
+    <string name="watch_zone_editor_postcode_footer">Enter a UK postcode to centre your watch zone.</string>
+    <string name="watch_zone_editor_lookup_button">Look up</string>
+    <string name="watch_zone_editor_radius_label">Radius</string>
+    <string name="watch_zone_editor_preview_label">Preview</string>
+    <string name="watch_zone_editor_push_label">Send push notifications</string>
+    <string name="watch_zone_editor_email_label">Send instant emails</string>
+    <string name="watch_zone_editor_notifications_footer_unlocked">Choose how this zone alerts you when new applications match.</string>
+    <string name="watch_zone_editor_notifications_footer_locked">Instant push and email alerts are available on Personal and Pro. Free accounts receive a weekly email digest.</string>
+    <string name="watch_zone_editor_save_button">Save</string>
+    <string name="watch_zone_editor_cancel_button">Cancel</string>
+
+    <!-- Large-radius warning + unlock-larger-zones chip (tc-1zb7 / tc-42gc / tc-z95t) -->
+    <string name="large_radius_warning_title">Heads up: large zones get noisy</string>
+    <string name="large_radius_warning_body">A wide watch zone can produce hundreds of notifications a day, especially in cities. We recommend 100-500 m in built-up areas, and under 2 km everywhere else.</string>
+    <string name="unlock_larger_zones_title">Do more with a plan</string>
+    <string name="unlock_larger_zones_body">Bigger watch zones up to 10 km, more than one zone, and instant alerts by push and email. Free gives you a weekly digest.</string>
+
+    <!-- Per-zone notification preferences (tc-z95t) -->
+    <string name="zone_preferences_new_applications_header">New applications</string>
+    <string name="zone_preferences_new_applications_footer">Get notified when a new planning application is submitted in this zone.</string>
+    <string name="zone_preferences_decision_updates_header">Decision updates</string>
+    <string name="zone_preferences_decision_updates_footer">Get notified when a decision is made on an application in this zone.</string>
+    <string name="zone_preferences_push_label">Push</string>
+    <string name="zone_preferences_email_label">Email</string>
+    <string name="zone_preferences_save_button">Save</string>
+    <string name="zone_preferences_cancel_button">Cancel</string>
 </resources>

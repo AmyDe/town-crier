@@ -17,6 +17,7 @@ import uk.towncrierapp.domain.watchzones.WatchZone
 import uk.towncrierapp.domain.watchzones.WatchZoneId
 import uk.towncrierapp.domain.watchzones.WatchZoneLimits
 import uk.towncrierapp.domain.watchzones.WatchZoneRepository
+import uk.towncrierapp.presentation.designsystem.components.LARGE_RADIUS_WARNING_THRESHOLD_METRES
 import java.util.UUID
 
 /**
@@ -48,7 +49,7 @@ public class WatchZoneEditorViewModel(
         _uiState.update {
             it.copy(
                 radiusMetres = value,
-                showsLargeRadiusWarning = value >= WatchZoneEditorUiState.LARGE_RADIUS_WARNING_THRESHOLD_METRES,
+                showsLargeRadiusWarning = value >= LARGE_RADIUS_WARNING_THRESHOLD_METRES,
             )
         }
     }
@@ -151,7 +152,7 @@ private fun initialState(
         featureGate = FeatureGate(tier),
         instantAlertEntitlement = Entitlement.STATUS_CHANGE_ALERTS,
         canUnlockLargerRadius = tier < SubscriptionTier.PRO,
-        showsLargeRadiusWarning = radius >= WatchZoneEditorUiState.LARGE_RADIUS_WARNING_THRESHOLD_METRES,
+        showsLargeRadiusWarning = radius >= LARGE_RADIUS_WARNING_THRESHOLD_METRES,
         isSaveEnabled = editingZone != null,
     )
 }
