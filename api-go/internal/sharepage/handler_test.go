@@ -164,8 +164,10 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		"Contains public sector information licensed under the Open Government Licence. Crown Copyright.",
 		"Contains Ordnance Survey data © Crown Copyright and database right.",
 		"Map data © OpenStreetMap contributors.",
-		// Sticky CTA: exact copy + the campaign-tagged App Store URL.
-		"Download the app for instant notifications about planning updates",
+		// Sticky CTA: short verb-first label + supporting sentence, plus the
+		// campaign-tagged App Store URL.
+		"Get the app",
+		"Instant notifications about planning updates like this one.",
 		"town-crier-planning-alerts",
 		"ct=share-page",
 		"mt=8",
@@ -527,7 +529,7 @@ func TestServe_NilOptionalFields_Renders200WithoutPanic(t *testing.T) {
 		t.Error("key-dates section rendered despite no dates")
 	}
 	// Attribution + CTA still present.
-	if !strings.Contains(body, "Download the app for instant notifications about planning updates") {
+	if !strings.Contains(body, "Get the app") {
 		t.Error("sticky CTA missing")
 	}
 	if !strings.Contains(body, "Map data © OpenStreetMap contributors.") {
