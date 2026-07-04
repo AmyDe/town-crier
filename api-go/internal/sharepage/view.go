@@ -66,6 +66,8 @@ type pageView struct {
 	Dates          []dateEntry
 	PlanItLink     string
 	CouncilLink    string
+	AuthorityName  string
+	AuthorityURL   string
 }
 
 // dateEntry is one row of the key-dates timeline (which doubles as the status
@@ -132,6 +134,15 @@ func buildPageView(app applications.PlanningApplication, slug, ref string) pageV
 	}
 	if app.URL != nil {
 		v.CouncilLink = *app.URL
+	}
+	if areaName := strings.TrimSpace(app.AreaName); areaName != "" {
+		v.AuthorityName = areaName
+		// Built from the same slug this page itself was resolved by — the share
+		// page and the SEO planning page (web/scripts/prerender-planning.mjs) both
+		// slugify the authority name with the same byte-equal-ported Slugify, so
+		// this is the correct authority-page path whenever one has been published
+		// for this authority.
+		v.AuthorityURL = homeURL + "/planning/" + slug
 	}
 	return v
 }
