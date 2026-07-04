@@ -85,7 +85,12 @@ class WatchZoneListViewModelTest {
         viewModel.reload()
 
         assertEquals(2, repository.zonesCallCount)
-        assertEquals(zone.radiusMetres + 400.0, viewModel.uiState.value.zones.single().radiusMetres)
+        assertEquals(
+            zone.radiusMetres + 400.0,
+            viewModel.uiState.value.zones
+                .single()
+                .radiusMetres,
+        )
     }
 
     @Test

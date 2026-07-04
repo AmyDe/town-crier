@@ -2,7 +2,9 @@ package uk.towncrierapp.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -49,6 +51,17 @@ internal data class ZonePreferencesDestination(
     val zoneName: String,
 )
 
+/**
+ * Nav-result key (tc-yg0q): [WatchZoneEditorDestinationContent] sets this on
+ * `previousBackStackEntry`'s `SavedStateHandle` on a successful save so
+ * [WatchZonesTab] — which never observes the editor's own state directly,
+ * ViewModels/Routes don't navigate — knows to call
+ * [WatchZoneListViewModel.reload] instead of relying on the tc-hlbx
+ * load-once guard's default no-op. Standard Compose Navigation
+ * "returning a result" pattern.
+ */
+private const val ZONE_SAVED_RESULT_KEY = "zone_saved"
+
 internal fun watchZoneEditorDestinationFor(zone: WatchZone) =
     WatchZoneEditorDestination(
         zoneId = zone.id.value,
@@ -78,6 +91,12 @@ private fun WatchZoneEditorDestination.toEditingZone(): WatchZone? {
  * The watch-zones tab: rebuilds [WatchZoneListViewModel] whenever
  * [subscriptionTier] changes (`key(subscriptionTier)`) so the upgrade
  * badge/upsell state never goes stale after a tier change (tc-ujct parity).
+ * [backStackEntry] is this destination's own back-stack entry — its
+ * `SavedStateHandle` is where a successful zone edit/create leaves the
+ * [ZONE_SAVED_RESULT_KEY] result (tc-yg0q) telling this tab to
+ * [WatchZoneListViewModel.reload], bypassing the tc-hlbx load-once guard
+ * for that one explicit "something changed" signal — a plain tab revisit
+ * with no such signal still does not refetch.
  */
 @Composable
 internal fun WatchZonesTab(
@@ -85,6 +104,7 @@ internal fun WatchZonesTab(
     subscriptionTier: SubscriptionTier,
     navController: NavHostController,
     onSettingsClick: () -> Unit,
+    backStackEntry: NavBackStackEntry,
 ) {
     val listViewModel: WatchZoneListViewModel =
         key(subscriptionTier) {
@@ -101,6 +121,15 @@ internal fun WatchZonesTab(
             )
         }
     LaunchedEffect(listViewModel) { listViewModel.load() }
+    val zoneSaved by backStackEntry.savedStateHandle
+        .getStateFlow(ZONE_SAVED_RESULT_KEY, false)
+        .collectAsStateWithLifecycle()
+    LaunchedEffect(zoneSaved) {
+        if (zoneSaved) {
+            backStackEntry.savedStateHandle[ZONE_SAVED_RESULT_KEY] = false
+            listViewModel.reload()
+        }
+    }
     WatchZonesRoute(
         viewModel = listViewModel,
         onZoneSelected = { zone -> navController.navigate(watchZoneEditorDestinationFor(zone)) },
@@ -142,6 +171,14 @@ internal fun WatchZoneEditorDestinationContent(
         )
     WatchZoneEditorRoute(
         viewModel = editorViewModel,
+        onSaveSuccess = {
+            // tc-yg0q: tell the Zones tab (if that's where we came from) its
+            // data is stale — see ZONE_SAVED_RESULT_KEY's doc above.
+            navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.set(ZONE_SAVED_RESULT_KEY, true)
+            navController.popBackStack()
+        },
         onDismiss = navController::popBackStack,
         // #783 hasn't shipped the paywall yet — dismiss the editor (matching
         // the "quota breach" UX) and no-op the rest.
