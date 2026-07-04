@@ -154,16 +154,21 @@ private fun AuthedContent(
     subscriptionTier: SubscriptionTier,
 ) {
     when (onboardingPresentation) {
-        OnboardingPresentation.Undetermined -> OnboardingLoadingScreen()
+        OnboardingPresentation.Undetermined -> {
+            OnboardingLoadingScreen()
+        }
 
-        OnboardingPresentation.Required ->
+        OnboardingPresentation.Required -> {
             OnboardingGate(
                 appGraph = appGraph,
                 subscriptionTier = subscriptionTier,
                 onOnboardingComplete = appGraph.authCoordinator::onOnboardingCompleted,
             )
+        }
 
-        OnboardingPresentation.NotRequired -> AuthedShell(appGraph = appGraph, navController = navController)
+        OnboardingPresentation.NotRequired -> {
+            AuthedShell(appGraph = appGraph, navController = navController)
+        }
     }
 }
 

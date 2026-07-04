@@ -62,7 +62,8 @@ public fun OnboardingRoute(
         onContinueFromPostcodeClick = viewModel::advance,
         onRadiusChange = viewModel::updateRadius,
         onConfirmRadiusClick = viewModel::confirmRadius,
-        onUnlockLargerZonesClick = {}, // #783 hasn't shipped - the chip is hidden (see OnboardingUiState.canUnlockLargerRadius), so this is never reachable.
+        // #783 hasn't shipped - the chip is hidden (OnboardingUiState.canUnlockLargerRadius), so this is never reached.
+        onUnlockLargerZonesClick = {},
         onEnableNotificationsClick = {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -101,10 +102,11 @@ internal fun OnboardingScreen(
     ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding).fillMaxSize()) {
             when (state.step) {
-                OnboardingStep.Welcome ->
+                OnboardingStep.Welcome -> {
                     WelcomeStep(onGetStartedClick = onGetStartedClick, modifier = Modifier.weight(1f))
+                }
 
-                OnboardingStep.Postcode ->
+                OnboardingStep.Postcode -> {
                     PostcodeEntryStep(
                         state = state,
                         onPostcodeChange = onPostcodeChange,
@@ -112,8 +114,9 @@ internal fun OnboardingScreen(
                         onContinueClick = onContinueFromPostcodeClick,
                         modifier = Modifier.weight(1f),
                     )
+                }
 
-                OnboardingStep.Radius ->
+                OnboardingStep.Radius -> {
                     RadiusPickerStep(
                         state = state,
                         onRadiusChange = onRadiusChange,
@@ -121,8 +124,9 @@ internal fun OnboardingScreen(
                         onUnlockLargerZonesClick = onUnlockLargerZonesClick,
                         modifier = Modifier.weight(1f),
                     )
+                }
 
-                OnboardingStep.NotificationPermission ->
+                OnboardingStep.NotificationPermission -> {
                     NotificationPermissionStep(
                         state = state,
                         onEnableClick = onEnableNotificationsClick,
@@ -130,6 +134,7 @@ internal fun OnboardingScreen(
                         onFinishClick = onFinishClick,
                         modifier = Modifier.weight(1f),
                     )
+                }
             }
         }
     }

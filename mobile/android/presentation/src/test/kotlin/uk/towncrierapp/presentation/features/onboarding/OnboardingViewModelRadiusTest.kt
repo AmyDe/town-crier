@@ -101,7 +101,11 @@ class OnboardingViewModelRadiusTest {
 
         viewModel.confirmRadius()
 
-        assertEquals(2_000.0, viewModel.uiState.value.pendingZone?.radiusMetres)
+        assertEquals(
+            2_000.0,
+            viewModel.uiState.value.pendingZone
+                ?.radiusMetres,
+        )
     }
 
     @Test

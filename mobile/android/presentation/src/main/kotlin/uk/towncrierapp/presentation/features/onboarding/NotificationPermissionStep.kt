@@ -61,12 +61,18 @@ internal fun NotificationPermissionStep(
             )
         }
         if (state.hasInstantAlertEntitlement) {
-            PrimaryButton(text = stringResource(R.string.onboarding_notifications_enable_button), onClick = onEnableClick)
+            PrimaryButton(
+                text = stringResource(R.string.onboarding_notifications_enable_button),
+                onClick = onEnableClick,
+            )
             TextButton(onClick = onSkipClick) {
                 Text(stringResource(R.string.onboarding_notifications_skip_button))
             }
         } else {
-            PrimaryButton(text = stringResource(R.string.onboarding_notifications_finish_button), onClick = onFinishClick)
+            PrimaryButton(
+                text = stringResource(R.string.onboarding_notifications_finish_button),
+                onClick = onFinishClick,
+            )
         }
     }
 }

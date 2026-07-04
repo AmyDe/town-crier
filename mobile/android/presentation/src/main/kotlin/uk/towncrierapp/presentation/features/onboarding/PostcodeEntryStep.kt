@@ -78,26 +78,29 @@ private fun PostcodeStepAction(
     modifier: Modifier = Modifier,
 ) {
     when {
-        state.isLookingUpPostcode ->
+        state.isLookingUpPostcode -> {
             CircularProgressIndicator(
                 modifier = modifier.padding(TownCrierSpacing.sm),
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
 
-        state.geocodedCoordinate != null ->
+        state.geocodedCoordinate != null -> {
             PrimaryButton(
                 text = stringResource(R.string.onboarding_postcode_continue_button),
                 onClick = onContinueClick,
                 modifier = modifier,
             )
+        }
 
-        else ->
+        else -> {
             PrimaryButton(
                 text = stringResource(R.string.onboarding_postcode_lookup_button),
                 onClick = onLookUpClick,
                 enabled = state.postcodeInput.isNotBlank(),
                 modifier = modifier,
             )
+        }
     }
 }
 
@@ -131,7 +134,11 @@ private fun PostcodeEntryStepGeocodedPreview() {
 private fun PostcodeEntryStepErrorPreview() {
     TownCrierTheme {
         PostcodeEntryStep(
-            state = OnboardingUiState(postcodeInput = "NOTAPOSTCODE", postcodeError = DomainError.GeocodingFailed("NOTAPOSTCODE")),
+            state =
+                OnboardingUiState(
+                    postcodeInput = "NOTAPOSTCODE",
+                    postcodeError = DomainError.GeocodingFailed("NOTAPOSTCODE"),
+                ),
             onPostcodeChange = {},
             onLookUpClick = {},
             onContinueClick = {},
