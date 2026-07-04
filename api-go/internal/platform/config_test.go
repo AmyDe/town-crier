@@ -434,6 +434,72 @@ func TestLoadConfig_AppleEnvironments(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_DevSeed(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("DEV_SEED_LIMIT", "10")
+		t.Setenv("DEV_SEED_PROD_POSTGRES_DB", "town_crier_prod_replica")
+		t.Setenv("DEV_SEED_PROD_POSTGRES_USER", "towncrier_dev_seed_reader")
+		t.Setenv("DEV_SEED_PROD_AZURE_CLIENT_ID", "11111111-2222-3333-4444-555555555555")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.DevSeedLimit != 10 {
+			t.Errorf("DevSeedLimit: got %d, want 10", cfg.DevSeedLimit)
+		}
+		if cfg.DevSeedProdPostgresDB != "town_crier_prod_replica" {
+			t.Errorf("DevSeedProdPostgresDB: got %q", cfg.DevSeedProdPostgresDB)
+		}
+		if cfg.DevSeedProdPostgresUser != "towncrier_dev_seed_reader" {
+			t.Errorf("DevSeedProdPostgresUser: got %q", cfg.DevSeedProdPostgresUser)
+		}
+		if cfg.DevSeedProdAzureClientID != "11111111-2222-3333-4444-555555555555" {
+			t.Errorf("DevSeedProdAzureClientID: got %q", cfg.DevSeedProdAzureClientID)
+		}
+	})
+
+	t.Run("absent defaults limit=5, db=town_crier_prod, empty user/client id (job unconfigured)", func(t *testing.T) {
+		t.Setenv("DEV_SEED_LIMIT", "")
+		t.Setenv("DEV_SEED_PROD_POSTGRES_DB", "")
+		t.Setenv("DEV_SEED_PROD_POSTGRES_USER", "")
+		t.Setenv("DEV_SEED_PROD_AZURE_CLIENT_ID", "")
+
+		cfg, err := LoadConfig()
+		if err != nil {
+			t.Fatalf("LoadConfig: %v", err)
+		}
+		if cfg.DevSeedLimit != 5 {
+			t.Errorf("DevSeedLimit default: got %d, want 5", cfg.DevSeedLimit)
+		}
+		if cfg.DevSeedProdPostgresDB != "town_crier_prod" {
+			t.Errorf("DevSeedProdPostgresDB default: got %q, want town_crier_prod", cfg.DevSeedProdPostgresDB)
+		}
+		if cfg.DevSeedProdPostgresUser != "" {
+			t.Errorf("DevSeedProdPostgresUser: got %q, want empty (job unconfigured)", cfg.DevSeedProdPostgresUser)
+		}
+		if cfg.DevSeedProdAzureClientID != "" {
+			t.Errorf("DevSeedProdAzureClientID: got %q, want empty (job unconfigured)", cfg.DevSeedProdAzureClientID)
+		}
+	})
+}
+
+func TestLoadConfig_PostgresConnParams(t *testing.T) {
+	t.Setenv("POSTGRES_HOST", "psql-town-crier-shared.postgres.database.azure.com")
+	t.Setenv("POSTGRES_SSLMODE", "require")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.PostgresHost != "psql-town-crier-shared.postgres.database.azure.com" {
+		t.Errorf("PostgresHost: got %q", cfg.PostgresHost)
+	}
+	if cfg.PostgresSSLMode != "require" {
+		t.Errorf("PostgresSSLMode: got %q", cfg.PostgresSSLMode)
+	}
+}
+
 func TestLoadConfig_PollingOverrides(t *testing.T) {
 	t.Setenv("PLANIT_BASE_URL", "https://stub.planit.test/")
 	t.Setenv("POLLING_MAX_PAGES_PER_AUTHORITY_PER_CYCLE", "5")
