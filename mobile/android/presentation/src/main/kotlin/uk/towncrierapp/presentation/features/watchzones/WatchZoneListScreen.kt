@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +59,7 @@ import uk.towncrierapp.presentation.designsystem.components.UpgradeBadge
 public fun WatchZonesRoute(
     viewModel: WatchZoneListViewModel,
     onZoneSelected: (WatchZone) -> Unit,
+    onZonePreferencesSelected: (WatchZone) -> Unit,
     onAddZone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -65,6 +67,7 @@ public fun WatchZonesRoute(
     WatchZoneListScreen(
         state = state,
         onZoneSelected = onZoneSelected,
+        onZonePreferencesSelected = onZonePreferencesSelected,
         onDeleteZone = viewModel::deleteZone,
         onAddZoneClick = { if (state.canAddZone) onAddZone() },
         onViewPlansClick = { /* no-op until #783 ships the paywall */ },
@@ -77,6 +80,7 @@ public fun WatchZonesRoute(
 internal fun WatchZoneListScreen(
     state: WatchZoneListUiState,
     onZoneSelected: (WatchZone) -> Unit,
+    onZonePreferencesSelected: (WatchZone) -> Unit,
     onDeleteZone: (WatchZone) -> Unit,
     onAddZoneClick: () -> Unit,
     onViewPlansClick: () -> Unit,
@@ -109,7 +113,11 @@ internal fun WatchZoneListScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(state.zones, key = { it.id.value }) { zone ->
                         SwipeToDeleteRow(onDelete = { onDeleteZone(zone) }) {
-                            WatchZoneRow(zone = zone, onClick = { onZoneSelected(zone) })
+                            WatchZoneRow(
+                                zone = zone,
+                                onClick = { onZoneSelected(zone) },
+                                onPreferencesClick = { onZonePreferencesSelected(zone) },
+                            )
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -172,6 +180,7 @@ private fun SwipeToDeleteRow(
 private fun WatchZoneRow(
     zone: WatchZone,
     onClick: () -> Unit,
+    onPreferencesClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -190,6 +199,13 @@ private fun WatchZoneRow(
                 text = RadiusFormatter.format(zone.radiusMetres),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onPreferencesClick) {
+            Icon(
+                imageVector = Icons.Filled.Notifications,
+                contentDescription = stringResource(R.string.watch_zones_preferences_content_description),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
@@ -279,6 +295,7 @@ private fun WatchZoneListScreenPreview() {
         WatchZoneListScreen(
             state = WatchZoneListUiState(zones = listOf(previewHomeZone, previewOfficeZone)),
             onZoneSelected = {},
+            onZonePreferencesSelected = {},
             onDeleteZone = {},
             onAddZoneClick = {},
             onViewPlansClick = {},
@@ -293,6 +310,7 @@ private fun WatchZoneListScreenEmptyPreview() {
         WatchZoneListScreen(
             state = WatchZoneListUiState(),
             onZoneSelected = {},
+            onZonePreferencesSelected = {},
             onDeleteZone = {},
             onAddZoneClick = {},
             onViewPlansClick = {},
@@ -313,6 +331,7 @@ private fun WatchZoneListScreenFreeAtCapPreview() {
                     showsFreeTierUpsell = true,
                 ),
             onZoneSelected = {},
+            onZonePreferencesSelected = {},
             onDeleteZone = {},
             onAddZoneClick = {},
             onViewPlansClick = {},
@@ -333,6 +352,7 @@ private fun WatchZoneListScreenPersonalAtCapPreview() {
                     showsFreeTierUpsell = false,
                 ),
             onZoneSelected = {},
+            onZonePreferencesSelected = {},
             onDeleteZone = {},
             onAddZoneClick = {},
             onViewPlansClick = {},

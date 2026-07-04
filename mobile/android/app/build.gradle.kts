@@ -86,6 +86,8 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    // Bottom-navigation icons (tc-z95t): Home/Place are in the core icon set.
+    implementation(libs.compose.material.icons.core)
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.kotlinx.coroutines.android)

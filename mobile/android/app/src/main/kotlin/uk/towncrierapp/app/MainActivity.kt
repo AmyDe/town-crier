@@ -8,7 +8,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +33,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
 import uk.towncrierapp.mobile.R
@@ -34,6 +43,7 @@ import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
 import uk.towncrierapp.presentation.features.forceupdate.PLAY_STORE_URL
 import uk.towncrierapp.presentation.features.login.LoginRoute
 import uk.towncrierapp.presentation.features.login.LoginViewModel
+import uk.towncrierapp.presentation.R as PresentationR
 
 /** Town Crier's single activity — see android-coding-standards skill: single-activity Compose, no Fragments. */
 public class MainActivity : ComponentActivity() {
@@ -49,9 +59,20 @@ public class MainActivity : ComponentActivity() {
     }
 }
 
-/** The one placeholder destination this scaffold ships — real screens land in later phases of epic #770. */
+/** The placeholder destination from #771 — a real Home/dashboard lands in a later phase of epic #770. */
 @Serializable
-private data object Home
+internal data object Home
+
+/** The watch-zones tab (tc-z95t) — 2nd bottom-nav destination alongside [Home]; more tabs land with #775/#776. */
+@Serializable
+internal data object WatchZones
+
+// A no-arg `@Serializable data object` route's KSerializer serialName is its
+// fully qualified class name — comparing against it is a simpler, equally
+// reliable way to tell "is this bottom-nav tab currently selected" than the
+// generic `NavDestination.hasRoute<T>()` extension.
+private val HOME_ROUTE = Home::class.qualifiedName
+private val WATCH_ZONES_ROUTE = WatchZones::class.qualifiedName
 
 /**
  * Root routing: pre-login force-update gate, then Login or the authed
@@ -96,15 +117,92 @@ public fun TownCrierApp(
             }
 
             loginState.isAuthenticated -> {
-                NavHost(navController = navController, startDestination = Home) {
-                    composable<Home> { HomeRoute() }
-                }
+                AuthedShell(appGraph = appGraph, navController = navController)
             }
 
             else -> {
                 LoginRoute(viewModel = loginViewModel)
             }
         }
+    }
+}
+
+/**
+ * The signed-in shell: bottom navigation (Home, Zones) wrapping the NavHost.
+ * The watch-zone destinations' content lives in `WatchZoneNavGraph.kt` to
+ * keep both files under detekt's per-file function-count budget.
+ */
+@Composable
+private fun AuthedShell(
+    appGraph: AppGraph,
+    navController: NavHostController,
+    modifier: Modifier = Modifier,
+) {
+    val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+
+    Scaffold(
+        modifier = modifier,
+        bottomBar = {
+            AuthedBottomBar(currentRoute = backStackEntry?.destination?.route, navController = navController)
+        },
+    ) { contentPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = Home,
+            modifier = Modifier.padding(contentPadding),
+        ) {
+            composable<Home> { HomeRoute() }
+            composable<WatchZones> {
+                WatchZonesTab(appGraph = appGraph, subscriptionTier = subscriptionTier, navController = navController)
+            }
+            composable<WatchZoneEditorDestination> { entry ->
+                WatchZoneEditorDestinationContent(
+                    entry = entry,
+                    appGraph = appGraph,
+                    subscriptionTier = subscriptionTier,
+                    navController = navController,
+                )
+            }
+            composable<ZonePreferencesDestination> { entry ->
+                ZonePreferencesDestinationContent(
+                    entry = entry,
+                    appGraph = appGraph,
+                    subscriptionTier = subscriptionTier,
+                    navController = navController,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthedBottomBar(
+    currentRoute: String?,
+    navController: NavHostController,
+) {
+    NavigationBar {
+        NavigationBarItem(
+            selected = currentRoute == HOME_ROUTE,
+            onClick = { navController.navigateToTab(Home) },
+            icon = { Icon(imageVector = Icons.Filled.Home, contentDescription = null) },
+            label = { Text(stringResource(PresentationR.string.bottom_nav_home)) },
+        )
+        NavigationBarItem(
+            selected = currentRoute == WATCH_ZONES_ROUTE,
+            onClick = { navController.navigateToTab(WatchZones) },
+            icon = { Icon(imageVector = Icons.Filled.Place, contentDescription = null) },
+            label = { Text(stringResource(PresentationR.string.bottom_nav_zones)) },
+        )
+    }
+}
+
+/** Standard bottom-nav tab switch: single top-of-stack instance per tab, restoring saved state. */
+internal fun NavHostController.navigateToTab(route: Any) {
+    navigate(route) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 

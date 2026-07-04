@@ -30,6 +30,7 @@
     <string name="watch_zones_title">Watch Zones</string>
     <string name="watch_zones_add_content_description">Add watch zone</string>
     <string name="watch_zones_delete_content_description">Delete watch zone</string>
+    <string name="watch_zones_preferences_content_description">Notification preferences</string>
     <string name="watch_zones_empty_title">No Watch Zones</string>
     <string name="watch_zones_empty_message">Add a watch zone to start monitoring planning applications in your area.</string>
     <string name="watch_zones_empty_cta">Add Watch Zone</string>
