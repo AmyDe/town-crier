@@ -201,6 +201,31 @@ func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode str
 	return apps, nil
 }
 
+const pgRecentInAuthoritiesQuery = "SELECT " + appColumns +
+	" FROM applications WHERE area_id = ANY($1) ORDER BY last_different DESC LIMIT $2"
+
+// RecentInAuthorities returns up to limit most-recently-active applications
+// across all of authorityIDs (matched against the numeric area_id, not the
+// stringified authority_code), ordered by last_different DESC. It backs the
+// dev-seed job's prod read (epic #808): a small, cross-authority "most recently
+// changed" window, not a per-authority scoped read like RecentByAuthority.
+//
+// A nil or empty authorityIDs is a normal no-op (e.g. dev has no watch zones
+// yet) and returns an empty slice with no error — pgx correctly binds an empty
+// []int to ANY($1) as an empty array, matching zero rows, rather than erroring
+// or panicking.
+func (s *PostgresStore) RecentInAuthorities(ctx context.Context, authorityIDs []int, limit int) ([]PlanningApplication, error) {
+	rows, err := s.db.Query(ctx, pgRecentInAuthoritiesQuery, authorityIDs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications in authorities %v: %w", authorityIDs, err)
+	}
+	apps, err := pgx.CollectRows(rows, scanAppRow)
+	if err != nil {
+		return nil, fmt.Errorf("recent applications in authorities %v: %w", authorityIDs, err)
+	}
+	return apps, nil
+}
+
 const pgBreakdownByAuthorityQuery = "SELECT app_state, count(*) FROM applications " +
 	"WHERE authority_code = $1 GROUP BY app_state"
 

@@ -326,6 +326,57 @@ func TestPostgresStore_RecentByAuthority(t *testing.T) {
 	assertNames(t, appNames(capped), []string{"NEW", "MID"})
 }
 
+// TestPostgresStore_RecentInAuthorities orders by last_different DESC across
+// multiple authorities, bounds by limit, excludes authorities not requested, and
+// returns an empty result (not an error or a panic) for an empty or nil authority
+// list — the dev-seed job's normal "no watch zones yet" state (epic #808).
+func TestPostgresStore_RecentInAuthorities(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	older := pgApp("OLD", 100)
+	older.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	mid := pgApp("MID", 200)
+	mid.LastDifferent = time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	newer := pgApp("NEW", 100)
+	newer.LastDifferent = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	excluded := pgApp("EXCLUDED-AUTH", 300) // authority not requested; must not appear
+	for _, a := range []PlanningApplication{older, mid, newer, excluded} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentInAuthorities(ctx, []int{100, 200}, 10)
+	if err != nil {
+		t.Fatalf("RecentInAuthorities: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"NEW", "MID", "OLD"})
+
+	capped, err := store.RecentInAuthorities(ctx, []int{100, 200}, 2)
+	if err != nil {
+		t.Fatalf("RecentInAuthorities capped: %v", err)
+	}
+	assertNames(t, appNames(capped), []string{"NEW", "MID"})
+
+	empty, err := store.RecentInAuthorities(ctx, []int{}, 10)
+	if err != nil {
+		t.Fatalf("RecentInAuthorities empty authorityIDs: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("RecentInAuthorities empty authorityIDs: got %d rows, want 0", len(empty))
+	}
+
+	var nilIDs []int
+	nilResult, err := store.RecentInAuthorities(ctx, nilIDs, 10)
+	if err != nil {
+		t.Fatalf("RecentInAuthorities nil authorityIDs: %v", err)
+	}
+	if len(nilResult) != 0 {
+		t.Errorf("RecentInAuthorities nil authorityIDs: got %d rows, want 0", len(nilResult))
+	}
+}
+
 // TestPostgresStore_BreakdownByAuthority returns exact per-app_state counts
 // including the NULL-app_state bucket, sorted by sortStateCounts, scoped to the
 // authority and summing to the true total.
