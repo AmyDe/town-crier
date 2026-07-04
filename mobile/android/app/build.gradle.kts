@@ -14,7 +14,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
 
         // Auth0 Android SDK manifest placeholders (tc-f2il, epic #770 D4).
         // Same tenant + domain for both flavors — only the applicationId
