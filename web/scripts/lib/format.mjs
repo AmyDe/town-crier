@@ -189,7 +189,9 @@ export function dataUpdatedLine(applications) {
 
 /**
  * Build the data-filled lead sentence under the H1: the exact whole-partition
- * total with the right plural.
+ * total with the right plural. Warmed up per the `voice` skill (tc-r4n9.3,
+ * punch-list #794 Phase 3) - speaks to the reader directly rather than
+ * reading as a flat database statement.
  *
  * @param {string} areaName
  * @param {number} total
@@ -197,5 +199,5 @@ export function dataUpdatedLine(applications) {
  */
 export function leadLine(areaName, total) {
   const noun = total === 1 ? 'planning application' : 'planning applications';
-  return `Town Crier is tracking ${total} ${noun} in ${areaName}.`;
+  return `See what's happening with planning in ${areaName}: ${total} ${noun} tracked so far.`;
 }
