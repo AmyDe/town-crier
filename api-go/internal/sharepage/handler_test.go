@@ -228,7 +228,7 @@ func TestServe_HeroFramedWithBorderConsistentWithCard(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `.hero{display:block;width:100%;height:auto;aspect-ratio:1200/630;border:1px solid var(--border);`) {
+	if !strings.Contains(body, `border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:var(--space-lg);`) {
 		t.Error("hero rule missing the card-style border frame")
 	}
 }
