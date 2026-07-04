@@ -97,25 +97,35 @@ describe('renderTownPage', () => {
     expect(html).toMatch(/breadcrumb[\s\S]*?Cornwall/);
   });
 
-  it('renders each application address, status label, Last updated date and links', () => {
+  it('renders each application address as the headline, status label and Last updated date', () => {
     const html = renderTownPage(townData());
-    expect(html).toContain('Lemon Quay, Truro, TR1 2LW');
+    expect(html).toContain(
+      '<h3 class="appCard__address">Lemon Quay, Truro, TR1 2LW</h3>',
+    );
     expect(html).toContain('Change of use of ground floor from retail to café');
     expect(html).toContain('Granted'); // Permitted -> Granted
     expect(html).toContain('Refused'); // Rejected -> Refused
     // The visible card date is the lastDifferent date, labelled "Last updated".
     expect(html).toContain('Last updated 12 Jun 2026');
-    expect(html).toContain('https://planning.cornwall.gov.uk/26-0001');
-    expect(html).toContain('https://planit.org.uk/planapplic/CW-26-0001');
   });
 
-  it('links each application heading to its share page using the parent authority slug and ref', () => {
+  it('demotes the reference to small card metadata and removes per-card external links (decisions 5 & 6)', () => {
+    const html = renderTownPage(townData());
+    expect(html).toContain('<p class="appCard__ref">26/0001</p>');
+    expect(html).not.toContain('<h3 class="appCard__ref">');
+    expect(html).not.toContain('https://planning.cornwall.gov.uk/26-0001');
+    expect(html).not.toContain('https://planit.org.uk/planapplic/CW-26-0001');
+    expect(html).not.toContain('class="appLink"');
+  });
+
+  it('makes the whole card a real anchor to its share page, with a visible "View details" affordance', () => {
     const html = renderTownPage(townData());
     // Town-page apps are scoped to the town's own authority, so authoritySlug is
-    // correct for every card; the reference heading is the share link.
+    // correct for every card.
     expect(html).toContain(
-      '<h3 class="appCard__ref"><a class="appCard__refLink" href="https://share.towncrierapp.uk/a/cornwall/26/0001">26/0001</a></h3>',
+      '<a class="appCard__link" href="https://share.towncrierapp.uk/a/cornwall/26/0001">',
     );
+    expect(html).toContain('<span class="appCard__cta">View details →</span>');
     expect(html).toContain(
       '"url":"https://share.towncrierapp.uk/a/cornwall/26/0001"',
     );
