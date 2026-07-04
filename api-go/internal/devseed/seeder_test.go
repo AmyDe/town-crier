@@ -6,7 +6,6 @@ package devseed
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"reflect"
 	"strconv"
@@ -118,7 +117,7 @@ func storeKey(uid string, areaID int) string {
 }
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func testApp(uid string, areaID int, description string) applications.PlanningApplication {
