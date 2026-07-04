@@ -206,3 +206,59 @@ func TestBuildPageView_PostcodeDeduplication(t *testing.T) {
 	}
 }
 
+// TestStatusChip pins the shared status vocabulary/palette (tc-r4n9 decision
+// 4): the resident-facing label mirrors web/scripts/lib/format.mjs's
+// STATUS_DISPLAY_LABEL_MAP, and the colour modifier deliberately collapses to
+// three buckets — granted (green), refused (red), neutral for everything else
+// including "Undecided" and every long-tail state — rather than a five-way
+// traffic light.
+func TestStatusChip(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		appState     string
+		wantLabel    string
+		wantModifier string
+	}{
+		{appState: "Permitted", wantLabel: "Granted", wantModifier: "granted"},
+		{appState: "Conditions", wantLabel: "Granted with conditions", wantModifier: "granted"},
+		{appState: "Rejected", wantLabel: "Refused", wantModifier: "refused"},
+		{appState: "Undecided", wantLabel: "Undecided", wantModifier: "neutral"},
+		{appState: "Withdrawn", wantLabel: "Withdrawn", wantModifier: "neutral"},
+		{appState: "Appealed", wantLabel: "Appealed", wantModifier: "neutral"},
+		{appState: "Unresolved", wantLabel: "Unresolved", wantModifier: "neutral"},
+		{appState: "Referred", wantLabel: "Referred", wantModifier: "neutral"},
+		{appState: "Some Future PlanIt State", wantLabel: "Some Future PlanIt State", wantModifier: "neutral"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.appState, func(t *testing.T) {
+			t.Parallel()
+			gotLabel, gotModifier := statusChip(tt.appState)
+			if gotLabel != tt.wantLabel || gotModifier != tt.wantModifier {
+				t.Errorf("statusChip(%q) = (%q, %q), want (%q, %q)", tt.appState, gotLabel, gotModifier, tt.wantLabel, tt.wantModifier)
+			}
+		})
+	}
+}
+
+// TestBuildPageView_StatusChip pins buildPageView's wiring of the mapped
+// vocabulary: a nil AppState leaves both fields empty (so the template omits
+// the chip entirely); a set AppState is run through statusChip.
+func TestBuildPageView_StatusChip(t *testing.T) {
+	t.Parallel()
+	t.Run("nil AppState omits the chip", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.StatusLabel != "" || v.StatusModifier != "" {
+			t.Errorf("StatusLabel/StatusModifier = %q/%q, want empty/empty", v.StatusLabel, v.StatusModifier)
+		}
+	})
+	t.Run("set AppState is mapped, not passed through raw", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AppState: ptr("Permitted")}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.StatusLabel != "Granted" || v.StatusModifier != "granted" {
+			t.Errorf("StatusLabel/StatusModifier = %q/%q, want Granted/granted", v.StatusLabel, v.StatusModifier)
+		}
+	})
+}
