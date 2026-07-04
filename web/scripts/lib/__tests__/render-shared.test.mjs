@@ -191,3 +191,83 @@ describe('pageStyles townLinks', () => {
     expect(css).toMatch(/\.townLinks__list a \{[^}]*var\(--tc-/);
   });
 });
+
+describe('pageStyles light-first token flip (tc-r4n9.1)', () => {
+  /**
+   * @param {string} css
+   * @returns {string} the declarations inside the top-level `:root { ... }`
+   *   block (i.e. NOT the one nested inside a @media query).
+   */
+  function rootDeclarations(css) {
+    const match = css.match(/^\s*:root \{([^}]*)\}/m);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * @param {string} css
+   * @returns {string} the declarations inside `:root { ... }` nested within
+   *   `@media (prefers-color-scheme: dark)`.
+   */
+  function darkMediaDeclarations(css) {
+    const match = css.match(
+      /@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/,
+    );
+    return match ? match[1] : '';
+  }
+
+  it('defaults :root to the light-mode values directly (no query needed)', () => {
+    const root = rootDeclarations(pageStyles());
+    expect(root).toMatch(/--tc-amber: #D4910A;/);
+    expect(root).toMatch(/--tc-amber-hover: #B87A08;/);
+    expect(root).toMatch(/--tc-background: #FAF8F5;/);
+    expect(root).toMatch(/--tc-surface: #FFFFFF;/);
+    expect(root).toMatch(/--tc-text-primary: #1C1917;/);
+    expect(root).toMatch(/--tc-text-secondary: #6B6560;/);
+    expect(root).toMatch(/--tc-text-on-accent: #FFFFFF;/);
+    expect(root).toMatch(/--tc-status-permitted: #1A7D37;/);
+    expect(root).toMatch(/--tc-status-conditions: #A85A0A;/);
+    expect(root).toMatch(/--tc-status-rejected: #C42B2B;/);
+    expect(root).toMatch(/--tc-status-withdrawn: #7A7570;/);
+    expect(root).toMatch(/--tc-status-appealed: #7C3AED;/);
+    expect(root).toMatch(/--tc-status-default: #6B6560;/);
+    expect(root).toMatch(/--tc-border: #E8E4DF;/);
+  });
+
+  it('moves the former dark defaults, byte-for-byte, into @media (prefers-color-scheme: dark)', () => {
+    const dark = darkMediaDeclarations(pageStyles());
+    expect(dark).toMatch(/--tc-amber: #E9A620;/);
+    expect(dark).toMatch(/--tc-amber-hover: #F0B83A;/);
+    expect(dark).toMatch(/--tc-background: #1A1A1E;/);
+    expect(dark).toMatch(/--tc-surface: #242428;/);
+    expect(dark).toMatch(/--tc-text-primary: #F1EFE9;/);
+    expect(dark).toMatch(/--tc-text-secondary: #9B9590;/);
+    expect(dark).toMatch(/--tc-text-on-accent: #1C1917;/);
+    expect(dark).toMatch(/--tc-status-permitted: #34C759;/);
+    expect(dark).toMatch(/--tc-status-conditions: #FF9500;/);
+    expect(dark).toMatch(/--tc-status-rejected: #FF453A;/);
+    expect(dark).toMatch(/--tc-status-withdrawn: #8E8A85;/);
+    expect(dark).toMatch(/--tc-status-appealed: #A78BFA;/);
+    expect(dark).toMatch(/--tc-status-default: #9B9590;/);
+    expect(dark).toMatch(/--tc-border: #3A3A3F;/);
+  });
+
+  it('no longer gates light values behind a prefers-color-scheme: light query', () => {
+    expect(pageStyles()).not.toContain('prefers-color-scheme: light');
+  });
+
+  it('keeps exactly one dark override block, gated on prefers-color-scheme: dark', () => {
+    const css = pageStyles();
+    const matches = css.match(/@media \(prefers-color-scheme: dark\)/g) ?? [];
+    expect(matches).toHaveLength(1);
+  });
+
+  it('records the chosen background scale as a comment in the token block, converged with the share page family', () => {
+    const css = pageStyles();
+    const root = rootDeclarations(css);
+    // The comment documenting WHY these values were chosen must live inside the
+    // :root token block itself (not just JSDoc above the function), so it is
+    // visible to anyone reading the generated page source.
+    expect(root).toMatch(/\/\*[^]*share page[^]*\*\//i);
+    expect(root.toLowerCase()).toContain('faf8f5');
+  });
+});
