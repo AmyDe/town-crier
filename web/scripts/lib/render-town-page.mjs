@@ -17,6 +17,7 @@ import {
   SITE_ORIGIN,
   APPLE_APP_ID,
   appStoreUrl,
+  shareUrl,
   TOWN_ATTRIBUTION_LINES,
 } from './constants.mjs';
 import { escapeHtml, leadLine } from './format.mjs';
@@ -60,7 +61,9 @@ function buildTownJsonLd(data, canonical, authorityCanonical) {
       '@type': 'ListItem',
       position: i + 1,
       name: [app.name, app.address].filter(Boolean).join(' — '),
-      url: app.url || app.link || canonical,
+      // Prefer our own share page (the application's canonical Town Crier page)
+      // as the item URL; fall back to the council/PlanIt record, then the page.
+      url: shareUrl(data.authoritySlug, app.name) || app.url || app.link || canonical,
     })),
   };
   const dataset = {
@@ -115,7 +118,7 @@ export function renderTownPage(data) {
   const jsonLd = buildTownJsonLd(data, canonical, authorityCanonical);
   const year = new Date().getFullYear();
 
-  const applicationsList = renderApplicationsList(data.applications);
+  const applicationsList = renderApplicationsList(data.applications, data.authoritySlug);
   // Town pages credit the ONS Built-Up-Area + NRS gazetteers (their centroid
   // sources) on top of the base PlanIt/OGL/OS/OSM lines; authority pages keep the
   // base list since they don't use the gazetteer.

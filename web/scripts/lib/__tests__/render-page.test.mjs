@@ -103,6 +103,18 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('https://planit.org.uk/planapplic/26-0001-FUL');
   });
 
+  it('links each application to its share page using the authority slug and ref', () => {
+    const html = renderPlanningPage(pageData());
+    // app.name (26/0001/FUL) is the share ref; slashes are kept as separators.
+    expect(html).toContain(
+      '<a class="appLink" href="https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL">View on Town Crier</a>',
+    );
+    // The share page is the item URL in the ItemList structured data too.
+    expect(html).toContain(
+      '"url":"https://share.towncrierapp.uk/a/basingstoke-and-deane/26/0001/FUL"',
+    );
+  });
+
   it('orders the visible Last updated dates to match the lastDifferent DESC sort', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain('Last updated 12 Jun 2026');

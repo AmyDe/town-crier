@@ -6,9 +6,13 @@ import {
 } from '../render-shared.mjs';
 import { ATTRIBUTION_LINES } from '../constants.mjs';
 
+const SHARE_CAPTION = 'View on Town Crier';
 const PLANIT_CAPTION = 'View full record on PlanIt';
 const COUNCIL_CAPTION = 'View on the council website';
 
+const SLUG = 'basingstoke-and-deane';
+// The share ref is the app's `name` (planit_name), NOT its uid; slashes are kept.
+const SHARE_HREF = `https://share.towncrierapp.uk/a/${SLUG}/26/0001/FUL`;
 const PLANIT_HREF = 'https://planit.org.uk/planapplic/26-0001-FUL';
 const COUNCIL_HREF = 'https://www.basingstoke.gov.uk/planning/26-0001-FUL';
 
@@ -86,7 +90,7 @@ describe('renderApplicationsList per-application links', () => {
     expect(html).not.toContain(COUNCIL_CAPTION);
   });
 
-  it('keeps the link safety attributes on each anchor', () => {
+  it('keeps the link safety attributes on the external anchors', () => {
     const html = renderApplicationsList([application()]);
     const anchors = html.match(/<a class="appLink"[^>]*>/g) ?? [];
     expect(anchors).toHaveLength(2);
@@ -94,6 +98,48 @@ describe('renderApplicationsList per-application links', () => {
       expect(anchor).toContain('rel="nofollow noopener"');
       expect(anchor).toContain('target="_blank"');
     }
+  });
+});
+
+describe('renderApplicationsList share links', () => {
+  it('leads each card with a share link built from the slug and the app ref', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    // The share URL uses the app.name (planit_name) verbatim, slashes preserved.
+    expect(captionForHref(html, SHARE_HREF)).toBe(SHARE_CAPTION);
+    // It is the FIRST link on the card, before the PlanIt/council links.
+    expect(html.indexOf(SHARE_HREF)).toBeLessThan(html.indexOf(PLANIT_HREF));
+  });
+
+  it('makes the share link do-follow and same-tab (an internal Town Crier page)', () => {
+    const html = renderApplicationsList([application()], SLUG);
+    const anchor = html.match(
+      new RegExp(`<a class="appLink" href="${SHARE_HREF.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}"[^>]*>`),
+    );
+    expect(anchor).not.toBeNull();
+    expect(anchor[0]).not.toContain('nofollow');
+    expect(anchor[0]).not.toContain('target="_blank"');
+  });
+
+  it('percent-encodes unsafe ref characters per segment while preserving slashes', () => {
+    const html = renderApplicationsList(
+      [application({ name: 'DC/2026/0001 A&B' })],
+      SLUG,
+    );
+    expect(html).toContain(
+      `https://share.towncrierapp.uk/a/${SLUG}/DC/2026/0001%20A%26B`,
+    );
+  });
+
+  it('omits the share link when no slug is supplied', () => {
+    const html = renderApplicationsList([application()]);
+    expect(html).not.toContain(SHARE_CAPTION);
+    expect(html).not.toContain('share.towncrierapp.uk');
+  });
+
+  it('omits the share link when the app carries no ref', () => {
+    const html = renderApplicationsList([application({ name: '' })], SLUG);
+    expect(html).not.toContain(SHARE_CAPTION);
+    expect(html).not.toContain('share.towncrierapp.uk');
   });
 });
 

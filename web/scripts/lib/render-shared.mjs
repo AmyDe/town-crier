@@ -9,7 +9,7 @@
  * passed through `escapeHtml` before interpolation.
  */
 
-import { ATTRIBUTION_LINES } from './constants.mjs';
+import { ATTRIBUTION_LINES, shareUrl } from './constants.mjs';
 import {
   escapeHtml,
   truncate,
@@ -21,7 +21,7 @@ import {
 /**
  * @typedef {Object} PlanningApplicationItem
  * @property {string} uid
- * @property {string} name
+ * @property {string} name                   PlanIt `planit_name`; the share page's lookup key (the share-URL ref)
  * @property {string} address
  * @property {string} description
  * @property {string | null} appState
@@ -54,9 +54,14 @@ function statusModifier(appState) {
 
 /**
  * @param {PlanningApplicationItem} app
+ * @param {string} [authoritySlug] the page's authority slug; when present (and the
+ *   app carries a ref), the card leads with a do-follow link to our own public
+ *   share page for the application. Every application on a page belongs to this
+ *   one authority (authority pages read one partition; town pages scope the near
+ *   query to a single authority), so the slug is correct for every card.
  * @returns {string}
  */
-function renderApplication(app) {
+function renderApplication(app, authoritySlug) {
   const label = escapeHtml(statusDisplayLabel(app.appState));
   const modifier = statusModifier(app.appState);
   // The visible date is lastDifferent (the bounded read's DESC sort key), so the
@@ -65,6 +70,15 @@ function renderApplication(app) {
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
   const links = [];
+  // Our own share page leads the list. Unlike the external PlanIt/council links,
+  // it is deliberately do-follow and same-tab: it is an internal Town Crier page,
+  // so we WANT search engines to crawl it and keep residents in-funnel.
+  const share = shareUrl(authoritySlug, app.name);
+  if (share) {
+    links.push(
+      `<a class="appLink" href="${escapeHtml(share)}">View on Town Crier</a>`,
+    );
+  }
   if (app.link) {
     links.push(
       `<a class="appLink" href="${escapeHtml(app.link)}" rel="nofollow noopener" target="_blank">View full record on PlanIt</a>`,
@@ -94,10 +108,13 @@ function renderApplication(app) {
  * Render the recent-applications list body (the `<li>` cards joined by newlines).
  *
  * @param {PlanningApplicationItem[]} applications
+ * @param {string} [authoritySlug] the page's authority slug, threaded through so
+ *   each card can link to its share page. Omitted -> no share links (the external
+ *   PlanIt/council links still render).
  * @returns {string}
  */
-export function renderApplicationsList(applications) {
-  return applications.map(renderApplication).join('\n');
+export function renderApplicationsList(applications, authoritySlug) {
+  return applications.map((app) => renderApplication(app, authoritySlug)).join('\n');
 }
 
 /**
