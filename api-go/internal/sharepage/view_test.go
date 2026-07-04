@@ -220,7 +220,12 @@ func TestStatusChip(t *testing.T) {
 		wantModifier string
 	}{
 		{appState: "Permitted", wantLabel: "Granted", wantModifier: "granted"},
-		{appState: "Conditions", wantLabel: "Granted with conditions", wantModifier: "granted"},
+		// "Granted with conditions" is explicitly a long-tail state per issue #794
+		// Phase 3 ("fold the long tail: Withdrawn, Unresolved, Granted with
+		// conditions, Referred") and per tc-r4n9.2's web-side implementation
+		// (Permitted->granted/green, Rejected->refused/red, everything else
+		// including Conditions->neutral/grey) — it is NOT a green "granted" bucket.
+		{appState: "Conditions", wantLabel: "Granted with conditions", wantModifier: "neutral"},
 		{appState: "Rejected", wantLabel: "Refused", wantModifier: "refused"},
 		{appState: "Undecided", wantLabel: "Undecided", wantModifier: "neutral"},
 		{appState: "Withdrawn", wantLabel: "Withdrawn", wantModifier: "neutral"},
