@@ -15,8 +15,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
@@ -129,7 +127,6 @@ type PollPlanItResult struct {
 // not wired into the worker poll path — see bd follow-up).
 type PollPlanItHandler struct {
 	planIt      planItFetcher
-	apps        applicationStore
 	state       pollStateAccess
 	authorities activeAuthorityProvider
 	cycle       cycleSelector
@@ -137,13 +134,12 @@ type PollPlanItHandler struct {
 	now         func() time.Time
 	logger      *slog.Logger
 
-	// decision and enqueuer are the optional poll-path notification fan-out
-	// collaborators wired via WithFanOut. When nil, the handler ingests only (the
-	// behaviour before bead tc-uc2p); when set, each upserted application drives a
-	// decision-event dispatch (on a non-decision -> decision transition) and a
-	// watch-zone notification fan-out.
-	decision DecisionDispatcher
-	enqueuer NotificationEnqueuer
+	// ingester upserts one application and runs the poll-path notification
+	// fan-out (decision dispatch + watch-zone enqueue), wired at construction
+	// with the applicationStore and, when nil, in ingestion-only mode (the
+	// behaviour before bead tc-uc2p) until WithFanOut sets its decision/enqueuer
+	// collaborators.
+	ingester *Ingester
 
 	// flusher drives the poll-cycle push coalescer, wired via WithPushFlusher.
 	// nil in ingestion-only mode and in the many tests that don't wire one — the
@@ -181,8 +177,11 @@ func (h *PollPlanItHandler) recorder() metricsRecorder {
 // ingestion-only call sites and tests are unaffected; cmd/worker calls it once
 // after building the handler. Returns the handler for chaining.
 func (h *PollPlanItHandler) WithFanOut(decision DecisionDispatcher, enqueuer NotificationEnqueuer) *PollPlanItHandler {
-	h.decision = decision
-	h.enqueuer = enqueuer
+	if h.ingester == nil {
+		h.ingester = &Ingester{}
+	}
+	h.ingester.decision = decision
+	h.ingester.enqueuer = enqueuer
 	return h
 }
 
@@ -209,13 +208,13 @@ func NewPollPlanItHandler(
 ) *PollPlanItHandler {
 	return &PollPlanItHandler{
 		planIt:      planIt,
-		apps:        apps,
 		state:       state,
 		authorities: authorities,
 		cycle:       cycle,
 		opts:        opts,
 		now:         now,
 		logger:      logger,
+		ingester:    NewIngester(apps, nil, nil),
 	}
 }
 
@@ -413,7 +412,7 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 			if app.LastDifferent.After(highWaterMark) {
 				highWaterMark = app.LastDifferent
 			}
-			if err := h.processApplication(ctx, app); err != nil {
+			if err := h.ingester.Ingest(ctx, app); err != nil {
 				out.err = err
 				return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
 			}
@@ -441,71 +440,6 @@ func (h *PollPlanItHandler) pollAuthority(ctx context.Context, authorityID int, 
 		out.completed = true
 	}
 	return h.finishAuthority(ctx, authorityID, now, out, highWaterMark, existingHWM, lastPageFetched, firstPageTotal, capHit, hadCursor, cycleType)
-}
-
-// processApplication point-reads the persisted application by uid within its
-// authority partition, and — when a business field changed (the reindex-flood
-// guard; a first-time insert always counts as changed) — upserts it, then runs
-// the poll-path notification fan-out: a decision-event dispatch when the app has
-// just transitioned into a decision state, and the watch-zone notification
-// fan-out.
-//
-// The new-decision check is computed BEFORE the upsert so it compares the
-// PERSISTED state, not the incoming one: a non-decision -> decision transition
-// (Permitted/Conditions/Rejected/Appealed), including a first-seen already-decided
-// application (existing is absent), dispatches exactly one decision event.
-// Downstream idempotency (one decision per user/app) makes a re-dispatch harmless,
-// but gating on the transition keeps the dispatch count honest. The fan-out
-// collaborators are skipped entirely when not wired (ingestion-only mode).
-func (h *PollPlanItHandler) processApplication(ctx context.Context, app applications.PlanningApplication) error {
-	authorityCode := strconv.Itoa(app.AreaID)
-	existing, found, err := h.apps.GetByUID(ctx, app.UID, authorityCode)
-	if err != nil {
-		return err
-	}
-	if found && existing.HasSameBusinessFieldsAs(app) {
-		return nil
-	}
-
-	var existingState *string
-	if found {
-		existingState = existing.AppState
-	}
-	isNewDecision := isDecisionState(app.AppState) && !isDecisionState(existingState)
-
-	if err := h.apps.Upsert(ctx, app); err != nil {
-		return err
-	}
-
-	if isNewDecision && h.decision != nil {
-		if err := h.decision.Dispatch(ctx, app); err != nil {
-			return err
-		}
-	}
-	if h.enqueuer != nil {
-		if err := h.enqueuer.EnqueueForApplication(ctx, app); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// isDecisionState reports whether a PlanIt app_state is a decision outcome
-// (Permitted, Conditions, Rejected, Appealed), case-insensitively. A nil/empty
-// state is not a decision.
-func isDecisionState(appState *string) bool {
-	if appState == nil || *appState == "" {
-		return false
-	}
-	switch {
-	case strings.EqualFold(*appState, "Permitted"),
-		strings.EqualFold(*appState, "Conditions"),
-		strings.EqualFold(*appState, "Rejected"),
-		strings.EqualFold(*appState, "Appealed"):
-		return true
-	default:
-		return false
-	}
 }
 
 // finishAuthority persists the authority's advanced poll state. On a cap-hit or
