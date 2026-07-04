@@ -1,5 +1,6 @@
 package uk.towncrierapp.data.auth
 
+import uk.towncrierapp.domain.auth.AuthSession
 import uk.towncrierapp.domain.auth.anAuthSession
 import java.time.Clock
 import java.time.Instant
@@ -82,10 +83,13 @@ class SessionCacheTest {
     @Test
     fun `concurrent cold callers single-flight to exactly one loader invocation`() =
         runTest {
-            val cache = SessionCache(scope = backgroundScope)
+            // Scoped to the test coroutine itself (not backgroundScope) so
+            // advanceUntilIdle() deterministically drives both the outer
+            // callers and SessionCache's internal loader coroutine.
+            val cache = SessionCache(scope = this)
             var loaderCalls = 0
             val gate = CompletableDeferred<Unit>()
-            val loader: suspend () -> uk.towncrierapp.domain.auth.AuthSession? = {
+            val loader: suspend () -> AuthSession? = {
                 loaderCalls++
                 gate.await()
                 anAuthSession()
