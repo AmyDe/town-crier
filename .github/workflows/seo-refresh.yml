@@ -1,8 +1,8 @@
-# Weekly refresh of the SEO snapshot for BOTH dev and prod web.
+# Daily refresh of the SEO snapshot for BOTH dev and prod web.
 #
 # This job is the SOLE caller of the gated Go API for the programmatic SEO pages
 # (authority-level AND per-town), plus sitemap.xml (epic tc-w5w9 / GH #598). It
-# decouples *data fetching* (weekly, against the API) from *page rendering*
+# decouples *data fetching* (daily, against the API) from *page rendering*
 # (every build, offline) so that normal CD releases (cd-dev on push, cd-prod on
 # tag) make ZERO Go API / Cosmos calls. The per-build render reads the snapshot
 # this job produces.
@@ -22,12 +22,14 @@
 #      writes /planning/* + sitemap.xml into web/dist with ZERO network calls.
 #   6. DEPLOY: full-replace SWA upload of web/dist.
 #
-# Cadence is a WEEKLY FULL rebuild — every run fetches the complete authority AND
+# Cadence is a DAILY FULL rebuild — every run fetches the complete authority AND
 # town set, emits one combined sitemap, and ships it as a full-replace SWA deploy
-# (owner decision, GH #585, tc-2avw.6). Building everything together every week
+# (owner decision, GH #585, tc-2avw.6; moved from weekly to daily, tc-df4z — the
+# Cosmos->Postgres migration made the per-run API/cost footprint negligible, see
+# ADR 0031 amendments and ADR 0032). Building everything together every run
 # keeps the sitemap ≡ the live page set by construction. The snapshot it writes
-# is then re-used (rendered offline) by every CD release until the next weekly
-# run, so page data is at most ~1 week stale — acceptable for SEO pages.
+# is then re-used (rendered offline) by every CD release until the next daily
+# run, so page data is at most ~1 day stale — comfortably fresh for SEO pages.
 #
 # Deploying prod on a schedule is a deliberate exception to the tag-triggered
 # prod convention (see GH #570, tc-nnte.6), accepted so prod SEO pages stay fresh.
@@ -53,13 +55,17 @@ name: SEO Refresh
 
 on:
   schedule:
-    # 04:00 UTC every Monday — low UK traffic window. Weekly full rebuild of the
-    # complete authority + town SEO page set (see header for why weekly-full).
-    - cron: '0 4 * * 1'
+    # 10:10 UTC daily = 11:10 UK local (BST in summer). Chosen so the day's new
+    # planning applications (usually in by 11am UK time) have landed, with a bit
+    # of wiggle room, before the refresh runs — afternoon SEO page visitors see
+    # same-day data. Like the other time-of-day crons in this repo (digest,
+    # dormant-cleanup, pg-purge in infra/environment.go), this is a fixed UTC
+    # time with no DST adjustment: it drifts to 10:10 UK local over GMT months.
+    - cron: '10 10 * * *'
   workflow_dispatch:
     inputs:
       environment:
-        description: "Manual runs only: which environment(s) to refresh. The weekly schedule always refreshes both."
+        description: "Manual runs only: which environment(s) to refresh. The daily schedule always refreshes both."
         type: choice
         default: both
         options:
@@ -76,9 +82,9 @@ permissions:
   id-token: write
 
 jobs:
-  # ── Web: weekly full refresh dev ────────────────────────
+  # ── Web: daily full refresh dev ─────────────────────────
   web-dev:
-    name: "Web: Weekly refresh dev"
+    name: "Web: Daily refresh dev"
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'dev' || inputs.environment == 'both'
     runs-on: ubuntu-latest
@@ -148,12 +154,12 @@ jobs:
           skip_app_build: true
           skip_api_build: true
 
-  # ── Web: weekly full refresh prod ───────────────────────
+  # ── Web: daily full refresh prod ────────────────────────
   # No infra job here, so swa-name and the storage account name are hardcoded
   # (cd-prod reads these from Pulumi outputs; this data-only refresh has no
   # Pulumi step). Names match infra/environment.go.
   web-prod:
-    name: "Web: Weekly refresh prod"
+    name: "Web: Daily refresh prod"
     # Schedule always runs; manual runs honour the `environment` selector.
     if: github.event_name == 'schedule' || inputs.environment == 'prod' || inputs.environment == 'both'
     runs-on: ubuntu-latest
