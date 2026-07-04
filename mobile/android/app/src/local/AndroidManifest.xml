@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  local flavor ONLY (tc-z95t): merged on top of the shared
+  src/main/AndroidManifest.xml, adding the networkSecurityConfig attribute to
+  <application> so the emulator can reach a locally-running API over
+  cleartext HTTP at 10.0.2.2 (see res/xml/network_security_config.xml). The
+  dev and prod flavors have no such manifest and so gain no cleartext
+  capability at all.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+
+</manifest>

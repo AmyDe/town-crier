@@ -15,14 +15,20 @@ import uk.towncrierapp.data.auth.CurrentActivityProvider
 import uk.towncrierapp.data.auth.SessionCache
 import uk.towncrierapp.data.profile.ApiUserProfileRepository
 import uk.towncrierapp.data.versionconfig.ApiVersionConfigService
+import uk.towncrierapp.data.watchzones.ApiPostcodeGeocoder
+import uk.towncrierapp.data.watchzones.ApiWatchZoneRepository
+import uk.towncrierapp.data.watchzones.ApiZonePreferencesRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.versionconfig.VersionConfigService
+import uk.towncrierapp.domain.watchzones.PostcodeGeocoder
+import uk.towncrierapp.domain.watchzones.WatchZoneRepository
+import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
 import uk.towncrierapp.presentation.auth.AuthCoordinator
 import java.time.Clock
 
-/** Auth0 tenant identity — same for both build flavors (epic #770 D4); only the audience differs, and that's [AppGraph.baseUrl]. */
+/** Auth0 tenant identity — same across build flavors (epic #770 D4); only the audience differs, via [AppGraph.authAudience]. */
 public data class Auth0Tenant(
     val clientId: String,
     val domain: String,
@@ -64,15 +70,19 @@ public class AppGraph(
     androidLeaves: AndroidLeaves,
     public val currentVersion: String,
     options: AppGraphOptions = AppGraphOptions(),
+    // Defaults to baseUrl (dev/prod: audience == the flavor's own API), but is
+    // independently overridable — the `local` flavor talks to a local API
+    // (baseUrl = http://10.0.2.2:8080) while still requesting dev-audience
+    // JWTs, because the local API is configured to validate that audience.
+    public val authAudience: String = baseUrl,
 ) {
     private val transport = OkHttpTransport(options.callFactory)
 
-    // Audience = the flavor's own API base URL (epic #770 D4) — dev and prod
-    // share one Auth0 Native application; only the audience (and therefore
-    // the access-token claims) differ per flavor.
+    // dev and prod share one Auth0 Native application; only the audience (and
+    // therefore the access-token claims) differ per flavor (epic #770 D4).
     public val authenticationService: AuthenticationService =
         Auth0AuthenticationService(
-            config = Auth0Config(clientId = auth0Tenant.clientId, domain = auth0Tenant.domain, audience = baseUrl),
+            config = Auth0Config(clientId = auth0Tenant.clientId, domain = auth0Tenant.domain, audience = authAudience),
             credentialsStore = androidLeaves.credentialsStore,
             activityProvider = androidLeaves.activityProvider,
             auth0 = lazy { Auth0.getInstance(auth0Tenant.clientId, auth0Tenant.domain) },
@@ -96,4 +106,10 @@ public class AppGraph(
 
     public val authCoordinator: AuthCoordinator =
         AuthCoordinator(authenticationService, userProfileRepository, androidLeaves.tierCache)
+
+    public val watchZoneRepository: WatchZoneRepository = ApiWatchZoneRepository(apiClient)
+
+    public val zonePreferencesRepository: ZonePreferencesRepository = ApiZonePreferencesRepository(apiClient)
+
+    public val postcodeGeocoder: PostcodeGeocoder = ApiPostcodeGeocoder(apiClient)
 }
