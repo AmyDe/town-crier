@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    `java-test-fixtures`
 }
 
 kotlin {
@@ -22,6 +23,11 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+
+    // Shared fakes/fixtures for domain ports (FakeAuthenticationService, aAuthSession(), ...)
+    // consumed by both :data and :presentation tests — testing.md's documented
+    // cross-module fake-sharing mechanism (java-test-fixtures, not a "testutils" module).
+    testFixturesImplementation(kotlin("test"))
 }
 
 tasks.test {

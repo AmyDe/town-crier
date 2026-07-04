@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Login (epic #770 "API contract essentials") -->
+    <string name="login_branding_title">Town Crier</string>
+    <string name="login_branding_subtitle">Planning applications near you</string>
+    <string name="login_sign_in_button">Sign in</string>
+    <string name="login_error_authentication_failed">Sign in failed. Please try again.</string>
+    <string name="login_error_session_expired">Your session has expired. Please sign in again.</string>
+    <string name="login_error_generic">Something went wrong. Please try again.</string>
+
+    <!-- Force update (epic #770 "API contract essentials") -->
+    <string name="force_update_title">Update Required</string>
+    <string name="force_update_message">A newer version of Town Crier is available. Please update to continue using the app.</string>
+    <string name="force_update_button">Update Now</string>
+</resources>

@@ -14,7 +14,14 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+
+        // Auth0 Android SDK manifest placeholders (tc-f2il, epic #770 D4).
+        // Same tenant + domain for both flavors — only the applicationId
+        // suffix differs, which the SDK reads automatically to build the
+        // per-flavor callback path (.../android/{applicationId}/callback).
+        manifestPlaceholders["auth0Domain"] = "towncrierapp.uk.auth0.com"
+        manifestPlaceholders["auth0Scheme"] = "https"
     }
 
     compileOptions {
@@ -69,6 +76,8 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
 
@@ -83,10 +92,19 @@ dependencies {
     // Type-safe Navigation Compose routes (@Serializable destinations).
     implementation(libs.kotlinx.serialization.json)
 
+    // Auth0 SDK, OkHttp transport, DataStore latch — the composition root is
+    // the only module that constructs the Android-touching leaves these need
+    // (SecureCredentialsManager, DataStore<Preferences>) (tc-f2il).
+    implementation(libs.auth0)
+    implementation(libs.okhttp)
+    implementation(libs.androidx.datastore.preferences)
+
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // FakeSubscriptionTierCache etc. shared via :domain's testFixtures.
+    testImplementation(testFixtures(project(":domain")))
 }
