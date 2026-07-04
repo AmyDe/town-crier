@@ -109,12 +109,12 @@ describe('renderTownPage', () => {
     expect(html).toContain('https://planit.org.uk/planapplic/CW-26-0001');
   });
 
-  it('links each application to its share page using the parent authority slug and ref', () => {
+  it('links each application heading to its share page using the parent authority slug and ref', () => {
     const html = renderTownPage(townData());
     // Town-page apps are scoped to the town's own authority, so authoritySlug is
-    // correct for every card.
+    // correct for every card; the reference heading is the share link.
     expect(html).toContain(
-      '<a class="appLink" href="https://share.towncrierapp.uk/a/cornwall/26/0001">View on Town Crier</a>',
+      '<h3 class="appCard__ref"><a class="appCard__refLink" href="https://share.towncrierapp.uk/a/cornwall/26/0001">26/0001</a></h3>',
     );
     expect(html).toContain(
       '"url":"https://share.towncrierapp.uk/a/cornwall/26/0001"',

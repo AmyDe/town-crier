@@ -55,10 +55,11 @@ function statusModifier(appState) {
 /**
  * @param {PlanningApplicationItem} app
  * @param {string} [authoritySlug] the page's authority slug; when present (and the
- *   app carries a ref), the card leads with a do-follow link to our own public
- *   share page for the application. Every application on a page belongs to this
- *   one authority (authority pages read one partition; town pages scope the near
- *   query to a single authority), so the slug is correct for every card.
+ *   app carries a ref), the card's reference heading becomes a do-follow link to
+ *   our own public share page for the application. Every application on a page
+ *   belongs to this one authority (authority pages read one partition; town pages
+ *   scope the near query to a single authority), so the slug is correct for every
+ *   card.
  * @returns {string}
  */
 function renderApplication(app, authoritySlug) {
@@ -69,16 +70,19 @@ function renderApplication(app, authoritySlug) {
   const date = formatDate(app.lastDifferent);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
-  const links = [];
-  // Our own share page leads the list. Unlike the external PlanIt/council links,
-  // it is deliberately do-follow and same-tab: it is an internal Town Crier page,
-  // so we WANT search engines to crawl it and keep residents in-funnel.
+  // The reference heading is the card's title and doubles as the link to our own
+  // share page for the application — a do-follow, same-tab internal link we want
+  // crawled and clicked. It stays plain text when the page has no authority slug
+  // or the app carries no ref. The external PlanIt/council links stay in the meta
+  // row; keeping our link on the title (not a third meta link) avoids a lopsided,
+  // wrapping action row.
+  const ref = escapeHtml(app.name);
   const share = shareUrl(authoritySlug, app.name);
-  if (share) {
-    links.push(
-      `<a class="appLink" href="${escapeHtml(share)}">View on Town Crier</a>`,
-    );
-  }
+  const heading = share
+    ? `<a class="appCard__refLink" href="${escapeHtml(share)}">${ref}</a>`
+    : ref;
+
+  const links = [];
   if (app.link) {
     links.push(
       `<a class="appLink" href="${escapeHtml(app.link)}" rel="nofollow noopener" target="_blank">View full record on PlanIt</a>`,
@@ -92,7 +96,7 @@ function renderApplication(app, authoritySlug) {
 
   return `      <li class="appCard">
         <div class="appCard__head">
-          <h3 class="appCard__ref">${escapeHtml(app.name)}</h3>
+          <h3 class="appCard__ref">${heading}</h3>
           <span class="status status--${modifier}">${label}</span>
         </div>
         <p class="appCard__address">${escapeHtml(app.address)}</p>
@@ -265,6 +269,9 @@ export function pageStyles() {
       padding: var(--tc-space-md);
     }
     .appCard__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--tc-space-sm); }
+    .appCard__ref { overflow-wrap: anywhere; }
+    .appCard__refLink { color: inherit; text-decoration: none; }
+    .appCard__refLink:hover { color: var(--tc-amber); text-decoration: underline; }
     .appCard__address { margin: var(--tc-space-sm) 0 var(--tc-space-sm); font-weight: 600; }
     .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
     .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
