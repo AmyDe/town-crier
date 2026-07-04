@@ -46,7 +46,8 @@ struct ApplicationListViewModelGlobalUnreadTests {
   }
 
   private func event(at seconds: TimeInterval) -> LatestUnreadEvent {
-    LatestUnreadEvent(type: "NewApplication", decision: nil, createdAt: Date(timeIntervalSince1970: seconds))
+    LatestUnreadEvent(
+      type: "NewApplication", decision: nil, createdAt: Date(timeIntervalSince1970: seconds))
   }
 
   // MARK: - hasClearableUnread

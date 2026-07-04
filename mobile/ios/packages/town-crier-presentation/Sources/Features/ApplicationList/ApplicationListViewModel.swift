@@ -74,7 +74,11 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   let repository: PlanningApplicationRepository?
   let offlineRepository: OfflineAwareRepository?
   private let watchZoneRepository: WatchZoneRepository?
-  private let notificationStateRepository: NotificationStateRepository?
+  // Internal (not `private`) so the `+GlobalUnread` extension file can drive
+  // `refreshGlobalUnread()` (tc-c5m1).
+  let notificationStateRepository: NotificationStateRepository?
+  /// Clears the app-icon badge on a successful `markAllRead()` (tc-c5m1).
+  private let badgeSetter: BadgeSetting?
   var zone: WatchZone?
   /// Re-entrancy guard for ``loadApplications()``. A single user action can
   /// trigger the load repeatedly — `.task` firing alongside `.refreshable`, a
@@ -119,9 +123,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
   var onApplicationSelected: ((PlanningApplicationId) -> Void)?
 
-  /// In-flight per-application mark-read fired by ``selectApplication(_:)`` —
-  /// fire-and-forget in production; stored so tests can await it.
-  private var pendingMarkRead: Task<Void, Never>?
+  // Internal (not `private`) so the `+TapToRead` extension file can drive
+  // the per-application mark-read flow. Fire-and-forget in production;
+  // stored so tests can await it.
+  var pendingMarkRead: Task<Void, Never>?
 
   /// True when the zone picker should render — i.e. the user has more than one
   /// real watch zone to choose between. Single-zone users have no meaningful
@@ -132,10 +137,24 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   }
 
   /// True when the global watermark reports at least one unread notification.
-  /// Drives the conditional visibility of the Unread chip and Mark-All-Read
-  /// toolbar action (spec decision #8).
+  /// Drives the conditional visibility of the Unread chip (spec decision #8).
   public var hasUnread: Bool {
     unreadCount > 0
+  }
+
+  /// Server's global unread count — same source as the app-icon badge.
+  /// Refreshed best-effort per ``loadApplications()`` call, zone-independent.
+  /// Internal (not `private(set)`) so the `+GlobalUnread` extension file can
+  /// mutate it; still read-only outside the presentation module (no `public`
+  /// modifier) (tc-c5m1, GH#793).
+  @Published var globalUnreadCount = 0
+
+  /// True when the global unread count is non-zero. Gates the Mark-All-Read
+  /// button; deliberately decoupled from `hasUnread` (the per-zone chip) so
+  /// the button stays reachable even when the active zone has no unread rows
+  /// of its own (tc-c5m1, GH#793).
+  public var hasClearableUnread: Bool {
+    globalUnreadCount > 0
   }
 
   /// Sort modes the picker should expose right now. The `.distance` option
@@ -169,6 +188,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     repository: PlanningApplicationRepository,
     zone: WatchZone,
     notificationStateRepository: NotificationStateRepository? = nil,
+    badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     sortKey: String = defaultSortKey
   ) {
@@ -176,6 +196,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.offlineRepository = nil
     self.watchZoneRepository = nil
     self.notificationStateRepository = notificationStateRepository
+    self.badgeSetter = badgeSetter
     self.zone = zone
     self.userDefaults = userDefaults
     self.zoneSelectionKey = ""
@@ -187,6 +208,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     offlineRepository: OfflineAwareRepository,
     zone: WatchZone,
     notificationStateRepository: NotificationStateRepository? = nil,
+    badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     sortKey: String = defaultSortKey
   ) {
@@ -194,6 +216,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = nil
     self.notificationStateRepository = notificationStateRepository
+    self.badgeSetter = badgeSetter
     self.zone = zone
     self.userDefaults = userDefaults
     self.zoneSelectionKey = ""
@@ -205,6 +228,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     watchZoneRepository: WatchZoneRepository,
     repository: PlanningApplicationRepository,
     notificationStateRepository: NotificationStateRepository? = nil,
+    badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
     sortKey: String = defaultSortKey
@@ -213,6 +237,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.offlineRepository = nil
     self.watchZoneRepository = watchZoneRepository
     self.notificationStateRepository = notificationStateRepository
+    self.badgeSetter = badgeSetter
     self.zone = nil
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
@@ -224,6 +249,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     watchZoneRepository: WatchZoneRepository,
     offlineRepository: OfflineAwareRepository,
     notificationStateRepository: NotificationStateRepository? = nil,
+    badgeSetter: BadgeSetting? = nil,
     userDefaults: UserDefaults = .standard,
     zoneSelectionKey: String = "lastSelectedZone.applications",
     sortKey: String = defaultSortKey
@@ -232,6 +258,7 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     self.offlineRepository = offlineRepository
     self.watchZoneRepository = watchZoneRepository
     self.notificationStateRepository = notificationStateRepository
+    self.badgeSetter = badgeSetter
     self.zone = nil
     self.userDefaults = userDefaults
     self.zoneSelectionKey = zoneSelectionKey
@@ -250,6 +277,9 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
 
     isLoading = true
     error = nil
+    // Zone-independent, so it runs even when the no-active-zone branch below
+    // returns early (tc-c5m1, GH#793).
+    await refreshGlobalUnread()
     do {
       if let watchZoneRepository {
         let loadedZones = try await watchZoneRepository.loadAll()
@@ -298,39 +328,9 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     onApplicationSelected?(id)
   }
 
-  /// Fires a per-application mark-read when the opened row shows an unread
-  /// badge, optimistically clearing that badge locally so ``unreadCount`` and
-  /// the Unread chip update without a refetch. Already-read/absent rows and
-  /// non-numeric authorities issue no request. Errors are swallowed — a later
-  /// fetch reconciles (ADR 0035). The composite mirrors the deep-link parser:
-  /// `applicationUid` is `id.name`; `authorityId` is `Int(id.authority)`.
-  private func markReadOnOpen(_ id: PlanningApplicationId) {
-    guard let notificationStateRepository,
-      let index = applications.firstIndex(where: { $0.id == id }),
-      applications[index].latestUnreadEvent != nil,
-      let authorityId = Int(id.authority)
-    else {
-      return
-    }
-    let applicationUid = id.name
-    applications[index] = applications[index].withLatestUnreadEvent(nil)
-    pendingMarkRead = Task { [weak self] in
-      do {
-        try await notificationStateRepository.markApplicationRead(
-          applicationUid: applicationUid,
-          authorityId: authorityId
-        )
-      } catch {
-        // Swallow — optimistic UI; a later fetch reconciles (ADR 0035).
-        _ = self
-      }
-    }
-  }
-
-  /// Test-only: await the most recent tap-to-read mark-read.
-  public func waitForPendingMarkRead() async {
-    await pendingMarkRead?.value
-  }
+  // `markReadOnOpen(_:)` and `waitForPendingMarkRead()` live in the
+  // `+TapToRead` extension file (split out to keep this file under
+  // SwiftLint's `file_length` ceiling).
 
   /// Stamps the watermark to "now" via the notification-state repository,
   /// then refetches the active zone so each row's `latestUnreadEvent` drops
@@ -347,6 +347,10 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
     guard let notificationStateRepository else { return }
     do {
       try await notificationStateRepository.markAllRead()
+      // Clear immediately on success only — a false zero on failure would
+      // revert on the next foreground sync (tc-c5m1, GH#793).
+      globalUnreadCount = 0
+      badgeSetter?.setBadge(0)
     } catch {
       // Swallow — optimistic UI per spec decision #8.
     }

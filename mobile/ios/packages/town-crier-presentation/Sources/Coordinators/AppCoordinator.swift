@@ -185,13 +185,15 @@ public final class AppCoordinator: ObservableObject {
       viewModel = ApplicationListViewModel(
         offlineRepository: offlineRepository,
         zone: zone,
-        notificationStateRepository: notificationStateRepository
+        notificationStateRepository: notificationStateRepository,
+        badgeSetter: badgeSetter
       )
     } else {
       viewModel = ApplicationListViewModel(
         repository: repository,
         zone: zone,
-        notificationStateRepository: notificationStateRepository
+        notificationStateRepository: notificationStateRepository,
+        badgeSetter: badgeSetter
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -208,13 +210,15 @@ public final class AppCoordinator: ObservableObject {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
         offlineRepository: offlineRepository,
-        notificationStateRepository: notificationStateRepository
+        notificationStateRepository: notificationStateRepository,
+        badgeSetter: badgeSetter
       )
     } else {
       viewModel = ApplicationListViewModel(
         watchZoneRepository: watchZoneRepository,
         repository: repository,
-        notificationStateRepository: notificationStateRepository
+        notificationStateRepository: notificationStateRepository,
+        badgeSetter: badgeSetter
       )
     }
     viewModel.onApplicationSelected = { [weak self] id in
@@ -228,8 +232,8 @@ public final class AppCoordinator: ObservableObject {
   /// tab is meaningful only when bookmarking is wired, but a fatal error here
   /// would crash users who never tap the tab.
   public func makeSavedApplicationListViewModel() -> SavedApplicationListViewModel {
-    let repository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
-    let viewModel = SavedApplicationListViewModel(savedApplicationRepository: repository)
+    let savedRepository = savedApplicationRepository ?? UnavailableSavedApplicationRepository()
+    let viewModel = SavedApplicationListViewModel(savedApplicationRepository: savedRepository)
     viewModel.onApplicationSelected = { [weak self] id in
       self?.showApplicationDetail(id)
     }

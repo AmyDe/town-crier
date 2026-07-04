@@ -106,18 +106,28 @@ struct ApplicationListViewModelUnreadTests {
     #expect(!sut.hasUnread)
   }
 
-  @Test("loadApplications does not call fetchState (chip is derived client-side)")
-  func loadApplications_doesNotCallFetchState() async throws {
+  @Test("loadApplications calls fetchState for the global count, but the chip stays client-side")
+  func loadApplications_callsFetchStateForGlobalCountOnly() async throws {
     let (sut, _, stateSpy, _) = try makeSUT(
       applications: [
         PlanningApplication.pendingReview
           .withLatestUnreadEvent(event(at: 1_700_500_000))
-      ]
+      ],
+      state: NotificationState(
+        lastReadAt: Date(timeIntervalSince1970: 0),
+        version: 1,
+        totalUnreadCount: 99
+      )
     )
 
     await sut.loadApplications()
 
-    #expect(stateSpy.fetchStateCallCount == 0)
+    // `loadApplications` now refreshes the GLOBAL unread count (tc-c5m1,
+    // GH#793) via `fetchState`, but the per-zone `unreadCount` chip stays
+    // derived from each row's `latestUnreadEvent` and is untouched by the
+    // server's global figure.
+    #expect(stateSpy.fetchStateCallCount == 1)
+    #expect(sut.unreadCount == 1)
   }
 
   // MARK: - Unread filter
