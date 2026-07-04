@@ -29,6 +29,7 @@ import uk.towncrierapp.domain.applications.OfflineAwareRepository
 import uk.towncrierapp.domain.applications.PlanningApplicationRepository
 import uk.towncrierapp.domain.applications.SavedApplicationRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
+import uk.towncrierapp.domain.onboarding.OnboardingRepository
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.versionconfig.VersionConfigService
@@ -45,17 +46,19 @@ public data class Auth0Tenant(
 )
 
 /**
- * The four leaves that genuinely need a real `Context` —
+ * The leaves that genuinely need a real `Context` —
  * `TownCrierApplication` builds them (`SecureCredentialsManagerStore` over a
  * real `SecureCredentialsManager`, an `Application.ActivityLifecycleCallbacks`
- * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`)
- * and hands them to the otherwise Context-free [AppGraph].
+ * tracker, a `DataStoreSubscriptionTierCache`, a `DataStoreApplicationListPreferencesStore`,
+ * a `DataStoreOnboardingRepository`) and hands them to the otherwise
+ * Context-free [AppGraph].
  */
 public class AndroidLeaves(
     public val credentialsStore: CredentialsStore,
     public val activityProvider: CurrentActivityProvider,
     public val tierCache: SubscriptionTierCache,
     public val applicationListPreferencesStore: ApplicationListPreferencesStore,
+    public val onboardingRepository: OnboardingRepository,
 )
 
 /** Rarely-overridden technical knobs, grouped so [AppGraph]'s own constructor stays short. */
@@ -162,4 +165,6 @@ public class AppGraph(
 
     public val applicationListPreferencesStore: ApplicationListPreferencesStore =
         androidLeaves.applicationListPreferencesStore
+
+    public val onboardingRepository: OnboardingRepository = androidLeaves.onboardingRepository
 }

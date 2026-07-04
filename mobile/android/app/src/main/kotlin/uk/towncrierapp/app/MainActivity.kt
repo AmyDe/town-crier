@@ -35,6 +35,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
+import uk.towncrierapp.domain.subscriptions.SubscriptionTier
+import uk.towncrierapp.presentation.auth.OnboardingPresentation
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
 import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateScreen
 import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
@@ -81,11 +83,14 @@ private val WATCH_ZONES_ROUTE = WatchZones::class.qualifiedName
 private val SAVED_ROUTE = Saved::class.qualifiedName
 
 /**
- * Root routing: pre-login force-update gate, then Login or the authed
- * shell — port of iOS `TownCrierApp.body`'s `Group { if requiresUpdate ...
- * else if isAuthenticated ... else Login }`. Re-checks the version gate and
- * re-runs the signed-in sequence (ensure profile → resolve tier, #549 /
- * tc-f2il) on every auth-state transition, keyed off `isAuthenticated` so a
+ * Root routing: pre-login force-update gate, then Login, then - once
+ * authenticated - the onboarding gate (tc-7ttz: `Undetermined` shows a
+ * loading screen, never a flash of the wrong state) before the authed shell.
+ * Port of iOS `TownCrierApp.body`'s `Group { if requiresUpdate ... else if
+ * isAuthenticated ... else Login }` extended by `AppCoordinator+Onboarding`.
+ * Re-checks the version gate and re-runs the signed-in sequence (ensure
+ * profile → resolve tier → resolve the onboarding gate, #549 / tc-f2il /
+ * tc-7ttz) on every auth-state transition, keyed off `isAuthenticated` so a
  * fresh sign-in re-triggers it.
  */
 @Composable
@@ -105,6 +110,8 @@ public fun TownCrierApp(
 
     val loginState by loginViewModel.uiState.collectAsStateWithLifecycle()
     val forceUpdateState by forceUpdateViewModel.uiState.collectAsStateWithLifecycle()
+    val onboardingPresentation by appGraph.authCoordinator.onboardingPresentation.collectAsStateWithLifecycle()
+    val subscriptionTier by appGraph.authCoordinator.subscriptionTier.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(loginState.isAuthenticated) {
@@ -123,13 +130,40 @@ public fun TownCrierApp(
             }
 
             loginState.isAuthenticated -> {
-                AuthedShell(appGraph = appGraph, navController = navController)
+                AuthedContent(
+                    appGraph = appGraph,
+                    navController = navController,
+                    onboardingPresentation = onboardingPresentation,
+                    subscriptionTier = subscriptionTier,
+                )
             }
 
             else -> {
                 LoginRoute(viewModel = loginViewModel)
             }
         }
+    }
+}
+
+/** Onboarding gate, evaluated only once signed in - see [TownCrierApp]'s doc for the full ordering contract. */
+@Composable
+private fun AuthedContent(
+    appGraph: AppGraph,
+    navController: NavHostController,
+    onboardingPresentation: OnboardingPresentation,
+    subscriptionTier: SubscriptionTier,
+) {
+    when (onboardingPresentation) {
+        OnboardingPresentation.Undetermined -> OnboardingLoadingScreen()
+
+        OnboardingPresentation.Required ->
+            OnboardingGate(
+                appGraph = appGraph,
+                subscriptionTier = subscriptionTier,
+                onOnboardingComplete = appGraph.authCoordinator::onOnboardingCompleted,
+            )
+
+        OnboardingPresentation.NotRequired -> AuthedShell(appGraph = appGraph, navController = navController)
     }
 }
 

@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Runtime-requested by the onboarding wizard's notification-permission
+         step on API 33+ (tc-7ttz); a no-op declaration below 33, where
+         notification delivery needs no runtime grant at all. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name="uk.towncrierapp.app.TownCrierApplication"
         android:allowBackup="true"
