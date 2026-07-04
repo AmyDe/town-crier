@@ -62,4 +62,6 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+    // FakeAuthenticationService, anAuthSession(), ... shared via :domain's testFixtures.
+    testImplementation(testFixtures(project(":domain")))
 }
