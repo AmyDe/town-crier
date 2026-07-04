@@ -5,12 +5,21 @@
   --text-on-accent:#FFFFFF;--amber-muted:rgba(212,145,10,0.15);
   --radius-sm:8px;--radius-md:12px;
   --space-xs:4px;--space-sm:8px;--space-md:16px;--space-lg:24px;--space-xl:32px;
+  /* Shared status vocabulary (tc-r4n9 decision 4): three colour buckets, not a
+     five-way traffic light — granted (green), refused (red), neutral for
+     "Undecided" and every long-tail state. Mirrors web/scripts/lib/render-shared.mjs. */
+  --status-granted:#1A7D37;--status-granted-bg:rgba(26,125,55,0.15);
+  --status-refused:#C42B2B;--status-refused-bg:rgba(196,43,43,0.15);
+  --status-neutral:#7A7570;--status-neutral-bg:rgba(122,117,112,0.15);
 }
 @media (prefers-color-scheme:dark){
   :root{
     --bg:#1A1A1E;--surface:#242428;--text-primary:#F1EFE9;--text-secondary:#9B9590;
     --text-tertiary:#5C5852;--border:#3A3A3F;--amber:#E9A620;--amber-hover:#F0B83A;
     --text-on-accent:#1C1917;--amber-muted:rgba(233,166,32,0.15);
+    --status-granted:#34C759;--status-granted-bg:rgba(52,199,89,0.15);
+    --status-refused:#FF453A;--status-refused-bg:rgba(255,69,58,0.15);
+    --status-neutral:#8E8A85;--status-neutral-bg:rgba(142,138,133,0.15);
   }
 }
 *{box-sizing:border-box;}
@@ -44,15 +53,20 @@ body{
   box-shadow:0 2px 8px rgba(0,0,0,0.05);
 }
 @media (prefers-color-scheme:dark){.card{box-shadow:none;}}
-.ref-row{
-  color:var(--text-secondary);font-size:14px;font-weight:500;
-  margin-bottom:var(--space-sm);
+.meta-list{margin-bottom:var(--space-sm);}
+.meta-row{
+  display:flex;gap:var(--space-xs);font-size:14px;
+  margin-bottom:2px;
 }
+.meta-label{color:var(--text-secondary);font-weight:500;}
+.meta-value{color:var(--text-primary);font-weight:500;}
 .chip{
   display:inline-block;margin-bottom:var(--space-md);padding:4px 12px;
-  border-radius:9999px;background:var(--amber-muted);border:1px solid var(--border);
-  color:var(--text-primary);font-size:13px;font-weight:500;
+  border-radius:9999px;font-size:13px;font-weight:600;
 }
+.chip--granted{background:var(--status-granted-bg);color:var(--status-granted);}
+.chip--refused{background:var(--status-refused-bg);color:var(--status-refused);}
+.chip--neutral{background:var(--status-neutral-bg);color:var(--status-neutral);}
 h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--space-md);}
 .card h2{
   margin:var(--space-lg) 0 var(--space-sm);font-size:13px;font-weight:600;
@@ -61,12 +75,12 @@ h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--spac
 .proposal{margin:0;}
 .timeline{list-style:none;margin:0;padding:0;}
 .timeline li{
-  display:flex;justify-content:space-between;gap:var(--space-md);
+  display:flex;align-items:baseline;gap:var(--space-sm);
   padding:var(--space-sm) 0;border-bottom:1px solid var(--border);
 }
 .timeline li:last-child{border-bottom:none;}
-.date-label{color:var(--text-secondary);}
-.date-value{font-weight:600;text-align:right;}
+.date-label{color:var(--text-secondary);flex:0 0 auto;}
+.date-value{font-weight:600;}
 .app-cta{margin-top:var(--space-lg);text-align:center;}
 .btn-primary{
   display:block;width:100%;box-sizing:border-box;padding:14px var(--space-md);
@@ -91,6 +105,9 @@ h1.address{font-size:24px;line-height:1.25;font-weight:700;margin:0 0 var(--spac
   font-size:12px;line-height:1.5;
 }
 .attribution p{margin:0 0 4px;}
+.authority-backlink{margin:var(--space-md) 0 0;font-size:14px;}
+.authority-backlink a{color:var(--amber);text-decoration:none;font-weight:600;}
+.authority-backlink a:hover{color:var(--amber-hover);text-decoration:underline;}
 .cta-bar{
   position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:600px;
   display:flex;flex-direction:column;align-items:stretch;gap:var(--space-xs);
