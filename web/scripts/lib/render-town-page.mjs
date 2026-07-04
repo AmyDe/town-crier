@@ -24,7 +24,8 @@ import { escapeHtml, leadLine } from './format.mjs';
 import {
   pageStyles,
   renderApplicationsList,
-  renderStats,
+  renderStatusSummary,
+  renderDataUpdated,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -123,6 +124,7 @@ export function renderTownPage(data) {
   // sources) on top of the base PlanIt/OGL/OS/OSM lines; authority pages keep the
   // base list since they don't use the gazetteer.
   const attribution = renderAttributionList(TOWN_ATTRIBUTION_LINES);
+  const dataUpdated = renderDataUpdated(data.applications);
 
   return `<!doctype html>
 <html lang="en">
@@ -163,9 +165,10 @@ ${pageStyles()}
       </nav>
       <main>
         <h1>Planning applications in ${town}</h1>
+        ${dataUpdated}
         <p class="lead">${lead}</p>
 
-${renderStats(data.statusBreakdown)}
+${renderStatusSummary(data.statusBreakdown)}
 
         <h2>Recent applications</h2>
         <ul class="appList">

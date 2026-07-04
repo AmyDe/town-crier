@@ -13,7 +13,6 @@ import { ATTRIBUTION_LINES, shareUrl } from './constants.mjs';
 import {
   escapeHtml,
   truncate,
-  formatDate,
   statusDisplayLabel,
   aggregateBreakdown,
   aggregateStatusSummary,
@@ -77,9 +76,6 @@ function statusColorModifier(appState) {
 function renderApplication(app, authoritySlug) {
   const label = escapeHtml(statusDisplayLabel(app.appState));
   const modifier = statusColorModifier(app.appState);
-  // The visible date is lastDifferent (the bounded read's DESC sort key), so the
-  // dates read top-to-bottom in the same order the cards are listed.
-  const date = formatDate(app.lastDifferent);
   const description = escapeHtml(truncate(app.description, MAX_DESCRIPTION_LENGTH));
 
   // Address is the human hook (decision 5): it is the card's heading. The
@@ -102,7 +98,6 @@ function renderApplication(app, authoritySlug) {
         ${ref ? `<p class="appCard__ref">${ref}</p>` : ''}
         <p class="appCard__desc">${description}</p>
         <div class="appCard__meta">
-          ${date ? `<span class="appCard__date">Last updated ${escapeHtml(date)}</span>` : ''}
           ${share ? `<span class="appCard__cta">View details →</span>` : ''}
         </div>`;
 
@@ -352,8 +347,10 @@ export function pageStyles() {
     h1 { font-size: 2rem; line-height: 1.2; margin: var(--tc-space-xl) 0 var(--tc-space-sm); }
     h2 { font-size: 1.5rem; margin: var(--tc-space-xl) 0 var(--tc-space-md); }
     h3 { font-size: 1.125rem; margin: 0; }
+    /* Single freshness line (tc-r4n9.3), placed near the H1. */
+    .dataUpdated { margin: 0 0 var(--tc-space-sm); font-size: 0.875rem; color: var(--tc-text-secondary); }
     .lead { font-size: 1.125rem; color: var(--tc-text-secondary); margin: 0 0 var(--tc-space-lg); }
-    .appList, .statList { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-md); }
+    .appList { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tc-space-md); }
     .appCard {
       background: var(--tc-surface);
       border: 1px solid var(--tc-border);
@@ -378,7 +375,6 @@ export function pageStyles() {
     .appCard__ref { margin: var(--tc-space-sm) 0; font-size: 0.8125rem; color: var(--tc-text-secondary); overflow-wrap: anywhere; }
     .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
     .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
-    .appCard__date { color: var(--tc-text-secondary); }
     /* Visible share-page affordance (decision 6) — a real anchor, not a
        JS-only click handler; this is the text cue, the href is the whole card. */
     .appCard__cta { color: var(--tc-amber); font-weight: 600; }
@@ -397,8 +393,17 @@ export function pageStyles() {
     .status--granted { color: var(--tc-status-granted); background: var(--tc-status-granted-bg); }
     .status--refused { color: var(--tc-status-refused); background: var(--tc-status-refused-bg); }
     .status--neutral { color: var(--tc-status-neutral); background: var(--tc-status-neutral-bg); }
-    .statRow { display: flex; justify-content: space-between; background: var(--tc-surface); border: 1px solid var(--tc-border); border-radius: var(--tc-radius-md); padding: var(--tc-space-sm) var(--tc-space-md); }
-    .statRow__count { font-weight: 700; }
+    /* Compact "Status breakdown" strip (tc-r4n9.3): one row of chip-style
+       headline buckets (reusing the .status--granted/refused/neutral chip
+       vocabulary above) plus the total, with any long tail folded behind the
+       .statusSummary__other <details> instead of a one-row-per-state list. */
+    .statusSummary__strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tc-space-sm); }
+    .statusSummary__total { color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other { margin-top: var(--tc-space-sm); color: var(--tc-text-secondary); font-size: 0.875rem; }
+    .statusSummary__other summary { cursor: pointer; color: var(--tc-amber); font-weight: 600; }
+    .statusSummary__otherList { list-style: none; margin: var(--tc-space-sm) 0 0; padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .statusSummary__otherList li { display: flex; justify-content: space-between; gap: var(--tc-space-md); }
+    .statusSummary__otherCount { font-weight: 700; }
     .townLinks__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); }
     .townLinks__list a {
       display: inline-block;
