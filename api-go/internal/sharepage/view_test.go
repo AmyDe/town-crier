@@ -262,3 +262,34 @@ func TestBuildPageView_StatusChip(t *testing.T) {
 		}
 	})
 }
+
+// TestBuildPageView_AuthorityBacklink pins the "More planning applications in
+// {area} ->" backlink (tc-r4n9.6): it points at the SEO planning page for the
+// application's authority, built from the SAME slug the share page itself was
+// resolved by — the two page families share one Slugify implementation
+// (api-go/internal/authorities/slug.go, byte-equal ported from
+// web/scripts/lib/slug.mjs), so this is the correct authority-page path
+// whenever that authority actually has a published SEO page (see the worker
+// report for the coverage-gate/area-type caveat).
+func TestBuildPageView_AuthorityBacklink(t *testing.T) {
+	t.Parallel()
+	t.Run("area name present: link built from slug", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AreaName: "Croydon"}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.AuthorityURL != "https://towncrierapp.uk/planning/croydon" {
+			t.Errorf("AuthorityURL = %q, want https://towncrierapp.uk/planning/croydon", v.AuthorityURL)
+		}
+		if v.AuthorityName != "Croydon" {
+			t.Errorf("AuthorityName = %q, want Croydon", v.AuthorityName)
+		}
+	})
+	t.Run("blank area name: backlink omitted", func(t *testing.T) {
+		t.Parallel()
+		app := applications.PlanningApplication{Name: "23/03456/FUL", AreaID: 165, AreaName: "   "}
+		v := buildPageView(app, "croydon", "23/03456/FUL")
+		if v.AuthorityURL != "" || v.AuthorityName != "" {
+			t.Errorf("AuthorityURL/AuthorityName = %q/%q, want empty/empty", v.AuthorityURL, v.AuthorityName)
+		}
+	})
+}
