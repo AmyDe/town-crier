@@ -125,15 +125,33 @@ public class AppGraph(
     public val postcodeGeocoder: PostcodeGeocoder = ApiPostcodeGeocoder(apiClient)
 
     // The offline cache seam (GH#775 / tc-cnme): a single InMemoryApplicationCacheStore
-    // instance backs BOTH the OfflineAwareRepository decorator below AND the
-    // explicit invalidate(zoneId)/invalidateAll() hooks a watch-zone edit and
-    // a mark-all-read fire — same object, so an invalidation is always visible
-    // to the next applications() read.
+    // instance backs BOTH the (currently dormant — see offlineAwareApplicationRepository
+    // below) OfflineAwareRepository decorator AND the explicit
+    // invalidate(zoneId)/invalidateAll() hooks a watch-zone edit and a
+    // mark-all-read fire — same object, so an invalidation is always visible.
     public val applicationCacheStore: ApplicationCacheStore = InMemoryApplicationCacheStore()
 
+    // The interactive Applications tab/detail screen's every fetch — first
+    // page included — goes straight to the network, matching iOS parity: on
+    // iOS every current sort is server-driven, so ApplicationListViewModel's
+    // `fetchPage` always calls `offlineRepository.fetchApplicationsPage`
+    // (network-only) and the OfflineAwareRepository-cached
+    // `fetchApplications(for:)` path is DORMANT plumbing "kept generic
+    // should a future client-only sort ever be added" (iOS
+    // ApplicationListViewModel+Pagination.swift) — it is never reached in
+    // practice. Routing the interactive screen through the cache instead
+    // would silently freeze filter/sort changes for the 900s TTL, since the
+    // cache key is zone-only (verified live on-device, GH#775).
     public val planningApplicationRepository: PlanningApplicationRepository =
+        ApiPlanningApplicationRepository(apiClient)
+
+    // Built and available (mirrors iOS's own dormant `OfflineAwareRepository`
+    // — kept for a hypothetical future non-server-sorted mode) but not
+    // currently consumed by any ViewModel; see planningApplicationRepository's
+    // doc above.
+    public val offlineAwareApplicationRepository: OfflineAwareRepository =
         OfflineAwareRepository(
-            remote = ApiPlanningApplicationRepository(apiClient),
+            remote = planningApplicationRepository,
             cache = applicationCacheStore,
             clock = options.clock,
         )

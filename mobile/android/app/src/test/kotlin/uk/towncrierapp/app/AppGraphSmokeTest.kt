@@ -59,6 +59,7 @@ class AppGraphSmokeTest {
         assertNotNull(graph.postcodeGeocoder)
         assertNotNull(graph.applicationCacheStore)
         assertNotNull(graph.planningApplicationRepository)
+        assertNotNull(graph.offlineAwareApplicationRepository)
         assertNotNull(graph.savedApplicationRepository)
         assertNotNull(graph.notificationStateRepository)
         assertNotNull(graph.applicationListPreferencesStore)
