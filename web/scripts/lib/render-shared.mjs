@@ -16,6 +16,8 @@ import {
   formatDate,
   statusDisplayLabel,
   aggregateBreakdown,
+  aggregateStatusSummary,
+  dataUpdatedLine,
 } from './format.mjs';
 
 /**
@@ -153,6 +155,72 @@ export function renderStats(statusBreakdown) {
 ${rows}
       </ul>
     </section>`;
+}
+
+/**
+ * Render the compact "Status breakdown" strip (tc-r4n9.3, punch-list #794
+ * Phase 3): one line of three headline buckets (Granted / Refused /
+ * Undecided) plus the total, using the SAME `.status--granted` /
+ * `.status--refused` / `.status--neutral` chip vocabulary and colours as the
+ * per-card chips (decision 4) for visual consistency between the aggregate
+ * summary and the individual cards. Replaces the old one-row-per-appState
+ * `renderStats` list, which advertised every long-tail state as its own
+ * top-level row.
+ *
+ * Any state that doesn't fit the three headline buckets (the long tail —
+ * `Conditions`/"Granted with conditions", `Withdrawn`, `Appealed`, `Referred`,
+ * `Unresolved`, any future/unrecognised state) is folded behind a `<details>`
+ * disclosure labelled "Other (N)" instead of being enumerated top-level.
+ * Omitted entirely when there is no long tail at all.
+ *
+ * @param {ReadonlyArray<{ appState: string | null, count: number }>} statusBreakdown
+ * @returns {string}
+ */
+export function renderStatusSummary(statusBreakdown) {
+  const { granted, refused, undecided, total, other } = aggregateStatusSummary(statusBreakdown);
+  const otherTotal = other.reduce((sum, o) => sum + o.count, 0);
+  const otherDisclosure =
+    otherTotal > 0
+      ? `
+      <details class="statusSummary__other">
+        <summary>Other (${otherTotal})</summary>
+        <ul class="statusSummary__otherList">
+${other
+  .map(
+    (o) =>
+      `          <li><span class="statusSummary__otherLabel">${escapeHtml(o.label)}</span><span class="statusSummary__otherCount">${o.count}</span></li>`,
+  )
+  .join('\n')}
+        </ul>
+      </details>`
+      : '';
+  return `    <section class="statusSummary" aria-label="Application status summary">
+      <h2 class="statusSummary__heading">Status breakdown</h2>
+      <div class="statusSummary__strip">
+        <span class="statusSummary__item status status--granted">${granted} Granted</span>
+        <span class="statusSummary__item status status--refused">${refused} Refused</span>
+        <span class="statusSummary__item status status--neutral">${undecided} Undecided</span>
+        <span class="statusSummary__total">${total} total</span>
+      </div>${otherDisclosure}
+    </section>`;
+}
+
+/**
+ * Render the single "Data updated {date}" line (tc-r4n9.3, punch-list #794
+ * Phase 3) that replaces the old per-card "Last updated {date}" line, which
+ * repeated the same handful of snapshot dates once per card (up to 30 times
+ * on a full page) under a "Recent applications" heading — reading as
+ * snapshot staleness rather than a freshness signal. Placed once, near the
+ * H1, using the freshest `lastDifferent` among the applications actually
+ * shown. Returns '' (renders nothing) when no shown application carries a
+ * parseable date.
+ *
+ * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications
+ * @returns {string}
+ */
+export function renderDataUpdated(applications) {
+  const line = dataUpdatedLine(applications);
+  return line ? `<p class="dataUpdated">${escapeHtml(line)}</p>` : '';
 }
 
 /**
