@@ -1,4 +1,4 @@
-import { SITE_ORIGIN, APPLE_APP_ID, appStoreUrl } from './constants.mjs';
+import { SITE_ORIGIN, APPLE_APP_ID, appStoreUrl, shareUrl } from './constants.mjs';
 import { escapeHtml, leadLine } from './format.mjs';
 import { townPagePath } from './town-path.mjs';
 import {
@@ -77,7 +77,9 @@ function buildJsonLd(data, canonical) {
       '@type': 'ListItem',
       position: i + 1,
       name: [app.name, app.address].filter(Boolean).join(' — '),
-      url: app.url || app.link || canonical,
+      // Prefer our own share page (the application's canonical Town Crier page)
+      // as the item URL; fall back to the council/PlanIt record, then the page.
+      url: shareUrl(data.slug, app.name) || app.url || app.link || canonical,
     })),
   };
   const dataset = {
@@ -116,7 +118,7 @@ export function renderPlanningPage(data) {
   const jsonLd = buildJsonLd(data, canonical);
   const year = new Date().getFullYear();
 
-  const applicationsList = renderApplicationsList(data.applications);
+  const applicationsList = renderApplicationsList(data.applications, data.slug);
   const townLinks = renderTownLinks(data);
   const attribution = renderAttributionList();
 

@@ -6,6 +6,40 @@
 export const SITE_ORIGIN = 'https://towncrierapp.uk';
 
 /**
+ * Canonical origin for the public per-application share pages
+ * (`/a/{authoritySlug}/{ref}`). Mirrors the iOS `ShareURL.origin`
+ * (`mobile/ios/.../Sharing/ShareURL.swift`) and the API `shareOrigin`
+ * (`api-go/internal/sharepage/view.go`) — the three MUST stay in lockstep.
+ * @type {string}
+ */
+export const SHARE_ORIGIN = 'https://share.towncrierapp.uk';
+
+/**
+ * Build the canonical share URL for one planning application:
+ * `https://share.towncrierapp.uk/a/{authoritySlug}/{ref}`.
+ *
+ * `ref` is the application's PlanIt `name` (the `planit_name` column, exposed as
+ * `name` on the SEO snapshot) — the exact key the share page looks up by. It can
+ * contain slashes (e.g. `Kingston/25/02755/CLC`), which are kept as path
+ * separators; every other segment is percent-encoded. This mirrors the iOS
+ * `ShareURL.build` behaviour (`.urlPathAllowed`, which keeps `/`). The slug is
+ * already URL-safe (lowercase-hyphenated `Slugify` output), so it is used
+ * verbatim. Returns `null` when either component is empty, so a caller can omit
+ * the link rather than emit a broken one.
+ *
+ * @param {string} authoritySlug
+ * @param {string} ref
+ * @returns {string | null}
+ */
+export function shareUrl(authoritySlug, ref) {
+  if (!authoritySlug || !ref) {
+    return null;
+  }
+  const encodedRef = ref.split('/').map(encodeURIComponent).join('/');
+  return `${SHARE_ORIGIN}/a/${authoritySlug}/${encodedRef}`;
+}
+
+/**
  * Public App Store listing for the iOS app. Mirrors `src/config/links.ts`
  * (`APP_DOWNLOAD_URL`) — kept in lockstep by the drift-guard test in
  * `src/__tests__/planning-cta-link.test.ts`, because this build-time `.mjs`

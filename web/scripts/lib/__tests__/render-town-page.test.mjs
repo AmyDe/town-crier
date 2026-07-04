@@ -109,6 +109,18 @@ describe('renderTownPage', () => {
     expect(html).toContain('https://planit.org.uk/planapplic/CW-26-0001');
   });
 
+  it('links each application to its share page using the parent authority slug and ref', () => {
+    const html = renderTownPage(townData());
+    // Town-page apps are scoped to the town's own authority, so authoritySlug is
+    // correct for every card.
+    expect(html).toContain(
+      '<a class="appLink" href="https://share.towncrierapp.uk/a/cornwall/26/0001">View on Town Crier</a>',
+    );
+    expect(html).toContain(
+      '"url":"https://share.towncrierapp.uk/a/cornwall/26/0001"',
+    );
+  });
+
   it('orders the visible Last updated dates to match the lastDifferent DESC sort', () => {
     const html = renderTownPage(townData());
     expect(html).toContain('Last updated 12 Jun 2026');
