@@ -99,8 +99,18 @@ function buildJsonLd(data, canonical) {
     license:
       'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/',
   };
+  // An authority page has no parent above it (unlike a town page, which climbs
+  // Home -> Authority -> Town), so this trail is two levels: Home -> Authority.
+  const breadcrumb = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Town Crier', item: `${SITE_ORIGIN}/` },
+      { '@type': 'ListItem', position: 2, name: data.areaName, item: canonical },
+    ],
+  };
   // Escape "<" so a malicious data value can never close the <script> element.
-  return JSON.stringify([itemList, dataset]).replace(/</g, '\\u003c');
+  return JSON.stringify([itemList, dataset, breadcrumb]).replace(/</g, '\\u003c');
 }
 
 /**
@@ -155,6 +165,12 @@ ${pageStyles()}
           <a class="siteHeader__cta" href="${appStoreUrl('seo-lpa')}" rel="noopener" target="_blank">Get the app</a>
         </nav>
       </header>
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Town Crier</a></li>
+          <li>${area}</li>
+        </ol>
+      </nav>
       <main>
         <h1>Planning applications in ${area}</h1>
         ${dataUpdated}

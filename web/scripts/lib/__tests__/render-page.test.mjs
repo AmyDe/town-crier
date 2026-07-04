@@ -89,6 +89,68 @@ describe('renderPlanningPage', () => {
     expect(html).toContain('"@type":"ItemList"');
   });
 
+  describe('breadcrumb (tc-r4n9.4)', () => {
+    it('renders a visible breadcrumb with exactly two levels: Home, then the authority (no grandparent level)', () => {
+      const html = renderPlanningPage(pageData());
+      const nav = html.match(
+        /<nav class="breadcrumb" aria-label="Breadcrumb">[\s\S]*?<\/nav>/,
+      );
+      expect(nav).not.toBeNull();
+      const [navHtml] = nav;
+      const liCount = (navHtml.match(/<li/g) ?? []).length;
+      expect(liCount).toBe(2);
+      expect(navHtml).toContain('<li><a href="/">Town Crier</a></li>');
+      expect(navHtml).toContain('<li>Basingstoke and Deane</li>');
+      // The current page is plain text, not a self-link (matches the town-page pattern).
+      expect(navHtml).not.toContain('<a href="/planning/basingstoke-and-deane"');
+    });
+
+    it('places the breadcrumb between the site header and the main content', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html.indexOf('</header>')).toBeLessThan(
+        html.indexOf('class="breadcrumb"'),
+      );
+      expect(html.indexOf('class="breadcrumb"')).toBeLessThan(
+        html.indexOf('<main>'),
+      );
+    });
+
+    it('HTML-escapes the authority name in the visible breadcrumb', () => {
+      const html = renderPlanningPage(
+        pageData({ areaName: 'Stoke & <b>Bramley</b>' }),
+      );
+      expect(html).not.toContain('<li><b>Bramley</b></li>');
+      expect(html).toContain('<li>Stoke &amp; &lt;b&gt;Bramley&lt;/b&gt;</li>');
+    });
+
+    it('embeds a two-item BreadcrumbList in the schema.org JSON-LD, alongside the ItemList and Dataset', () => {
+      const html = renderPlanningPage(pageData());
+      expect(html).toContain('"@type":"BreadcrumbList"');
+      const ld = html.match(
+        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+      );
+      expect(ld).not.toBeNull();
+      const [, json] = ld;
+      const parsed = JSON.parse(json);
+      const breadcrumb = parsed.find((entry) => entry['@type'] === 'BreadcrumbList');
+      expect(breadcrumb).toBeDefined();
+      expect(breadcrumb.itemListElement).toEqual([
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Town Crier',
+          item: `${SITE_ORIGIN}/`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Basingstoke and Deane',
+          item: `${SITE_ORIGIN}/planning/basingstoke-and-deane`,
+        },
+      ]);
+    });
+  });
+
   it('renders each application address as the headline and status label', () => {
     const html = renderPlanningPage(pageData());
     expect(html).toContain(

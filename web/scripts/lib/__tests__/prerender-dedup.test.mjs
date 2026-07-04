@@ -298,3 +298,54 @@ describe('runPrerender — same-name town dedup (tc-77ll)', () => {
     });
   });
 });
+
+describe('real-world case: Croydon shows zero town links (tc-r4n9.4 investigation)', () => {
+  it('documents why: the gazetteer carries exactly one Croydon-authority row, named "Croydon" itself, so the pre-existing same-name dedup (tc-77ll) suppresses it -- not an ordering regression or a stale snapshot', async () => {
+    // Mirrors the real committed values in web/src/data/towns.json for
+    // authorityId 301 (Croydon): a SINGLE row, name "Croydon". ONS's Census 2021
+    // Built-Up-Areas methodology treats each Greater London borough as one
+    // borough-shaped BUA rather than distinct settlements (see the "London
+    // population" note in generate-towns.mjs) -- there is no separate
+    // "Purley" / "Coulsdon" / "South Norwood" row for this dedup to spare.
+    const result = await runWith({
+      authorities: [
+        {
+          id: 301,
+          name: 'Croydon',
+          areaType: 'London Borough',
+          areaName: 'Croydon',
+          total: 40,
+          statusBreakdown: [{ appState: 'Permitted', count: 40 }],
+          applications: [app('CR1')],
+        },
+      ],
+      towns: [
+        {
+          slug: 'croydon',
+          name: 'Croydon',
+          lat: 51.3507,
+          lng: -0.083,
+          authorityId: 301,
+          total: 30, // clears the >=10 coverage gate; suppressed on same-name below
+          statusBreakdown: [{ appState: 'Permitted', count: 30 }],
+          applications: [app('CRT1')],
+        },
+      ],
+      authorityList: [{ id: 301, name: 'Croydon' }],
+    });
+
+    expect(result.publishedTowns).toEqual([]);
+    expect(result.excludedTowns).toContainEqual({
+      name: 'Croydon',
+      reason: 'same-name',
+    });
+
+    const croydonPage = await readFile(
+      join(outDir, 'planning', 'croydon', 'index.html'),
+      'utf-8',
+    );
+    expect(croydonPage).not.toContain('<section class="townLinks">');
+    // The breadcrumb (tc-r4n9.4) still renders regardless of the town-links gap.
+    expect(croydonPage).toContain('class="breadcrumb"');
+  });
+});
