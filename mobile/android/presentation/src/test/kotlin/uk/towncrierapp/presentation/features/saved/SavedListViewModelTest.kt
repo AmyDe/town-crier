@@ -40,7 +40,11 @@ class SavedListViewModelTest {
 
     @Test
     fun `load retries after a previous attempt failed — tc-hlbx`() {
-        val repository = FakeSavedApplicationRepository().apply { savedApplicationsFailWith = DomainError.NetworkUnavailable }
+        val repository =
+            FakeSavedApplicationRepository().apply {
+                savedApplicationsFailWith =
+                    DomainError.NetworkUnavailable
+            }
         val viewModel = SavedListViewModel(repository)
         viewModel.load()
         assertEquals(1, repository.savedApplicationsCallCount)
