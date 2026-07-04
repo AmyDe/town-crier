@@ -73,11 +73,12 @@ public class WatchZoneEditorViewModel(
             try {
                 val coordinate = geocoder.geocode(_uiState.value.postcode)
                 _uiState.update {
-                    it.copy(
-                        geocodedCoordinate = coordinate,
-                        isLoading = false,
-                        name = it.name.ifBlank { it.postcode.trim() },
-                    ).withSaveEnabled()
+                    it
+                        .copy(
+                            geocodedCoordinate = coordinate,
+                            isLoading = false,
+                            name = it.name.ifBlank { it.postcode.trim() },
+                        ).withSaveEnabled()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -93,6 +94,9 @@ public class WatchZoneEditorViewModel(
      * placeholder and leaves `error` unset — the Route dismisses the editor.
      * Any other failure sets the inline error and leaves the editor open.
      */
+    @Suppress("SwallowedException")
+    // Deliberate degrade path (tc-gpjk): a quota breach routes to the paywall
+    // placeholder — the UI only needs THAT it happened, not the exception itself.
     public fun save() {
         val state = _uiState.value
         val coordinate = state.geocodedCoordinate ?: return
@@ -130,10 +134,12 @@ public class WatchZoneEditorViewModel(
     public fun consumeNavigateToPaywall() {
         _uiState.update { it.copy(navigateToPaywall = false) }
     }
-
-    private fun WatchZoneEditorUiState.withSaveEnabled(): WatchZoneEditorUiState =
-        copy(isSaveEnabled = geocodedCoordinate != null && name.isNotBlank())
 }
+
+// Top-level (not a class member) purely to keep the class's own function
+// count under detekt's TooManyFunctions budget — it needs no instance state.
+private fun WatchZoneEditorUiState.withSaveEnabled(): WatchZoneEditorUiState =
+    copy(isSaveEnabled = geocodedCoordinate != null && name.isNotBlank())
 
 private fun initialState(
     tier: SubscriptionTier,

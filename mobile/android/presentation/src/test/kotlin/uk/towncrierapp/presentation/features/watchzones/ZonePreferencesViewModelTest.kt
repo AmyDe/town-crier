@@ -70,7 +70,11 @@ class ZonePreferencesViewModelTest {
 
     @Test
     fun `save failure surfaces the error and does not complete`() {
-        val repository = FakeZonePreferencesRepository().apply { updatePreferencesFailWith = DomainError.NetworkUnavailable }
+        val repository =
+            FakeZonePreferencesRepository().apply {
+                updatePreferencesFailWith =
+                    DomainError.NetworkUnavailable
+            }
         val viewModel = ZonePreferencesViewModel(repository, WatchZoneId("wz-1"), "Home", SubscriptionTier.PERSONAL)
 
         viewModel.save()
@@ -81,11 +85,22 @@ class ZonePreferencesViewModelTest {
 
     @Test
     fun `featureGate reflects the tier so the Screen can lock toggles for Free`() {
-        val free = ZonePreferencesViewModel(FakeZonePreferencesRepository(), WatchZoneId("wz-1"), "Home", SubscriptionTier.FREE)
+        val free =
+            ZonePreferencesViewModel(
+                FakeZonePreferencesRepository(),
+                WatchZoneId("wz-1"),
+                "Home",
+                SubscriptionTier.FREE,
+            )
         assertEquals(SubscriptionTier.FREE, free.uiState.value.featureGate.tier)
 
         val personal =
-            ZonePreferencesViewModel(FakeZonePreferencesRepository(), WatchZoneId("wz-1"), "Home", SubscriptionTier.PERSONAL)
+            ZonePreferencesViewModel(
+                FakeZonePreferencesRepository(),
+                WatchZoneId("wz-1"),
+                "Home",
+                SubscriptionTier.PERSONAL,
+            )
         assertEquals(SubscriptionTier.PERSONAL, personal.uiState.value.featureGate.tier)
     }
 }

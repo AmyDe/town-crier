@@ -122,7 +122,8 @@ class WatchZoneEditorViewModelTest {
 
     @Test
     fun `updateRadius shows the large radius warning at or above the threshold`() {
-        val viewModel = WatchZoneEditorViewModel(FakePostcodeGeocoder(), FakeWatchZoneRepository(), SubscriptionTier.PRO)
+        val viewModel =
+            WatchZoneEditorViewModel(FakePostcodeGeocoder(), FakeWatchZoneRepository(), SubscriptionTier.PRO)
 
         viewModel.updateRadius(2_100f)
         assertTrue(viewModel.uiState.value.showsLargeRadiusWarning)

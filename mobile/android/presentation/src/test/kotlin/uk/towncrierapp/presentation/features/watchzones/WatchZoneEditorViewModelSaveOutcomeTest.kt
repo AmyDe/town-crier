@@ -23,7 +23,9 @@ import kotlin.test.assertTrue
  */
 @ExtendWith(MainDispatcherExtension::class)
 class WatchZoneEditorViewModelSaveOutcomeTest {
-    private fun geocodedViewModel(repository: FakeWatchZoneRepository = FakeWatchZoneRepository()): WatchZoneEditorViewModel {
+    private fun geocodedViewModel(
+        repository: FakeWatchZoneRepository = FakeWatchZoneRepository(),
+    ): WatchZoneEditorViewModel {
         val geocoder = FakePostcodeGeocoder(Result.success(aCoordinate()))
         val viewModel = WatchZoneEditorViewModel(geocoder, repository, SubscriptionTier.FREE)
         viewModel.updateName("Home")

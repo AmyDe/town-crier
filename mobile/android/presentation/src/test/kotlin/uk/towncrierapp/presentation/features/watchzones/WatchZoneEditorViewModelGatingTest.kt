@@ -24,8 +24,16 @@ class WatchZoneEditorViewModelGatingTest {
 
     @Test
     fun `featureGate carries the tier`() {
-        assertEquals(SubscriptionTier.FREE, makeViewModel(SubscriptionTier.FREE).uiState.value.featureGate.tier)
-        assertEquals(SubscriptionTier.PRO, makeViewModel(SubscriptionTier.PRO).uiState.value.featureGate.tier)
+        assertEquals(
+            SubscriptionTier.FREE,
+            makeViewModel(SubscriptionTier.FREE)
+                .uiState.value.featureGate.tier,
+        )
+        assertEquals(
+            SubscriptionTier.PRO,
+            makeViewModel(SubscriptionTier.PRO)
+                .uiState.value.featureGate.tier,
+        )
     }
 
     @Test

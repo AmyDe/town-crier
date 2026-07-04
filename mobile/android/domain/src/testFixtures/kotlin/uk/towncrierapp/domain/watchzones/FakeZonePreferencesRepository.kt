@@ -4,7 +4,10 @@ import uk.towncrierapp.domain.auth.DomainError
 
 /** Hand-written fake for [ZonePreferencesRepository]. */
 public class FakeZonePreferencesRepository(
-    public var fetchPreferencesResult: Result<ZoneNotificationPreferences> = Result.success(aZoneNotificationPreferences()),
+    public var fetchPreferencesResult: Result<ZoneNotificationPreferences> =
+        Result.success(
+            aZoneNotificationPreferences(),
+        ),
 ) : ZonePreferencesRepository {
     public var updatePreferencesFailWith: DomainError? = null
 

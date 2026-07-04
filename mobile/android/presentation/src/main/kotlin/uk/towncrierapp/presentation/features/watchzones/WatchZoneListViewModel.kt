@@ -68,9 +68,11 @@ public class WatchZoneListViewModel(
             // cap. A Personal user at their finite 3-zone cap also trips
             // showUpgradeBadge, which is why this must not simply piggyback on
             // it — see WatchZoneListViewModelTest.
-            showsFreeTierUpsell = featureGate.tier == SubscriptionTier.FREE && !featureGate.canAdd(
-                Quota.WATCH_ZONES,
-                zones.size,
-            ),
+            showsFreeTierUpsell =
+                featureGate.tier == SubscriptionTier.FREE &&
+                    !featureGate.canAdd(
+                        Quota.WATCH_ZONES,
+                        zones.size,
+                    ),
         )
 }

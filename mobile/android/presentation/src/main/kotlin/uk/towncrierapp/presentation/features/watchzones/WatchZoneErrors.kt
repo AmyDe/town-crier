@@ -16,9 +16,13 @@ import uk.towncrierapp.presentation.R
 internal fun watchZoneErrorMessageRes(error: DomainError): Int =
     when (error) {
         DomainError.NetworkUnavailable -> R.string.watch_zone_error_network
+
         DomainError.NotFound -> R.string.watch_zone_error_not_found
+
         DomainError.SessionExpired -> R.string.login_error_session_expired
+
         is DomainError.InsufficientEntitlement -> R.string.watch_zone_error_upgrade_required
+
         is DomainError.ServerError,
         is DomainError.AuthenticationFailed,
         is DomainError.LogoutFailed,

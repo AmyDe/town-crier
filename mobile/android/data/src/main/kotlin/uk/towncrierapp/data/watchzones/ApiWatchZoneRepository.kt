@@ -47,6 +47,9 @@ public class ApiWatchZoneRepository(
         apiClient.requestBytes(ApiEndpoint.patch("/v1/me/watch-zones/${zone.id.value}", body = body))
     }
 
+    @Suppress("SwallowedException")
+    // Idempotent delete — already gone counts as success (epic #770 contract);
+    // the exception carries no further information the caller needs.
     override suspend fun delete(id: WatchZoneId) {
         try {
             apiClient.requestBytes(ApiEndpoint.delete("/v1/me/watch-zones/${id.value}"))
@@ -74,7 +77,10 @@ private fun DomainError.normalisedForCreateQuota(): DomainError =
         else -> this
     }
 
-/** A domain-invariant violation (e.g. an out-of-range legacy coordinate) skips just that item rather than failing the whole call. */
+@Suppress("SwallowedException")
+// A domain-invariant violation (e.g. an out-of-range legacy coordinate) skips
+// just that item rather than failing the whole call — routine for old data,
+// not a diagnostic-worthy failure the caller needs the original cause for.
 private inline fun <T> runCatchingDomainInvariant(block: () -> T): T? =
     try {
         block()

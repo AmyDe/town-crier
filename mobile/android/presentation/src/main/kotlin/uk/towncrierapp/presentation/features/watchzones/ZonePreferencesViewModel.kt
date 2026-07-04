@@ -28,7 +28,8 @@ public class ZonePreferencesViewModel(
     zoneName: String,
     tier: SubscriptionTier,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(ZonePreferencesUiState(zoneName = zoneName, featureGate = FeatureGate(tier)))
+    private val _uiState =
+        MutableStateFlow(ZonePreferencesUiState(zoneName = zoneName, featureGate = FeatureGate(tier)))
     public val uiState: StateFlow<ZonePreferencesUiState> = _uiState.asStateFlow()
 
     public fun load() {

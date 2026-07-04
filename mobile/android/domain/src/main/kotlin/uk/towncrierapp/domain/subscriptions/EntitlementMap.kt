@@ -23,12 +23,13 @@ public object EntitlementMap {
         quota: Quota,
     ): Int =
         when (quota) {
-            Quota.WATCH_ZONES ->
+            Quota.WATCH_ZONES -> {
                 when (tier) {
                     SubscriptionTier.FREE -> 1
                     SubscriptionTier.PERSONAL -> 3
                     SubscriptionTier.PRO -> Int.MAX_VALUE
                 }
+            }
         }
 
     /** Returns whether the given tier grants the specified entitlement. */

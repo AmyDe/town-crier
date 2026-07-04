@@ -47,7 +47,9 @@ class ApiZonePreferencesRepositoryTest {
             transport.enqueueResponse(200, "{}")
             val sut = makeSut(transport)
 
-            sut.updatePreferences(aZoneNotificationPreferences(zoneId = WatchZoneId("wz-1"), newApplicationPush = false))
+            sut.updatePreferences(
+                aZoneNotificationPreferences(zoneId = WatchZoneId("wz-1"), newApplicationPush = false),
+            )
 
             val request = transport.requests.single()
             assertEquals("PUT", request.method)
