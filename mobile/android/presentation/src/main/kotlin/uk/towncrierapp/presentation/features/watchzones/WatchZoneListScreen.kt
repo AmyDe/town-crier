@@ -92,10 +92,22 @@ internal fun WatchZoneListScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.watch_zones_title)) },
                 actions = {
-                    IconButton(onClick = onAddZoneClick) {
-                        if (state.showUpgradeBadge) {
+                    if (state.showUpgradeBadge) {
+                        // Not an IconButton: its fixed-size (40dp) content box
+                        // clips a wider pill-shaped badge with a text label,
+                        // squeezing "Upgrade" into a vertical wrap — verified
+                        // live on-device (tc-z95t). A clickable Box lets the
+                        // badge size itself naturally while staying tappable.
+                        Box(
+                            modifier =
+                                Modifier
+                                    .clickable(onClick = onAddZoneClick)
+                                    .padding(horizontal = TownCrierSpacing.md, vertical = TownCrierSpacing.sm),
+                        ) {
                             UpgradeBadge()
-                        } else {
+                        }
+                    } else {
+                        IconButton(onClick = onAddZoneClick) {
                             Icon(
                                 imageVector = Icons.Filled.Add,
                                 contentDescription = stringResource(R.string.watch_zones_add_content_description),
