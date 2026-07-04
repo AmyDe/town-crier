@@ -8,6 +8,7 @@
 #
 # Mirrors guarded:
 #   - iOS bundle (mobile/ios .../Resources/legal)
+#   - Android bundle (mobile/android .../assets/legal)
 #
 # If this fails, run `scripts/sync-legal.sh` and commit the result.
 set -euo pipefail
@@ -17,10 +18,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 API_DIR="$REPO_ROOT/api-go/internal/legal/resources"
 IOS_DIR="$REPO_ROOT/mobile/ios/packages/town-crier-presentation/Sources/Resources/legal"
+ANDROID_DIR="$REPO_ROOT/mobile/android/presentation/src/main/assets/legal"
 
 # Each mirror is "label:path"; the canonical API_DIR is checked against every one.
 MIRRORS=(
     "iOS:$IOS_DIR"
+    "Android:$ANDROID_DIR"
 )
 
 failed=0
