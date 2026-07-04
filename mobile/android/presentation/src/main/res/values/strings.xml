@@ -112,6 +112,7 @@
     <string name="saved_empty_message">Applications you save will show up here.</string>
 
     <!-- Application detail (GH#775) -->
+    <string name="application_detail_address_label">Address</string>
     <string name="application_detail_reference_label">Reference</string>
     <string name="application_detail_authority_label">Authority</string>
     <string name="application_detail_received_label">Received</string>
