@@ -165,5 +165,19 @@ The cutover is staged behind the "seed before cutover" safety rule:
 - Epic `tc-2avw` / [GH #585](https://github.com/AmyDe/town-crier/issues/585) — SEO
   Phase 2 per-town gazetteer, which created the per-release load this ADR removes.
 - `tc-75qo` — the web-deploy-timeout follow-up superseded by this decision.
+
+## Amendments
+
+### 2026-07-04
+- Changed: `seo-refresh.yml`'s cadence moved from **weekly** (`0 4 * * 1`) to
+  **daily** (`10 10 * * *`, 11:10 UK local in summer) — `tc-df4z`. The fetch/render
+  decoupling and blob-snapshot design this ADR describes are unchanged; only the
+  schedule value changed. Owner call: the Cosmos→Postgres migration
+  ([ADR 0032](0032-consolidate-datastore-on-postgres-postgis.md)) made the `--fetch` step's
+  per-run cost negligible, removing the cost pressure that motivated a
+  weekly-not-more-often cadence. Daily also serves the
+  product goal better: same-day planning applications (usually published by 11am
+  UK time) now reach SEO pages the same afternoon instead of up to a week later.
+  Page staleness is now at most ~1 day, not ~1 week as stated above.
 </content>
 </invoke>
