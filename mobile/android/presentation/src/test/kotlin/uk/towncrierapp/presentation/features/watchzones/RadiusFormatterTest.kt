@@ -1,4 +1,4 @@
-package uk.towncrierapp.presentation.watchzones
+package uk.towncrierapp.presentation.features.watchzones
 
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals

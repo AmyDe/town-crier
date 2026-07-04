@@ -1,4 +1,4 @@
-package uk.towncrierapp.presentation.watchzones
+package uk.towncrierapp.presentation.features.watchzones
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

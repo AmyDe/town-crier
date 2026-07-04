@@ -1,4 +1,4 @@
-package uk.towncrierapp.presentation.watchzones
+package uk.towncrierapp.presentation.features.watchzones
 
 import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.domain.watchzones.WatchZone
