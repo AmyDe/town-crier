@@ -185,20 +185,32 @@ describe('dataUpdatedLine (tc-r4n9.3: single "Data updated" line replacing the p
   });
 });
 
-describe('leadLine', () => {
+describe('leadLine (tc-r4n9.3: warmed-up one-sentence intro)', () => {
   it('shows the exact total and the area name', () => {
     expect(leadLine('Adur', 42)).toBe(
-      'Town Crier is tracking 42 planning applications in Adur.',
+      "See what's happening with planning in Adur: 42 planning applications tracked so far.",
     );
   });
 
   it('uses the singular noun for a single application', () => {
     expect(leadLine('Tiny', 1)).toBe(
-      'Town Crier is tracking 1 planning application in Tiny.',
+      "See what's happening with planning in Tiny: 1 planning application tracked so far.",
     );
   });
 
   it('does not describe the count as "recent"', () => {
     expect(leadLine('Adur', 42)).not.toContain('recent');
+  });
+
+  it('is a single sentence (one full stop, at the end)', () => {
+    const line = leadLine('Adur', 42);
+    expect(line.match(/\./g)).toHaveLength(1);
+    expect(line.endsWith('.')).toBe(true);
+  });
+
+  it('never uses an em dash or en dash (voice skill hard rule)', () => {
+    const line = leadLine('Adur', 42);
+    expect(line).not.toContain('—');
+    expect(line).not.toContain('–');
   });
 });

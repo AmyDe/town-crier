@@ -151,8 +151,9 @@ describe('renderPlanningPage', () => {
 
   it('shows the exact total in the lead line', () => {
     const html = renderPlanningPage(pageData({ total: 42 }));
+    // Apostrophe in "what's" is HTML-escaped by the shared escapeHtml() call.
     expect(html).toContain(
-      'Town Crier is tracking 42 planning applications in Basingstoke and Deane.',
+      "See what&#39;s happening with planning in Basingstoke and Deane: 42 planning applications tracked so far.",
     );
   });
 

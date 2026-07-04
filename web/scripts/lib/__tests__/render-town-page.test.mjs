@@ -155,8 +155,9 @@ describe('renderTownPage', () => {
 
   it('shows the exact total in the lead line', () => {
     const html = renderTownPage(townData({ total: 18 }));
+    // Apostrophe in "what's" is HTML-escaped by the shared escapeHtml() call.
     expect(html).toContain(
-      'Town Crier is tracking 18 planning applications in Truro.',
+      "See what&#39;s happening with planning in Truro: 18 planning applications tracked so far.",
     );
   });
 
