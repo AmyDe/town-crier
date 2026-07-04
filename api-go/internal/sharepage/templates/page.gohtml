@@ -32,9 +32,13 @@
 <h1 class="address">{{.Address}}{{if .Postcode}}, {{.Postcode}}{{end}}</h1>
 {{if .Description}}<h2>Proposal</h2><p class="proposal">{{.Description}}</p>{{end}}
 {{if .Dates}}<h2>Key dates</h2><ol class="timeline">{{range .Dates}}<li><span class="date-label">{{.Label}}</span><span class="date-value">{{.Value}}</span></li>{{end}}</ol>{{end}}
+<div class="app-cta">
+<a class="btn-primary" href="{{.CTAHref}}">Get the app</a>
+<p class="app-cta-sub">Instant notifications about planning updates like this one.</p>
+</div>
 {{if or .PlanItLink .CouncilLink}}<h2>Official record</h2><div class="records">
-{{if .PlanItLink}}<a class="record-link primary" href="{{.PlanItLink}}" rel="nofollow noopener noreferrer" target="_blank">View on PlanIt</a>{{end}}
-{{if .CouncilLink}}<a class="record-link secondary" href="{{.CouncilLink}}" rel="nofollow noopener noreferrer" target="_blank">View on the council website</a>{{end}}
+{{if .PlanItLink}}<a class="record-link secondary" href="{{.PlanItLink}}" rel="nofollow noopener noreferrer" target="_blank">View on PlanIt</a>{{end}}
+{{if .CouncilLink}}<a class="record-link tertiary" href="{{.CouncilLink}}" rel="nofollow noopener noreferrer" target="_blank">View on the council website</a>{{end}}
 </div>{{end}}
 </article>
 <footer class="attribution">
