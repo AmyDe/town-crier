@@ -194,6 +194,29 @@ export function renderDataUpdated(applications) {
 }
 
 /**
+ * Render the inline "Get push alerts" CTA pulled above the applications list
+ * (tc-r4n9.3, punch-list #794 Phase 3): a single real, crawlable link placed
+ * directly after the intro, in addition to (not replacing) the existing rich
+ * banner CTA at the bottom of the page. Shares the exact "Get push alerts for
+ * {area}" copy with the bottom banner's heading so the two read as the same
+ * offer, just surfaced twice.
+ *
+ * @param {string} area   the area name (authority or town), the resident-facing
+ *   display name — HTML-escaped here
+ * @param {string} storeHref   the campaign-tagged App Store link for this page;
+ *   build-time constructed from a hardcoded campaign literal (never
+ *   user/data-derived), so — matching the header and bottom-banner CTAs — it is
+ *   interpolated as-is rather than through `escapeHtml`, which would otherwise
+ *   mangle the `&` in its query string into `&amp;`
+ * @returns {string}
+ */
+export function renderInlineCta(area, storeHref) {
+  return `        <p class="ctaInline">
+          <a class="ctaInline__button" href="${storeHref}" rel="noopener" target="_blank">Get push alerts for ${escapeHtml(area)} →</a>
+        </p>`;
+}
+
+/**
  * Render the mandatory data-attribution `<li>` items (ADR 0006). Required on
  * every public page. Defaults to the base {@link ATTRIBUTION_LINES}; callers can
  * supply an extended list (e.g. town pages add the ONS/NRS gazetteer credits)
@@ -392,6 +415,19 @@ export function pageStyles() {
     }
     .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
     .explainer p { color: var(--tc-text-secondary); }
+    /* Inline alerts CTA pulled above the list (tc-r4n9.3): a lighter pill,
+       visually distinct from the rectangular bottom banner button below. */
+    .ctaInline { margin: 0 0 var(--tc-space-lg); }
+    .ctaInline__button {
+      display: inline-block;
+      padding: var(--tc-space-sm) var(--tc-space-lg);
+      background: var(--tc-amber);
+      color: var(--tc-text-on-accent);
+      border-radius: var(--tc-radius-full);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .ctaInline__button:hover { background: var(--tc-amber-hover); }
     .cta {
       margin: var(--tc-space-xl) 0;
       padding: var(--tc-space-lg);

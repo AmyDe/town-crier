@@ -6,6 +6,7 @@ import {
   renderApplicationsList,
   renderStatusSummary,
   renderDataUpdated,
+  renderInlineCta,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -158,6 +159,7 @@ ${pageStyles()}
         <h1>Planning applications in ${area}</h1>
         ${dataUpdated}
         <p class="lead">${lead}</p>
+${renderInlineCta(data.areaName, appStoreUrl('seo-lpa'))}
 
 ${renderStatusSummary(data.statusBreakdown)}
 

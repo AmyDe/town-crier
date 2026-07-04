@@ -26,6 +26,7 @@ import {
   renderApplicationsList,
   renderStatusSummary,
   renderDataUpdated,
+  renderInlineCta,
   renderAttributionList,
 } from './render-shared.mjs';
 
@@ -167,6 +168,7 @@ ${pageStyles()}
         <h1>Planning applications in ${town}</h1>
         ${dataUpdated}
         <p class="lead">${lead}</p>
+${renderInlineCta(data.townName, appStoreUrl('seo-town'))}
 
 ${renderStatusSummary(data.statusBreakdown)}
 
