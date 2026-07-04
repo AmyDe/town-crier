@@ -74,5 +74,28 @@ func (s *Seeder) Run(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 
-	return 0, nil
+	apps, err := s.prodApps.RecentInAuthorities(ctx, authorityIDs, s.limit)
+	if err != nil {
+		return 0, err
+	}
+
+	s.push.Reset()
+
+	count := 0
+	for _, app := range apps {
+		if err := s.ingester.Ingest(ctx, app); err != nil {
+			s.logger.ErrorContext(ctx, "dev-seed: ingest failed, continuing with remaining apps",
+				"uid", app.UID, "authorityId", app.AreaID, "error", err)
+			continue
+		}
+		count++
+	}
+
+	// A push flush problem must never fail the cycle, mirroring
+	// polling.PollPlanItHandler.Handle's own posture around its Flush call.
+	if err := s.push.Flush(ctx); err != nil {
+		s.logger.ErrorContext(ctx, "dev-seed: push flush failed", "error", err)
+	}
+
+	return count, nil
 }
