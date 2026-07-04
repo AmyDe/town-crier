@@ -253,6 +253,56 @@ func TestServe_RendersHeaderAboveHeroWithBrandLockup(t *testing.T) {
 	}
 }
 
+// TestServe_AppCTAIsPrimaryInCardAction pins decision 2 (#794): the App Store
+// CTA is the visually primary action inside the card, rendered above the
+// "Official record" section — whose PlanIt/council links are restyled
+// secondary/tertiary so an external link never outweighs our own CTA.
+func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	ctaIdx := strings.Index(body, `<div class="app-cta">`)
+	if ctaIdx == -1 {
+		t.Fatal(`body missing <div class="app-cta">`)
+	}
+	officialIdx := strings.Index(body, ">Official record<")
+	if officialIdx == -1 {
+		t.Fatal("body missing Official record section")
+	}
+	if ctaIdx > officialIdx {
+		t.Fatal("in-card app CTA must render above the Official record section")
+	}
+
+	appCTASection := body[ctaIdx:officialIdx]
+	if !strings.Contains(appCTASection, `class="btn-primary"`) {
+		t.Error(`in-card app CTA missing a "btn-primary" button`)
+	}
+	if !strings.Contains(appCTASection, ">Get the app<") {
+		t.Error(`in-card app CTA button must use the short, verb-first label "Get the app"`)
+	}
+	if !strings.Contains(appCTASection, "apps.apple.com") {
+		t.Error("in-card app CTA must link to the App Store")
+	}
+
+	if !strings.Contains(body, `class="record-link secondary"`) {
+		t.Error(`PlanIt link must carry class "record-link secondary"`)
+	}
+	if !strings.Contains(body, `class="record-link tertiary"`) {
+		t.Error(`council link must carry class "record-link tertiary"`)
+	}
+	if strings.Contains(body, `class="record-link primary"`) {
+		t.Error(`no official-record link may carry the "primary" class — that is now reserved for the app CTA`)
+	}
+}
+
 func TestServe_UnknownSlug_RendersBranded404(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}
