@@ -10,10 +10,12 @@ public class FakeSavedApplicationRepository(
     public var saveFailWith: DomainError? = null
     public var unsaveFailWith: DomainError? = null
 
+    public var savedApplicationsCallCount: Int = 0
     public val saveCalls: MutableList<PlanningApplicationId> = mutableListOf()
     public val unsaveCalls: MutableList<PlanningApplicationId> = mutableListOf()
 
     override suspend fun savedApplications(): List<SavedApplication> {
+        savedApplicationsCallCount++
         savedApplicationsFailWith?.let { throw it }
         return stored.toList()
     }

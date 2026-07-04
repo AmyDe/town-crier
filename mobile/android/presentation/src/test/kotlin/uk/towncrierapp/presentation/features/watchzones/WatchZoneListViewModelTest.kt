@@ -49,6 +49,31 @@ class WatchZoneListViewModelTest {
     }
 
     @Test
+    fun `load does not refetch once it has already succeeded — tc-hlbx`() {
+        val repository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.PERSONAL))
+        viewModel.load()
+
+        viewModel.load()
+
+        assertEquals(1, repository.zonesCallCount)
+    }
+
+    @Test
+    fun `load retries after a previous attempt failed — tc-hlbx`() {
+        val repository = FakeWatchZoneRepository().apply { zonesFailWith = DomainError.NetworkUnavailable }
+        val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.FREE))
+        viewModel.load()
+        assertEquals(1, repository.zonesCallCount)
+
+        repository.zonesFailWith = null
+        viewModel.load()
+
+        assertEquals(2, repository.zonesCallCount)
+        assertNull(viewModel.uiState.value.error)
+    }
+
+    @Test
     fun `free tier at quota shows the inline upsell card and the upgrade badge`() {
         val repository = FakeWatchZoneRepository(mutableListOf(aWatchZone()))
         val viewModel = WatchZoneListViewModel(repository, FeatureGate(SubscriptionTier.FREE))

@@ -7,9 +7,11 @@ import uk.towncrierapp.domain.applications.FakeSavedApplicationRepository
 import uk.towncrierapp.domain.applications.aPlanningApplication
 import uk.towncrierapp.domain.applications.aPlanningApplicationId
 import uk.towncrierapp.domain.applications.aSavedApplication
+import uk.towncrierapp.domain.auth.DomainError
 import uk.towncrierapp.presentation.MainDispatcherExtension
 import java.time.OffsetDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Port of iOS `SavedApplicationListViewModelTests` (GH#775). */
@@ -23,6 +25,31 @@ class SavedListViewModelTest {
         viewModel.load()
 
         assertEquals(1, viewModel.uiState.value.savedApplications.size)
+    }
+
+    @Test
+    fun `load does not refetch once it has already succeeded — tc-hlbx`() {
+        val repository = FakeSavedApplicationRepository(mutableListOf(aSavedApplication()))
+        val viewModel = SavedListViewModel(repository)
+        viewModel.load()
+
+        viewModel.load()
+
+        assertEquals(1, repository.savedApplicationsCallCount)
+    }
+
+    @Test
+    fun `load retries after a previous attempt failed — tc-hlbx`() {
+        val repository = FakeSavedApplicationRepository().apply { savedApplicationsFailWith = DomainError.NetworkUnavailable }
+        val viewModel = SavedListViewModel(repository)
+        viewModel.load()
+        assertEquals(1, repository.savedApplicationsCallCount)
+
+        repository.savedApplicationsFailWith = null
+        viewModel.load()
+
+        assertEquals(2, repository.savedApplicationsCallCount)
+        assertNull(viewModel.uiState.value.error)
     }
 
     @Test
