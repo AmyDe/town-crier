@@ -170,7 +170,7 @@ func TestRecentHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	// The wire shape of an application carries the SEO-relevant fields, now
 	// including lastDifferent (the list's DESC sort key, for the "Last updated" card).
 	first := apps[0].(map[string]any)
-	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "lastDifferent", "link", "url"} {
+	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "decidedDate", "lastDifferent", "link", "url"} {
 		if _, present := first[key]; !present {
 			t.Errorf("application missing field %q: %v", key, first)
 		}

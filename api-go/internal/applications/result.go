@@ -131,7 +131,9 @@ type RecentNearbyResult struct {
 // identity, and the unread-event projection are deliberately omitted.
 // lastDifferent is the DESC sort key of the bounded read, carried so the web card
 // can show a "Last updated" date that matches the list order; it is non-pointer
-// because the domain always carries it.
+// because the domain always carries it. decidedDate (#819 decision 5) is the
+// real-world "Decided" date shown alongside startDate's "Started" on the card;
+// nil while the application is still undecided.
 type RecentApplication struct {
 	UID           string              `json:"uid"`
 	Name          string              `json:"name"`
@@ -139,6 +141,7 @@ type RecentApplication struct {
 	Description   string              `json:"description"`
 	AppState      *string             `json:"appState"`
 	StartDate     *platform.DateOnly  `json:"startDate"`
+	DecidedDate   *platform.DateOnly  `json:"decidedDate"`
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
 	Link          *string             `json:"link"`
 	URL           *string             `json:"url"`
@@ -153,6 +156,7 @@ func RecentApplicationOf(a PlanningApplication) RecentApplication {
 		Description:   a.Description,
 		AppState:      a.AppState,
 		StartDate:     platform.DateOnlyPtr(a.StartDate),
+		DecidedDate:   platform.DateOnlyPtr(a.DecidedDate),
 		LastDifferent: platform.DotNetTime(a.LastDifferent),
 		Link:          a.Link,
 		URL:           a.URL,
