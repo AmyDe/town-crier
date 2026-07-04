@@ -15,10 +15,16 @@ import uk.towncrierapp.data.auth.CurrentActivityProvider
 import uk.towncrierapp.data.auth.SessionCache
 import uk.towncrierapp.data.profile.ApiUserProfileRepository
 import uk.towncrierapp.data.versionconfig.ApiVersionConfigService
+import uk.towncrierapp.data.watchzones.ApiPostcodeGeocoder
+import uk.towncrierapp.data.watchzones.ApiWatchZoneRepository
+import uk.towncrierapp.data.watchzones.ApiZonePreferencesRepository
 import uk.towncrierapp.domain.auth.AuthenticationService
 import uk.towncrierapp.domain.profile.UserProfileRepository
 import uk.towncrierapp.domain.subscriptions.SubscriptionTierCache
 import uk.towncrierapp.domain.versionconfig.VersionConfigService
+import uk.towncrierapp.domain.watchzones.PostcodeGeocoder
+import uk.towncrierapp.domain.watchzones.WatchZoneRepository
+import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
 import uk.towncrierapp.presentation.auth.AuthCoordinator
 import java.time.Clock
 
@@ -96,4 +102,10 @@ public class AppGraph(
 
     public val authCoordinator: AuthCoordinator =
         AuthCoordinator(authenticationService, userProfileRepository, androidLeaves.tierCache)
+
+    public val watchZoneRepository: WatchZoneRepository = ApiWatchZoneRepository(apiClient)
+
+    public val zonePreferencesRepository: ZonePreferencesRepository = ApiZonePreferencesRepository(apiClient)
+
+    public val postcodeGeocoder: PostcodeGeocoder = ApiPostcodeGeocoder(apiClient)
 }
