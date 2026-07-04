@@ -162,7 +162,48 @@ type Config struct {
 	// rows when running the pg-purge job. Loaded from
 	// DEVICE_REGISTRATIONS_RETENTION_DAYS; defaults to 180.
 	DeviceRegistrationsRetentionDays int
+
+	// PostgresHost and PostgresSSLMode are the discrete connection parameters
+	// for the shared Azure Postgres Flexible Server (POSTGRES_HOST /
+	// POSTGRES_SSLMODE), the same env vars internal/platform/postgres's
+	// NewPoolFromEnv already reads directly for the process's primary pool.
+	// They are threaded through Config too because the dev-seed job
+	// (WORKER_MODE=dev-seed, epic tc-grvu, GH#808) opens a SECOND pool, bound
+	// to town_crier_prod under a distinct read-only role, on the same
+	// physical host — cmd/worker/main.go's buildDevSeeder needs the host/SSL
+	// mode to build that pool's ConnParams.
+	PostgresHost    string
+	PostgresSSLMode string
+
+	// DevSeed* configure the hourly dev-seed job (WORKER_MODE=dev-seed, epic
+	// tc-grvu, GH#808), which mirrors a small slice of recently-changed prod
+	// planning applications into dev so a TestFlight build pointed at dev gets
+	// real push notifications to test against (dev otherwise runs no PlanIt
+	// poller, ADR 0024). DevSeedLimit caps how many prod applications are
+	// pulled per cycle (DEV_SEED_LIMIT, default 5). DevSeedProdPostgresDB is
+	// the prod database name the second pool connects to
+	// (DEV_SEED_PROD_POSTGRES_DB, default town_crier_prod).
+	// DevSeedProdPostgresUser is the dedicated least-privilege Postgres role
+	// (DEV_SEED_PROD_POSTGRES_USER, e.g. towncrier_dev_seed_reader, bootstrapped
+	// out-of-band by cmd/pgbootstrap -readonly). DevSeedProdAzureClientID pins
+	// the dedicated id-town-crier-dev-seed-reader managed identity
+	// (DEV_SEED_PROD_AZURE_CLIENT_ID, infra bead tc-grvu.1) used to mint that
+	// role's Entra token — a separate identity from AzureClientID, which stays
+	// scoped to the process's own (dev) pool. DevSeedProdPostgresUser and
+	// DevSeedProdAzureClientID have no default: both empty is the "job
+	// unconfigured" signal cmd/worker/main.go's buildDevSeeder checks so the
+	// mode refuses to run rather than nil-panicking on a job/environment (e.g.
+	// prod) that never wires this config — this mode is created dev-only,
+	// tc-grvu.6.
+	DevSeedLimit             int
+	DevSeedProdPostgresDB    string
+	DevSeedProdPostgresUser  string
+	DevSeedProdAzureClientID string
 }
+
+// defaultDevSeedProdPostgresDB is the prod database name the dev-seed job's
+// second, read-only pool connects to.
+const defaultDevSeedProdPostgresDB = "town_crier_prod"
 
 // defaultPlanItBaseURL is the live PlanIt applications API.
 const defaultPlanItBaseURL = "https://www.planit.org.uk/"
@@ -239,6 +280,14 @@ func LoadConfig() (Config, error) {
 
 		NotificationsRetentionDays:       getenvInt("NOTIFICATIONS_RETENTION_DAYS", 90),
 		DeviceRegistrationsRetentionDays: getenvInt("DEVICE_REGISTRATIONS_RETENTION_DAYS", 180),
+
+		PostgresHost:    os.Getenv("POSTGRES_HOST"),
+		PostgresSSLMode: os.Getenv("POSTGRES_SSLMODE"),
+
+		DevSeedLimit:             getenvInt("DEV_SEED_LIMIT", 5),
+		DevSeedProdPostgresDB:    getenv("DEV_SEED_PROD_POSTGRES_DB", defaultDevSeedProdPostgresDB),
+		DevSeedProdPostgresUser:  os.Getenv("DEV_SEED_PROD_POSTGRES_USER"),
+		DevSeedProdAzureClientID: os.Getenv("DEV_SEED_PROD_AZURE_CLIENT_ID"),
 	}
 
 	if raw := os.Getenv("LOG_LEVEL"); raw != "" {

@@ -17,6 +17,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/google/uuid"
 
 	"github.com/AmyDe/town-crier/api-go/internal/acsemail"
@@ -24,6 +25,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/devicetokens"
+	"github.com/AmyDe/town-crier/api-go/internal/devseed"
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
@@ -201,7 +203,15 @@ func run() int {
 		logger,
 	)
 
-	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, logger)
+	// The dev-seed job is built only when its dedicated prod-read config
+	// (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER) is present.
+	// It is created dev-only (tc-grvu.6), so a job missing it (every prod job,
+	// and any dev job before that infra bead deploys) leaves devSeeder a
+	// genuinely nil interface; dev-seed then refuses to run rather than
+	// crashing.
+	devSeeder := buildDevSeeder(cfg, st, logger)
+
+	return worker.Run(context.Background(), mode, bootstrapper, digester, dormantRunner, poller, sweepRunner, purger, devSeeder, logger)
 }
 
 // buildPollOrchestrator wires the poll-sb orchestrator: the PlanIt client, the
@@ -319,6 +329,32 @@ func buildPollOrchestrator(cfg platform.Config, sbClient *servicebus.Client, reg
 // fields are extracted under a nil guard so the fan-out wires with no other
 // store dependency.
 func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zoneStore watchzones.Store, registry *metrics.Registry, st *stores, logger *slog.Logger) {
+	dispatcher, enqueuer, coalescer := buildNotifyFanOut(cfg, zoneStore, st, logger)
+
+	// Record towncrier.notifications.created on each dispatcher (tc-21np). Only
+	// the real poll-sb path is on this KPI surface, so metrics wiring is this
+	// caller's job, not buildNotifyFanOut's.
+	enqueuer = enqueuer.WithMetrics(registry)
+	dispatcher = dispatcher.WithMetrics(registry)
+
+	handler.WithFanOut(dispatcher, enqueuer)
+	handler.WithPushFlusher(coalescer)
+}
+
+// buildNotifyFanOut constructs the decision-dispatch, zone-enqueue and
+// push-coalescer collaborators the notification fan-out needs. It is shared by
+// wirePollFanOut (the real poll-sb path, prod-only) and buildDevSeeder (the
+// dev-seed job, dev-only, tc-grvu.5/GH#808) so both feed applications through
+// byte-for-byte the same notification pipeline, whatever their application
+// source (PlanIt poll vs. the read-only prod mirror). Metrics wiring
+// (WithMetrics) is left to the caller: dev-seed is a QA aid, not part of the
+// towncrier.notifications.* KPI surface poll-sb's real cycle feeds, so it
+// deliberately skips it.
+//
+// st may be nil in tests that only exercise the zone-containment path; the
+// store fields are extracted under a nil guard so the fan-out wires with no
+// other store dependency.
+func buildNotifyFanOut(cfg platform.Config, zoneStore watchzones.Store, st *stores, logger *slog.Logger) (*notifydispatch.DecisionDispatcher, *notifydispatch.Enqueuer, *notifydispatch.PushCoalescer) {
 	var (
 		notifStore     *notifications.PostgresStore
 		profileStore   *profiles.PostgresStore
@@ -336,19 +372,71 @@ func wirePollFanOut(cfg platform.Config, handler *polling.PollPlanItHandler, zon
 
 	pushSender := buildPushSender(cfg, logger)
 	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushSender, zoneStore, logger)
-
-	// Record towncrier.notifications.created on each dispatcher (tc-21np).
 	enqueuer := notifydispatch.NewEnqueuer(
 		notifStore, zoneStore, profileStore, coalescer,
 		uuid.NewString, time.Now, logger,
-	).WithMetrics(registry)
+	)
 	dispatcher := notifydispatch.NewDecisionDispatcher(
 		notifStore, zoneStore, savedStore, profileStore, coalescer,
 		uuid.NewString, time.Now, logger,
-	).WithMetrics(registry)
+	)
+	return dispatcher, enqueuer, coalescer
+}
 
-	handler.WithFanOut(dispatcher, enqueuer)
-	handler.WithPushFlusher(coalescer)
+// buildDevSeeder constructs the dev-seed job's collaborators: a second,
+// read-only pgxpool.Pool authenticated as the dedicated
+// towncrier_dev_seed_reader Postgres role via its own managed identity
+// (DEV_SEED_PROD_AZURE_CLIENT_ID, infra bead tc-grvu.1 — a distinct identity
+// from AzureClientID, which stays scoped to this process's own pool), wrapped
+// in applications.PostgresStore to read prod's most-recently-changed
+// applications, fed through a polling.Ingester built over the SAME
+// decision-dispatch/enqueue/push-coalescer collaborators wirePollFanOut builds
+// for the real poll path (via the shared buildNotifyFanOut, bound here to
+// dev's own stores), into a devseed.Seeder.
+//
+// It returns nil when DEV_SEED_PROD_AZURE_CLIENT_ID or
+// DEV_SEED_PROD_POSTGRES_USER is unset — the "unconfigured optional job"
+// posture buildPollOrchestrator/buildPushSender already use — so dev-seed
+// refuses to run rather than nil-panicking. This mode is created dev-only
+// (tc-grvu.6): every prod job, and any dev job before that infra bead deploys,
+// takes this path. A credential or pool build error is also treated as
+// unconfigured (logged, nil returned) rather than fatal, since a malformed
+// managed-identity/DSN input at boot must not crash the OTHER modes this same
+// binary dispatches (digest, dormant-cleanup, etc.) when they share a process.
+func buildDevSeeder(cfg platform.Config, st *stores, logger *slog.Logger) worker.DevSeedRunner {
+	if cfg.DevSeedProdAzureClientID == "" || cfg.DevSeedProdPostgresUser == "" {
+		logger.Info("dev-seed unconfigured (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER unset); dev-seed mode will refuse to run")
+		return nil
+	}
+
+	cred, err := azidentity.NewManagedIdentityCredential(&azidentity.ManagedIdentityCredentialOptions{
+		ID: azidentity.ClientID(cfg.DevSeedProdAzureClientID),
+	})
+	if err != nil {
+		logger.Error("dev-seed: build managed-identity credential; dev-seed mode will refuse to run", "error", err)
+		return nil
+	}
+
+	prodPool, err := postgres.NewTokenCredentialPool(context.Background(), postgres.ConnParams{
+		Host:    cfg.PostgresHost,
+		DB:      cfg.DevSeedProdPostgresDB,
+		User:    cfg.DevSeedProdPostgresUser,
+		SSLMode: cfg.PostgresSSLMode,
+	}, cred)
+	if err != nil {
+		logger.Error("dev-seed: build prod read-only pool; dev-seed mode will refuse to run", "error", err)
+		return nil
+	}
+
+	prodApps := applications.NewPostgresStore(prodPool)
+
+	// registry is deliberately nil here: buildNotifyFanOut's metrics wiring is
+	// wirePollFanOut's job (the poll-sb KPI surface); dev-seed's ingestion is a
+	// QA aid and skips it.
+	decision, enqueuer, coalescer := buildNotifyFanOut(cfg, st.zone, st, logger)
+	ingester := polling.NewIngester(st.app, decision, enqueuer)
+
+	return devseed.NewSeeder(st.zone, prodApps, ingester, coalescer, cfg.DevSeedLimit, logger)
 }
 
 // pollOrchestratorAdapter flattens polling.OrchestratorRunResult into the

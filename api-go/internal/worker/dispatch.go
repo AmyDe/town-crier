@@ -45,6 +45,15 @@ const sweepBudget = 10 * time.Minute
 // the process exits cleanly and flushes telemetry.
 const purgeBudget = 10 * time.Minute
 
+// devSeedBudget is the soft self-cancel for a single dev-seed run. The cycle
+// reads dev's watched authorities, pulls at most DEV_SEED_LIMIT
+// recently-changed prod applications over a second, read-only pool, and feeds
+// each through the same upsert + decision-dispatch + zone-enqueue + push-flush
+// pipeline poll-sb uses; 5 minutes is generous for a handful of applications
+// while still bounded well under the Container Apps replicaTimeout so the
+// process exits cleanly and flushes telemetry.
+const devSeedBudget = 5 * time.Minute
+
 // DigestRunner is the consumer-side slice of the digest handler the dispatcher
 // invokes. *digest.Handler satisfies it; the worker depends only on these two
 // methods so it need not know the handler's internals. It is exported so main()
@@ -109,6 +118,17 @@ type PollOrchestrator interface {
 	RunOnce(ctx context.Context) (PollRunResult, error)
 }
 
+// DevSeedRunner is the consumer-side slice of the dev-seed job the dispatcher
+// invokes. *devseed.Seeder satisfies it; Run returns the number of applications
+// ingested so the dispatcher can record it as a telemetry tag. It is exported so
+// main() can hold a genuinely nil interface value when the job is missing its
+// dedicated prod-read config (DEV_SEED_PROD_AZURE_CLIENT_ID /
+// DEV_SEED_PROD_POSTGRES_USER) — passing a typed-nil *devseed.Seeder would
+// defeat the nil guard below.
+type DevSeedRunner interface {
+	Run(ctx context.Context) (int, error)
+}
+
 // Run dispatches on WORKER_MODE and returns the process exit code. It is the
 // testable core of cmd/worker/main.go — main() only loads config, wires the
 // Service Bus client + bootstrapper, sets up telemetry, and propagates this
@@ -123,8 +143,10 @@ type PollOrchestrator interface {
 // bootstrapper may be nil when the job has no Service Bus config; poll-bootstrap
 // then refuses to run rather than nil-panicking. purger may be nil when no purge
 // runner is configured; pg-purge then logs and exits 0, so this is never an
-// error.
-func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, logger *slog.Logger) int {
+// error. devSeeder may be nil when the job is missing its dedicated prod-read
+// config; dev-seed then refuses to run rather than nil-panicking (it is a
+// dev-only job — tc-grvu.6 — so this never fires in prod).
+func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester DigestRunner, dormant DormantRunner, poller PollOrchestrator, sweeper SweepRunner, purger PurgeRunner, devSeeder DevSeedRunner, logger *slog.Logger) int {
 	switch mode {
 	case "":
 		// WORKER_MODE is always set by infra; an unset value is a deployment
@@ -152,6 +174,9 @@ func Run(ctx context.Context, mode string, bootstrapper *Bootstrapper, digester 
 
 	case "pg-purge":
 		return runPurge(ctx, purger, logger)
+
+	case "dev-seed":
+		return runDevSeed(ctx, devSeeder, logger)
 
 	default:
 		logger.ErrorContext(ctx, "unknown WORKER_MODE; refusing to run", "mode", mode)
@@ -327,6 +352,39 @@ func runPurge(ctx context.Context, runner PurgeRunner, logger *slog.Logger) int 
 	logger.InfoContext(ctx, "pg-purge cycle completed",
 		"notificationsDeleted", notifsPurged,
 		"deviceRegistrationsDeleted", devicesPurged)
+	return 0
+}
+
+// runDevSeed executes one dev-seed cycle under a soft self-cancel budget,
+// inside a telemetry span named "Dev Seed Cycle". It records the number of
+// applications ingested as the dev_seed.ingested_count tag. A nil runner (job
+// missing its dedicated prod-read config, DEV_SEED_PROD_AZURE_CLIENT_ID /
+// DEV_SEED_PROD_POSTGRES_USER) is an exit-1 condition, mirroring
+// dormant-cleanup/subscription-sweep's posture for an unconfigured optional
+// job — dev-seed is created dev-only (tc-grvu.6), so this never fires in prod.
+// A cycle error is recorded on the span and also exits 1 so the job surfaces
+// the failure.
+func runDevSeed(ctx context.Context, runner DevSeedRunner, logger *slog.Logger) int {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "Dev Seed Cycle")
+	defer span.End()
+
+	if runner == nil {
+		logger.ErrorContext(ctx, "dev-seed requires prod-read config (DEV_SEED_PROD_AZURE_CLIENT_ID / DEV_SEED_PROD_POSTGRES_USER); refusing to run")
+		return 1
+	}
+
+	cycleCtx, cancel := context.WithTimeout(ctx, devSeedBudget)
+	defer cancel()
+
+	ingested, err := runner.Run(cycleCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.ErrorContext(ctx, "dev-seed cycle failed", "error", err)
+		return 1
+	}
+	span.SetAttributes(attribute.Int("dev_seed.ingested_count", ingested))
 	return 0
 }
 
