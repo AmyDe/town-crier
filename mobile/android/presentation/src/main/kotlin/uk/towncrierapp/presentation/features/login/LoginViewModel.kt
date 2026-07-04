@@ -60,6 +60,17 @@ public class LoginViewModel(
     }
 
     /**
+     * Resets this ViewModel's own `isAuthenticated` state WITHOUT calling
+     * [AuthenticationService.logout] again — for a sign-out that already ran
+     * the full `AuthenticationService.logout()` sequence elsewhere (Settings'
+     * Sign Out / Delete Account flows, tc-4jjw). Calling [logout] a second
+     * time here would re-launch the SSO browser tab needlessly.
+     */
+    public fun markSignedOut() {
+        _uiState.value = LoginUiState()
+    }
+
+    /**
      * Checks for an already-stored session (cold start). `currentSession()`
      * itself is responsible for auto-renewing a near-expiry access token
      * (see `Auth0AuthenticationService`), so a non-null result here is
