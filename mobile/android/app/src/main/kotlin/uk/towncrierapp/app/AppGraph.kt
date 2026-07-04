@@ -115,10 +115,10 @@ public class AppGraph(
     // through ApiClient (which always requires a session first).
     public val versionConfigService: VersionConfigService = ApiVersionConfigService(baseUrl, transport)
 
-    public val authCoordinator: AuthCoordinator =
-        AuthCoordinator(authenticationService, userProfileRepository, androidLeaves.tierCache)
-
     public val watchZoneRepository: WatchZoneRepository = ApiWatchZoneRepository(apiClient)
+
+    public val authCoordinator: AuthCoordinator =
+        AuthCoordinator(authenticationService, userProfileRepository, androidLeaves.tierCache, watchZoneRepository)
 
     public val zonePreferencesRepository: ZonePreferencesRepository = ApiZonePreferencesRepository(apiClient)
 
