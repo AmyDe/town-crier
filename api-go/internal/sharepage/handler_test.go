@@ -154,7 +154,7 @@ func TestServe_KnownApplication_RendersMetaAndVisibleContent(t *testing.T) {
 		`<span class="date-label">Started</span><span class="date-value">2 March 2024</span>`,
 		`<span class="date-label">Consulted</span><span class="date-value">10 March 2024</span>`,
 		`<span class="date-label">Decided</span><span class="date-value">15 April 2024</span>`,
-		// Official-record links (PlanIt primary, council secondary): nofollow +
+		// Official-record links (PlanIt secondary, council tertiary): nofollow +
 		// noopener + noreferrer (noreferrer strips the Referer to third-party sites).
 		`rel="nofollow noopener noreferrer"`,
 		"https://planit.org.uk/planapplic/165/23/03456/FUL",
@@ -399,8 +399,8 @@ func TestServe_EscapesUntrustedFields(t *testing.T) {
 func TestServe_NeutralisesJavascriptSchemeInOfficialLinks(t *testing.T) {
 	t.Parallel()
 	app := fullApp(t)
-	app.URL = ptr("javascript:alert(1)")  // council secondary link
-	app.Link = ptr("javascript:alert(2)") // PlanIt primary link
+	app.URL = ptr("javascript:alert(1)")  // council tertiary link
+	app.Link = ptr("javascript:alert(2)") // PlanIt secondary link
 	store := &fakeStore{app: app, found: true}
 	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
 
