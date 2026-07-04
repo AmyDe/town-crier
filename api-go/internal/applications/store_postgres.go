@@ -184,11 +184,25 @@ func (s *PostgresStore) GetByUID(ctx context.Context, uid, authorityCode string)
 	return a, true, nil
 }
 
+// recentRealDateOrder is the shared "sort by the stable real-world lifecycle
+// date, not PlanIt's last_different re-index marker" ORDER BY clause (#819
+// decision 1). last_different is bumped to "now" whenever PlanIt re-indexes an
+// application regardless of its actual age, which floats stale applications to
+// the top of a last_different-ordered list — GREATEST(decided_date, start_date)
+// never moves on a re-index. Postgres's GREATEST ignores NULL arguments (unlike
+// last_different, which is NOT NULL), so a decided application sorts by its
+// decided_date, an undecided one by its start_date, and an application with
+// neither sorts last (NULLS LAST) rather than erroring or floating to the top.
+// The tie-break (start_date DESC NULLS LAST, then planit_name ASC) makes the
+// order fully deterministic when two applications share the same GREATEST
+// value. Shared by pgRecentByAuthorityQuery and pgRecentNearestTownQuery.
+const recentRealDateOrder = "GREATEST(decided_date, start_date) DESC NULLS LAST, start_date DESC NULLS LAST, planit_name"
+
 const pgRecentByAuthorityQuery = "SELECT " + appColumns +
-	" FROM applications WHERE authority_code = $1 ORDER BY last_different DESC LIMIT $2"
+	" FROM applications WHERE authority_code = $1 ORDER BY " + recentRealDateOrder + " LIMIT $2"
 
 // RecentByAuthority returns up to cap most-recently-active applications in the
-// authority, ordered by last_different DESC. It backs the build-time SEO endpoint.
+// authority, ordered by recentRealDateOrder. It backs the build-time SEO endpoint.
 func (s *PostgresStore) RecentByAuthority(ctx context.Context, authorityCode string, cap int) ([]PlanningApplication, error) {
 	rows, err := s.db.Query(ctx, pgRecentByAuthorityQuery, authorityCode, cap)
 	if err != nil {
