@@ -58,6 +58,7 @@ type fakeApps struct {
 	existing  map[string]applications.PlanningApplication // uid -> existing record
 	upserts   []applications.PlanningApplication
 	upsertErr error
+	getErr    error
 }
 
 func newFakeApps() *fakeApps {
@@ -65,6 +66,9 @@ func newFakeApps() *fakeApps {
 }
 
 func (f *fakeApps) GetByUID(_ context.Context, uid, _ string) (applications.PlanningApplication, bool, error) {
+	if f.getErr != nil {
+		return applications.PlanningApplication{}, false, f.getErr
+	}
 	a, ok := f.existing[uid]
 	return a, ok, nil
 }
