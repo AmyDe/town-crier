@@ -303,6 +303,45 @@ func TestServe_AppCTAIsPrimaryInCardAction(t *testing.T) {
 	}
 }
 
+// TestServe_CTABarShortLabelNoRedundantSecondLink pins Phase 5 (#794): the
+// cta-bar drops the redundant second "Get Town Crier at towncrierapp.uk" link
+// (now covered by the header brand lockup) in favour of a short, verb-first
+// label plus a one-line supporting sentence rendered as plain text.
+func TestServe_CTABarShortLabelNoRedundantSecondLink(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{app: fullApp(t), found: true}
+	resolver := &fakeResolver{slugs: map[string]int{"croydon": 165}}
+
+	rec := serve(t, store, resolver, "/a/croydon/23/03456/FUL")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	barIdx := strings.Index(body, `<div class="cta-bar">`)
+	if barIdx == -1 {
+		t.Fatal(`body missing <div class="cta-bar">`)
+	}
+	bar := body[barIdx:]
+
+	if !strings.Contains(bar, `class="cta"`) {
+		t.Error("cta-bar missing the short-label CTA button")
+	}
+	if !strings.Contains(bar, ">Get the app<") {
+		t.Error(`cta-bar CTA button must use the short, verb-first label "Get the app"`)
+	}
+	if !strings.Contains(bar, `class="cta-sub"`) {
+		t.Error("cta-bar missing the one-line supporting sentence")
+	}
+	if strings.Contains(bar, "home-link") {
+		t.Error("cta-bar must drop the redundant second (home) link — the header brand lockup already covers it")
+	}
+	if strings.Contains(bar, "Get Town Crier at towncrierapp.uk") {
+		t.Error("cta-bar must drop the redundant duplicate homepage copy")
+	}
+}
+
 func TestServe_UnknownSlug_RendersBranded404(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}
