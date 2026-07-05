@@ -52,7 +52,16 @@ export class ApiSearchPort implements SearchPort {
       params.set('authority', authority);
     }
 
-    const response = await this.fetchFn(`${this.baseUrl}/v1/applications/search?${params.toString()}`);
+    let response: Response;
+    try {
+      response = await this.fetchFn(`${this.baseUrl}/v1/applications/search?${params.toString()}`);
+    } catch {
+      // fetch() itself rejecting (offline, DNS failure, CORS, etc.) throws an
+      // engine-specific, unfriendly message ("Failed to fetch", "NetworkError
+      // when attempting to fetch resource", "Load failed") — never surface
+      // that verbatim to an anonymous visitor of a public page.
+      throw new Error('Could not reach the search service. Check your connection and try again.');
+    }
 
     if (!response.ok) {
       throw new Error('Failed to search applications');
