@@ -29,6 +29,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/digest"
 	"github.com/AmyDe/town-crier/api-go/internal/dormant"
 	"github.com/AmyDe/town-crier/api-go/internal/erasure"
+	"github.com/AmyDe/town-crier/api-go/internal/fcm"
 	"github.com/AmyDe/town-crier/api-go/internal/metrics"
 	"github.com/AmyDe/town-crier/api-go/internal/notifications"
 	"github.com/AmyDe/town-crier/api-go/internal/notificationstate"
@@ -370,8 +371,8 @@ func buildNotifyFanOut(cfg platform.Config, zoneStore watchzones.Store, st *stor
 		savedStore = st.savedApp
 	}
 
-	pushSender := buildPushSender(cfg, logger)
-	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushSender, zoneStore, logger)
+	pushDispatcher := buildPlatformDispatcher(cfg, logger)
+	coalescer := notifydispatch.NewPushCoalescer(deviceStore, statePushStore, pushDispatcher, zoneStore, logger)
 	enqueuer := notifydispatch.NewEnqueuer(
 		notifStore, zoneStore, profileStore, coalescer,
 		uuid.NewString, time.Now, logger,
@@ -496,7 +497,7 @@ func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest
 	}
 
 	emailSender := buildEmailSender(cfg, logger)
-	pushSender := buildPushSender(cfg, logger)
+	dispatcher := buildPlatformDispatcher(cfg, logger)
 
 	return digest.NewHandler(
 		profileStore,
@@ -505,7 +506,7 @@ func buildDigester(cfg platform.Config, st *stores, logger *slog.Logger) *digest
 		st.notifState,
 		st.device,
 		emailSender,
-		pushSender,
+		dispatcher,
 		logger,
 		time.Now,
 	)
@@ -649,4 +650,38 @@ func buildPushSender(cfg platform.Config, logger *slog.Logger) apns.PushSender {
 		return apns.NewNoOpSender()
 	}
 	return client
+}
+
+// buildFCMSender returns the real FCM sender when FCM is enabled, else a NoOp so
+// a job without a service-account key boots cleanly (the mirror of
+// buildPushSender for Android delivery).
+func buildFCMSender(cfg platform.Config, logger *slog.Logger) fcm.PushSender {
+	if !cfg.FCMEnabled {
+		logger.Info("fcm disabled; android pushes disabled (NoOp sender)")
+		return fcm.NewNoOpSender()
+	}
+	client, err := fcm.NewClient(fcm.Options{
+		Enabled:            cfg.FCMEnabled,
+		ProjectID:          cfg.FCMProjectID,
+		ServiceAccountJSON: cfg.FCMServiceAccountJSON.Expose(),
+	}, logger, time.Now)
+	if err != nil {
+		logger.Error("build fcm client; falling back to NoOp sender", "error", err)
+		return fcm.NewNoOpSender()
+	}
+	logger.Info("fcm enabled", "projectId", cfg.FCMProjectID)
+	return client
+}
+
+// buildPlatformDispatcher wires the platform-aware push dispatcher over the APNs
+// (iOS) and FCM (Android) senders. Both send sites — the poll-cycle coalescer
+// and the weekly-digest handler — swap their single push sender for this one
+// dispatcher, which splits a recipient's tokens by platform and prunes the union
+// of tokens either sender reports invalid.
+func buildPlatformDispatcher(cfg platform.Config, logger *slog.Logger) *notifydispatch.PlatformDispatcher {
+	return notifydispatch.NewPlatformDispatcher(
+		buildPushSender(cfg, logger),
+		buildFCMSender(cfg, logger),
+		logger,
+	)
 }

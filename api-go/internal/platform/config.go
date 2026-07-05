@@ -122,6 +122,22 @@ type Config struct {
 	APNsBundleID   string
 	APNsUseSandbox bool
 
+	// FCM* configure the direct FCM HTTP v1 push client the worker modes use to
+	// deliver instant and digest alerts to Android devices (GH#780), the mirror of
+	// the APNs client for iOS. FCMEnabled gates whether the real sender is
+	// constructed; when false the worker wires a NoOp sender so a job without a
+	// service-account key boots cleanly. FCMProjectID is the Firebase/GCP project
+	// id the send URL targets (/v1/projects/{id}/messages:send). FCMServiceAccountJSON
+	// is the full service-account key JSON blob (the fcm-service-account secret),
+	// carrying the RSA private key, client email, and token URI the JWT-bearer OAuth
+	// exchange uses — the mirror of how APNsAuthKey carries the .p8. FCM has no
+	// sandbox concept (dev and prod share one Firebase project), so there is no
+	// FCM_USE_SANDBOX. A separate infra bead wires these env vars additively onto
+	// the push-sending worker jobs (poll-sb, digest, hourly-digest).
+	FCMEnabled            bool
+	FCMProjectID          string
+	FCMServiceAccountJSON SecretString
+
 	// ACSConnectionString is the Azure Communication Services connection string
 	// (endpoint=...;accesskey=...) the digest worker modes use to send email via
 	// the ACS Email REST client (epic tc-wad3, enabler tc-qyf5). It carries the
@@ -264,6 +280,10 @@ func LoadConfig() (Config, error) {
 		APNsTeamID:     getenv("APNS_TEAM_ID", defaultAPNsTeamID),
 		APNsBundleID:   getenv("APNS_BUNDLE_ID", defaultAppleBundleID),
 		APNsUseSandbox: getenvBool("APNS_USE_SANDBOX"),
+
+		FCMEnabled:            getenvBool("FCM_ENABLED"),
+		FCMProjectID:          os.Getenv("FCM_PROJECT_ID"),
+		FCMServiceAccountJSON: NewSecret(os.Getenv("FCM_SERVICE_ACCOUNT_JSON")),
 
 		ACSConnectionString: NewSecret(os.Getenv("ACS_CONNECTION_STRING")),
 
