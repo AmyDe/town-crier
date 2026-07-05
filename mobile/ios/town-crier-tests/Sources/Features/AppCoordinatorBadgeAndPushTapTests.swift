@@ -33,7 +33,8 @@ struct AppCoordinatorBadgeAndPushTapTests {
 
   private func makeSUT(
     planningRepository: SpyPlanningApplicationRepository,
-    notificationStateRepository: NotificationStateRepository
+    notificationStateRepository: NotificationStateRepository,
+    badgeSetter: BadgeSetting? = nil
   ) -> AppCoordinator {
     AppCoordinator(
       repository: planningRepository,
@@ -45,7 +46,8 @@ struct AppCoordinatorBadgeAndPushTapTests {
       notificationService: SpyNotificationService(),
       appVersionProvider: SpyAppVersionProvider(),
       versionConfigService: SpyVersionConfigService(),
-      notificationStateRepository: notificationStateRepository
+      notificationStateRepository: notificationStateRepository,
+      badgeSetter: badgeSetter
     )
   }
 
@@ -190,6 +192,60 @@ struct AppCoordinatorBadgeAndPushTapTests {
     await sut.waitForPendingApplicationMarkRead()
 
     #expect(stateRepo.markApplicationReadCalls.count == 1)
+  }
+
+  @Test func handlePushTap_successfulMarkRead_reconcilesBadgeFromServer() async {
+    // A successful push-tap mark-read must not just fire the network call —
+    // it should reconcile the OS badge from the server immediately, rather
+    // than leaving it to race the next scenePhase-triggered syncBadge()
+    // (tc-4x8e0).
+    let stateRepo = SpyNotificationStateRepository()
+    stateRepo.fetchStateResult = .success(
+      NotificationState(
+        lastReadAt: Date(timeIntervalSince1970: 0),
+        version: 1,
+        totalUnreadCount: 2
+      )
+    )
+    let planningSpy = SpyPlanningApplicationRepository()
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let badgeSetter = SpyBadgeSetter()
+    let sut = makeSUT(
+      planningRepository: planningSpy,
+      notificationStateRepository: stateRepo,
+      badgeSetter: badgeSetter
+    )
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-002", "authorityId": 42]
+
+    sut.handlePushTap(userInfo: userInfo)
+
+    await sut.waitForPendingDetailLoad()
+    await sut.waitForPendingApplicationMarkRead()
+
+    #expect(badgeSetter.setBadgeCalls == [2])
+  }
+
+  @Test func handlePushTap_failedMarkRead_doesNotSyncBadge() async {
+    // A failed mark-read must not trigger a badge reconciliation — the next
+    // foreground sync (or a retried mark-read) is the reconciliation path.
+    let stateRepo = SpyNotificationStateRepository()
+    stateRepo.markApplicationReadResult = .failure(DomainError.networkUnavailable)
+    let planningSpy = SpyPlanningApplicationRepository()
+    planningSpy.fetchApplicationResult = .success(.permitted)
+    let badgeSetter = SpyBadgeSetter()
+    let sut = makeSUT(
+      planningRepository: planningSpy,
+      notificationStateRepository: stateRepo,
+      badgeSetter: badgeSetter
+    )
+    let userInfo: [AnyHashable: Any] = ["applicationRef": "APP-002", "authorityId": 42]
+
+    sut.handlePushTap(userInfo: userInfo)
+
+    await sut.waitForPendingDetailLoad()
+    await sut.waitForPendingApplicationMarkRead()
+
+    #expect(badgeSetter.setBadgeCalls.isEmpty)
   }
 
   @Test func handlePushTap_digestPayload_doesNothing() async {

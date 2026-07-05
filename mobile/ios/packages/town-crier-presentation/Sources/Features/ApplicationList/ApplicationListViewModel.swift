@@ -77,8 +77,8 @@ public final class ApplicationListViewModel: ObservableObject, ErrorHandlingView
   // Internal (not `private`) so the `+GlobalUnread` extension file can drive
   // `refreshGlobalUnread()` (tc-c5m1).
   let notificationStateRepository: NotificationStateRepository?
-  /// Clears the app-icon badge on a successful `markAllRead()` (tc-c5m1).
-  private let badgeSetter: BadgeSetting?
+  // Internal (not `private`): `+TapToRead` also pushes decrements here (tc-c5m1, tc-4x8e0).
+  let badgeSetter: BadgeSetting?
   var zone: WatchZone?
   /// Re-entrancy guard for ``loadApplications()``. A single user action can
   /// trigger the load repeatedly — `.task` firing alongside `.refreshable`, a
