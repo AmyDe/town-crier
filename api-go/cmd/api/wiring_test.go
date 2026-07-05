@@ -130,6 +130,9 @@ func (fakeAppStore) RecentNearestTown(context.Context, string, float64, float64,
 func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, float64) ([]applications.StateCount, error) {
 	return nil, nil
 }
+func (fakeAppStore) Search(context.Context, string, string, int) ([]applications.PlanningApplication, bool, error) {
+	return nil, false, nil
+}
 
 // foundAppStore is a fakeAppStore that returns one populated application for the
 // Croydon area id (301) — the real id, so authorities.NewLookup().SlugForAreaID(301)
@@ -146,6 +149,13 @@ func (f foundAppStore) GetByAuthorityAndName(_ context.Context, authorityCode, _
 		return f.app, true, nil
 	}
 	return applications.PlanningApplication{}, false, nil
+}
+
+// Search unconditionally returns the fixture application, ignoring the query/
+// authority/limit args — this fake exists only to give the anonymous search
+// route's end-to-end wiring test a real record to render and serialise.
+func (f foundAppStore) Search(context.Context, string, string, int) ([]applications.PlanningApplication, bool, error) {
+	return []applications.PlanningApplication{f.app}, false, nil
 }
 
 // fakeSavedStore is a savedapplications.Store returning the empty path.
@@ -363,6 +373,43 @@ func TestRouter_SharePageAndBySlugAnonymous_ByIdStaysAuthed(t *testing.T) {
 	}
 	if ct := ogCard.Header().Get("Content-Type"); ct != "image/png" {
 		t.Errorf("og:image Content-Type = %q, want image/png", ct)
+	}
+}
+
+// TestRouter_ApplicationSearchAnonymous is the end-to-end wiring guard for the
+// anonymous application search endpoint (#821 Phase 3, tc-geq7h.3): it boots the
+// FULL router with a store that returns a real Croydon application, then proves
+// GET /v1/applications/search serves anonymously (no token, 200 application/json)
+// and its response carries the fields a client needs to build a share URL
+// (authoritySlug + reference), byte-identical to what the by-slug read exposes.
+// The pattern string match is a drift guard: a rename here without updating
+// anonymousPatterns would silently 401 the route.
+func TestRouter_ApplicationSearchAnonymous(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	app := applications.PlanningApplication{
+		Name:     "23/03456/FUL",
+		UID:      "croydon-23-03456-FUL",
+		AreaName: "Croydon",
+		AreaID:   301, // the real Croydon id, so SlugForAreaID(301) == "croydon"
+		Address:  "10 Downing Street, London",
+	}
+	appStore := foundAppStore{app: app}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, appStore, nil, testGeocodeClient(t), testDesignationClient(t), nil, nil, "", "", nil, nil, "", nil, nil, nil, logger)
+
+	rec := serveReq(t, h, http.MethodGet, "/v1/applications/search?q=downing", "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /v1/applications/search status = %d, want 200 (anonymous); body = %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if !strings.Contains(rec.Body.String(), `"authoritySlug":"croydon"`) {
+		t.Errorf("body missing authoritySlug croydon; body = %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"reference":"23/03456/FUL"`) {
+		t.Errorf("body missing reference 23/03456/FUL (planit_name, not uid); body = %s", rec.Body.String())
 	}
 }
 
