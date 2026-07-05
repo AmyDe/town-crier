@@ -10,9 +10,11 @@ import TownCrierDomain
 /// - `syncBadge` runs whenever the scene enters the foreground. A failure
 ///   leaves the existing OS-level badge in place; the next foreground entry
 ///   will retry.
-/// - the push-tap mark-read runs immediately after a push deep-link is routed.
-///   Marking read is idempotent, so any transient failure is acceptable — a
-///   later `fetchState` reconciles.
+/// - the push-tap mark-read runs immediately after a push deep-link is routed,
+///   and on success reconciles the OS badge from the server right away rather
+///   than waiting on the next scenePhase `syncBadge()` (tc-4x8e0). Marking
+///   read is idempotent, so a transient failure is acceptable — a later
+///   `fetchState` reconciles.
 extension AppCoordinator {
   /// Fetches the current `NotificationState` and pushes `totalUnreadCount`
   /// into the application icon badge. Best-effort — errors are swallowed and
@@ -45,7 +47,11 @@ extension AppCoordinator {
   /// (`id.name`); `authorityId` is `id.authority` (which is
   /// `String(authorityId)`) converted back to `Int`. A non-numeric authority
   /// no-ops. Stored as `pendingApplicationMarkRead` so tests can await it;
-  /// production is fire-and-forget.
+  /// production is fire-and-forget. On success, reconciles the OS badge from
+  /// the server via `performBadgeSync()` rather than leaving it to race the
+  /// next scenePhase-triggered `syncBadge()` (tc-4x8e0). A failed mark-read
+  /// leaves the badge untouched — a retry or the next foreground sync
+  /// reconciles.
   private func markPushedApplicationRead(_ id: PlanningApplicationId) {
     guard let notificationStateRepository, let authorityId = Int(id.authority) else {
       return
@@ -57,11 +63,11 @@ extension AppCoordinator {
           applicationUid: applicationUid,
           authorityId: authorityId
         )
+        await self?.performBadgeSync()
       } catch {
         Self.logger.error(
           "Push-tap mark-read failed: \(error.localizedDescription)"
         )
-        _ = self  // retain to keep ARC happy; nothing else to do
       }
     }
   }
