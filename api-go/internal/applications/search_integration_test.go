@@ -242,6 +242,54 @@ func nameForIndex(i int) string {
 	return "L" + string(rune('A'+i))
 }
 
+// TestPostgresStore_Search_BoundsEachTierWithLimitPushdown proves each of the
+// three UNION ALL branches inside the matched CTE carries its own bounded
+// ORDER BY ... LIMIT $3 (tc-z5i5j). Before this fix, only the outer SELECT had
+// a LIMIT: because best's required DISTINCT ON ordering (area_id, planit_name,
+// tier, score) differs from the final ORDER BY (tier, score, planit_name),
+// Postgres could not push the final LIMIT down through DISTINCT ON, so any
+// term the trigram/tsvector indexes consider common forced a full
+// materialize-and-sort of the ENTIRE unbounded candidate set TWICE before the
+// caller's limit was ever applied — the root cause of the prod incident
+// (?q=extension: 15-53s). EXPLAIN (no ANALYZE — this needs no seeded rows and
+// is cheap) must show a Limit node for each of the 4 LIMIT clauses in
+// searchQuery (3 per-tier + 1 outer); fewer than 4 means a tier's bound was
+// dropped and the slow, unbounded-materialization plan is back.
+func TestPostgresStore_Search_BoundsEachTierWithLimitPushdown(t *testing.T) {
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "applications", "watch_zones")
+	ctx := context.Background()
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire connection: %v", err)
+	}
+	defer conn.Release()
+
+	var authorityArg any
+	rows, err := conn.Query(ctx, "EXPLAIN (FORMAT TEXT) "+searchQuery, "extension", authorityArg, 21, "extension%")
+	if err != nil {
+		t.Fatalf("EXPLAIN: %v", err)
+	}
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			rows.Close()
+			t.Fatalf("scan plan line: %v", err)
+		}
+		plan.WriteString(line)
+		plan.WriteByte('\n')
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+
+	if got := strings.Count(plan.String(), "Limit"); got < 4 {
+		t.Errorf("plan has %d Limit node(s), want >= 4 (3 per-tier + 1 outer):\n%s", got, plan.String())
+	}
+}
+
 // TestPostgresStore_Search_ExplainUsesTrgmAndFTSIndexes proves the migration's
 // GIN indexes (applications_address_trgm, applications_description_fts) serve
 // the tier-2/tier-3 predicates — so the query never falls back to a sequential
