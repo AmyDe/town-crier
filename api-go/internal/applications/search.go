@@ -2,10 +2,13 @@ package applications
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
@@ -214,4 +217,117 @@ type SearchResponse struct {
 	Query       string         `json:"query"`
 	Results     []SearchResult `json:"results"`
 	RefineQuery bool           `json:"refineQuery"`
+}
+
+// searchQuery ranks applications matching q across three tiers in a single
+// statement (#821 Phase 3), each computed once over the whole table and unioned:
+//
+//  1. Reference exact/prefix match on uid (case-insensitive): an exact match
+//     scores 2.0, a prefix-only match 1.0, so within tier 1 an exact hit still
+//     ranks first. uid — NOT planit_name — is the fuller, human-recognisable
+//     council reference (tc-geq7h.3 decision 2026-07-05); it may legitimately
+//     match rows in more than one authority, since a bare reference is only
+//     unique within a council.
+//  2. Address fuzzy match via pg_trgm word_similarity (<%): the query is
+//     typically a short fragment of a much longer address, so word_similarity
+//     (matching against any word-boundary substring of address) is used
+//     instead of whole-string similarity (%), which would under-score a short,
+//     otherwise-exact fragment.
+//  3. Description full-text match via the english tsvector config, ranked by
+//     ts_rank.
+//
+// matched unions the three tiers (each row tagged with its tier and an
+// in-tier score); best keeps only the single best-tier match per application
+// (DISTINCT ON (area_id, planit_name), the natural-key equivalent already
+// present in appColumns) — an application matching more than one tier is never
+// duplicated, it surfaces once under its highest-priority tier. The final
+// SELECT re-applies the tier/score order (a plain column reference survives
+// DISTINCT ON's row selection but not its projection, so the ORDER BY must be
+// restated) plus a planit_name tie-break for determinism, and the LIMIT is the
+// caller's requested limit+1 — the extra row is how Search detects "more
+// matches exist than the limit" without a second query.
+//
+// searchSelectColumns (not appColumns) backs the three UNION branches: it
+// aliases the two computed geometry accessors to lat/lon. appColumns' raw form
+// (ST_Y(location::geometry) with no alias) only resolves because those
+// branches SELECT directly FROM applications, where the location column is in
+// scope — but matched/best are CTEs, and a CTE's exposed columns are named
+// from their SELECT list (an unaliased function call is named after the
+// function, not "location"), so location does not exist there. The outer
+// SELECT list (searchOutputColumns) therefore reads the already-computed lat/
+// lon straight off best, rather than re-deriving them from a location column
+// that was never carried through the CTE chain.
+const searchSelectColumns = "planit_name, uid, area_name, area_id, address, postcode, " +
+	"description, app_type, app_state, app_size, start_date, decided_date, " +
+	"consulted_date, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon, url, link, last_different"
+
+const searchOutputColumns = "planit_name, uid, area_name, area_id, address, postcode, " +
+	"description, app_type, app_state, app_size, start_date, decided_date, " +
+	"consulted_date, lat, lon, url, link, last_different"
+
+const searchQuery = `
+WITH matched AS (
+	SELECT ` + searchSelectColumns + `, 1 AS tier,
+	       CASE WHEN lower(uid) = lower($1) THEN 2.0 ELSE 1.0 END AS score
+	FROM applications
+	WHERE (lower(uid) = lower($1) OR lower(uid) LIKE $4 ESCAPE '\')
+	  AND ($2::text IS NULL OR authority_code = $2)
+	UNION ALL
+	SELECT ` + searchSelectColumns + `, 2 AS tier, word_similarity(lower($1), lower(address)) AS score
+	FROM applications
+	WHERE lower($1) <% lower(address)
+	  AND ($2::text IS NULL OR authority_code = $2)
+	UNION ALL
+	SELECT ` + searchSelectColumns + `, 3 AS tier,
+	       ts_rank(to_tsvector('english', description), plainto_tsquery('english', $1)) AS score
+	FROM applications
+	WHERE to_tsvector('english', description) @@ plainto_tsquery('english', $1)
+	  AND ($2::text IS NULL OR authority_code = $2)
+),
+best AS (
+	SELECT DISTINCT ON (area_id, planit_name) *
+	FROM matched
+	ORDER BY area_id, planit_name, tier ASC, score DESC
+)
+SELECT ` + searchOutputColumns + `
+FROM best
+ORDER BY tier ASC, score DESC, planit_name ASC
+LIMIT $3`
+
+// escapeLikeWildcards backslash-escapes the LIKE metacharacters (\, %, _) in a
+// user-supplied query before it is used to build a prefix pattern, so a query
+// containing a literal '%' or '_' cannot silently widen the tier-1 prefix match
+// beyond an exact prefix of the typed text.
+func escapeLikeWildcards(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+// Search runs searchQuery and reports whether more matches exist beyond limit:
+// it asks for limit+1 rows, and if that many come back, truncates to limit and
+// returns true (the v1 "no cursor — tell the caller to refine" signal,
+// SearchResponse.RefineQuery). authorityCode "" applies no authority filter,
+// passed to the query as a genuine SQL NULL (not empty-string equality) so
+// "($2::text IS NULL OR ...)" reads naturally.
+func (s *PostgresStore) Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error) {
+	var authorityArg any
+	if authorityCode != "" {
+		authorityArg = authorityCode
+	}
+	likePattern := strings.ToLower(escapeLikeWildcards(query)) + "%"
+
+	rows, err := s.db.Query(ctx, searchQuery, query, authorityArg, limit+1, likePattern)
+	if err != nil {
+		return nil, false, fmt.Errorf("search applications %q: %w", query, err)
+	}
+	apps, err := pgx.CollectRows(rows, scanAppRow)
+	if err != nil {
+		return nil, false, fmt.Errorf("search applications %q: %w", query, err)
+	}
+
+	refine := len(apps) > limit
+	if refine {
+		apps = apps[:limit]
+	}
+	return apps, refine, nil
 }

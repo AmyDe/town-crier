@@ -130,6 +130,9 @@ func (fakeAppStore) RecentNearestTown(context.Context, string, float64, float64,
 func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, float64) ([]applications.StateCount, error) {
 	return nil, nil
 }
+func (fakeAppStore) Search(context.Context, string, string, int) ([]applications.PlanningApplication, bool, error) {
+	return nil, false, nil
+}
 
 // foundAppStore is a fakeAppStore that returns one populated application for the
 // Croydon area id (301) — the real id, so authorities.NewLookup().SlugForAreaID(301)
