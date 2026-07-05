@@ -25,7 +25,7 @@ extension ApplicationListViewModel {
     // Also push the OS app-icon badge, mirroring `markAllRead()`'s clear —
     // otherwise the badge only catches up on the next foreground sync, i.e.
     // after a relaunch (tc-4x8e0).
-    globalUnreadCount -= 1
+    globalUnreadCount = max(0, globalUnreadCount - 1)
     badgeSetter?.setBadge(globalUnreadCount)
     pendingMarkRead = Task { [weak self] in
       do {
