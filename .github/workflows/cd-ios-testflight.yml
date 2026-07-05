@@ -39,38 +39,53 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      should-release: ${{ steps.check.outputs.should-release }}
-      previous-tag: ${{ steps.check.outputs.previous-tag }}
+      should-release: ${{ steps.should-release.outputs.should-release }}
+      previous-tag: ${{ steps.prev.outputs.previous-tag }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Detect mobile/ios/ changes
-        id: check
+      - name: Compute previous tag
+        id: prev
         run: |
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "should-release=true" >> "$GITHUB_OUTPUT"
             echo "previous-tag=" >> "$GITHUB_OUTPUT"
             echo "::notice::Manual workflow_dispatch — bypassing guard, will upload to TestFlight"
             exit 0
           fi
           PREV=$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          echo "previous-tag=${PREV}" >> "$GITHUB_OUTPUT"
           if [ -z "$PREV" ]; then
-            echo "should-release=true" >> "$GITHUB_OUTPUT"
-            echo "previous-tag=" >> "$GITHUB_OUTPUT"
             echo "::notice::No previous tag — first release, will upload to TestFlight"
+          fi
+
+      - name: Detect mobile/ios/ changes since previous tag
+        id: detect
+        if: github.event_name != 'workflow_dispatch'
+        uses: ./.github/actions/detect-changes
+        with:
+          mode: tag
+          base-ref: ${{ steps.prev.outputs.previous-tag }}
+          categories: ios
+
+      - name: Derive should-release
+        id: should-release
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            # Manual bypass — skip detect-changes entirely and force a
+            # release, same as today (kept exactly as-is per issue #835
+            # slice 3: this path never routes through detect-changes).
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if git diff --quiet "${PREV}..${GITHUB_REF_NAME}" -- mobile/ios/; then
-            echo "should-release=false" >> "$GITHUB_OUTPUT"
-            echo "previous-tag=${PREV}" >> "$GITHUB_OUTPUT"
-            echo "::notice::No mobile/ios/ changes since ${PREV} — skipping TestFlight upload"
+          echo "should-release=${{ steps.detect.outputs.ios }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.detect.outputs.ios }}" = "true" ]; then
+            echo "::notice::Detected mobile/ios/ changes since ${{ steps.prev.outputs.previous-tag }} — will upload to TestFlight"
           else
-            echo "should-release=true" >> "$GITHUB_OUTPUT"
-            echo "previous-tag=${PREV}" >> "$GITHUB_OUTPUT"
-            echo "::notice::Detected mobile/ios/ changes since ${PREV} — will upload to TestFlight"
+            echo "::notice::No mobile/ios/ changes since ${{ steps.prev.outputs.previous-tag }} — skipping TestFlight upload"
           fi
 
   test:

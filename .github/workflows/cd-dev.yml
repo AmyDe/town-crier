@@ -1,11 +1,24 @@
-# Deploys all components to the dev environment.
-# Triggered on every push to main (squash merges assumed) that touches
-# deployable code or infra. Pushes that only change docs, iOS, Android, beads,
-# Claude config, or markdown/license/git metadata are skipped via
-# paths-ignore. Android ships via a future tag-triggered CD lane (#779), not
-# on every main push.
+# Deploys components to the dev environment, gated by what changed.
+# Triggered on every push to main (squash merges assumed) and via
+# workflow_dispatch. A first `changes` job (detect-changes, mode: push)
+# determines which of go/web/infra changed in the last commit; every deploy
+# job below is gated on its relevant category so the chain short-circuits
+# when nothing relevant changed — e.g. a docs-only, iOS-only, or
+# Android-only push finishes fast with every job skipped. workflow_dispatch
+# bypasses all category gating and deploys everything unconditionally — use
+# it to force a full redeploy. Android ships via a future tag-triggered CD
+# lane (#779), not on every main push; iOS ships via cd-ios-testflight.yml on
+# tag push, not here.
 #
-# All components deploy unconditionally to keep dev in sync with main.
+# Fail-open by design (issue #835 slice 3): if there's any doubt whether a
+# job should run for a given change, it runs. A redundant deploy costs a
+# few minutes of CI time; a skipped deploy of paying-customer-facing code
+# is a production incident. Every job whose `needs:` includes another job
+# that can itself be legitimately skipped uses the
+# `always() && (<category> || workflow_dispatch) && (<upstream>.result ==
+# 'success' || <upstream>.result == 'skipped')` pattern so a skipped
+# upstream (e.g. infra-dev skipped because only api-go/ changed) never
+# cascades into skipping a deploy that itself needs to run.
 #
 # Requires secrets:
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
@@ -23,16 +36,6 @@ name: CD Dev
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'mobile/ios/**'
-      - 'mobile/android/**'
-      - '.beads/**'
-      - '.claude/**'
-      - '**/*.md'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.gitattributes'
   workflow_dispatch:
 
 concurrency:
@@ -44,9 +47,37 @@ permissions:
   id-token: write
 
 jobs:
+  # ── Detect changes ───────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.detect.outputs.web }}
+      infra: ${{ steps.detect.outputs.infra }}
+      go: ${{ steps.detect.outputs.go }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # HEAD~1 must be present for push-mode's HEAD~1..HEAD diff — the
+          # default shallow (depth-1) checkout only fetches HEAD itself.
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          mode: push
+          # cd-dev only ever builds/deploys api-go, worker, web, and infra —
+          # cli/ios/android are irrelevant here (cli has no dev deploy lane;
+          # ios/android ship via other workflows), so they're not requested.
+          categories: go,web,infra
+
   # ── Infrastructure: shared stack ─────────────────────
   infra-shared:
     name: "Infra: Pulumi up (shared)"
+    needs: changes
+    if: needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -76,7 +107,8 @@ jobs:
   # ── Infrastructure: dev stack ────────────────────────
   infra-dev:
     name: "Infra: Pulumi up (dev)"
-    needs: infra-shared
+    needs: [changes, infra-shared]
+    if: needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -127,7 +159,12 @@ jobs:
   # skip); goose.Up is idempotent, so an up-to-date DB is a no-op. See ADR 0036.
   migrate-dev:
     name: "Database: Run migrations (dev)"
-    needs: infra-dev
+    needs: [changes, infra-dev]
+    # Migrations live under api-go/internal/platform/postgres/migrations/ —
+    # go category, not infra — so gate on go OR infra. infra-dev can be
+    # legitimately skipped (e.g. only api-go/ changed), so treat its
+    # 'skipped' result as a pass, not a block.
+    if: always() && (needs.changes.outputs.go == 'true' || needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch') && (needs.infra-dev.result == 'success' || needs.infra-dev.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -156,6 +193,8 @@ jobs:
   # ── Go API: build & push image ──────────────────────
   api-go-image:
     name: "Go API: Build & push image"
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
@@ -179,6 +218,8 @@ jobs:
   # this image (worker-deploy below, image-swap tc-hm20).
   worker-go-image:
     name: "Go Worker: Build & push image"
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
@@ -201,7 +242,12 @@ jobs:
   # ── Go API: deploy to dev ───────────────────────────
   api-go-deploy:
     name: "Go API: Deploy to dev"
-    needs: [api-go-image, infra-dev, migrate-dev]
+    needs: [changes, api-go-image, infra-dev, migrate-dev]
+    # infra-dev/migrate-dev can be legitimately skipped (e.g. only api-go/
+    # changed) — a skipped upstream must not cascade-skip this deploy.
+    # api-go-image is gated on the same category as this job, so it's never
+    # legitimately skipped when this job needs to run — require 'success'.
+    if: always() && (needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch') && needs.api-go-image.result == 'success' && (needs.infra-dev.result == 'success' || needs.infra-dev.result == 'skipped') && (needs.migrate-dev.result == 'success' || needs.migrate-dev.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -223,7 +269,11 @@ jobs:
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
     name: "Worker: Deploy to dev"
-    needs: [worker-go-image, infra-dev, migrate-dev]
+    needs: [changes, worker-go-image, infra-dev, migrate-dev]
+    # Same pattern as api-go-deploy: infra-dev/migrate-dev can be
+    # legitimately skipped without blocking this deploy; worker-go-image is
+    # gated on the same category so it must have succeeded.
+    if: always() && (needs.changes.outputs.go == 'true' || github.event_name == 'workflow_dispatch') && needs.worker-go-image.result == 'success' && (needs.infra-dev.result == 'success' || needs.infra-dev.result == 'skipped') && (needs.migrate-dev.result == 'success' || needs.migrate-dev.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -247,7 +297,10 @@ jobs:
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
     name: "Web: Deploy to dev"
-    needs: infra-dev
+    needs: [changes, infra-dev]
+    # infra-dev can be legitimately skipped (e.g. only web/ changed) —
+    # a skipped upstream must not cascade-skip this deploy.
+    if: always() && (needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch') && (needs.infra-dev.result == 'success' || needs.infra-dev.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: development
