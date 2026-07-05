@@ -222,10 +222,15 @@ describe('runPrerender — town live mode', () => {
     expect(html).toContain('<h1>Planning applications in Truro</h1>');
   });
 
-  it('displays the distance-ordered set newest-first, regardless of the order the API returned', async () => {
-    // The build requests order=distance, so the API returns the nearest-N — NOT
-    // recency-ordered. Here the nearest app (CW-NEAR) is the OLDEST and a farther
-    // app (CW-FAR) is the NEWEST, so a recency display MUST reorder them.
+  it('renders the applications in the exact order the API returned them (no client-side re-sort, tc-s0yf)', async () => {
+    // The near read is now fully server-ordered (town-level Voronoi partition +
+    // GREATEST(decidedDate, startDate) DESC, tc-s0yf) — replacing the old
+    // order=distance + client re-sort-by-lastDifferent pipeline. This fixture
+    // deliberately puts the OLDER-lastDifferent app FIRST in the API response and
+    // the NEWER-lastDifferent app SECOND: if the old client-side recency re-sort
+    // were still running, it would flip them. It must not — the page must render
+    // the API's given order as-is, proving the re-sort is truly gone (not just
+    // reordered to a no-op).
     const stub = new StubFetch((url) => {
       if (url.includes('/v1/applications/near')) {
         return {
@@ -238,25 +243,27 @@ describe('runPrerender — town live mode', () => {
             radius: 5000,
             applications: [
               {
-                uid: 'CW-NEAR',
-                name: 'PA26/NEAR',
-                address: 'Nearest, Truro',
-                description: 'Closest by distance but oldest change',
+                uid: 'CW-FIRST',
+                name: 'PA26/FIRST',
+                address: 'First In API Order, Truro',
+                description: 'Server-ordered first, despite an OLDER lastDifferent',
                 appState: 'Permitted',
                 startDate: '2026-01-01',
+                decidedDate: null,
                 lastDifferent: '2026-06-01T08:00:00+00:00',
-                link: 'https://planit.org.uk/planapplic/CW-NEAR',
+                link: 'https://planit.org.uk/planapplic/CW-FIRST',
                 url: null,
               },
               {
-                uid: 'CW-FAR',
-                name: 'PA26/FAR',
-                address: 'Farther, Truro',
-                description: 'Farther by distance but freshest change',
+                uid: 'CW-SECOND',
+                name: 'PA26/SECOND',
+                address: 'Second In API Order, Truro',
+                description: 'Server-ordered second, despite a NEWER lastDifferent',
                 appState: 'Rejected',
                 startDate: '2026-02-02',
+                decidedDate: '2026-06-20',
                 lastDifferent: '2026-06-20T09:00:00+00:00',
-                link: 'https://planit.org.uk/planapplic/CW-FAR',
+                link: 'https://planit.org.uk/planapplic/CW-SECOND',
                 url: null,
               },
             ],
@@ -282,21 +289,17 @@ describe('runPrerender — town live mode', () => {
       join(outDir, 'planning', 'cornwall', 'truro', 'index.html'),
       'utf-8',
     );
-    // The freshest card (Farther, changed 20 Jun) appears BEFORE the oldest
-    // (Nearest, changed 1 Jun) - recency DESC, even though the API fed them
-    // distance-order (nearest/oldest first). The per-card date is gone
-    // (tc-r4n9.3), so address text is the proxy for card order here; the
-    // single page-level "Data updated" line is asserted separately below.
-    expect(html).toContain('Farther, Truro');
-    expect(html).toContain('Nearest, Truro');
-    expect(html.indexOf('Farther, Truro')).toBeLessThan(
-      html.indexOf('Nearest, Truro'),
+    expect(html).toContain('First In API Order, Truro');
+    expect(html).toContain('Second In API Order, Truro');
+    expect(html.indexOf('First In API Order, Truro')).toBeLessThan(
+      html.indexOf('Second In API Order, Truro'),
     );
-    // The page-level "Data updated" line reflects the freshest shown date.
+    // The page-level "Data updated" line is unaffected by render order — still
+    // the freshest lastDifferent among the shown set.
     expect(html).toContain('Data updated 20 Jun 2026');
 
-    // The page's sitemap lastmod is the freshest shown app (20 Jun), proving the
-    // lastmod is derived AFTER the recency sort and matches what the cards show.
+    // The sitemap lastmod is likewise the freshest shown app's lastDifferent,
+    // independent of render order.
     const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
     expect(sitemap).toContain('<lastmod>2026-06-20</lastmod>');
   });
