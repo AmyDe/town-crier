@@ -95,7 +95,7 @@ jobs:
     name: "Database: Run migrations (prod)"
     needs: infra
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -117,7 +117,7 @@ jobs:
             -host psql-town-crier-shared.postgres.database.azure.com \
             -admin-user town-crier-github-actions \
             -db town_crier_prod \
-            -timeout 120s
+            -timeout 600s
 
   # ── Go API ────────────────────────────────────────────
   api-go:
