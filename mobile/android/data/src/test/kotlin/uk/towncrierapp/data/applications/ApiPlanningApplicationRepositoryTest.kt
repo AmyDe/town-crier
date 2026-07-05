@@ -337,4 +337,45 @@ class ApiPlanningApplicationRepositoryTest {
                     .contains("sort"),
             )
         }
+
+    // ── detailBySlug (GH#782: resolves an inbound public share link) ──
+
+    @Test
+    fun `detailBySlug GETs the anonymous by-slug endpoint, decoding the authoritySlug`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(
+                200,
+                """{"name":"24/0001","uid":"uid-1","areaName":"Camden","areaId":42,"address":"1 Example Street",""" +
+                    """"description":"Extension","appState":"Undecided","startDate":"2026-01-10",""" +
+                    """"lastDifferent":"2026-01-11T09:00:00Z","authoritySlug":"camden"}""",
+            )
+            val sut = makeSut(transport)
+
+            val application = sut.detailBySlug("camden", "24/0001")
+
+            val request = transport.requests.single()
+            assertEquals("/v1/applications/by-slug/camden/24/0001", request.url.encodedPath)
+            assertEquals("camden", application.authority.slug)
+        }
+
+    @Test
+    fun `detailBySlug preserves a slashed ref verbatim in the request path`() =
+        runTest {
+            val transport = FakeHttpTransport()
+            transport.enqueueResponse(
+                200,
+                """{"name":"Kingston/25/02755/CLC","uid":"uid-2","areaName":"Kingston","areaId":19,""" +
+                    """"address":"1 Example Street","description":"Extension","appState":"Undecided",""" +
+                    """"startDate":"2026-01-10","lastDifferent":"2026-01-11T09:00:00Z","authoritySlug":"kingston"}""",
+            )
+            val sut = makeSut(transport)
+
+            sut.detailBySlug("kingston", "Kingston/25/02755/CLC")
+
+            assertEquals(
+                "/v1/applications/by-slug/kingston/Kingston/25/02755/CLC",
+                transport.requests.single().url.encodedPath,
+            )
+        }
 }
