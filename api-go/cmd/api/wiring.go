@@ -10,6 +10,7 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/admin"
 	"github.com/AmyDe/town-crier/api-go/internal/api"
 	"github.com/AmyDe/town-crier/api-go/internal/applications"
+	"github.com/AmyDe/town-crier/api-go/internal/assetlinks"
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
 	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/blobstore"
@@ -88,6 +89,10 @@ var anonymousPatterns = map[string]struct{}{
 	// Universal Links (#738 Slice 3). Content-Type is application/json and the path
 	// carries no ".json" extension.
 	"GET /.well-known/apple-app-site-association": {},
+	// The Android Digital Asset Links document is anonymous: Android's package
+	// manager fetches it without a bearer token to verify the app's autoVerify
+	// intent filter for App Links (GH#782), mirroring the AASA entry above.
+	"GET /.well-known/assetlinks.json": {},
 }
 
 // dispatchMux satisfies auth.RequireAuth's routeMatcher: pattern matching comes
@@ -213,6 +218,11 @@ func newRouter(
 	// is composed from the canonical team + bundle constants (fixed contract), not
 	// runtime config.
 	aasa.Routes(mux, platform.AppleUniversalLinkAppID(), logger)
+	// The Android Digital Asset Links document (GH#782) is stateless and needs
+	// no store, so it is registered unconditionally on the share host, mirroring
+	// AASA above. The package/fingerprint contract is composed from fixed
+	// constants (not runtime config): see assetlinks.DefaultPackages.
+	assetlinks.Routes(mux, assetlinks.DefaultPackages(), logger)
 	// Geocode and designations are authed (absent from anonymousPatterns) and
 	// have no store dependency — they call outbound UK services — so they are
 	// always wired, even on a store-less local boot.
