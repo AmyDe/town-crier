@@ -146,10 +146,23 @@ describe('renderTownPage', () => {
       expect(html.indexOf('class="dataUpdated"')).toBeLessThan(html.indexOf('class="lead"'));
     });
 
-    it('no longer repeats a "Last updated" line once per card', () => {
+    it('no longer repeats the old "Last updated" line once per card', () => {
       const html = renderTownPage(townData());
       expect(html).not.toContain('Last updated');
-      expect(html).not.toContain('appCard__date');
+    });
+
+    // tc-s0yf (GH #819) deliberately reintroduces a per-card date line — under a
+    // NEW class (`appCard__dates`) and format (Started/Decided, sourced from the
+    // application's own real-world dates, not a re-index marker) — distinct from
+    // the old "Last updated" line this describe block's title refers to.
+    it('renders the Started/Decided date line once per card (tc-s0yf)', () => {
+      const html = renderTownPage(townData());
+      expect(html).toContain(
+        '<p class="appCard__dates">Started 12 Jan 2026 · Awaiting decision</p>',
+      );
+      expect(html).toContain(
+        '<p class="appCard__dates">Started 1 Feb 2026 · Awaiting decision</p>',
+      );
     });
   });
 
