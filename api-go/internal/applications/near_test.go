@@ -8,12 +8,13 @@ import (
 	"testing"
 )
 
-// fakeNearStore is a hand-written double for the recent-nearby read. It records
-// the arguments the handler passed (so clamping/defaulting is asserted at the
-// store boundary), honours cap the way Cosmos TOP @cap does, and serves a
-// whole-in-radius status breakdown independently of the bounded read, so a test
-// can prove the rendered Total is the sum of those buckets — not the bounded read
-// length nor the rendered slice.
+// fakeNearStore is a hand-written double for the town-level Voronoi partition
+// read. It records the arguments the handler passed (so clamping/defaulting,
+// and the sibling-centroid forwarding, are asserted at the store boundary),
+// honours cap the way Postgres's LIMIT does, and serves a whole-in-radius
+// status breakdown independently of the bounded read, so a test can prove the
+// rendered Total is the sum of those buckets — not the bounded read length nor
+// the rendered slice.
 type fakeNearStore struct {
 	apps         []PlanningApplication
 	err          error
@@ -25,11 +26,8 @@ type fakeNearStore struct {
 	lastLat           float64
 	lastLng           float64
 	lastRadius        float64
+	lastSiblings      []TownCentroid
 	lastCap           int
-
-	// nearestCalled records whether the distance-ordered read path was taken
-	// (order=distance) instead of the recency-ordered RecentNearby default.
-	nearestCalled bool
 
 	breakdownCalled       bool
 	lastBreakdownAuthCode string
@@ -38,29 +36,13 @@ type fakeNearStore struct {
 	lastBreakdownRadius   float64
 }
 
-func (f *fakeNearStore) RecentNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
+func (f *fakeNearStore) RecentNearestTown(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error) {
 	f.called = true
 	f.lastAuthorityCode = authorityCode
 	f.lastLat = lat
 	f.lastLng = lng
 	f.lastRadius = radiusMetres
-	f.lastCap = cap
-	if f.err != nil {
-		return nil, f.err
-	}
-	if cap >= 0 && cap < len(f.apps) {
-		return f.apps[:cap], nil
-	}
-	return f.apps, nil
-}
-
-func (f *fakeNearStore) NearestNearby(_ context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
-	f.called = true
-	f.nearestCalled = true
-	f.lastAuthorityCode = authorityCode
-	f.lastLat = lat
-	f.lastLng = lng
-	f.lastRadius = radiusMetres
+	f.lastSiblings = siblings
 	f.lastCap = cap
 	if f.err != nil {
 		return nil, f.err
@@ -126,6 +108,9 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
 		t.Errorf("store geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
 	}
+	if len(store.lastSiblings) != 0 {
+		t.Errorf("siblings: got %v, want none (absent from the request)", store.lastSiblings)
+	}
 	// The whole-in-radius breakdown is computed over the same scoped, clamped geo window.
 	if !store.breakdownCalled || store.lastBreakdownAuthCode != "471" ||
 		store.lastBreakdownLat != 51.5155 || store.lastBreakdownLng != -0.0931 || store.lastBreakdownRadius != 4000 {
@@ -156,7 +141,7 @@ func TestNearHandler_Returns200WithValidKeyAndNonNullArray(t *testing.T) {
 		t.Errorf("statusBreakdown must be present: %v", got)
 	}
 	first := apps[0].(map[string]any)
-	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "lastDifferent", "link", "url"} {
+	for _, key := range []string{"uid", "name", "address", "description", "appState", "startDate", "decidedDate", "lastDifferent", "link", "url"} {
 		if _, present := first[key]; !present {
 			t.Errorf("application missing field %q: %v", key, first)
 		}
@@ -530,7 +515,103 @@ func TestNearHandler_BreakdownErrorReturns500(t *testing.T) {
 	}
 }
 
-func TestNearHandler_DefaultOrderRoutesToRecentNearby(t *testing.T) {
+// TestNearHandler_ForwardsSiblingCentroidsToStore proves the repeated "sibling"
+// query params are parsed into TownCentroids (lat, lng, radius) and forwarded
+// to RecentNearestTown verbatim, in order — the #819 town-partition contract.
+func TestNearHandler_ForwardsSiblingCentroidsToStore(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2)}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=4000"+
+			"&sibling=51.6,-0.2,5000&sibling=51.4,0.0,3000")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	want := []TownCentroid{
+		{Lat: 51.6, Lng: -0.2, RadiusMetres: 5000},
+		{Lat: 51.4, Lng: 0.0, RadiusMetres: 3000},
+	}
+	if len(store.lastSiblings) != len(want) {
+		t.Fatalf("siblings: got %v, want %v", store.lastSiblings, want)
+	}
+	for i, w := range want {
+		if store.lastSiblings[i] != w {
+			t.Errorf("siblings[%d]: got %+v, want %+v", i, store.lastSiblings[i], w)
+		}
+	}
+}
+
+// TestNearHandler_ClampsSiblingRadiusToMax proves a sibling's own radius is
+// validated/clamped exactly like the primary radius param.
+func TestNearHandler_ClampsSiblingRadiusToMax(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2)}
+
+	rec := serveNear(t, store, "buildkey", "buildkey",
+		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&sibling=51.6,-0.2,99999")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	if len(store.lastSiblings) != 1 || store.lastSiblings[0].RadiusMetres != 10000 {
+		t.Errorf("sibling radius: got %v, want clamped to 10000", store.lastSiblings)
+	}
+}
+
+func TestNearHandler_RejectsMalformedSibling(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		sibling string
+	}{
+		{"missing radius component", "sibling=51.6,-0.2"},
+		{"non-numeric lat", "sibling=abc,-0.2,5000"},
+		{"out-of-range lat", "sibling=91,-0.2,5000"},
+		{"out-of-range lng", "sibling=51.6,200,5000"},
+		{"non-finite radius", "sibling=51.6,-0.2,Inf"},
+		{"zero radius", "sibling=51.6,-0.2,0"},
+		{"empty value", "sibling="},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store := &fakeNearStore{apps: recentApps(t, 2)}
+
+			rec := serveNear(t, store, "buildkey", "buildkey",
+				"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&"+tc.sibling)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("malformed sibling (%s): got %d, want 400", tc.sibling, rec.Code)
+			}
+			if store.called || store.breakdownCalled {
+				t.Errorf("store must not be hit on a malformed sibling")
+			}
+		})
+	}
+}
+
+func TestNearHandler_RejectsTooManySiblings(t *testing.T) {
+	t.Parallel()
+	store := &fakeNearStore{apps: recentApps(t, 2)}
+
+	query := "/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1"
+	for range maxSiblingCentroids + 1 {
+		query += "&sibling=51.6,-0.2,5000"
+	}
+
+	rec := serveNear(t, store, "buildkey", "buildkey", query)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("too many siblings: got %d, want 400", rec.Code)
+	}
+	if store.called || store.breakdownCalled {
+		t.Errorf("store must not be hit with too many siblings")
+	}
+}
+
+func TestNearHandler_NoSiblingsIsAValidEmptyPartition(t *testing.T) {
 	t.Parallel()
 	store := &fakeNearStore{apps: recentApps(t, 2)}
 
@@ -540,96 +621,7 @@ func TestNearHandler_DefaultOrderRoutesToRecentNearby(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
 	}
-	// Absent order param -> recency-ordered RecentNearby (the unchanged default).
-	if !store.called || store.nearestCalled {
-		t.Errorf("default order must route to RecentNearby, not NearestNearby (called=%v nearest=%v)", store.called, store.nearestCalled)
-	}
-}
-
-func TestNearHandler_OrderRecencyRoutesToRecentNearby(t *testing.T) {
-	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
-
-	rec := serveNear(t, store, "buildkey", "buildkey",
-		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=recency")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
-	}
-	// Explicit order=recency must behave exactly like the default.
-	if !store.called || store.nearestCalled {
-		t.Errorf("order=recency must route to RecentNearby, not NearestNearby (called=%v nearest=%v)", store.called, store.nearestCalled)
-	}
-}
-
-func TestNearHandler_OrderDistanceRoutesToNearestNearby(t *testing.T) {
-	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
-
-	rec := serveNear(t, store, "buildkey", "buildkey",
-		"/v1/applications/near?authorityId=471&lat=51.5155&lng=-0.0931&radius=4000&order=distance")
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
-	}
-	// order=distance must route to the distance-ordered NearestNearby read.
-	if !store.nearestCalled {
-		t.Fatalf("order=distance must route to NearestNearby")
-	}
-	// Same scoping/clamping/cap and geo args reach the distance-ordered read.
-	if store.lastAuthorityCode != "471" || store.lastCap != 200 {
-		t.Errorf("nearest read call: authorityCode=%q cap=%d, want \"471\" 200", store.lastAuthorityCode, store.lastCap)
-	}
-	if store.lastLat != 51.5155 || store.lastLng != -0.0931 || store.lastRadius != 4000 {
-		t.Errorf("nearest geo args: lat=%v lng=%v radius=%v, want 51.5155 -0.0931 4000", store.lastLat, store.lastLng, store.lastRadius)
-	}
-	// The whole-in-radius breakdown is still computed over the same scoped, clamped geo window.
-	if !store.breakdownCalled || store.lastBreakdownAuthCode != "471" {
-		t.Errorf("breakdown call: called=%v auth=%q, want true \"471\"", store.breakdownCalled, store.lastBreakdownAuthCode)
-	}
-}
-
-func TestNearHandler_UnknownOrderReturns400(t *testing.T) {
-	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
-
-	rec := serveNear(t, store, "buildkey", "buildkey",
-		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&order=banana")
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("unknown order: got %d, want 400", rec.Code)
-	}
-	if store.called || store.breakdownCalled {
-		t.Errorf("store must not be hit on an unknown order value")
-	}
-}
-
-func TestNearHandler_OrderDistanceStillRejectsOutOfRangeCoord(t *testing.T) {
-	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
-
-	rec := serveNear(t, store, "buildkey", "buildkey",
-		"/v1/applications/near?authorityId=471&lat=91&lng=-0.1&order=distance")
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("out-of-range lat with order=distance: got %d, want 400", rec.Code)
-	}
-	if store.called || store.breakdownCalled {
-		t.Errorf("store must not be hit on an out-of-range coord, even with order=distance")
-	}
-}
-
-func TestNearHandler_OrderDistanceStillRejectsNonPositiveRadius(t *testing.T) {
-	t.Parallel()
-	store := &fakeNearStore{apps: recentApps(t, 2)}
-
-	rec := serveNear(t, store, "buildkey", "buildkey",
-		"/v1/applications/near?authorityId=471&lat=51.5&lng=-0.1&radius=0&order=distance")
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("non-positive radius with order=distance: got %d, want 400", rec.Code)
-	}
-	if store.called || store.breakdownCalled {
-		t.Errorf("store must not be hit on a non-positive radius, even with order=distance")
+	if store.lastSiblings != nil && len(store.lastSiblings) != 0 {
+		t.Errorf("siblings: got %v, want none", store.lastSiblings)
 	}
 }

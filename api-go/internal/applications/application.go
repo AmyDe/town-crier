@@ -37,6 +37,21 @@ type PlanningApplication struct {
 	LastDifferent time.Time
 }
 
+// TownCentroid is a validated WGS84 point plus its OWN safety radius: one
+// gazetteer town's centroid, used by RecentNearestTown's query-time Voronoi
+// partition (#819 decisions 2-3). The town whose read is being served passes
+// its own (lat, lng, radius) as separate parameters; every OTHER gazetteer
+// town in the same authority travels as a TownCentroid "sibling", competing on
+// nearest-centroid assignment. Carrying a radius per town (not one radius
+// shared by every town) is what makes the in-range-nearest rule possible: a
+// farther town with a wider catchment can still claim an application that a
+// nearer but narrower-catchment neighbour cannot reach.
+type TownCentroid struct {
+	Lat          float64
+	Lng          float64
+	RadiusMetres float64
+}
+
 // CanonicalUID is the server-derived identity "{AreaID}/{Name}". PlanIt case
 // references are only unique within a council, so the authority must be part of
 // the key. This is deliberately independent of the raw UID field — a client may

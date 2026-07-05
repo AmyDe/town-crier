@@ -38,8 +38,7 @@ type Store interface {
 	FindNearbyPage(ctx context.Context, latitude, longitude, radiusMetres float64, limit int, cursor string) ([]PlanningApplication, string, error)
 	FindInZonePage(ctx context.Context, q InZoneQuery) ([]PlanningApplication, string, error)
 	FindClustersInZone(ctx context.Context, q ClusterQuery) ([]Cluster, error)
-	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
-	NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
+	RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error)
 	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
 }
 
@@ -333,40 +332,94 @@ func (s *PostgresStore) FindNearbyPage(ctx context.Context, latitude, longitude,
 // built from $2 (longitude) and $3 (latitude); $1 is the authority_code.
 const seoNearbyPoint = "ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography"
 
-const pgRecentNearbyQuery = "SELECT " + appColumns +
-	" FROM applications WHERE authority_code = $1 AND ST_DWithin(location, " + seoNearbyPoint + ", $4) " +
-	"ORDER BY last_different DESC LIMIT $5"
+// pgRecentNearestTownQuery is the town-level Voronoi partition read (#819
+// decisions 2-3). The `towns` CTE puts the target town's own point/radius at
+// idx 0 ($2 lng, $3 lat, $4 radius) and zips the sibling arrays ($5 lngs, $6
+// lats, $7 radii) via one WITH-ORDINALITY unnest into idx 1..N — so the query
+// text never changes shape however many siblings are passed; zero siblings
+// means unnest yields zero rows and the read degrades to a plain, non-
+// partitioned radius read for the target town alone.
+//
+// `candidates` joins every authority-scoped application against every town it
+// is within THAT TOWN'S OWN radius of (ST_DWithin(a.location, t.pt, t.radius))
+// — this is the in-range-nearest rule already taking effect: a town whose
+// radius can't reach an application never produces a candidate row for it, so
+// that application is invisible to it regardless of how much nearer its centroid
+// is. `nearest` then keeps exactly one row per planit_name — the covering town
+// with the smallest KNN distance (DISTINCT ON, ties broken toward the lowest
+// idx for determinism) — which is precisely "closest-wins among the towns that
+// can reach it" and guarantees single-assignment: no application can ever
+// satisfy `idx = 0` for two different requests (this town's and a sibling's).
+//
+// The final SELECT keeps only rows assigned to the target town (idx = 0) and
+// re-applies recentRealDateOrder (decision 1) so a town's own list is ordered
+// exactly like the authority list.
+const pgRecentNearestTownQuery = `
+WITH towns AS (
+	SELECT 0 AS idx,
+	       ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography AS pt,
+	       $4::double precision AS radius
+	UNION ALL
+	SELECT ord::int,
+	       ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
+	       radius
+	FROM unnest($5::double precision[], $6::double precision[], $7::double precision[])
+	     WITH ORDINALITY AS sib(lng, lat, radius, ord)
+),
+candidates AS (
+	SELECT
+		a.planit_name, a.uid, a.area_name, a.area_id, a.address, a.postcode,
+		a.description, a.app_type, a.app_state, a.app_size, a.start_date,
+		a.decided_date, a.consulted_date, a.location, a.url, a.link, a.last_different,
+		t.idx, a.location <-> t.pt AS dist
+	FROM applications a
+	JOIN towns t ON ST_DWithin(a.location, t.pt, t.radius)
+	WHERE a.authority_code = $1
+),
+nearest AS (
+	SELECT DISTINCT ON (planit_name) *
+	FROM candidates
+	ORDER BY planit_name, dist ASC, idx ASC
+)
+SELECT
+	planit_name, uid, area_name, area_id, address, postcode, description,
+	app_type, app_state, app_size, start_date, decided_date, consulted_date,
+	ST_Y(location::geometry), ST_X(location::geometry), url, link, last_different
+FROM nearest
+WHERE idx = 0
+ORDER BY ` + recentRealDateOrder + `
+LIMIT $8`
 
-// RecentNearby returns up to cap most-recently-active applications within
-// radiusMetres of (lat, lng) inside the authority, ordered by last_different DESC.
-// The authority scope is kept for parity with the Cosmos read (memo 0010 notes a
-// later phase may relax it; not relaxed here).
-func (s *PostgresStore) RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
-	rows, err := s.db.Query(ctx, pgRecentNearbyQuery, authorityCode, lng, lat, radiusMetres, cap)
+// RecentNearestTown returns up to cap applications assigned to THIS town by the
+// query-time Voronoi partition (#819 decisions 2-3): authority-scoped, kept
+// only if this town's own (lat, lng, radiusMetres) or one of siblings' own
+// (lat, lng, radiusMetres) covers it, and assigned to whichever covering town
+// is nearest — so an application whose true-nearest centroid can't reach it,
+// but a farther sibling's wider radius can, lands on that farther sibling
+// instead of being orphaned (the in-range-nearest rule). siblings is every
+// OTHER gazetteer town centroid (each with its own radius) in the same
+// authority; a nil/empty siblings degrades to a plain radius read for this
+// town alone. Ordered by GREATEST(decided_date, start_date) DESC NULLS LAST
+// (decision 1), tie-broken by start_date DESC NULLS LAST, planit_name.
+// Authority pages are NOT partitioned (decision 4) — RecentByAuthority is
+// unaffected by this method.
+func (s *PostgresStore) RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error) {
+	lngs := make([]float64, len(siblings))
+	lats := make([]float64, len(siblings))
+	radii := make([]float64, len(siblings))
+	for i, c := range siblings {
+		lngs[i] = c.Lng
+		lats[i] = c.Lat
+		radii[i] = c.RadiusMetres
+	}
+	rows, err := s.db.Query(ctx, pgRecentNearestTownQuery,
+		authorityCode, lng, lat, radiusMetres, lngs, lats, radii, cap)
 	if err != nil {
-		return nil, fmt.Errorf("recent applications near %q: %w", authorityCode, err)
+		return nil, fmt.Errorf("recent applications nearest town in %q: %w", authorityCode, err)
 	}
 	apps, err := pgx.CollectRows(rows, scanAppRow)
 	if err != nil {
-		return nil, fmt.Errorf("recent applications near %q: %w", authorityCode, err)
-	}
-	return apps, nil
-}
-
-const pgNearestNearbyQuery = "SELECT " + appColumns +
-	" FROM applications WHERE authority_code = $1 AND ST_DWithin(location, " + seoNearbyPoint + ", $4) " +
-	"ORDER BY location <-> " + seoNearbyPoint + " LIMIT $5"
-
-// NearestNearby returns up to cap applications nearest to (lat, lng) within
-// radiusMetres inside the authority, ordered by the KNN <-> distance ASC.
-func (s *PostgresStore) NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error) {
-	rows, err := s.db.Query(ctx, pgNearestNearbyQuery, authorityCode, lng, lat, radiusMetres, cap)
-	if err != nil {
-		return nil, fmt.Errorf("nearest applications near %q: %w", authorityCode, err)
-	}
-	apps, err := pgx.CollectRows(rows, scanAppRow)
-	if err != nil {
-		return nil, fmt.Errorf("nearest applications near %q: %w", authorityCode, err)
+		return nil, fmt.Errorf("recent applications nearest town in %q: %w", authorityCode, err)
 	}
 	return apps, nil
 }

@@ -14,10 +14,11 @@ import (
 // and response size stay flat regardless of how busy the authority partition is.
 const nearReadCap = 200
 
-// nearDefaultRadiusMetres and nearMaxRadiusMetres bound the spatial search radius.
+// nearDefaultRadiusMetres and nearMaxRadiusMetres bound the spatial search radius
+// — both the target town's own radius and each sibling centroid's own radius.
 // radius defaults to nearDefaultRadiusMetres (a town-centroid catchment) when
 // unset and is hard-clamped to nearMaxRadiusMetres, so a build request can never
-// widen the single-partition scan beyond the intended town footprint.
+// widen the partition scan beyond the intended town footprint.
 const (
 	nearDefaultRadiusMetres = 5000
 	nearMaxRadiusMetres     = 10000
@@ -31,25 +32,21 @@ const (
 	maxLongitude = 180
 )
 
-// nearStore is the consumer-side store the recent-nearby SEO handler needs: two
-// bounded, single-partition spatial top-N reads (recency-ordered and
-// distance-ordered) plus a whole-in-radius per-appState breakdown (whose buckets
-// sum to the exact in-radius total). The concrete *CosmosStore satisfies it
-// structurally.
+// maxSiblingCentroids bounds how many sibling-town centroids a single request
+// may pass, so the partition query's towns CTE can never fan out unboundedly.
+// No authority's gazetteer approaches this many towns.
+const maxSiblingCentroids = 64
+
+// nearStore is the consumer-side store the town-level SEO handler needs: the
+// bounded, authority-scoped Voronoi-partition read (RecentNearestTown, #819)
+// plus a whole-in-radius per-appState breakdown over the target town's own
+// point/radius (whose buckets sum to the exact in-radius total; it is NOT
+// partitioned — see the field comment on RecentNearbyResult). The concrete
+// *PostgresStore satisfies it structurally.
 type nearStore interface {
-	RecentNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
-	NearestNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error)
+	RecentNearestTown(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, siblings []TownCentroid, cap int) ([]PlanningApplication, error)
 	BreakdownNearby(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64) ([]StateCount, error)
 }
-
-// near ordering modes for the optional order query param. recency (the default,
-// also selected by an absent param) orders by lastDifferent DESC via
-// RecentNearby; distance orders by ST_DISTANCE ASC (nearest first) via
-// NearestNearby. Any other value is a 400.
-const (
-	orderRecency  = "recency"
-	orderDistance = "distance"
-)
 
 // nearHandler serves the build-time town-level SEO endpoint.
 type nearHandler struct {
@@ -61,26 +58,29 @@ type nearHandler struct {
 // endpoint that feeds town-level SEO pages. The route is anonymous to Auth0 (kept
 // out of the fallback-deny set in wiring) and authenticated solely by the
 // X-Build-Key gate, mirroring the sibling authority endpoint. It reads only public
-// planning data from Cosmos (GH#395 Invariant 1 — never PlanIt).
+// planning data from Postgres (GH#395 Invariant 1 — never PlanIt).
 func NearRoutes(mux *http.ServeMux, store nearStore, buildKey string, logger *slog.Logger) {
 	h := &nearHandler{store: store, logger: logger}
 	mux.HandleFunc("GET /v1/applications/near", requireBuildKey(buildKey, h.recentNearby))
 }
 
-// recentNearby returns up to limit applications within a bounded radius of (lat,
-// lng), scoped to the required authorityId's single Cosmos partition, drawn from
-// one bounded read of at most nearReadCap documents. The optional order param
-// selects the ordering: recency (default, also when absent) is most-recently-
-// active first; distance is nearest-first (for overlap reduction between adjacent
-// town pages). authorityId scopes the partition; a missing/invalid id, a
-// non-finite or out-of-range coordinate, a non-finite/non-positive radius, or an
-// unknown order value is a bodyless 400 (the build key was already validated by
-// the gate). There is no PlanIt fallback.
+// recentNearby returns up to limit applications assigned to THIS town by the
+// query-time Voronoi partition (#819): among this town's own (lat, lng, radius)
+// and the repeated "sibling" centroids (each an OTHER gazetteer town in the
+// same authority, with its own radius), an application is kept only if at
+// least one of them covers it, assigned to whichever covering town is nearest,
+// and returned only when that town is THIS one — closest-wins, in-range-
+// nearest, single assignment, no overlap between sibling town pages. Ordered
+// by the real-date key (GREATEST(decidedDate, startDate) DESC NULLS LAST).
+// authorityId scopes the read; a missing/invalid id, a non-finite or
+// out-of-range coordinate, a non-finite/non-positive radius, a malformed or
+// excessive sibling list, is a bodyless 400 (the build key was already
+// validated by the gate). There is no PlanIt fallback.
 func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	// authorityId is required: it scopes the single-partition spatial query to one
-	// authorityCode (the AreaID as a string), exactly as the authority endpoint does.
+	// authorityId is required: it scopes the spatial query to one authorityCode
+	// (the AreaID as a string), exactly as the authority endpoint does.
 	id, err := strconv.Atoi(strings.TrimSpace(q.Get("authorityId")))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -102,10 +102,7 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	// nearby selects the ordering: distance -> NearestNearby (nearest first),
-	// recency or absent -> RecentNearby (lastDifferent DESC, unchanged default).
-	nearby, ok := selectNearbyRead(h.store, q.Get("order"))
+	siblings, ok := parseSiblingCentroids(q["sibling"])
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -114,16 +111,18 @@ func (h *nearHandler) recentNearby(w http.ResponseWriter, r *http.Request) {
 	limit := parseLimit(q.Get("limit"))
 	authorityCode := strconv.Itoa(id)
 
-	apps, err := nearby(r.Context(), authorityCode, lat, lng, radius, nearReadCap)
+	apps, err := h.store.RecentNearestTown(r.Context(), authorityCode, lat, lng, radius, siblings, nearReadCap)
 	if err != nil {
-		serverError(w, r, h.logger, "recent applications near point", err)
+		serverError(w, r, h.logger, "recent applications nearest town", err)
 		return
 	}
 
-	// breakdown is the per-appState distribution over the WHOLE in-radius set (an
-	// index-served spatial GROUP BY), independent of the bounded read which
-	// saturates at nearReadCap. The render slice must clamp against the bounded
-	// read length, NOT the breakdown total — the total can dwarf len(apps).
+	// breakdown is the per-appState distribution over the WHOLE in-radius set
+	// around THIS town's own point (an index-served spatial GROUP BY) — it is
+	// deliberately NOT partitioned by sibling centroids, independent of the
+	// bounded, partitioned read which saturates at nearReadCap. The render slice
+	// must clamp against the bounded read length, NOT the breakdown total — the
+	// total can dwarf len(apps).
 	breakdown, err := h.store.BreakdownNearby(r.Context(), authorityCode, lat, lng, radius)
 	if err != nil {
 		serverError(w, r, h.logger, "status breakdown near point", err)
@@ -174,38 +173,72 @@ func parseCoordinate(raw string, minVal, maxVal float64) (float64, bool) {
 	return v, true
 }
 
-// selectNearbyRead maps the optional order query param to the bounded
-// single-partition read it selects: an empty or "recency" value picks the
-// recency-ordered RecentNearby (the unchanged default), "distance" picks the
-// distance-ordered NearestNearby (nearest first). The bool reports validity; the
-// caller turns false into a 400. Both reads share the same signature, so the
-// handler calls the result without branching further.
-func selectNearbyRead(store nearStore, order string) (func(ctx context.Context, authorityCode string, lat, lng, radiusMetres float64, cap int) ([]PlanningApplication, error), bool) {
-	switch strings.TrimSpace(order) {
-	case "", orderRecency:
-		return store.RecentNearby, true
-	case orderDistance:
-		return store.NearestNearby, true
-	default:
-		return nil, false
-	}
-}
-
-// parseRadius parses the optional radius in metres: it defaults to
-// nearDefaultRadiusMetres when unset/empty, rejects a non-numeric, non-finite, or
-// non-positive value (false -> 400), and clamps anything above nearMaxRadiusMetres
-// down to the hard maximum so the spatial scan stays bounded.
-func parseRadius(raw string) (float64, bool) {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return nearDefaultRadiusMetres, true
-	}
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
+// clampRadius validates a required, finite, positive radius and clamps it down
+// to nearMaxRadiusMetres, so no radius (the target town's own, or a sibling's)
+// can widen a spatial scan beyond the hard maximum. Shared by parseRadius
+// (which additionally defaults an empty value) and parseSiblingCentroids
+// (whose radius component is always required, never defaulted).
+func clampRadius(v float64) (float64, bool) {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
 		return 0, false
 	}
 	if v > nearMaxRadiusMetres {
 		return nearMaxRadiusMetres, true
 	}
 	return v, true
+}
+
+// parseRadius parses the optional radius in metres: it defaults to
+// nearDefaultRadiusMetres when unset/empty, rejects a non-numeric value (false
+// -> 400), and otherwise validates/clamps via clampRadius.
+func parseRadius(raw string) (float64, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return nearDefaultRadiusMetres, true
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return clampRadius(v)
+}
+
+// parseSiblingCentroids parses the repeated "sibling" query values, each a
+// "lat,lng,radius" triple identifying one OTHER gazetteer town's centroid (and
+// its own safety radius) in the requested town's authority — the requested
+// town's own point/radius are the primary lat/lng/radius params, not repeated
+// here (#819 decisions 2-3). Every lat/lng is validated with the same WGS84
+// bounds as the primary point; every radius is validated and clamped exactly
+// like the primary radius (clampRadius). More than maxSiblingCentroids values,
+// or any malformed/invalid entry, is a 400 (false). A nil/empty raw is valid
+// and yields an empty (non-partitioned) slice.
+func parseSiblingCentroids(raw []string) ([]TownCentroid, bool) {
+	if len(raw) > maxSiblingCentroids {
+		return nil, false
+	}
+	out := make([]TownCentroid, 0, len(raw))
+	for _, v := range raw {
+		parts := strings.Split(v, ",")
+		if len(parts) != 3 {
+			return nil, false
+		}
+		lat, ok := parseCoordinate(parts[0], minLatitude, maxLatitude)
+		if !ok {
+			return nil, false
+		}
+		lng, ok := parseCoordinate(parts[1], minLongitude, maxLongitude)
+		if !ok {
+			return nil, false
+		}
+		radiusVal, err := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
+		if err != nil {
+			return nil, false
+		}
+		radius, ok := clampRadius(radiusVal)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, TownCentroid{Lat: lat, Lng: lng, RadiusMetres: radius})
+	}
+	return out, true
 }
