@@ -44,17 +44,18 @@ const savedBucket = ""
 // flushes them at cycle end as at most one push per (user, watch zone), plus
 // one per-user "saved" bucket for zone-less notifications (GH#784). It owns the
 // send-path collaborators the dispatchers used to call inline per notification:
-// device lookup, the unread badge, the APNs sender, and zone-name resolution.
+// device lookup, the unread badge, the platform dispatcher (APNs + FCM), and
+// zone-name resolution.
 //
 // PushCoalescer is driven by the single-goroutine poll handler loop (Reset at
 // cycle start, Add during the authority walk, Flush at cycle end) and is not
 // safe for concurrent use.
 type PushCoalescer struct {
-	devices deviceReader
-	state   stateReader
-	push    pushSender
-	zones   zoneNameReader
-	logger  *slog.Logger
+	devices    deviceReader
+	state      stateReader
+	dispatcher *PlatformDispatcher
+	zones      zoneNameReader
+	logger     *slog.Logger
 
 	// items is userID -> bucketKey (watch zone id, or savedBucket) -> the
 	// push-eligible notifications queued for that bucket this cycle.
@@ -62,14 +63,14 @@ type PushCoalescer struct {
 }
 
 // NewPushCoalescer wires the coalescer.
-func NewPushCoalescer(devices deviceReader, state stateReader, push pushSender, zones zoneNameReader, logger *slog.Logger) *PushCoalescer {
+func NewPushCoalescer(devices deviceReader, state stateReader, dispatcher *PlatformDispatcher, zones zoneNameReader, logger *slog.Logger) *PushCoalescer {
 	return &PushCoalescer{
-		devices: devices,
-		state:   state,
-		push:    push,
-		zones:   zones,
-		logger:  logger,
-		items:   make(map[string]map[string][]notifications.DigestNotification),
+		devices:    devices,
+		state:      state,
+		dispatcher: dispatcher,
+		zones:      zones,
+		logger:     logger,
+		items:      make(map[string]map[string][]notifications.DigestNotification),
 	}
 }
 
@@ -111,8 +112,10 @@ func (c *PushCoalescer) Flush(ctx context.Context) error {
 }
 
 // flushUser loads the user's devices and badge once, then sends exactly one
-// push per bucket, accumulating any invalid tokens APNs reports across all of
-// this user's sends and pruning the union once at the end.
+// push per bucket per platform (APNs for iOS tokens, FCM for Android tokens),
+// accumulating any invalid tokens either sender reports across all of this
+// user's sends and pruning the union once at the end. The per-platform payload
+// is built only when the user has tokens on that platform.
 func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets map[string][]notifications.DigestNotification) {
 	devices, err := c.devices.ListByUser(ctx, userID)
 	if err != nil {
@@ -122,22 +125,32 @@ func (c *PushCoalescer) flushUser(ctx context.Context, userID string, buckets ma
 	if len(devices) == 0 {
 		return
 	}
-	tokens := make([]string, 0, len(devices))
-	for _, d := range devices {
-		tokens = append(tokens, d.Token)
-	}
+	iosTokens, androidTokens := groupTokensByPlatform(devices)
 
 	badge := c.unreadBadge(ctx, userID)
 	zoneNames := c.zoneNames(ctx, userID)
 
 	invalid := make(map[string]struct{})
 	for bucketKey, queued := range buckets {
-		payload, err := buildBucketPayload(bucketKey, queued, zoneNames, badge)
-		if err != nil {
-			c.logger.ErrorContext(ctx, "push coalescer: build payload failed", "user", userID, "bucket", bucketKey, "error", err)
-			continue
+		var iosPayload, androidPayload json.RawMessage
+		if len(iosTokens) > 0 {
+			p, err := buildBucketPayload(bucketKey, queued, zoneNames, badge)
+			if err != nil {
+				c.logger.ErrorContext(ctx, "push coalescer: build apns payload failed", "user", userID, "bucket", bucketKey, "error", err)
+				continue
+			}
+			iosPayload = p
 		}
-		invalidTokens, err := c.push.Send(ctx, tokens, payload)
+		if len(androidTokens) > 0 {
+			p, err := buildBucketFCMPayload(bucketKey, queued, zoneNames)
+			if err != nil {
+				c.logger.ErrorContext(ctx, "push coalescer: build fcm payload failed", "user", userID, "bucket", bucketKey, "error", err)
+				continue
+			}
+			androidPayload = p
+		}
+
+		invalidTokens, err := c.dispatcher.Send(ctx, iosTokens, iosPayload, androidTokens, androidPayload)
 		if err != nil {
 			c.logger.ErrorContext(ctx, "push coalescer: send failed", "user", userID, "bucket", bucketKey, "error", err)
 			continue

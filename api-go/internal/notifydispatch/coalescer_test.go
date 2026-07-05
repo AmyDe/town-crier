@@ -86,7 +86,11 @@ func newCoalescerHarness(t *testing.T) (*PushCoalescer, *fakeDevices, *fakeState
 	st := &fakeState{unread: 2}
 	push := &fakePush{}
 	zones := &fakeZoneNames{byUser: map[string][]watchzones.WatchZone{}}
-	c := NewPushCoalescer(devs, st, push, zones, testLogger(t))
+	// The default device is iOS (zero-value platform), so the dispatcher routes to
+	// the APNs fake (push) that the existing assertions inspect. A throwaway FCM
+	// fake stands in for the Android sender the iOS-only fixtures never exercise.
+	disp := NewPlatformDispatcher(push, &fakePush{}, testLogger(t))
+	c := NewPushCoalescer(devs, st, disp, zones, testLogger(t))
 	return c, devs, st, push, zones
 }
 
