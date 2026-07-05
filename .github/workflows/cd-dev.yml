@@ -129,7 +129,7 @@ jobs:
     name: "Database: Run migrations (dev)"
     needs: infra-dev
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: development
     steps:
       - uses: actions/checkout@v6

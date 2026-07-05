@@ -95,7 +95,7 @@ jobs:
     name: "Database: Run migrations (prod)"
     needs: infra
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: production
     steps:
       - uses: actions/checkout@v6
