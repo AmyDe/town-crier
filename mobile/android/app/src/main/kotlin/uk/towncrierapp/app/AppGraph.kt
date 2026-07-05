@@ -45,6 +45,7 @@ import uk.towncrierapp.domain.watchzones.ZonePreferencesRepository
 import uk.towncrierapp.presentation.appearance.AppearanceCoordinator
 import uk.towncrierapp.presentation.auth.AuthCoordinator
 import uk.towncrierapp.presentation.reviewprompt.ReviewPromptTracker
+import uk.towncrierapp.presentation.sharing.PendingLinkHolder
 import java.time.Clock
 
 /** Auth0 tenant identity — same across build flavors (epic #770 D4); only the audience differs, via [AppGraph.authAudience]. */
@@ -213,4 +214,10 @@ public class AppGraph(
     // means Settings' sign-out/deletion device-token removal is a true no-op
     // in production today; wiring a real implementation needs no other change.
     public val deviceTokenRepository: DeviceTokenRepository? = null
+
+    // Cold-start / running-instance App Link holder (GH#782): MainActivity
+    // feeds every inbound ACTION_VIEW intent's parsed DeepLink in here;
+    // TownCrierApp observes readyLink and dispatches it once authed. One
+    // instance for the process lifetime — plain state, no Android leaf needed.
+    public val pendingLinkHolder: PendingLinkHolder = PendingLinkHolder()
 }
