@@ -14,7 +14,8 @@ import TownCrierDomain
 struct ApplicationListViewModelTapToReadTests {
 
   private func makeSUT(
-    applications: [PlanningApplication]
+    applications: [PlanningApplication],
+    badgeSetter: SpyBadgeSetter? = nil
   ) throws -> (ApplicationListViewModel, SpyNotificationStateRepository) {
     let appSpy = SpyPlanningApplicationRepository()
     let stateSpy = SpyNotificationStateRepository()
@@ -23,6 +24,7 @@ struct ApplicationListViewModelTapToReadTests {
       repository: appSpy,
       zone: .cambridge,
       notificationStateRepository: stateSpy,
+      badgeSetter: badgeSetter,
       userDefaults: defaults,
       sortKey: "tap.applicationsListSort"
     )
@@ -90,6 +92,23 @@ struct ApplicationListViewModelTapToReadTests {
     await sut.waitForPendingMarkRead()
 
     #expect(stateSpy.markApplicationReadCalls.isEmpty)
+  }
+
+  @Test(
+    "opening an unread application decrements the global unread count and pushes it to the badge setter"
+  )
+  func selectApplication_unread_decrementsGlobalUnreadCountAndPushesToBadgeSetter() async throws {
+    let unread = app(authority: "42", name: "22/1234/FUL", unread: true)
+    let badgeSetter = SpyBadgeSetter()
+    let (sut, _) = try makeSUT(applications: [unread], badgeSetter: badgeSetter)
+    sut.globalUnreadCount = 5
+
+    sut.selectApplication(unread.id)
+
+    // Synchronous, same as the per-row optimistic clear above — no relaunch
+    // or foreground transition required to move the OS badge (tc-4x8e0).
+    #expect(sut.globalUnreadCount == 4)
+    #expect(badgeSetter.setBadgeCalls == [4])
   }
 
   @Test("selectApplication still notifies the coordinator for navigation")
