@@ -6,6 +6,12 @@
 #   pr          — compares origin/<base-ref>...HEAD
 #   merge_group — compares <base-ref>...HEAD against a raw base SHA (no origin/ prefix)
 #
+#   Edge case: push mode's HEAD~1 diff assumes every push to the default
+#   branch is a single squash-merge commit, so only the last commit is
+#   diffed. A fast-forward merge or a multi-commit push would silently
+#   miss earlier changes. This is a known, accepted assumption — do not
+#   change it silently; see issue #835 for the rationale.
+#
 # Trigger files:
 #   Workflow files (e.g., cd-dev.yml, pr-gate.yml) can force categories
 #   to true when they themselves change. Pass trigger-files as a
@@ -85,12 +91,19 @@ runs:
 
         # Process trigger files — workflow files that force categories
         TRIGGER_FILES="${{ inputs.trigger-files }}"
+        declare -A known_trigger_paths
         if [[ -n "$TRIGGER_FILES" ]]; then
           while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             trigger_path="${line%%:*}"
             trigger_cats="${line#*:}"
-            if echo "$CHANGED" | grep -q "$trigger_path"; then
+            known_trigger_paths["$trigger_path"]=1
+            # Fixed-string, whole-line match: a trigger_path must equal one
+            # of the newline-separated $CHANGED entries exactly, so a path
+            # that merely contains trigger_path as a substring (or where
+            # "." would otherwise be read as a regex wildcard) can't
+            # false-positive.
+            if echo "$CHANGED" | grep -qxF "$trigger_path"; then
               IFS=',' read -ra tcats <<< "$trigger_cats"
               for tc in "${tcats[@]}"; do
                 if [[ -v "flags[$tc]" ]]; then
@@ -101,7 +114,13 @@ runs:
           done <<< "$TRIGGER_FILES"
         fi
 
-        # Map file paths to categories
+        # Map file paths to categories. Any changed file matching neither a
+        # known category prefix nor the ignore-allowlist below is treated as
+        # an unmapped top-level path and forces every requested category to
+        # true — fail-closed, so a new directory gets full lane coverage by
+        # default rather than silently zero. Paths already accounted for via
+        # the trigger-files mechanism above are exempted from the fail-closed
+        # default (they've already forced their specific categories).
         while IFS= read -r file; do
           [[ -z "$file" ]] && continue
           case "$file" in
@@ -111,6 +130,19 @@ runs:
             mobile/android/*) [[ -v "flags[android]" ]] && flags[android]=true ;;
             web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
             infra/*) [[ -v "flags[infra]" ]] && flags[infra]=true ;;
+            # Ignore-allowlist: these paths legitimately don't need any
+            # pr-gate lane to run.
+            docs/*|.beads/*|.claude/*|scripts/*|*.md|LICENSE|.gitignore|.gitattributes) ;;
+            *)
+              if [[ -v "known_trigger_paths[$file]" ]]; then
+                : # already handled by the trigger-files mechanism above
+              else
+                echo "::warning::Unmapped changed path '$file' matches no known category prefix and no ignore allowlist entry — forcing all requested categories to true (fail-closed)."
+                for cat in "${CATS[@]}"; do
+                  flags["$cat"]=true
+                done
+              fi
+              ;;
           esac
         done <<< "$CHANGED"
 
