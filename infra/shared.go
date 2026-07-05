@@ -343,12 +343,13 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		return err
 	}
 
-	// Allowlist the PostGIS extension via the azure.extensions server parameter. Without it,
-	// `CREATE EXTENSION postgis` is rejected. Source must be "user-override" or Azure ignores
-	// the assigned value. A server parameter change is a server-level operation that cannot run
-	// while the server is busy with another operation, so this is serialised after the firewall
-	// rule (DependsOn) — applying both concurrently right after server creation trips
-	// "ServerIsBusy".
+	// Allowlist the PostGIS and pg_trgm extensions via the azure.extensions server parameter.
+	// Without it, `CREATE EXTENSION postgis` / `CREATE EXTENSION pg_trgm` are rejected. pg_trgm
+	// (trigram matching) is required by the application-search-indexes migration for fuzzy/
+	// partial text search. Source must be "user-override" or Azure ignores the assigned value.
+	// A server parameter change is a server-level operation that cannot run while the server is
+	// busy with another operation, so this is serialised after the firewall rule (DependsOn) —
+	// applying both concurrently right after server creation trips "ServerIsBusy".
 	//
 	// Note: built-in PgBouncer (the `pgbouncer.enabled` parameter) is deliberately not set — it
 	// is unsupported on the Burstable tier (B1ms) and Azure rejects it with
@@ -359,7 +360,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		ResourceGroupName: resourceGroup.Name,
 		ServerName:        postgresServer.Name,
 		Source:            pulumi.String("user-override"),
-		Value:             pulumi.String("POSTGIS"),
+		Value:             pulumi.String("POSTGIS,pg_trgm"),
 	}, pulumi.DependsOn([]pulumi.Resource{postgresFirewall}))
 	if err != nil {
 		return err
