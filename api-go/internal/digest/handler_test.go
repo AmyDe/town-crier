@@ -123,6 +123,29 @@ func (s *spyPush) Send(_ context.Context, tokens []string, payload json.RawMessa
 	return s.invalid, nil
 }
 
+// fakeDispatcher mirrors the real *notifydispatch.PlatformDispatcher's token
+// split: it routes the iOS payload to ios and the Android payload to android,
+// unioning any invalid tokens. It lets the digest handler test assert
+// platform-aware delivery without importing notifydispatch — and lets the
+// pre-existing iOS-only weekly tests keep inspecting the ios spy unchanged.
+type fakeDispatcher struct {
+	ios     *spyPush
+	android *spyPush
+}
+
+func (d *fakeDispatcher) Send(ctx context.Context, iosTokens []string, iosPayload json.RawMessage, androidTokens []string, androidPayload json.RawMessage) ([]string, error) {
+	var invalid []string
+	if len(iosTokens) > 0 {
+		inv, _ := d.ios.Send(ctx, iosTokens, iosPayload)
+		invalid = append(invalid, inv...)
+	}
+	if len(androidTokens) > 0 {
+		inv, _ := d.android.Send(ctx, androidTokens, androidPayload)
+		invalid = append(invalid, inv...)
+	}
+	return invalid, nil
+}
+
 // ---- helpers ----
 
 func testLogger() *slog.Logger {
@@ -165,10 +188,16 @@ func zoneNotif(uid, zoneID string) notifications.DigestNotification {
 	}
 }
 
-func newHandler(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email acsemail.EmailSender, push interface {
-	Send(context.Context, []string, json.RawMessage) ([]string, error)
-}) *Handler {
-	return NewHandler(p, n, z, st, d, email, push, testLogger(), func() time.Time {
+// newHandler wires a handler whose weekly push routes iOS tokens to the given
+// spy (the platform the pre-existing weekly tests exercise). The Android sender
+// is a throwaway spy those tests never reach; tests needing the FCM path build
+// their own fakeDispatcher via newHandlerWithDispatcher.
+func newHandler(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email acsemail.EmailSender, push *spyPush) *Handler {
+	return newHandlerWithDispatcher(p, n, z, st, d, email, &fakeDispatcher{ios: push, android: &spyPush{}})
+}
+
+func newHandlerWithDispatcher(p *fakeProfiles, n *fakeNotifications, z *fakeZones, st *fakeState, d *fakeDevices, email acsemail.EmailSender, dispatcher pushDispatcher) *Handler {
+	return NewHandler(p, n, z, st, d, email, dispatcher, testLogger(), func() time.Time {
 		// Pin "now" to a Wednesday so weekly tests select the Wednesday digest day.
 		return time.Date(2026, 2, 4, 9, 0, 0, 0, time.UTC) // 2026-02-04 is a Wednesday
 	})

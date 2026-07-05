@@ -65,11 +65,12 @@ type deviceReader interface {
 	Delete(ctx context.Context, userID, token string) error
 }
 
-// pushSender is the consumer-side push contract; apns.PushSender (the real Client
-// or the NoOpSender) satisfies it. It is declared locally so the handler test can
-// substitute a spy without importing apns.
-type pushSender interface {
-	Send(ctx context.Context, tokens []string, payload json.RawMessage) ([]string, error)
+// pushDispatcher is the consumer-side platform-aware push contract; the concrete
+// *notifydispatch.PlatformDispatcher satisfies it. It is declared locally (with
+// the platform token split expressed in the signature) so the handler test can
+// substitute a fake without importing notifydispatch.
+type pushDispatcher interface {
+	Send(ctx context.Context, iosTokens []string, iosPayload json.RawMessage, androidTokens []string, androidPayload json.RawMessage) ([]string, error)
 }
 
 // Handler runs the weekly and hourly digest cycles. It holds the stores and the
@@ -81,7 +82,7 @@ type Handler struct {
 	state         stateReader
 	devices       deviceReader
 	email         acsemail.EmailSender
-	push          pushSender
+	dispatcher    pushDispatcher
 	logger        *slog.Logger
 	now           func() time.Time
 }
@@ -96,7 +97,7 @@ func NewHandler(
 	state stateReader,
 	devices deviceReader,
 	email acsemail.EmailSender,
-	push pushSender,
+	dispatcher pushDispatcher,
 	logger *slog.Logger,
 	now func() time.Time,
 ) *Handler {
@@ -107,7 +108,7 @@ func NewHandler(
 		state:         state,
 		devices:       devices,
 		email:         email,
-		push:          push,
+		dispatcher:    dispatcher,
 		logger:        logger,
 		now:           now,
 	}
@@ -160,10 +161,11 @@ func (h *Handler) RunWeekly(ctx context.Context) error {
 	return nil
 }
 
-// sendWeeklyPush builds and sends the weekly digest push, then prunes any device
-// tokens APNs reports invalid. A user with no devices is a no-op. The badge is
+// sendWeeklyPush builds and sends the weekly digest push across both platforms
+// (APNs for iOS tokens, FCM for Android tokens), then prunes any device tokens
+// either sender reports invalid. A user with no devices is a no-op. The badge is
 // the total unread count (read_at IS NULL, ADR 0035), distinct from the digest
-// application count.
+// application count; FCM carries no badge (Android badges are channel-driven).
 func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProfile, applicationCount int) {
 	devices, err := h.devices.ListByUser(ctx, profile.UserID)
 	if err != nil {
@@ -180,18 +182,34 @@ func (h *Handler) sendWeeklyPush(ctx context.Context, profile *profiles.UserProf
 		return
 	}
 
-	payload, err := buildDigestPayload(applicationCount, totalUnread)
-	if err != nil {
-		h.logger.ErrorContext(ctx, "weekly digest: build payload failed", "user", profile.UserID, "error", err)
-		return
-	}
-
-	tokens := make([]string, 0, len(devices))
+	var iosTokens, androidTokens []string
 	for _, d := range devices {
-		tokens = append(tokens, d.Token)
+		if d.Platform == devicetokens.PlatformAndroid {
+			androidTokens = append(androidTokens, d.Token)
+			continue
+		}
+		iosTokens = append(iosTokens, d.Token)
 	}
 
-	invalid, err := h.push.Send(ctx, tokens, payload)
+	var iosPayload, androidPayload json.RawMessage
+	if len(iosTokens) > 0 {
+		p, err := buildDigestPayload(applicationCount, totalUnread)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "weekly digest: build apns payload failed", "user", profile.UserID, "error", err)
+			return
+		}
+		iosPayload = p
+	}
+	if len(androidTokens) > 0 {
+		p, err := buildDigestFCMPayload(applicationCount)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "weekly digest: build fcm payload failed", "user", profile.UserID, "error", err)
+			return
+		}
+		androidPayload = p
+	}
+
+	invalid, err := h.dispatcher.Send(ctx, iosTokens, iosPayload, androidTokens, androidPayload)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "weekly digest: push send failed", "user", profile.UserID, "error", err)
 		return
