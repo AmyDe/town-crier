@@ -239,7 +239,7 @@ jobs:
       - uses: ./.github/actions/deploy-worker-jobs
         with:
           # Dev has no poll or poll-bootstrap jobs (ADR 0024).
-          jobs: digest digest-hourly dormant-cleanup dev-seed
+          jobs: digest digest-hourly dormant-cleanup dev-seed subscription-sweep pg-purge
           env-suffix: dev
           resource-group: rg-town-crier-dev
           image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker-go:${{ github.sha }}
