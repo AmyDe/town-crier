@@ -30,6 +30,13 @@
 #
 # Requires GitHub Environment:
 #   development            — with OIDC federated credential (environment:development)
+#
+# Requires .github/config/resource-names.env — single source of truth for
+# the dev resource group name. Loaded into $GITHUB_ENV by the `cleanup` job
+# (after checkout, as RESOURCE_GROUP_DEV) rather than a workflow-level `env:`
+# literal, so it can't drift from cd-dev.yml/seo-refresh.yml. Asserted
+# against infra/environment.go's naming conventions by an /infra Go test
+# (issue #835 slice 6).
 
 name: Dev Container App Cleanup
 
@@ -47,9 +54,6 @@ permissions:
   contents: read
   id-token: write
 
-env:
-  RESOURCE_GROUP: rg-town-crier-dev
-
 jobs:
   cleanup:
     name: Deactivate stale dev revisions
@@ -60,6 +64,13 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # as RESOURCE_GROUP_DEV (used throughout this job in place of the old
+      # workflow-level RESOURCE_GROUP literal). Must run after checkout — the
+      # file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
 
       - uses: ./.github/actions/azure-login
         with:
@@ -72,12 +83,12 @@ jobs:
         run: |
           set -euo pipefail
           APPS=$(az containerapp list \
-            --resource-group "${RESOURCE_GROUP}" \
+            --resource-group "${RESOURCE_GROUP_DEV}" \
             --query "[?properties.configuration.activeRevisionsMode=='Multiple'].name" \
             -o tsv)
 
           if [ -z "${APPS}" ]; then
-            echo "No Multiple-mode Container Apps found in ${RESOURCE_GROUP}."
+            echo "No Multiple-mode Container Apps found in ${RESOURCE_GROUP_DEV}."
           else
             echo "Found Multiple-mode apps:"
             echo "${APPS}"
@@ -100,7 +111,7 @@ jobs:
           {
             echo "## Dev Container App revision cleanup"
             echo
-            echo "Resource group: \`${RESOURCE_GROUP}\`"
+            echo "Resource group: \`${RESOURCE_GROUP_DEV}\`"
             echo
             echo "| App | Mode | Deactivated | Active after |"
             echo "| --- | --- | ---: | ---: |"
@@ -131,7 +142,7 @@ jobs:
             # Field note: revision list returns objects where 'name' is a
             # TOP-LEVEL field and timestamps/flags live under 'properties'.
             KEEP=$(az containerapp revision list \
-              --resource-group "${RESOURCE_GROUP}" \
+              --resource-group "${RESOURCE_GROUP_DEV}" \
               --name "${APP}" \
               --query "sort_by([?properties.active], &properties.createdTime)[-1].name" \
               -o tsv)
@@ -140,7 +151,7 @@ jobs:
 
             # All other active revisions are stale.
             STALE=$(az containerapp revision list \
-              --resource-group "${RESOURCE_GROUP}" \
+              --resource-group "${RESOURCE_GROUP_DEV}" \
               --name "${APP}" \
               --query "[?properties.active && name!='${KEEP}'].name" \
               -o tsv)
@@ -151,7 +162,7 @@ jobs:
                 [ -z "${REV}" ] && continue
                 echo "Deactivating ${REV}"
                 az containerapp revision deactivate \
-                  --resource-group "${RESOURCE_GROUP}" \
+                  --resource-group "${RESOURCE_GROUP_DEV}" \
                   --name "${APP}" \
                   --revision "${REV}"
                 count=$((count + 1))
@@ -161,7 +172,7 @@ jobs:
             fi
 
             ACTIVE_AFTER=$(az containerapp revision list \
-              --resource-group "${RESOURCE_GROUP}" \
+              --resource-group "${RESOURCE_GROUP_DEV}" \
               --name "${APP}" \
               --query "length([?properties.active])" \
               -o tsv)

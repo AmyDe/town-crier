@@ -53,6 +53,12 @@
 #   development, production  — each with an OIDC federated credential. The
 #   `environment:` block on each job selects that environment's vars.* values
 #   (dev → api-dev, prod → api).
+#
+# Requires .github/config/resource-names.env — single source of truth for
+# hardcoded Azure resource names (SWA, storage account). Loaded per-job via
+# `cat ... >> "$GITHUB_ENV"` after checkout; asserted against
+# infra/environment.go's naming conventions by an /infra Go test (issue #835
+# slice 6).
 
 name: SEO Refresh
 
@@ -101,6 +107,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} (or, in `run:` steps,
+      # the plain shell var) instead of inline literals. Must run after
+      # checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       # SPA only — empty site-build-key skips the build-time prerender.
       - uses: ./.github/actions/build-web
         with:
@@ -132,7 +145,7 @@ jobs:
         run: |
           az storage blob upload \
             --auth-mode login \
-            --account-name sttowncrierdev \
+            --account-name "${STORAGE_ACCOUNT_DEV}" \
             --container-name seo-snapshot \
             --name seo-snapshot.json \
             --file web/seo-snapshot.json \
@@ -147,7 +160,7 @@ jobs:
         id: swa-token
         uses: ./.github/actions/get-swa-token
         with:
-          swa-name: swa-town-crier-dev
+          swa-name: ${{ env.SWA_NAME_DEV }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
@@ -160,9 +173,11 @@ jobs:
           skip_api_build: true
 
   # ── Web: daily full refresh prod ────────────────────────
-  # No infra job here, so swa-name and the storage account name are hardcoded
-  # (cd-prod reads these from Pulumi outputs; this data-only refresh has no
-  # Pulumi step). Names match infra/environment.go.
+  # No infra job here, so swa-name and the storage account name come from
+  # .github/config/resource-names.env (cd-prod reads these from Pulumi
+  # outputs instead; this data-only refresh has no Pulumi step). The env file
+  # is asserted against infra/environment.go's naming conventions by an
+  # /infra Go test (issue #835 slice 6).
   web-prod:
     name: "Web: Daily refresh prod"
     # Schedule always runs; manual runs honour the `environment` selector.
@@ -176,6 +191,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} (or, in `run:` steps,
+      # the plain shell var) instead of inline literals. Must run after
+      # checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       # SPA only — empty site-build-key skips the build-time prerender.
       - uses: ./.github/actions/build-web
         with:
@@ -207,7 +229,7 @@ jobs:
         run: |
           az storage blob upload \
             --auth-mode login \
-            --account-name sttowncrierprod \
+            --account-name "${STORAGE_ACCOUNT_PROD}" \
             --container-name seo-snapshot \
             --name seo-snapshot.json \
             --file web/seo-snapshot.json \
@@ -222,7 +244,7 @@ jobs:
         id: swa-token
         uses: ./.github/actions/get-swa-token
         with:
-          swa-name: swa-town-crier-prod
+          swa-name: ${{ env.SWA_NAME_PROD }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1

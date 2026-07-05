@@ -14,6 +14,14 @@
 #
 # Requires GitHub Environment:
 #   production             — with OIDC federated credential (environment:production)
+#
+# Requires .github/config/resource-names.env — single source of truth for
+# hardcoded Azure resource names (storage account, container app, ACR image
+# repos). Loaded per-job via `cat ... >> "$GITHUB_ENV"` after checkout.
+# resource-group and swa-name are NOT in this file — they come from Pulumi
+# stack outputs (see the `infra` job below) rather than a hardcoded literal.
+# The file is asserted against infra/environment.go's naming conventions by
+# an /infra Go test (issue #835 slice 6).
 
 name: CD Production
 
@@ -126,11 +134,18 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} (or, in `run:` steps,
+      # the plain shell var) instead of inline literals. Must run after
+      # checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       - name: Resolve release image
         id: resolve-image
         uses: ./.github/actions/resolve-release-image
         with:
-          repo-name: town-crier-api-go
+          repo-name: ${{ env.IMAGE_REPO_API }}
           display-name: "Go API"
           acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -139,7 +154,7 @@ jobs:
 
       - uses: ./.github/actions/deploy-container-app
         with:
-          app-name: ca-town-crier-api-go-prod
+          app-name: ${{ env.CONTAINER_APP_API_PROD }}
           resource-group: ${{ needs.infra.outputs.resource-group }}
           image: ${{ steps.resolve-image.outputs.image }}
 
@@ -154,7 +169,7 @@ jobs:
         run: |
           ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
           ACR_NAME="${ACR_SERVER%.azurecr.io}"
-          REPO="town-crier-api-go"
+          REPO="${IMAGE_REPO_API}"
           az acr import \
             --name "$ACR_NAME" \
             --source "${{ steps.resolve-image.outputs.image }}" \
@@ -174,6 +189,13 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} (or, in `run:` steps,
+      # the plain shell var) instead of inline literals. Must run after
+      # checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       # Same rationale as the Go API job above. Pinning the worker jobs to a
       # digest makes each release run an exact, reproducible image instead of
       # whatever :latest happens to resolve to at run time.
@@ -181,7 +203,7 @@ jobs:
         id: resolve-image
         uses: ./.github/actions/resolve-release-image
         with:
-          repo-name: town-crier-worker-go
+          repo-name: ${{ env.IMAGE_REPO_WORKER }}
           display-name: "worker"
           acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -206,7 +228,7 @@ jobs:
         run: |
           ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
           ACR_NAME="${ACR_SERVER%.azurecr.io}"
-          REPO="town-crier-worker-go"
+          REPO="${IMAGE_REPO_WORKER}"
           az acr import \
             --name "$ACR_NAME" \
             --source "${{ steps.resolve-image.outputs.image }}" \
@@ -224,6 +246,15 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      # (swa-name for prod is NOT in this file — it comes from the Pulumi
+      # stack output above, needs.infra.outputs.swa-name, not a hardcoded
+      # literal.)
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
 
       # azure-login MUST run before build-web: in render-mode, build-web
       # downloads the weekly seo-snapshot.json from Azure Blob via `az storage
@@ -246,7 +277,7 @@ jobs:
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
           render-mode: 'true'
-          storage-account-name: sttowncrierprod
+          storage-account-name: ${{ env.STORAGE_ACCOUNT_PROD }}
 
       - name: Get SWA deployment token
         id: swa-token
