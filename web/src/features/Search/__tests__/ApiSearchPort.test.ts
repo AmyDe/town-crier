@@ -126,10 +126,16 @@ describe('ApiSearchPort', () => {
     await expect(port.search('a', null)).rejects.toThrow('Failed to search applications');
   });
 
-  it('throws when fetch rejects', async () => {
+  it('throws a friendly message when fetch itself fails (offline, DNS, CORS, etc.)', async () => {
+    // Real browsers throw an unfriendly, engine-specific message here — Chrome's
+    // "Failed to fetch", Firefox's "NetworkError when attempting to fetch
+    // resource", Safari's "Load failed" — none of which should reach an
+    // anonymous visitor of a public page verbatim.
     stub.shouldReject = true;
-    stub.rejectError = new Error('Network failure');
+    stub.rejectError = new TypeError('Failed to fetch');
 
-    await expect(port.search('mill road', null)).rejects.toThrow('Network failure');
+    await expect(port.search('mill road', null)).rejects.toThrow(
+      'Could not reach the search service. Check your connection and try again.',
+    );
   });
 });
