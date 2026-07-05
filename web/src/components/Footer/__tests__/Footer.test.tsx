@@ -74,4 +74,44 @@ describe('Footer', () => {
     const links = within(nav).getAllByRole('link');
     expect(links).toHaveLength(2);
   });
+
+  describe('planning discovery links (GH #821 Phase 2)', () => {
+    it('renders a link to the planning applications by council index', () => {
+      render(<Footer />);
+
+      const link = screen.getByRole('link', {
+        name: /planning applications by council/i,
+      });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/planning/');
+    });
+
+    it('renders a link to the planning applications by town index', () => {
+      render(<Footer />);
+
+      const link = screen.getByRole('link', {
+        name: /planning applications by town/i,
+      });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/planning/towns/');
+    });
+
+    it('groups the planning links inside a nav element for accessibility', () => {
+      render(<Footer />);
+
+      const nav = screen.getByRole('navigation', { name: /explore/i });
+      expect(nav).toBeInTheDocument();
+
+      const links = within(nav).getAllByRole('link');
+      expect(links).toHaveLength(2);
+    });
+
+    it('does not yet link to /search (tc-geq7h.4 ships that separately)', () => {
+      render(<Footer />);
+
+      expect(
+        screen.queryByRole('link', { name: /^search$/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
 });
