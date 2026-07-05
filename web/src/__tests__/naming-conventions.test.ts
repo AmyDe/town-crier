@@ -59,7 +59,7 @@ describe('DI wrapper naming convention', () => {
 
     const connectedFiles = findConnectedFiles(featuresDir).sort();
 
-    // All 11 DI wrapper files should use Connected prefix (Groups removed; SavedApplications re-introduced; Search removed pre-launch — see tc-b1jo; Notifications decommissioned — see tc-1nsa.10)
+    // All 12 DI wrapper files should use Connected prefix (Groups removed; SavedApplications re-introduced; old Pro-tier free-text Search removed pre-launch (tc-b1jo) and replaced by the new anonymous public /search page (tc-geq7h.4, #821 Phase 4); Notifications decommissioned — see tc-1nsa.10)
     expect(connectedFiles).toEqual([
       'ConnectedApplicationDetailPage.tsx',
       'ConnectedApplicationsPage.tsx',
@@ -68,6 +68,7 @@ describe('DI wrapper naming convention', () => {
       'ConnectedMapPage.tsx',
       'ConnectedOnboardingPage.tsx',
       'ConnectedSavedApplicationsPage.tsx',
+      'ConnectedSearchPage.tsx',
       'ConnectedSettingsPage.tsx',
       'ConnectedWatchZoneCreatePage.tsx',
       'ConnectedWatchZoneEditPage.tsx',
