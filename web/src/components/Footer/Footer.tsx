@@ -22,6 +22,19 @@ export function Footer() {
           </a>
         </div>
 
+        {/*
+         * Plain full-page <a> tags, not React Router <Link>: /planning/ and
+         * /planning/towns/ are static-generated pages outside the SPA (#821
+         * Phases 1-2), and /search — though an in-SPA route (#821 Phase 4) —
+         * is kept in the same plain-anchor style as the legal nav below for
+         * visual/behavioural consistency across this footer.
+         */}
+        <nav aria-label="Explore" className={styles.explore}>
+          <a href="/planning/" className={styles.exploreLink}>Planning applications by council</a>
+          <a href="/planning/towns/" className={styles.exploreLink}>Planning applications by town</a>
+          <a href="/search" className={styles.exploreLink}>Search planning applications</a>
+        </nav>
+
         <div className={styles.bottom}>
           <p className={styles.copyright}>
             © {currentYear} Town Crier
