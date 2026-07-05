@@ -157,7 +157,7 @@ describe('assetlinks.json', () => {
   interface AssetLinksTarget {
     namespace: string;
     package_name: string;
-    sha256_cert_fingerprint: string[];
+    sha256_cert_fingerprints: string[];
   }
 
   interface AssetLinksEntry {
@@ -197,7 +197,7 @@ describe('assetlinks.json', () => {
       (entry) => entry.target.package_name === 'uk.towncrierapp.mobile.dev',
     );
 
-    expect(devEntry?.target.sha256_cert_fingerprint).toContain(
+    expect(devEntry?.target.sha256_cert_fingerprints).toContain(
       '75:2F:87:AF:52:B6:4D:33:71:ED:77:2A:2A:1C:D9:7A:A4:67:9E:1A:17:F0:9F:FD:92:12:D6:55:92:FD:0E:07',
     );
   });
