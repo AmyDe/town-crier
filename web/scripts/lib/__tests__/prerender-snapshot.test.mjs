@@ -248,14 +248,19 @@ describe('runFetch — snapshot mode', () => {
     expect(appsCalls[0].url).toContain('/v1/authorities/1/applications');
     expect(appsCalls[0].init.headers['X-Build-Key']).toBe('test-key');
 
-    // The below-threshold "Tiny" town never hits the geo endpoint: exactly one
-    // near call (for Truro), carrying order=distance and the build key.
+    // The below-threshold "Tiny" town never hits the geo endpoint itself: exactly
+    // one near call (for Truro), radius-bounded, no order=distance (tc-s0yf).
     const nearCalls = stub.calls.filter((c) =>
       c.url.includes('/v1/applications/near'),
     );
     expect(nearCalls).toHaveLength(1);
     expect(nearCalls[0].url).toContain('authorityId=52');
-    expect(nearCalls[0].url).toContain('order=distance');
+    expect(nearCalls[0].url).not.toContain('order=distance');
+    expect(nearCalls[0].url).toContain('radius=5000');
+    // ...but Tiny's centroid is STILL sent as Truro's sibling (decision 2, GH
+    // #819): every gazetteer town in an authority is a Voronoi sibling
+    // candidate for every other town, regardless of the population gate.
+    expect(nearCalls[0].url).toContain('sibling=50.1,-5.1,5000');
     expect(nearCalls[0].init.headers['X-Build-Key']).toBe('test-key');
 
     // Never PlanIt — only our own API.

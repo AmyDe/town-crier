@@ -211,8 +211,14 @@ describe('runPrerender — town live mode', () => {
     expect(nearCalls[0].url).toContain('lat=50.2632');
     expect(nearCalls[0].url).toContain('lng=-5.051');
     expect(nearCalls[0].url).toContain('limit=30');
-    // Selects the nearest-N by distance (the order=distance variant from tc-2avw.1).
-    expect(nearCalls[0].url).toContain('order=distance');
+    // tc-s0yf: the server now always returns town-partitioned, pre-ordered
+    // results — order=distance is gone, and the primary point carries an
+    // explicit radius (mirroring the server's own 5000m default).
+    expect(nearCalls[0].url).not.toContain('order=distance');
+    expect(nearCalls[0].url).toContain('radius=5000');
+    // Truro is the only gazetteer town in this authority, so no sibling
+    // centroid is sent at all.
+    expect(nearCalls[0].url).not.toContain('sibling=');
     expect(nearCalls[0].init.headers['X-Build-Key']).toBe('test-key');
 
     const html = await readFile(
@@ -468,6 +474,221 @@ describe('runPrerender — town live mode', () => {
   });
 });
 
+// Sibling centroid passthrough (tc-s0yf.2, GH #819): the near query now carries
+// one `sibling=lat,lng,radius` per OTHER gazetteer town in the same authority,
+// so the server can run its town-level Voronoi partition. All radii — primary
+// and sibling alike — use the same build-time default (5000m, mirroring the
+// server's own default) since the committed gazetteer has no per-town radius.
+describe('runPrerender — town live mode: sibling centroid passthrough (tc-s0yf.2)', () => {
+  const cornwallAuthorities = [
+    { id: 52, name: 'Cornwall', areaType: 'English County' },
+  ];
+
+  /** A geo stub that always clears the >=10 coverage gate for any town. */
+  function gatePassingStub() {
+    return new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: 52,
+            radius: 5000,
+            applications: [
+              {
+                uid: 'CW1',
+                name: 'PA26/0001',
+                address: 'Some address',
+                description: 'Some description',
+                appState: 'Permitted',
+                startDate: '2026-01-12',
+                lastDifferent: '2026-06-12T10:00:00+00:00',
+                link: null,
+                url: null,
+              },
+            ],
+            total: 14,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+  }
+
+  it('serializes every OTHER same-authority gazetteer town as a repeated sibling=lat,lng,radius param', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const falmouth = {
+      slug: 'falmouth',
+      name: 'Falmouth',
+      lat: 50.1526,
+      lng: -5.0745,
+      authorityId: 52,
+      population: 22000,
+    };
+    const newquay = {
+      slug: 'newquay',
+      name: 'Newquay',
+      lat: 50.4155,
+      lng: -5.0904,
+      authorityId: 52,
+      population: 21000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [truro, falmouth, newquay],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(3);
+
+    const truroCall = nearCalls.find((c) => c.url.includes('lat=50.2632'));
+    expect(truroCall).toBeDefined();
+    // Truro's siblings are Falmouth + Newquay (NOT Truro itself) — exactly two.
+    expect(truroCall.url).toContain('sibling=50.1526,-5.0745,5000');
+    expect(truroCall.url).toContain('sibling=50.4155,-5.0904,5000');
+    expect((truroCall.url.match(/sibling=/g) ?? [])).toHaveLength(2);
+    expect(truroCall.url).not.toContain('sibling=50.2632,-5.051,5000');
+  });
+
+  it('omits the sibling param entirely when the town is the only gazetteer town in its authority', async () => {
+    const soleTown = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [soleTown],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(1);
+    expect(nearCalls[0].url).not.toContain('sibling=');
+  });
+
+  it('still passes a below-population-threshold town as a sibling centroid, even though it is never itself fetched', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    // Below the default 20000 threshold: never gets its own near fetch, but its
+    // gazetteer centroid still contributes to the Voronoi partition (decision 2,
+    // GH #819) — all gazetteer towns in an authority are sibling candidates.
+    const tiny = {
+      slug: 'tiny',
+      name: 'Tiny',
+      lat: 50.3,
+      lng: -5.2,
+      authorityId: 52,
+      population: 5000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      env: {},
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [truro, tiny],
+      logger: silentLogger,
+    });
+
+    // Tiny never gets its own near call (below threshold)...
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(1);
+    // ...but its centroid IS sent as Truro's sibling.
+    expect(nearCalls[0].url).toContain('sibling=50.3,-5.2,5000');
+  });
+
+  it('never sends siblings for towns in a DIFFERENT authority', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const otherAuthorityTown = {
+      slug: 'elsewhere',
+      name: 'Elsewhere',
+      lat: 51.5,
+      lng: -0.1,
+      authorityId: 999,
+      population: 30000,
+    };
+    const stub = new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: url.includes('authorityId=52') ? 52 : 999,
+            radius: 5000,
+            applications: [],
+            total: 14,
+            statusBreakdown: [],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => [
+        ...cornwallAuthorities,
+        // Non-qualifying areaType (as cornwallAuthorities already is), so this
+        // test isolates the TOWN/near pipeline and never hits the authority
+        // applications endpoint.
+        { id: 999, name: 'Elsewhere Council', areaType: 'English County' },
+      ],
+      loadTowns: async () => [truro, otherAuthorityTown],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(2);
+    for (const call of nearCalls) {
+      expect(call.url).not.toContain('sibling=');
+    }
+  });
+});
+
 // resolveMinPopulation (tc-2avw.3): the build-time published-population gate is a
 // config value read from SEO_TOWN_MIN_POPULATION, defaulting to 20000 when the
 // var is missing, empty, or not a positive finite integer.
@@ -708,8 +929,9 @@ describe('runPrerender — population threshold filter (live mode)', () => {
 
 // The integration spine for the per-town SEO pipeline (tc-2avw.2): drives ONE
 // authority end-to-end through the two NEW pieces wired in this bead — the
-// `population` field in the gazetteer schema and the `order=distance` near param —
-// from gazetteer load → near fetch → coverage gate → page write → sitemap.
+// `population` field in the gazetteer schema and the near-query radius param
+// (order=distance is gone — tc-s0yf) — from gazetteer load → near fetch →
+// coverage gate → page write → sitemap.
 describe('runPrerender — per-town integration spine (one authority, end to end)', () => {
   const cornwallAuthorities = [
     { id: 52, name: 'Cornwall', areaType: 'English County' },
@@ -730,7 +952,7 @@ describe('runPrerender — per-town integration spine (one authority, end to end
     await expect(loadTownsFromFile('/fake/towns.json', readImpl)).rejects.toThrow();
   });
 
-  it('loads a population-bearing gazetteer, requests order=distance, gates, writes the page, and lists it in the sitemap', async () => {
+  it('loads a population-bearing gazetteer, requests a radius-bounded near read, gates, writes the page, and lists it in the sitemap', async () => {
     // 1) Gazetteer load: a real loadTownsFromFile round-trip carrying `population`.
     const gazetteer = async () =>
       JSON.stringify([
@@ -791,12 +1013,15 @@ describe('runPrerender — per-town integration spine (one authority, end to end
       logger: silentLogger,
     });
 
-    // 3) order=distance: the near request consumes the tc-2avw.1 param.
+    // 3) The near request is radius-bounded and no longer requests order=distance
+    // (tc-s0yf); a lone town in its authority sends no sibling param.
     const nearCalls = stub.calls.filter((c) =>
       c.url.includes('/v1/applications/near'),
     );
     expect(nearCalls).toHaveLength(1);
-    expect(nearCalls[0].url).toContain('order=distance');
+    expect(nearCalls[0].url).not.toContain('order=distance');
+    expect(nearCalls[0].url).toContain('radius=5000');
+    expect(nearCalls[0].url).not.toContain('sibling=');
 
     // No PlanIt at build time — only our own build-key-gated API.
     expect(stub.calls.every((c) => !c.url.includes('planit.org.uk'))).toBe(true);
