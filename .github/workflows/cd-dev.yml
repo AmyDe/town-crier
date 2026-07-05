@@ -177,28 +177,12 @@ jobs:
     timeout-minutes: 15
     environment: development
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/pgmigrate
         with:
-          persist-credentials: false
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: api-go/go.mod
-
-      - uses: ./.github/actions/azure-login
-        with:
+          database-name: town_crier_dev
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Apply migrations
-        working-directory: api-go
-        run: |
-          go run ./cmd/pgmigrate \
-            -host psql-town-crier-shared.postgres.database.azure.com \
-            -admin-user town-crier-github-actions \
-            -db town_crier_dev \
-            -timeout 600s
 
   # ── Go API: build & push image ──────────────────────
   api-go-image:

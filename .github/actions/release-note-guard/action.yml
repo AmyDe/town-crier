@@ -1,0 +1,83 @@
+# Guards a mobile PR that touches the platform's source tree: it must carry
+# either a `Release-Note:` trailer or a PR title with a recognised
+# conventional-commit type, so the store changelog never silently falls
+# back to a generic stock line.
+#
+# A user-facing platform change must surface in the store changelog. For
+# iOS, scripts/ios-release-notes.sh derives the TestFlight changelog from
+# (1) Release-Note: trailers, then (2) cleaned mobile/ios subjects — a PR
+# whose squash subject (the PR title) has no recognised conventional type
+# AND no Release-Note: trailer falls through to the stock line, which is
+# how v0.15.23's onboarding-wizard launch shipped with no real notes
+# (tc-0557). Android has no Play Store changelog generator yet (CD/signing
+# lands in #779), but enforcing the same Release-Note:/conventional-title
+# discipline now means no mobile/android/ PR needs retrofitting once that
+# automation exists — hence the iOS-only "changelog falls back" error line
+# below.
+#
+# Shared by pr-gate.yml's ios-release-note-guard and
+# android-release-note-guard jobs (issue #835 slice 5) — the two were
+# byte-identical apart from platform-specific wording. The category gating
+# (needs.changes.outputs.ios / .android) stays in pr-gate.yml; only the
+# steps move here.
+name: Release Note Guard
+description: Ensure a platform-touching PR carries a Release-Note trailer or a conventional-commit title
+
+inputs:
+  platform:
+    description: Platform identifier — ios or android
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    - name: Ensure ${{ inputs.platform }} changes carry a user-note signal
+      shell: bash
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        BASE_REF: ${{ github.base_ref }}
+        PLATFORM: ${{ inputs.platform }}
+      run: |
+        set -euo pipefail
+
+        case "$PLATFORM" in
+          ios)
+            DISPLAY_NAME="iOS"
+            STORE_NAME="App Store"
+            ;;
+          android)
+            DISPLAY_NAME="Android"
+            STORE_NAME="Play Store"
+            ;;
+          *)
+            echo "::error::Unknown platform '$PLATFORM' — expected ios or android"
+            exit 1
+            ;;
+        esac
+
+        # Signal 1: any Release-Note: trailer in the PR's commits.
+        if git log --format='%B' "origin/${BASE_REF}..HEAD" | grep -qiE '^Release-Note:'; then
+          echo "✓ Release-Note: trailer present — ${STORE_NAME} note authored verbatim."
+          exit 0
+        fi
+
+        # Signal 2: PR title carries a recognised conventional-commit type.
+        #   feat/fix   → generates a cleaned user note (Tier 2)
+        #   chore/ci/… → explicit, intentional opt-out (no note, by design)
+        if printf '%s' "$PR_TITLE" \
+            | grep -qiE '^(feat|fix|chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:'; then
+          echo "✓ PR title has a conventional-commit type prefix: $PR_TITLE"
+          exit 0
+        fi
+
+        echo "::error::${DISPLAY_NAME}-touching PR has no Release-Note: trailer and the PR title has no conventional-commit type prefix: '$PR_TITLE'"
+        if [ "$PLATFORM" = "ios" ]; then
+          echo "::error::The ${STORE_NAME} / TestFlight changelog would silently fall back to the generic stock line."
+        fi
+        echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(${PLATFORM}):/fix(${PLATFORM}): for user-facing changes, or chore(${PLATFORM}):/test(${PLATFORM}): etc. to opt out."
+        exit 1

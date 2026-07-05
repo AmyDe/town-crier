@@ -270,43 +270,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/release-note-guard
         with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Ensure iOS changes carry a user-note signal
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          # A user-facing iOS change must surface in the App Store / TestFlight
-          # changelog. scripts/ios-release-notes.sh derives that changelog from
-          # (1) Release-Note: trailers, then (2) cleaned mobile/ios subjects. A PR
-          # whose squash subject (the PR title) has no recognised conventional
-          # type AND no Release-Note: trailer falls through to the stock line —
-          # which is how v0.15.23's onboarding-wizard launch shipped with no real
-          # notes (tc-0557). Block that class of PR here.
-
-          # Signal 1: any Release-Note: trailer in the PR's commits.
-          if git log --format='%B' "origin/${BASE_REF}..HEAD" | grep -qiE '^Release-Note:'; then
-            echo "✓ Release-Note: trailer present — App Store note authored verbatim."
-            exit 0
-          fi
-
-          # Signal 2: PR title carries a recognised conventional-commit type.
-          #   feat/fix   → generates a cleaned user note (Tier 2)
-          #   chore/ci/… → explicit, intentional opt-out (no note, by design)
-          if printf '%s' "$PR_TITLE" \
-              | grep -qiE '^(feat|fix|chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:'; then
-            echo "✓ PR title has a conventional-commit type prefix: $PR_TITLE"
-            exit 0
-          fi
-
-          echo "::error::iOS-touching PR has no Release-Note: trailer and the PR title has no conventional-commit type prefix: '$PR_TITLE'"
-          echo "::error::The App Store / TestFlight changelog would silently fall back to the generic stock line."
-          echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(ios):/fix(ios): for user-facing changes, or chore(ios):/test(ios): etc. to opt out."
-          exit 1
+          platform: ios
 
   # ── Android ──────────────────────────────────────────
 
@@ -362,39 +328,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/release-note-guard
         with:
-          persist-credentials: false
-          fetch-depth: 0
-      - name: Ensure Android changes carry a user-note signal
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          # Mirrors ios-release-note-guard. There's no Play Store changelog
-          # generator yet (Android CD/signing lands in #779), but enforcing the
-          # same Release-Note:/conventional-title discipline now means no
-          # mobile/android/ PR needs retrofitting once that automation exists.
-
-          # Signal 1: any Release-Note: trailer in the PR's commits.
-          if git log --format='%B' "origin/${BASE_REF}..HEAD" | grep -qiE '^Release-Note:'; then
-            echo "✓ Release-Note: trailer present — Play Store note authored verbatim."
-            exit 0
-          fi
-
-          # Signal 2: PR title carries a recognised conventional-commit type.
-          #   feat/fix   → generates a cleaned user note (Tier 2)
-          #   chore/ci/… → explicit, intentional opt-out (no note, by design)
-          if printf '%s' "$PR_TITLE" \
-              | grep -qiE '^(feat|fix|chore|ci|docs|test|build|style|refactor|perf)(\([^)]*\))?!?:'; then
-            echo "✓ PR title has a conventional-commit type prefix: $PR_TITLE"
-            exit 0
-          fi
-
-          echo "::error::Android-touching PR has no Release-Note: trailer and the PR title has no conventional-commit type prefix: '$PR_TITLE'"
-          echo "::error::Fix one of: add a 'Release-Note: <plain-English user-facing change>' git trailer; OR retitle the PR with a type prefix — feat(android):/fix(android): for user-facing changes, or chore(android):/test(android): etc. to opt out."
-          exit 1
+          platform: android
 
   # ── Web ──────────────────────────────────────────────
 

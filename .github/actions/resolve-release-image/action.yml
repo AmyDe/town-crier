@@ -1,0 +1,106 @@
+# Resolves a cd-prod tag push to an IMMUTABLE DIGEST (registry/repo@sha256:…),
+# never a mutable tag. Prefers the exact tag-SHA image; falls back to the
+# current :latest digest; fails if neither exists. Deploying by digest means
+# a code change always rolls a new revision (digest differs) and an
+# unchanged image is a legitimate no-op — the silent ":latest string ==
+# :latest string" no-op that froze prod becomes impossible.
+#
+# Shared by cd-prod.yml's `api` and `worker` jobs (issue #835 slice 5) — the
+# only differences between call sites are `repo-name` (the ACR image
+# repository) and `display-name` (used in log/error text only: "Go API" vs
+# "worker", matching the pre-extraction wording exactly).
+#
+# Deliberately NOT included here: the actual deploy step
+# (deploy-container-app vs deploy-worker-jobs — different composite
+# actions/input shapes) and the post-deploy "tag deployed digest as durable
+# release" step. Both stay inline, verbatim, in cd-prod.yml:
+#   - the tag step MUST run strictly AFTER a successful deploy (it protects
+#     only digests that actually shipped — see cd-prod.yml's comment on that
+#     step); folding it into this single linear composite would force it to
+#     run before the deploy step, which is a real behavior change, not a
+#     verbatim extraction.
+#   - keeping deploy + tag inline keeps the highest-blast-radius part of a
+#     prod release trivially diffable by eye in the workflow file — this
+#     composite cannot be exercised by pr-gate (cd-prod.yml only triggers on
+#     a v* tag push), so minimising what's hidden behind it matters.
+name: Resolve Release Image
+description: Resolve a cd-prod tag push to an immutable ACR image digest, falling back to :latest
+
+inputs:
+  repo-name:
+    description: ACR image repository name (e.g., town-crier-api-go, town-crier-worker-go)
+    required: true
+  display-name:
+    description: Human-readable name for log/error text (e.g., "Go API", "worker")
+    required: true
+  acr-login-server:
+    description: Azure Container Registry login server
+    required: true
+  client-id:
+    description: Azure AD application (client) ID
+    required: true
+  tenant-id:
+    description: Azure AD tenant ID
+    required: true
+  subscription-id:
+    description: Azure subscription ID
+    required: true
+
+outputs:
+  image:
+    description: Resolved image reference (registry/repo@sha256:…)
+    value: ${{ steps.resolve-image.outputs.image }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    - name: Resolve tag to commit SHA
+      id: resolve
+      shell: bash
+      run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+
+    - uses: ./.github/actions/azure-login
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
+
+    - name: Resolve ${{ inputs.display-name }} image digest
+      id: resolve-image
+      shell: bash
+      run: |
+        ACR_SERVER="${{ inputs.acr-login-server }}"
+        ACR_NAME="${ACR_SERVER%.azurecr.io}"
+        REPO="${{ inputs.repo-name }}"
+        SHA="${{ steps.resolve.outputs.sha }}"
+
+        digest_for_tag() {
+          az acr repository show \
+            --name "$ACR_NAME" \
+            --image "${REPO}:$1" \
+            --query digest -o tsv 2>/dev/null
+        }
+
+        # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
+        # substitution aborts the step. Without it, a missing SHA-tagged image
+        # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
+        # CI-only merge) kills the job before the `latest` fallback can run.
+        DIGEST="$(digest_for_tag "$SHA" || true)"
+        if [ -n "$DIGEST" ]; then
+          echo "Using exact image for SHA $SHA ($DIGEST)"
+        else
+          DIGEST="$(digest_for_tag latest || true)"
+          if [ -n "$DIGEST" ]; then
+            echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
+          else
+            echo "::error::No ${{ inputs.display-name }} image found (tried SHA $SHA and latest)"
+            exit 1
+          fi
+        fi
+
+        echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"

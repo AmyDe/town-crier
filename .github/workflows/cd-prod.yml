@@ -103,28 +103,12 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: ./.github/actions/pgmigrate
         with:
-          persist-credentials: false
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: api-go/go.mod
-
-      - uses: ./.github/actions/azure-login
-        with:
+          database-name: town_crier_prod
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Apply migrations
-        working-directory: api-go
-        run: |
-          go run ./cmd/pgmigrate \
-            -host psql-town-crier-shared.postgres.database.azure.com \
-            -admin-user town-crier-github-actions \
-            -db town_crier_prod \
-            -timeout 600s
 
   # ── Go API ────────────────────────────────────────────
   api-go:
@@ -134,60 +118,16 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Resolve release image
+        id: resolve-image
+        uses: ./.github/actions/resolve-release-image
         with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Resolve tag to commit SHA
-        id: resolve
-        run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
-
-      - uses: ./.github/actions/azure-login
-        with:
+          repo-name: town-crier-api-go
+          display-name: "Go API"
+          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # Resolve to an IMMUTABLE DIGEST (registry/repo@sha256:…), never a
-      # mutable tag. Prefer the exact tag-SHA image; else fall back to the
-      # current :latest digest; else fail. Deploying by digest means a code
-      # change rolls a new revision (digest differs) and an unchanged image is
-      # a legitimate no-op — the silent ":latest string == :latest string"
-      # no-op that froze prod becomes impossible.
-      - name: Resolve Go API image digest
-        id: resolve-image
-        run: |
-          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
-          ACR_NAME="${ACR_SERVER%.azurecr.io}"
-          REPO="town-crier-api-go"
-          SHA="${{ steps.resolve.outputs.sha }}"
-
-          digest_for_tag() {
-            az acr repository show \
-              --name "$ACR_NAME" \
-              --image "${REPO}:$1" \
-              --query digest -o tsv 2>/dev/null
-          }
-
-          # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
-          # substitution aborts the step. Without it, a missing SHA-tagged image
-          # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
-          # CI-only merge) kills the job before the `latest` fallback can run.
-          DIGEST="$(digest_for_tag "$SHA" || true)"
-          if [ -n "$DIGEST" ]; then
-            echo "Using exact image for SHA $SHA ($DIGEST)"
-          else
-            DIGEST="$(digest_for_tag latest || true)"
-            if [ -n "$DIGEST" ]; then
-              echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
-            else
-              echo "::error::No Go API image found (tried SHA $SHA and latest)"
-              exit 1
-            fi
-          fi
-
-          echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/deploy-container-app
         with:
@@ -221,58 +161,19 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      # Same rationale as the Go API job above. Pinning the worker jobs to a
+      # digest makes each release run an exact, reproducible image instead of
+      # whatever :latest happens to resolve to at run time.
+      - name: Resolve release image
+        id: resolve-image
+        uses: ./.github/actions/resolve-release-image
         with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Resolve tag to commit SHA
-        id: resolve
-        run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
-
-      - uses: ./.github/actions/azure-login
-        with:
+          repo-name: town-crier-worker-go
+          display-name: "worker"
+          acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      # Resolve to an IMMUTABLE DIGEST (registry/repo@sha256:…), never a
-      # mutable tag — same rationale as the Go API job above. Pinning the
-      # worker jobs to a digest makes each release run an exact, reproducible
-      # image instead of whatever :latest happens to resolve to at run time.
-      - name: Resolve worker image digest
-        id: resolve-image
-        run: |
-          ACR_SERVER="${{ secrets.ACR_LOGIN_SERVER }}"
-          ACR_NAME="${ACR_SERVER%.azurecr.io}"
-          REPO="town-crier-worker-go"
-          SHA="${{ steps.resolve.outputs.sha }}"
-
-          digest_for_tag() {
-            az acr repository show \
-              --name "$ACR_NAME" \
-              --image "${REPO}:$1" \
-              --query digest -o tsv 2>/dev/null
-          }
-
-          # `|| true`: GitHub `run:` steps use `bash -e`, so a failed command
-          # substitution aborts the step. Without it, a missing SHA-tagged image
-          # (e.g. a tag whose commit didn't rebuild this image — an iOS-only or
-          # CI-only merge) kills the job before the `latest` fallback can run.
-          DIGEST="$(digest_for_tag "$SHA" || true)"
-          if [ -n "$DIGEST" ]; then
-            echo "Using exact image for SHA $SHA ($DIGEST)"
-          else
-            DIGEST="$(digest_for_tag latest || true)"
-            if [ -n "$DIGEST" ]; then
-              echo "No image for SHA $SHA — falling back to latest ($DIGEST)"
-            else
-              echo "::error::No worker image found (tried SHA $SHA and latest)"
-              exit 1
-            fi
-          fi
-
-          echo "image=${ACR_SERVER}/${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/deploy-worker-jobs
         with:
