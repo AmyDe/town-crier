@@ -1,8 +1,10 @@
 /**
  * Static prerender for the programmatic authority-level SEO pages
- * (`/planning/<slug>`). Runs AFTER `vite build`, emitting fully static,
- * hydration-free HTML into `web/dist/planning/<slug>/index.html` plus a
- * `web/dist/sitemap.xml`.
+ * (`/planning/<slug>`) plus the `/planning/` authority hub page (tc-geq7h.1,
+ * GH #821 Phase 1) — an A-Z index of every published authority, added from the
+ * SAME render pass with ZERO new data. Runs AFTER `vite build`, emitting fully
+ * static, hydration-free HTML into `web/dist/planning/<slug>/index.html` and
+ * `web/dist/planning/index.html`, plus a `web/dist/sitemap.xml`.
  *
  * Default (no-flag) run modes, selected by environment — UNCHANGED, this is what
  * `npm run build` invokes:
