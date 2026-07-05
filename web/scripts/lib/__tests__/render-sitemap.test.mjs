@@ -65,6 +65,23 @@ describe('renderSitemap', () => {
     expect(xml).toContain('<urlset');
     expect((xml.match(/<url>/g) ?? []).length).toBe(0);
   });
+
+  // tc-geq7h.1 (GH #821 Phase 1): the /planning/ hub itself is a sitemap entry
+  // with an empty path — its canonical is exactly /planning, with no trailing
+  // slash, matching the <link rel="canonical"> the hub page renders.
+  it('renders an empty path as the bare /planning root, with no trailing slash', () => {
+    const xml = renderSitemap([{ path: '' }]);
+    expect(xml).toContain(`<loc>${SITE_ORIGIN}/planning</loc>`);
+    expect(xml).not.toContain(`<loc>${SITE_ORIGIN}/planning/</loc>`);
+  });
+
+  it('supports a lastmod on the root /planning entry same as any other', () => {
+    const xml = renderSitemap([
+      { path: '', lastmod: '2026-06-20T10:00:00+00:00' },
+    ]);
+    expect(xml).toContain(`<loc>${SITE_ORIGIN}/planning</loc>`);
+    expect(xml).toContain('<lastmod>2026-06-20</lastmod>');
+  });
 });
 
 describe('sitemapLastmod', () => {

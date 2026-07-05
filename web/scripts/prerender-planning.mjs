@@ -1,8 +1,10 @@
 /**
  * Static prerender for the programmatic authority-level SEO pages
- * (`/planning/<slug>`). Runs AFTER `vite build`, emitting fully static,
- * hydration-free HTML into `web/dist/planning/<slug>/index.html` plus a
- * `web/dist/sitemap.xml`.
+ * (`/planning/<slug>`) plus the `/planning/` authority hub page (tc-geq7h.1,
+ * GH #821 Phase 1) — an A-Z index of every published authority, added from the
+ * SAME render pass with ZERO new data. Runs AFTER `vite build`, emitting fully
+ * static, hydration-free HTML into `web/dist/planning/<slug>/index.html` and
+ * `web/dist/planning/index.html`, plus a `web/dist/sitemap.xml`.
  *
  * Default (no-flag) run modes, selected by environment — UNCHANGED, this is what
  * `npm run build` invokes:
@@ -43,6 +45,7 @@ import { isQualifyingAreaType } from './lib/area-types.mjs';
 import { meetsCoverageGate } from './lib/coverage-gate.mjs';
 import { renderPlanningPage } from './lib/render-page.mjs';
 import { renderTownPage } from './lib/render-town-page.mjs';
+import { renderPlanningIndexPage } from './lib/render-planning-index.mjs';
 import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 import { isSameNameAsAuthority } from './lib/same-name.mjs';
@@ -429,6 +432,23 @@ async function writePage(outDir, data) {
 }
 
 /**
+ * Write the `/planning/` authority hub page (tc-geq7h.1, GH #821 Phase 1) to
+ * <outDir>/planning/index.html — a real, static file, never a fallback to the
+ * SPA shell. No authority ever slugifies to an empty string (verified against
+ * the full committed authority list), so this can never collide with an
+ * authority-slug directory.
+ *
+ * @param {string} outDir
+ * @param {import('./lib/render-planning-index.mjs').PlanningIndexData} data
+ * @returns {Promise<void>}
+ */
+async function writePlanningIndex(outDir, data) {
+  const dir = join(outDir, 'planning');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), renderPlanningIndexPage(data), 'utf-8');
+}
+
+/**
  * Read the hand-written base SWA config, merge a 301 redirect for every
  * suppressed same-name town page (tc-77ll), and write the result into the build
  * outDir. Without this, a suppressed `/planning/<x>/<x>` URL would fall through
@@ -474,6 +494,10 @@ async function writeRedirectConfig({ outDir, redirects, baseConfigPath }) {
  * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
  *   published towns keyed by parent authorityId, accumulated by the (earlier)
  *   town pass; the authority page links down to its own entry (sorted by name).
+ * @param {import('./lib/render-planning-index.mjs').PlanningIndexEntry[]} [args.hubEntries]
+ *   accumulates one entry per PUBLISHED authority for the `/planning/` hub
+ *   page (tc-geq7h.1) — never a non-qualifying or coverage-gated-out one, so
+ *   the hub can never link to a 404.
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
@@ -492,6 +516,7 @@ async function considerAuthority(args) {
     excluded,
     seenSlugs,
     townsByAuthority,
+    hubEntries,
     logger,
   } = args;
 
@@ -527,6 +552,15 @@ async function considerAuthority(args) {
   });
   published.push(slug);
   sitemapEntries.push({ path: slug, lastmod: maxLastmod(shown) });
+  if (hubEntries) {
+    const displayName = areaName || name;
+    hubEntries.push({
+      name: displayName,
+      slug,
+      applicationCount: total,
+      townCount: towns.length,
+    });
+  }
 }
 
 /**
@@ -832,6 +866,8 @@ async function renderEntries(args) {
   /** @type {Array<{ name: string, reason: string }>} */
   const excluded = [];
   const seenSlugs = new Set();
+  /** @type {import('./lib/render-planning-index.mjs').PlanningIndexEntry[]} */
+  const hubEntries = [];
 
   for (const entry of authorityEntries) {
     if (!isQualifyingAreaType(entry.areaType)) {
@@ -855,13 +891,30 @@ async function renderEntries(args) {
       excluded,
       seenSlugs,
       townsByAuthority,
+      hubEntries,
       logger,
     });
   }
 
+  const allSitemapEntries = [...authoritySitemapEntries, ...townSitemapEntries];
+
+  // `/planning/` hub page (tc-geq7h.1, GH #821 Phase 1): one A-Z index of every
+  // authority that was ACTUALLY published above (never a non-qualifying or
+  // coverage-gated-out one, so it can never link to a 404). Sorted here — the
+  // renderer itself only groups by letter, preserving whatever order it's
+  // given (see render-planning-index.mjs). Zero new data: every field comes
+  // from the SAME entries/towns this render pass already produced.
+  hubEntries.sort((a, b) => a.name.localeCompare(b.name));
+  await writePlanningIndex(outDir, { authorities: hubEntries });
+  // lastmod = the max across every child page (authority + town), the most
+  // honest freshness signal for a page whose own content is just a listing.
+  const hubLastmod = maxLastmod(
+    allSitemapEntries.map((e) => ({ lastDifferent: e.lastmod })),
+  );
+
   await writeFile(
     join(outDir, 'sitemap.xml'),
-    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
+    renderSitemap([{ path: '', lastmod: hubLastmod }, ...allSitemapEntries]),
     'utf-8',
   );
   await writeRedirectConfig({ outDir, redirects, baseConfigPath });

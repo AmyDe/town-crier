@@ -3,13 +3,27 @@ import { SITE_ORIGIN } from './constants.mjs';
 /**
  * @typedef {Object} SitemapEntry
  * @property {string} path        page path under /planning/, e.g. "adur" or
- *                                "cornwall/truro"
+ *                                "cornwall/truro". An EMPTY string is the
+ *                                `/planning/` hub page itself (tc-geq7h.1) —
+ *                                its `<loc>` is the bare `/planning` origin,
+ *                                with no trailing slash, matching the hub
+ *                                page's own `<link rel="canonical">`.
  * @property {string} [lastmod]   the page's content-derived freshness signal —
  *                                the ISO `lastDifferent` of the most-recently
- *                                changed application shown on the page. Reduced
- *                                to a W3C `YYYY-MM-DD` date in the output;
- *                                omitted from the `<url>` when absent/invalid.
+ *                                changed application shown on the page (for
+ *                                the hub page, the max lastmod across every
+ *                                child page). Reduced to a W3C `YYYY-MM-DD`
+ *                                date in the output; omitted from the `<url>`
+ *                                when absent/invalid.
  */
+
+/**
+ * @param {string} path
+ * @returns {string} the absolute canonical URL for a sitemap entry's path
+ */
+function locFor(path) {
+  return path ? `${SITE_ORIGIN}/planning/${path}` : `${SITE_ORIGIN}/planning`;
+}
 
 /**
  * Reduce an ISO `lastDifferent` timestamp to the `YYYY-MM-DD` date the sitemap
@@ -45,7 +59,7 @@ export function sitemapLastmod(iso) {
 export function renderSitemap(entries) {
   const urls = entries
     .map((entry) => {
-      const loc = `    <loc>${SITE_ORIGIN}/planning/${entry.path}</loc>`;
+      const loc = `    <loc>${locFor(entry.path)}</loc>`;
       const lastmod = sitemapLastmod(entry.lastmod);
       const lines = lastmod
         ? `${loc}\n    <lastmod>${lastmod}</lastmod>`

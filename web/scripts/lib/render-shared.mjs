@@ -452,6 +452,26 @@ export function pageStyles() {
       font-weight: 600;
     }
     .townLinks__list a:hover { color: var(--tc-amber-hover); border-color: var(--tc-amber); }
+    /* /planning/ authority hub (tc-geq7h.1): an A-Z jump nav plus one
+       <section> per letter, each holding a flat list of authority links with
+       a small metadata line (application/town counts). */
+    .azNav { display: flex; flex-wrap: wrap; gap: var(--tc-space-sm); margin: 0 0 var(--tc-space-lg); font-weight: 600; }
+    .azNav a { color: var(--tc-amber); text-decoration: none; }
+    .azNav a:hover { color: var(--tc-amber-hover); text-decoration: underline; }
+    .hubGroup { scroll-margin-top: var(--tc-space-md); }
+    .hubList { list-style: none; margin: 0 0 var(--tc-space-lg); padding: 0; display: grid; gap: var(--tc-space-sm); }
+    .hubList__item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--tc-space-sm);
+      padding: var(--tc-space-sm) 0;
+      border-bottom: 1px solid var(--tc-border);
+    }
+    .hubList__link { color: var(--tc-text-primary); font-weight: 600; text-decoration: none; }
+    .hubList__link:hover { color: var(--tc-amber); text-decoration: underline; }
+    .hubList__meta { color: var(--tc-text-secondary); font-size: 0.875rem; white-space: nowrap; }
     .explainer p { color: var(--tc-text-secondary); }
     /* Inline alerts CTA pulled above the list (tc-r4n9.3): a lighter pill,
        visually distinct from the rectangular bottom banner button below. */
