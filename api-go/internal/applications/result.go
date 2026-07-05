@@ -110,12 +110,15 @@ type RecentByAuthorityResult struct {
 // GET /v1/applications/near. It mirrors RecentByAuthorityResult but echoes the
 // effective (post-clamp) query point and radius instead of an area name, so the
 // town prerender can label and cache the page by its centroid. Applications is
-// always a non-null array (at most the request's limit). Total is the EXACT
-// whole-in-radius total: the sum of the StatusBreakdown buckets, so the rendered
-// "tracking N applications" lead line always equals the breakdown. StatusBreakdown
-// is the per-appState distribution over the WHOLE in-radius set (its denominator
-// is the whole in-radius set, not the bounded read), computed by an index-served
-// spatial GROUP BY, always a non-null array.
+// always a non-null array (at most the request's limit), assigned to this town
+// by the query-time Voronoi partition against the request's sibling centroids
+// (#819 decisions 2-3) — no application appears on two sibling towns' pages.
+// Total and StatusBreakdown are DELIBERATELY NOT partitioned: they are the
+// EXACT whole-in-radius figures around this town's own point/radius alone (an
+// index-served spatial GROUP BY), so Total is the sum of the StatusBreakdown
+// buckets and always a non-null array — but it can be larger than
+// len(Applications) even discounting the bounded-read cap, since it does not
+// subtract applications a sibling town's nearer centroid has claimed.
 type RecentNearbyResult struct {
 	AuthorityID     int                 `json:"authorityId"`
 	Lat             float64             `json:"lat"`
@@ -131,7 +134,9 @@ type RecentNearbyResult struct {
 // identity, and the unread-event projection are deliberately omitted.
 // lastDifferent is the DESC sort key of the bounded read, carried so the web card
 // can show a "Last updated" date that matches the list order; it is non-pointer
-// because the domain always carries it.
+// because the domain always carries it. decidedDate (#819 decision 5) is the
+// real-world "Decided" date shown alongside startDate's "Started" on the card;
+// nil while the application is still undecided.
 type RecentApplication struct {
 	UID           string              `json:"uid"`
 	Name          string              `json:"name"`
@@ -139,6 +144,7 @@ type RecentApplication struct {
 	Description   string              `json:"description"`
 	AppState      *string             `json:"appState"`
 	StartDate     *platform.DateOnly  `json:"startDate"`
+	DecidedDate   *platform.DateOnly  `json:"decidedDate"`
 	LastDifferent platform.DotNetTime `json:"lastDifferent"`
 	Link          *string             `json:"link"`
 	URL           *string             `json:"url"`
@@ -153,6 +159,7 @@ func RecentApplicationOf(a PlanningApplication) RecentApplication {
 		Description:   a.Description,
 		AppState:      a.AppState,
 		StartDate:     platform.DateOnlyPtr(a.StartDate),
+		DecidedDate:   platform.DateOnlyPtr(a.DecidedDate),
 		LastDifferent: platform.DotNetTime(a.LastDifferent),
 		Link:          a.Link,
 		URL:           a.URL,

@@ -22,6 +22,37 @@ func TestRecentApplicationOf_IncludesLastDifferent(t *testing.T) {
 	}
 }
 
+// TestRecentApplicationOf_IncludesDecidedDate proves the slim SEO projection
+// carries decidedDate (#819 decision 5) so a card can render "Decided 9 Jul
+// 2021" alongside "Started ...", independent of the ordering-only StartDate.
+func TestRecentApplicationOf_IncludesDecidedDate(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+
+	got := RecentApplicationOf(a)
+
+	if got.DecidedDate == nil {
+		t.Fatalf("DecidedDate: got nil, want %v", *a.DecidedDate)
+	}
+	if !time.Time(*got.DecidedDate).Equal(*a.DecidedDate) {
+		t.Errorf("DecidedDate: got %v, want %v", time.Time(*got.DecidedDate), *a.DecidedDate)
+	}
+}
+
+// TestRecentApplicationOf_NilDecidedDateStaysNil proves an undecided
+// application (still pending) round-trips DecidedDate as nil, not a zero date.
+func TestRecentApplicationOf_NilDecidedDateStaysNil(t *testing.T) {
+	t.Parallel()
+	a := testApplication(t)
+	a.DecidedDate = nil
+
+	got := RecentApplicationOf(a)
+
+	if got.DecidedDate != nil {
+		t.Errorf("DecidedDate: got %v, want nil", *got.DecidedDate)
+	}
+}
+
 // assertBreakdownEqual compares two breakdown slices positionally, including the
 // nullable AppState pointer values.
 func assertBreakdownEqual(t *testing.T, got, want []StateCount) {

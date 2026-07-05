@@ -16,6 +16,7 @@ import {
   statusDisplayLabel,
   aggregateStatusSummary,
   dataUpdatedLine,
+  formatDate,
 } from './format.mjs';
 
 /**
@@ -26,6 +27,9 @@ import {
  * @property {string} description
  * @property {string | null} appState
  * @property {string | null} startDate      yyyy-MM-dd
+ * @property {string | null} [decidedDate]  yyyy-MM-dd; when present, takes precedence over
+ *   `startDate` for the card's Started/Decided line (tc-s0yf, GH #819) — the more final,
+ *   informative lifecycle event. Optional/nullable: absent on an undecided application.
  * @property {string} lastDifferent         ISO-8601 with offset; the DESC sort key
  * @property {string | null} link           PlanIt permalink (always a reliable per-application record). No longer rendered
  *   as a per-card link (decision 6); kept only as a JSON-LD `url` fallback when no share URL can be built.
@@ -63,6 +67,31 @@ function statusColorModifier(appState) {
 }
 
 /**
+ * Build the card's Started/Decided date line (tc-s0yf, GH #819 acceptance).
+ * `decidedDate` is the more final, informative lifecycle event, so it takes
+ * precedence over `startDate` when both are present ("Decided 9 Jul 2021").
+ * With only a `startDate`, the application is still awaiting a decision
+ * ("Started 4 Jul 2026 · Awaiting decision"). `formatDate` already reduces a
+ * null/undefined/unparseable date to `''`, so a missing or malformed date
+ * simply falls through — this never emits "undefined" or "Invalid Date".
+ * Returns `''` (no line at all) when neither date is present/parseable.
+ *
+ * @param {PlanningApplicationItem} app
+ * @returns {string}
+ */
+function applicationDateLine(app) {
+  const decided = formatDate(app.decidedDate);
+  if (decided) {
+    return `Decided ${decided}`;
+  }
+  const started = formatDate(app.startDate);
+  if (started) {
+    return `Started ${started} · Awaiting decision`;
+  }
+  return '';
+}
+
+/**
  * @param {PlanningApplicationItem} app
  * @param {string} [authoritySlug] the page's authority slug; when present (and
  *   the app carries a ref), the whole card becomes a do-follow link to our own
@@ -82,6 +111,11 @@ function renderApplication(app, authoritySlug) {
   // entirely when the app carries none.
   const address = escapeHtml(app.address);
   const ref = escapeHtml(app.name);
+  // Real-world Started/Decided date (tc-s0yf, GH #819) — immune to PlanIt's
+  // last_different re-index marker. escapeHtml is redundant here (formatDate's
+  // output is already a safe short-form string) but kept for consistency with
+  // every other data-derived string in this function.
+  const dateLine = escapeHtml(applicationDateLine(app));
 
   // Per-card external links to PlanIt/the council are retired (decision 6):
   // the card's one click target is our own share page, surfaced as a real,
@@ -95,6 +129,7 @@ function renderApplication(app, authoritySlug) {
           <span class="status status--${modifier}">${label}</span>
         </div>
         ${ref ? `<p class="appCard__ref">${ref}</p>` : ''}
+        ${dateLine ? `<p class="appCard__dates">${dateLine}</p>` : ''}
         <p class="appCard__desc">${description}</p>
         <div class="appCard__meta">
           ${share ? `<span class="appCard__cta">View details →</span>` : ''}
@@ -371,6 +406,9 @@ export function pageStyles() {
     .appCard__address { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
     /* The council reference is demoted to small metadata under the headline. */
     .appCard__ref { margin: var(--tc-space-sm) 0; font-size: 0.8125rem; color: var(--tc-text-secondary); overflow-wrap: anywhere; }
+    /* Started/Decided real-world date line (tc-s0yf, GH #819) — same secondary
+       metadata treatment as the reference line above it. */
+    .appCard__dates { margin: 0 0 var(--tc-space-sm); font-size: 0.8125rem; color: var(--tc-text-secondary); }
     .appCard__desc { margin: 0 0 var(--tc-space-sm); color: var(--tc-text-secondary); }
     .appCard__meta { display: flex; flex-wrap: wrap; gap: var(--tc-space-md); align-items: center; font-size: 0.875rem; }
     /* Visible share-page affordance (decision 6) — a real anchor, not a

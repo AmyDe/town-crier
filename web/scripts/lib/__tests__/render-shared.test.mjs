@@ -215,6 +215,55 @@ describe('renderApplicationsList status chip vocabulary (decision 4: shared voca
   });
 });
 
+describe('renderApplicationsList Started/Decided date line (tc-s0yf, GH #819)', () => {
+  it('renders "Decided <date>" when decidedDate is set, even if startDate is also set (decided takes precedence)', () => {
+    const html = renderApplicationsList(
+      [application({ startDate: '2021-05-28', decidedDate: '2021-07-09' })],
+      SLUG,
+    );
+    expect(html).toContain('<p class="appCard__dates">Decided 9 Jul 2021</p>');
+    expect(html).not.toContain('Started 28 May 2021');
+  });
+
+  it('renders "Started <date> · Awaiting decision" when only startDate is set', () => {
+    const html = renderApplicationsList(
+      [application({ startDate: '2026-07-04', decidedDate: null })],
+      SLUG,
+    );
+    expect(html).toContain(
+      '<p class="appCard__dates">Started 4 Jul 2026 · Awaiting decision</p>',
+    );
+  });
+
+  it('renders "Decided <date>" when only decidedDate is set (no startDate)', () => {
+    const html = renderApplicationsList(
+      [application({ startDate: null, decidedDate: '2021-07-09' })],
+      SLUG,
+    );
+    expect(html).toContain('<p class="appCard__dates">Decided 9 Jul 2021</p>');
+  });
+
+  it('renders no date line at all when neither date is present, without crashing or emitting "undefined"/"Invalid Date"', () => {
+    const html = renderApplicationsList(
+      [application({ startDate: null, decidedDate: null })],
+      SLUG,
+    );
+    expect(html).not.toContain('appCard__dates');
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('Invalid Date');
+  });
+
+  it('handles a missing decidedDate key entirely (not just null) without crashing', () => {
+    const app = application({ startDate: '2026-01-15' });
+    delete app.decidedDate;
+    const html = renderApplicationsList([app], SLUG);
+    expect(html).toContain(
+      '<p class="appCard__dates">Started 15 Jan 2026 · Awaiting decision</p>',
+    );
+    expect(html).not.toContain('undefined');
+  });
+});
+
 describe('renderStatusSummary (tc-r4n9.3: compact Granted/Refused/Undecided strip)', () => {
   const BREAKDOWN = [
     { appState: 'Permitted', count: 20 },
@@ -345,6 +394,14 @@ describe('pageStyles appCard__link (whole-card share-page affordance)', () => {
     const css = pageStyles();
     expect(css).toContain('.appCard__cta');
     expect(css).toMatch(/\.appCard__cta \{[^}]*var\(--tc-amber\)/);
+  });
+});
+
+describe('pageStyles appCard__dates (Started/Decided date line, tc-s0yf)', () => {
+  it('styles the date line as secondary metadata text using design tokens', () => {
+    const css = pageStyles();
+    expect(css).toContain('.appCard__dates');
+    expect(css).toMatch(/\.appCard__dates \{[^}]*var\(--tc-text-secondary\)/);
   });
 });
 

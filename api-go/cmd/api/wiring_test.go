@@ -124,10 +124,7 @@ func (fakeAppStore) FindInZonePage(context.Context, applications.InZoneQuery) ([
 func (fakeAppStore) FindClustersInZone(context.Context, applications.ClusterQuery) ([]applications.Cluster, error) {
 	return nil, nil
 }
-func (fakeAppStore) RecentNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
-	return nil, nil
-}
-func (fakeAppStore) NearestNearby(context.Context, string, float64, float64, float64, int) ([]applications.PlanningApplication, error) {
+func (fakeAppStore) RecentNearestTown(context.Context, string, float64, float64, float64, []applications.TownCentroid, int) ([]applications.PlanningApplication, error) {
 	return nil, nil
 }
 func (fakeAppStore) BreakdownNearby(context.Context, string, float64, float64, float64) ([]applications.StateCount, error) {

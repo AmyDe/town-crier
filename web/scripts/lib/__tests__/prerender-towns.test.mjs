@@ -211,8 +211,14 @@ describe('runPrerender — town live mode', () => {
     expect(nearCalls[0].url).toContain('lat=50.2632');
     expect(nearCalls[0].url).toContain('lng=-5.051');
     expect(nearCalls[0].url).toContain('limit=30');
-    // Selects the nearest-N by distance (the order=distance variant from tc-2avw.1).
-    expect(nearCalls[0].url).toContain('order=distance');
+    // tc-s0yf: the server now always returns town-partitioned, pre-ordered
+    // results — order=distance is gone, and the primary point carries an
+    // explicit radius (mirroring the server's own 5000m default).
+    expect(nearCalls[0].url).not.toContain('order=distance');
+    expect(nearCalls[0].url).toContain('radius=5000');
+    // Truro is the only gazetteer town in this authority, so no sibling
+    // centroid is sent at all.
+    expect(nearCalls[0].url).not.toContain('sibling=');
     expect(nearCalls[0].init.headers['X-Build-Key']).toBe('test-key');
 
     const html = await readFile(
@@ -222,10 +228,15 @@ describe('runPrerender — town live mode', () => {
     expect(html).toContain('<h1>Planning applications in Truro</h1>');
   });
 
-  it('displays the distance-ordered set newest-first, regardless of the order the API returned', async () => {
-    // The build requests order=distance, so the API returns the nearest-N — NOT
-    // recency-ordered. Here the nearest app (CW-NEAR) is the OLDEST and a farther
-    // app (CW-FAR) is the NEWEST, so a recency display MUST reorder them.
+  it('renders the applications in the exact order the API returned them (no client-side re-sort, tc-s0yf)', async () => {
+    // The near read is now fully server-ordered (town-level Voronoi partition +
+    // GREATEST(decidedDate, startDate) DESC, tc-s0yf) — replacing the old
+    // order=distance + client re-sort-by-lastDifferent pipeline. This fixture
+    // deliberately puts the OLDER-lastDifferent app FIRST in the API response and
+    // the NEWER-lastDifferent app SECOND: if the old client-side recency re-sort
+    // were still running, it would flip them. It must not — the page must render
+    // the API's given order as-is, proving the re-sort is truly gone (not just
+    // reordered to a no-op).
     const stub = new StubFetch((url) => {
       if (url.includes('/v1/applications/near')) {
         return {
@@ -238,25 +249,27 @@ describe('runPrerender — town live mode', () => {
             radius: 5000,
             applications: [
               {
-                uid: 'CW-NEAR',
-                name: 'PA26/NEAR',
-                address: 'Nearest, Truro',
-                description: 'Closest by distance but oldest change',
+                uid: 'CW-FIRST',
+                name: 'PA26/FIRST',
+                address: 'First In API Order, Truro',
+                description: 'Server-ordered first, despite an OLDER lastDifferent',
                 appState: 'Permitted',
                 startDate: '2026-01-01',
+                decidedDate: null,
                 lastDifferent: '2026-06-01T08:00:00+00:00',
-                link: 'https://planit.org.uk/planapplic/CW-NEAR',
+                link: 'https://planit.org.uk/planapplic/CW-FIRST',
                 url: null,
               },
               {
-                uid: 'CW-FAR',
-                name: 'PA26/FAR',
-                address: 'Farther, Truro',
-                description: 'Farther by distance but freshest change',
+                uid: 'CW-SECOND',
+                name: 'PA26/SECOND',
+                address: 'Second In API Order, Truro',
+                description: 'Server-ordered second, despite a NEWER lastDifferent',
                 appState: 'Rejected',
                 startDate: '2026-02-02',
+                decidedDate: '2026-06-20',
                 lastDifferent: '2026-06-20T09:00:00+00:00',
-                link: 'https://planit.org.uk/planapplic/CW-FAR',
+                link: 'https://planit.org.uk/planapplic/CW-SECOND',
                 url: null,
               },
             ],
@@ -282,21 +295,17 @@ describe('runPrerender — town live mode', () => {
       join(outDir, 'planning', 'cornwall', 'truro', 'index.html'),
       'utf-8',
     );
-    // The freshest card (Farther, changed 20 Jun) appears BEFORE the oldest
-    // (Nearest, changed 1 Jun) - recency DESC, even though the API fed them
-    // distance-order (nearest/oldest first). The per-card date is gone
-    // (tc-r4n9.3), so address text is the proxy for card order here; the
-    // single page-level "Data updated" line is asserted separately below.
-    expect(html).toContain('Farther, Truro');
-    expect(html).toContain('Nearest, Truro');
-    expect(html.indexOf('Farther, Truro')).toBeLessThan(
-      html.indexOf('Nearest, Truro'),
+    expect(html).toContain('First In API Order, Truro');
+    expect(html).toContain('Second In API Order, Truro');
+    expect(html.indexOf('First In API Order, Truro')).toBeLessThan(
+      html.indexOf('Second In API Order, Truro'),
     );
-    // The page-level "Data updated" line reflects the freshest shown date.
+    // The page-level "Data updated" line is unaffected by render order — still
+    // the freshest lastDifferent among the shown set.
     expect(html).toContain('Data updated 20 Jun 2026');
 
-    // The page's sitemap lastmod is the freshest shown app (20 Jun), proving the
-    // lastmod is derived AFTER the recency sort and matches what the cards show.
+    // The sitemap lastmod is likewise the freshest shown app's lastDifferent,
+    // independent of render order.
     const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf-8');
     expect(sitemap).toContain('<lastmod>2026-06-20</lastmod>');
   });
@@ -462,6 +471,221 @@ describe('runPrerender — town live mode', () => {
         logger: silentLogger,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// Sibling centroid passthrough (tc-s0yf.2, GH #819): the near query now carries
+// one `sibling=lat,lng,radius` per OTHER gazetteer town in the same authority,
+// so the server can run its town-level Voronoi partition. All radii — primary
+// and sibling alike — use the same build-time default (5000m, mirroring the
+// server's own default) since the committed gazetteer has no per-town radius.
+describe('runPrerender — town live mode: sibling centroid passthrough (tc-s0yf.2)', () => {
+  const cornwallAuthorities = [
+    { id: 52, name: 'Cornwall', areaType: 'English County' },
+  ];
+
+  /** A geo stub that always clears the >=10 coverage gate for any town. */
+  function gatePassingStub() {
+    return new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: 52,
+            radius: 5000,
+            applications: [
+              {
+                uid: 'CW1',
+                name: 'PA26/0001',
+                address: 'Some address',
+                description: 'Some description',
+                appState: 'Permitted',
+                startDate: '2026-01-12',
+                lastDifferent: '2026-06-12T10:00:00+00:00',
+                link: null,
+                url: null,
+              },
+            ],
+            total: 14,
+            statusBreakdown: [{ appState: 'Permitted', count: 14 }],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+  }
+
+  it('serializes every OTHER same-authority gazetteer town as a repeated sibling=lat,lng,radius param', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const falmouth = {
+      slug: 'falmouth',
+      name: 'Falmouth',
+      lat: 50.1526,
+      lng: -5.0745,
+      authorityId: 52,
+      population: 22000,
+    };
+    const newquay = {
+      slug: 'newquay',
+      name: 'Newquay',
+      lat: 50.4155,
+      lng: -5.0904,
+      authorityId: 52,
+      population: 21000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [truro, falmouth, newquay],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(3);
+
+    const truroCall = nearCalls.find((c) => c.url.includes('lat=50.2632'));
+    expect(truroCall).toBeDefined();
+    // Truro's siblings are Falmouth + Newquay (NOT Truro itself) — exactly two.
+    expect(truroCall.url).toContain('sibling=50.1526,-5.0745,5000');
+    expect(truroCall.url).toContain('sibling=50.4155,-5.0904,5000');
+    expect((truroCall.url.match(/sibling=/g) ?? [])).toHaveLength(2);
+    expect(truroCall.url).not.toContain('sibling=50.2632,-5.051,5000');
+  });
+
+  it('omits the sibling param entirely when the town is the only gazetteer town in its authority', async () => {
+    const soleTown = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [soleTown],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(1);
+    expect(nearCalls[0].url).not.toContain('sibling=');
+  });
+
+  it('still passes a below-population-threshold town as a sibling centroid, even though it is never itself fetched', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    // Below the default 20000 threshold: never gets its own near fetch, but its
+    // gazetteer centroid still contributes to the Voronoi partition (decision 2,
+    // GH #819) — all gazetteer towns in an authority are sibling candidates.
+    const tiny = {
+      slug: 'tiny',
+      name: 'Tiny',
+      lat: 50.3,
+      lng: -5.2,
+      authorityId: 52,
+      population: 5000,
+    };
+    const stub = gatePassingStub();
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      env: {},
+      loadAuthorities: async () => cornwallAuthorities,
+      loadTowns: async () => [truro, tiny],
+      logger: silentLogger,
+    });
+
+    // Tiny never gets its own near call (below threshold)...
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(1);
+    // ...but its centroid IS sent as Truro's sibling.
+    expect(nearCalls[0].url).toContain('sibling=50.3,-5.2,5000');
+  });
+
+  it('never sends siblings for towns in a DIFFERENT authority', async () => {
+    const truro = {
+      slug: 'truro',
+      name: 'Truro',
+      lat: 50.2632,
+      lng: -5.051,
+      authorityId: 52,
+      population: 25000,
+    };
+    const otherAuthorityTown = {
+      slug: 'elsewhere',
+      name: 'Elsewhere',
+      lat: 51.5,
+      lng: -0.1,
+      authorityId: 999,
+      population: 30000,
+    };
+    const stub = new StubFetch((url) => {
+      if (url.includes('/v1/applications/near')) {
+        return {
+          ok: true,
+          status: 200,
+          body: {
+            authorityId: url.includes('authorityId=52') ? 52 : 999,
+            radius: 5000,
+            applications: [],
+            total: 14,
+            statusBreakdown: [],
+          },
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    await runPrerender({
+      outDir,
+      apiBase: 'https://api-dev.towncrierapp.uk',
+      buildKey: 'test-key',
+      fetchImpl: stub.fetch,
+      loadAuthorities: async () => [
+        ...cornwallAuthorities,
+        // Non-qualifying areaType (as cornwallAuthorities already is), so this
+        // test isolates the TOWN/near pipeline and never hits the authority
+        // applications endpoint.
+        { id: 999, name: 'Elsewhere Council', areaType: 'English County' },
+      ],
+      loadTowns: async () => [truro, otherAuthorityTown],
+      logger: silentLogger,
+    });
+
+    const nearCalls = stub.calls.filter((c) => c.url.includes('/v1/applications/near'));
+    expect(nearCalls).toHaveLength(2);
+    for (const call of nearCalls) {
+      expect(call.url).not.toContain('sibling=');
+    }
   });
 });
 
@@ -705,8 +929,9 @@ describe('runPrerender — population threshold filter (live mode)', () => {
 
 // The integration spine for the per-town SEO pipeline (tc-2avw.2): drives ONE
 // authority end-to-end through the two NEW pieces wired in this bead — the
-// `population` field in the gazetteer schema and the `order=distance` near param —
-// from gazetteer load → near fetch → coverage gate → page write → sitemap.
+// `population` field in the gazetteer schema and the near-query radius param
+// (order=distance is gone — tc-s0yf) — from gazetteer load → near fetch →
+// coverage gate → page write → sitemap.
 describe('runPrerender — per-town integration spine (one authority, end to end)', () => {
   const cornwallAuthorities = [
     { id: 52, name: 'Cornwall', areaType: 'English County' },
@@ -727,7 +952,7 @@ describe('runPrerender — per-town integration spine (one authority, end to end
     await expect(loadTownsFromFile('/fake/towns.json', readImpl)).rejects.toThrow();
   });
 
-  it('loads a population-bearing gazetteer, requests order=distance, gates, writes the page, and lists it in the sitemap', async () => {
+  it('loads a population-bearing gazetteer, requests a radius-bounded near read, gates, writes the page, and lists it in the sitemap', async () => {
     // 1) Gazetteer load: a real loadTownsFromFile round-trip carrying `population`.
     const gazetteer = async () =>
       JSON.stringify([
@@ -788,12 +1013,15 @@ describe('runPrerender — per-town integration spine (one authority, end to end
       logger: silentLogger,
     });
 
-    // 3) order=distance: the near request consumes the tc-2avw.1 param.
+    // 3) The near request is radius-bounded and no longer requests order=distance
+    // (tc-s0yf); a lone town in its authority sends no sibling param.
     const nearCalls = stub.calls.filter((c) =>
       c.url.includes('/v1/applications/near'),
     );
     expect(nearCalls).toHaveLength(1);
-    expect(nearCalls[0].url).toContain('order=distance');
+    expect(nearCalls[0].url).not.toContain('order=distance');
+    expect(nearCalls[0].url).toContain('radius=5000');
+    expect(nearCalls[0].url).not.toContain('sibling=');
 
     // No PlanIt at build time — only our own build-key-gated API.
     expect(stub.calls.every((c) => !c.url.includes('planit.org.uk'))).toBe(true);

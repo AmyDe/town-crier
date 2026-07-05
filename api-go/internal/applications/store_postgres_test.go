@@ -296,18 +296,38 @@ func TestPostgresStore_GetByUID(t *testing.T) {
 
 // TestPostgresStore_RecentByAuthority orders by last_different DESC, bounds by
 // cap, and scopes to the authority.
-func TestPostgresStore_RecentByAuthority(t *testing.T) {
+// TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast proves the
+// #819 fix directly: ordering is GREATEST(decided_date, start_date) DESC NULLS
+// LAST, NOT last_different (a PlanIt re-index marker that can bump to "now" on
+// an old application and float it to the top). A stale-but-recently-reindexed
+// application (bumped LastDifferent, real dates from years ago) must sort
+// behind a genuinely newer one, and an application with neither date set sorts
+// last rather than erroring or vanishing.
+func TestPostgresStore_RecentByAuthority_OrdersByRealDateDescNullsLast(t *testing.T) {
 	ctx := context.Background()
 	store := newAppPGStore(t)
 
-	older := pgApp("OLD", 100)
-	older.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	mid := pgApp("MID", 100)
-	mid.LastDifferent = time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
-	newer := pgApp("NEW", 100)
-	newer.LastDifferent = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	decidedRecent := pgApp("DECIDED-RECENT", 100)
+	decidedRecent.StartDate = pgPtr(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.DecidedDate = pgPtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+	decidedRecent.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // NOT the sort key
+
+	startedOnly := pgApp("STARTED-ONLY", 100)
+	startedOnly.StartDate = pgPtr(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+
+	// Stale application: real dates from 2021, but PlanIt re-indexed it, bumping
+	// LastDifferent to "now" — exactly the Croydon DISC bug (#819). It must NOT
+	// float to the top under the fixed ordering.
+	staleReindexed := pgApp("STALE-REINDEXED", 100)
+	staleReindexed.StartDate = pgPtr(time.Date(2021, 5, 28, 0, 0, 0, 0, time.UTC))
+	staleReindexed.DecidedDate = pgPtr(time.Date(2021, 7, 9, 0, 0, 0, 0, time.UTC))
+	staleReindexed.LastDifferent = time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC) // bumped "now"
+
+	noDates := pgApp("NO-DATES", 100) // neither start nor decided set
+
 	other := pgApp("OTHER-AUTH", 200) // must not appear for authority 100
-	for _, a := range []PlanningApplication{older, mid, newer, other} {
+
+	for _, a := range []PlanningApplication{decidedRecent, startedOnly, staleReindexed, noDates, other} {
 		if err := store.Upsert(ctx, a); err != nil {
 			t.Fatalf("Upsert %s: %v", a.Name, err)
 		}
@@ -317,13 +337,61 @@ func TestPostgresStore_RecentByAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentByAuthority: %v", err)
 	}
-	assertNames(t, appNames(got), []string{"NEW", "MID", "OLD"})
+	// DECIDED-RECENT (2026-05-01) > STARTED-ONLY (2026-02-01) > STALE-REINDEXED
+	// (2021-07-09, despite the "now" LastDifferent) > NO-DATES (NULL, NULLS LAST).
+	assertNames(t, appNames(got), []string{"DECIDED-RECENT", "STARTED-ONLY", "STALE-REINDEXED", "NO-DATES"})
 
 	capped, err := store.RecentByAuthority(ctx, "100", 2)
 	if err != nil {
 		t.Fatalf("RecentByAuthority capped: %v", err)
 	}
-	assertNames(t, appNames(capped), []string{"NEW", "MID"})
+	assertNames(t, appNames(capped), []string{"DECIDED-RECENT", "STARTED-ONLY"})
+}
+
+// TestPostgresStore_RecentByAuthority_TieBreakIsDeterministic proves the
+// decision-1 tie-break (start_date DESC NULLS LAST, then planit_name ASC) when
+// two or more applications share the exact same GREATEST(decided_date,
+// start_date) value.
+func TestPostgresStore_RecentByAuthority_TieBreakIsDeterministic(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	decidedDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Same GREATEST (both decided 2026-01-01) but different start_date: the later
+	// start_date breaks the tie and sorts first.
+	laterStart := pgApp("LATER-START", 100)
+	laterStart.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	laterStart.DecidedDate = pgPtr(decidedDate)
+
+	earlierStart := pgApp("EARLIER-START", 100)
+	earlierStart.StartDate = pgPtr(time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
+	earlierStart.DecidedDate = pgPtr(decidedDate)
+
+	// Same GREATEST AND same start_date: falls through to planit_name ASC.
+	sameEverythingA := pgApp("AAA-SAME", 100)
+	sameEverythingA.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	sameEverythingA.DecidedDate = pgPtr(decidedDate)
+
+	sameEverythingZ := pgApp("ZZZ-SAME", 100)
+	sameEverythingZ.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	sameEverythingZ.DecidedDate = pgPtr(decidedDate)
+
+	for _, a := range []PlanningApplication{laterStart, earlierStart, sameEverythingA, sameEverythingZ} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentByAuthority(ctx, "100", 10)
+	if err != nil {
+		t.Fatalf("RecentByAuthority: %v", err)
+	}
+	// LATER-START and AAA-SAME/ZZZ-SAME share start_date 2025-07-01 (all later than
+	// EARLIER-START's 2025-06-01), so EARLIER-START sorts last of the four. Among
+	// the tied 2025-07-01 trio, planit_name ASC orders AAA-SAME, LATER-START,
+	// ZZZ-SAME.
+	assertNames(t, appNames(got), []string{"AAA-SAME", "LATER-START", "ZZZ-SAME", "EARLIER-START"})
 }
 
 // TestPostgresStore_RecentInAuthorities orders by last_different DESC across
@@ -1317,42 +1385,187 @@ func TestPostgresStore_FindInZonePage_CursorFilterMismatch(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_RecentNearby_And_NearestNearby distinguishes recency ordering
-// (last_different DESC) from distance ordering (nearest first), and proves the
-// radius filter and authority scope.
-func TestPostgresStore_RecentNearby_And_NearestNearby(t *testing.T) {
+// townAt builds a TownCentroid `metresNorth` due north of the fixture centre
+// (the same line applications are placed on via `at`), with its own safety
+// radius — the "own radius per town" the in-range-nearest rule (#819 decision
+// 3) depends on.
+func townAt(metresNorth, radiusMetres float64) TownCentroid {
+	return TownCentroid{Lat: pgLatNorth(metresNorth), Lng: pgCentreLon, RadiusMetres: radiusMetres}
+}
+
+// TestPostgresStore_RecentNearestTown_ClosestWins proves the core Voronoi
+// partition rule (#819 decision 2): among two non-overlapping-enough towns,
+// each application is assigned to whichever centroid — this town's own point,
+// or a sibling's — is nearest, and only rows assigned to THIS town come back.
+func TestPostgresStore_RecentNearestTown_ClosestWins(t *testing.T) {
 	ctx := context.Background()
 	store := newAppPGStore(t)
 
-	near := at(pgApp("NEAR", 100), 100)
-	near.LastDifferent = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // oldest
-	far := at(pgApp("FAR", 100), 500)
-	far.LastDifferent = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // newest
-	outside := at(pgApp("OUTSIDE", 100), 5000)                      // beyond 1 km
-	otherAuth := at(pgApp("OTHER-AUTH", 200), 100)                  // wrong authority
-	for _, a := range []PlanningApplication{near, far, outside, otherAuth} {
+	townA := townAt(0, 3000)
+	townB := townAt(2000, 3000)
+
+	closerToA := at(pgApp("CLOSER-A", 100), 500)  // dist A=500, dist B=1500
+	closerToB := at(pgApp("CLOSER-B", 100), 1800) // dist A=1800, dist B=200
+	for _, a := range []PlanningApplication{closerToA, closerToB} {
 		if err := store.Upsert(ctx, a); err != nil {
 			t.Fatalf("Upsert %s: %v", a.Name, err)
 		}
 	}
 
-	recent, err := store.RecentNearby(ctx, "100", pgCentreLat, pgCentreLon, 1000, 10)
+	gotA, err := store.RecentNearestTown(ctx, "100", townA.Lat, townA.Lng, townA.RadiusMetres, []TownCentroid{townB}, 10)
 	if err != nil {
-		t.Fatalf("RecentNearby: %v", err)
+		t.Fatalf("RecentNearestTown (town A): %v", err)
 	}
-	assertNames(t, appNames(recent), []string{"FAR", "NEAR"}) // recency DESC
+	assertNames(t, appNames(gotA), []string{"CLOSER-A"})
 
-	nearest, err := store.NearestNearby(ctx, "100", pgCentreLat, pgCentreLon, 1000, 10)
+	gotB, err := store.RecentNearestTown(ctx, "100", townB.Lat, townB.Lng, townB.RadiusMetres, []TownCentroid{townA}, 10)
 	if err != nil {
-		t.Fatalf("NearestNearby: %v", err)
+		t.Fatalf("RecentNearestTown (town B): %v", err)
 	}
-	assertNames(t, appNames(nearest), []string{"NEAR", "FAR"}) // distance ASC
+	assertNames(t, appNames(gotB), []string{"CLOSER-B"})
+}
 
-	capped, err := store.NearestNearby(ctx, "100", pgCentreLat, pgCentreLon, 1000, 1)
-	if err != nil {
-		t.Fatalf("NearestNearby capped: %v", err)
+// TestPostgresStore_RecentNearestTown_InRangeNearestRule proves #819 decision
+// 3: an application whose true-nearest centroid cannot reach it (its radius is
+// too small), but a FARTHER sibling's WIDER radius does reach it, is assigned
+// to that farther, in-range sibling — never orphaned, never left on the
+// nearer-but-out-of-range town.
+func TestPostgresStore_RecentNearestTown_InRangeNearestRule(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	narrowTown := townAt(0, 1000)     // this town's own radius is too small to reach the app
+	wideSibling := townAt(5000, 6000) // farther away, but its radius reaches back to the app
+
+	// True-nearest is narrowTown (dist 2000 < 3000), but narrowTown's radius
+	// (1000) doesn't reach it; wideSibling's radius (6000) does.
+	inRangeOnly := at(pgApp("IN-RANGE-VIA-SIBLING", 100), 2000)
+	if err := store.Upsert(ctx, inRangeOnly); err != nil {
+		t.Fatalf("Upsert %s: %v", inRangeOnly.Name, err)
 	}
-	assertNames(t, appNames(capped), []string{"NEAR"})
+
+	gotNarrow, err := store.RecentNearestTown(ctx, "100", narrowTown.Lat, narrowTown.Lng, narrowTown.RadiusMetres,
+		[]TownCentroid{wideSibling}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown (narrow town): %v", err)
+	}
+	if len(gotNarrow) != 0 {
+		t.Errorf("narrow (nearer but out-of-range) town: got %v, want none (must not orphan-claim it)", appNames(gotNarrow))
+	}
+
+	gotWide, err := store.RecentNearestTown(ctx, "100", wideSibling.Lat, wideSibling.Lng, wideSibling.RadiusMetres,
+		[]TownCentroid{narrowTown}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown (wide sibling): %v", err)
+	}
+	// Not orphaned: the farther-but-in-range town claims it.
+	assertNames(t, appNames(gotWide), []string{"IN-RANGE-VIA-SIBLING"})
+}
+
+// TestPostgresStore_RecentNearestTown_NoOverlapBetweenSiblingTowns constructs
+// two towns with OVERLAPPING radii (the double-counting risk a plain radius
+// read would hit) and proves an application nearer town A never appears in
+// sibling town B's result, even though B's radius alone would also reach it.
+func TestPostgresStore_RecentNearestTown_NoOverlapBetweenSiblingTowns(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	townA := townAt(0, 4000)
+	townB := townAt(3000, 4000) // overlaps heavily with townA's catchment
+
+	// dist to A = 1000, dist to B = 2000: nearer A, but well within BOTH radii.
+	nearA := at(pgApp("NEAR-A", 100), 1000)
+	if err := store.Upsert(ctx, nearA); err != nil {
+		t.Fatalf("Upsert %s: %v", nearA.Name, err)
+	}
+
+	gotA, err := store.RecentNearestTown(ctx, "100", townA.Lat, townA.Lng, townA.RadiusMetres, []TownCentroid{townB}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown (town A): %v", err)
+	}
+	assertNames(t, appNames(gotA), []string{"NEAR-A"})
+
+	gotB, err := store.RecentNearestTown(ctx, "100", townB.Lat, townB.Lng, townB.RadiusMetres, []TownCentroid{townA}, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown (town B): %v", err)
+	}
+	if len(gotB) != 0 {
+		t.Errorf("sibling town B: got %v, want none (NEAR-A belongs to A alone, no overlap)", appNames(gotB))
+	}
+}
+
+// TestPostgresStore_RecentNearestTown_OrdersByRealDateWithTieBreak proves the
+// partitioned read shares decision 1's ordering (GREATEST(decided_date,
+// start_date) DESC NULLS LAST, tie-broken by start_date DESC NULLS LAST then
+// planit_name) — a stale-but-reindexed application must not float to the top
+// within a town's own partition either.
+func TestPostgresStore_RecentNearestTown_OrdersByRealDateWithTieBreak(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	decidedDate := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	newer := at(pgApp("NEWER", 100), 100)
+	newer.DecidedDate = pgPtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	newer.LastDifferent = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC) // deliberately stale marker
+
+	// Tied GREATEST (both decided 2026-01-01), different start_date: the later
+	// start_date sorts first.
+	tieLaterStart := at(pgApp("TIE-LATER-START", 100), 200)
+	tieLaterStart.StartDate = pgPtr(time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC))
+	tieLaterStart.DecidedDate = pgPtr(decidedDate)
+
+	tieEarlierStart := at(pgApp("TIE-EARLIER-START", 100), 200)
+	tieEarlierStart.StartDate = pgPtr(time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
+	tieEarlierStart.DecidedDate = pgPtr(decidedDate)
+
+	for _, a := range []PlanningApplication{newer, tieLaterStart, tieEarlierStart} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearestTown(ctx, "100", pgCentreLat, pgCentreLon, 3000, nil, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown: %v", err)
+	}
+	assertNames(t, appNames(got), []string{"NEWER", "TIE-LATER-START", "TIE-EARLIER-START"})
+}
+
+// TestPostgresStore_RecentNearestTown_EmptyAndNearEmptyPartitions proves a
+// town with nothing (or nothing but out-of-authority/out-of-radius noise) in
+// its partition returns an empty, non-error slice, and that a nil siblings
+// slice degrades to a plain (non-partitioned) single-point radius read scoped
+// to the authority.
+func TestPostgresStore_RecentNearestTown_EmptyAndNearEmptyPartitions(t *testing.T) {
+	ctx := context.Background()
+	store := newAppPGStore(t)
+
+	// Nothing seeded at all: an empty partition must be an empty slice, not an error.
+	empty, err := store.RecentNearestTown(ctx, "100", pgCentreLat, pgCentreLon, 3000, nil, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown on an empty table: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("empty table: got %v, want none", appNames(empty))
+	}
+
+	outOfRadius := at(pgApp("OUTSIDE", 100), 9000)
+	otherAuth := at(pgApp("OTHER-AUTH", 200), 100) // in radius, wrong authority
+	onlyApp := at(pgApp("ONLY", 100), 100)
+	for _, a := range []PlanningApplication{outOfRadius, otherAuth, onlyApp} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	got, err := store.RecentNearestTown(ctx, "100", pgCentreLat, pgCentreLon, 3000, nil, 10)
+	if err != nil {
+		t.Fatalf("RecentNearestTown near-empty: %v", err)
+	}
+	// Only ONLY qualifies: OUTSIDE is beyond the radius, OTHER-AUTH is the wrong
+	// authority, and there are no siblings to steal or duplicate it.
+	assertNames(t, appNames(got), []string{"ONLY"})
 }
 
 // TestPostgresStore_BreakdownNearby returns the exact per-app_state counts over
