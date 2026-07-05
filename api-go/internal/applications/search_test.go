@@ -27,14 +27,16 @@ type fakeSearchStore struct {
 	lastQuery         string
 	lastAuthorityCode string
 	lastLimit         int
+	lastCtx           context.Context
 	calls             int
 }
 
-func (f *fakeSearchStore) Search(_ context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error) {
+func (f *fakeSearchStore) Search(ctx context.Context, query, authorityCode string, limit int) ([]PlanningApplication, bool, error) {
 	f.calls++
 	f.lastQuery = query
 	f.lastAuthorityCode = authorityCode
 	f.lastLimit = limit
+	f.lastCtx = ctx
 	return f.apps, f.refine, f.err
 }
 
@@ -302,6 +304,31 @@ func TestSearchHandler_StoreErrorIsServerError(t *testing.T) {
 	rec := serveSearch(t, store, testResolver(), searchPath("abc"))
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status: got %d, want 500", rec.Code)
+	}
+}
+
+// TestSearchHandler_AppliesRequestTimeout proves search wraps the store call in
+// a bounded context.WithTimeout (tc-z5i5j): this is a public, unauthenticated
+// endpoint sharing a Postgres pool with prod's core watch-zone/notification
+// reads, so a pathological query must fail fast rather than hold a pool
+// connection open indefinitely — defense-in-depth on top of the per-tier LIMIT
+// bound in searchQuery, not a substitute for it.
+func TestSearchHandler_AppliesRequestTimeout(t *testing.T) {
+	t.Parallel()
+	store := &fakeSearchStore{}
+	rec := serveSearch(t, store, testResolver(), searchPath("abc"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", rec.Code)
+	}
+	if store.lastCtx == nil {
+		t.Fatal("store.Search was never called")
+	}
+	deadline, ok := store.lastCtx.Deadline()
+	if !ok {
+		t.Fatal("store.Search context has no deadline; want a bounded context.WithTimeout")
+	}
+	if remaining := time.Until(deadline); remaining <= 0 || remaining > searchTimeout {
+		t.Errorf("deadline remaining = %v, want in (0, %v]", remaining, searchTimeout)
 	}
 }
 
