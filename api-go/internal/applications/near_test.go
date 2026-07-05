@@ -621,7 +621,7 @@ func TestNearHandler_NoSiblingsIsAValidEmptyPartition(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
 	}
-	if store.lastSiblings != nil && len(store.lastSiblings) != 0 {
+	if len(store.lastSiblings) != 0 {
 		t.Errorf("siblings: got %v, want none", store.lastSiblings)
 	}
 }
