@@ -10,7 +10,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 	"github.com/AmyDe/town-crier/api-go/internal/platform"
 )
 
@@ -107,16 +106,10 @@ func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authoritySlug resolves the URL slug for the application's authority, mirroring
-// (h *handler).authoritySlug in handler.go: it prefers the resolver's
-// SlugForAreaID and falls back, with a warn log, to slugifying the raw PlanIt
-// area name when the id is unknown to the static authorities data.
+// authoritySlug returns the URL slug for the application's authority. See
+// resolveAuthoritySlugFor (respond.go) for the round-trip/fallback behaviour.
 func (h *searchHandler) authoritySlug(ctx context.Context, app PlanningApplication) string {
-	if slug, ok := h.resolver.SlugForAreaID(app.AreaID); ok {
-		return slug
-	}
-	h.logger.WarnContext(ctx, "authority slug fallback: area id not in static authorities", "op", "search authority slug", "areaId", app.AreaID, "areaName", app.AreaName, "uid", app.UID)
-	return authorities.Slugify(app.AreaName)
+	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "search authority slug", app)
 }
 
 // validSearchQuery reports whether q is non-empty, no longer than
