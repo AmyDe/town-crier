@@ -22,10 +22,43 @@
         <activity
             android:name="uk.towncrierapp.app.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Inbound App Links (GH#782 - Android port of iOS Universal
+                 Links). autoVerify triggers Android's Digital Asset Links
+                 check against each host's assetlinks.json (api-go's share
+                 domain / web's main-domain static file, both already
+                 deployed to dev) so a tap opens this app directly rather
+                 than falling back to the browser. Two hosts:
+                 share.towncrierapp.uk (the public share surface,
+                 /a/{authoritySlug}/{ref...}) and towncrierapp.uk (the
+                 legacy /applications list + /applications/{uid...} detail
+                 links, e.g. from a digest email). MainActivity/AppLinkParser
+                 does the actual routing - see PendingLinkHolder for the
+                 auth-gated dispatch. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="share.towncrierapp.uk"
+                    android:pathPattern="/a/.*" />
+
+                <data
+                    android:scheme="https"
+                    android:host="towncrierapp.uk"
+                    android:path="/applications" />
+                <data
+                    android:scheme="https"
+                    android:host="towncrierapp.uk"
+                    android:pathPattern="/applications/.*" />
             </intent-filter>
         </activity>
 

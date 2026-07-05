@@ -35,6 +35,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
+import uk.towncrierapp.domain.reviewprompt.ReviewSignal
 import uk.towncrierapp.domain.subscriptions.SubscriptionTier
 import uk.towncrierapp.presentation.auth.OnboardingPresentation
 import uk.towncrierapp.presentation.designsystem.TownCrierTheme
@@ -43,14 +44,23 @@ import uk.towncrierapp.presentation.features.forceupdate.ForceUpdateViewModel
 import uk.towncrierapp.presentation.features.forceupdate.PLAY_STORE_URL
 import uk.towncrierapp.presentation.features.login.LoginRoute
 import uk.towncrierapp.presentation.features.login.LoginViewModel
+import uk.towncrierapp.presentation.sharing.AppLinkParser
+import uk.towncrierapp.presentation.sharing.DeepLinkResolution
+import uk.towncrierapp.presentation.sharing.DeepLinkViewModel
 import uk.towncrierapp.presentation.R as PresentationR
 
-/** Town Crier's single activity — see android-coding-standards skill: single-activity Compose, no Fragments. */
+/**
+ * Town Crier's single activity — see android-coding-standards skill:
+ * single-activity Compose, no Fragments. `launchMode="singleTask"`
+ * (AndroidManifest.xml) keeps App Link taps routed to this one instance via
+ * [onNewIntent] rather than spawning a second activity on top (GH#782).
+ */
 public class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val appGraph = (application as TownCrierApplication).appGraph
+        handleAppLinkIntent(appGraph, intent)
         setContent {
             // The four-way appearance picker (tc-4jjw / #778): restyles the
             // whole app the instant `SettingsViewModel.setAppearance` writes
@@ -62,6 +72,30 @@ public class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /** Re-delivery to the already-running singleTask instance (a link tapped while the app is open, GH#782). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAppLinkIntent((application as TownCrierApplication).appGraph, intent)
+    }
+}
+
+/**
+ * Parses [intent]'s data (if any) as an App Link and, if recognised, hands it
+ * to [AppGraph.pendingLinkHolder] — held there until the user is
+ * authenticated, then dispatched by [TownCrierApp] (GH#782). Not every
+ * inbound intent carries link data (e.g. the plain launcher intent), and not
+ * every URL this activity could theoretically receive matches one of the
+ * three recognised shapes — both are silently ignored, matching iOS
+ * `OpenURLRoute.resolve`'s "no match falls through" contract.
+ */
+private fun handleAppLinkIntent(
+    appGraph: AppGraph,
+    intent: Intent,
+) {
+    val data = intent.dataString ?: return
+    AppLinkParser.parse(data)?.let(appGraph.pendingLinkHolder::linkReceived)
 }
 
 /**
@@ -124,6 +158,10 @@ public fun TownCrierApp(
         if (loginState.isAuthenticated) {
             appGraph.authCoordinator.onSignedIn()
         }
+        // Auth-gated App Link dispatch (GH#782): a link tapped signed-out is
+        // held, never resolved, until this transitions to true — see
+        // PendingLinkHolder's doc for the "no signed-out detail view day-1" rationale.
+        appGraph.pendingLinkHolder.onAuthenticationChanged(loginState.isAuthenticated)
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -202,6 +240,8 @@ private fun AuthedShell(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
+    DeepLinkDispatcher(appGraph = appGraph, navController = navController)
+
     Scaffold(
         modifier = modifier,
         bottomBar = { AuthedBottomBar(currentRoute = currentRoute, navController = navController) },
@@ -213,6 +253,62 @@ private fun AuthedShell(
             subscriptionTier = subscriptionTier,
             modifier = Modifier.padding(contentPadding),
         )
+    }
+}
+
+/**
+ * Observes [AppGraph.pendingLinkHolder]'s ready link (only ever non-null once
+ * signed in — see `PendingLinkHolder`'s doc), resolves it via
+ * [DeepLinkViewModel], and navigates the moment a resolution lands. A no-UI
+ * composable (GH#782) — kept separate from [AuthedShell] so its two
+ * `LaunchedEffect`s don't crowd that function's own state reads. A failed
+ * resolution (e.g. an unknown/expired share link) is dropped silently —
+ * best-effort, matching `ApplicationDetailViewModel.checkSavedState`'s
+ * precedent for a background fetch the user didn't directly initiate.
+ */
+@Composable
+private fun DeepLinkDispatcher(
+    appGraph: AppGraph,
+    navController: NavHostController,
+) {
+    val deepLinkViewModel: DeepLinkViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer {
+                        DeepLinkViewModel(
+                            appGraph.planningApplicationRepository,
+                            // openedAlert fires only for the by-id path (push taps and
+                            // legacy /applications/{uid} links) — never for a public
+                            // share link (GH#782, iOS AppCoordinator.handleDeepLink parity).
+                            onOpenedAlert = { appGraph.reviewPromptTracker.recordSignal(ReviewSignal.OpenedAlert) },
+                        )
+                    }
+                },
+        )
+    val readyLink by appGraph.pendingLinkHolder.readyLink.collectAsStateWithLifecycle()
+    val deepLinkState by deepLinkViewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(readyLink) {
+        readyLink?.let {
+            deepLinkViewModel.resolve(it)
+            appGraph.pendingLinkHolder.consume()
+        }
+    }
+
+    LaunchedEffect(deepLinkState.resolution) {
+        val resolution = deepLinkState.resolution ?: return@LaunchedEffect
+        when (resolution) {
+            is DeepLinkResolution.ShowApplication -> {
+                navController.navigateToTab(Applications)
+                navController.navigate(applicationDetailDestinationFor(resolution.application))
+            }
+
+            DeepLinkResolution.ShowApplicationsList -> {
+                navController.navigateToTab(Applications)
+            }
+        }
+        deepLinkViewModel.consumeResolution()
     }
 }
 

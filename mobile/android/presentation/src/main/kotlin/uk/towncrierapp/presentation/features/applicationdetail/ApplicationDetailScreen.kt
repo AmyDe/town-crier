@@ -44,15 +44,8 @@ import uk.towncrierapp.presentation.designsystem.components.StatusBadge
 import uk.towncrierapp.presentation.designsystem.components.StatusTimeline
 import uk.towncrierapp.presentation.designsystem.components.statusDisplay
 import uk.towncrierapp.presentation.features.applicationlist.applicationErrorMessageRes
+import uk.towncrierapp.presentation.sharing.ShareUrl
 import java.time.LocalDate
-
-/** The public share origin the "share" action links to — see `api-go/internal/sharepage`'s `shareOrigin` + `/a/{slug}/{ref}` route. */
-internal const val SHARE_ORIGIN: String = "https://share.towncrierapp.uk"
-
-internal fun shareUrlFor(
-    authoritySlug: String,
-    name: String,
-): String = "$SHARE_ORIGIN/a/$authoritySlug/$name"
 
 /**
  * A full navigation destination (Material idiom — not a bottom sheet):
@@ -148,8 +141,13 @@ private fun ApplicationDetailTopBar(
                         ),
                 )
             }
-            if (authoritySlug != null) {
-                IconButton(onClick = { onShareClick(shareUrlFor(authoritySlug, applicationName)) }) {
+            // Share is hidden entirely when the slug is unknown (list-payload-only
+            // state, before the by-id refresh completes) OR when ShareUrl.build
+            // still declines the pair (e.g. an empty ref) — never a disabled/dead
+            // button (GH#782 port of iOS `ShareURL.build`'s nullability contract).
+            val shareUrl = authoritySlug?.let { slug -> ShareUrl.build(authoritySlug = slug, ref = applicationName) }
+            if (shareUrl != null) {
+                IconButton(onClick = { onShareClick(shareUrl) }) {
                     Icon(
                         imageVector = Icons.Filled.Share,
                         contentDescription = stringResource(R.string.application_detail_share_content_description),

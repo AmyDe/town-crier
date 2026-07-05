@@ -20,9 +20,22 @@ public interface PlanningApplicationRepository {
         cursor: String? = null,
     ): ApplicationPage
 
-    /** By-id or by-slug detail fetch — [authority] may be either the decimal area id or the authority slug. */
+    /** By-id detail fetch (authed) — [authority] is the decimal area id. */
     public suspend fun detail(
         authority: String,
         name: String,
+    ): PlanningApplication
+
+    /**
+     * Anonymous by-slug detail fetch, used to resolve an inbound public share
+     * link (`/a/{authoritySlug}/{ref...}`, GH#782). The server route itself
+     * requires no auth, but Android only ever calls it once the user is
+     * signed in (no signed-out detail view day-1 — see `PendingLinkHolder`).
+     * [authoritySlug] is the API-emitted slug and [ref] is the application's
+     * full area-prefixed PlanIt name, verbatim (slashes preserved).
+     */
+    public suspend fun detailBySlug(
+        authoritySlug: String,
+        ref: String,
     ): PlanningApplication
 }
