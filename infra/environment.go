@@ -178,8 +178,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}).(pulumi.StringOutput)
 
 	// Resource Group
-	resourceGroup, err := resources.NewResourceGroup(ctx, fmt.Sprintf("rg-town-crier-%s", env), &resources.ResourceGroupArgs{
-		ResourceGroupName: pulumi.String(fmt.Sprintf("rg-town-crier-%s", env)),
+	resourceGroup, err := resources.NewResourceGroup(ctx, ResourceGroupName(env), &resources.ResourceGroupArgs{
+		ResourceGroupName: pulumi.String(ResourceGroupName(env)),
 		Tags:              tags,
 	})
 	if err != nil {
@@ -322,7 +322,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	// API authenticates to town_crier_dev via Entra managed identity (GH #653). AZURE_CLIENT_ID
 	// is already present and reused for the token fetch — no duplication.
 	apiEnvVars := app.EnvironmentVarArray{
-		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-api-go")},
+		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoAPI)},
 		// Read by the in-process Azure Monitor metrics exporter (tc-0rt1).
 		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: appInsightsConnectionString},
 		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: cosmosDataIdentityClientID},
@@ -398,8 +398,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		configuration.MaxInactiveRevisions = pulumi.Int(5)
 	}
 
-	_, err = app.NewContainerApp(ctx, fmt.Sprintf("ca-town-crier-api-go-%s", env), &app.ContainerAppArgs{
-		ContainerAppName:     pulumi.String(fmt.Sprintf("ca-town-crier-api-go-%s", env)),
+	_, err = app.NewContainerApp(ctx, ContainerAppAPIName(env), &app.ContainerAppArgs{
+		ContainerAppName:     pulumi.String(ContainerAppAPIName(env)),
 		ResourceGroupName:    resourceGroup.Name,
 		ManagedEnvironmentId: containerAppsEnvironmentID,
 		Configuration:        configuration,
@@ -493,8 +493,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	}
 
 	// Static Web App (Landing Page)
-	staticWebApp, err := web.NewStaticSite(ctx, fmt.Sprintf("swa-town-crier-%s", env), &web.StaticSiteArgs{
-		Name:              pulumi.String(fmt.Sprintf("swa-town-crier-%s", env)),
+	staticWebApp, err := web.NewStaticSite(ctx, StaticWebAppName(env), &web.StaticSiteArgs{
+		Name:              pulumi.String(StaticWebAppName(env)),
 		ResourceGroupName: resourceGroup.Name,
 		Location:          pulumi.String("westeurope"),
 		Sku: &web.SkuDescriptionArgs{
@@ -550,7 +550,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpression string, replicaTimeout int, workerMode string, pollingBus *serviceBusPollingInfra) error {
 	// Base env shared by every worker job.
 	envVars := app.EnvironmentVarArray{
-		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String("town-crier-worker-go")},
+		app.EnvironmentVarArgs{Name: pulumi.String("OTEL_SERVICE_NAME"), Value: pulumi.String(ImageRepoWorker)},
 		app.EnvironmentVarArgs{Name: pulumi.String("WORKER_MODE"), Value: pulumi.String(workerMode)},
 		app.EnvironmentVarArgs{Name: pulumi.String("AZURE_CLIENT_ID"), Value: ec.cosmosDataIdentityClientID},
 		app.EnvironmentVarArgs{Name: pulumi.String("APPLICATIONINSIGHTS_CONNECTION_STRING"), Value: ec.appInsightsConnectionString},
@@ -851,8 +851,8 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 	// Storage account names are 3-24 chars, lowercase alphanumeric, globally unique. "st" prefix
 	// follows the resource-type naming convention; the hyphens from the usual "-town-crier-"
 	// pattern are dropped because they are invalid in a storage account name.
-	account, err := storage.NewStorageAccount(ctx, fmt.Sprintf("sttowncrier%s", env), &storage.StorageAccountArgs{
-		AccountName:       pulumi.String(fmt.Sprintf("sttowncrier%s", env)),
+	account, err := storage.NewStorageAccount(ctx, StorageAccountName(env), &storage.StorageAccountArgs{
+		AccountName:       pulumi.String(StorageAccountName(env)),
 		ResourceGroupName: resourceGroupName,
 		Kind:              pulumi.String(string(storage.KindStorageV2)),
 		Sku: &storage.SkuArgs{
