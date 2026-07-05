@@ -46,6 +46,26 @@
   text-decoration: none;
 }
 
+/* ---------- Explore: planning discovery links (GH #821 Phase 2) ---------- */
+.explore {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--tc-space-md);
+  margin-bottom: var(--tc-space-lg);
+}
+
+.exploreLink {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  text-decoration: none;
+}
+
+.exploreLink:hover {
+  color: var(--tc-amber);
+  text-decoration: underline;
+}
+
 /* ---------- Bottom bar: copyright + legal ---------- */
 .bottom {
   display: flex;

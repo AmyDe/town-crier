@@ -22,6 +22,11 @@ export function Footer() {
           </a>
         </div>
 
+        <nav aria-label="Explore" className={styles.explore}>
+          <a href="/planning/" className={styles.exploreLink}>Planning applications by council</a>
+          <a href="/planning/towns/" className={styles.exploreLink}>Planning applications by town</a>
+        </nav>
+
         <div className={styles.bottom}>
           <p className={styles.copyright}>
             © {currentYear} Town Crier
