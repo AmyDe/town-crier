@@ -1,0 +1,149 @@
+.card {
+  list-style: none;
+  background: var(--tc-surface);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-md);
+  box-shadow: var(--tc-shadow-card);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tc-space-sm);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.reference {
+  font-size: var(--tc-text-headline);
+  font-weight: var(--tc-weight-semibold);
+  line-height: var(--tc-leading-normal);
+  color: var(--tc-text-primary);
+  margin: 0;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tc-space-xs);
+  padding: var(--tc-space-xs) var(--tc-space-sm);
+  border-radius: var(--tc-radius-full);
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  line-height: var(--tc-leading-normal);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.statusUndecided {
+  background: color-mix(in srgb, var(--tc-status-pending) 15%, transparent);
+  color: var(--tc-status-pending);
+}
+
+.statusPermitted {
+  background: color-mix(in srgb, var(--tc-status-permitted) 15%, transparent);
+  color: var(--tc-status-permitted);
+}
+
+.statusConditions {
+  background: color-mix(in srgb, var(--tc-status-conditions) 15%, transparent);
+  color: var(--tc-status-conditions);
+}
+
+.statusRejected {
+  background: color-mix(in srgb, var(--tc-status-rejected) 15%, transparent);
+  color: var(--tc-status-rejected);
+}
+
+.statusWithdrawn {
+  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  color: var(--tc-status-withdrawn);
+}
+
+.statusAppealed {
+  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
+  color: var(--tc-status-appealed);
+}
+
+.statusUnresolved {
+  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
+  color: var(--tc-text-secondary);
+}
+
+.statusReferred {
+  background: color-mix(in srgb, var(--tc-status-appealed) 15%, transparent);
+  color: var(--tc-status-appealed);
+}
+
+.statusNotAvailable {
+  background: color-mix(in srgb, var(--tc-status-withdrawn) 15%, transparent);
+  color: var(--tc-status-withdrawn);
+}
+
+.statusDefault {
+  background: color-mix(in srgb, var(--tc-text-secondary) 15%, transparent);
+  color: var(--tc-text-secondary);
+}
+
+.address {
+  font-size: var(--tc-text-body);
+  color: var(--tc-text-primary);
+  margin: 0 0 var(--tc-space-xs);
+}
+
+.authority {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin: 0 0 var(--tc-space-sm);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tc-space-xs) var(--tc-space-md);
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+  margin-bottom: var(--tc-space-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tc-space-sm);
+  margin-top: var(--tc-space-sm);
+}
+
+.shareLink {
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  color: var(--tc-amber);
+  text-decoration: none;
+}
+
+.shareLink:hover {
+  text-decoration: underline;
+}
+
+.copyButton {
+  background: var(--tc-surface);
+  color: var(--tc-text-primary);
+  border: 1px solid var(--tc-border);
+  border-radius: var(--tc-radius-md);
+  padding: var(--tc-space-xs) var(--tc-space-md);
+  min-height: 44px;
+  font-size: var(--tc-text-caption);
+  font-weight: var(--tc-weight-medium);
+  cursor: pointer;
+  transition: border-color var(--tc-duration-fast) ease;
+}
+
+.copyButton:hover {
+  border-color: var(--tc-amber);
+}
+
+.copyStatus {
+  font-size: var(--tc-text-caption);
+  color: var(--tc-text-secondary);
+}
