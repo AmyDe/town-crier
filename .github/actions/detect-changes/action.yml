@@ -16,6 +16,14 @@
 #   Workflow files (e.g., cd-dev.yml, pr-gate.yml) can force categories
 #   to true when they themselves change. Pass trigger-files as a
 #   newline-separated list of "file:cat1,cat2" pairs.
+#
+# Coverage assertion:
+#   A second, unconditional step (independent of mode/diff) asserts every
+#   top-level path in the checked-out tree is either a mapped category
+#   prefix, an ignore-allowlist entry, or a documented design exception —
+#   see category-map.sh and the "Coverage assertion" step below. This
+#   catches a new top-level directory that nobody wired up, even if it's
+#   never touched again after the PR that introduced it (issue #835 slice 2).
 name: Detect Changes
 description: Monorepo change detection with push/pr modes
 
@@ -67,6 +75,12 @@ runs:
       id: detect
       shell: bash
       run: |
+        # Category-prefix and ignore-allowlist data lives in category-map.sh
+        # (single source of truth — also consumed by the Coverage assertion
+        # step below). See that file for the CATEGORY_PREFIXES /
+        # IGNORE_ALLOWLIST_* definitions.
+        source "${{ github.action_path }}/category-map.sh"
+
         # Determine changed files based on mode
         if [[ "${{ inputs.mode }}" == "push" ]]; then
           CHANGED=$(git diff --name-only HEAD~1 HEAD)
@@ -114,36 +128,61 @@ runs:
           done <<< "$TRIGGER_FILES"
         fi
 
-        # Map file paths to categories. Any changed file matching neither a
-        # known category prefix nor the ignore-allowlist below is treated as
-        # an unmapped top-level path and forces every requested category to
-        # true — fail-closed, so a new directory gets full lane coverage by
-        # default rather than silently zero. Paths already accounted for via
-        # the trigger-files mechanism above are exempted from the fail-closed
-        # default (they've already forced their specific categories).
+        # Map file paths to categories using CATEGORY_PREFIXES /
+        # IGNORE_ALLOWLIST_* from category-map.sh (sourced above). Any
+        # changed file matching neither a known category prefix nor the
+        # ignore-allowlist is treated as an unmapped top-level path and
+        # forces every requested category to true — fail-closed, so a new
+        # directory gets full lane coverage by default rather than silently
+        # zero. Paths already accounted for via the trigger-files mechanism
+        # above are exempted from the fail-closed default (they've already
+        # forced their specific categories).
         while IFS= read -r file; do
           [[ -z "$file" ]] && continue
-          case "$file" in
-            api-go/*) [[ -v "flags[go]" ]] && flags[go]=true ;;
-            cli/*) [[ -v "flags[cli]" ]] && flags[cli]=true ;;
-            mobile/ios/*) [[ -v "flags[ios]" ]] && flags[ios]=true ;;
-            mobile/android/*) [[ -v "flags[android]" ]] && flags[android]=true ;;
-            web/*) [[ -v "flags[web]" ]] && flags[web]=true ;;
-            infra/*) [[ -v "flags[infra]" ]] && flags[infra]=true ;;
-            # Ignore-allowlist: these paths legitimately don't need any
-            # pr-gate lane to run.
-            docs/*|.beads/*|.claude/*|scripts/*|*.md|LICENSE|.gitignore|.gitattributes) ;;
-            *)
-              if [[ -v "known_trigger_paths[$file]" ]]; then
-                : # already handled by the trigger-files mechanism above
-              else
-                echo "::warning::Unmapped changed path '$file' matches no known category prefix and no ignore allowlist entry — forcing all requested categories to true (fail-closed)."
-                for cat in "${CATS[@]}"; do
-                  flags["$cat"]=true
-                done
-              fi
-              ;;
-          esac
+
+          matched_cat=""
+          for cat in "${!CATEGORY_PREFIXES[@]}"; do
+            prefix="${CATEGORY_PREFIXES[$cat]}"
+            if [[ "$file" == "$prefix"/* ]]; then
+              matched_cat="$cat"
+              break
+            fi
+          done
+
+          if [[ -n "$matched_cat" ]]; then
+            [[ -v "flags[$matched_cat]" ]] && flags[$matched_cat]=true
+            continue
+          fi
+
+          # Ignore-allowlist: these paths legitimately don't need any
+          # pr-gate lane to run.
+          allowlisted=false
+          for d in "${IGNORE_ALLOWLIST_DIRS[@]}"; do
+            if [[ "$file" == "$d"/* ]]; then allowlisted=true; break; fi
+          done
+          if ! $allowlisted; then
+            for f in "${IGNORE_ALLOWLIST_FILES[@]}"; do
+              if [[ "$file" == "$f" ]]; then allowlisted=true; break; fi
+            done
+          fi
+          if ! $allowlisted; then
+            for g in "${IGNORE_ALLOWLIST_GLOBS[@]}"; do
+              # shellcheck disable=SC2053  # intentional unquoted glob match
+              if [[ "$file" == $g ]]; then allowlisted=true; break; fi
+            done
+          fi
+          if $allowlisted; then
+            continue
+          fi
+
+          if [[ -v "known_trigger_paths[$file]" ]]; then
+            : # already handled by the trigger-files mechanism above
+          else
+            echo "::warning::Unmapped changed path '$file' matches no known category prefix and no ignore allowlist entry — forcing all requested categories to true (fail-closed)."
+            for cat in "${CATS[@]}"; do
+              flags["$cat"]=true
+            done
+          fi
         done <<< "$CHANGED"
 
         # Write outputs
@@ -152,3 +191,111 @@ runs:
         done
 
         echo "Results: $(for cat in "${CATS[@]}"; do echo -n "${cat}=${flags[$cat]} "; done)"
+
+    # Coverage assertion (issue #835 slice 2). Structural repo check, not
+    # incremental: it inspects the actual current top-level directory tree on
+    # every invocation, not just this run's changed files. A per-file check
+    # (like the step above) only ever sees paths that changed in THIS diff —
+    # a dormant unmapped top-level directory added once and never touched
+    # again would silently escape detection forever. This step closes that
+    # gap by asserting every top-level path in the repo is accounted for.
+    - name: Coverage assertion
+      shell: bash
+      run: |
+        source "${{ github.action_path }}/category-map.sh"
+
+        # Design exceptions: top-level entries that are neither a feature
+        # category nor a "no lane needed" ignorable, but are intentionally
+        # left to the fail-closed catch-all in "Detect changed paths" rather
+        # than mapped or allowlisted. This is a deliberate, permanent list —
+        # not a place to dump unmapped directories to silence this check.
+        #
+        #   .github/   — deliberately NOT in the ignore-allowlist (slice 1's
+        #                design): a change anywhere under .github/ other than
+        #                the four specific trigger-files must fail-closed and
+        #                run every lane, because a stray edit to any workflow
+        #                or composite action could affect any category. That
+        #                makes .github/ "covered" by design (always safely
+        #                fail-closed) rather than a coverage gap that needs a
+        #                bead every time someone edits a workflow.
+        #   install.sh — a repo-root dev-tooling helper (builds/installs the
+        #                `tc` CLI to a developer's machine). Same reasoning as
+        #                .github/: it isn't a feature category, and changing
+        #                it correctly and safely falls through to the
+        #                fail-closed catch-all today. Recognized here so this
+        #                assertion doesn't flag a file that was already
+        #                deliberately left off the ignore-allowlist.
+        DESIGN_EXCEPTIONS=(.github install.sh)
+
+        # Full repo-tree check via git's tracked-file index — robust against
+        # untracked build artifacts and hidden-dot-directory glob quirks
+        # (unlike `ls -d */`), and automatically excludes .git/ itself.
+        ALL_PATHS=$(git ls-tree -r --name-only HEAD)
+        TOP_LEVEL=$(printf '%s\n' "$ALL_PATHS" | cut -d/ -f1 | sort -u)
+        # mobile/ is a container for two categories (ios, android), not a
+        # category itself — its children are checked separately below so a
+        # third platform directory added under mobile/ without being mapped
+        # is still caught, rather than being waved through because "mobile"
+        # itself resolves to a known category prefix.
+        MOBILE_CHILDREN=$(printf '%s\n' "$ALL_PATHS" | awk -F/ '$1=="mobile"{print $2}' | sort -u)
+
+        failures=()
+        while IFS= read -r entry; do
+          [[ -z "$entry" ]] && continue
+          is_covered=false
+
+          for cat in "${!CATEGORY_PREFIXES[@]}"; do
+            prefix="${CATEGORY_PREFIXES[$cat]}"
+            top_segment="${prefix%%/*}"
+            if [[ "$entry" == "$top_segment" ]]; then
+              is_covered=true
+              break
+            fi
+          done
+
+          if ! $is_covered; then
+            for d in "${IGNORE_ALLOWLIST_DIRS[@]}"; do
+              if [[ "$entry" == "$d" ]]; then is_covered=true; break; fi
+            done
+          fi
+          if ! $is_covered; then
+            for f in "${IGNORE_ALLOWLIST_FILES[@]}"; do
+              if [[ "$entry" == "$f" ]]; then is_covered=true; break; fi
+            done
+          fi
+          if ! $is_covered; then
+            for g in "${IGNORE_ALLOWLIST_GLOBS[@]}"; do
+              # shellcheck disable=SC2053  # intentional unquoted glob match
+              if [[ "$entry" == $g ]]; then is_covered=true; break; fi
+            done
+          fi
+          if ! $is_covered; then
+            for e in "${DESIGN_EXCEPTIONS[@]}"; do
+              if [[ "$entry" == "$e" ]]; then is_covered=true; break; fi
+            done
+          fi
+
+          if ! $is_covered; then
+            failures+=("$entry")
+          fi
+        done <<< "$TOP_LEVEL"
+
+        if [[ -n "$MOBILE_CHILDREN" ]]; then
+          while IFS= read -r child; do
+            [[ -z "$child" ]] && continue
+            if [[ "$child" != "ios" && "$child" != "android" ]]; then
+              failures+=("mobile/$child")
+            fi
+          done <<< "$MOBILE_CHILDREN"
+        fi
+
+        if (( ${#failures[@]} > 0 )); then
+          echo "::error::Coverage assertion failed — the following top-level path(s) are neither a mapped category prefix, an ignore-allowlist entry, nor a documented design exception:"
+          for fpath in "${failures[@]}"; do
+            echo "::error::  - $fpath"
+          done
+          echo "::error::Fix one of: (a) map it to a category — add an entry to CATEGORY_PREFIXES in .github/actions/detect-changes/category-map.sh; (b) allowlist it — add it to IGNORE_ALLOWLIST_DIRS/FILES/GLOBS in that same file if it never needs a pr-gate lane; (c) if it's a deliberate fail-closed-by-design case like .github/, add it to DESIGN_EXCEPTIONS in this step with a documented reason."
+          exit 1
+        fi
+
+        echo "Coverage assertion passed — all top-level paths are mapped, allowlisted, or documented design exceptions: $(tr '\n' ' ' <<< "$TOP_LEVEL")"

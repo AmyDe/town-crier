@@ -489,7 +489,15 @@ jobs:
 
   gate:
     name: PR Gate
-    needs: [go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, android-lint, android-build-test, android-release-note-guard, web-lint, web-build-test, infra-preview]
+    # `changes` must be listed here even though nothing below reads its
+    # outputs directly: if the coverage-assertion step inside detect-changes
+    # fails, the `changes` job's result becomes `failure`, and every
+    # downstream job below (each `needs: changes`) gets SKIPPED rather than
+    # failed. A skipped result doesn't trip the failure/cancelled check below,
+    # so without `changes` in this needs array a failing coverage assertion
+    # would be silently swallowed and `gate` would report success (issue
+    # #835 slice 2 — found during implementation, not in the original scope).
+    needs: [changes, go-lint, go-test, go-integration, cli-lint, cli-build-test, ios-lint, ios-build-test, ios-release-note-guard, android-lint, android-build-test, android-release-note-guard, web-lint, web-build-test, infra-preview]
     if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -497,6 +505,7 @@ jobs:
       - name: Evaluate results
         run: |
           results=(
+            "${{ needs.changes.result }}"
             "${{ needs.go-lint.result }}"
             "${{ needs.go-test.result }}"
             "${{ needs.go-integration.result }}"
