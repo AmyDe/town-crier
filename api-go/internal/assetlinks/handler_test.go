@@ -63,3 +63,34 @@ func TestAssetLinks_ServesJSONDocument(t *testing.T) {
 		t.Errorf("target.sha256_cert_fingerprints = %v, want [%q]", s.Target.SHA256CertFingerprints, fingerprint)
 	}
 }
+
+// TestAssetLinks_OmitsPackagesWithNoFingerprints covers the prod package
+// (uk.towncrierapp.mobile) before Play Console enrolment (#779): it has no
+// known signing-key fingerprint yet, so publishing it with an empty or
+// placeholder fingerprint would fail Digital Asset Links verification
+// anyway. Routes drops any Package with no fingerprints rather than
+// serving a broken entry.
+func TestAssetLinks_OmitsPackagesWithNoFingerprints(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	Routes(mux, []Package{
+		{Name: "uk.towncrierapp.mobile", Fingerprints: nil},
+		{Name: "uk.towncrierapp.mobile.dev", Fingerprints: []string{"AA:BB"}},
+	}, slog.New(slog.DiscardHandler))
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/.well-known/assetlinks.json", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	var statements []assetLinksStatement
+	if err := json.Unmarshal(rec.Body.Bytes(), &statements); err != nil {
+		t.Fatalf("body is not valid JSON: %v (%q)", err, rec.Body.String())
+	}
+	if len(statements) != 1 {
+		t.Fatalf("statements = %d, want 1 (the fingerprint-less package must be omitted)", len(statements))
+	}
+	if statements[0].Target.PackageName != "uk.towncrierapp.mobile.dev" {
+		t.Errorf("target.package_name = %q, want uk.towncrierapp.mobile.dev", statements[0].Target.PackageName)
+	}
+}
