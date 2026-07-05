@@ -1,5 +1,8 @@
 # Sets up Go (via infra/go.mod), the Pulumi CLI, and caches Go modules for the
 # infra Pulumi program. Centralises the setup used across infra jobs.
+#
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
 name: Setup Go & Pulumi for Infra
 description: Install Go, the Pulumi CLI, and cache Go modules for the infra Pulumi program
 
@@ -7,7 +10,7 @@ runs:
   using: composite
   steps:
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
         go-version-file: infra/go.mod
         cache-dependency-path: infra/go.sum

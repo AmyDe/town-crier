@@ -1,3 +1,6 @@
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 # Deploys components to the dev environment, gated by what changed.
 # Triggered on every push to main (squash merges assumed) and via
 # workflow_dispatch. A first `changes` job (detect-changes, mode: push)
@@ -57,8 +60,9 @@ jobs:
       infra: ${{ steps.detect.outputs.infra }}
       go: ${{ steps.detect.outputs.go }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          persist-credentials: false
           # HEAD~1 must be present for push-mode's HEAD~1..HEAD diff — the
           # default shallow (depth-1) checkout only fetches HEAD itself.
           fetch-depth: 2
@@ -82,7 +86,9 @@ jobs:
     timeout-minutes: 15
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-go-infra
 
@@ -113,7 +119,9 @@ jobs:
     timeout-minutes: 15
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-go-infra
 
@@ -169,9 +177,11 @@ jobs:
     timeout-minutes: 15
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: api-go/go.mod
 
@@ -199,7 +209,9 @@ jobs:
     timeout-minutes: 10
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/azure-login
         with:
@@ -224,7 +236,9 @@ jobs:
     timeout-minutes: 10
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/azure-login
         with:
@@ -252,7 +266,9 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/azure-login
         with:
@@ -278,7 +294,9 @@ jobs:
     timeout-minutes: 5
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/azure-login
         with:
@@ -305,7 +323,9 @@ jobs:
     timeout-minutes: 30
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       # azure-login MUST run before build-web: in render-mode, build-web
       # downloads the weekly seo-snapshot.json from Azure Blob via `az storage
@@ -337,7 +357,7 @@ jobs:
           swa-name: swa-town-crier-dev
 
       - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

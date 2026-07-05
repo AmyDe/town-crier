@@ -1,6 +1,9 @@
 # Installs Node.js, runs npm ci, and builds the Vite web app with
 # environment-specific VITE_ variables baked in at build time.
 #
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 # Produces the production bundle in web/dist, ready for deployment.
 #
 # Render-mode (epic tc-w5w9 / GH #598, Phase 4):
@@ -67,7 +70,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v6
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
         node-version: 22
         cache: npm

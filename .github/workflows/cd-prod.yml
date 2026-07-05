@@ -1,6 +1,9 @@
 # Deploys all server-side components to the production environment.
 # Triggered by pushing a semver tag (e.g., v1.0.0).
 #
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 # Requires repo-level secrets:
 #   AZURE_CLIENT_ID        — OIDC federated credential for Azure login
 #   AZURE_TENANT_ID        — Azure AD tenant
@@ -38,7 +41,9 @@ jobs:
       resource-group: ${{ steps.outputs.outputs.resource-group }}
       swa-name: ${{ steps.outputs.outputs.swa-name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-go-infra
 
@@ -98,9 +103,11 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: api-go/go.mod
 
@@ -127,8 +134,9 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Resolve tag to commit SHA
@@ -213,8 +221,9 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Resolve tag to commit SHA
@@ -298,7 +307,9 @@ jobs:
     timeout-minutes: 30
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       # azure-login MUST run before build-web: in render-mode, build-web
       # downloads the weekly seo-snapshot.json from Azure Blob via `az storage
@@ -330,7 +341,7 @@ jobs:
           swa-name: ${{ needs.infra.outputs.swa-name }}
 
       - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

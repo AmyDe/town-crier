@@ -1,4 +1,6 @@
-# Wraps azure/login@v3 with OIDC federated credentials.
+# Wraps azure/login@v3 with OIDC federated credentials. Third-party actions
+# pinned to commit SHA for supply-chain safety (tj-actions CVE-2025-30066) —
+# see the `uses:` step below.
 # Centralises the three-input pattern used across all deployment workflows.
 name: Azure Login (OIDC)
 description: Login to Azure using OIDC federated credentials
@@ -18,7 +20,7 @@ runs:
   using: composite
   steps:
     - name: Login to Azure
-      uses: azure/login@v3
+      uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3
       with:
         client-id: ${{ inputs.client-id }}
         tenant-id: ${{ inputs.tenant-id }}

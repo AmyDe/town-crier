@@ -2,6 +2,9 @@
 # mobile/ios/** has changed since the previous tag. Tags are created by the
 # /release skill via `gh release create`.
 #
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 # Spec: docs/specs/ios-testflight-automation.md
 # ADR:  docs/adr/0025-ios-testflight-release-automation.md
 #
@@ -42,8 +45,9 @@ jobs:
       should-release: ${{ steps.should-release.outputs.should-release }}
       previous-tag: ${{ steps.prev.outputs.previous-tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Compute previous tag
@@ -103,15 +107,17 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Select Xcode (latest stable — needs Swift 6.1+ for our Package.swift)
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: latest-stable
 
       - name: Cache SPM build
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: mobile/ios/.build
           key: spm-test-${{ hashFiles('mobile/ios/Package.resolved') }}
@@ -144,19 +150,20 @@ jobs:
     timeout-minutes: 60
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          persist-credentials: false
           # Full history + tags so the changelog generator can read commit
           # subjects/trailers between the previous tag and this one (tc-9sef).
           fetch-depth: 0
 
       - name: Select Xcode (latest stable — needs Swift 6.1+ for our Package.swift)
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: latest-stable
 
       - name: Cache SPM
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
           key: spm-archive-${{ hashFiles('mobile/ios/Package.resolved', 'mobile/ios/packages/**/Package.resolved') }}
@@ -165,7 +172,7 @@ jobs:
             spm-
 
       - name: Setup Ruby + bundler
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -179,7 +186,7 @@ jobs:
         run: xcodegen generate
 
       - name: Setup SSH key for fastlane match
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@dc588b651fe13675774614f8e6a936a468676387 # v0.9.0
         with:
           ssh-private-key: ${{ secrets.MATCH_GIT_DEPLOY_KEY }}
 
