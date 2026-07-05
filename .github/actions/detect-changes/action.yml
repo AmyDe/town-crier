@@ -1,10 +1,35 @@
-# Monorepo change detection for push, pull_request, and merge_group events.
-# Outputs boolean flags for each component category that changed.
+# Monorepo change detection for push, pull_request, merge_group, and tag
+# (release) events. Outputs boolean flags for each component category that
+# changed.
 #
 # Modes:
 #   push        — compares HEAD~1..HEAD (squash-merge assumed)
 #   pr          — compares origin/<base-ref>...HEAD
 #   merge_group — compares <base-ref>...HEAD against a raw base SHA (no origin/ prefix)
+#   tag         — compares <base-ref>..HEAD, where base-ref is the previous
+#                 release tag (computed by the calling workflow). TWO dots,
+#                 not three — a direct diff between two refs, matching the
+#                 semantics of the hand-rolled guard it replaces
+#                 (git diff --quiet "${PREV}..${GITHUB_REF_NAME}"), not the
+#                 merge-base-relative three-dot diff used by pr/merge_group
+#                 above. If base-ref is empty (no previous tag — first
+#                 release), the diff is skipped entirely and every requested
+#                 category is forced true, matching the previous guard's
+#                 "no PREV -> should-release=true" first-release behavior.
+#
+#                 tag mode is a release DECISION, not a validation lane, so
+#                 it does NOT inherit the uniform .github/ fail-closed
+#                 catch-all that push/pr/merge_group apply (see "Coverage
+#                 assertion" / DESIGN_EXCEPTIONS below) — an unmapped
+#                 .github/ path (not already covered by trigger-files) is
+#                 exempted from forcing categories true in tag mode
+#                 specifically, so an unrelated CI/workflow tweak landing
+#                 between two release tags doesn't force a release. Paths
+#                 outside .github/ still fail-closed as normal even in tag
+#                 mode. Callers that need a specific .github/ file to force
+#                 a release (e.g. changes to the release pipeline itself)
+#                 should pass it via trigger-files, as cd-ios-testflight.yml
+#                 does for cd-ios-testflight.yml and detect-changes/action.yml.
 #
 #   Edge case: push mode's HEAD~1 diff assumes every push to the default
 #   branch is a single squash-merge commit, so only the last commit is
@@ -29,10 +54,10 @@ description: Monorepo change detection with push/pr modes
 
 inputs:
   mode:
-    description: "Detection mode: 'push' (HEAD~1..HEAD), 'pr' (origin/base...HEAD), or 'merge_group' (base-sha...HEAD)"
+    description: "Detection mode: 'push' (HEAD~1..HEAD), 'pr' (origin/base...HEAD), 'merge_group' (base-sha...HEAD), or 'tag' (base-ref..HEAD, two dots)"
     required: true
   base-ref:
-    description: "Base ref for PR mode (e.g., github.base_ref) or raw base SHA for merge_group mode. Ignored in push mode."
+    description: "Base ref for PR mode (e.g., github.base_ref), raw base SHA for merge_group mode, or the previous release tag for tag mode (empty = first release, forces all categories true). Ignored in push mode."
     required: false
     default: ""
   categories:
@@ -82,14 +107,33 @@ runs:
         source "${{ github.action_path }}/category-map.sh"
 
         # Determine changed files based on mode
+        FORCE_ALL_TRUE=false
         if [[ "${{ inputs.mode }}" == "push" ]]; then
           CHANGED=$(git diff --name-only HEAD~1 HEAD)
         elif [[ "${{ inputs.mode }}" == "pr" ]]; then
           CHANGED=$(git diff --name-only origin/${{ inputs.base-ref }}...HEAD)
         elif [[ "${{ inputs.mode }}" == "merge_group" ]]; then
           CHANGED=$(git diff --name-only "${{ inputs.base-ref }}...HEAD")
+        elif [[ "${{ inputs.mode }}" == "tag" ]]; then
+          if [[ -z "${{ inputs.base-ref }}" ]]; then
+            # No previous tag (first release) — nothing to diff against.
+            # Force every requested category true directly rather than
+            # diffing against nothing, matching the pre-existing hand-rolled
+            # guard's "no PREV -> should-release=true" first-release behavior.
+            CHANGED=""
+            FORCE_ALL_TRUE=true
+            echo "::notice::tag mode: no base-ref (first release) — forcing all requested categories true"
+          else
+            # TWO-dot diff — a direct diff between two refs, matching the
+            # hand-rolled guard it replaces (git diff --quiet
+            # "${PREV}..${GITHUB_REF_NAME}") exactly. Do NOT change to the
+            # three-dot merge-base-relative form used by pr/merge_group
+            # above — that would silently change which commits get diffed
+            # against a divergent history.
+            CHANGED=$(git diff --name-only "${{ inputs.base-ref }}..HEAD")
+          fi
         else
-          echo "::error::Unknown mode '${{ inputs.mode }}'. Use 'push', 'pr', or 'merge_group'."
+          echo "::error::Unknown mode '${{ inputs.mode }}'. Use 'push', 'pr', 'merge_group', or 'tag'."
           exit 1
         fi
 
@@ -102,6 +146,12 @@ runs:
         for cat in "${CATS[@]}"; do
           flags["$cat"]=false
         done
+
+        if [[ "$FORCE_ALL_TRUE" == "true" ]]; then
+          for cat in "${CATS[@]}"; do
+            flags["$cat"]=true
+          done
+        else
 
         # Process trigger files — workflow files that force categories
         TRIGGER_FILES="${{ inputs.trigger-files }}"
@@ -177,6 +227,19 @@ runs:
 
           if [[ -v "known_trigger_paths[$file]" ]]; then
             : # already handled by the trigger-files mechanism above
+          elif [[ "${{ inputs.mode }}" == "tag" && "$file" == .github/* ]]; then
+            # tag mode is a release DECISION, not a validation lane — unlike
+            # push/pr/merge_group (pr-gate.yml, cd-dev.yml), where any
+            # unmapped .github/ churn deliberately fail-closes every
+            # category (a stray workflow edit could affect any validation
+            # lane), here that same blanket rule would force a TestFlight
+            # upload on every unrelated CI tweak landing in a release
+            # window. Narrow carve-out: .github/ paths NOT already covered
+            # by trigger-files are exempted from the fail-closed catch-all
+            # in tag mode specifically. Paths outside .github/ still
+            # fail-closed below — this carve-out is deliberately scoped to
+            # .github/ churn only, not unmapped top-level dirs generally.
+            echo "::notice::tag mode: '$file' is under .github/ and not a trigger-file — exempted from the fail-closed catch-all (see cd-ios-testflight.yml's trigger-files input for the paths that DO matter for iOS releases)."
           else
             echo "::warning::Unmapped changed path '$file' matches no known category prefix and no ignore allowlist entry — forcing all requested categories to true (fail-closed)."
             for cat in "${CATS[@]}"; do
@@ -184,6 +247,8 @@ runs:
             done
           fi
         done <<< "$CHANGED"
+
+        fi # FORCE_ALL_TRUE
 
         # Write outputs
         for cat in "${CATS[@]}"; do
