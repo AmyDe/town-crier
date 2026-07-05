@@ -81,6 +81,7 @@ class AppGraphSmokeTest {
         assertNotNull(graph.appearanceCoordinator)
         assertNotNull(graph.legalDocumentRepository)
         assertNotNull(graph.reviewPromptTracker)
+        assertNotNull(graph.pendingLinkHolder)
     }
 
     @Test
