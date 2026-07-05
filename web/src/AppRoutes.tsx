@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { LandingPage } from './features/LandingPage/LandingPage';
 import { CallbackPage } from './auth/CallbackPage';
 import { ConnectedLegalPage } from './features/legal/ConnectedLegalPage';
+import { ConnectedSearchPage } from './features/Search/ConnectedSearchPage';
 import { AuthGuard } from './auth/AuthGuard';
 import { OnboardingGate } from './auth/OnboardingGate';
 import { AppShell } from './components/AppShell/AppShell';
@@ -51,6 +52,7 @@ export function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/callback" element={<CallbackPage />} />
       <Route path="/legal/:type" element={<ConnectedLegalPage />} />
+      <Route path="/search" element={<ConnectedSearchPage />} />
 
       {/* Authenticated routes */}
       <Route element={<AuthGuard />}>

@@ -46,7 +46,7 @@
   text-decoration: none;
 }
 
-/* ---------- Explore: planning discovery links (GH #821 Phase 2) ---------- */
+/* ---------- Explore: planning authority/town indexes + search ---------- */
 .explore {
   display: flex;
   flex-wrap: wrap;

@@ -237,6 +237,26 @@ export interface NotificationStateSnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Anonymous application search (#821 Phase 3/4)
+// ---------------------------------------------------------------------------
+
+/**
+ * One ranked row of the anonymous `GET /v1/applications/search` endpoint.
+ * `reference` is `planit_name`, NOT `uid` — the API returns it that way
+ * specifically so `domain/share-link.ts` can build a resolving share URL
+ * without any further lookup or transformation.
+ */
+export interface SearchResult {
+  readonly reference: string;
+  readonly authoritySlug: string;
+  readonly authorityName: string;
+  readonly address: string;
+  readonly appState: string | null;
+  readonly startDate: string | null;
+  readonly decidedDate: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Map clusters
 // ---------------------------------------------------------------------------
 

@@ -75,6 +75,24 @@ describe('Footer', () => {
     expect(links).toHaveLength(2);
   });
 
+  it('renders an Explore nav linking to the planning authority and town indexes plus search', () => {
+    render(<Footer />);
+
+    const nav = screen.getByRole('navigation', { name: /explore/i });
+    expect(nav).toBeInTheDocument();
+
+    const authorityLink = within(nav).getByRole('link', { name: /planning applications by council/i });
+    expect(authorityLink).toHaveAttribute('href', '/planning/');
+
+    const townLink = within(nav).getByRole('link', { name: /planning applications by town/i });
+    expect(townLink).toHaveAttribute('href', '/planning/towns/');
+
+    const searchLink = within(nav).getByRole('link', { name: /search planning applications/i });
+    expect(searchLink).toHaveAttribute('href', '/search');
+
+    expect(within(nav).getAllByRole('link')).toHaveLength(3);
+  });
+
   describe('planning discovery links (GH #821 Phase 2)', () => {
     it('renders a link to the planning applications by council index', () => {
       render(<Footer />);
@@ -96,22 +114,14 @@ describe('Footer', () => {
       expect(link).toHaveAttribute('href', '/planning/towns/');
     });
 
-    it('groups the planning links inside a nav element for accessibility', () => {
+    it('groups the planning and search links inside a nav element for accessibility', () => {
       render(<Footer />);
 
       const nav = screen.getByRole('navigation', { name: /explore/i });
       expect(nav).toBeInTheDocument();
 
       const links = within(nav).getAllByRole('link');
-      expect(links).toHaveLength(2);
-    });
-
-    it('does not yet link to /search (tc-geq7h.4 ships that separately)', () => {
-      render(<Footer />);
-
-      expect(
-        screen.queryByRole('link', { name: /^search$/i }),
-      ).not.toBeInTheDocument();
+      expect(links).toHaveLength(3);
     });
   });
 });
