@@ -36,12 +36,19 @@ public class DeepLinkViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isResolving = true, error = null) }
             when (deepLink) {
-                DeepLink.ApplicationsList ->
+                DeepLink.ApplicationsList -> {
                     _uiState.update {
                         it.copy(isResolving = false, resolution = DeepLinkResolution.ShowApplicationsList)
                     }
-                is DeepLink.ApplicationDetail -> resolveApplicationDetail(deepLink)
-                is DeepLink.ShareApplication -> resolveShareApplication(deepLink)
+                }
+
+                is DeepLink.ApplicationDetail -> {
+                    resolveApplicationDetail(deepLink)
+                }
+
+                is DeepLink.ShareApplication -> {
+                    resolveShareApplication(deepLink)
+                }
             }
         }
     }

@@ -375,7 +375,9 @@ class ApiPlanningApplicationRepositoryTest {
 
             assertEquals(
                 "/v1/applications/by-slug/kingston/Kingston/25/02755/CLC",
-                transport.requests.single().url.encodedPath,
+                transport.requests
+                    .single()
+                    .url.encodedPath,
             )
         }
 }

@@ -303,7 +303,10 @@ private fun DeepLinkDispatcher(
                 navController.navigateToTab(Applications)
                 navController.navigate(applicationDetailDestinationFor(resolution.application))
             }
-            DeepLinkResolution.ShowApplicationsList -> navController.navigateToTab(Applications)
+
+            DeepLinkResolution.ShowApplicationsList -> {
+                navController.navigateToTab(Applications)
+            }
         }
         deepLinkViewModel.consumeResolution()
     }

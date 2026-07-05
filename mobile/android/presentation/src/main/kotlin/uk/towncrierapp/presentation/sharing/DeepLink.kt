@@ -4,7 +4,9 @@ import uk.towncrierapp.domain.applications.PlanningApplicationId
 
 /** Navigation targets reachable via App Links or (future, #777) notification taps. Port of iOS `DeepLink`. */
 public sealed interface DeepLink {
-    public data class ApplicationDetail(val id: PlanningApplicationId) : DeepLink
+    public data class ApplicationDetail(
+        val id: PlanningApplicationId,
+    ) : DeepLink
 
     /** The Applications tab root - used when an App Link points at `/applications` exactly (e.g. a digest email CTA). */
     public data object ApplicationsList : DeepLink
@@ -15,5 +17,8 @@ public sealed interface DeepLink {
      * full area-prefixed PlanIt name, verbatim (slashes preserved). Resolved
      * into the native detail screen via the anonymous by-slug read.
      */
-    public data class ShareApplication(val authoritySlug: String, val ref: String) : DeepLink
+    public data class ShareApplication(
+        val authoritySlug: String,
+        val ref: String,
+    ) : DeepLink
 }

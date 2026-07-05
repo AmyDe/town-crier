@@ -24,6 +24,10 @@ public object AppLinkParser {
     private const val SHARE_PREFIX = "/a/"
 
     /** Parses the full URL string (e.g. `Intent.getDataString()`). Returns `null` for a malformed or unrecognised URL. */
+    @Suppress("SwallowedException")
+    // A malformed URL is routine here (any URL this activity could receive
+    // that isn't one of the three recognised App Link shapes), not a
+    // diagnostic-worthy failure — treated the same as an unrecognised path.
     public fun parse(url: String): DeepLink? {
         val path =
             try {
