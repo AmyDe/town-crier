@@ -181,7 +181,9 @@ describe('renderTownsIndexPage', () => {
 
   it('renders a message and no A-Z sections when there are zero towns', () => {
     const html = renderTownsIndexPage([]);
-    expect(html).not.toContain('townsIndex__section');
+    // The stylesheet always carries the .townsIndex__section rules, so assert
+    // on the actual section element, not the bare class-name substring.
+    expect(html).not.toContain('<section class="townsIndex__section"');
     expect(html.toLowerCase()).toContain('no town');
   });
 
