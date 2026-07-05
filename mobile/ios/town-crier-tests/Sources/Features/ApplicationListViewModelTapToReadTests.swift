@@ -111,6 +111,34 @@ struct ApplicationListViewModelTapToReadTests {
     #expect(badgeSetter.setBadgeCalls == [4])
   }
 
+  @Test(
+    "opening an unread application clamps the global unread count at zero rather than going negative"
+  )
+  func selectApplication_unread_clampsGlobalUnreadCountAtZero() async throws {
+    let unread = app(authority: "42", name: "22/1234/FUL", unread: true)
+    let badgeSetter = SpyBadgeSetter()
+    let (sut, _) = try makeSUT(applications: [unread], badgeSetter: badgeSetter)
+    sut.globalUnreadCount = 0
+
+    sut.selectApplication(unread.id)
+
+    #expect(sut.globalUnreadCount == 0)
+    #expect(badgeSetter.setBadgeCalls == [0])
+  }
+
+  @Test("opening an already-read application does not call the badge setter")
+  func selectApplication_read_doesNotCallBadgeSetter() async throws {
+    let read = app(authority: "42", name: "22/1234/FUL", unread: false)
+    let badgeSetter = SpyBadgeSetter()
+    let (sut, _) = try makeSUT(applications: [read], badgeSetter: badgeSetter)
+    sut.globalUnreadCount = 5
+
+    sut.selectApplication(read.id)
+
+    #expect(sut.globalUnreadCount == 5)
+    #expect(badgeSetter.setBadgeCalls.isEmpty)
+  }
+
   @Test("selectApplication still notifies the coordinator for navigation")
   func selectApplication_notifiesCoordinator() async throws {
     let unread = app(authority: "42", name: "22/1234/FUL", unread: true)
