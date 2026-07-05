@@ -74,3 +74,17 @@ func TestAnonymousPatterns_IncludesAASA(t *testing.T) {
 		t.Errorf("anonymousPatterns must include %q", aasa)
 	}
 }
+
+// TestAnonymousPatterns_IncludesAssetLinks pins the anonymity of the Android
+// Digital Asset Links document served on the share host (GH#782). Android's
+// package manager fetches it without a bearer token to verify the app's
+// autoVerify intent filter, mirroring the AASA entry above; the auth
+// middleware keys on the registered pattern string byte-for-byte.
+func TestAnonymousPatterns_IncludesAssetLinks(t *testing.T) {
+	t.Parallel()
+
+	const assetLinks = "GET /.well-known/assetlinks.json"
+	if _, ok := anonymousPatterns[assetLinks]; !ok {
+		t.Errorf("anonymousPatterns must include %q", assetLinks)
+	}
+}
