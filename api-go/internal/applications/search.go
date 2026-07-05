@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -32,6 +33,17 @@ const (
 	searchDefaultLimit = 20
 	searchMaxLimit     = 20
 )
+
+// searchTimeout bounds a single Search call end-to-end. This is a public,
+// unauthenticated endpoint (SearchRoutes) sharing a Postgres pool with prod's
+// core watch-zone/notification reads (psql-town-crier-shared) — a
+// pathological query must fail fast with a 500 rather than hold a pool
+// connection open for tens of seconds (tc-z5i5j incident: ?q=extension took
+// 15-53s before searchQuery's per-tier LIMIT fix). It is defense-in-depth on
+// top of that fix, not a substitute for it, and is well under the ~100s
+// Cloudflare/ingress timeout so callers see a clean failure rather than a
+// gateway timeout.
+const searchTimeout = 8 * time.Second
 
 // searchStore is the consumer-side store the search handler needs: a single
 // ranked, capped read across the three match tiers (#821 Phase 3) — reference
@@ -88,7 +100,10 @@ func (h *searchHandler) search(w http.ResponseWriter, r *http.Request) {
 
 	limit := parseSearchLimit(q.Get("limit"))
 
-	apps, refine, err := h.store.Search(r.Context(), query, authorityCode, limit)
+	ctx, cancel := context.WithTimeout(r.Context(), searchTimeout)
+	defer cancel()
+
+	apps, refine, err := h.store.Search(ctx, query, authorityCode, limit)
 	if err != nil {
 		serverError(w, r, h.logger, "search applications", err)
 		return
@@ -240,6 +255,51 @@ type SearchResponse struct {
 // caller's requested limit+1 — the extra row is how Search detects "more
 // matches exist than the limit" without a second query.
 //
+// Each of the three UNION ALL branches is independently bounded by its own
+// "ORDER BY <tier's score> DESC, planit_name ASC LIMIT $3" (tc-z5i5j — the
+// parentheses around each branch are required Postgres syntax for a
+// per-branch ORDER BY/LIMIT inside a UNION). The planit_name secondary key
+// matters as much as the LIMIT itself: without it, when many rows in one tier
+// tie on score (a common shape — e.g. every uid prefix match scores exactly
+// 1.0), the branch's own LIMIT can keep an ARBITRARY limit+1-sized subset of
+// the tied rows (whichever the scan happens to visit first), and the final
+// query's planit_name tie-break can then only resolve ties among whatever
+// arbitrary subset survived — not the true full set, as the old unbounded
+// query always had available. Matching the branch's secondary sort key to the
+// final query's tie-break guarantees the specific limit+1 rows each branch
+// keeps are the same ones the old unbounded query would have handed to
+// DISTINCT ON, tie for tie. See
+// TestPostgresStore_Search_TiedScoresStayDeterministicUnderCap.
+//
+// Without this, best's required DISTINCT ON ordering
+// (area_id, planit_name, tier, score) differs from the final ORDER BY (tier,
+// score, planit_name), so Postgres cannot push the final LIMIT down through
+// DISTINCT ON: for any term the trigram/tsvector indexes consider common
+// (e.g. "extension"), all three branches can each match a large fraction of
+// applications, forcing a full materialize-and-sort of the entire unbounded
+// candidate set TWICE before the caller's limit is ever applied — this was
+// the prod incident (?q=extension: 15-53s; tc-z5i5j).
+//
+// Capping each branch at limit+1 (the same $3 already bound for the outer
+// LIMIT) is provably equivalent to the old unbounded query, not an
+// approximation: the final SELECT can never emit more than limit+1 rows, and
+// DISTINCT ON only ever keeps a matched row for a given (area_id,
+// planit_name) if no higher-priority (lower tier) row exists for it — so a
+// row this query ultimately returns from tier T is always among the top
+// limit+1 tier-T-scored rows in the FULL unbounded tier-T branch (any
+// tier-T row that also has a higher-tier match is going to lose to that
+// higher-tier row in DISTINCT ON regardless, "wasting" at most as many
+// tier-T slots as there are such higher-tier rows — and the higher tiers are
+// themselves capped at limit+1, so at most limit+1 slots can ever be wasted
+// this way). Capping each branch at limit+1 therefore never drops a row the
+// uncapped query would have returned; it only stops materializing/sorting
+// candidates that were never going to survive DISTINCT ON or the final LIMIT
+// in the first place. See search_integration_test.go for the regression
+// tests that pin this down (a tier-1-only multi-match case proving the "+1"
+// is load-bearing for RefineQuery, and a cross-tier case proving a
+// higher-tier duplicate occupying a slot in a lower tier's capped branch does
+// not crowd out a genuine lower-tier winner).
+//
 // searchSelectColumns (not appColumns) backs the three UNION branches: it
 // aliases the two computed geometry accessors to lat/lon. appColumns' raw form
 // (ST_Y(location::geometry) with no alias) only resolves because those
@@ -260,22 +320,28 @@ const searchOutputColumns = "planit_name, uid, area_name, area_id, address, post
 
 const searchQuery = `
 WITH matched AS (
-	SELECT ` + searchSelectColumns + `, 1 AS tier,
-	       CASE WHEN lower(uid) = lower($1) THEN 2.0 ELSE 1.0 END AS score
+	(SELECT ` + searchSelectColumns + `, 1 AS tier,
+	        CASE WHEN lower(uid) = lower($1) THEN 2.0 ELSE 1.0 END AS score
 	FROM applications
 	WHERE (lower(uid) = lower($1) OR lower(uid) LIKE $4 ESCAPE '\')
 	  AND ($2::text IS NULL OR authority_code = $2)
+	ORDER BY score DESC, planit_name ASC
+	LIMIT $3)
 	UNION ALL
-	SELECT ` + searchSelectColumns + `, 2 AS tier, word_similarity(lower($1), lower(address)) AS score
+	(SELECT ` + searchSelectColumns + `, 2 AS tier, word_similarity(lower($1), lower(address)) AS score
 	FROM applications
 	WHERE lower($1) <% lower(address)
 	  AND ($2::text IS NULL OR authority_code = $2)
+	ORDER BY score DESC, planit_name ASC
+	LIMIT $3)
 	UNION ALL
-	SELECT ` + searchSelectColumns + `, 3 AS tier,
-	       ts_rank(to_tsvector('english', description), plainto_tsquery('english', $1)) AS score
+	(SELECT ` + searchSelectColumns + `, 3 AS tier,
+	        ts_rank(to_tsvector('english', description), plainto_tsquery('english', $1)) AS score
 	FROM applications
 	WHERE to_tsvector('english', description) @@ plainto_tsquery('english', $1)
 	  AND ($2::text IS NULL OR authority_code = $2)
+	ORDER BY score DESC, planit_name ASC
+	LIMIT $3)
 ),
 best AS (
 	SELECT DISTINCT ON (area_id, planit_name) *
