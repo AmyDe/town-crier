@@ -50,6 +50,11 @@ import { resolveAuthority, townPagePath } from './lib/town-path.mjs';
 import { renderSitemap } from './lib/render-sitemap.mjs';
 import { isSameNameAsAuthority } from './lib/same-name.mjs';
 import { mergeRedirects } from './lib/redirect-config.mjs';
+import {
+  renderTownsIndexPage,
+  assertNoTownsSlugCollision,
+  TOWNS_INDEX_SLUG,
+} from './lib/render-towns-index.mjs';
 
 const DEFAULT_LIMIT = 30;
 
@@ -634,6 +639,35 @@ async function writeTownPage(outDir, data) {
 }
 
 /**
+ * Write the town INDEX page to <outDir>/planning/towns/index.html (GH #821
+ * Phase 2). Always written — even with zero entries — so the explicit-404 SWA
+ * routing for `/planning/*` (see {@link writeRedirectConfig}) never falls
+ * through to a soft-404 SPA shell for this route.
+ *
+ * @param {string} outDir
+ * @param {import('./lib/render-towns-index.mjs').TownIndexEntry[]} entries
+ * @returns {Promise<void>}
+ */
+async function writeTownsIndexPage(outDir, entries) {
+  const dir = join(outDir, 'planning', TOWNS_INDEX_SLUG);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), renderTownsIndexPage(entries), 'utf-8');
+}
+
+/**
+ * The town INDEX page's own sitemap `lastmod`: the freshest of every
+ * individual town page's lastmod (itself the max shown `lastDifferent` for
+ * that town) — an honest, content-derived signal, consistent with how every
+ * other page in this pipeline computes its lastmod.
+ *
+ * @param {ReadonlyArray<SitemapEntry>} townSitemapEntries
+ * @returns {string | undefined}
+ */
+function townsIndexLastmod(townSitemapEntries) {
+  return maxLastmod(townSitemapEntries.map((e) => ({ lastDifferent: e.lastmod })));
+}
+
+/**
  * Render and write a town page if it clears the coverage gate, after resolving
  * its parent authority slug. Mutates `publishedTowns`/`excludedTowns`/`seenPaths`.
  *
@@ -654,6 +688,10 @@ async function writeTownPage(outDir, data) {
  * @param {Map<number, Array<{ name: string, slug: string }>>} args.townsByAuthority
  *   accumulates each published town under its parent authorityId so the (later)
  *   authority pass can link down to its town children.
+ * @param {import('./lib/render-towns-index.mjs').TownIndexEntry[]} [args.townIndexEntries]
+ *   accumulates one entry per published town, in whatever order towns are
+ *   considered — the town INDEX page (`/planning/towns`, GH #821 Phase 2)
+ *   sorts and groups this flat list itself.
  * @param {{ warn: (msg: string) => void }} args.logger
  * @returns {Promise<void>}
  */
@@ -672,6 +710,7 @@ async function considerTown(args) {
     redirects,
     seenPaths,
     townsByAuthority,
+    townIndexEntries,
     logger,
   } = args;
 
@@ -723,6 +762,17 @@ async function considerTown(args) {
   });
   publishedTowns.push(path);
   sitemapEntries.push({ path, lastmod: maxLastmod(shown) });
+  // Record this published town for the town INDEX page (GH #821 Phase 2) —
+  // same gate as everything above, so a same-name-suppressed or gated-out town
+  // is never listed on /planning/towns either.
+  if (townIndexEntries) {
+    townIndexEntries.push({
+      townName: town.name,
+      townSlug: town.slug,
+      authoritySlug,
+      authorityName,
+    });
+  }
   // Record this published town under its parent authority so the authority page
   // can link down to it. Only reached after the coverage gate + dedup pass, so a
   // gated-out or duplicate town is never linked.
@@ -750,7 +800,7 @@ async function considerTown(args) {
  * @param {(town: Town) => Promise<{ applications: object[], total: number, statusBreakdown: object[] }>} args.getGeo
  * @param {number} args.limit
  * @param {{ warn: (msg: string) => void }} args.logger
- * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>>, redirects: string[] }>}
+ * @returns {Promise<{ publishedTowns: string[], townSitemapEntries: SitemapEntry[], excludedTowns: Array<{ name: string, reason: string }>, townsByAuthority: Map<number, Array<{ name: string, slug: string }>>, redirects: string[], townIndexEntries: import('./lib/render-towns-index.mjs').TownIndexEntry[] }>}
  */
 async function renderTownPages(args) {
   const { outDir, towns, authorities, getGeo, limit, logger } = args;
@@ -769,6 +819,11 @@ async function renderTownPages(args) {
   // each authority page can link down to its own (gated-in) town children.
   /** @type {Map<number, Array<{ name: string, slug: string }>>} */
   const townsByAuthority = new Map();
+  // Flat list of every published town, for the town INDEX page (GH #821 Phase 2,
+  // /planning/towns) — accumulated alongside townsByAuthority above, under the
+  // exact same gates (coverage, same-name dedup, duplicate-path).
+  /** @type {import('./lib/render-towns-index.mjs').TownIndexEntry[]} */
+  const townIndexEntries = [];
 
   for (const town of towns) {
     const geo = await getGeo(town);
@@ -788,6 +843,7 @@ async function renderTownPages(args) {
       redirects,
       seenPaths,
       townsByAuthority,
+      townIndexEntries,
       logger,
     });
   }
@@ -795,6 +851,7 @@ async function renderTownPages(args) {
   return {
     publishedTowns,
     townSitemapEntries,
+    townIndexEntries,
     excludedTowns,
     townsByAuthority,
     redirects,
@@ -832,6 +889,11 @@ async function renderEntries(args) {
     logger,
   } = args;
 
+  // GH #821 Phase 2: the town INDEX page (/planning/towns) owns that path
+  // segment — fail LOUD, before writing anything, if any authority in THIS
+  // build's own render input would slugify to the same value and collide.
+  assertNoTownsSlugCollision(authorityEntries);
+
   // Town pass FIRST: an authority page must link only to towns that actually
   // published (cleared the coverage gate), so the per-authority town map has to
   // be built before authority pages render. Both passes are independent; sitemap
@@ -841,6 +903,7 @@ async function renderEntries(args) {
   const {
     publishedTowns,
     townSitemapEntries,
+    townIndexEntries,
     excludedTowns,
     townsByAuthority,
     redirects,
@@ -896,7 +959,19 @@ async function renderEntries(args) {
     });
   }
 
-  const allSitemapEntries = [...authoritySitemapEntries, ...townSitemapEntries];
+  // Town INDEX page (GH #821 Phase 2) — always written, even with zero
+  // entries, so /planning/towns is never a soft-404 (see writeTownsIndexPage).
+  await writeTownsIndexPage(outDir, townIndexEntries);
+  const townsIndexSitemapEntry = {
+    path: TOWNS_INDEX_SLUG,
+    lastmod: townsIndexLastmod(townSitemapEntries),
+  };
+
+  const allSitemapEntries = [
+    ...authoritySitemapEntries,
+    ...townSitemapEntries,
+    townsIndexSitemapEntry,
+  ];
 
   // `/planning/` hub page (tc-geq7h.1, GH #821 Phase 1): one A-Z index of every
   // authority that was ACTUALLY published above (never a non-qualifying or
@@ -906,8 +981,9 @@ async function renderEntries(args) {
   // from the SAME entries/towns this render pass already produced.
   hubEntries.sort((a, b) => a.name.localeCompare(b.name));
   await writePlanningIndex(outDir, { authorities: hubEntries });
-  // lastmod = the max across every child page (authority + town), the most
-  // honest freshness signal for a page whose own content is just a listing.
+  // lastmod = the max across every child page (authority + town + towns
+  // index), the most honest freshness signal for a page whose own content is
+  // just a listing.
   const hubLastmod = maxLastmod(
     allSitemapEntries.map((e) => ({ lastDifferent: e.lastmod })),
   );
@@ -1016,6 +1092,11 @@ async function runLiveMode(args) {
 
   const authorities = await loadAuthorities();
 
+  // GH #821 Phase 2: the town INDEX page (/planning/towns) owns that path
+  // segment — fail LOUD, before writing anything, if any authority in the
+  // full committed list would slugify to the same value and collide.
+  assertNoTownsSlugCollision(authorities);
+
   // Town pass FIRST: the authority pages link down to their PUBLISHED towns, so
   // the per-authority town map must be built before authority pages render.
   // One bounded geo read per town, scoped to its authority partition and
@@ -1047,6 +1128,7 @@ async function runLiveMode(args) {
   const {
     publishedTowns,
     townSitemapEntries,
+    townIndexEntries,
     excludedTowns,
     townsByAuthority,
     redirects,
@@ -1107,9 +1189,21 @@ async function runLiveMode(args) {
     });
   }
 
+  // Town INDEX page (GH #821 Phase 2) — always written, even with zero
+  // entries, so /planning/towns is never a soft-404 (see writeTownsIndexPage).
+  await writeTownsIndexPage(outDir, townIndexEntries);
+  const townsIndexSitemapEntry = {
+    path: TOWNS_INDEX_SLUG,
+    lastmod: townsIndexLastmod(townSitemapEntries),
+  };
+
   await writeFile(
     join(outDir, 'sitemap.xml'),
-    renderSitemap([...authoritySitemapEntries, ...townSitemapEntries]),
+    renderSitemap([
+      ...authoritySitemapEntries,
+      ...townSitemapEntries,
+      townsIndexSitemapEntry,
+    ]),
     'utf-8',
   );
   await writeRedirectConfig({ outDir, redirects, baseConfigPath });
