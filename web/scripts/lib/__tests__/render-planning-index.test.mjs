@@ -39,6 +39,26 @@ describe('renderPlanningIndexPage', () => {
     expect(html).toContain('<h1>Planning applications by council</h1>');
   });
 
+  it('uses plural "authorities" wording in the lead and meta description for more than one authority', () => {
+    const html = renderPlanningIndexPage(indexData());
+    expect(html).toContain(
+      '<p class="lead">Browse recent planning applications for 3 local planning authorities across the UK.</p>',
+    );
+    expect(html).toContain('for 3 local planning authorities across the UK');
+  });
+
+  it('uses singular "authority" wording when there is exactly one', () => {
+    const html = renderPlanningIndexPage(
+      indexData({
+        authorities: [{ name: 'Adur', slug: 'adur', applicationCount: 42, townCount: 0 }],
+      }),
+    );
+    expect(html).toContain(
+      '<p class="lead">Browse recent planning applications for 1 local planning authority across the UK.</p>',
+    );
+    expect(html).not.toContain('1 local planning authorities');
+  });
+
   it('includes a canonical link to /planning with no trailing slug or slash', () => {
     const html = renderPlanningIndexPage(indexData());
     expect(html).toContain(`<link rel="canonical" href="${SITE_ORIGIN}/planning" />`);
