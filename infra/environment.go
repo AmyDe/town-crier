@@ -106,6 +106,8 @@ type envContext struct {
 	acsConnectionString           pulumi.StringOutput
 	apnsAuthKey                   pulumi.StringOutput
 	apnsUseSandbox                string
+	fcmProjectID                  string
+	fcmServiceAccountJSON         pulumi.StringOutput
 	auth0Domain                   string
 	auth0M2mClientID              pulumi.StringOutput
 	auth0M2mClientSecret          pulumi.StringOutput
@@ -142,6 +144,13 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 	if env == "dev" {
 		apnsUseSandbox = "true"
 	}
+
+	// FCM (Firebase Cloud Messaging) for Android push (#780). ServiceAccountJSON is the full
+	// service-account key JSON (secret, mirrors how apnsAuthKey carries the .p8); ProjectID is
+	// plain per-stack config. Both stacks target the same Firebase project — FCM has no sandbox
+	// concept, so there is no dev/prod split here (unlike apnsUseSandbox).
+	fcmProjectID := conf.Require("fcmProjectId")
+	fcmServiceAccountJSON := conf.RequireSecret("fcmServiceAccountJson")
 
 	// Shared stack outputs
 	shared, err := pulumi.NewStackReference(ctx, "AmyDe/town-crier/shared", nil)
@@ -268,6 +277,8 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		acsConnectionString:         acsConnectionString,
 		apnsAuthKey:                 apnsAuthKey,
 		apnsUseSandbox:              apnsUseSandbox,
+		fcmProjectID:                fcmProjectID,
+		fcmServiceAccountJSON:       fcmServiceAccountJSON,
 		auth0Domain:                 auth0Domain,
 		auth0M2mClientID:            auth0M2mClientID,
 		auth0M2mClientSecret:        auth0M2mClientSecret,
@@ -551,11 +562,12 @@ func createWorkerJob(ctx *pulumi.Context, ec envContext, nameSuffix, cronExpress
 		return fmt.Errorf("event-triggered jobs require a serviceBusPollingInfra (queue + namespace)")
 	}
 
-	// The acs-connection-string and apns-auth-key secrets exist on every job; dormant-cleanup
-	// and subscription-sweep also need the Auth0 Management (M2M) credentials.
+	// The acs-connection-string, apns-auth-key and fcm-service-account secrets exist on every
+	// job; dormant-cleanup and subscription-sweep also need the Auth0 Management (M2M) credentials.
 	secrets := app.SecretArray{
 		&app.SecretArgs{Name: pulumi.String("acs-connection-string"), Value: ec.acsConnectionString},
 		&app.SecretArgs{Name: pulumi.String("apns-auth-key"), Value: ec.apnsAuthKey},
+		&app.SecretArgs{Name: pulumi.String("fcm-service-account"), Value: ec.fcmServiceAccountJSON},
 	}
 	if workerMode == "dormant-cleanup" || workerMode == "subscription-sweep" {
 		secrets = append(secrets,
@@ -700,6 +712,18 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_TEAM_ID"), Value: pulumi.String("4574VQ7N2X")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_BUNDLE_ID"), Value: pulumi.String(apnsBundleID)},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_USE_SANDBOX"), Value: pulumi.String(ec.apnsUseSandbox)},
+		)
+	}
+
+	// FCM push (#780): the same three jobs that send APNs also send FCM to Android devices.
+	// FCM_SERVICE_ACCOUNT_JSON is the service-account key JSON (secret, on every job like
+	// apns-auth-key); FCM_PROJECT_ID is plain per-stack config. Without these
+	// buildPlatformDispatcher falls back to the FCM NoOp sender (APNs delivery unaffected).
+	if workerMode == "poll-sb" || workerMode == "digest" || workerMode == "hourly-digest" {
+		envVars = append(envVars,
+			app.EnvironmentVarArgs{Name: pulumi.String("FCM_ENABLED"), Value: pulumi.String("true")},
+			app.EnvironmentVarArgs{Name: pulumi.String("FCM_PROJECT_ID"), Value: pulumi.String(ec.fcmProjectID)},
+			app.EnvironmentVarArgs{Name: pulumi.String("FCM_SERVICE_ACCOUNT_JSON"), SecretRef: pulumi.String("fcm-service-account")},
 		)
 	}
 
