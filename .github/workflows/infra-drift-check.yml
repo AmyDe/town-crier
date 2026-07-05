@@ -1,0 +1,171 @@
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
+# Two independent, unrelated jobs sharing one file (issue #835 slice 7):
+#
+#   drift-check   — daily Pulumi drift detection per stack (shared, dev, prod).
+#                   `pulumi preview --refresh --expect-no-changes` fails loudly
+#                   (non-zero exit) the moment the real Azure state diverges
+#                   from what the Pulumi program declares — e.g. a manual `az`
+#                   change, a portal edit, or drift from an out-of-band script.
+#   cf-ip-check   — weekly check that Cloudflare's published IPv4 origin-pull
+#                   ranges still match the snapshot committed in
+#                   infra/environment.go's cloudflareIPv4Ranges var. No Azure/
+#                   Pulumi/secrets involved — a public unauthenticated GET.
+#
+# Both jobs also run on workflow_dispatch (in addition to their own cron) so
+# either can be exercised manually. github.event.schedule (the exact cron
+# string that fired) is how each job self-selects on a schedule event; a
+# workflow_dispatch event has no `schedule` value, so the `|| workflow_dispatch`
+# arm covers manual runs of both jobs from a single trigger.
+#
+# Cron times deliberately avoid the two other scheduled workflows in this repo
+# (seo-refresh.yml: 10 10 * * * daily; dev-container-app-cleanup.yml: 0 3 * * 1
+# Monday) — chosen for tidiness (repo is public, Actions minutes are free), not
+# because a collision would break anything.
+#
+# Requires secrets (drift-check job only; cf-ip-check needs none):
+#   AZURE_CLIENT_ID              — OIDC federated credential for Azure login
+#   AZURE_TENANT_ID              — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID        — Azure subscription
+#   PULUMI_ACCESS_TOKEN          — Pulumi Cloud access token
+#   ADMIN_API_KEY                — API key for admin endpoints (dev/prod stacks only)
+#   SITE_BUILD_KEY               — Build key for the gated SEO prerender endpoint (dev/prod only)
+#   AUTH0_M2M_CLIENT_ID          — Auth0 machine-to-machine client ID (dev/prod only)
+#   AUTH0_M2M_CLIENT_SECRET      — Auth0 machine-to-machine client secret (dev/prod only)
+#
+# Requires GitHub Environments (drift-check job only):
+#   development             — with OIDC federated credential (environment:development);
+#                              used for both the shared and dev stacks, matching
+#                              cd-dev.yml's infra-shared/infra-dev jobs.
+#   production              — with OIDC federated credential (environment:production);
+#                              used for the prod stack, matching cd-prod.yml's infra job.
+#
+# The shared stack (infra/Pulumi.shared.yaml, 419 bytes vs dev/prod's 4.2K) has
+# no app-secret config (adminApiKey/siteBuildKey/auth0M2m*) and so skips the
+# "Set Pulumi secrets" step entirely — see cd-dev.yml's infra-shared job, which
+# establishes this same skip.
+
+name: Infra Drift Check
+
+on:
+  schedule:
+    # 15 4 * * * = 04:15 UTC daily. Ahead of the SEO refresh (10:10 UTC) and
+    # clear of the Monday container-app cleanup (03:00 UTC Monday).
+    - cron: '15 4 * * *'
+    # 30 4 * * 1 = 04:30 UTC every Monday. Same low-traffic window as the
+    # daily drift check (15 minutes later, so the two never overlap even on
+    # the Monday both fire) and a different hour from the existing Monday
+    # 03:00 UTC container-app cleanup.
+    - cron: '30 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: infra-drift-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Daily Pulumi drift check, per stack ──────────────
+  drift-check:
+    name: "Drift: Pulumi preview (${{ matrix.stack }})"
+    if: github.event.schedule == '15 4 * * *' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [shared, dev, prod]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ matrix.stack == 'prod' && 'production' || 'development' }}
+    # Only this job needs Azure OIDC — scoped here rather than at the
+    # workflow level (cf-ip-check needs no id-token at all).
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-go-infra
+
+      - uses: ./.github/actions/azure-login
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Select Pulumi stack
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: pulumi stack select ${{ matrix.stack }}
+
+      # Shared has no app-secret config — cd-dev.yml's infra-shared job skips
+      # this same step for the same reason (infra/Pulumi.shared.yaml is 419
+      # bytes vs dev/prod's 4.2K; running this unconditionally would fail
+      # shared for missing required inputs, or apply irrelevant config).
+      - name: Set Pulumi secrets
+        if: matrix.stack != 'shared'
+        uses: ./.github/actions/setup-pulumi-secrets
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        with:
+          admin-api-key: ${{ secrets.ADMIN_API_KEY }}
+          site-build-key: ${{ secrets.SITE_BUILD_KEY }}
+          auth0-m2m-client-id: ${{ secrets.AUTH0_M2M_CLIENT_ID }}
+          auth0-m2m-client-secret: ${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+
+      # --expect-no-changes makes this exit non-zero the moment the refreshed
+      # state shows any diff from the program — the drift-detection mechanism
+      # itself, no extra scripting needed.
+      - name: Pulumi drift check (${{ matrix.stack }})
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ARM_USE_OIDC: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: pulumi preview --non-interactive --refresh --expect-no-changes
+
+  # ── Weekly Cloudflare IPv4 staleness check ───────────
+  cf-ip-check:
+    name: "Drift: Cloudflare IPv4 ranges vs infra/environment.go"
+    if: github.event.schedule == '30 4 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Diff Cloudflare IPv4 ranges against infra/environment.go
+        run: |
+          set -euo pipefail
+
+          # Committed snapshot: the []string{...} block of the
+          # cloudflareIPv4Ranges var in infra/environment.go.
+          committed=$(sed -n '/var cloudflareIPv4Ranges = \[\]string{/,/^}/p' infra/environment.go \
+            | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}' | sort -u)
+
+          # Cloudflare's current published ranges (public, unauthenticated).
+          published=$(curl -fsSL https://api.cloudflare.com/client/v4/ips \
+            | jq -r '.result.ipv4_cidrs[]' | sort -u)
+
+          if [ "$committed" != "$published" ]; then
+            echo "::error::Cloudflare's published IPv4 ranges (https://api.cloudflare.com/client/v4/ips) no longer match the cloudflareIPv4Ranges var committed in infra/environment.go — update that var to match the published list below."
+            echo "--- committed (infra/environment.go cloudflareIPv4Ranges) ---"
+            echo "$committed"
+            echo "--- published (https://api.cloudflare.com/client/v4/ips .result.ipv4_cidrs) ---"
+            echo "$published"
+            echo "--- diff (committed vs published) ---"
+            diff <(echo "$committed") <(echo "$published") || true
+            exit 1
+          fi
+
+          echo "OK: infra/environment.go's cloudflareIPv4Ranges matches Cloudflare's published IPv4 ranges."
