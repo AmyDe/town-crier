@@ -1,0 +1,55 @@
+# Applies pending goose migrations (and the app-role grant sweep) against the
+# named database. Authenticates as the CI service principal — a Postgres
+# Entra admin on psql-town-crier-shared — via azure-login's OIDC session, so
+# DefaultAzureCredential yields a passwordless ossrdbms token; no stored DB
+# secret is involved. A non-zero exit fails the deploy loudly (never a silent
+# skip); goose.Up is idempotent, so an up-to-date DB is a no-op. See ADR 0036.
+#
+# Shared by cd-dev.yml's migrate-dev and cd-prod.yml's migrate-prod jobs
+# (issue #835 slice 5) — the only difference between the two call sites is
+# `database-name`. The calling workflow keeps its own job-level needs:/if:/
+# environment: gating; this composite is only the steps: body.
+#
+# Assumes the calling job has already run actions/checkout before this
+# composite: a local composite action (`uses: ./path`) can't be resolved by
+# the runner from a workspace that hasn't been checked out yet, so checkout
+# can't live as this composite's own first step.
+name: Postgres Migrate
+description: Run pgmigrate against the given database, authenticating via Azure OIDC
+
+inputs:
+  database-name:
+    description: Target Postgres database name (e.g., town_crier_dev, town_crier_prod)
+    required: true
+  client-id:
+    description: Azure AD application (client) ID
+    required: true
+  tenant-id:
+    description: Azure AD tenant ID
+    required: true
+  subscription-id:
+    description: Azure subscription ID
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version-file: api-go/go.mod
+
+    - uses: ./.github/actions/azure-login
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
+
+    - name: Apply migrations
+      shell: bash
+      working-directory: api-go
+      run: |
+        go run ./cmd/pgmigrate \
+          -host psql-town-crier-shared.postgres.database.azure.com \
+          -admin-user town-crier-github-actions \
+          -db ${{ inputs.database-name }} \
+          -timeout 600s

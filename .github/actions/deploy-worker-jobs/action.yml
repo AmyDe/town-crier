@@ -3,7 +3,7 @@
 # topologies (ADR 0024: dev has no poll jobs), so this action is
 # intentionally agnostic about which jobs exist where.
 # Job names follow the convention job-tc-{name}-{env-suffix} and must
-# match infra/EnvironmentStack.cs — Pulumi seeds each job with a
+# match infra/environment.go — Pulumi seeds each job with a
 # quickstart placeholder image on create, and CD is responsible for
 # replacing it on every deploy.
 #
