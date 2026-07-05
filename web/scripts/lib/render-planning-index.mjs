@@ -180,9 +180,10 @@ function buildJsonLd(data, canonical) {
 export function renderPlanningIndexPage(data) {
   const canonical = `${SITE_ORIGIN}/planning`;
   const count = data.authorities.length;
+  const authoritiesNoun = count === 1 ? 'local planning authority' : 'local planning authorities';
   const title = 'Planning applications by council | Town Crier';
   const metaDescription = escapeHtml(
-    `Browse recent planning applications for ${count} local planning authorities across the UK. Find your council and get push alerts the moment a new application is submitted or decided.`,
+    `Browse recent planning applications for ${count} ${authoritiesNoun} across the UK. Find your council and get push alerts the moment a new application is submitted or decided.`,
   );
   const jsonLd = buildJsonLd(data, canonical);
   const year = new Date().getFullYear();
@@ -230,7 +231,7 @@ ${pageStyles()}
       </nav>
       <main>
         <h1>Planning applications by council</h1>
-        <p class="lead">Browse recent planning applications for ${count} local planning authorities across the UK.</p>
+        <p class="lead">Browse recent planning applications for ${count} ${authoritiesNoun} across the UK.</p>
 ${renderInlineCta('your council', storeHref)}
 ${letterNav}
 ${letterSections}
