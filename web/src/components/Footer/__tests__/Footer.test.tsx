@@ -74,4 +74,22 @@ describe('Footer', () => {
     const links = within(nav).getAllByRole('link');
     expect(links).toHaveLength(2);
   });
+
+  it('renders an Explore nav linking to the planning authority and town indexes plus search', () => {
+    render(<Footer />);
+
+    const nav = screen.getByRole('navigation', { name: /explore/i });
+    expect(nav).toBeInTheDocument();
+
+    const authorityLink = within(nav).getByRole('link', { name: /planning applications by council/i });
+    expect(authorityLink).toHaveAttribute('href', '/planning/');
+
+    const townLink = within(nav).getByRole('link', { name: /planning applications by town/i });
+    expect(townLink).toHaveAttribute('href', '/planning/towns/');
+
+    const searchLink = within(nav).getByRole('link', { name: /search planning applications/i });
+    expect(searchLink).toHaveAttribute('href', '/search');
+
+    expect(within(nav).getAllByRole('link')).toHaveLength(3);
+  });
 });
