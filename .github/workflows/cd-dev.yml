@@ -33,6 +33,12 @@
 #
 # Requires GitHub Environment:
 #   development            — with OIDC federated credential (environment:development)
+#
+# Requires .github/config/resource-names.env — single source of truth for
+# hardcoded Azure resource names (SWA, storage account, container app,
+# resource group, ACR image repos). Loaded per-job via `cat ... >>
+# "$GITHUB_ENV"` after checkout; asserted against infra/environment.go's
+# naming conventions by an /infra Go test (issue #835 slice 6).
 
 name: CD Dev
 
@@ -200,6 +206,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -209,7 +221,7 @@ jobs:
       - uses: ./.github/actions/acr-build-push
         with:
           acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          image-name: town-crier-api-go
+          image-name: ${{ env.IMAGE_REPO_API }}
           working-directory: api-go
 
   # ── Go Worker: build & push image ───────────────────────
@@ -227,6 +239,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -236,7 +254,7 @@ jobs:
       - uses: ./.github/actions/acr-build-push
         with:
           acr-login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          image-name: town-crier-worker-go
+          image-name: ${{ env.IMAGE_REPO_WORKER }}
           dockerfile: Dockerfile.worker
           working-directory: api-go
 
@@ -257,6 +275,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -265,9 +289,9 @@ jobs:
 
       - uses: ./.github/actions/deploy-container-app
         with:
-          app-name: ca-town-crier-api-go-dev
-          resource-group: rg-town-crier-dev
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-api-go:${{ github.sha }}
+          app-name: ${{ env.CONTAINER_APP_API_DEV }}
+          resource-group: ${{ env.RESOURCE_GROUP_DEV }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO_API }}:${{ github.sha }}
 
   # ── Worker: deploy to dev ───────────────────────────────
   worker-deploy:
@@ -285,6 +309,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
+
       - uses: ./.github/actions/azure-login
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -296,8 +326,8 @@ jobs:
           # Dev has no poll or poll-bootstrap jobs (ADR 0024).
           jobs: digest digest-hourly dormant-cleanup dev-seed subscription-sweep pg-purge
           env-suffix: dev
-          resource-group: rg-town-crier-dev
-          image: ${{ secrets.ACR_LOGIN_SERVER }}/town-crier-worker-go:${{ github.sha }}
+          resource-group: ${{ env.RESOURCE_GROUP_DEV }}
+          image: ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO_WORKER }}:${{ github.sha }}
 
   # ── Web: deploy to dev ──────────────────────────────
   web-deploy:
@@ -313,6 +343,12 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      # Loads the resource-name constants (issue #835 slice 6) into $GITHUB_ENV
+      # so subsequent steps can reference ${{ env.KEY }} instead of inline
+      # literals. Must run after checkout — the file has to be on disk.
+      - name: Load resource names
+        run: cat .github/config/resource-names.env >> "$GITHUB_ENV"
 
       # azure-login MUST run before build-web: in render-mode, build-web
       # downloads the weekly seo-snapshot.json from Azure Blob via `az storage
@@ -335,13 +371,13 @@ jobs:
           vite-applicationinsights-connection-string: ${{ vars.VITE_APPLICATIONINSIGHTS_CONNECTION_STRING }}
           seo-town-min-population: ${{ vars.SEO_TOWN_MIN_POPULATION || '5000' }}
           render-mode: 'true'
-          storage-account-name: sttowncrierdev
+          storage-account-name: ${{ env.STORAGE_ACCOUNT_DEV }}
 
       - name: Get SWA deployment token
         id: swa-token
         uses: ./.github/actions/get-swa-token
         with:
-          swa-name: swa-town-crier-dev
+          swa-name: ${{ env.SWA_NAME_DEV }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
