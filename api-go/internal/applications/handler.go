@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/AmyDe/town-crier/api-go/internal/auth"
-	"github.com/AmyDe/town-crier/api-go/internal/authorities"
 )
 
 // appStore is the consumer-side store the application read handler uses.
@@ -116,17 +115,8 @@ func (h *handler) getBySlug(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, h.logger, result)
 }
 
-// authoritySlug returns the URL slug for the application's authority,
-// round-trip-safe against SlugToAreaID: it prefers the resolver's SlugForAreaID
-// (so the emitted slug is exactly what SlugToAreaID resolves back), and only when
-// the id is unknown falls back to slugifying the PlanIt area name. The fallback is
-// warn-logged because it means PlanIt returned an area id absent from the static
-// authorities data — the emitted slug then may not round-trip back through
-// SlugToAreaID, so a share/by-slug link built from it could 404.
+// authoritySlug returns the URL slug for the application's authority. See
+// resolveAuthoritySlugFor (respond.go) for the round-trip/fallback behaviour.
 func (h *handler) authoritySlug(ctx context.Context, app PlanningApplication) string {
-	if slug, ok := h.resolver.SlugForAreaID(app.AreaID); ok {
-		return slug
-	}
-	h.logger.WarnContext(ctx, "authority slug fallback: area id not in static authorities", "op", "authority slug", "areaId", app.AreaID, "areaName", app.AreaName, "uid", app.UID)
-	return authorities.Slugify(app.AreaName)
+	return resolveAuthoritySlugFor(ctx, h.resolver, h.logger, "authority slug", app)
 }

@@ -20,6 +20,21 @@ func TestAnonymousPatterns_IncludesBySlugApplicationRead(t *testing.T) {
 	}
 }
 
+// TestAnonymousPatterns_IncludesApplicationSearch pins the anonymity of the
+// public application search endpoint (#821 Phase 3, tc-geq7h.3): a resident
+// searching by reference/address/description needs no token, mirroring the
+// by-slug application read. The middleware keys on the exact registered
+// pattern string, so this must match the route wired in applications
+// byte-for-byte.
+func TestAnonymousPatterns_IncludesApplicationSearch(t *testing.T) {
+	t.Parallel()
+
+	const search = "GET /v1/applications/search"
+	if _, ok := anonymousPatterns[search]; !ok {
+		t.Errorf("anonymousPatterns must include %q", search)
+	}
+}
+
 // TestAnonymousPatterns_IncludesSharePage pins the anonymity of the public
 // server-rendered share page (#738). The auth middleware keys on the exact
 // registered pattern string, so this must match the route wired in sharepage

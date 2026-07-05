@@ -69,6 +69,11 @@ var anonymousPatterns = map[string]struct{}{
 	// and iOS inbound deep-link resolution (#738). The sibling by-id read stays
 	// authed (absent from this map).
 	"GET /v1/applications/by-slug/{authoritySlug}/{ref...}": {},
+	// The anonymous application search (#821 Phase 3, tc-geq7h.3) reads only
+	// public planning data (reference/address/description match, Postgres only —
+	// PlanIt is never touched): a resident finding an application to share needs
+	// no token, mirroring the by-slug read above.
+	"GET /v1/applications/search": {},
 	// The public share page is anonymous (public planning data only; no user data,
 	// no cookies, no client-IP logging): a server-rendered HTML page for a single
 	// application, the tracer surface of the shareable-page epic (#738).
@@ -261,6 +266,14 @@ func newRouter(
 		// 401 fallback.
 		applications.RecentRoutes(mux, appStore, siteBuildKey, logger)
 		applications.NearRoutes(mux, appStore, siteBuildKey, logger)
+		// The anonymous application search (#821 Phase 3, tc-geq7h.3) reads from the
+		// same store; it needs no build key (unlike the two SEO routes above) since
+		// it is not a build-time-only surface — it is the public-facing endpoint the
+		// /search web page (tc-geq7h.4) calls directly from a visitor's browser. It is
+		// anonymous to Auth0 (see anonymousPatterns) and subject to the SAME rate
+		// limiting as every other anonymous route: RateLimit no-ops on a request
+		// with no subject (middleware/ratelimit.go), so no new scheme is needed here.
+		applications.SearchRoutes(mux, appStore, authorities.NewLookup(), logger)
 		// The public share page (#738): an anonymous, server-rendered HTML page for a
 		// single application at GET /a/{authoritySlug}/{ref...}. It point-reads the
 		// same applications store and resolves the authority slug via the static
