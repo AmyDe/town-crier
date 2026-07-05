@@ -23,6 +23,13 @@
 #     prod release trivially diffable by eye in the workflow file — this
 #     composite cannot be exercised by pr-gate (cd-prod.yml only triggers on
 #     a v* tag push), so minimising what's hidden behind it matters.
+#
+# Assumes the calling job has already run actions/checkout (fetch-depth: 0 —
+# "Resolve tag to commit SHA" below needs the pushed tag ref resolvable via
+# git rev-parse) before this composite: a local composite action
+# (`uses: ./path`) can't be resolved by the runner from a workspace that
+# hasn't been checked out yet, so checkout can't live as this composite's
+# own first step.
 name: Resolve Release Image
 description: Resolve a cd-prod tag push to an immutable ACR image digest, falling back to :latest
 
@@ -54,11 +61,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      with:
-        persist-credentials: false
-        fetch-depth: 0
-
     - name: Resolve tag to commit SHA
       id: resolve
       shell: bash

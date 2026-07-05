@@ -103,6 +103,9 @@ jobs:
     timeout-minutes: 15
     environment: production
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/pgmigrate
         with:
           database-name: town_crier_prod
@@ -118,6 +121,11 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
       - name: Resolve release image
         id: resolve-image
         uses: ./.github/actions/resolve-release-image
@@ -161,6 +169,11 @@ jobs:
     timeout-minutes: 5
     environment: production
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
       # Same rationale as the Go API job above. Pinning the worker jobs to a
       # digest makes each release run an exact, reproducible image instead of
       # whatever :latest happens to resolve to at run time.

@@ -9,6 +9,11 @@
 # (issue #835 slice 5) — the only difference between the two call sites is
 # `database-name`. The calling workflow keeps its own job-level needs:/if:/
 # environment: gating; this composite is only the steps: body.
+#
+# Assumes the calling job has already run actions/checkout before this
+# composite: a local composite action (`uses: ./path`) can't be resolved by
+# the runner from a workspace that hasn't been checked out yet, so checkout
+# can't live as this composite's own first step.
 name: Postgres Migrate
 description: Run pgmigrate against the given database, authenticating via Azure OIDC
 
@@ -29,10 +34,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      with:
-        persist-credentials: false
-
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
         go-version-file: api-go/go.mod
