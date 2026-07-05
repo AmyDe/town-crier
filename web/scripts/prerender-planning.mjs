@@ -87,30 +87,6 @@ function maxLastmod(applications) {
 }
 
 /**
- * Sort applications by `lastDifferent` DESC (freshest first) for DISPLAY. Town
- * nearby data arrives distance-ordered (the build requests `order=distance` to
- * minimise overlap between adjacent town pages), so the renderer must re-sort it
- * by recency so the cards read newest-first (matching the single page-level
- * "Data updated" line, which reports the freshest of the same shown set).
- * Authority data already arrives recency-ordered, so this is only applied on the
- * town path. Returns a new array; undated rows sort last, original order is kept
- * among equal dates (stable).
- *
- * @param {ReadonlyArray<{ lastDifferent?: string | null }>} applications
- * @returns {Array<{ lastDifferent?: string | null }>}
- */
-function sortByRecencyDesc(applications) {
-  const keyed = applications.map((app, index) => {
-    const iso = app?.lastDifferent;
-    const ms =
-      typeof iso === 'string' && iso !== '' ? new Date(iso).getTime() : NaN;
-    return { app, index, ms: Number.isNaN(ms) ? -Infinity : ms };
-  });
-  keyed.sort((a, b) => b.ms - a.ms || a.index - b.index);
-  return keyed.map((k) => k.app);
-}
-
-/**
  * Default published-population threshold when `SEO_TOWN_MIN_POPULATION` is unset,
  * empty, or not a positive finite integer. A town ships only if its built-up-area
  * population is at least this value (the ≥10 in-radius coverage gate applies on
@@ -614,10 +590,10 @@ async function considerTown(args) {
   }
   seenPaths.add(path);
 
-  // Town nearby data arrives distance-ordered (order=distance, tc-2avw.2). Re-sort
-  // by lastDifferent DESC for display so the cards read newest-first and the
-  // page's lastmod (derived below) is consistent with what is shown.
-  const shown = sortByRecencyDesc(applications).slice(0, limit);
+  // The near read is a fully server-side town-level Voronoi partition, already
+  // ordered by GREATEST(decidedDate, startDate) DESC (tc-s0yf) — like the
+  // authority read (considerAuthority, above), so no re-sort here.
+  const shown = applications.slice(0, limit);
   await writeTownPage(outDir, {
     townName: town.name,
     townSlug: town.slug,
