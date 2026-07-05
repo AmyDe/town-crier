@@ -4,8 +4,10 @@ package applications
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AmyDe/town-crier/api-go/internal/platform/postgres/pgtest"
 )
@@ -438,6 +440,110 @@ func TestPostgresStore_Search_TiedScoresStayDeterministicUnderCap(t *testing.T) 
 // "TIE-AB", ...) for the tied-score determinism test above.
 func tieName(i int) string {
 	return "TIE-" + string(rune('A'+i/26)) + string(rune('A'+i%26))
+}
+
+// TestPostgresStore_Search_LargeScaleCrossTierCandidateSet reproduces the prod
+// incident directly (tc-z5i5j: ?q=extension took 15-53s, sometimes timing out
+// outright) with a seeded dataset large enough that "extension" genuinely
+// exercises a large candidate set across all three tiers, not just a
+// synthetic few-row fixture. It asserts exact top-K correctness — the same
+// result the old, unbounded, correct-but-slow query would have produced: tier
+// 1 first (exact, then the two tied prefix matches broken by planit_name),
+// then the alphabetically-first tier-2 winners, tier 3 never reached because
+// 300 tier-2 matches alone are far more than enough to fill the remaining
+// slots. The elapsed-time assertion is a generous, CI-tolerant smoke
+// trip-wire only; the primary proof that the query no longer needs a full
+// sort of the unbounded candidate set is the structural, non-flaky EXPLAIN
+// check in TestPostgresStore_Search_BoundsEachTierWithLimitPushdown.
+func TestPostgresStore_Search_LargeScaleCrossTierCandidateSet(t *testing.T) {
+	store := newAppPGStore(t)
+	ctx := context.Background()
+
+	const perTier = 300
+
+	// Tier 1: one exact match plus two prefix matches, tied at score 1.0 and
+	// broken by planit_name (P-AA before P-AB).
+	exact := searchApp("E-EXACT", "extension", 100)
+	prefixA := searchApp("P-AA", "extension-annex", 100)
+	prefixB := searchApp("P-AB", "extension-loft", 100)
+	for _, a := range []PlanningApplication{exact, prefixA, prefixB} {
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	// Tier 2: perTier applications whose address all fuzzy-match "extension"
+	// with an IDENTICAL word_similarity score (tied) — none also match tier 1
+	// (uid is unrelated) or tier 3 (description is the pgApp default).
+	for i := range perTier {
+		name := "T2-" + fmt.Sprintf("%03d", i)
+		a := searchApp(name, "addr-uid-"+name, 100)
+		a.Address = "10 Extension Close, Sometown"
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	// Tier 3: perTier applications whose description all full-text-match
+	// "extension" with an IDENTICAL ts_rank (tied) — none also match tier 1
+	// (uid is unrelated) or tier 2 (address is the pgApp default).
+	for i := range perTier {
+		name := "T3-" + fmt.Sprintf("%03d", i)
+		a := searchApp(name, "desc-uid-"+name, 100)
+		a.Description = "Two storey rear extension"
+		if err := store.Upsert(ctx, a); err != nil {
+			t.Fatalf("Upsert %s: %v", a.Name, err)
+		}
+	}
+
+	start := time.Now()
+	apps, refine, err := store.Search(ctx, "extension", "", 20)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+
+	if elapsed > 3*time.Second {
+		t.Errorf("Search took %v against %d rows spanning all 3 tiers — want comfortably sub-second; "+
+			"this is a smoke trip-wire only, see TestPostgresStore_Search_BoundsEachTierWithLimitPushdown "+
+			"for the primary structural proof", elapsed, 3+2*perTier)
+	}
+
+	if len(apps) != 20 {
+		t.Fatalf("got %d rows, want 20 (truncated to limit); names=%v", len(apps), namesOf(apps))
+	}
+	if !refine {
+		t.Error("refine: got false, want true (far more than 20 matches exist across all 3 tiers)")
+	}
+
+	wantOrder := []string{"E-EXACT", "P-AA", "P-AB"}
+	for i := 0; i < 17; i++ {
+		wantOrder = append(wantOrder, fmt.Sprintf("T2-%03d", i))
+	}
+	if got := namesOf(apps); !equalNames(got, wantOrder) {
+		t.Fatalf("rank order:\n got  %v\n want %v (tier 1 first, then the 17 alphabetically-first "+
+			"tier-2 winners needed to fill limit+1=21 before truncation; tier 3 never reached)", got, wantOrder)
+	}
+}
+
+func namesOf(apps []PlanningApplication) []string {
+	names := make([]string, len(apps))
+	for i, a := range apps {
+		names[i] = a.Name
+	}
+	return names
+}
+
+func equalNames(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestPostgresStore_Search_ExplainUsesTrgmAndFTSIndexes proves the migration's
