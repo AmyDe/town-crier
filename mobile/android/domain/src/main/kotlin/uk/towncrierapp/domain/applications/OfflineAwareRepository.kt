@@ -55,6 +55,11 @@ public class OfflineAwareRepository(
         name: String,
     ): PlanningApplication = remote.detail(authority, name)
 
+    override suspend fun detailBySlug(
+        authoritySlug: String,
+        ref: String,
+    ): PlanningApplication = remote.detailBySlug(authoritySlug, ref)
+
     private fun isFresh(cached: CachedApplicationPage): Boolean =
         Duration.between(cached.cachedAt, clock.instant()) < TTL
 

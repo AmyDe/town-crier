@@ -65,6 +65,16 @@ public class ApiPlanningApplicationRepository(
             .request(ApiEndpoint.get("/v1/applications/$authority/$name"), ApplicationDetailDto.serializer())
             .toDomain()
 
+    override suspend fun detailBySlug(
+        authoritySlug: String,
+        ref: String,
+    ): PlanningApplication =
+        apiClient
+            .request(
+                ApiEndpoint.get("/v1/applications/by-slug/$authoritySlug/$ref"),
+                ApplicationDetailDto.serializer(),
+            ).toDomain()
+
     public companion object {
         public const val PAGE_SIZE: Int = 150
     }

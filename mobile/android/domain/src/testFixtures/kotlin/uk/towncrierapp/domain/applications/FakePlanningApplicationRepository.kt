@@ -21,6 +21,10 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
     public var detailFailWith: DomainError? = null
     public val detailCalls: MutableList<Pair<String, String>> = mutableListOf()
 
+    public var detailBySlugResult: PlanningApplication = aPlanningApplication()
+    public var detailBySlugFailWith: DomainError? = null
+    public val detailBySlugCalls: MutableList<Pair<String, String>> = mutableListOf()
+
     /**
      * A cooperative gate hook run before [detail] returns — the "iOS
      * spy-gate idiom" (testing.md) for re-entrancy tests. A test sets this to
@@ -49,5 +53,14 @@ public class FakePlanningApplicationRepository : PlanningApplicationRepository {
         beforeDetail()
         detailFailWith?.let { throw it }
         return detailResult
+    }
+
+    override suspend fun detailBySlug(
+        authoritySlug: String,
+        ref: String,
+    ): PlanningApplication {
+        detailBySlugCalls += authoritySlug to ref
+        detailBySlugFailWith?.let { throw it }
+        return detailBySlugResult
     }
 }
