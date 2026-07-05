@@ -151,7 +151,7 @@ jobs:
             -host psql-town-crier-shared.postgres.database.azure.com \
             -admin-user town-crier-github-actions \
             -db town_crier_dev \
-            -timeout 120s
+            -timeout 600s
 
   # ── Go API: build & push image ──────────────────────
   api-go-image:

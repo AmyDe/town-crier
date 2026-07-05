@@ -117,7 +117,7 @@ jobs:
             -host psql-town-crier-shared.postgres.database.azure.com \
             -admin-user town-crier-github-actions \
             -db town_crier_prod \
-            -timeout 120s
+            -timeout 600s
 
   # ── Go API ────────────────────────────────────────────
   api-go:

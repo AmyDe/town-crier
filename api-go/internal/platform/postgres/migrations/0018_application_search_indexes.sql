@@ -1,3 +1,4 @@
+-- +goose NO TRANSACTION
 -- +goose Up
 
 -- pg_trgm backs the address fuzzy-match tier of GET /v1/applications/search
@@ -14,7 +15,18 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- case-insensitive matching) serves <%/%> without a sequential scan. Per
 -- pg_trgm convention, the index goes on the argument being searched into
 -- (address), not the search term.
-CREATE INDEX IF NOT EXISTS applications_address_trgm
+--
+-- CONCURRENTLY (tc-5i07d): plain CREATE INDEX takes a lock that blocks
+-- writes to applications for the whole build — twice fatal in prod, where it
+-- blocked the polling worker and then hit the pgmigrate timeout. CONCURRENTLY
+-- avoids that lock at the cost of a longer build (two table scans) and
+-- requires running outside a transaction — see the NO TRANSACTION directive
+-- above, which also means this file's statements are NOT atomic as a group:
+-- a failure partway through can leave a later statement unapplied (rerunning
+-- the migration is safe/idempotent via IF NOT EXISTS, except that a failed
+-- CONCURRENTLY build can leave behind an INVALID index that IF NOT EXISTS
+-- will not replace — see incident notes on tc-5i07d).
+CREATE INDEX CONCURRENTLY IF NOT EXISTS applications_address_trgm
     ON applications USING gin (lower(address) gin_trgm_ops);
 
 -- Tier 3 (description full-text match): a GIN index over the `english`-config
@@ -23,7 +35,7 @@ CREATE INDEX IF NOT EXISTS applications_address_trgm
 -- the query side re-derives the identical expression
 -- (to_tsvector('english', description)), which is what lets the planner match
 -- it to this index.
-CREATE INDEX IF NOT EXISTS applications_description_fts
+CREATE INDEX CONCURRENTLY IF NOT EXISTS applications_description_fts
     ON applications USING gin (to_tsvector('english', description));
 
 -- Tier 1 (reference exact/prefix match): uid is the fuller, human-recognisable
@@ -33,14 +45,14 @@ CREATE INDEX IF NOT EXISTS applications_description_fts
 -- btree with text_pattern_ops serves both the exact form (lower(uid) = $1) and
 -- the prefix form (lower(uid) LIKE $1 || '%') without a sequential scan,
 -- regardless of the database's collation.
-CREATE INDEX IF NOT EXISTS applications_uid_lower_pattern
+CREATE INDEX CONCURRENTLY IF NOT EXISTS applications_uid_lower_pattern
     ON applications (lower(uid) text_pattern_ops);
 
 -- +goose Down
 
-DROP INDEX IF EXISTS applications_uid_lower_pattern;
-DROP INDEX IF EXISTS applications_description_fts;
-DROP INDEX IF EXISTS applications_address_trgm;
+DROP INDEX CONCURRENTLY IF EXISTS applications_uid_lower_pattern;
+DROP INDEX CONCURRENTLY IF EXISTS applications_description_fts;
+DROP INDEX CONCURRENTLY IF EXISTS applications_address_trgm;
 -- pg_trgm is intentionally left installed on Down: it may be shared by other
 -- objects, and re-creating it on a subsequent Up is cheap (IF NOT EXISTS) —
 -- mirroring the postgis extension's Down comment in 0001_init_postgis.sql.
