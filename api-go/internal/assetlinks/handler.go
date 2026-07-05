@@ -58,12 +58,18 @@ type handler struct {
 }
 
 // Routes registers the anonymous assetlinks endpoint for the given packages.
+// A Package with no fingerprints yet (e.g. uk.towncrierapp.mobile, pending
+// Play Console enrolment, #779) is skipped rather than published with an
+// empty or placeholder fingerprint that would fail verification anyway.
 //
 // The document is marshalled once at wiring time so the handler does no
 // per-request work, mirroring internal/aasa's Routes.
 func Routes(mux *http.ServeMux, packages []Package, logger *slog.Logger) {
 	statements := make([]statement, 0, len(packages))
 	for _, p := range packages {
+		if len(p.Fingerprints) == 0 {
+			continue
+		}
 		statements = append(statements, statement{
 			Relation: []string{relationHandleAllURLs},
 			Target: target{
