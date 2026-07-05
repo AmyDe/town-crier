@@ -152,3 +152,53 @@ describe('staticwebapp.config.json — AASA route', () => {
     expect(parsed.applinks.details.length).toBeGreaterThan(0);
   });
 });
+
+describe('assetlinks.json', () => {
+  interface AssetLinksTarget {
+    namespace: string;
+    package_name: string;
+    sha256_cert_fingerprint: string[];
+  }
+
+  interface AssetLinksEntry {
+    relation: string[];
+    target: AssetLinksTarget;
+  }
+
+  function loadAssetLinks(): AssetLinksEntry[] {
+    const assetLinksPath = resolve(
+      __dirname,
+      '../../public/.well-known/assetlinks.json',
+    );
+    const raw = readFileSync(assetLinksPath, 'utf-8');
+    return JSON.parse(raw) as AssetLinksEntry[];
+  }
+
+  it('grants delegate_permission/common.handle_all_urls to every entry', () => {
+    const assetLinks = loadAssetLinks();
+
+    expect(assetLinks.length).toBeGreaterThan(0);
+    for (const entry of assetLinks) {
+      expect(entry.relation).toContain('delegate_permission/common.handle_all_urls');
+    }
+  });
+
+  it('targets the android_app namespace for every entry', () => {
+    const assetLinks = loadAssetLinks();
+
+    for (const entry of assetLinks) {
+      expect(entry.target.namespace).toBe('android_app');
+    }
+  });
+
+  it('declares the debug keystore SHA-256 fingerprint for uk.towncrierapp.mobile.dev', () => {
+    const assetLinks = loadAssetLinks();
+    const devEntry = assetLinks.find(
+      (entry) => entry.target.package_name === 'uk.towncrierapp.mobile.dev',
+    );
+
+    expect(devEntry?.target.sha256_cert_fingerprint).toContain(
+      '75:2F:87:AF:52:B6:4D:33:71:ED:77:2A:2A:1C:D9:7A:A4:67:9E:1A:17:F0:9F:FD:92:12:D6:55:92:FD:0E:07',
+    );
+  });
+});
