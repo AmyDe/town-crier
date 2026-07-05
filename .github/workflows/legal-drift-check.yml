@@ -1,3 +1,6 @@
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+
 name: Legal docs drift check
 
 on:
@@ -20,5 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
       - run: bash scripts/check-legal-drift.sh

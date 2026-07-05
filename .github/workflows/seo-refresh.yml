@@ -1,5 +1,8 @@
 # Daily refresh of the SEO snapshot for BOTH dev and prod web.
 #
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 # This job is the SOLE caller of the gated Go API for the programmatic SEO pages
 # (authority-level AND per-town), plus sitemap.xml (epic tc-w5w9 / GH #598). It
 # decouples *data fetching* (daily, against the API) from *page rendering*
@@ -94,7 +97,9 @@ jobs:
     timeout-minutes: 30
     environment: development
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       # SPA only — empty site-build-key skips the build-time prerender.
       - uses: ./.github/actions/build-web
@@ -145,7 +150,7 @@ jobs:
           swa-name: swa-town-crier-dev
 
       - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -167,7 +172,9 @@ jobs:
     timeout-minutes: 30
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       # SPA only — empty site-build-key skips the build-time prerender.
       - uses: ./.github/actions/build-web
@@ -218,7 +225,7 @@ jobs:
           swa-name: swa-town-crier-prod
 
       - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         with:
           azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}

@@ -49,6 +49,15 @@
 #   see category-map.sh and the "Coverage assertion" step below. This
 #   catches a new top-level directory that nobody wired up, even if it's
 #   never touched again after the PR that introduced it (issue #835 slice 2).
+#
+# gha output (issue #835 slice 4):
+#   A `gha` category is available for callers that want a lint lane for
+#   .github/ itself (actionlint/zizmor — see pr-gate.yml's
+#   github-actions-lint job). It's computed independently of
+#   CATEGORY_PREFIXES/the fail-closed catch-all above (true whenever any
+#   changed path starts with ".github/"), so requesting it does NOT change
+#   the existing "unmapped .github/ change fail-closes every other
+#   requested category" behavior — it's an additive, separate signal.
 name: Detect Changes
 description: Monorepo change detection with push/pr modes
 
@@ -92,6 +101,9 @@ outputs:
   go:
     description: "true if api-go/ changed"
     value: ${{ steps.detect.outputs.go }}
+  gha:
+    description: "true if .github/ changed (workflows or composite actions) — drives the actionlint/zizmor lint lane (issue #835 slice 4)"
+    value: ${{ steps.detect.outputs.gha }}
 
 runs:
   using: composite
@@ -249,6 +261,20 @@ runs:
         done <<< "$CHANGED"
 
         fi # FORCE_ALL_TRUE
+
+        # gha (issue #835 slice 4): computed independently of the
+        # CATEGORY_PREFIXES loop above, deliberately NOT added as a
+        # mapped prefix there. Mapping ".github" into CATEGORY_PREFIXES
+        # would make a .github/ file "matched" and skip the fail-closed
+        # catch-all a few lines up — undoing slice 1's design, where any
+        # unmapped .github/ change must still force every other requested
+        # category true (a stray workflow/action edit could affect any
+        # lane). Instead, `gha` is a simple independent signal computed
+        # straight from $CHANGED: true whenever any changed path is under
+        # .github/, regardless of mode or the fail-closed logic above.
+        if [[ -v "flags[gha]" ]] && echo "$CHANGED" | grep -qE '^\.github/'; then
+          flags[gha]=true
+        fi
 
         # Write outputs
         for cat in "${CATS[@]}"; do

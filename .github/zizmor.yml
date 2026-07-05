@@ -1,0 +1,89 @@
+# zizmor configuration (issue #835 slice 4 — CI hardening: actionlint + zizmor
+# gate). Discovered automatically by `zizmor .` (see
+# https://docs.zizmor.sh/configuration/#discovery).
+#
+# Every waiver below was reviewed by hand against a real `zizmor` run over
+# this repo (both offline and online modes, 2026-07-05) before being added —
+# this file is NOT a blanket "make the gate green" escape hatch. Each entry
+# states why the finding is either a false positive here or deliberately
+# deferred, and deferred items are tracked as a follow-up bead
+# (tc-61eoz.4 discovered-from) rather than silently dropped.
+#
+# Findings that were FIXED instead of waived (not listed here):
+#   - artipacked: every `actions/checkout` step across all workflows now sets
+#     `persist-credentials: false` — a no-risk default (no workflow in this
+#     repo relies on the checkout's ambient git credential to push/commit;
+#     `gh`/`az` calls authenticate via their own explicit tokens/OIDC).
+#   - unpinned-uses: resolved by the SHA-pinning done in this same slice —
+#     zero findings, nothing to waive.
+rules:
+  # template-injection (54 findings, mostly High confidence/severity): the
+  # large majority live inside existing composite actions under
+  # .github/actions/ (acr-build-push, deploy-container-app, deploy-worker-jobs,
+  # detect-changes, setup-pulumi-secrets, build-web, get-swa-token) that
+  # interpolate `${{ inputs.* }}` directly into `run:` scripts. zizmor can't
+  # ignore composite-action findings via this config file (only inline
+  # comments work there — see https://docs.zizmor.sh/configuration/#rulesidignore),
+  # and rewriting those `run:` blocks to route through `env:` indirection
+  # (the standard fix) is a functional change to files this slice's scope
+  # deliberately excludes ("do not touch ... the composite-action-factoring
+  # work — those are slices 5/6, separate PRs"). The handful of remaining
+  # workflow-level findings are Low-confidence/Informational and involve only
+  # job outputs (git SHAs, image digests) or repo-level `vars.*` — never
+  # fork-controllable input (PR titles/bodies, issue titles, branch names) —
+  # so they're not realistically exploitable in this repo's threat model.
+  # Deferred to a follow-up bead (env-var indirection across the composite
+  # actions), filed discovered-from tc-61eoz.4 — natural fit alongside
+  # slice 5's composite-action work, since that's when these files next get
+  # rewritten anyway.
+  template-injection:
+    disable: true
+
+  # github-env (1 finding, Low confidence): setup-go-infra/action.yml's
+  # `echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"` — this is GitHub's own
+  # documented mechanism for extending PATH (see "Adding a system path" in
+  # GitHub Actions docs), appending a fully static, non-attacker-controllable
+  # string ($HOME is runner-set, not user input). zizmor's own confidence
+  # rating agrees (Low). Lives in a composite action this slice doesn't
+  # otherwise touch, so — same as template-injection above — the only
+  # available waiver mechanism is a config-level disable, not a per-file
+  # ignore rule.
+  github-env:
+    disable: true
+
+  # excessive-permissions (5 findings, High confidence/severity): each of
+  # these 5 workflows declares `id-token: write` (cd-ios-testflight.yml:
+  # `contents: write`) at the workflow level rather than scoped per-job.
+  # This is a real, valid finding — the fix is moving the permission down to
+  # only the jobs that actually need Azure OIDC (or, for cd-ios-testflight,
+  # only the release-annotation step). That's a deploy-pipeline-adjacent
+  # change across cd-dev.yml/cd-prod.yml/cd-ios-testflight.yml — files this
+  # slice's scope says not to touch beyond SHA-pinning ("do not touch
+  # cd-prod.yml deploy logic") — and getting the per-job scoping wrong would
+  # silently break OIDC auth for a real deploy/release run, which needs more
+  # careful verification than a SHA-pinning/lint-gate PR should carry.
+  # Deferred to a follow-up bead (discovered-from tc-61eoz.4) for careful
+  # per-job permission scoping, verified against a live run of each pipeline.
+  excessive-permissions:
+    ignore:
+      - cd-dev.yml
+      - cd-ios-testflight.yml
+      - cd-prod.yml
+      - pr-gate.yml
+      - seo-refresh.yml
+
+  # cache-poisoning (4 findings, High confidence/severity): actions/cache
+  # (SPM) and ruby/setup-ruby's bundler-cache in cd-ios-testflight.yml, and
+  # actions/setup-go's implicit module cache in cd-prod.yml — all inside
+  # tag-triggered release pipelines, where a poisoned cache entry could in
+  # principle taint a published artifact. The recommended fix (remove or
+  # conditionally disable caching for these steps) changes real build
+  # behaviour in the exact pipelines that ship to TestFlight/production —
+  # explicitly out of scope here ("do not touch cd-prod.yml deploy logic").
+  # Deferred to a follow-up bead (discovered-from tc-61eoz.4) to evaluate
+  # removing/conditionalizing these caches without risking release build
+  # time/timeout regressions.
+  cache-poisoning:
+    ignore:
+      - cd-ios-testflight.yml
+      - cd-prod.yml

@@ -1,6 +1,9 @@
 # Manual ops workflow for one-shot iOS signing/capability changes that should
 # NOT run on every release. Two lanes are exposed via workflow_dispatch:
 #
+# Third-party actions pinned to commit SHA for supply-chain safety
+# (tj-actions CVE-2025-30066 rationale — issue #835 slice 4).
+#
 #   - enable_associated_domains: idempotently enables the Associated Domains
 #     capability on the App ID `uk.towncrierapp.mobile` via Spaceship/App
 #     Store Connect API. Run once after entitlement changes that add a new
@@ -56,22 +59,24 @@ jobs:
     timeout-minutes: 30
     environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
 
       - name: Select Xcode (latest stable — needs Swift 6.1+ for our Package.swift)
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: latest-stable
 
       - name: Setup Ruby + bundler
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
           working-directory: mobile/ios
 
       - name: Setup SSH key for fastlane match
-        uses: webfactory/ssh-agent@v0.9.0
+        uses: webfactory/ssh-agent@dc588b651fe13675774614f8e6a936a468676387 # v0.9.0
         with:
           ssh-private-key: ${{ secrets.MATCH_GIT_DEPLOY_KEY }}
 
