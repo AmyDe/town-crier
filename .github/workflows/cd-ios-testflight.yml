@@ -69,6 +69,14 @@ jobs:
           mode: tag
           base-ref: ${{ steps.prev.outputs.previous-tag }}
           categories: ios
+          # tag mode exempts unmapped .github/ churn from its fail-closed
+          # catch-all (a release decision, not a validation lane — see
+          # detect-changes/action.yml's header). These two paths directly
+          # affect the release pipeline itself, so they still force a
+          # release when changed.
+          trigger-files: |
+            .github/workflows/cd-ios-testflight.yml:ios
+            .github/actions/detect-changes/action.yml:ios
 
       - name: Derive should-release
         id: should-release

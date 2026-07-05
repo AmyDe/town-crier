@@ -17,6 +17,20 @@
 #                 category is forced true, matching the previous guard's
 #                 "no PREV -> should-release=true" first-release behavior.
 #
+#                 tag mode is a release DECISION, not a validation lane, so
+#                 it does NOT inherit the uniform .github/ fail-closed
+#                 catch-all that push/pr/merge_group apply (see "Coverage
+#                 assertion" / DESIGN_EXCEPTIONS below) — an unmapped
+#                 .github/ path (not already covered by trigger-files) is
+#                 exempted from forcing categories true in tag mode
+#                 specifically, so an unrelated CI/workflow tweak landing
+#                 between two release tags doesn't force a release. Paths
+#                 outside .github/ still fail-closed as normal even in tag
+#                 mode. Callers that need a specific .github/ file to force
+#                 a release (e.g. changes to the release pipeline itself)
+#                 should pass it via trigger-files, as cd-ios-testflight.yml
+#                 does for cd-ios-testflight.yml and detect-changes/action.yml.
+#
 #   Edge case: push mode's HEAD~1 diff assumes every push to the default
 #   branch is a single squash-merge commit, so only the last commit is
 #   diffed. A fast-forward merge or a multi-commit push would silently
@@ -213,6 +227,19 @@ runs:
 
           if [[ -v "known_trigger_paths[$file]" ]]; then
             : # already handled by the trigger-files mechanism above
+          elif [[ "${{ inputs.mode }}" == "tag" && "$file" == .github/* ]]; then
+            # tag mode is a release DECISION, not a validation lane — unlike
+            # push/pr/merge_group (pr-gate.yml, cd-dev.yml), where any
+            # unmapped .github/ churn deliberately fail-closes every
+            # category (a stray workflow edit could affect any validation
+            # lane), here that same blanket rule would force a TestFlight
+            # upload on every unrelated CI tweak landing in a release
+            # window. Narrow carve-out: .github/ paths NOT already covered
+            # by trigger-files are exempted from the fail-closed catch-all
+            # in tag mode specifically. Paths outside .github/ still
+            # fail-closed below — this carve-out is deliberately scoped to
+            # .github/ churn only, not unmapped top-level dirs generally.
+            echo "::notice::tag mode: '$file' is under .github/ and not a trigger-file — exempted from the fail-closed catch-all (see cd-ios-testflight.yml's trigger-files input for the paths that DO matter for iOS releases)."
           else
             echo "::warning::Unmapped changed path '$file' matches no known category prefix and no ignore allowlist entry — forcing all requested categories to true (fail-closed)."
             for cat in "${CATS[@]}"; do
