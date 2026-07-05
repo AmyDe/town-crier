@@ -51,6 +51,20 @@ import { mergeRedirects } from './lib/redirect-config.mjs';
 const DEFAULT_LIMIT = 30;
 
 /**
+ * Fallback centroid radius (metres) sent to `/v1/applications/near` for BOTH
+ * the primary town point and every sibling centroid (tc-s0yf, GH #819),
+ * mirroring the Go server's own default (`api-go/internal/applications/near.go`).
+ * The committed town gazetteer (`web/src/data/towns.json`) has no per-town
+ * radius field yet, so every town — primary and sibling alike — uses this one
+ * value; the server's own clamp (max 10000m) never engages while every radius
+ * sent equals its own default. Once the gazetteer grows a per-town radius,
+ * this constant is replaced by that data.
+ *
+ * @type {number}
+ */
+const DEFAULT_NEAR_RADIUS_METERS = 5000;
+
+/**
  * Current on-disk schema version of `seo-snapshot.json`. Bump when the snapshot
  * shape changes incompatibly so a stale snapshot can be detected/rejected.
  * @type {number}
@@ -299,6 +313,65 @@ export async function loadTownsFromFile(filePath, readFileImpl) {
 }
 
 /**
+ * Group the FULL committed gazetteer by authorityId, once per build — every
+ * town in an authority is a Voronoi sibling candidate for every OTHER town in
+ * that same authority (tc-s0yf, GH #819), regardless of whether it
+ * individually clears the population/coverage gates. Grouped from the
+ * unfiltered town list (not `eligibleTowns`) so a below-threshold town still
+ * contributes its centroid to a neighbour's partition.
+ *
+ * @param {ReadonlyArray<Town>} towns
+ * @returns {Map<number, Town[]>}
+ */
+function groupTownsByAuthority(towns) {
+  /** @type {Map<number, Town[]>} */
+  const map = new Map();
+  for (const town of towns) {
+    const group = map.get(town.authorityId);
+    if (group) {
+      group.push(town);
+    } else {
+      map.set(town.authorityId, [town]);
+    }
+  }
+  return map;
+}
+
+/**
+ * Every OTHER gazetteer town sharing `town`'s authorityId — the sibling
+ * centroids passed to `/v1/applications/near` for the town-level Voronoi
+ * partition. Identified by slug (unique within an authority — it forms half
+ * of each town's page path) rather than object identity, so it works
+ * regardless of how `gazetteerByAuthority` was built.
+ *
+ * @param {Town} town
+ * @param {Map<number, Town[]>} gazetteerByAuthority
+ * @returns {Town[]}
+ */
+function siblingTownsOf(town, gazetteerByAuthority) {
+  const group = gazetteerByAuthority.get(town.authorityId) ?? [];
+  return group.filter((t) => t.slug !== town.slug);
+}
+
+/**
+ * Serialize each sibling town centroid as a repeated `sibling=lat,lng,radius`
+ * query-string suffix for `/v1/applications/near` (tc-s0yf, GH #819) — one per
+ * OTHER gazetteer town sharing the primary town's authority. Every sibling
+ * uses {@link DEFAULT_NEAR_RADIUS_METERS} for its radius component (no
+ * per-town radius data exists yet — see the {@link Town} typedef). Returns
+ * `''` (no params at all) when `siblings` is empty, e.g. a town that is the
+ * only gazetteer entry in its authority.
+ *
+ * @param {ReadonlyArray<Town>} siblings
+ * @returns {string}
+ */
+function siblingQueryParams(siblings) {
+  return siblings
+    .map((s) => `&sibling=${s.lat},${s.lng},${DEFAULT_NEAR_RADIUS_METERS}`)
+    .join('');
+}
+
+/**
  * Fetch the bounded recent-applications projection for one authority via the
  * build-key-gated endpoint. Throws on any non-OK status or unexpected shape.
  *
@@ -459,24 +532,34 @@ async function considerAuthority(args) {
 /**
  * Fetch the bounded recent-applications-near-a-point projection for one town via
  * the build-key-gated geo endpoint. Scopes the spatial query to the town's
- * authority partition (authorityId) and centroid (lat/lng); the server defaults
- * and clamps the radius. Throws on any non-OK status or unexpected shape.
+ * authority partition (authorityId) and centroid (lat/lng), passing every OTHER
+ * same-authority gazetteer town as a `sibling` centroid so the server can run
+ * its town-level Voronoi partition (tc-s0yf, GH #819) and return ONLY the
+ * applications assigned to THIS town — already ordered by
+ * `GREATEST(decidedDate, startDate) DESC`. No client-side re-sort or
+ * re-partition is needed (`order=distance` is gone). Throws on any non-OK
+ * status or unexpected shape.
  *
  * @param {string} apiBase
  * @param {Town} town
+ * @param {ReadonlyArray<Town>} siblings   every OTHER gazetteer town sharing `town.authorityId`
  * @param {string} buildKey
  * @param {number} limit
  * @param {typeof globalThis.fetch} fetchImpl
  * @returns {Promise<{ applications: object[], total: number, statusBreakdown: object[] }>}
  */
-async function fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl) {
-  // `order=distance` (tc-2avw.1) makes the server return the nearest-N in the
-  // radius by ST_DISTANCE, so adjacent town pages in a conurbation overlap less.
-  // The returned set is left in the API's order here; recency-display re-sorting
-  // is the renderer's job.
+async function fetchRecentNearby(
+  apiBase,
+  town,
+  siblings,
+  buildKey,
+  limit,
+  fetchImpl,
+) {
   const url =
     `${apiBase}/v1/applications/near?authorityId=${town.authorityId}` +
-    `&lat=${town.lat}&lng=${town.lng}&limit=${limit}&order=distance`;
+    `&lat=${town.lat}&lng=${town.lng}&radius=${DEFAULT_NEAR_RADIUS_METERS}` +
+    `&limit=${limit}${siblingQueryParams(siblings)}`;
   const res = await fetchImpl(url, { headers: { 'X-Build-Key': buildKey } });
   if (!res.ok) {
     throw new Error(
@@ -886,6 +969,11 @@ async function runLiveMode(args) {
   // centroid. Reuses the same authority list (no extra HTTP) to resolve slugs.
   const towns = await loadTowns();
 
+  // Grouped from the FULL, unfiltered gazetteer (tc-s0yf) — every town in an
+  // authority is a Voronoi sibling candidate for every other town in that
+  // authority, regardless of the population gate applied below.
+  const gazetteerByAuthority = groupTownsByAuthority(towns);
+
   // Population threshold gate, applied BEFORE the per-town geo fetch so that
   // below-threshold towns never even hit the API. The threshold is a build-time
   // config value (SEO_TOWN_MIN_POPULATION, default 20000); ramping coverage means
@@ -914,7 +1002,14 @@ async function runLiveMode(args) {
     towns: eligibleTowns,
     authorities,
     getGeo: (town) =>
-      fetchRecentNearby(apiBase, town, buildKey, limit, fetchImpl),
+      fetchRecentNearby(
+        apiBase,
+        town,
+        siblingTownsOf(town, gazetteerByAuthority),
+        buildKey,
+        limit,
+        fetchImpl,
+      ),
     limit,
     logger,
   });
@@ -1050,6 +1145,11 @@ async function gatherSnapshot(args) {
 
   const towns = await loadTowns();
 
+  // Grouped from the FULL, unfiltered gazetteer (tc-s0yf) — every town in an
+  // authority is a Voronoi sibling candidate for every other town in that
+  // authority, regardless of the population gate applied below.
+  const gazetteerByAuthority = groupTownsByAuthority(towns);
+
   /** @type {SeoSnapshot['townPages']} */
   const townPages = [];
   for (const town of towns) {
@@ -1061,6 +1161,7 @@ async function gatherSnapshot(args) {
     const geo = await fetchRecentNearby(
       apiBase,
       town,
+      siblingTownsOf(town, gazetteerByAuthority),
       buildKey,
       limit,
       fetchImpl,
