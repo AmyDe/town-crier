@@ -15,10 +15,31 @@ const (
 )
 
 // generateOfferCodesRequest is the POST /v1/admin/offer-codes body.
+// MaxRedemptions is a pointer with omitempty so an unset --max-redemptions
+// flag omits the field entirely, letting the API default it to 1 — an
+// explicit 0 (impossible here since parseStrictInt rejects it before this
+// struct is built) would otherwise be indistinguishable from "not given".
 type generateOfferCodesRequest struct {
-	Count        int    `json:"count"`
-	Tier         string `json:"tier"`
-	DurationDays int    `json:"durationDays"`
+	Count          int    `json:"count"`
+	Tier           string `json:"tier"`
+	DurationDays   int    `json:"durationDays"`
+	Label          string `json:"label"`
+	MaxRedemptions *int   `json:"maxRedemptions,omitempty"`
+}
+
+// listOfferCodesResponse is the GET /v1/admin/offer-codes response body: a
+// bare array, newest-first, no pagination beyond the API's own limit.
+type listOfferCodesResponse []offerCodeListItem
+
+type offerCodeListItem struct {
+	Code            string  `json:"code"`
+	Label           string  `json:"label"`
+	Tier            string  `json:"tier"`
+	DurationDays    int     `json:"durationDays"`
+	MaxRedemptions  int     `json:"maxRedemptions"`
+	RedemptionCount int     `json:"redemptionCount"`
+	CreatedAt       string  `json:"createdAt"`
+	LastRedeemedAt  *string `json:"lastRedeemedAt"`
 }
 
 // grantSubscriptionRequest is the PUT /v1/admin/subscriptions body.

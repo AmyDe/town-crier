@@ -14,7 +14,8 @@ const helpText = `tc — Town Crier admin CLI
 Usage: tc <command> [options]
 
 Commands:
-  generate-offer-codes        Bulk-generate single-use offer codes
+  generate-offer-codes        Bulk-generate offer codes (single- or multi-use)
+  list-offer-codes            List offer codes and their redemption progress
   grant-subscription          Grant or change a user's subscription tier
   list-users                  List users with email, ID, and subscription tier
   stats                       Show aggregate user-base statistics
@@ -22,9 +23,14 @@ Commands:
   version                     Print version
 
 generate-offer-codes options:
-  --count <n>           Number of codes to generate (1-1000, required)
-  --tier <tier>         Subscription tier (Personal|Pro, required)
-  --duration-days <d>   Duration in days (1-365, required)
+  --count <n>            Number of codes to generate (1-1000, required)
+  --tier <tier>          Subscription tier (Personal|Pro, required)
+  --duration-days <d>    Duration in days (1-365, required)
+  --label <label>        Admin-facing label for the batch (required)
+  --max-redemptions <m>  Redemption cap per code (1-10000, default: 1)
+
+list-offer-codes options:
+  --label <term>       Filter by label substring (case-insensitive)
 
 list-users options:
   --search <term>      Filter by email substring (case-insensitive)
@@ -70,6 +76,8 @@ func Run(ctx context.Context, env Env, rawArgs []string) int {
 	switch args.Command {
 	case "generate-offer-codes":
 		return runGenerateOfferCodes(ctx, client, env, args)
+	case "list-offer-codes":
+		return runListOfferCodes(ctx, client, env, args)
 	case "grant-subscription":
 		return runGrantSubscription(ctx, client, env, args)
 	case "list-users":

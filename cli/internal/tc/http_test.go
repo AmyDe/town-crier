@@ -38,7 +38,7 @@ func TestRunGenerateOfferCodes_StreamsCodesOnSuccess(t *testing.T) {
 
 	env, out, errBuf := captureEnv()
 	code := runGenerateOfferCodes(context.Background(), clientFor(server), env, ParseArgs([]string{
-		"generate-offer-codes", "--count", "2", "--tier", "Pro", "--duration-days", "30",
+		"generate-offer-codes", "--count", "2", "--tier", "Pro", "--duration-days", "30", "--label", "creator-campaign",
 	}))
 
 	if code != exitOK {
@@ -50,14 +50,45 @@ func TestRunGenerateOfferCodes_StreamsCodesOnSuccess(t *testing.T) {
 	if gotKey != "sk-test" {
 		t.Fatalf("X-Admin-Key = %q, want sk-test", gotKey)
 	}
-	if gotBody != (generateOfferCodesRequest{Count: 2, Tier: "Pro", DurationDays: 30}) {
-		t.Fatalf("request body = %+v, want {2 Pro 30}", gotBody)
+	// MaxRedemptions omitted (--max-redemptions not given), so the JSON field is
+	// absent and decodes back to a nil pointer.
+	if gotBody.Count != 2 || gotBody.Tier != "Pro" || gotBody.DurationDays != 30 ||
+		gotBody.Label != "creator-campaign" || gotBody.MaxRedemptions != nil {
+		t.Fatalf("request body = %+v, want {2 Pro 30 creator-campaign <nil>}", gotBody)
 	}
 	if got := out.String(); got != "AAAA-BBBB\nCCCC-DDDD\n" {
 		t.Fatalf("stdout = %q, want the two codes", got)
 	}
-	if !strings.Contains(errBuf.String(), "Generated 2 codes: Pro tier, 30 days duration") {
+	if !strings.Contains(errBuf.String(), `Generated 2 codes: Pro tier, 30 days duration, label "creator-campaign", max 1 redemptions`) {
 		t.Fatalf("stderr = %q, want summary line", errBuf.String())
+	}
+}
+
+// TestRunGenerateOfferCodes_PassesMaxRedemptions confirms --max-redemptions is
+// forwarded as an explicit JSON field (not the omitted/default path).
+func TestRunGenerateOfferCodes_PassesMaxRedemptions(t *testing.T) {
+	t.Parallel()
+	var gotBody generateOfferCodesRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = io.WriteString(w, "AAAA-BBBB\n")
+	}))
+	defer server.Close()
+
+	env, _, errBuf := captureEnv()
+	code := runGenerateOfferCodes(context.Background(), clientFor(server), env, ParseArgs([]string{
+		"generate-offer-codes", "--count", "1", "--tier", "Pro", "--duration-days", "30",
+		"--label", "creator-campaign", "--max-redemptions", "5",
+	}))
+	if code != exitOK {
+		t.Fatalf("exit code = %d, want 0; stderr=%q", code, errBuf.String())
+	}
+	if gotBody.MaxRedemptions == nil || *gotBody.MaxRedemptions != 5 {
+		t.Fatalf("request body MaxRedemptions = %v, want pointer to 5", gotBody.MaxRedemptions)
+	}
+	if !strings.Contains(errBuf.String(), "max 5 redemptions") {
+		t.Fatalf("stderr = %q, want max 5 redemptions", errBuf.String())
 	}
 }
 
@@ -71,7 +102,7 @@ func TestRunGenerateOfferCodes_APIErrorReturns2(t *testing.T) {
 
 	env, _, errBuf := captureEnv()
 	code := runGenerateOfferCodes(context.Background(), clientFor(server), env, ParseArgs([]string{
-		"generate-offer-codes", "--count", "2", "--tier", "Pro", "--duration-days", "30",
+		"generate-offer-codes", "--count", "2", "--tier", "Pro", "--duration-days", "30", "--label", "creator-campaign",
 	}))
 
 	if code != exitRuntime {
