@@ -20,7 +20,7 @@ func newPGStore(t *testing.T) *PostgresStore {
 	t.Helper()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "offer_code_redemptions", "offer_codes")
-	return NewPostgresStore(pool)
+	return NewPostgresStore(pool, testLogger())
 }
 
 // testCode returns a valid, unredeemed single-use OfferCode for use in
@@ -456,7 +456,7 @@ func TestPostgresStore_LegacyCoalesceBackfill_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "offer_code_redemptions", "offer_codes")
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool, testLogger())
 
 	// Fresh: never redeemed. redeemed=false, redeemed_by_user_id NULL.
 	if _, err := pool.Exec(ctx,

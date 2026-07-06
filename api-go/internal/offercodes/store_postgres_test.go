@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -12,6 +13,12 @@ import (
 
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
+
+// testLogger discards every record: these tests exercise store logic, not
+// logging output, and none of them assert on rollback-failure log lines.
+func testLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
 
 // ---------------------------------------------------------------------------
 // Fake querier — sequential QueryRow queue, fixed Exec outcome, Query error,
@@ -220,7 +227,7 @@ func TestPostgresStore_Get_Miss(t *testing.T) {
 	t.Parallel()
 	store := NewPostgresStore(&fakeOfferCodeQuerier{
 		rowResults: []pgx.Row{&fakeErrorRow{err: pgx.ErrNoRows}},
-	})
+	}, testLogger())
 	_, err := store.Get(context.Background(), "ABCDEFGHJKMN")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Get miss: got %v, want ErrNotFound", err)
@@ -234,7 +241,7 @@ func TestPostgresStore_Get_DatabaseError(t *testing.T) {
 	boom := errors.New("connection refused")
 	store := NewPostgresStore(&fakeOfferCodeQuerier{
 		rowResults: []pgx.Row{&fakeErrorRow{err: boom}},
-	})
+	}, testLogger())
 	_, err := store.Get(context.Background(), "ABCDEFGHJKMN")
 	if !errors.Is(err, boom) {
 		t.Fatalf("Get db error: got %v, want wrapped %v", err, boom)
@@ -252,7 +259,7 @@ func TestPostgresStore_Get_Hit(t *testing.T) {
 			code: "ABCDEFGHJKMN", tier: "Pro", durationDays: 30,
 			createdAt: created, label: &label, maxRedemptions: 3, redemptionCount: 1,
 		}},
-	})
+	}, testLogger())
 	got, err := store.Get(context.Background(), "ABCDEFGHJKMN")
 	if err != nil {
 		t.Fatalf("Get hit: %v", err)
@@ -290,7 +297,7 @@ func TestPostgresStore_Get_NullLabelCoalescesToEmpty(t *testing.T) {
 			code: "ABCDEFGHJKMN", tier: "Pro", durationDays: 30,
 			createdAt: time.Now(), label: nil, maxRedemptions: 1, redemptionCount: 0,
 		}},
-	})
+	}, testLogger())
 	got, err := store.Get(context.Background(), "ABCDEFGHJKMN")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -309,7 +316,7 @@ func TestPostgresStore_Get_NullLabelCoalescesToEmpty(t *testing.T) {
 func TestPostgresStore_Save_DatabaseError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("deadlock detected")
-	store := NewPostgresStore(&fakeOfferCodeQuerier{execErr: boom})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{execErr: boom}, testLogger())
 	created := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	code, _ := NewOfferCode("ABCDEFGHJKMN", profiles.TierPro, 30, "campaign", 1, created)
 	if err := store.Save(context.Background(), code); !errors.Is(err, boom) {
@@ -330,7 +337,7 @@ func TestPostgresStore_RedeemWithCAS_Success(t *testing.T) {
 		execResults: []error{nil}, // INSERT into offer_code_redemptions succeeds
 		rowResults:  []pgx.Row{&fakeCodeRow{code: "ABCDEFGHJKMN"}},
 	}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ABCDEFGHJKMN", "auth0|u1", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("RedeemWithCAS success: got %v, want nil", err)
@@ -352,7 +359,7 @@ func TestPostgresStore_RedeemWithCAS_AlreadyRedeemedByUser(t *testing.T) {
 	tx := &fakeTx{
 		execResults: []error{&pgconn.PgError{Code: pgUniqueViolationCode}},
 	}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ABCDEFGHJKMN", "auth0|u1", time.Now().UTC())
 	if !errors.Is(err, ErrAlreadyRedeemedByUser) {
 		t.Fatalf("RedeemWithCAS same-user twice: got %v, want ErrAlreadyRedeemedByUser", err)
@@ -378,7 +385,7 @@ func TestPostgresStore_RedeemWithCAS_AlreadyRedeemed(t *testing.T) {
 			&fakeIntRow{value: 1},             // code exists
 		},
 	}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ABCDEFGHJKMN", "auth0|u1", time.Now().UTC())
 	if !errors.Is(err, ErrAlreadyRedeemed) {
 		t.Fatalf("RedeemWithCAS already redeemed: got %v, want ErrAlreadyRedeemed", err)
@@ -396,7 +403,7 @@ func TestPostgresStore_RedeemWithCAS_NotFound(t *testing.T) {
 	tx := &fakeTx{
 		execResults: []error{&pgconn.PgError{Code: pgForeignKeyViolationCode}},
 	}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ZZZZZZZZZZZZ", "auth0|u1", time.Now().UTC())
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("RedeemWithCAS not found: got %v, want ErrNotFound", err)
@@ -420,7 +427,7 @@ func TestPostgresStore_RedeemWithCAS_UpdateFindsNoCode(t *testing.T) {
 			&fakeErrorRow{err: pgx.ErrNoRows}, // existence check also finds nothing
 		},
 	}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ABCDEFGHJKMN", "auth0|u1", time.Now().UTC())
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("RedeemWithCAS: got %v, want ErrNotFound", err)
@@ -432,7 +439,7 @@ func TestPostgresStore_RedeemWithCAS_UpdateFindsNoCode(t *testing.T) {
 func TestPostgresStore_RedeemWithCAS_BeginError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("connection pool exhausted")
-	store := NewPostgresStore(&fakeOfferCodeQuerier{beginErr: boom})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{beginErr: boom}, testLogger())
 	err := store.RedeemWithCAS(context.Background(), "ABCDEFGHJKMN", "auth0|u1", time.Now().UTC())
 	if !errors.Is(err, boom) {
 		t.Fatalf("RedeemWithCAS begin error: got %v, want wrapped %v", err, boom)
@@ -490,7 +497,7 @@ func (r *fakeRedeemedRows) Conn() *pgx.Conn                              { retur
 func TestPostgresStore_RedeemedByUserID_QueryError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("db down")
-	store := NewPostgresStore(&fakeOfferCodeQuerier{queryErr: boom})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{queryErr: boom}, testLogger())
 	_, err := store.RedeemedByUserID(context.Background(), "auth0|u1")
 	if !errors.Is(err, boom) {
 		t.Fatalf("RedeemedByUserID query error: got %v, want wrapped %v", err, boom)
@@ -502,7 +509,7 @@ func TestPostgresStore_RedeemedByUserID_QueryError(t *testing.T) {
 // GDPR export relies on.
 func TestPostgresStore_RedeemedByUserID_EmptyReturnsNonNilSlice(t *testing.T) {
 	t.Parallel()
-	store := NewPostgresStore(&fakeOfferCodeQuerier{}) // Query returns emptyRows
+	store := NewPostgresStore(&fakeOfferCodeQuerier{}, testLogger()) // Query returns emptyRows
 	got, err := store.RedeemedByUserID(context.Background(), "auth0|never")
 	if err != nil {
 		t.Fatalf("RedeemedByUserID empty: %v", err)
@@ -524,7 +531,7 @@ func TestPostgresStore_RedeemedByUserID_Hit(t *testing.T) {
 	q := &fakeOfferCodeQuerier{queryRows: &fakeRedeemedRows{rows: []fakeRedeemedRow{
 		{code: "ABCDEFGHJKMN", tier: "Pro", durationDays: 30, redeemedAt: &redeemedAt, userID: &userID},
 	}}}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	got, err := store.RedeemedByUserID(context.Background(), "auth0|u1")
 	if err != nil {
@@ -550,7 +557,7 @@ func TestPostgresStore_RedeemedByUserID_Hit(t *testing.T) {
 func TestPostgresStore_RedeemedByUsers_Empty(t *testing.T) {
 	t.Parallel()
 	q := &fakeOfferCodeQuerier{}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	got, err := store.RedeemedByUsers(context.Background(), nil)
 	if err != nil {
@@ -566,7 +573,7 @@ func TestPostgresStore_RedeemedByUsers_PropagatesQueryError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("redemptions boom")
 	q := &fakeOfferCodeQuerier{queryErr: boom}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	_, err := store.RedeemedByUsers(context.Background(), []string{"auth0|u1"})
 	if !errors.Is(err, boom) {
@@ -586,7 +593,7 @@ func TestPostgresStore_RedeemedByUsers_GroupsByUser(t *testing.T) {
 		{code: "BBBBBBBBBBBB", tier: "Personal", durationDays: 7, redeemedAt: &redeemed, userID: &u2},
 		{code: "CCCCCCCCCCCC", tier: "Pro", durationDays: 90, redeemedAt: &redeemed, userID: &u1},
 	}}}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	got, err := store.RedeemedByUsers(context.Background(), []string{u1, u2})
 	if err != nil {
@@ -611,7 +618,7 @@ func TestPostgresStore_RedeemedByUsers_IgnoresNilUserID(t *testing.T) {
 	q := &fakeOfferCodeQuerier{queryRows: &fakeRedeemedRows{rows: []fakeRedeemedRow{
 		{code: "AAAAAAAAAAAA", tier: "Pro", durationDays: 30, redeemedAt: nil, userID: nil},
 	}}}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	got, err := store.RedeemedByUsers(context.Background(), []string{"auth0|u1"})
 	if err != nil {
@@ -631,7 +638,7 @@ func TestPostgresStore_RedeemedByUsers_IgnoresNilUserID(t *testing.T) {
 func TestPostgresStore_AnonymiseRedemptionsByUserID_Success(t *testing.T) {
 	t.Parallel()
 	tx := &fakeTx{execResults: []error{nil, nil}}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	if err := store.AnonymiseRedemptionsByUserID(context.Background(), "auth0|u1"); err != nil {
 		t.Fatalf("AnonymiseRedemptionsByUserID: %v", err)
 	}
@@ -649,7 +656,7 @@ func TestPostgresStore_AnonymiseRedemptionsByUserID_ChildExecError(t *testing.T)
 	t.Parallel()
 	boom := errors.New("db timeout")
 	tx := &fakeTx{execResults: []error{boom}}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	if err := store.AnonymiseRedemptionsByUserID(context.Background(), "auth0|u1"); !errors.Is(err, boom) {
 		t.Fatalf("AnonymiseRedemptionsByUserID child error: got %v, want wrapped %v", err, boom)
 	}
@@ -666,7 +673,7 @@ func TestPostgresStore_AnonymiseRedemptionsByUserID_LegacyExecError(t *testing.T
 	t.Parallel()
 	boom := errors.New("db timeout")
 	tx := &fakeTx{execResults: []error{nil, boom}}
-	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{tx: tx}, testLogger())
 	if err := store.AnonymiseRedemptionsByUserID(context.Background(), "auth0|u1"); !errors.Is(err, boom) {
 		t.Fatalf("AnonymiseRedemptionsByUserID legacy error: got %v, want wrapped %v", err, boom)
 	}
@@ -734,7 +741,7 @@ func (r *fakeListedRows) Conn() *pgx.Conn                              { return 
 func TestPostgresStore_List_QueryError(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("db down")
-	store := NewPostgresStore(&fakeOfferCodeQuerier{queryErr: boom})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{queryErr: boom}, testLogger())
 	_, err := store.List(context.Background(), nil, 500)
 	if !errors.Is(err, boom) {
 		t.Fatalf("List query error: got %v, want wrapped %v", err, boom)
@@ -745,7 +752,7 @@ func TestPostgresStore_List_QueryError(t *testing.T) {
 // returns an empty, non-nil slice.
 func TestPostgresStore_List_EmptyReturnsNonNilSlice(t *testing.T) {
 	t.Parallel()
-	store := NewPostgresStore(&fakeOfferCodeQuerier{})
+	store := NewPostgresStore(&fakeOfferCodeQuerier{}, testLogger())
 	got, err := store.List(context.Background(), nil, 500)
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -768,7 +775,7 @@ func TestPostgresStore_List_Hit(t *testing.T) {
 			label: &label, maxRedemptions: 3, redemptionCount: 2, lastRedeemedAt: &lastRedeemed,
 		},
 	}}}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	got, err := store.List(context.Background(), nil, 500)
 	if err != nil {
@@ -792,7 +799,7 @@ func TestPostgresStore_List_Hit(t *testing.T) {
 func TestPostgresStore_List_PassesFilterAndLimit(t *testing.T) {
 	t.Parallel()
 	q := &fakeOfferCodeQuerier{}
-	store := NewPostgresStore(q)
+	store := NewPostgresStore(q, testLogger())
 
 	label := "creator"
 	if _, err := store.List(context.Background(), &label, 42); err != nil {

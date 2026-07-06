@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -87,13 +88,17 @@ var _ Store = (*PostgresStore)(nil)
 // never read back into the domain model — RedemptionCount/MaxRedemptions are
 // authoritative going forward.
 type PostgresStore struct {
-	db pool
+	db     pool
+	logger *slog.Logger
 }
 
 // NewPostgresStore returns an offer-code store over the given pgx pool (or any
-// pool that satisfies the interface).
-func NewPostgresStore(db pool) *PostgresStore {
-	return &PostgresStore{db: db}
+// pool that satisfies the interface). logger receives a record whenever a
+// deferred transaction rollback in RedeemWithCAS or
+// AnonymiseRedemptionsByUserID fails for a reason other than the transaction
+// already having committed (see the doc comments on those methods).
+func NewPostgresStore(db pool, logger *slog.Logger) *PostgresStore {
+	return &PostgresStore{db: db, logger: logger}
 }
 
 // pgCodeColumns is the projection used by Get. Its order MUST match the scan
@@ -230,7 +235,7 @@ func (s *PostgresStore) RedeemWithCAS(ctx context.Context, canonical, userID str
 	if err != nil {
 		return fmt.Errorf("begin redeem transaction for %q: %w", canonical, err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }() // no-op once committed
+	defer s.rollback(ctx, tx) // no-op once committed
 
 	if _, err := tx.Exec(ctx, pgInsertRedemptionQuery, canonical, userID, now); err != nil {
 		switch {
@@ -286,6 +291,19 @@ func isForeignKeyViolation(err error) bool {
 		return pgErr.Code == pgForeignKeyViolationCode
 	}
 	return false
+}
+
+// rollback runs tx's deferred, best-effort Rollback. On the success path (the
+// caller already committed) pgx's documented behaviour is that Rollback
+// becomes a no-op returning pgx.ErrTxClosed — that case is expected and not
+// logged. Any other error means the rollback did not actually happen, so the
+// transaction's locks/resources may still be held; that is logged (not
+// returned) because this always runs from a defer, after the method has
+// already produced its real result.
+func (s *PostgresStore) rollback(ctx context.Context, tx pgx.Tx) {
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		s.logger.ErrorContext(ctx, "offer code store: transaction rollback failed", "error", err)
+	}
 }
 
 // ─── RedeemedByUserID / RedeemedByUsers ─────────────────────────────────────
@@ -415,7 +433,7 @@ func (s *PostgresStore) AnonymiseRedemptionsByUserID(ctx context.Context, userID
 	if err != nil {
 		return fmt.Errorf("begin anonymise transaction for user %q: %w", userID, err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer s.rollback(ctx, tx) // no-op once committed
 
 	if _, err := tx.Exec(ctx, pgAnonymiseChildQuery, userID); err != nil {
 		return fmt.Errorf("anonymise redemption rows for user %q: %w", userID, err)
