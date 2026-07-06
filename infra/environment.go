@@ -864,13 +864,15 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		EnableHttpsTrafficOnly: pulumi.Bool(true),
 		MinimumTlsVersion:      pulumi.String(string(storage.MinimumTlsVersion_TLS1_2)),
 		NetworkRuleSet: &storage.NetworkRuleSetArgs{
-			Bypass:              pulumi.String("None"),
-			DefaultAction:       storage.DefaultActionAllow,
-			IpRules:             storage.IPRuleArray{},
-			VirtualNetworkRules: storage.VirtualNetworkRuleArray{},
+			Bypass:        pulumi.String("None"),
+			DefaultAction: storage.DefaultActionAllow,
 		},
 		Tags: tags,
-	})
+		// Azure's API is inconsistent about echoing networkRuleSet.ipRules/virtualNetworkRules
+		// as [] vs omitting them entirely — dev and prod disagreed in opposite directions when
+		// this was declared as an explicit empty array, so ignore both sub-paths rather than
+		// chase a literal value that only matches one stack (tc-61eoz.8).
+	}, pulumi.IgnoreChanges([]string{"networkRuleSet.ipRules", "networkRuleSet.virtualNetworkRules"}))
 	if err != nil {
 		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
 	}
