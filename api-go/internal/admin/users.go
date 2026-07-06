@@ -138,11 +138,11 @@ func (h *handler) deviceCountsFor(r *http.Request, page profiles.Page) (map[stri
 	return h.deviceCounts.CountsByUsers(r.Context(), pageUserIDs(page))
 }
 
-// redemptionsFor returns each user's redeemed offer codes for the page in one
-// batched lookup, skipping the query when the store is unwired or the page empty.
-func (h *handler) redemptionsFor(r *http.Request, page profiles.Page) (map[string][]offercodes.OfferCode, error) {
+// redemptionsFor returns each user's redemptions for the page in one batched
+// lookup, skipping the query when the store is unwired or the page empty.
+func (h *handler) redemptionsFor(r *http.Request, page profiles.Page) (map[string][]offercodes.RedeemedOfferCode, error) {
 	if h.redemptions == nil || len(page.Profiles) == 0 {
-		return map[string][]offercodes.OfferCode{}, nil
+		return map[string][]offercodes.RedeemedOfferCode{}, nil
 	}
 	return h.redemptions.RedeemedByUsers(r.Context(), pageUserIDs(page))
 }
@@ -156,10 +156,11 @@ func pageUserIDs(page profiles.Page) []string {
 	return ids
 }
 
-// activeOfferCode returns the first still-active code (its redeemed_at + duration
-// window has not closed at now) among the user's redeemed codes, or nil when none
-// is active. A user can hold several redeemed codes; only a live one is surfaced.
-func activeOfferCode(codes []offercodes.OfferCode, now time.Time) *string {
+// activeOfferCode returns the first still-active redemption (its redeemed_at +
+// the code's duration window has not closed at now) among the user's
+// redemptions, or nil when none is active. A user can hold several
+// redemptions; only a live one is surfaced.
+func activeOfferCode(codes []offercodes.RedeemedOfferCode, now time.Time) *string {
 	for i := range codes {
 		if codes[i].ActiveAt(now) {
 			code := codes[i].Code

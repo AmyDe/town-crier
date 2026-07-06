@@ -54,6 +54,7 @@ var anonymousPatterns = map[string]struct{}{
 	"GET /v1/admin/users":         {},
 	"GET /v1/admin/stats":         {},
 	"POST /v1/admin/offer-codes":  {},
+	"GET /v1/admin/offer-codes":   {},
 	// The App Store Server Notifications webhook is Apple -> API, not user-facing,
 	// so it is anonymous to Auth0; the signed JWS is its authentication. (The
 	// sibling POST /v1/subscriptions/verify is authed and absent here.)
@@ -141,10 +142,12 @@ type deviceStoreReader interface {
 
 // offerStoreReader is the offer-code store the router wires into the redeem
 // routes plus the admin surface. It embeds the full offercodes Store and adds
-// the admin-read batched redemption lookup. *offercodes.PostgresStore satisfies it.
+// the admin-read batched redemption lookup plus the admin code listing.
+// *offercodes.PostgresStore satisfies it.
 type offerStoreReader interface {
 	offercodes.Store
-	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.OfferCode, error)
+	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.RedeemedOfferCode, error)
+	List(ctx context.Context, labelFilter *string, limit int) ([]offercodes.ListedOfferCode, error)
 }
 
 // adminUserStore is the admin profile store the router wires into admin.Routes:

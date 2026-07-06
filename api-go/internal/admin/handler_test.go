@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,9 @@ import (
 	"github.com/AmyDe/town-crier/api-go/internal/offercodes"
 	"github.com/AmyDe/town-crier/api-go/internal/profiles"
 )
+
+// errBoom is a shared sentinel error for tests that just need "some failure".
+var errBoom = errors.New("boom")
 
 // fakeNotifCounts is a hand-written notificationCounts double: it records the
 // user ids it was asked about and returns pre-configured per-user tallies and
@@ -63,13 +67,13 @@ func (f *fakeDeviceCounts) CountsByUsers(_ context.Context, userIDs []string) (m
 func (f *fakeDeviceCounts) Count(_ context.Context) (int, error) { return f.total, nil }
 
 // fakeRedemptions is an offerRedemptionReader double: it returns pre-configured
-// redeemed codes per user and records the user ids it was asked about.
+// redemptions per user and records the user ids it was asked about.
 type fakeRedemptions struct {
-	byUser map[string][]offercodes.OfferCode
+	byUser map[string][]offercodes.RedeemedOfferCode
 	gotIDs []string
 }
 
-func (f *fakeRedemptions) RedeemedByUsers(_ context.Context, userIDs []string) (map[string][]offercodes.OfferCode, error) {
+func (f *fakeRedemptions) RedeemedByUsers(_ context.Context, userIDs []string) (map[string][]offercodes.RedeemedOfferCode, error) {
 	f.gotIDs = userIDs
 	return f.byUser, nil
 }
@@ -127,11 +131,27 @@ func (f *fakeTierSync) UpdateSubscriptionTier(_ context.Context, _, tier string)
 
 type fakeOfferStore struct {
 	saved []offercodes.OfferCode
+
+	listed        []offercodes.ListedOfferCode
+	listErr       error
+	gotLabel      *string
+	gotLimit      int
+	listCallCount int
 }
 
 func (f *fakeOfferStore) Save(_ context.Context, c offercodes.OfferCode) error {
 	f.saved = append(f.saved, c)
 	return nil
+}
+
+func (f *fakeOfferStore) List(_ context.Context, labelFilter *string, limit int) ([]offercodes.ListedOfferCode, error) {
+	f.listCallCount++
+	f.gotLabel = labelFilter
+	f.gotLimit = limit
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return f.listed, nil
 }
 
 type fakeGenerator struct {
@@ -157,23 +177,21 @@ func newTestHandler(store profileAdminStore, notifCounts notificationCounts, aut
 	}
 }
 
-// activeCode builds a redeemed OfferCode whose window is still open at the test's
-// clock, so OfferCode.ActiveAt(now) is true.
-func activeCode(code string, redeemedAt time.Time) offercodes.OfferCode {
+// activeCode builds a redemption whose window is still open at the test's
+// clock, so RedeemedOfferCode.ActiveAt(now) is true.
+func activeCode(code string, redeemedAt time.Time) offercodes.RedeemedOfferCode {
 	at := redeemedAt
-	return offercodes.OfferCode{
-		Code: code, Tier: profiles.TierPro, DurationDays: 30,
-		Redeemed: true, RedeemedByUserID: strPtr("u"), RedeemedAt: &at,
+	return offercodes.RedeemedOfferCode{
+		Code: code, Tier: profiles.TierPro, DurationDays: 30, RedeemedAt: &at,
 	}
 }
 
-// expiredCode builds a redeemed OfferCode whose window has closed at the test's
-// clock, so OfferCode.ActiveAt(now) is false.
-func expiredCode(code string, redeemedAt time.Time) offercodes.OfferCode {
+// expiredCode builds a redemption whose window has closed at the test's
+// clock, so RedeemedOfferCode.ActiveAt(now) is false.
+func expiredCode(code string, redeemedAt time.Time) offercodes.RedeemedOfferCode {
 	at := redeemedAt
-	return offercodes.OfferCode{
-		Code: code, Tier: profiles.TierPro, DurationDays: 30,
-		Redeemed: true, RedeemedByUserID: strPtr("u"), RedeemedAt: &at,
+	return offercodes.RedeemedOfferCode{
+		Code: code, Tier: profiles.TierPro, DurationDays: 30, RedeemedAt: &at,
 	}
 }
 
@@ -300,7 +318,7 @@ func TestListUsers_ReturnsPage(t *testing.T) {
 	}}
 	saved := &fakeSavedCounts{counts: map[string]int{"auth0|u1": 3}}
 	devices := &fakeDeviceCounts{counts: map[string]int{"auth0|u1": 1}}
-	redemptions := &fakeRedemptions{byUser: map[string][]offercodes.OfferCode{
+	redemptions := &fakeRedemptions{byUser: map[string][]offercodes.RedeemedOfferCode{
 		"auth0|u1": {
 			expiredCode("OLDEXPIRED", now.Add(-40*24*time.Hour)),
 			activeCode("NOWACTIVE", now.Add(-1*24*time.Hour)),
@@ -406,7 +424,8 @@ func TestGenerate_HappyPath(t *testing.T) {
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, gen, now)
 
-	rec := serve(t, h.generateOfferCodes, http.MethodPost, "/v1/admin/offer-codes", `{"count":2,"tier":"Pro","durationDays":30}`)
+	rec := serve(t, h.generateOfferCodes, http.MethodPost, "/v1/admin/offer-codes",
+		`{"count":2,"tier":"Pro","durationDays":30,"label":"creator-campaign","maxRedemptions":5}`)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
@@ -417,9 +436,34 @@ func TestGenerate_HappyPath(t *testing.T) {
 	if got := rec.Body.String(); got != "ABCD-EFGH-JKMN\nNPQR-STVW-XYZ0\n" {
 		t.Errorf("body = %q", got)
 	}
-	// The stored codes are canonical (un-hyphenated) for the granted tier.
+	// The stored codes are canonical (un-hyphenated), carry the label and
+	// redemption cap from the request, for the granted tier.
 	if len(offerStore.saved) != 2 || offerStore.saved[0].Code != "ABCDEFGHJKMN" || offerStore.saved[0].Tier != profiles.TierPro {
 		t.Errorf("saved = %+v", offerStore.saved)
+	}
+	if offerStore.saved[0].Label != "creator-campaign" || offerStore.saved[0].MaxRedemptions != 5 {
+		t.Errorf("saved label/maxRedemptions = %+v", offerStore.saved[0])
+	}
+}
+
+// TestGenerate_DefaultsMaxRedemptionsToOne confirms that omitting
+// maxRedemptions mints a single-use code (maxRedemptions=1) — the pre-existing
+// behaviour every code used to have.
+func TestGenerate_DefaultsMaxRedemptionsToOne(t *testing.T) {
+	t.Parallel()
+
+	offerStore := &fakeOfferStore{}
+	gen := &fakeGenerator{codes: []string{"ABCDEFGHJKMN"}}
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, gen, time.Now())
+
+	rec := serve(t, h.generateOfferCodes, http.MethodPost, "/v1/admin/offer-codes",
+		`{"count":1,"tier":"Pro","durationDays":30,"label":"single-use"}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if len(offerStore.saved) != 1 || offerStore.saved[0].MaxRedemptions != 1 {
+		t.Errorf("saved = %+v, want MaxRedemptions=1", offerStore.saved)
 	}
 }
 
@@ -431,10 +475,14 @@ func TestGenerate_ValidationErrors(t *testing.T) {
 		body string
 		want string
 	}{
-		{"count too low", `{"count":0,"tier":"Pro","durationDays":30}`, `{"error":"Count must be between 1 and 1000. (Parameter 'command')\nActual value was 0.","message":null}`},
-		{"count too high", `{"count":2000,"tier":"Pro","durationDays":30}`, `{"error":"Count must be between 1 and 1000. (Parameter 'command')\nActual value was 2000.","message":null}`},
-		{"free tier", `{"count":1,"tier":"Free","durationDays":30}`, `{"error":"Offer codes cannot grant the Free tier. (Parameter 'command')","message":null}`},
-		{"duration too high", `{"count":1,"tier":"Pro","durationDays":400}`, `{"error":"DurationDays must be between 1 and 365. (Parameter 'command')\nActual value was 400.","message":null}`},
+		{"count too low", `{"count":0,"tier":"Pro","durationDays":30,"label":"l"}`, `{"error":"Count must be between 1 and 1000. (Parameter 'command')\nActual value was 0.","message":null}`},
+		{"count too high", `{"count":2000,"tier":"Pro","durationDays":30,"label":"l"}`, `{"error":"Count must be between 1 and 1000. (Parameter 'command')\nActual value was 2000.","message":null}`},
+		{"free tier", `{"count":1,"tier":"Free","durationDays":30,"label":"l"}`, `{"error":"Offer codes cannot grant the Free tier. (Parameter 'command')","message":null}`},
+		{"duration too high", `{"count":1,"tier":"Pro","durationDays":400,"label":"l"}`, `{"error":"DurationDays must be between 1 and 365. (Parameter 'command')\nActual value was 400.","message":null}`},
+		{"label missing", `{"count":1,"tier":"Pro","durationDays":30}`, `{"error":"Label is required. (Parameter 'command')","message":null}`},
+		{"label blank", `{"count":1,"tier":"Pro","durationDays":30,"label":"   "}`, `{"error":"Label is required. (Parameter 'command')","message":null}`},
+		{"maxRedemptions zero", `{"count":1,"tier":"Pro","durationDays":30,"label":"l","maxRedemptions":0}`, `{"error":"MaxRedemptions must be between 1 and 10000. (Parameter 'command')\nActual value was 0.","message":null}`},
+		{"maxRedemptions too high", `{"count":1,"tier":"Pro","durationDays":30,"label":"l","maxRedemptions":10001}`, `{"error":"MaxRedemptions must be between 1 and 10000. (Parameter 'command')\nActual value was 10001.","message":null}`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -544,5 +592,96 @@ func TestStats_NoUsers_NullMostRecentAndNilStores(t *testing.T) {
 		`}`
 	if got := rec.Body.String(); got != want {
 		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/admin/offer-codes (listOfferCodes)
+// ---------------------------------------------------------------------------
+
+func TestListOfferCodes_ReturnsPinnedShape(t *testing.T) {
+	t.Parallel()
+
+	created := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	lastRedeemed := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	offerStore := &fakeOfferStore{listed: []offercodes.ListedOfferCode{
+		{
+			OfferCode: offercodes.OfferCode{
+				Code: "ABCDEFGHJKMN", Tier: profiles.TierPro, DurationDays: 30,
+				CreatedAt: created, Label: "creator-campaign", MaxRedemptions: 3, RedemptionCount: 2,
+			},
+			LastRedeemedAt: &lastRedeemed,
+		},
+		{
+			OfferCode: offercodes.OfferCode{
+				Code: "NPQRSTVWXYZ0", Tier: profiles.TierPersonal, DurationDays: 7,
+				CreatedAt: created, Label: "unused", MaxRedemptions: 1, RedemptionCount: 0,
+			},
+			LastRedeemedAt: nil,
+		},
+	}}
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.listOfferCodes, http.MethodGet, "/v1/admin/offer-codes", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	want := `[` +
+		`{"code":"ABCD-EFGH-JKMN","label":"creator-campaign","tier":"Pro","durationDays":30,"maxRedemptions":3,"redemptionCount":2,"createdAt":"2026-06-01T09:00:00Z","lastRedeemedAt":"2026-06-15T10:00:00Z"},` +
+		`{"code":"NPQR-STVW-XYZ0","label":"unused","tier":"Personal","durationDays":7,"maxRedemptions":1,"redemptionCount":0,"createdAt":"2026-06-01T09:00:00Z","lastRedeemedAt":null}` +
+		`]`
+	if got := rec.Body.String(); got != want {
+		t.Errorf("body =\n  %s\nwant\n  %s", got, want)
+	}
+	// Default limit applies when the query omits ?limit.
+	if offerStore.gotLimit != defaultListLimit {
+		t.Errorf("limit = %d, want default %d", offerStore.gotLimit, defaultListLimit)
+	}
+	if offerStore.gotLabel != nil {
+		t.Errorf("label filter = %v, want nil (no ?label given)", offerStore.gotLabel)
+	}
+}
+
+func TestListOfferCodes_FiltersByLabelAndLimit(t *testing.T) {
+	t.Parallel()
+
+	offerStore := &fakeOfferStore{listed: []offercodes.ListedOfferCode{}}
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, &fakeGenerator{}, time.Now())
+
+	rec := serve(t, h.listOfferCodes, http.MethodGet, "/v1/admin/offer-codes?label=creator&limit=10", "")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "[]" {
+		t.Errorf("body = %q, want []", got)
+	}
+	if offerStore.gotLabel == nil || *offerStore.gotLabel != "creator" {
+		t.Errorf("label filter = %v, want \"creator\"", offerStore.gotLabel)
+	}
+	if offerStore.gotLimit != 10 {
+		t.Errorf("limit = %d, want 10", offerStore.gotLimit)
+	}
+}
+
+func TestListOfferCodes_InvalidLimit(t *testing.T) {
+	t.Parallel()
+
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, &fakeOfferStore{}, &fakeGenerator{}, time.Now())
+	rec := serve(t, h.listOfferCodes, http.MethodGet, "/v1/admin/offer-codes?limit=abc", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestListOfferCodes_StoreError(t *testing.T) {
+	t.Parallel()
+
+	offerStore := &fakeOfferStore{listErr: errBoom}
+	h := newTestHandler(&fakeAdminStore{}, &fakeNotifCounts{}, &fakeTierSync{}, offerStore, &fakeGenerator{}, time.Now())
+	rec := serve(t, h.listOfferCodes, http.MethodGet, "/v1/admin/offer-codes", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }
