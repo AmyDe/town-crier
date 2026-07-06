@@ -864,8 +864,10 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		EnableHttpsTrafficOnly: pulumi.Bool(true),
 		MinimumTlsVersion:      pulumi.String(string(storage.MinimumTlsVersion_TLS1_2)),
 		NetworkRuleSet: &storage.NetworkRuleSetArgs{
-			Bypass:        pulumi.String("None"),
-			DefaultAction: storage.DefaultActionAllow,
+			Bypass:              pulumi.String("None"),
+			DefaultAction:       storage.DefaultActionAllow,
+			IpRules:             storage.IPRuleArray{},
+			VirtualNetworkRules: storage.VirtualNetworkRuleArray{},
 		},
 		Tags: tags,
 	})
