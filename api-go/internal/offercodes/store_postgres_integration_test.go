@@ -444,29 +444,40 @@ func TestPostgresStore_RedeemedByUsers_Integration(t *testing.T) {
 }
 
 // TestPostgresStore_LegacyCoalesceBackfill_Integration mirrors migration
-// 0019's backfill statements against a manually-seeded "pre-migration" row —
-// redeemed=true/redeemed_by_user_id set but redemption_count/child rows still
-// at their post-schema-change defaults (0 / none), exactly the state a
-// pre-0019 row would have been in immediately after the ALTER TABLE ran but
-// before the backfill UPDATE/INSERT executed. This exercises the
-// legacy-coalesce rule the migration documents: a row counts as redeemed if
-// `redeemed = true` OR `redeemed_by_user_id IS NOT NULL` (the latter predates
-// the boolean column).
+// 0019's backfill statements against three manually-seeded "pre-migration"
+// rows — fresh, redeemed, and already-anonymised — each with
+// redemption_count/child rows still at their post-ALTER-TABLE defaults (0 /
+// none), exactly the state pre-0019 rows would have been in immediately after
+// the schema change but before the backfill UPDATE/INSERT executed. This
+// exercises the legacy-coalesce rule the migration documents: a row counts as
+// redeemed if `redeemed = true` OR `redeemed_by_user_id IS NOT NULL` (the
+// latter predates the boolean column).
 func TestPostgresStore_LegacyCoalesceBackfill_Integration(t *testing.T) {
 	ctx := context.Background()
 	pool := pgtest.New(t)
 	pgtest.Truncate(t, pool, "offer_code_redemptions", "offer_codes")
 	store := NewPostgresStore(pool)
 
-	// Simulate a legacy row: redeemed_by_user_id set but the boolean predates
+	// Fresh: never redeemed. redeemed=false, redeemed_by_user_id NULL.
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed) "+
+			"VALUES ('AAAAAAAAAAAA', 'Pro', 30, now(), false)"); err != nil {
+		t.Fatalf("insert fresh row: %v", err)
+	}
+	// Redeemed, legacy shape: redeemed_by_user_id set but the boolean predates
 	// it (false) — the exact "legacy coalesce" case the migration comment
-	// calls out — and the multi-redemption columns still at their just-added
-	// defaults (label NULL, max_redemptions 1, redemption_count 0).
-	_, err := pool.Exec(ctx,
+	// calls out.
+	if _, err := pool.Exec(ctx,
 		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed, redeemed_by_user_id, redeemed_at) "+
-			"VALUES ('ABCDEFGHJKMN', 'Pro', 30, now(), false, 'auth0|legacy', now())")
-	if err != nil {
-		t.Fatalf("insert legacy row: %v", err)
+			"VALUES ('BBBBBBBBBBBB', 'Pro', 30, now(), false, 'auth0|legacy', now())"); err != nil {
+		t.Fatalf("insert redeemed legacy row: %v", err)
+	}
+	// Already-anonymised pre-migration: redeemed=true (the pre-0019 tombstone),
+	// but the redeemer PII was already scrubbed (both NULL).
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed, redeemed_by_user_id, redeemed_at) "+
+			"VALUES ('CCCCCCCCCCCC', 'Pro', 30, now(), true, NULL, NULL)"); err != nil {
+		t.Fatalf("insert anonymised legacy row: %v", err)
 	}
 
 	// Run the same backfill statements migration 0019 runs, mirroring its
@@ -481,27 +492,53 @@ func TestPostgresStore_LegacyCoalesceBackfill_Integration(t *testing.T) {
 		t.Fatalf("backfill offer_code_redemptions: %v", err)
 	}
 
-	got, err := store.Get(ctx, "ABCDEFGHJKMN")
+	// Fresh row: untouched, redemption_count stays 0, no child row.
+	fresh, err := store.Get(ctx, "AAAAAAAAAAAA")
 	if err != nil {
-		t.Fatalf("Get backfilled row: %v", err)
+		t.Fatalf("Get fresh row: %v", err)
 	}
-	if got.RedemptionCount != 1 || !got.IsFullyRedeemed() {
-		t.Errorf("backfilled legacy row: got RedemptionCount=%d IsFullyRedeemed=%v, want 1/true",
-			got.RedemptionCount, got.IsFullyRedeemed())
+	if fresh.RedemptionCount != 0 || fresh.IsFullyRedeemed() {
+		t.Errorf("fresh row: got RedemptionCount=%d IsFullyRedeemed=%v, want 0/false",
+			fresh.RedemptionCount, fresh.IsFullyRedeemed())
 	}
 
+	// Redeemed legacy row: backfilled to RedemptionCount=1 with a child row
+	// carrying the redeemer.
+	redeemed, err := store.Get(ctx, "BBBBBBBBBBBB")
+	if err != nil {
+		t.Fatalf("Get redeemed legacy row: %v", err)
+	}
+	if redeemed.RedemptionCount != 1 || !redeemed.IsFullyRedeemed() {
+		t.Errorf("redeemed legacy row: got RedemptionCount=%d IsFullyRedeemed=%v, want 1/true",
+			redeemed.RedemptionCount, redeemed.IsFullyRedeemed())
+	}
 	redemptions, err := store.RedeemedByUserID(ctx, "auth0|legacy")
 	if err != nil {
 		t.Fatalf("RedeemedByUserID: %v", err)
 	}
-	if len(redemptions) != 1 || redemptions[0].Code != "ABCDEFGHJKMN" {
-		t.Fatalf("backfilled child row: got %+v, want one row for ABCDEFGHJKMN", redemptions)
+	if len(redemptions) != 1 || redemptions[0].Code != "BBBBBBBBBBBB" {
+		t.Fatalf("backfilled child row: got %+v, want one row for BBBBBBBBBBBB", redemptions)
 	}
-
 	// The backfilled slot must reject a fresh redemption attempt — the
 	// invariant the whole migration exists to preserve.
-	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
-		t.Fatalf("post-backfill RedeemWithCAS: got %v, want ErrAlreadyRedeemed", err)
+	if err := store.RedeemWithCAS(ctx, "BBBBBBBBBBBB", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
+		t.Fatalf("post-backfill RedeemWithCAS (redeemed legacy): got %v, want ErrAlreadyRedeemed", err)
+	}
+
+	// Already-anonymised legacy row: also backfilled to RedemptionCount=1 (its
+	// redeemed=true tombstone still matches the predicate), with a tombstone
+	// child row (NULL user_id/redeemed_at) — identical in shape to what
+	// AnonymiseRedemptionsByUserID itself produces.
+	anon, err := store.Get(ctx, "CCCCCCCCCCCC")
+	if err != nil {
+		t.Fatalf("Get anonymised legacy row: %v", err)
+	}
+	if anon.RedemptionCount != 1 || !anon.IsFullyRedeemed() {
+		t.Errorf("anonymised legacy row: got RedemptionCount=%d IsFullyRedeemed=%v, want 1/true",
+			anon.RedemptionCount, anon.IsFullyRedeemed())
+	}
+	if err := store.RedeemWithCAS(ctx, "CCCCCCCCCCCC", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
+		t.Fatalf("post-backfill RedeemWithCAS (anonymised legacy): got %v, want ErrAlreadyRedeemed", err)
 	}
 }
 
