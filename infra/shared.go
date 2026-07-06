@@ -305,6 +305,7 @@ func runSharedStack(ctx *pulumi.Context, conf *config.Config, tags pulumi.String
 		},
 		Storage: &dbforpostgresql.StorageArgs{
 			StorageSizeGB: pulumi.Int(32),
+			Type:          dbforpostgresql.StorageType_Premium_LRS,
 		},
 		HighAvailability: &dbforpostgresql.HighAvailabilityArgs{
 			Mode: dbforpostgresql.PostgreSqlFlexibleServerHighAvailabilityModeDisabled,
