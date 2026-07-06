@@ -329,10 +329,10 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(auth0Domain)},
 		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_AUDIENCE"), Value: pulumi.String(auth0Audience)},
 		app.EnvironmentVarArgs{Name: pulumi.String("CORS_ALLOWED_ORIGINS"), Value: pulumi.String(fmt.Sprintf("https://%s", frontendDomain))},
-		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
-		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
-		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key")},
-		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key")},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id"), Value: pulumi.String("")},
+		app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret"), Value: pulumi.String("")},
+		app.EnvironmentVarArgs{Name: pulumi.String("ADMIN_API_KEY"), SecretRef: pulumi.String("admin-api-key"), Value: pulumi.String("")},
+		app.EnvironmentVarArgs{Name: pulumi.String("SITE_BUILD_KEY"), SecretRef: pulumi.String("site-build-key"), Value: pulumi.String("")},
 		// Blob endpoint for the share-cards container (#738 Slice 3): the share-page OG handler
 		// caches baked map cards here. Computed directly from env because the account name is
 		// deterministic (sttowncrier{env}); this avoids a cross-resource dependency on the storage
@@ -429,7 +429,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			},
 		},
 		Tags: tags,
-	}, pulumi.IgnoreChanges([]string{"template.containers[0].image", "configuration.ingress.traffic"}))
+	}, pulumi.IgnoreChanges([]string{"template.containers[0].image", "configuration.ingress.traffic", "template.revisionSuffix"}))
 	if err != nil {
 		return err
 	}
@@ -506,7 +506,7 @@ func runEnvironmentStack(ctx *pulumi.Context, conf *config.Config, env string, t
 			OutputLocation: pulumi.String(""),
 		},
 		Tags: tags,
-	})
+	}, pulumi.IgnoreChanges([]string{"branch", "provider", "repositoryUrl"}))
 	if err != nil {
 		return err
 	}
@@ -707,7 +707,7 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	if workerMode == "poll-sb" || workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_ENABLED"), Value: pulumi.String("true")},
-			app.EnvironmentVarArgs{Name: pulumi.String("APNS_AUTH_KEY"), SecretRef: pulumi.String("apns-auth-key")},
+			app.EnvironmentVarArgs{Name: pulumi.String("APNS_AUTH_KEY"), SecretRef: pulumi.String("apns-auth-key"), Value: pulumi.String("")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_KEY_ID"), Value: pulumi.String("L2J5PQASN5")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_TEAM_ID"), Value: pulumi.String("4574VQ7N2X")},
 			app.EnvironmentVarArgs{Name: pulumi.String("APNS_BUNDLE_ID"), Value: pulumi.String(apnsBundleID)},
@@ -723,14 +723,14 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("FCM_ENABLED"), Value: pulumi.String("true")},
 			app.EnvironmentVarArgs{Name: pulumi.String("FCM_PROJECT_ID"), Value: pulumi.String(ec.fcmProjectID)},
-			app.EnvironmentVarArgs{Name: pulumi.String("FCM_SERVICE_ACCOUNT_JSON"), SecretRef: pulumi.String("fcm-service-account")},
+			app.EnvironmentVarArgs{Name: pulumi.String("FCM_SERVICE_ACCOUNT_JSON"), SecretRef: pulumi.String("fcm-service-account"), Value: pulumi.String("")},
 		)
 	}
 
 	// digest / hourly-digest: ACS email transport (the poll worker sends no email).
 	if workerMode == "digest" || workerMode == "hourly-digest" {
 		envVars = append(envVars,
-			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string")},
+			app.EnvironmentVarArgs{Name: pulumi.String("ACS_CONNECTION_STRING"), SecretRef: pulumi.String("acs-connection-string"), Value: pulumi.String("")},
 		)
 	}
 
@@ -753,8 +753,8 @@ func addGoWorkerEnv(envVars app.EnvironmentVarArray, ec envContext, workerMode s
 	if workerMode == "dormant-cleanup" || workerMode == "subscription-sweep" {
 		envVars = append(envVars,
 			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_DOMAIN"), Value: pulumi.String(ec.auth0Domain)},
-			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id")},
-			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret")},
+			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_ID"), SecretRef: pulumi.String("auth0-m2m-client-id"), Value: pulumi.String("")},
+			app.EnvironmentVarArgs{Name: pulumi.String("AUTH0_M2M_CLIENT_SECRET"), SecretRef: pulumi.String("auth0-m2m-client-secret"), Value: pulumi.String("")},
 		)
 	}
 
@@ -863,7 +863,11 @@ func createSeoSnapshotStorage(ctx *pulumi.Context, env string, resourceGroupName
 		AllowSharedKeyAccess:   pulumi.Bool(false),
 		EnableHttpsTrafficOnly: pulumi.Bool(true),
 		MinimumTlsVersion:      pulumi.String(string(storage.MinimumTlsVersion_TLS1_2)),
-		Tags:                   tags,
+		NetworkRuleSet: &storage.NetworkRuleSetArgs{
+			Bypass:        pulumi.String("None"),
+			DefaultAction: storage.DefaultActionAllow,
+		},
+		Tags: tags,
 	})
 	if err != nil {
 		return pulumi.StringOutput{}, pulumi.StringOutput{}, err
