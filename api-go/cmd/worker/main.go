@@ -139,7 +139,7 @@ func run() int {
 		notifState:   notificationstate.NewPostgresStore(pool),
 		device:       devicetokens.NewPostgresStore(pool),
 		savedApp:     savedapplications.NewPostgresStore(pool),
-		offerCode:    offercodes.NewPostgresStore(pool),
+		offerCode:    offercodes.NewPostgresStore(pool, logger),
 		pollState:    polling.NewPostgresPollStateStore(pool),
 		lease:        polling.NewPostgresLeaseStore(pool, time.Now),
 	}

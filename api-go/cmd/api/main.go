@@ -102,7 +102,7 @@ func main() {
 	watchZoneStore := watchzones.NewPostgresStore(pool)
 	appStore := applications.NewPostgresStore(pool)
 	savedStore := savedapplications.NewPostgresStore(pool)
-	offerStore := offercodes.NewPostgresStore(pool)
+	offerStore := offercodes.NewPostgresStore(pool, logger)
 	appleNotifStore := subscriptions.NewPostgresNotificationStore(pool, time.Now)
 
 	// The share-card cache is the Azure share-cards Blob container (#738 Slice 3,

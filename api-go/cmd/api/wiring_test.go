@@ -221,13 +221,16 @@ func (fakeOfferStore) Save(context.Context, offercodes.OfferCode) error { return
 func (fakeOfferStore) RedeemWithCAS(context.Context, string, string, time.Time) error {
 	return offercodes.ErrNotFound
 }
-func (fakeOfferStore) RedeemedByUserID(context.Context, string) ([]offercodes.OfferCode, error) {
+func (fakeOfferStore) RedeemedByUserID(context.Context, string) ([]offercodes.RedeemedOfferCode, error) {
 	return nil, nil
 }
-func (fakeOfferStore) RedeemedByUsers(context.Context, []string) (map[string][]offercodes.OfferCode, error) {
-	return map[string][]offercodes.OfferCode{}, nil
+func (fakeOfferStore) RedeemedByUsers(context.Context, []string) (map[string][]offercodes.RedeemedOfferCode, error) {
+	return map[string][]offercodes.RedeemedOfferCode{}, nil
 }
 func (fakeOfferStore) AnonymiseRedemptionsByUserID(context.Context, string) error { return nil }
+func (fakeOfferStore) List(context.Context, *string, int) ([]offercodes.ListedOfferCode, error) {
+	return nil, nil
+}
 
 // testGeocodeClient and testDesignationClient point at an unroutable address; the
 // deny-all wiring tests never reach the handlers, so the upstream is never
@@ -675,6 +678,32 @@ func TestRouter_AdminGate(t *testing.T) {
 	}
 	if got := withKey.Body.String(); got != `{"items":[],"continuationToken":null}` {
 		t.Errorf("with key: body = %s", got)
+	}
+}
+
+// TestRouter_AdminOfferCodesListGate confirms GET /v1/admin/offer-codes is
+// wired into the admin router and gated solely by the X-Admin-Key, the same
+// as every other admin route.
+func TestRouter_AdminOfferCodesListGate(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	offerStore := fakeOfferStore{}
+	adminStore := fakeAdminStore{}
+	h := newRouter(denyAllValidator{}, []string{"https://towncrierapp.uk"}, nil, profiles.NoOpAuth0Client{}, profiles.CascadeDeleters{}, profiles.ExportReaders{}, nil, nil, nil, nil, nil, nil, testGeocodeClient(t), testDesignationClient(t), offerStore, adminStore, "s3cret", "", nil, nil, "", nil, nil, nil, logger)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/v1/admin/offer-codes", nil)
+	req.Header.Set("X-Admin-Key", "s3cret")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "[]" {
+		t.Errorf("body = %s, want empty list", got)
 	}
 }
 

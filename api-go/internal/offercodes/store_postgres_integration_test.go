@@ -19,14 +19,22 @@ import (
 func newPGStore(t *testing.T) *PostgresStore {
 	t.Helper()
 	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "offer_codes")
-	return NewPostgresStore(pool)
+	pgtest.Truncate(t, pool, "offer_code_redemptions", "offer_codes")
+	return NewPostgresStore(pool, testLogger())
 }
 
-// testCode returns a valid, unredeemed OfferCode for use in integration tests.
+// testCode returns a valid, unredeemed single-use OfferCode for use in
+// integration tests.
 func testCode(t *testing.T, code string) OfferCode {
 	t.Helper()
-	c, err := NewOfferCode(code, profiles.TierPro, 30,
+	return testCodeWithCap(t, code, 1)
+}
+
+// testCodeWithCap returns a valid, unredeemed OfferCode minted with the given
+// redemption cap.
+func testCodeWithCap(t *testing.T, code string, maxRedemptions int) OfferCode {
+	t.Helper()
+	c, err := NewOfferCode(code, profiles.TierPro, 30, "integration-test", maxRedemptions,
 		time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("NewOfferCode(%q): %v", code, err)
@@ -58,29 +66,32 @@ func TestPostgresStore_RoundTrip(t *testing.T) {
 	if got.DurationDays != 30 {
 		t.Errorf("DurationDays: got %d, want 30", got.DurationDays)
 	}
-	if got.IsRedeemed() {
-		t.Error("freshly stored code must not be redeemed")
+	if got.Label != "integration-test" {
+		t.Errorf("Label: got %q, want integration-test", got.Label)
+	}
+	if got.MaxRedemptions != 1 || got.RedemptionCount != 0 {
+		t.Errorf("MaxRedemptions/RedemptionCount: got %d/%d, want 1/0", got.MaxRedemptions, got.RedemptionCount)
+	}
+	if got.IsFullyRedeemed() {
+		t.Error("freshly stored code must not be fully redeemed")
 	}
 }
 
-// TestPostgresStore_Get_Miss confirms that reading a code that was never saved
-// returns ErrNotFound.
+// TestPostgresStore_Get_Miss_Integration confirms that reading a code that was
+// never saved returns ErrNotFound.
 func TestPostgresStore_Get_Miss_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := newPGStore(t)
 
 	_, err := store.Get(ctx, "ZZZZZZZZZZZZ")
-	if err == nil || !isNotFound(err) {
+	if err == nil || !isErr(err, ErrNotFound) {
 		t.Fatalf("Get miss: got %v, want ErrNotFound", err)
 	}
 }
 
-func isNotFound(err error) bool {
-	return err != nil && err.Error() == ErrNotFound.Error()
-}
-
 // TestPostgresStore_RedeemRoundTrip saves a code, redeems it via RedeemWithCAS,
-// reads it back, and asserts that the redeemed fields are persisted.
+// reads it back, and asserts that the redemption fields (RedemptionCount, plus
+// the dual-written legacy columns) are persisted.
 func TestPostgresStore_RedeemRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	store := newPGStore(t)
@@ -99,19 +110,28 @@ func TestPostgresStore_RedeemRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after redeem: %v", err)
 	}
-	if !got.IsRedeemed() {
-		t.Error("code must be redeemed after RedeemWithCAS")
+	if !got.IsFullyRedeemed() {
+		t.Error("single-use code must be fully redeemed after RedeemWithCAS")
 	}
-	if got.RedeemedByUserID == nil || *got.RedeemedByUserID != "auth0|u1" {
-		t.Errorf("RedeemedByUserID: got %v, want auth0|u1", got.RedeemedByUserID)
+	if got.RedemptionCount != 1 {
+		t.Errorf("RedemptionCount: got %d, want 1", got.RedemptionCount)
 	}
-	if got.RedeemedAt == nil || !got.RedeemedAt.UTC().Equal(now.UTC()) {
-		t.Errorf("RedeemedAt: got %v, want %v", got.RedeemedAt, now)
+
+	redemptions, err := store.RedeemedByUserID(ctx, "auth0|u1")
+	if err != nil {
+		t.Fatalf("RedeemedByUserID: %v", err)
+	}
+	if len(redemptions) != 1 || redemptions[0].Code != "ABCDEFGHJKMN" {
+		t.Fatalf("redemptions: got %+v, want one row for ABCDEFGHJKMN", redemptions)
+	}
+	if redemptions[0].RedeemedAt == nil || !redemptions[0].RedeemedAt.UTC().Equal(now.UTC()) {
+		t.Errorf("RedeemedAt: got %v, want %v", redemptions[0].RedeemedAt, now)
 	}
 }
 
 // TestPostgresStore_RedeemWithCAS_AlreadyRedeemed_Integration confirms that a
-// second RedeemWithCAS on the same code returns ErrAlreadyRedeemed.
+// second distinct user redeeming an already-fully-consumed single-use code
+// returns ErrAlreadyRedeemed.
 func TestPostgresStore_RedeemWithCAS_AlreadyRedeemed_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := newPGStore(t)
@@ -129,6 +149,37 @@ func TestPostgresStore_RedeemWithCAS_AlreadyRedeemed_Integration(t *testing.T) {
 	}
 }
 
+// TestPostgresStore_RedeemWithCAS_AlreadyRedeemedByUser_Integration confirms
+// that the SAME user redeeming the same code twice returns
+// ErrAlreadyRedeemedByUser — distinct from the fully-consumed case above, even
+// though a multi-use code still has free slots for other users.
+func TestPostgresStore_RedeemWithCAS_AlreadyRedeemedByUser_Integration(t *testing.T) {
+	ctx := context.Background()
+	store := newPGStore(t)
+
+	code := testCodeWithCap(t, "ABCDEFGHJKMN", 3)
+	if err := store.Save(ctx, code); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|u1", now); err != nil {
+		t.Fatalf("first RedeemWithCAS: %v", err)
+	}
+	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|u1", now); !isErr(err, ErrAlreadyRedeemedByUser) {
+		t.Fatalf("same-user second RedeemWithCAS: got %v, want ErrAlreadyRedeemedByUser", err)
+	}
+
+	// The wasted insert attempt must have rolled back: the code's redemption
+	// count stays at 1, not 2.
+	got, err := store.Get(ctx, "ABCDEFGHJKMN")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.RedemptionCount != 1 {
+		t.Errorf("RedemptionCount after rejected same-user redeem: got %d, want 1", got.RedemptionCount)
+	}
+}
+
 // TestPostgresStore_RedeemWithCAS_NotFound_Integration confirms that calling
 // RedeemWithCAS on a non-existent code returns ErrNotFound.
 func TestPostgresStore_RedeemWithCAS_NotFound_Integration(t *testing.T) {
@@ -140,29 +191,72 @@ func TestPostgresStore_RedeemWithCAS_NotFound_Integration(t *testing.T) {
 	}
 }
 
-// TestPostgresStore_RedeemRace_ExactlyOneWins is the required race proof.
-// Two goroutines attempt to redeem the same fresh code concurrently; exactly
-// one must succeed and the other must get ErrAlreadyRedeemed. This proves that
-// the UPDATE WHERE redeemed=false predicate provides atomic single-use
-// enforcement under concurrent load.
-func TestPostgresStore_RedeemRace_ExactlyOneWins(t *testing.T) {
+// TestPostgresStore_MultiRedemption_AcceptsUpToCapThenRejects is the core
+// multi-redemption contract (GH#866): a code minted with maxRedemptions=3
+// accepts exactly three distinct redeemers, then rejects a fourth with
+// ErrAlreadyRedeemed.
+func TestPostgresStore_MultiRedemption_AcceptsUpToCapThenRejects(t *testing.T) {
 	ctx := context.Background()
 	store := newPGStore(t)
 
-	code := testCode(t, "ABCDEFGHJKMN")
+	code := testCodeWithCap(t, "ABCDEFGHJKMN", 3)
+	if err := store.Save(ctx, code); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	now := time.Now().UTC()
+
+	for _, userID := range []string{"auth0|u1", "auth0|u2", "auth0|u3"} {
+		if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", userID, now); err != nil {
+			t.Fatalf("RedeemWithCAS(%s): %v", userID, err)
+		}
+	}
+
+	got, err := store.Get(ctx, "ABCDEFGHJKMN")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.RedemptionCount != 3 || !got.IsFullyRedeemed() {
+		t.Fatalf("after 3 redemptions: got RedemptionCount=%d IsFullyRedeemed=%v, want 3/true",
+			got.RedemptionCount, got.IsFullyRedeemed())
+	}
+
+	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|u4", now); !isErr(err, ErrAlreadyRedeemed) {
+		t.Fatalf("4th redeemer: got %v, want ErrAlreadyRedeemed", err)
+	}
+	// The rejected 4th attempt must not have bumped the counter.
+	got, err = store.Get(ctx, "ABCDEFGHJKMN")
+	if err != nil {
+		t.Fatalf("Get after rejected 4th: %v", err)
+	}
+	if got.RedemptionCount != 3 {
+		t.Errorf("RedemptionCount after rejected 4th redeemer: got %d, want 3", got.RedemptionCount)
+	}
+}
+
+// TestPostgresStore_RedeemRace_NeverExceedsCap is the required concurrency
+// proof: many goroutines race to redeem a maxRedemptions=N code with more than
+// N distinct users; the transaction (insert + capped UPDATE) must ensure
+// exactly N succeed and the rest get ErrAlreadyRedeemed, never more than N.
+func TestPostgresStore_RedeemRace_NeverExceedsCap(t *testing.T) {
+	ctx := context.Background()
+	store := newPGStore(t)
+
+	const cap_ = 3
+	const racers = 8
+	code := testCodeWithCap(t, "ABCDEFGHJKMN", cap_)
 	if err := store.Save(ctx, code); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
 	now := time.Now().UTC()
-	errs := make([]error, 2)
+	errs := make([]error, racers)
 	var wg sync.WaitGroup
-	wg.Add(2)
-	for i := range 2 {
+	wg.Add(racers)
+	for i := range racers {
 		go func(i int) {
 			defer wg.Done()
-			errs[i] = store.RedeemWithCAS(ctx, "ABCDEFGHJKMN",
-				"auth0|racer"+string(rune('A'+i)), now)
+			userID := "auth0|racer" + string(rune('A'+i))
+			errs[i] = store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", userID, now)
 		}(i)
 	}
 	wg.Wait()
@@ -179,25 +273,34 @@ func TestPostgresStore_RedeemRace_ExactlyOneWins(t *testing.T) {
 			t.Errorf("unexpected error in race: %v", err)
 		}
 	}
-	if successes != 1 {
-		t.Errorf("race: got %d successes, want exactly 1", successes)
+	if successes != cap_ {
+		t.Errorf("race: got %d successes, want exactly %d", successes, cap_)
 	}
-	if alreadyRedeemed != 1 {
-		t.Errorf("race: got %d ErrAlreadyRedeemed, want exactly 1", alreadyRedeemed)
+	if alreadyRedeemed != racers-cap_ {
+		t.Errorf("race: got %d ErrAlreadyRedeemed, want exactly %d", alreadyRedeemed, racers-cap_)
+	}
+
+	got, err := store.Get(ctx, "ABCDEFGHJKMN")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.RedemptionCount != cap_ {
+		t.Fatalf("RedemptionCount after race: got %d, want exactly %d (never exceeds cap)", got.RedemptionCount, cap_)
 	}
 }
 
 // TestPostgresStore_AnonymiseScrubsPIIKeepsTombstone verifies the full GDPR
 // anonymise contract:
-//  1. After AnonymiseRedemptionsByUserID the redeemed_by_user_id and
-//     redeemed_at PII are NULL in the database.
-//  2. The `redeemed` tombstone stays true, so a subsequent RedeemWithCAS returns
-//     ErrAlreadyRedeemed — the code can never be re-redeemed after erasure.
+//  1. After AnonymiseRedemptionsByUserID the redemption row's user_id and
+//     redeemed_at are NULL, and the dual-written legacy columns are scrubbed
+//     the same way.
+//  2. RedemptionCount is unchanged — the slot stays consumed, so a
+//     subsequent RedeemWithCAS by a new user still respects the cap.
 func TestPostgresStore_AnonymiseScrubsPIIKeepsTombstone(t *testing.T) {
 	ctx := context.Background()
 	store := newPGStore(t)
 
-	// Save and redeem a code.
+	// Save and redeem a single-use code.
 	code := testCode(t, "ABCDEFGHJKMN")
 	if err := store.Save(ctx, code); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -212,35 +315,35 @@ func TestPostgresStore_AnonymiseScrubsPIIKeepsTombstone(t *testing.T) {
 		t.Fatalf("AnonymiseRedemptionsByUserID: %v", err)
 	}
 
-	// PII must be scrubbed.
+	// The redemption count (tombstone) must survive unchanged.
 	got, err := store.Get(ctx, "ABCDEFGHJKMN")
 	if err != nil {
 		t.Fatalf("Get after anonymise: %v", err)
 	}
-	if got.RedeemedByUserID != nil {
-		t.Errorf("RedeemedByUserID: got %v, want nil (scrubbed)", got.RedeemedByUserID)
+	if got.RedemptionCount != 1 {
+		t.Errorf("RedemptionCount after anonymise: got %d, want 1 (never decremented)", got.RedemptionCount)
 	}
-	if got.RedeemedAt != nil {
-		t.Errorf("RedeemedAt: got %v, want nil (scrubbed)", got.RedeemedAt)
-	}
-
-	// Tombstone must stay true (IsRedeemed via the redeemed boolean column).
-	if !got.Redeemed {
-		t.Error("redeemed tombstone must remain true after anonymisation")
-	}
-	if !got.IsRedeemed() {
-		t.Error("IsRedeemed() must be true after anonymisation")
+	if !got.IsFullyRedeemed() {
+		t.Error("IsFullyRedeemed() must stay true after anonymisation — the slot is still consumed")
 	}
 
-	// A post-anonymise RedeemWithCAS must return ErrAlreadyRedeemed, not
-	// succeed — the code cannot be re-claimed after its redeemer is erased.
+	// The redeemer's own export view must show nothing (PII scrubbed).
+	redemptions, err := store.RedeemedByUserID(ctx, "auth0|target")
+	if err != nil {
+		t.Fatalf("RedeemedByUserID after anonymise: %v", err)
+	}
+	if len(redemptions) != 0 {
+		t.Errorf("after anonymise: got %d redemptions for the target user, want 0", len(redemptions))
+	}
+
+	// A new user must still be rejected — the single slot stays consumed.
 	if err := store.RedeemWithCAS(ctx, "ABCDEFGHJKMN", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
 		t.Fatalf("post-anonymise RedeemWithCAS: got %v, want ErrAlreadyRedeemed", err)
 	}
 }
 
 // TestPostgresStore_RedeemedByUserID_Integration confirms that RedeemedByUserID
-// returns only the calling user's codes and returns an empty slice after
+// returns only the calling user's redemptions and returns an empty slice after
 // AnonymiseRedemptionsByUserID removes the back-reference.
 func TestPostgresStore_RedeemedByUserID_Integration(t *testing.T) {
 	ctx := context.Background()
@@ -262,7 +365,7 @@ func TestPostgresStore_RedeemedByUserID_Integration(t *testing.T) {
 		t.Fatalf("redeem theirs: %v", err)
 	}
 
-	// RedeemedByUserID returns only the target's codes.
+	// RedeemedByUserID returns only the target's redemptions.
 	got, err := store.RedeemedByUserID(ctx, "auth0|target")
 	if err != nil {
 		t.Fatalf("RedeemedByUserID: %v", err)
@@ -281,60 +384,6 @@ func TestPostgresStore_RedeemedByUserID_Integration(t *testing.T) {
 	}
 	if none == nil || len(none) != 0 {
 		t.Errorf("empty result: got %v, want non-nil empty slice", none)
-	}
-
-	// After anonymise, RedeemedByUserID returns nothing for the target (the
-	// back-reference is gone) but the code still exists and is redeemed.
-	if err := store.AnonymiseRedemptionsByUserID(ctx, "auth0|target"); err != nil {
-		t.Fatalf("AnonymiseRedemptionsByUserID: %v", err)
-	}
-	afterAnon, err := store.RedeemedByUserID(ctx, "auth0|target")
-	if err != nil {
-		t.Fatalf("RedeemedByUserID after anonymise: %v", err)
-	}
-	if len(afterAnon) != 0 {
-		t.Errorf("after anonymise: got %d codes, want 0", len(afterAnon))
-	}
-}
-
-// TestPostgresStore_LegacyCoalesceHydration_Integration verifies the legacy
-// coalesce rule on a real database row: a row inserted with redeemed=false but
-// a non-NULL redeemed_by_user_id (data written before the boolean column was
-// added) must scan as IsRedeemed()=true so it cannot be re-redeemed.
-func TestPostgresStore_LegacyCoalesceHydration_Integration(t *testing.T) {
-	ctx := context.Background()
-	pool := pgtest.New(t)
-	pgtest.Truncate(t, pool, "offer_codes")
-
-	// Insert a legacy row directly, bypassing the Save method.
-	_, err := pool.Exec(ctx,
-		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed, redeemed_by_user_id) "+
-			"VALUES ('ABCDEFGHJKMN', 'Pro', 30, now(), false, 'auth0|legacy')")
-	if err != nil {
-		t.Fatalf("insert legacy row: %v", err)
-	}
-
-	store := NewPostgresStore(pool)
-	got, err := store.Get(ctx, "ABCDEFGHJKMN")
-	if err != nil {
-		t.Fatalf("Get legacy: %v", err)
-	}
-	if !got.IsRedeemed() {
-		t.Error("legacy row with non-nil RedeemedByUserID must hydrate as redeemed")
-	}
-
-	// A RedeemWithCAS on the legacy row must return ErrAlreadyRedeemed, not
-	// succeed — the coalesce rule gates the UPDATE predicate at the Postgres
-	// level because `redeemed=false` is still false in the DB for legacy rows,
-	// so the UPDATE WOULD match. Verify the UPDATE path is blocked:
-	// The legacy row has redeemed=false, so the UPDATE could succeed. The
-	// correct behaviour here (for a real legacy row) is ErrAlreadyRedeemed at
-	// the application level ONLY after AnonymiseRedemptionsByUserID sets
-	// redeemed=true. Pre-anonymise, the application's fast-path Get check
-	// (code.IsRedeemed()) is the guard. We verify Get hydrates correctly; the
-	// full GDPR contract is tested in TestPostgresStore_AnonymiseScrubsPIIKeepsTombstone.
-	if got.RedeemedByUserID == nil || *got.RedeemedByUserID != "auth0|legacy" {
-		t.Errorf("RedeemedByUserID: got %v, want auth0|legacy", got.RedeemedByUserID)
 	}
 }
 
@@ -364,8 +413,8 @@ func TestPostgresStore_RedeemedByUsers_Integration(t *testing.T) {
 	if err := store.Save(ctx, testCode(t, "DDDDDDDDDDDD")); err != nil {
 		t.Fatalf("Save unredeemed: %v", err)
 	}
-	// An anonymised (GDPR-scrubbed) redemption keeps redeemed=true but NULL
-	// redeemer, so it must never appear in a by-user lookup.
+	// An anonymised (GDPR-scrubbed) redemption keeps its row (NULL user_id), so
+	// it must never appear in a by-user lookup.
 	if err := store.Save(ctx, testCode(t, "EEEEEEEEEEEE")); err != nil {
 		t.Fatalf("Save anon code: %v", err)
 	}
@@ -391,6 +440,105 @@ func TestPostgresStore_RedeemedByUsers_Integration(t *testing.T) {
 	}
 	if _, ok := got["auth0|erased"]; ok {
 		t.Error("anonymised redemption (NULL redeemer) must not appear")
+	}
+}
+
+// TestPostgresStore_LegacyCoalesceBackfill_Integration mirrors migration
+// 0019's backfill statements against three manually-seeded "pre-migration"
+// rows — fresh, redeemed, and already-anonymised — each with
+// redemption_count/child rows still at their post-ALTER-TABLE defaults (0 /
+// none), exactly the state pre-0019 rows would have been in immediately after
+// the schema change but before the backfill UPDATE/INSERT executed. This
+// exercises the legacy-coalesce rule the migration documents: a row counts as
+// redeemed if `redeemed = true` OR `redeemed_by_user_id IS NOT NULL` (the
+// latter predates the boolean column).
+func TestPostgresStore_LegacyCoalesceBackfill_Integration(t *testing.T) {
+	ctx := context.Background()
+	pool := pgtest.New(t)
+	pgtest.Truncate(t, pool, "offer_code_redemptions", "offer_codes")
+	store := NewPostgresStore(pool, testLogger())
+
+	// Fresh: never redeemed. redeemed=false, redeemed_by_user_id NULL.
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed) "+
+			"VALUES ('AAAAAAAAAAAA', 'Pro', 30, now(), false)"); err != nil {
+		t.Fatalf("insert fresh row: %v", err)
+	}
+	// Redeemed, legacy shape: redeemed_by_user_id set but the boolean predates
+	// it (false) — the exact "legacy coalesce" case the migration comment
+	// calls out.
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed, redeemed_by_user_id, redeemed_at) "+
+			"VALUES ('BBBBBBBBBBBB', 'Pro', 30, now(), false, 'auth0|legacy', now())"); err != nil {
+		t.Fatalf("insert redeemed legacy row: %v", err)
+	}
+	// Already-anonymised pre-migration: redeemed=true (the pre-0019 tombstone),
+	// but the redeemer PII was already scrubbed (both NULL).
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_codes (code, tier, duration_days, created_at, redeemed, redeemed_by_user_id, redeemed_at) "+
+			"VALUES ('CCCCCCCCCCCC', 'Pro', 30, now(), true, NULL, NULL)"); err != nil {
+		t.Fatalf("insert anonymised legacy row: %v", err)
+	}
+
+	// Run the same backfill statements migration 0019 runs, mirroring its
+	// legacy-coalesce predicate exactly.
+	if _, err := pool.Exec(ctx,
+		"UPDATE offer_codes SET redemption_count = 1 WHERE redeemed OR redeemed_by_user_id IS NOT NULL"); err != nil {
+		t.Fatalf("backfill redemption_count: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		"INSERT INTO offer_code_redemptions (code, user_id, redeemed_at) "+
+			"SELECT code, redeemed_by_user_id, redeemed_at FROM offer_codes WHERE redeemed OR redeemed_by_user_id IS NOT NULL"); err != nil {
+		t.Fatalf("backfill offer_code_redemptions: %v", err)
+	}
+
+	// Fresh row: untouched, redemption_count stays 0, no child row.
+	fresh, err := store.Get(ctx, "AAAAAAAAAAAA")
+	if err != nil {
+		t.Fatalf("Get fresh row: %v", err)
+	}
+	if fresh.RedemptionCount != 0 || fresh.IsFullyRedeemed() {
+		t.Errorf("fresh row: got RedemptionCount=%d IsFullyRedeemed=%v, want 0/false",
+			fresh.RedemptionCount, fresh.IsFullyRedeemed())
+	}
+
+	// Redeemed legacy row: backfilled to RedemptionCount=1 with a child row
+	// carrying the redeemer.
+	redeemed, err := store.Get(ctx, "BBBBBBBBBBBB")
+	if err != nil {
+		t.Fatalf("Get redeemed legacy row: %v", err)
+	}
+	if redeemed.RedemptionCount != 1 || !redeemed.IsFullyRedeemed() {
+		t.Errorf("redeemed legacy row: got RedemptionCount=%d IsFullyRedeemed=%v, want 1/true",
+			redeemed.RedemptionCount, redeemed.IsFullyRedeemed())
+	}
+	redemptions, err := store.RedeemedByUserID(ctx, "auth0|legacy")
+	if err != nil {
+		t.Fatalf("RedeemedByUserID: %v", err)
+	}
+	if len(redemptions) != 1 || redemptions[0].Code != "BBBBBBBBBBBB" {
+		t.Fatalf("backfilled child row: got %+v, want one row for BBBBBBBBBBBB", redemptions)
+	}
+	// The backfilled slot must reject a fresh redemption attempt — the
+	// invariant the whole migration exists to preserve.
+	if err := store.RedeemWithCAS(ctx, "BBBBBBBBBBBB", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
+		t.Fatalf("post-backfill RedeemWithCAS (redeemed legacy): got %v, want ErrAlreadyRedeemed", err)
+	}
+
+	// Already-anonymised legacy row: also backfilled to RedemptionCount=1 (its
+	// redeemed=true tombstone still matches the predicate), with a tombstone
+	// child row (NULL user_id/redeemed_at) — identical in shape to what
+	// AnonymiseRedemptionsByUserID itself produces.
+	anon, err := store.Get(ctx, "CCCCCCCCCCCC")
+	if err != nil {
+		t.Fatalf("Get anonymised legacy row: %v", err)
+	}
+	if anon.RedemptionCount != 1 || !anon.IsFullyRedeemed() {
+		t.Errorf("anonymised legacy row: got RedemptionCount=%d IsFullyRedeemed=%v, want 1/true",
+			anon.RedemptionCount, anon.IsFullyRedeemed())
+	}
+	if err := store.RedeemWithCAS(ctx, "CCCCCCCCCCCC", "auth0|new", time.Now().UTC()); !isErr(err, ErrAlreadyRedeemed) {
+		t.Fatalf("post-backfill RedeemWithCAS (anonymised legacy): got %v, want ErrAlreadyRedeemed", err)
 	}
 }
 

@@ -60,13 +60,14 @@ type deviceCountReader interface {
 // list uses to surface each user's active offer code.
 // *offercodes.PostgresStore satisfies it.
 type offerRedemptionReader interface {
-	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.OfferCode, error)
+	RedeemedByUsers(ctx context.Context, userIDs []string) (map[string][]offercodes.RedeemedOfferCode, error)
 }
 
-// offerCodeStore is the offer-code writer the generate endpoint uses.
-// offercodes.PostgresStore satisfies it.
+// offerCodeStore is the offer-code writer/reader the generate and list
+// endpoints use. offercodes.PostgresStore satisfies it.
 type offerCodeStore interface {
 	Save(ctx context.Context, c offercodes.OfferCode) error
+	List(ctx context.Context, labelFilter *string, limit int) ([]offercodes.ListedOfferCode, error)
 }
 
 // codeGenerator mints fresh canonical codes. offercodes.RandomGenerator
@@ -110,6 +111,7 @@ func Routes(mux *http.ServeMux, adminKey string, profileStore profileAdminStore,
 	mux.HandleFunc("GET /v1/admin/users", requireAdminKey(adminKey, h.listUsers))
 	mux.HandleFunc("GET /v1/admin/stats", requireAdminKey(adminKey, h.stats))
 	mux.HandleFunc("POST /v1/admin/offer-codes", requireAdminKey(adminKey, h.generateOfferCodes))
+	mux.HandleFunc("GET /v1/admin/offer-codes", requireAdminKey(adminKey, h.listOfferCodes))
 }
 
 func (h *handler) writeJSON(r *http.Request, w http.ResponseWriter, v any) {
